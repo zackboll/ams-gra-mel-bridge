@@ -7,10 +7,10 @@
 | Private Ada import and public version value | Implemented | `ada/tests/src/ams_mel_smoke.adb` |
 | Native CMake package installation | Implemented | Exported target and config files |
 | Local Alire dependency manifests | Development only | Relative pins; validate on installed Alire |
-| Upstream version inventory | Candidate only | Prior review snapshot |
-| Verified upstream dependency closure | Not implemented | First provider-foundation task |
-| Separately loadable mock C++ MEL provider | Not implemented | First provider-foundation task |
-| Real MEL factory/resource adaptation | Not implemented | Requires pinned interfaces |
+| Upstream version inventory | Verified for task 001 | `upstream-provenance.md` exact commits/trees |
+| Verified upstream dependency closure | Implemented for Control slice | 44 unmodified headers; no upstream compiled source |
+| Separately loadable mock C++ MEL provider | Implemented, test-only | Native C and Ada contract tests |
+| Real MEL factory/resource adaptation | Control foundation implemented | load/factory/init/version/close only |
 | Async requests, buffer and callback lifetimes | Not implemented | Must precede sensor binding |
 | IR receive/control | Not implemented | Host-memory Mono8 first |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |

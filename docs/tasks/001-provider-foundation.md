@@ -1,5 +1,9 @@
 # Cline task 001 — establish the first real MEL provider boundary
 
+**Status: implemented and validated on the local GCC/GNAT Linux toolchain.**
+See `../task-001-validation.md` and `../upstream-provenance.md`. Clang was not
+installed, and no arbitrary vendor provider compatibility is claimed.
+
 Work in this repository. Follow `AGENTS.md` and `.clinerules/`. Do not implement
 IR processing, RF DSP, OMS messaging, Rust support, or registry publication.
 

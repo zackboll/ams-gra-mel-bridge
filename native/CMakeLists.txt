@@ -4,15 +4,20 @@ project(ams_mel_c VERSION 0.1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(AMS_MEL_BUILD_TESTS "Build provider-free native bootstrap tests" OFF)
+option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 
-add_library(ams_mel_c SHARED src/abi.cpp)
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
 target_include_directories(ams_mel_c PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+target_link_libraries(ams_mel_c PRIVATE ${CMAKE_DL_LIBS})
 set_target_properties(ams_mel_c PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
@@ -37,6 +42,35 @@ ams_mel_warnings(ams_mel_c)
 
 if(AMS_MEL_BUILD_TESTS)
     enable_testing()
+    add_library(mock_ir_provider SHARED tests/mock_provider.cpp)
+    target_compile_features(mock_ir_provider PRIVATE cxx_std_20)
+    target_include_directories(mock_ir_provider PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+    set_target_properties(mock_ir_provider PROPERTIES
+        CXX_EXTENSIONS OFF CXX_VISIBILITY_PRESET hidden
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-providers")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(mock_ir_provider PRIVATE -fno-gnu-unique)
+    endif()
+    ams_mel_warnings(mock_ir_provider)
+
+    add_library(missing_symbol_ir_provider SHARED
+        tests/missing_symbol_provider.cpp)
+    target_compile_features(missing_symbol_ir_provider PRIVATE cxx_std_20)
+    target_include_directories(missing_symbol_ir_provider PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+    set_target_properties(missing_symbol_ir_provider PROPERTIES
+        CXX_EXTENSIONS OFF CXX_VISIBILITY_PRESET hidden
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-providers")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(missing_symbol_ir_provider PRIVATE -fno-gnu-unique)
+    endif()
+    ams_mel_warnings(missing_symbol_ir_provider)
+
     add_executable(test_c_abi tests/test_c_abi.c)
     target_compile_features(test_c_abi PRIVATE c_std_11)
     set_target_properties(test_c_abi PROPERTIES C_EXTENSIONS OFF)
@@ -49,6 +83,20 @@ if(AMS_MEL_BUILD_TESTS)
     target_link_libraries(test_cpp_header PRIVATE ams_mel::ams_mel_c)
     ams_mel_warnings(test_cpp_header)
     add_test(NAME cpp_header COMMAND test_cpp_header)
+
+    add_executable(test_provider tests/test_provider.c)
+    target_compile_features(test_provider PRIVATE c_std_11)
+    set_target_properties(test_provider PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_provider PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>"
+        AMS_MEL_TEST_MISSING_SYMBOL_PROVIDER="$<TARGET_FILE:missing_symbol_ir_provider>"
+        AMS_MEL_TEST_LIFETIME_LOG="${CMAKE_CURRENT_BINARY_DIR}/provider-lifetime.log")
+    target_link_libraries(test_provider PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_provider mock_ir_provider missing_symbol_ir_provider)
+    ams_mel_warnings(test_provider)
+    add_test(NAME provider_contract COMMAND test_provider)
+    set_tests_properties(provider_contract PROPERTIES
+        ENVIRONMENT "AMS_MEL_TEST_LIFETIME_LOG=${CMAKE_CURRENT_BINARY_DIR}/provider-lifetime.log")
 endif()
 
 install(TARGETS ams_mel_c EXPORT ams_mel_cTargets
@@ -57,6 +105,11 @@ install(TARGETS ams_mel_c EXPORT ams_mel_cTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c)
+foreach(upstream IN ITEMS common-mel ir-mel ams-math)
+    install(FILES vendor/${upstream}/LICENSE vendor/${upstream}/INTENT.md
+        DESTINATION
+        ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c/upstream/${upstream})
+endforeach()
 install(EXPORT ams_mel_cTargets NAMESPACE ams_mel::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ams_mel_c)
 configure_package_config_file(cmake/ams_mel_cConfig.cmake.in

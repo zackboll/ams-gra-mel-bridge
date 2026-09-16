@@ -1,15 +1,15 @@
-# AMS MEL — C and Ada bootstrap
+# AMS MEL — experimental C and Ada consumer binding
 
 An independent, experimental **consumer-side language binding** for the
 Agile Mission Suite Government Reference Architecture (AMS GRA) C++ MFA
 Encapsulation Layer (MEL) interfaces.
 
-**Status: bootstrap only.** The implemented feature is a C ABI version query,
-with a real C-compiled client and an Ada client. Native tests have been run;
-Ada/Alire verification still needs your local toolchain. This exercises the
-build boundary, not MEL functionality. No provider is loaded; no Common, IR, or RF
-MEL operations are implemented. This is not an official C MEL standard, a
-complete Skill, or a claim of GRA compliance.
+**Status: provider foundation.** In addition to the façade ABI query, the C and
+Ada APIs can load a compatible IR MEL provider, create/initialize its published
+`Control`, copy complete provider version information, and close safely. Tests
+use a separately loaded mock provider. No channels, images, RF, OMS/UCI, or
+processing operations are implemented. This is not an official C MEL standard,
+a complete Skill, or a claim of GRA compliance.
 
 ## Layout
 
@@ -134,9 +134,9 @@ Only Linux x86-64 is an initial validation target. The headers include normal
 Windows visibility declarations for later use; that does not claim a tested
 Windows build or provider compatibility. No SPARK proof claim is made.
 
-The candidate upstream inventory in `docs/reference/` is preserved from the
-previous review. It has **not** been promoted to a dependency lock. No upstream
-code has been vendored in this starter.
+The candidate inventory remains historical. Task 001's selected immutable
+revisions and vendored declaration closure are recorded in
+`docs/upstream-provenance.md`.
 
 ## Licensing
 

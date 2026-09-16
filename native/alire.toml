@@ -1,6 +1,6 @@
 name = "ams_mel_c"
 version = "0.1.0-dev"
-description = "Experimental C ABI bootstrap for AMS GRA MEL bindings"
+description = "Experimental C ABI adapter for AMS GRA MEL providers"
 licenses = "Apache-2.0"
 project-files = ["ams_mel_c.gpr"]
 tags = ["bindings", "c", "cpp"]
