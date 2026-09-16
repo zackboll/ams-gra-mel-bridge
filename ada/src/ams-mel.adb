@@ -12,6 +12,15 @@ package body AMS.MEL is
    package CS renames Interfaces.C.Strings;
    package US renames Ada.Strings.Unbounded;
 
+   type C_String_Owner is new Ada.Finalization.Limited_Controlled with record
+      Value : CS.chars_ptr := CS.Null_Ptr;
+   end record;
+
+   overriding procedure Finalize (Object : in out C_String_Owner) is
+   begin
+      CS.Free (Object.Value);
+   end Finalize;
+
    Diagnostic_Capacity : constant := 512;
    subtype Diagnostic_Index is Interfaces.C.size_t range
      0 .. Diagnostic_Capacity - 1;
@@ -68,37 +77,44 @@ package body AMS.MEL is
    function Description (Value : Provider_Version) return String is
      (US.To_String (Value.Description_Value));
 
+   procedure Reject_NUL (Value : String; Name : String) is
+   begin
+      for Item of Value loop
+         if Item = Character'Val (0) then
+            raise Constraint_Error with Name & " contains an embedded NUL";
+         end if;
+      end loop;
+   end Reject_NUL;
+
    function Open
      (Library_Path       : String;
       Instance           : String;
       Aperture_Config_ID : String := "") return Session
    is
-      Library_C  : CS.chars_ptr := CS.New_String (Library_Path);
-      Instance_C : CS.chars_ptr := CS.New_String (Instance);
-      Aperture_C : CS.chars_ptr := CS.New_String (Aperture_Config_ID);
+      Library_C  : C_String_Owner;
+      Instance_C : C_String_Owner;
+      Aperture_C : C_String_Owner;
       Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
    begin
+      Reject_NUL (Library_Path, "Library_Path");
+      Reject_NUL (Instance, "Instance");
+      Reject_NUL (Aperture_Config_ID, "Aperture_Config_ID");
+      Library_C.Value := CS.New_String (Library_Path);
+      Instance_C.Value := CS.New_String (Instance);
+      Aperture_C.Value := CS.New_String (Aperture_Config_ID);
       return Result : Session do
          declare
             Status : constant Interfaces.Integer_32 := C.Session_Open
-              (Library_C, Instance_C, Aperture_C, Result.Handle'Access,
+               (Library_C.Value, Instance_C.Value, Aperture_C.Value,
+                Result.Handle'Access,
                Diagnostic'Address, Diagnostic'Length, Required'Access);
          begin
-            CS.Free (Library_C);
-            CS.Free (Instance_C);
-            CS.Free (Aperture_C);
             if Status /= C.Success then
                raise Provider_Error with Message (Diagnostic);
             end if;
          end;
       end return;
-   exception
-      when others =>
-         CS.Free (Library_C);
-         CS.Free (Instance_C);
-         CS.Free (Aperture_C);
-         raise;
    end Open;
 
    function Is_Open (Object : Session) return Boolean is

@@ -57,17 +57,38 @@ using ManagerFactory = std::shared_ptr<API_Manager> (*)(const std::string&);
 using ControlFactory = std::shared_ptr<ams::iface::irmel::Control> (*)(
     std::string_view, std::shared_ptr<API_Manager>);
 
-void write_diagnostic(const std::string& message, char *buffer,
+bool valid_utf8(std::string_view value, bool reject_nul = true) noexcept;
+
+void write_diagnostic(std::string_view message, char *buffer,
                       std::size_t capacity, std::size_t *required) noexcept
 {
     if (required != nullptr) {
         *required = message.size() + 1U;
     }
     if (buffer != nullptr && capacity != 0U) {
-        const std::size_t copied = std::min(message.size(), capacity - 1U);
+        std::size_t copied = std::min(message.size(), capacity - 1U);
+        while (copied != 0U &&
+               !valid_utf8(message.substr(0U, copied), false)) {
+            --copied;
+        }
         std::memcpy(buffer, message.data(), copied);
         buffer[copied] = '\0';
     }
+}
+
+void write_exception_diagnostic(const std::exception& error,
+                                std::string_view fallback, char *buffer,
+                                std::size_t capacity,
+                                std::size_t *required) noexcept
+{
+    const char *const what = error.what();
+    const std::string_view message = what == nullptr
+        ? std::string_view{}
+        : std::string_view{what};
+    write_diagnostic(!message.empty() && valid_utf8(message)
+                         ? message
+                         : fallback,
+                     buffer, capacity, required);
 }
 
 void clear_diagnostic(char *buffer, std::size_t capacity,
@@ -81,12 +102,12 @@ void clear_diagnostic(char *buffer, std::size_t capacity,
     }
 }
 
-bool valid_utf8(const std::string& value) noexcept
+bool valid_utf8(std::string_view value, bool reject_nul) noexcept
 {
     std::size_t index = 0;
     while (index < value.size()) {
         const auto lead = static_cast<unsigned char>(value[index]);
-        if (lead == 0U) {
+        if (lead == 0U && reject_nul) {
             return false;
         }
         std::size_t trailing = 0;
@@ -154,9 +175,13 @@ extern "C" ams_mel_status_t ams_mel_session_open(
     std::unique_ptr<SharedLibrary> library;
     try {
         library = std::make_unique<SharedLibrary>(library_path);
-    } catch (const std::exception& error) {
-        write_diagnostic(error.what(), diagnostic, diagnostic_capacity,
+    } catch (const std::bad_alloc&) {
+        write_diagnostic("allocation failed", diagnostic, diagnostic_capacity,
                          diagnostic_required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        write_exception_diagnostic(error, "library load failed", diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
         return AMS_MEL_LIBRARY_LOAD_FAILED;
     } catch (...) {
         write_diagnostic("unknown library-load exception", diagnostic,
@@ -169,9 +194,13 @@ extern "C" ams_mel_status_t ams_mel_session_open(
     try {
         manager_factory = library->symbol<ManagerFactory>("getAPI_Manager");
         control_factory = library->symbol<ControlFactory>("getControl");
-    } catch (const std::exception& error) {
-        write_diagnostic(error.what(), diagnostic, diagnostic_capacity,
+    } catch (const std::bad_alloc&) {
+        write_diagnostic("allocation failed", diagnostic, diagnostic_capacity,
                          diagnostic_required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        write_exception_diagnostic(error, "symbol resolution failed", diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
         return AMS_MEL_SYMBOL_NOT_FOUND;
     } catch (...) {
         write_diagnostic("unknown symbol-resolution exception", diagnostic,
@@ -211,8 +240,8 @@ extern "C" ams_mel_status_t ams_mel_session_open(
                          diagnostic_required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (const std::exception& error) {
-        write_diagnostic(error.what(), diagnostic, diagnostic_capacity,
-                         diagnostic_required);
+        write_exception_diagnostic(error, "provider exception", diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
         write_diagnostic("unknown provider exception", diagnostic,
@@ -273,8 +302,8 @@ extern "C" ams_mel_status_t ams_mel_session_get_provider_version(
                          diagnostic_required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (const std::exception& error) {
-        write_diagnostic(error.what(), diagnostic, diagnostic_capacity,
-                         diagnostic_required);
+        write_exception_diagnostic(error, "provider exception", diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
         write_diagnostic("unknown provider exception", diagnostic,
@@ -300,8 +329,8 @@ extern "C" ams_mel_status_t ams_mel_session_close(
         delete owned;
         return AMS_MEL_OK;
     } catch (const std::exception& error) {
-        write_diagnostic(error.what(), diagnostic, diagnostic_capacity,
-                         diagnostic_required);
+        write_exception_diagnostic(error, "provider cleanup exception", diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
         write_diagnostic("unknown provider cleanup exception", diagnostic,

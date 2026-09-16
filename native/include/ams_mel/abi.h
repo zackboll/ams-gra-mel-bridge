@@ -77,8 +77,9 @@ AMS_MEL_API ams_mel_status_t ams_mel_get_abi_version(
  * calls Control::init(aperture_config_id). All input strings must be valid,
  * NUL-terminated UTF-8. out_session must point to a NULL owner. On every
  * failure it remains NULL. A successful handle is uniquely owned by the caller.
- * diagnostic is optional. When supplied, diagnostic_required receives the
- * required byte count including NUL; diagnostic may be truncated to capacity.
+ * diagnostic is optional. Diagnostics are valid UTF-8. When supplied,
+ * diagnostic_required receives the untruncated byte count including NUL;
+ * diagnostic may be truncated to a valid UTF-8 prefix that fits capacity.
  */
 AMS_MEL_API ams_mel_status_t ams_mel_session_open(
     const char *library_path,

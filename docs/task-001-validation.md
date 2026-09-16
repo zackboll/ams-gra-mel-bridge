@@ -67,3 +67,54 @@ executable location. A first instrumentation run also showed GNU-unique test
 provider symbols delaying unload until process exit; GCC test fixtures now use
 `-fno-gnu-unique`, and the asserted unload event occurs at `dlclose`. These were
 test-harness defects, not reported as passing attempts.
+
+## Review corrections — 2026-09-15
+
+Review findings against `ac6352179b360f1892a327c18c55fbcd1fa5ee5a` were
+corrected without changing the four C exports or the vendored snapshot.
+First-party task files now end with a newline; vendored files were not edited.
+
+Diagnostics now use non-owning views, never allocate while reporting an error,
+replace invalid provider exception text with a fixed valid UTF-8 fallback, and
+truncate only at UTF-8 boundaries while reporting the full required byte count.
+A test-only executable makes every process allocation fail after a mock factory
+throws a long static diagnostic, then calls the real exported boundary with
+diagnostics enabled and disabled. It passes without a public fault-injection
+export or memory exhaustion. Mock `bad_alloc` modes also cover manager factory,
+control factory, initialization, and version-query translation.
+
+Native lifecycle instrumentation now asserts exact factory/init/destruction and
+unload events for null, failed, throwing, and allocation-failure paths. Invalid
+UTF-8 and embedded-NUL provider version fixtures leave numeric values, required
+lengths, and caller buffers unchanged. A multibyte diagnostic fixture verifies
+valid-prefix truncation. Tests remain ordinary comparisons rather than C
+`assert`, so they remain effective in Release builds.
+
+Ada `Open` validates all three input strings before allocation or native entry,
+raises `Constraint_Error` for embedded NUL, and retains the empty aperture ID.
+Limited controlled owners initialized to null release each temporary C string
+if any later conversion, native call, or provider operation raises. Ada tests
+reject NUL in each parameter and assert no factory/init event occurred. The
+finalization-only test now asserts the exact `Control` → manager → library event
+sequence instead of relying on successful scope exit.
+
+The corrected tree passed:
+
+```sh
+make test-native                         # CTest 4/4
+alr -C ada build
+alr -C ada/tests run
+alr -C ada exec -- make -C /home/zboll/git/ams-mel test-ada
+alr -C ada exec -- make -C /home/zboll/git/ams-mel check
+env -u LD_LIBRARY_PATH ./ada/tests/bin/ams_mel_smoke
+```
+
+Fresh isolated GCC 14.2.0 Debug and Release builds each passed CTest 4/4 with
+warnings as errors. `nm` still reports exactly the four intended façade exports;
+`readelf` reports no direct mock/failure-provider dependency from the façade or
+Ada executable. `git diff --check`, the first-party final-newline audit, and an
+empty vendor diff passed.
+
+Clang/Clang++ remain unavailable, so no Clang result is claimed. Plain
+`make test-ada` cannot run from the base PATH because system `gprbuild` is not
+installed; the same command passed inside the available Alire environment.

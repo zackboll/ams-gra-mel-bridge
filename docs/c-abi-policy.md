@@ -54,11 +54,14 @@ capacity returns `AMS_MEL_BUFFER_TOO_SMALL`, writes both required lengths, and
 does not modify numeric fields or either buffer; strings are never truncated on
 success.
 
-Each fallible call optionally writes a per-call UTF-8 diagnostic and required
-capacity. Diagnostics may be truncated and are informational; output validity
-is determined by status. All ordinary C++ exceptions are translated. Provider
-destructors/deleters are required not to throw, consistent with ordinary C++
-destruction rules.
+Each fallible call optionally writes a per-call UTF-8 diagnostic and its full
+required capacity including NUL. A short buffer receives a NUL-terminated,
+valid UTF-8 prefix rather than a partial code unit. Diagnostic reporting does
+not allocate; invalid provider exception text is replaced with a fixed valid
+UTF-8 fallback. Diagnostics are informational; output validity is determined by
+status. All ordinary C++ exceptions are translated. Provider destructors and
+deleters are required not to throw, consistent with ordinary C++ destruction
+rules.
 
 The initial threading contract permits concurrent use of independent sessions.
 Calls using the same session, including close, must be externally serialized.

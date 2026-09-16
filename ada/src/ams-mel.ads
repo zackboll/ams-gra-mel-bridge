@@ -29,6 +29,12 @@ package AMS.MEL is
      (Library_Path       : String;
       Instance           : String;
       Aperture_Config_ID : String := "") return Session;
+   --  Library_Path, Instance, and Aperture_Config_ID are interpreted as UTF-8
+   --  bytes without transcoding.
+   --  Raises Constraint_Error if any contains an embedded NUL, which cannot be
+   --  represented by the native NUL-terminated interface. An empty
+   --  Aperture_Config_ID remains supported. Raises Provider_Error for native or
+   --  provider failures.
    function Is_Open (Object : Session) return Boolean;
    function Query_Provider_Version
      (Object : Session) return Provider_Version;
