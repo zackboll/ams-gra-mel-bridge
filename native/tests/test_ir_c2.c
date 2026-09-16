@@ -201,6 +201,77 @@ static int test_rejection(const char *scenario, const char *expected)
     return EXIT_SUCCESS;
 }
 
+static int test_long_rejection(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_mode_request *request = NULL;
+    ams_mel_ir_mode_result_v1 result = {0, 0};
+    char expected[614];
+    char short_diagnostic[512];
+    char *complete;
+    size_t required = 0;
+    memset(expected, 'x', 510U);
+    expected[510] = (char)0xe2; expected[511] = (char)0x82;
+    expected[512] = (char)0xac;
+    memset(expected + 513, 'y', 100U);
+    expected[613] = '\0';
+    CHECK(open_c2("c2-reject-long", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_operate(c2, 1, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_mode_request_wait(request, 1000, &result, NULL, 0,
+          &required) == AMS_MEL_COMMAND_REJECTED);
+    CHECK(required == sizeof expected);
+    memset(short_diagnostic, 0x7f, sizeof short_diagnostic);
+    CHECK(ams_mel_ir_mode_request_wait(request, 0, &result, short_diagnostic,
+          sizeof short_diagnostic, &required) == AMS_MEL_COMMAND_REJECTED);
+    CHECK(strlen(short_diagnostic) == 510U);
+    CHECK(memcmp(short_diagnostic, expected, 510U) == 0);
+    complete = (char *)malloc(required);
+    CHECK(complete != NULL);
+    CHECK(ams_mel_ir_mode_request_wait(request, 0, &result, complete,
+          required, &required) == AMS_MEL_COMMAND_REJECTED);
+    CHECK(strcmp(complete, expected) == 0);
+    free(complete);
+    CHECK(ams_mel_ir_mode_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_post_send_failure(const char *failpoint)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_mode_request *request = NULL;
+    char path[] = "/tmp/ams-mel-c2-post-send-XXXXXX";
+    char log[4096];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(open_c2("c2-lifetime", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(setenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE", failpoint, 1) == 0);
+    CHECK(ams_mel_ir_c2_submit_operate(c2, 9, &request, NULL, 0, NULL) ==
+          AMS_MEL_INTERNAL_ERROR);
+    CHECK(unsetenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE") == 0);
+    CHECK(request == NULL);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        const struct timespec delay = {0, 100000000L};
+        CHECK(nanosleep(&delay, NULL) == 0);
+    }
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "mode_sent") != NULL);
+    CHECK(strstr(log, "mode_completed") != NULL);
+    CHECK(strstr(log, "c2_channel_destroyed") == NULL);
+    CHECK(strstr(log, "library_unloaded") == NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
 static int test_terminal_failure(const char *scenario, ams_mel_status_t expected,
                                  const char *text)
 {
@@ -348,10 +419,13 @@ int main(void)
     CHECK(test_rejection("c2-reject-empty", "") == EXIT_SUCCESS);
     CHECK(test_rejection("c2-reject-invalid-utf8",
           "provider rejection description was invalid UTF-8 or contained NUL") == EXIT_SUCCESS);
+    CHECK(test_long_rejection() == EXIT_SUCCESS);
     CHECK(test_terminal_failure("c2-null-result", AMS_MEL_PROVIDER_FAILED, "null") == EXIT_SUCCESS);
     CHECK(test_terminal_failure("c2-future-throw", AMS_MEL_PROVIDER_EXCEPTION, "future") == EXIT_SUCCESS);
     CHECK(test_coexistence() == EXIT_SUCCESS);
     CHECK(test_enable_send_cleanup_failures() == EXIT_SUCCESS);
+    CHECK(test_post_send_failure("allocation") == EXIT_SUCCESS);
+    CHECK(test_post_send_failure("worker-launch") == EXIT_SUCCESS);
     puts("PASS: C IR C2 Operate/TaskSched async/lifetime contract");
     return EXIT_SUCCESS;
 }

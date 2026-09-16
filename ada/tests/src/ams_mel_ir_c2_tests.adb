@@ -20,6 +20,16 @@ package body AMS_MEL_IR_C2_Tests is
    Config : constant C2.Control_Config :=
      C2.Create_Config (Channel_ID, Platform_ID, Location);
 
+   function Long_Rejection return String is
+      Result : String (1 .. 613) := (others => 'x');
+   begin
+      Result (511) := Character'Val (16#E2#);
+      Result (512) := Character'Val (16#82#);
+      Result (513) := Character'Val (16#AC#);
+      Result (514 .. Result'Last) := (others => 'y');
+      return Result;
+   end Long_Rejection;
+
    procedure Test_Success (Provider_Path : String) is
       Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "c2-command-id");
       Channel : C2.Control_Channel := C2.Open (Parent, Config);
@@ -98,6 +108,29 @@ package body AMS_MEL_IR_C2_Tests is
       AMS.MEL.Close (Parent);
    end Test_Rejection;
 
+   procedure Test_Long_Rejection (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open
+        (Provider_Path, "c2-reject-long");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : C2.Mode_Request := C2.Submit_Operate (Channel);
+         Result  : constant C2.Mode_Result := C2.Wait (Request, 1_000);
+      begin
+         if C2.Status (Result) /= C2.Rejected
+           or else C2.Rejection_Code (Result) /= C2.Invalid_Parameters
+           or else C2.Description (Result) /= Long_Rejection
+         then
+            raise Program_Error with
+              "Ada C2 complete long rejection description was not preserved";
+         end if;
+         C2.Close (Request);
+      end;
+      C2.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Long_Rejection;
+
    procedure Test_Pending_Finalization (Provider_Path : String) is
       Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "c2-lifetime");
       Channel : C2.Control_Channel := C2.Open (Parent, Config);
@@ -119,6 +152,7 @@ package body AMS_MEL_IR_C2_Tests is
       Test_Success (Provider_Path);
       Test_Timeout_Lifetime (Provider_Path);
       Test_Rejection (Provider_Path);
+      Test_Long_Rejection (Provider_Path);
       Test_Pending_Finalization (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR C2 Operate/TaskSched contract");
    end Run;

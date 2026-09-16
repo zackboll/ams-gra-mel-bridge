@@ -46,6 +46,7 @@ ams_mel_warnings(ams_mel_c)
 
 if(AMS_MEL_BUILD_TESTS)
     enable_testing()
+    target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_ENABLE_TEST_FAILPOINTS)
     add_library(mock_ir_provider SHARED tests/mock_provider.cpp)
     target_compile_features(mock_ir_provider PRIVATE cxx_std_20)
     target_include_directories(mock_ir_provider PRIVATE

@@ -320,7 +320,8 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_open(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Explicitly enables the attached C2 channel. Submission never implicitly
- * enables it. */
+ * enables it. Enable, submit, and close calls using the same C2 owner must be
+ * externally serialized. Parent Session close rules remain unchanged. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_enable(
     ams_mel_ir_c2 *c2,
     char *diagnostic,
@@ -339,7 +340,8 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_operate(
 
 /* Waits finitely for completion. TIMEOUT neither consumes nor cancels. A
  * terminal result is cached, so repeated waits are inspectable and future::get
- * is performed once by the adapter completion worker. */
+ * is performed once by the adapter completion worker. Wait may be repeated,
+ * but close must not race a wait using the same request handle. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_wait(
     const ams_mel_ir_mode_request *request,
     uint32_t timeout_ms,

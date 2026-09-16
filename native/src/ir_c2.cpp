@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <future>
 #include <memory>
@@ -15,9 +17,9 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <utility>
-#include <vector>
 
 namespace {
 using namespace ams::iface;
@@ -124,24 +126,29 @@ struct ChannelState {
     bool enable_attempted{};
     std::size_t requests{};
     bool cleanup_started{};
+    std::shared_ptr<ChannelState> emergency_self;
+    ChannelState *emergency_next{};
+    std::atomic<bool> emergency_retained{};
 };
 
 /* A failed deferred detach cannot safely destroy its graph. Keep it for process
- * lifetime rather than unload provider code that may still own the channel. */
-void retain_failed(std::shared_ptr<ChannelState> state) noexcept
+ * lifetime rather than unload provider code that may still own the channel.
+ * The intrusive root and pre-existing shared_ptr cycle require no allocation. */
+void retain_failed(const std::shared_ptr<ChannelState>& state) noexcept
 {
-    try {
-        static auto *mutex = new std::mutex;
-        static auto *states = new std::vector<std::shared_ptr<ChannelState>>;
-        std::lock_guard lock{*mutex};
-        states->push_back(std::move(state));
-    } catch (...) {
-        (void)new std::shared_ptr<ChannelState>(std::move(state));
-    }
+    static std::atomic<ChannelState *> retained{};
+    bool expected = false;
+    if (!state->emergency_retained.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) return;
+    state->emergency_self = state;
+    ChannelState *head = retained.load(std::memory_order_relaxed);
+    do { state->emergency_next = head; }
+    while (!retained.compare_exchange_weak(
+        head, state.get(), std::memory_order_release, std::memory_order_relaxed));
 }
 
 bool cleanup(const std::shared_ptr<ChannelState>& state,
-             bool retain_if_orphaned) noexcept
+             bool retain_if_orphaned)
 {
     std::shared_ptr<irmel::Channel> channel;
     bool disable = false;
@@ -197,21 +204,30 @@ struct Completion {
 struct WorkerInput {
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::MFA_Mode> future;
+    std::shared_ptr<WorkerInput> emergency_self;
+    WorkerInput *emergency_next{};
+    std::atomic<bool> emergency_retained{};
+    std::atomic<unsigned> launch_state{};
 };
 
-void retain_worker(std::shared_ptr<WorkerInput> input) noexcept
+void arm_worker(const std::shared_ptr<WorkerInput>& input) noexcept
 {
-    try {
-        static auto *mutex = new std::mutex;
-        static auto *workers = new std::vector<std::shared_ptr<WorkerInput>>;
-        std::lock_guard lock{*mutex};
-        workers->push_back(std::move(input));
-    } catch (...) {
-        (void)new std::shared_ptr<WorkerInput>(std::move(input));
-    }
+    input->emergency_self = input;
 }
 
-bool finish_channel(const std::shared_ptr<ChannelState>& channel) noexcept
+void retain_worker(const std::shared_ptr<WorkerInput>& input) noexcept
+{
+    static std::atomic<WorkerInput *> retained{};
+    bool expected = false;
+    if (!input->emergency_retained.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) return;
+    WorkerInput *head = retained.load(std::memory_order_relaxed);
+    do { input->emergency_next = head; }
+    while (!retained.compare_exchange_weak(
+        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
+}
+
+bool finish_channel(const std::shared_ptr<ChannelState>& channel)
 {
     bool close = false;
     {
@@ -223,7 +239,7 @@ bool finish_channel(const std::shared_ptr<ChannelState>& channel) noexcept
 }
 
 void complete(const std::shared_ptr<Completion>& state,
-              mel::RequestFor<irmel::MFA_Mode> future) noexcept
+              mel::RequestFor<irmel::MFA_Mode>& future)
 {
     CompletionKind kind = CompletionKind::ProviderException;
     ams_mel_ir_mode_result_v1 result{};
@@ -285,6 +301,34 @@ void complete(const std::shared_ptr<Completion>& state,
     channel.reset();
     state->ready.notify_all();
 }
+
+void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
+{
+    while (input->launch_state.load(std::memory_order_acquire) == 0U)
+        std::this_thread::yield();
+    try {
+        complete(input->completion, input->future);
+    } catch (...) {
+        /* A mutex/system failure must neither escape the detached thread nor
+         * destroy an unaccounted future/provider graph. */
+        arm_worker(input);
+        retain_worker(input);
+    }
+}
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+enum class SubmitFailpoint { None, Allocation, WorkerLaunch };
+
+SubmitFailpoint submit_failpoint() noexcept
+{
+    const char *value = std::getenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE");
+    if (value && std::strcmp(value, "allocation") == 0)
+        return SubmitFailpoint::Allocation;
+    if (value && std::strcmp(value, "worker-launch") == 0)
+        return SubmitFailpoint::WorkerLaunch;
+    return SubmitFailpoint::None;
+}
+#endif
 } // namespace
 
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
@@ -410,59 +454,87 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_operate(
     diagnostic("", out, capacity, required);
     if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
+
+    std::shared_ptr<Completion> completion;
+    std::shared_ptr<WorkerInput> input;
+    std::unique_ptr<ams_mel_ir_mode_request> owner;
+    std::unique_ptr<std::thread> worker;
+    irmel::ModeCmd command;
     try {
-        std::unique_lock lock{c2->state->mutex};
-        if (c2->state->lifecycle != C2Lifecycle::Enabled) {
-            diagnostic("C2 channel is not enabled", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-        irmel::ModeCmd command;
+        completion = std::make_shared<Completion>();
+        completion->channel = c2->state;
+        input = std::make_shared<WorkerInput>();
+        input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_mode_request>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
         command.setCommandID(command_id);
         command.setState(mel::MFA_State::Operate);
         command.setMode(irmel::MFA_Mode::TaskSched);
-        auto future = c2->state->c2->send(std::move(command));
-        auto completion = std::make_shared<Completion>();
-        completion->channel = c2->state;
-        auto input = std::make_shared<WorkerInput>(
-            WorkerInput{completion, std::move(future)});
-        auto owner = std::make_unique<ams_mel_ir_mode_request>();
-        owner->state = completion;
-        ++c2->state->requests;
+    } catch (const std::bad_alloc&) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        diagnostic("request preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    std::unique_lock<std::mutex> lock;
+    try {
+        lock = std::unique_lock<std::mutex>{c2->state->mutex};
+    } catch (...) {
+        diagnostic("C2 submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
+        diagnostic("C2 channel is not enabled", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
         try {
-            auto worker = std::make_unique<std::thread>([input]() mutable {
-                complete(input->completion, std::move(input->future));
-            });
-            try {
-                worker->detach();
-            } catch (...) {
-                /* A started but unexpectedly non-detachable thread must not be
-                 * destroyed (which would terminate). Its worker still owns the
-                 * request graph and will account for completion. */
-                (void)worker.release();
-                throw;
-            }
+            auto future = c2->state->c2->send(std::move(command));
+            input->future = std::move(future);
+            arm_worker(input);
+            ++c2->state->requests;
+        } catch (const std::exception& error) {
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
-            /* Destroying some provider futures can block. Preserve the future
-             * and its provider graph as a safe failure mode. If no worker was
-             * created, the retained in-flight count intentionally prevents
-             * cleanup forever. */
-            retain_worker(std::move(input));
-            throw;
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
         }
+        lock.unlock();
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+
+        *worker = std::thread{[input] { run_worker(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
         *out_request = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
-        diagnostic("allocation or worker creation failed", out, capacity, required);
+        retain_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
-    } catch (const std::exception& error) {
-        const char *what = error.what();
-        const std::string_view text = what ? std::string_view{what} : std::string_view{};
-        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
-                   out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
-        diagnostic("unknown provider send exception", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        retain_worker(input);
+        if (worker && worker->joinable()) {
+            /* Detach failure leaves a running worker. Leaking only the already
+             * allocated std::thread object avoids its terminating destructor. */
+            (void)worker.release();
+        }
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
 }
 

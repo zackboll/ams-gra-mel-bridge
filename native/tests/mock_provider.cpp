@@ -28,6 +28,11 @@ using irmel::Return;
 std::atomic<std::uint64_t> callback_buffers{};
 std::atomic<std::uint64_t> buffer_releases{};
 
+std::string long_rejection_description()
+{
+    return std::string(510U, 'x') + "\xE2\x82\xAC" + std::string(100U, 'y');
+}
+
 struct CallbackBarrier {
     std::mutex mutex;
     std::condition_variable ready;
@@ -340,6 +345,10 @@ public:
         if (scenario_ == "c2-reject") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
                 mel::Error{mel::ErrorCode::InvalidParameters, "invalid task schedule"}});
+        } else if (scenario_ == "c2-reject-long") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                mel::Error{mel::ErrorCode::InvalidParameters,
+                           long_rejection_description()}});
         } else if (scenario_ == "c2-reject-empty") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
                 mel::Error{mel::ErrorCode::InvalidParameters}});

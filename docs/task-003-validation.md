@@ -14,6 +14,16 @@ deferred failure is internally retained rather than unloading executable provide
 state. Lifecycle logs prove completion and both C2/image destruction precede
 provider unload.
 
+The corrective lifetime review moved all façade allocation before provider
+`send`. A valid future is moved into preallocated worker state, armed with a
+pre-existing self-retention owner, and counted under the channel lock with no
+intervening throwing operation. Worker launch/allocation failure is an internal
+error and publishes no request; provider send exceptions remain provider
+exceptions. Allocation-free intrusive atomic roots preserve failed worker or
+orphan-detach graphs permanently when no safe completion path exists. Detached
+worker helpers catch unexpected failures rather than crossing a `noexcept`
+boundary or terminating.
+
 The pinned `C2Channel.h` GCC dependency probe observes 61 upstream headers. The
 existing closure supplied 47; 14 unmodified IR headers were added, taking the
 vendored union from 71 to 85 headers. Existing repository license/intent files
@@ -43,7 +53,12 @@ command ID/profile, explicit enable, immediate/delayed/repeated wait, timeout th
 success, all requested rejection-description variants, null success, send/future
 exceptions, cleanup failures/retry, pending public close, parent/C2-first close,
 unload ordering, and image/C2 coexistence. Ada covers success, timeout then
-success, normal rejection, parent/C2-first close, and pending finalization.
+success, normal and greater-than-512-byte UTF-8 rejection descriptions,
+parent/C2-first close, and pending finalization. Deterministic private failpoints
+also force post-send façade `bad_alloc` and worker-launch failure; both return
+`INTERNAL_ERROR`, publish no request, observe provider completion, and prove the
+provider/library graph remains safely retained. The failpoints are enabled only
+in test builds and are absent from the production shared object.
 
 A GCC AddressSanitizer plus UndefinedBehaviorSanitizer Debug build passed 6/6
 with leak detection and halt-on-error enabled. The public header compiled with
@@ -56,7 +71,10 @@ installed.
 All 91 vendored files (85 headers and six license/intent files) match the
 checksum manifest and detached checkouts of the three recorded immutable commits
 byte-for-byte. Normal builds remain offline. `git diff --check` passed and no
-generated build artifact is staged.
+generated build artifact is staged. `scripts/check_final_newlines.py`, also run
+by `make check`, passed over all first-party repository text files while
+deliberately excluding `native/vendor`; the seven Task-003 files found by the
+review now have final newlines.
 
 Clang/Clang++ are not installed locally, so no local Clang result is claimed;
 GitHub Actions supplies that independent compiler check after push. No real MEL

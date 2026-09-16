@@ -14,7 +14,7 @@
 | Buffer and callback lifetimes | Hardened with non-quiescing mock | Channel destruction before in-flight drain/storage; release checked exactly once |
 | IR image receive | Mono8 receive implemented | Host memory, `IRSTImage`, C polling and `AMS.MEL.IR` |
 | IR C2 Operate/TaskSched | Implemented | Async C request and `AMS.MEL.IR.C2`; timeout/rejection/exception distinct |
-| Pending C2 lifetime | Implemented and lifecycle-tested | Public close is non-cancelling; deferred disable/detach/unload |
+| Pending C2 lifetime | Hardened and lifecycle-tested | Pre-send allocation; allocation-free emergency roots; launch/allocation failure injection; deferred disable/detach/unload |
 | C2/image coexistence | Implemented | One Session, parent-first close, provider unload last |
 | Other C2 commands/callbacks | Not implemented | No scan scheduling, BIT, config, camera, or CommandStatus API |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |

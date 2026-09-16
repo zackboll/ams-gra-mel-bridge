@@ -133,6 +133,20 @@ request without calling `future::get()`. A private completion worker retains the
 future, C2 channel, provider, and library; closing the request is idempotent,
 nonblocking, and is not cancellation. Timeout preserves the pending request.
 Terminal results are cached and repeatable, with exactly one future `get()`.
+Wait may be repeated, but request close must not race wait on the same handle.
+Enable, submit, and close on one C2 owner require external serialization; parent
+Session close rules are unchanged.
+
+All façade owners and worker storage are allocated before provider `send`. Once
+`send` returns a valid future, the future move, allocation-free self-retention,
+and request-count increment establish lifetime accounting without an intervening
+throwing operation. Provider `send` exceptions map to `PROVIDER_EXCEPTION`;
+façade allocation and worker launch/detach failures map to `INTERNAL_ERROR`.
+Post-send façade failure publishes no request and permanently retains the
+already-accounted graph through an intrusive atomic root and pre-existing
+`shared_ptr` cycle. Deferred detach failure uses the same allocation-free safe
+retention. These emergency paths intentionally leak rather than unload code used
+by a future or provider object with no safe completion path.
 
 `AMS_MEL_COMMAND_REJECTED` represents a normal upstream `ErrorOr(Error)` and
 maps every known `ErrorCode` explicitly to fixed-width C values. Its validated
@@ -143,3 +157,8 @@ defers disable/detach until in-flight requests complete. Synchronous detach
 failure retains the public owner for retry; orphaned deferred failure is retained
 internally. A future that never completes safely retains provider/library state. This slice exposes no arbitrary
 scan, BIT, config, camera, or callback command API.
+
+The Ada wrapper initially waits with a bounded diagnostic buffer. For a normal
+rejection whose required byte count is larger, it allocates exactly that count,
+repeats the cached wait with timeout zero, verifies the same rejection status and
+error code/size, and preserves the complete validated UTF-8 description.

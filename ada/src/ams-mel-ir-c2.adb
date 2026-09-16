@@ -12,10 +12,11 @@ package body AMS.MEL.IR.C2 is
    package C renames AMS.MEL_C_API;
 
    Diagnostic_Capacity : constant := 512;
-   subtype Diagnostic_Index is Interfaces.C.size_t range
-     0 .. Diagnostic_Capacity - 1;
-   type Diagnostic_Array is array (Diagnostic_Index) of aliased Interfaces.C.char
+   type Diagnostic_Array is array (Interfaces.C.size_t range <>) of
+     aliased Interfaces.C.char
      with Convention => C;
+   subtype Fixed_Diagnostic is Diagnostic_Array
+     (0 .. Diagnostic_Capacity - 1);
 
    function Message (Buffer : Diagnostic_Array) return String is
       Length : Natural := 0;
@@ -70,7 +71,7 @@ package body AMS.MEL.IR.C2 is
             Offset_Y_M => Interfaces.C.double (Config.Location.Y),
             Offset_Z_M => Interfaces.C.double (Config.Location.Z),
             Key => String_View (Key), System_Name => String_View (System_Name)));
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
    begin
       if Parent.Handle = C.Null_Session then
@@ -93,7 +94,7 @@ package body AMS.MEL.IR.C2 is
      (Channel.Handle /= C.Null_C2);
 
    procedure Enable (Channel : in out Control_Channel) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_C2_Enable
         (Channel.Handle, Diagnostic'Address, Diagnostic'Length, Required'Access);
@@ -106,7 +107,7 @@ package body AMS.MEL.IR.C2 is
    function Submit_Operate
      (Channel : Control_Channel; ID : Command_ID := 0) return Mode_Request
    is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
    begin
       return Result : Mode_Request do
@@ -136,7 +137,7 @@ package body AMS.MEL.IR.C2 is
      (Request : Mode_Request; Timeout_Milliseconds : Natural) return Mode_Result
    is
       Raw : aliased C.IR_Mode_Result_V1 := (Mode => 0, Error_Code => 0);
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
       Timeout : Interfaces.Unsigned_32;
       Code : Interfaces.Integer_32;
@@ -157,16 +158,44 @@ package body AMS.MEL.IR.C2 is
          if Raw.Error_Code > 8 then
             raise Provider_Error with "native IR C2 returned unknown MEL error code";
          end if;
-         return (Result_Status => Rejected, Result_Mode => Unused,
-                 Result_Code => Error_Code'Val (Raw.Error_Code),
-                 Result_Text => US.To_Unbounded_String (Message (Diagnostic)));
+         declare
+            Text : US.Unbounded_String :=
+              US.To_Unbounded_String (Message (Diagnostic));
+         begin
+            if Required > Diagnostic'Length then
+               declare
+                  Complete : aliased Diagnostic_Array (0 .. Required - 1) :=
+                    (others => Interfaces.C.nul);
+                  Retry_Raw : aliased C.IR_Mode_Result_V1 :=
+                    (Mode => 0, Error_Code => 0);
+                  Retry_Required : aliased C.Size_T := 0;
+                  Retry_Code : constant Interfaces.Integer_32 :=
+                    C.IR_Mode_Request_Wait
+                      (Request.Owner.Handle, 0, Retry_Raw'Access,
+                       Complete'Address, Complete'Length,
+                       Retry_Required'Access);
+               begin
+                  if Retry_Code /= C.Command_Rejected
+                    or else Retry_Raw.Error_Code /= Raw.Error_Code
+                    or else Retry_Required /= Required
+                  then
+                     raise Provider_Error with
+                       "native IR C2 rejection changed during diagnostic retry";
+                  end if;
+                  Text := US.To_Unbounded_String (Message (Complete));
+               end;
+            end if;
+            return (Result_Status => Rejected, Result_Mode => Unused,
+                    Result_Code => Error_Code'Val (Raw.Error_Code),
+                    Result_Text => Text);
+         end;
       else
          raise Provider_Error with Failure_Message (Diagnostic);
       end if;
    end Wait;
 
    procedure Close (Request : in out Mode_Request) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_Mode_Request_Close
         (Request.Owner.Handle'Access, Diagnostic'Address, Diagnostic'Length,
@@ -178,7 +207,7 @@ package body AMS.MEL.IR.C2 is
    end Close;
 
    procedure Close (Channel : in out Control_Channel) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_C2_Close
         (Channel.Handle'Access, Diagnostic'Address, Diagnostic'Length,
