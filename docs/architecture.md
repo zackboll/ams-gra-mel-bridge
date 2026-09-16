@@ -12,6 +12,9 @@ initialize its `Control`, copy its complete `VersionInfo`, and close it.
 Task 002 adds one vertical receive profile: attach an `IRSTImage` channel,
 register service-owned host buffers, receive `ImageListener::onImage` callbacks,
 copy validated Mono8 frames into a bounded queue, and poll them from C or Ada.
+Task 003 adds one command profile: attach and explicitly enable a
+`CommandAndControl` channel, send `Operate`/`TaskSched`, and preserve the
+asynchronous `RequestFor<MFA_Mode>` result in C and Ada.
 
 ## Separation
 
@@ -49,6 +52,27 @@ storage. Provider/library ownership is released last. Failed detach retains the
 whole callback-accessible graph for a later close attempt rather than risking a
 use-after-free; an open-time detach failure is retained internally because no C
 owner can safely be returned.
+
+A C2 channel likewise retains shared provider state. Submission preallocates its
+completion, worker input, public owner, and thread holder before provider `send`.
+After `send` yields a valid future, moving it into the prepared worker input,
+arming that input's self-retention, and incrementing the channel request count
+form one nonthrowing accounting sequence under the channel lock. No untracked
+provider future can cross that boundary. The blocking (non-polling) worker owns
+the provider future and C2 graph until terminal completion, calls `future::get()`
+once, and caches success, MEL rejection, provider exception, null success, or
+unknown-value failure. Public request close only removes that owner; it neither
+joins nor cancels. C2 close stops submissions immediately and defers
+disable/detach while requests are in flight. The final worker performs cleanup
+and releases provider/library ownership.
+
+Worker creation/detach or later adapter failures are internal failures, not
+provider exceptions. If a future cannot be safely handed to a detached worker,
+or orphan cleanup cannot safely detach, an intrusive atomic root plus an
+already-armed `shared_ptr` self-cycle retains the graph without allocating or
+taking a mutex. That emergency graph is intentionally permanent because no safe
+completion path remains. A never-completing provider future likewise retains the
+graph indefinitely rather than risking unload of live code.
 
 ## First integration profile
 

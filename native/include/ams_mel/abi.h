@@ -21,6 +21,7 @@ typedef int32_t ams_mel_status_t;
 #define AMS_MEL_TIMEOUT             INT32_C(9)
 #define AMS_MEL_STREAM_STOPPED      INT32_C(10)
 #define AMS_MEL_PROVIDER_FAILED     INT32_C(11)
+#define AMS_MEL_COMMAND_REJECTED    INT32_C(12)
 
 #if defined(_WIN32)
 #  if defined(AMS_MEL_BUILDING_LIBRARY)
@@ -51,9 +52,27 @@ typedef struct ams_mel_abi_version_v1 {
 
 typedef struct ams_mel_session ams_mel_session;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
+typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
+typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_IMAGE UINT32_C(1)
+#define AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL UINT32_C(2)
+typedef uint32_t ams_mel_ir_mfa_mode_t;
+#define AMS_MEL_IR_MFA_MODE_UNUSED UINT32_C(0)
+#define AMS_MEL_IR_MFA_MODE_TASK_SCHED UINT32_C(1)
+#define AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED UINT32_C(2)
+#define AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED UINT32_C(3)
+typedef uint32_t ams_mel_error_code_t;
+#define AMS_MEL_ERROR_NONE UINT32_C(0)
+#define AMS_MEL_ERROR_INVALID_ID UINT32_C(1)
+#define AMS_MEL_ERROR_INVALID_STATE UINT32_C(2)
+#define AMS_MEL_ERROR_INVALID_PARAMETERS UINT32_C(3)
+#define AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS UINT32_C(4)
+#define AMS_MEL_ERROR_INSUFFICIENT_RESOURCES UINT32_C(5)
+#define AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES UINT32_C(6)
+#define AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES UINT32_C(7)
+#define AMS_MEL_ERROR_UNSUPPORTED UINT32_C(8)
 typedef uint32_t ams_mel_ir_pixel_format_t;
 #define AMS_MEL_IR_PIXEL_MONO UINT32_C(0)
 typedef uint32_t ams_mel_ir_image_type_t;
@@ -96,6 +115,23 @@ typedef struct ams_mel_ir_stream_config_v1 {
     size_t buffer_size;
     size_t queue_capacity;
 } ams_mel_ir_stream_config_v1;
+
+/* Command-and-control configuration. No image listener or image-buffer fields
+ * belong to this channel. String views are copied during open and use the same
+ * UTF-8/no-embedded-NUL contract as the image configuration. */
+typedef struct ams_mel_ir_c2_config_v1 {
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_c2_config_v1;
+
+/* Terminal ModeCmd value. On COMMAND_REJECTED, error_code is populated and
+ * the per-call diagnostic contains the provider's validated description. */
+typedef struct ams_mel_ir_mode_result_v1 {
+    ams_mel_ir_mfa_mode_t mode;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_mode_result_v1;
 
 /* Metadata copied with each Mono8 frame. Times retain upstream nanoseconds;
  * FOV values retain upstream radians. image_flags is a bitset (1 << ImageFlag).
@@ -268,6 +304,66 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_stop(
  */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_close(
     ams_mel_ir_stream **stream,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Attaches only a published CommandAndControl channel after checking both the
+ * Control capability list and attached channel type/capability. The C2 owner
+ * retains SessionState independently of the public Session owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_open(
+    const ams_mel_session *session,
+    const ams_mel_ir_c2_config_v1 *config,
+    ams_mel_ir_c2 **out_c2,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Explicitly enables the attached C2 channel. Submission never implicitly
+ * enables it. Enable, submit, and close calls using the same C2 owner must be
+ * externally serialized. Parent Session close rules remain unchanged. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_enable(
+    ams_mel_ir_c2 *c2,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Sends exactly Operate/TaskSched with default ScanParam. On success publishes
+ * an asynchronous request owner without waiting for its future. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_operate(
+    ams_mel_ir_c2 *c2,
+    uint32_t command_id,
+    ams_mel_ir_mode_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits finitely for completion. TIMEOUT neither consumes nor cancels. A
+ * terminal result is cached, so repeated waits are inspectable and future::get
+ * is performed once by the adapter completion worker. Wait may be repeated,
+ * but close must not race a wait using the same request handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_wait(
+    const ams_mel_ir_mode_request *request,
+    uint32_t timeout_ms,
+    ams_mel_ir_mode_result_v1 *out_result,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Drops only the public request owner. It is idempotent, nonblocking, and does
+ * not cancel pending provider work. Internal ownership survives to completion. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_close(
+    ams_mel_ir_mode_request **request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Stops new submissions. With no requests, disables and detaches synchronously.
+ * In-flight requests defer cleanup until the final completion and retain the
+ * provider/library meanwhile. A synchronous detach failure retains the public
+ * owner for a later close retry. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_close(
+    ams_mel_ir_c2 **c2,
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

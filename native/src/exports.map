@@ -10,6 +10,12 @@ AMS_MEL_0.1 {
         ams_mel_ir_stream_get_counters;
         ams_mel_ir_stream_stop;
         ams_mel_ir_stream_close;
+        ams_mel_ir_c2_open;
+        ams_mel_ir_c2_enable;
+        ams_mel_ir_c2_submit_operate;
+        ams_mel_ir_mode_request_wait;
+        ams_mel_ir_mode_request_close;
+        ams_mel_ir_c2_close;
     local:
         *;
 };

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add IR CommandAndControl attach/enable and asynchronous
+  `ModeCmd(Operate, TaskSched)` requests for C and `AMS.MEL.IR.C2`.
+- Distinguish timeout, normal MEL `ErrorOr` rejection, provider exception,
+  provider failure, and null successful mode results.
+- Retain C2/provider/library ownership through pending requests, including after
+  public request, C2, or Session close; add C2/image coexistence coverage.
+- Expand the immutable upstream declaration closure from 71 to 85 headers.
 - Add a host-memory, single-band Mono8 `IRSTImage` receive profile for C and Ada.
 - Add bounded DROP-INCOMING frame queues, exact-size caller copies, saturating
   counters, and distinct timeout/stopped results.

@@ -16,12 +16,18 @@ private package AMS.MEL_C_API is
    Buffer_Too_Small : constant Interfaces.Integer_32 := 7;
    Timeout : constant Interfaces.Integer_32 := 9;
    Stream_Stopped : constant Interfaces.Integer_32 := 10;
+   Command_Rejected : constant Interfaces.Integer_32 := 12;
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
    Null_Session : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
    Null_Stream : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   type C2_Handle is new System.Address;
+   Null_C2 : constant C2_Handle := C2_Handle (System.Null_Address);
+   type Mode_Request_Handle is new System.Address;
+   Null_Mode_Request : constant Mode_Request_Handle :=
+     Mode_Request_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8
      with Convention => C;
@@ -48,6 +54,16 @@ private package AMS.MEL_C_API is
       Buffer_Count   : Size_T;
       Buffer_Size    : Size_T;
       Queue_Capacity : Size_T;
+   end record with Convention => C;
+   type IR_C2_Config_V1 is record
+      Channel_Type    : Interfaces.Unsigned_32;
+      Channel_ID      : UCI_ID_V1;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record with Convention => C;
+   type IR_Mode_Result_V1 is record
+      Mode       : Interfaces.Unsigned_32;
+      Error_Code : Interfaces.Unsigned_32;
    end record with Convention => C;
 
    type Reserved_Byte_Array is array (0 .. 6) of Interfaces.Unsigned_8
@@ -172,4 +188,49 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity   : Size_T;
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C, External_Name => "ams_mel_ir_stream_close";
+   function IR_C2_Open
+     (Session               : Session_Handle;
+      Config                : access IR_C2_Config_V1;
+      Output                : access C2_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C, External_Name => "ams_mel_ir_c2_open";
+   function IR_C2_Enable
+     (Handle                : C2_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C, External_Name => "ams_mel_ir_c2_enable";
+   function IR_C2_Submit_Operate
+     (Handle                : C2_Handle;
+      Command_ID            : Interfaces.Unsigned_32;
+      Output                : access Mode_Request_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_c2_submit_operate";
+   function IR_Mode_Request_Wait
+     (Handle                : Mode_Request_Handle;
+      Timeout_MS            : Interfaces.Unsigned_32;
+      Output                : access IR_Mode_Result_V1;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_mode_request_wait";
+   function IR_Mode_Request_Close
+     (Handle                : access Mode_Request_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_mode_request_close";
+   function IR_C2_Close
+     (Handle                : access C2_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C, External_Name => "ams_mel_ir_c2_close";
 end AMS.MEL_C_API;

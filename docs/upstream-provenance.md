@@ -1,4 +1,4 @@
-# Task 001/002 upstream provenance
+# Task 001/002/003 upstream provenance
 
 Verified 2026-09-15 from immutable Git commit objects, not default-branch file
 URLs. The selected commits are the candidate submodule revisions recorded by
@@ -13,10 +13,12 @@ the umbrella inventory and all have commit message `Release 2026.06.01`.
 ## Selected closure
 
 `native/vendor` contains unmodified files at those revisions: 28 Common MEL
-headers, 41 IR MEL headers, and two AMS Math headers. Task 001's Control probe
+headers, 55 IR MEL headers, and two AMS Math headers. Task 001's Control probe
 selected 44 headers. Task 002's GCC 14.2 dependency probe adds
 `image/ImageChannel.h`, `ImageListener.h`, `FrameHeader.h`, and `Buffer.h`, whose
-published include graph expands the complete closure to 71 headers. Exact file
+published include graph expands the complete closure to 71 headers. Task 003's
+GCC 14.2 `C2Channel.h` dependency probe observes 61 headers, 47 already present,
+and adds the exact 14-file C2 closure, expanding the union to 85 headers. Exact file
 checksums are recorded in
 `upstream-files.sha256.md`.
 
@@ -55,6 +57,14 @@ times, dimensions, FOV radians, format/frame/subframe/image metadata, dither,
 offsets, and band index. The broad additional headers are compiler-required by
 the unmodified published `ImageChannel` interface; optional camera/metadata
 operations remain unsupported by this façade.
+
+Task 003 uses `C2Channel::send(ModeCmd)`, whose published return is
+`RequestFor<MFA_Mode>` = `std::future<ErrorOr<std::shared_ptr<MFA_Mode>>>`.
+`ModeCmd` preserves caller command ID and sets only `MFA_State::Operate` and
+`MFA_Mode::TaskSched`; `ScanParam` remains default constructed. The adapter also
+uses channel/control capability vectors, enable/disable, attach/detach, and all
+nine published `ErrorCode` values. The broad C2 header declares unrelated
+commands/callbacks, but the façade does not expose or invoke them.
 
 ## License and notices
 
