@@ -1,8 +1,5 @@
 #include <ams_mel/abi.h>
-
-#include <irmel/library/irmel-types/Control.h>
-
-#include <dlfcn.h>
+#include "internal.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -13,45 +10,6 @@
 #include <string_view>
 
 namespace {
-
-class SharedLibrary {
-public:
-    explicit SharedLibrary(const char *path) : handle_{dlopen(path, RTLD_NOW | RTLD_LOCAL)}
-    {
-        if (handle_ == nullptr) {
-            const char *message = dlerror();
-            throw std::runtime_error(message == nullptr ? "dlopen failed" : message);
-        }
-    }
-
-    ~SharedLibrary()
-    {
-        if (handle_ != nullptr) {
-            (void)dlclose(handle_);
-        }
-    }
-
-    SharedLibrary(const SharedLibrary&) = delete;
-    SharedLibrary& operator=(const SharedLibrary&) = delete;
-
-    template<typename Function>
-    Function symbol(const char *name) const
-    {
-        dlerror();
-        void *address = dlsym(handle_, name);
-        const char *error = dlerror();
-        if (error != nullptr || address == nullptr) {
-            throw std::runtime_error(error == nullptr ? "symbol not found" : error);
-        }
-        Function function{};
-        static_assert(sizeof(function) == sizeof(address));
-        std::memcpy(&function, &address, sizeof(function));
-        return function;
-    }
-
-private:
-    void *handle_;
-};
 
 using ManagerFactory = std::shared_ptr<API_Manager> (*)(const std::string&);
 using ControlFactory = std::shared_ptr<ams::iface::irmel::Control> (*)(
@@ -150,12 +108,6 @@ bool valid_utf8(std::string_view value, bool reject_nul) noexcept
 
 } // namespace
 
-struct ams_mel_session {
-    std::unique_ptr<SharedLibrary> library;
-    std::shared_ptr<API_Manager> manager;
-    std::shared_ptr<ams::iface::irmel::Control> control;
-};
-
 extern "C" ams_mel_status_t ams_mel_session_open(
     const char *library_path, const char *instance,
     const char *aperture_config_id, ams_mel_session **out_session,
@@ -229,10 +181,13 @@ extern "C" ams_mel_status_t ams_mel_session_open(
             return AMS_MEL_INITIALIZATION_FAILED;
         }
 
+        auto state = std::make_shared<SessionState>();
+        state->library = std::move(library);
+        state->manager = std::move(manager);
+        state->control = std::move(control);
+        state->instance = instance;
         auto session = std::make_unique<ams_mel_session>();
-        session->library = std::move(library);
-        session->manager = std::move(manager);
-        session->control = std::move(control);
+        session->state = std::move(state);
         *out_session = session.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
@@ -269,7 +224,7 @@ extern "C" ams_mel_status_t ams_mel_session_get_provider_version(
 
     try {
         const ams::iface::mel::VersionInfo value =
-            session->control->getVersionInfo();
+            session->state->control->getVersionInfo();
         const std::string& vendor = value.getVendor();
         const std::string& description = value.getDescription();
         if (!valid_utf8(vendor) || !valid_utf8(description)) {

@@ -1,0 +1,15 @@
+AMS_MEL_0.1 {
+    global:
+        ams_mel_get_abi_version;
+        ams_mel_session_open;
+        ams_mel_session_get_provider_version;
+        ams_mel_session_close;
+        ams_mel_ir_stream_open;
+        ams_mel_ir_stream_start;
+        ams_mel_ir_stream_receive;
+        ams_mel_ir_stream_get_counters;
+        ams_mel_ir_stream_stop;
+        ams_mel_ir_stream_close;
+    local:
+        *;
+};

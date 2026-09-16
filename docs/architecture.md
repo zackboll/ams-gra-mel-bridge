@@ -9,6 +9,9 @@ will adapt it for C, Ada, and later Rust.
 The bootstrap implemented an independent ABI-version query. Task 001 adds only
 the first provider boundary: load a compatible IR MEL library, create and
 initialize its `Control`, copy its complete `VersionInfo`, and close it.
+Task 002 adds one vertical receive profile: attach an `IRSTImage` channel,
+register service-owned host buffers, receive `ImageListener::onImage` callbacks,
+copy validated Mono8 frames into a bounded queue, and poll them from C or Ada.
 
 ## Separation
 
@@ -37,6 +40,13 @@ locally, resolves the published C-linkage/C++-signature factories, and retains
 the loader owner until `Control` and `API_Manager` destruction completes. Mock
 providers and failure fixtures are test-only targets and are not installed.
 
+Sessions now hold a shared private provider state. An IR stream retains that
+state, so closing the public parent owner while a stream exists does not unload
+provider code. Stream close disables, unregisters, detaches, destroys channel
+objects, and only then releases its provider reference. Failed disable,
+unregister, or detach retains callback-accessible resources rather than freeing
+memory still potentially referenced by the provider.
+
 ## First integration profile
 
 Start with IR host-memory, single-band Mono8 reception only after provider
@@ -44,6 +54,13 @@ loading, ownership, and shutdown tests exist. Use bounded owned copies first;
 leases/zero-copy require a separate reviewed API and explicit lifetime contract.
 Keep metadata conversions loss-aware. Do not convert every timestamp to one
 nanosecond value or copy Squall-private integer frequency conventions.
+
+The implemented queue owns copied pixels and has caller-selected finite
+capacity. Overflow drops the incoming frame. Provider callbacks never enter C
+or Ada and release each callback buffer once after processing. The pinned
+interface does not state that `disable()` waits for callbacks; the mock proves
+quiescence by joining its producer, but the generic API documents this provider
+compatibility requirement rather than promising universal quiescence.
 
 ## Parallel Ada work
 

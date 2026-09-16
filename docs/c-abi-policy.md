@@ -67,3 +67,38 @@ The initial threading contract permits concurrent use of independent sessions.
 Calls using the same session, including close, must be externally serialized.
 No callback, asynchronous work, cancellation, timeout, or child-resource
 guarantee is introduced by this slice.
+
+## Task 002 IR receive contract
+
+`ams_mel_ir_stream` is a uniquely owned opaque child. It retains shared
+library/manager/control ownership independently of the C session owner.
+`open` attaches only `ChannelType::IRSTImage`; `start` creates provider `Buffer`
+objects through `getBuffer`, initializes stable façade-owned host memory,
+registers every buffer, then enables. Stop performs disable, unregister, and
+detach in that order. Close is idempotent after its owner has been cleared.
+
+Configuration records preserve both UCI IDs as 16 UUID bytes plus UTF-8 labels.
+Component location preserves meter-valued X/Y/Z offsets and both `ForeignKey`
+strings. Unknown channel values and invalid UTF-8/NUL are rejected. No C++
+layout crosses the ABI.
+
+Callbacks are provider-controlled and may be concurrent. They are caught at the
+C++ boundary, validate non-null addresses, dimensions, Mono/8-bit/one-band
+format, known image enums/flags, checked byte arithmetic, and image containment
+inside the registered buffer. Valid pixels and metadata are copied into a
+bounded queue; overflow drops the incoming frame. The provider buffer is then
+released exactly once, including malformed and overflow paths.
+
+Receive uses caller-owned pixel storage. `BUFFER_TOO_SMALL` reports the exact
+required size and does not dequeue or partially return a frame. `TIMEOUT` means
+only that no frame arrived during the interval; `STREAM_STOPPED` is distinct.
+Counters are cumulative saturating `uint64_t` values. Times remain signed
+nanoseconds, FOV remains radians, and frame fields needed by the Mono8 profile
+are explicit fixed-width values.
+
+The returned task-002 record deliberately omits contributing-sensor identity
+and inertial/navigation vectors. These do not change the constrained raster
+byte interpretation, but full metadata consumers require a later versioned API.
+The pinned interface gives no generic callback-quiescence guarantee for
+`disable()`. Providers used with this profile must keep listener/buffer accesses
+finished by successful detach; the mock joins its producer during disable.

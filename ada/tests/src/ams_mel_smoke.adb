@@ -3,6 +3,7 @@ with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with AMS.MEL;
+with AMS_MEL_IR_Tests;
 with GNAT.OS_Lib;
 
 procedure AMS_MEL_Smoke is
@@ -209,6 +210,7 @@ begin
       when AMS.MEL.Provider_Error =>
          null;
    end;
+   AMS_MEL_IR_Tests.Run (Provider_Path);
    Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line
      ("PASS: Ada provider load/init/version/close/finalization contract");
