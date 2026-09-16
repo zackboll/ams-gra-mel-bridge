@@ -1,0 +1,20 @@
+name = "ams_mel"
+version = "0.1.0-dev"
+description = "Experimental Ada consumer binding for the AMS MEL C facade"
+licenses = "Apache-2.0"
+project-files = ["ams_mel.gpr"]
+tags = ["bindings", "ada", "avionics"]
+
+# Local development manifest; real maintainer metadata is required for indexing.
+[configuration]
+disabled = true
+
+[available.'case(os)']
+linux = true
+'...' = false
+
+[[depends-on]]
+ams_mel_c = "=0.1.0-dev"
+
+[[pins]]
+ams_mel_c = { path = "../native" }

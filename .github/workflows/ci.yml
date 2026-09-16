@@ -1,0 +1,53 @@
+name: Bootstrap checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        shell: bash
+        run: |
+          if [[ "${{ matrix.compiler }}" == "clang" ]]; then
+            export CC=clang CXX=clang++
+          else
+            export CC=gcc CXX=g++
+          fi
+          cmake -S native -B build/native \
+            -DAMS_MEL_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - name: Build and test
+        run: |
+          cmake --build build/native --parallel 2
+          ctest --test-dir build/native --output-on-failure
+      - name: Test native installation
+        run: cmake --install build/native --prefix "$PWD/build/install"
+
+  ada:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install hosted Ada toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gnat gprbuild
+      - name: Direct GPR Ada smoke test
+        run: make test-ada
+
+# No remote run has occurred at bootstrap time.
+# This uses the host Ada toolchain, not Alire resolution; add a separately
+# validated Alire/package job before submitting either crate to an index.
+# Pin action references to reviewed commit SHAs before a public release.

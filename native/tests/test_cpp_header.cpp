@@ -1,0 +1,15 @@
+#include <ams_mel/abi.h>
+#include <type_traits>
+
+static_assert(noexcept(ams_mel_get_abi_version(nullptr)));
+static_assert(std::is_standard_layout_v<ams_mel_abi_version_v1>);
+
+int main()
+{
+    ams_mel_abi_version_v1 version{};
+    if (ams_mel_get_abi_version(&version) != AMS_MEL_OK) {
+        return 1;
+    }
+    return version.major == AMS_MEL_ABI_VERSION_MAJOR &&
+                   version.minor == AMS_MEL_ABI_VERSION_MINOR ? 0 : 1;
+}

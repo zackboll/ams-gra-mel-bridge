@@ -1,0 +1,3 @@
+@PACKAGE_INIT@
+include("${CMAKE_CURRENT_LIST_DIR}/ams_mel_cTargets.cmake")
+check_required_components(ams_mel_c)

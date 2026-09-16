@@ -1,0 +1,24 @@
+name = "ams_mel_c"
+version = "0.1.0-dev"
+description = "Experimental C ABI bootstrap for AMS GRA MEL bindings"
+licenses = "Apache-2.0"
+project-files = ["ams_mel_c.gpr"]
+tags = ["bindings", "c", "cpp"]
+
+# Local workspace only. Fill in real maintainer/contact metadata before indexing.
+# Native host requirements: CMake >= 3.20, C++20 compiler, Make or Ninja.
+# Dependency/toolchain declarations must be finalized before publication.
+[configuration]
+disabled = true
+
+[available.'case(os)']
+linux = true
+'...' = false
+
+[[actions]]
+type = "pre-build"
+command = ["sh", "scripts/build.sh"]
+
+[[actions]]
+type = "test"
+command = ["sh", "scripts/test.sh"]

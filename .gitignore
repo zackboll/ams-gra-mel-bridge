@@ -1,0 +1,38 @@
+# Build products (both root and nested crates)
+build/
+obj/
+lib/
+bin/
+*.o
+*.ali
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.gcda
+*.gcno
+*.gcov
+compile_commands.json
+CMakeUserPresets.json
+
+# Alire-generated state; source manifests remain tracked
+alire/
+/native/config/
+/ada/config/
+/ada/tests/config/
+alire.lock
+
+# Editors and local state
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
+.env
+.env.*
+!.env.example
+
+# Rust is a later phase
+target/

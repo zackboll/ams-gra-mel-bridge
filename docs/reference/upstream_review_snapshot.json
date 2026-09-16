@@ -1,0 +1,273 @@
+{
+  "review_date": "2026-09-15",
+  "status": "Proposed review baseline, not a tested or published compatibility lock",
+  "scope": "All 22 public organization repositories classified; selected MEL and dependency interfaces examined in depth",
+  "inventory_source": "https://github.com/open-arsenal/ams-gra-hello-world-sk",
+  "umbrella_tree_sha": "994ea81de70b20a195297b208b7fe480631471c1",
+  "umbrella_tree_source": "https://api.github.com/repos/open-arsenal/ams-gra-hello-world-sk/git/trees/main?recursive=1",
+  "umbrella_tree_truncated": false,
+  "cautions": [
+    "The umbrella SHA is a Git TREE SHA, not asserted to be a commit SHA.",
+    "candidate_commit values are submodule commit IDs, not blob IDs.",
+    "Source inspection used default-branch reads; freeze and recheck all files at these candidate commits before implementation.",
+    "No repository build, complete per-declaration inventory, hardware test, integration run or full normative PDF review was performed.",
+    "GitLab release references have not been proven identical to GitHub mirror commits.",
+    "Proposed package names have not been checked for registry availability."
+  ],
+  "release_manifest": {
+    "source": "https://github.com/open-arsenal/ams-gra-hello-world-sk-getting-started/blob/main/manifest.yaml",
+    "hello_world_component_release": "v2026.06.01",
+    "oms": {
+      "project": "https://gitlab.com/open-arsenal/oms/standard",
+      "ref": "59e85c041ace9003a8ada9d8f7390dd9b26615e5"
+    },
+    "uci": {
+      "project": "https://gitlab.com/open-arsenal/uci/standard",
+      "ref": "73a286fc4b881d9f328dbd64148525606a92c33a"
+    }
+  },
+  "proposed_initial_packages": [
+    {
+      "name": "ams_mel_c",
+      "ecosystem": "Alire/native CMake",
+      "purpose": "C ABI implemented in C++ over vendor C++ MELs"
+    },
+    {
+      "name": "ams_mel",
+      "ecosystem": "Alire",
+      "purpose": "Ada wrapper depending on the single native component"
+    }
+  ],
+  "deferred_packages": [
+    {
+      "name": "ams-mel-sys",
+      "ecosystem": "crates.io",
+      "purpose": "Rust unsafe FFI and native-build ownership"
+    },
+    {
+      "name": "ams-mel",
+      "ecosystem": "crates.io",
+      "purpose": "Safe Rust API over the sys crate"
+    }
+  ],
+  "repositories": [
+    {
+      "repository": "open-arsenal/a-gra",
+      "url": "https://github.com/open-arsenal/a-gra",
+      "role": "autonomy architecture",
+      "review_depth": "ecosystem inventory only",
+      "recommended_use": "Adjacent architecture, not an AMS MEL binding dependency.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/a-gra-test-harness",
+      "url": "https://github.com/open-arsenal/a-gra-test-harness",
+      "role": "autonomy messaging compliance harness",
+      "review_depth": "README-level role review from conversation",
+      "recommended_use": "Not a MEL conformance test suite.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra",
+      "url": "https://github.com/open-arsenal/ams-gra",
+      "role": "normative architecture, IDDs and compliance artifacts",
+      "review_depth": "repository and IDD file inventory; not a full PDF audit",
+      "recommended_use": "Normative requirements cross-check before making conformance claims.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk",
+      "role": "umbrella repository",
+      "review_depth": "complete submodule inventory",
+      "recommended_use": "Inventory and candidate dependency snapshot; not a runtime package.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-getting-started",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-getting-started",
+      "role": "integration/reference deployment",
+      "review_depth": "manifest and architecture documentation",
+      "recommended_use": "Not a runtime library dependency.",
+      "umbrella_path": "getting-started",
+      "candidate_commit": "288b72ebf55b0afea02bc142de00bb0378d33b0c",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-infra-sleet",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-infra-sleet",
+      "role": "OMS LA-CAL server",
+      "review_depth": "documentation and interface role",
+      "recommended_use": "Separate messaging integration target; not part of MEL ABI.",
+      "umbrella_path": "infra/sleet",
+      "candidate_commit": "e38f61d8ce0d75c8508434a52f2ed77c69cf6a3b",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+      "role": "shared C++ MEL definitions",
+      "review_depth": "selected public headers and build configuration",
+      "recommended_use": "Direct native source dependency.",
+      "umbrella_path": "interfaces/common-mel",
+      "candidate_commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+      "role": "IR C++ MEL definitions",
+      "review_depth": "selected public headers, factory, ownership and build configuration",
+      "recommended_use": "First sensor-domain binding target.",
+      "umbrella_path": "interfaces/ir-mel",
+      "candidate_commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+      "role": "RF C++ MEL definitions",
+      "review_depth": "selected public headers, factory, asynchronous requests, receive metadata and build configuration",
+      "recommended_use": "Second sensor-domain binding target.",
+      "umbrella_path": "interfaces/rf-mel",
+      "candidate_commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-libraries-ams-math",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-libraries-ams-math",
+      "role": "C++ math and units support",
+      "review_depth": "README, CMake and UTCTime header",
+      "recommended_use": "Compiled static library with Boost dependency; keep internal initially.",
+      "umbrella_path": "libraries/ams-math",
+      "candidate_commit": "00be45190f0e47d268cece8b8c2f8fb58b5418d2",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita",
+      "role": "AMS-tailored VITA packet library",
+      "review_depth": "documentation and dependency role",
+      "recommended_use": "Header-only generated C++; keep internal unless raw packet APIs are exposed.",
+      "umbrella_path": "libraries/ams-vita",
+      "candidate_commit": "8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+      "role": "reference sensor provider",
+      "review_depth": "architecture, RF provider build and selected interfaces from conversation review",
+      "recommended_use": "Integration-test provider; private gRPC/UDP not the public binding contract.",
+      "umbrella_path": "sensors/squall",
+      "candidate_commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-sim-supercell",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-sim-supercell",
+      "role": "scenario and flight-dynamics simulator",
+      "review_depth": "documentation-level role review",
+      "recommended_use": "Optional full-stack test stimulus, not a binding dependency.",
+      "umbrella_path": "sim/supercell",
+      "candidate_commit": "0687e68278f3f2a421ff7cc846dbd1014bbf7798",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-skills-ir-search-and-track",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-skills-ir-search-and-track",
+      "role": "C++ IR example Skill",
+      "review_depth": "README and detailed architecture",
+      "recommended_use": "Reference usage/lifecycle and integration acceptance model.",
+      "umbrella_path": "skills/ir-search-and-track",
+      "candidate_commit": "7d06735e56aa0baa8cc61e578928ee4d28936bc3",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-skills-rf-fm-demod",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-skills-rf-fm-demod",
+      "role": "C++ RF example Skill",
+      "review_depth": "architecture, source inventory and self-assessed compliance",
+      "recommended_use": "Reference RF job/receive usage; self-assessment is not certification.",
+      "umbrella_path": "skills/rf-fm-demod",
+      "candidate_commit": "af13bd2926b15253e795920c91320733a29927ea",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-test-la-cal-harness",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-test-la-cal-harness",
+      "role": "LA-CAL server protocol tests",
+      "review_depth": "documentation-level role review",
+      "recommended_use": "Does not validate MEL ABI or entire Skill compliance.",
+      "umbrella_path": "test/la-cal-harness",
+      "candidate_commit": "9ea4cd2ebb5b6ed13e050391020bacfb1388ac60",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-viz-graupel",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-viz-graupel",
+      "role": "DIS/UCI to CZML bridge",
+      "review_depth": "documentation-level role review",
+      "recommended_use": "Optional visualization acceptance target.",
+      "umbrella_path": "viz/graupel",
+      "candidate_commit": "c6b2b4d36c2d3258f3dda8ea0f98225e51abd7d4",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/ams-gra-hello-world-sk-viz-worldview",
+      "url": "https://github.com/open-arsenal/ams-gra-hello-world-sk-viz-worldview",
+      "role": "browser visualization",
+      "review_depth": "documentation-level role review",
+      "recommended_use": "Optional demonstration UI; do not require map assets in library CI.",
+      "umbrella_path": "viz/worldview",
+      "candidate_commit": "d115f163541cebb6a1e75751f5fd5dc573e277d8",
+      "candidate_commit_source": "umbrella git-tree submodule entry (mode 160000)",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/oms",
+      "url": "https://github.com/open-arsenal/oms",
+      "role": "OMS standard",
+      "review_depth": "ecosystem and release-manifest role",
+      "recommended_use": "Separate requirements for a complete mission Service.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/oms-ghost-detector",
+      "url": "https://github.com/open-arsenal/oms-ghost-detector",
+      "role": "OMS training application",
+      "review_depth": "README-level role review from conversation",
+      "recommended_use": "No dependency for the proposed MEL library.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/oms-sk-cal",
+      "url": "https://github.com/open-arsenal/oms-sk-cal",
+      "role": "OMS training/reference CAL",
+      "review_depth": "README-level role review from conversation",
+      "recommended_use": "Context and examples; do not assume this supplies MEL bindings.",
+      "build_verified": false
+    },
+    {
+      "repository": "open-arsenal/uci",
+      "url": "https://github.com/open-arsenal/uci",
+      "role": "UCI schemas and standard",
+      "review_depth": "ecosystem and release-manifest role",
+      "recommended_use": "Schema and message semantics for the separate OMS/UCI client.",
+      "build_verified": false
+    }
+  ]
+}
