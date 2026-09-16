@@ -1,163 +1,1049 @@
-# AMS MEL — experimental C and Ada consumer binding
+# AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
 An independent, experimental **consumer-side language binding** for the
-Agile Mission Suite Government Reference Architecture (AMS GRA) C++ MFA
-Encapsulation Layer (MEL) interfaces.
+Agile Mission Suite Government Reference Architecture (**AMS GRA**)
+Multi-Function Aperture Encapsulation Layer (**MEL**) interfaces.
 
-**Status: IR image reception and C2 Operate foundation.** In addition to the façade ABI query, the C and
-Ada APIs can load a compatible IR MEL provider, create/initialize its published
-`Control`, copy complete provider version information, and receive host-memory
-single-band Mono8 frames from an `IRSTImage` channel. The adapter owns provider
-buffers, copies validated frames into a bounded DROP-INCOMING queue, and offers
-poll/wait receive APIs in C and `AMS.MEL.IR`. The C and `AMS.MEL.IR.C2` APIs can
-also attach/enable CommandAndControl, submit exactly `Operate`/`TaskSched`, and
-wait for the asynchronous MEL result. Timeout is not cancellation; MEL rejection
-is distinct from provider failure. Tests use a separately loaded C++
-mock provider. No real provider, RF, stacked images, tracking, OMS/UCI, OpenCV,
-device memory, zero-copy, or processing operations are implemented. This is not an official C MEL standard,
-a complete Skill, or a claim of GRA compliance.
+The project preserves the published **C++ MEL provider boundary**, isolates
+non-C++ interoperability inside a native adapter, exposes a small **C ABI**, and
+builds an idiomatic Ada interface above that ABI. The Ada API can also serve
+SPARK-oriented Skills at the reviewed FFI boundary, allowing higher-assurance
+application logic to remain in Ada/SPARK. Future Rust and Python consumer
+bindings can reuse the same C ABI without requiring separate C++
+interoperability implementations.
 
-## Layout
+Native C++ Skills do **not** need this bridge: they can consume the published
+C++ MEL interface directly. `ams_mel_c` exists to make that same provider
+ecosystem practical for languages that should not have to model the C++ ABI
+themselves.
+
+> **Current status:** IR image reception foundation. Ada support is implemented
+> for the current profile. Rust and Python consumer support are architectural
+> targets and are **not yet implemented**.
+
+This is not an official C MEL standard, a replacement for AMS GRA, a Squall
+binding, or a claim of GRA compliance.
+
+---
+
+## Why This Project Exists
+
+AMS GRA defines open boundaries between mission-system components so that
+software and hardware can evolve independently. At the sensor edge, a
+**Multi-Function Aperture (MFA)** exposes capabilities through the
+**MFA Encapsulation Layer (MEL)**.
+
+The published MEL interfaces are C++. That works naturally for C++ Skills, but
+it creates a difficult interoperability boundary for languages such as Ada,
+Rust, and Python because a direct binding would need to understand C++ object
+lifetimes,
+virtual interfaces, exceptions, smart pointers, callbacks, and ABI details.
+
+This project puts that complexity in one place:
 
 ```text
-native/                 C11 headers, C++20 implementation, CMake, native Alire crate
-ada/                    idiomatic Ada package and private C imports
-ada/tests/              separate Ada test crate (no AUnit dependency yet)
-docs/                   decisions, coverage, next task, original design review
-.clinerules/            architectural and workflow rules for Cline
-.github/workflows/      Linux native and direct-GPR Ada checks
-scripts/                local validation helpers
+                              PROVIDER SIDE
+
+    C++ MFA       Ada MFA       Rust MFA       Hardware MFA
+       \             |             |                /
+        \            |             |               /
+         +--------- GRA MEL (C++) ----------------+
+                         |
+                   standardized
+                     boundary
+                         |
+          +--------------+-----------------------------+
+          |                                            |
+          v                                            v
+      C++ Skill                                    ams_mel_c
+      (direct)                                    C ABI bridge
+                                                      |
+                                  +-------------------+-------------------+
+                                  |          |          |               |
+                                  v          v          v               v
+                                Ada        SPARK      Rust            Python
+                               Skill       Skill      Skill            Skill
+
+                              CONSUMER SIDE
 ```
 
-There is deliberately **no root Alire crate**. The two crates are `ams_mel_c`
-under `native/` and `ams_mel` under `ada/`. Names are provisional and have not
-been reserved in either registry.
+The important idea is that the project is **not tied to one MFA
+implementation**.
 
-## Build the native library
+A C++ MFA, a Rust-based MFA, simulated sensor software such as Squall, or real
+sensor hardware can all sit behind a conforming MEL provider. Native C++ Skills
+can consume the published C++ MEL interface directly. Ada Skills, and future
+Rust and Python Skills, can consume that same provider interface through the
+shared `ams_mel_c` compatibility layer.
 
-Requirements: Linux, CMake 3.20+, Make or Ninja, and a C++20 compiler. CMake is
-the **only owner of native compilation**; the GPR project imports the resulting
-shared library rather than recompiling its C++ source.
+For an Ada MFA, Rust MFA, or hardware MFA, the provider-facing MEL library may
+still contain a thin C++ layer while the actual implementation lives in Ada,
+Rust, firmware, another process, another processor, or physical hardware.
+
+That distinction is important: **"Ada MFA" describes the implementation behind
+MEL; it does not mean replacing the published C++ MEL contract.** A typical Ada
+provider architecture could look like:
+
+```text
+GRA Skill
+   |
+C++ MEL API
+   |
+thin C++ MEL provider
+   |
+C ABI / IPC
+   |
+Ada MFA backend
+```
+
+The same pattern can be used for Rust or other implementation languages.
+
+---
+
+## Two Consumer Paths: Native C++ and the Language Bridge
+
+`ams_mel_c` is **not** intended to replace the native C++ MEL API.
+
+There are two legitimate consumer paths:
+
+```text
+Native C++ path
+
+C++ Skill
+   |
+   | published C++ MEL API
+   v
+MEL provider
+```
+
+and:
+
+```text
+Non-C++ language path
+
+Ada / SPARK / Rust / Python Skill
+             |
+             | language wrapper
+             v
+         ams_mel_c
+          |
+          | C++ adapter
+          v
+      MEL provider
+```
+
+The C++ path is shorter because C++ can naturally consume the published MEL
+types and object interfaces. There is no reason to force a C++ Skill through a
+C ABI merely for architectural symmetry.
+
+The C ABI exists for languages where directly importing the C++ MEL object
+model would create unnecessary ABI, ownership, exception, callback, and
+toolchain coupling.
+
+This makes `ams_mel_c` an **interoperability bridge**, not a new mandatory GRA
+layer.
+
+### Consumer Language Paths
+
+| Skill language | MEL path | Project status |
+|---|---|---|
+| **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
+| **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
+| **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Planned |
+| **Python** | Python package → `ctypes`/`cffi`/native extension → `ams_mel_c` → C++ MEL | Planned |
+| **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
+
+This split is intentional. C++ already speaks the native MEL interface, while
+the other language paths benefit from a stable language-neutral ABI.
+
+## MFA, MEL, Skills, and Squall in Plain English
+
+### MFA — Multi-Function Aperture
+
+A **Multi-Function Aperture** is the sensor-side component that interacts with
+the physical/free-space environment.
+
+Depending on the system, an MFA can include:
+
+- antennas or optical apertures;
+- analog RF or optical electronics;
+- digitizers;
+- cameras or RF front ends;
+- FPGA or embedded processing;
+- OEM firmware;
+- local signal processing; and
+- interfaces that deliver digital sensor data to mission processing.
+
+An MFA converts physical phenomena such as electromagnetic energy or photons
+into digital information that mission software can process.
+
+### MEL — MFA Encapsulation Layer
+
+The **MFA Encapsulation Layer** is the standardized interface between an MFA and
+the mission software that consumes it.
+
+MEL allows a Skill to request, configure, and receive sensor capabilities
+without depending directly on the internal implementation of the aperture.
+
+Examples include:
+
+- **RF MEL** for radio-frequency capabilities and high-rate I/Q data; and
+- **IR MEL** for electro-optical / infrared capabilities and image data.
+
+The MEL boundary is the important compatibility point for this project.
+
+### Skill
+
+An **AMS GRA Skill** is mission-processing software that consumes aperture data,
+performs domain-specific processing, and can publish higher-level mission data
+products.
+
+For example:
+
+```text
+IR MFA
+  |
+IR MEL
+  |
+IR Search-and-Track Skill
+  |
+UCI observation / track products
+```
+
+or:
+
+```text
+RF MFA
+  |
+RF MEL
+  |
+RF Processing Skill
+  |
+UCI signal products
+```
+
+"Skill" is a GRA term, not an acronym.
+
+### Squall
+
+**Squall** is the simulated MFA used by the public AMS GRA Hello World Starter
+Kit.
+
+At a high level, Squall:
+
+1. consumes simulated world truth through DIS;
+2. models RF and optical sensing;
+3. synthesizes RF I/Q streams and IR image frames; and
+4. presents those capabilities to mission software through MEL.
+
+Squall is especially useful as a development and integration target because
+real sensor hardware is not required.
+
+However:
+
+> **`ams-mel-ada` is not a Squall-specific binding.**
+
+Squall is one MEL provider. The goal of this project is to allow Ada, and later
+Rust and Python, software to consume the **standard MEL provider boundary**,
+whether the provider happens to be Squall or something else. Native C++ Skills
+continue to use that MEL boundary directly.
+
+---
+
+## Why Not Just Rewrite Squall or the MFA in Ada, Rust, or Python?
+
+Rewriting Squall solves a different problem.
+
+An Ada, Rust, or Python reimplementation or replacement for Squall would
+answer:
+
+> How can an MFA or sensor backend be implemented in another language?
+
+This project answers:
+
+> How can an Ada, Rust, or Python **Skill** consume an existing GRA MEL provider
+> without becoming a C++ application?
+
+At the same time, an existing C++ Skill can continue using MEL directly; this
+project does not insert itself into that native path.
+
+Those are independent choices.
+
+```text
+                         PROVIDER IMPLEMENTATION
+
+      C++ MFA        Ada MFA        Rust MFA        Hardware/Firmware
+         \              |              |                  /
+          \             |              |                 /
+             +--------- GRA MEL (C++) ----------------+
+                              |
+                   standardized boundary
+                              |
+                  +-----------+---------------------------+
+                  |                                       |
+                  v                                       v
+              C++ Skill                               ams_mel_c
+              (direct)                               C ABI bridge
+                                                        |
+                              +-------------------------+----------------------+
+                              |             |             |                  |
+                              v             v             v                  v
+                            Ada           SPARK         Rust               Python
+                           Skill          Skill         Skill               Skill
+
+                           SKILL IMPLEMENTATION
+```
+
+This provides several advantages:
+
+1. **Provider independence**  
+   An Ada Skill is not coupled to Squall. The same Skill can potentially use a
+   simulated provider, lab equipment, or a deployed hardware provider that
+   implements the same MEL contract.
+
+2. **Incremental adoption**  
+   A program does not need to rewrite an existing C++ GRA ecosystem before
+   introducing Ada, Rust, or Python Skills. Existing C++ Skills remain on the
+   native MEL path.
+
+3. **One C++ interoperability implementation**  
+   C++ exceptions, object ownership, callbacks, virtual interfaces, provider
+   loading, and teardown rules are handled once in `ams_mel_c`.
+
+4. **Language-appropriate application code**  
+   Ada can expose strong types, deterministic ownership, contracts, and
+   potentially SPARK-verifiable logic. Rust can expose ownership and
+   memory-safe systems abstractions. Python can support rapid prototyping,
+   mission-algorithm experimentation, analysis, test automation, and integration
+   with scientific/ML tooling. All can reuse the same underlying native bridge.
+
+5. **Separation of assurance boundaries**  
+   Complex C++ provider interaction can remain behind a narrow C ABI while
+   higher-assurance application logic is implemented in Ada/SPARK.
+
+6. **SPARK as a Skill implementation option**  
+   A Skill can keep the MEL/FFI boundary in ordinary Ada and place selected
+   deterministic algorithms, state machines, scheduling/resource logic, and
+   safety/security invariants in SPARK. The goal is not to claim that C++ MEL
+   or the FFI itself is formally proved; it is to make the boundary narrow
+   enough that the proof-oriented portion of the application remains tractable.
+
+7. **Ada on both sides of MEL when useful**  
+   The provider backend and the consuming Skill are independent choices. An
+   Ada MFA backend can expose the standard MEL boundary through a thin provider
+   adapter, while an Ada or SPARK Skill can independently consume MEL through
+   `ams_mel_c`. They need not be part of the same process or product.
+
+---
+
+## High-Level Architecture
+
+At the GRA boundary, C++ has a direct path while non-C++ languages can use the
+bridge:
+
+```text
+                         MEL provider
+                              |
+                    published C++ MEL API
+                              |
+                 +------------+-------------------+
+                 |                                |
+                 v                                v
+             C++ Skill                        ams_mel_c
+             (direct)                         C ABI bridge
+                                                 |
+                              +------------------+-------------------+
+                              |          |          |               |
+                              v          v          v               v
+                            Ada        SPARK      Rust            Python
+                           Skill       Skill      Skill            Skill
+```
+
+The C++ Skill does not call `ams_mel_c`. It uses the same C++ MEL API that the
+bridge's internal adapter uses.
+
+The consumer-side path currently implemented by this repository is the Ada
+branch:
+
+```text
+                   SAME PROCESS
+
++--------------------------------------------------+
+| Ada Skill                                        |
+|                                                  |
+|   AMS.MEL                                        |
+|      |                                           |
+|      v                                           |
+|   private C imports                              |
+|      |                                           |
+|      v                                           |
+|   libams_mel_c.so                                |
+|      |                                           |
+|      | C++ adapter                               |
+|      v                                           |
+|   vendor / Squall MEL provider .so               |
++----------------------+---------------------------+
+                       |
+                       | provider-specific transport
+                       | (may be IPC, network, PCIe, etc.)
+                       v
+                MFA implementation
+```
+
+The Ada program, `libams_mel_c.so`, and the loaded C++ MEL provider currently
+share a process because MEL is an in-process C++ object API.
+
+The **MFA implementation behind the provider does not have to share that
+process**.
+
+Squall is a good example.
+
+A simplified Squall deployment is:
+
+```text
+PROCESS 1
+Ada Skill
+  |
+AMS.MEL
+  |
+ams_mel_c
+  |
+Squall C++ MEL provider
+  |
+  | gRPC / TCP
+  v
+
+PROCESS 2
+Couloir
+  |
+  | gRPC / Unix-domain socket
+  v
+
+PROCESS 3
+Squall RF or Optical Backend
+Rust
+```
+
+High-rate sensor data can use a separate data path. In Squall, control traffic
+is handled through RPC while raw sensor payloads can be delivered over UDP to
+the MEL-side data endpoint.
+
+The practical result is:
+
+- **Ada ↔ C/C++** uses an in-process FFI/ABI boundary.
+- **C++ MEL provider ↔ Squall Rust backend** can use IPC/network protocols.
+- Ada, C++, and Rust therefore do **not** all have to execute in one process.
+
+---
+
+## Why a C ABI?
+
+C is used here as an interoperability boundary, not as the primary application
+language.
+
+Instead of exposing this to Ada or Rust:
+
+```text
+C++ virtual classes
+std::shared_ptr
+templates
+exceptions
+provider-specific object layouts
+C++ callback lifetime rules
+```
+
+the public native facade can expose language-neutral concepts such as:
+
+```text
+opaque handles
+fixed-width integers
+plain C structures
+explicit create / destroy operations
+status codes
+caller-owned buffers
+bounded copies
+poll / wait operations
+```
+
+That gives the project one controlled native boundary:
+
+```text
+                           C++ MEL
+                              |
+                        C++ adapter
+                              |
+                           C ABI
+                /             |             \
+              Ada            Rust          Python
+             wrapper        wrapper        wrapper
+             /   \
+            /     \
+         Ada     SPARK
+        Skill    Skill
+
+C callers can use the ABI directly.
+
+Native C++ Skills bypass this entire bridge and use C++ MEL directly.
+```
+
+The C ABI belongs to this project. It is **not** presented as an official GRA
+C interface, and it is **not** intended to become an extra layer for native C++
+Skills.
+
+---
+
+## Current Implementation Status
+
+The current implementation is intentionally narrow.
+
+Implemented:
+
+- native C ABI version query;
+- runtime loading of a compatible IR MEL provider;
+- creation and initialization of the provider `Control`;
+- complete provider version-information copy;
+- IR `IRSTImage` channel attachment;
+- provider-owned host buffer management;
+- single-band `Mono8` image reception;
+- validation and bounded copying of incoming frames;
+- finite DROP-INCOMING receive queue;
+- C poll/wait receive operations;
+- idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
+- explicit lifecycle and callback-quiescence handling; and
+- native and Ada tests using a separately loaded C++ mock provider.
+
+Not yet implemented:
+
+- a real hardware provider integration;
+- SPARK proof of the native/FFI boundary;
+- Rust consumer bindings;
+- Python consumer bindings;
+- RF MEL;
+- stacked images;
+- tracking interfaces;
+- OMS/UCI integration;
+- OpenCV processing;
+- device-memory buffers;
+- zero-copy leases; or
+- full AMS GRA compliance.
+
+The present work should be viewed as a validated **vertical slice** of the
+consumer architecture rather than a complete MEL binding.
+
+---
+
+## Callback and Data Ownership Model
+
+Provider callbacks do **not** call directly into Ada application code.
+
+For the current IR receive profile:
+
+```text
+C++ MEL provider callback
+          |
+          v
+native adapter
+  validate metadata
+  copy Mono8 pixels
+          |
+          v
+bounded native queue
+          |
+          v
+Ada poll / wait
+          |
+          v
+Ada-owned frame
+```
+
+This isolates provider callback threads from Ada code and gives the binding an
+explicit place to enforce ownership, validation, queue capacity, shutdown, and
+error handling.
+
+The current queue owns copied pixels. Overflow drops the incoming frame.
+Zero-copy or leased-buffer APIs require a separate lifetime contract and are
+intentionally deferred.
+
+---
+
+## Repository Layout
+
+```text
+native/
+  include/               C11 public declarations
+  src/                   C++20 MEL adapter implementation
+  CMakeLists.txt
+
+ada/
+  src/                   idiomatic Ada API and private C imports
+  tests/                 Ada integration tests
+
+# Planned, not yet present:
+# rust/                   safe Rust wrapper + raw C ABI crate
+# python/                 Python package over the same C ABI
+
+docs/
+  architecture.md        implemented architecture decisions
+  c-abi-policy.md        ownership and ABI rules
+  coverage.md            binding coverage
+  packaging.md           build/package design
+  upstream-provenance.md pinned upstream declaration provenance
+  tasks/                 incremental implementation tasks
+  reference/             retained design/reference material
+
+.clinerules/              repository workflow and architecture rules
+.github/workflows/        CI
+scripts/                  local validation helpers
+```
+
+There is deliberately no root Alire crate.
+
+The current crates are:
+
+- `ams_mel_c` under `native/`
+- `ams_mel` under `ada/`
+
+CMake owns native C/C++ compilation. The Ada project consumes the resulting
+native library rather than recompiling the C++ adapter through GPRbuild.
+
+---
+
+## Build the Native Library
+
+Requirements:
+
+- Linux
+- CMake 3.20+
+- Make or Ninja
+- C++20 compiler
+
+Run:
 
 ```sh
 make test-native
 ```
 
-This builds `native/build/lib/libams_mel_c.so` and runs C ABI/provider/IR stream/C2
-tests plus a C++ header test. Tests do not depend on `assert`, so they remain active in release
-builds. No upstream source or provider is downloaded.
+This builds:
+
+```text
+native/build/lib/libams_mel_c.so
+```
+
+and runs the native ABI/provider/IR-stream tests.
 
 To test another compiler, use a separate build directory:
 
 ```sh
 CC=clang CXX=clang++ cmake -S native -B build/clang \
   -DAMS_MEL_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+
 cmake --build build/clang --parallel 2
 ctest --test-dir build/clang --output-on-failure
 ```
 
+---
+
 ## Build Ada with Alire
 
-Requirements: a hosted GNAT with Ada 2022 support, GPRbuild, Alire, and the
-native prerequisites above. Use the Alire toolchain already installed on your
-machine. The native crate's pre-build action invokes CMake.
+Requirements:
+
+- hosted GNAT with Ada 2022 support;
+- GPRbuild;
+- Alire; and
+- the native prerequisites above.
+
+Run:
 
 ```sh
 alr -C ada build
 alr -C ada/tests run
-# Equivalent test action in the test crate:
+```
+
+Equivalent test action:
+
+```sh
 alr -C ada/tests test
 ```
 
-The workspace manifests have **relative development pins**. They are not
-registry-ready release manifests. The Ada test crate pins both local packages
-explicitly. See `docs/packaging.md` before removing any pins or publishing.
-
-To test without Alire, using GNAT/GPRbuild already on PATH:
+To test with GNAT/GPRbuild directly:
 
 ```sh
 make test-ada
 ```
 
-This sets `GPR_PROJECT_PATH` for this process only, builds the native library,
-builds the Ada consumer, and runs it with a process-local library path. It does
-not edit your shell startup files or global settings.
+The current development manifests contain relative development pins and are not
+yet registry-ready release manifests.
 
-## Local gate
+---
+
+## Local Validation Gate
+
+Run:
 
 ```sh
 make check
 ```
 
-The gate requires native tools and GNAT/GPRbuild. It runs native tests, Ada
-smoke tests, and tracked-file whitespace checks when Git has been initialized.
-It **fails** rather than silently skipping Ada when its toolchain is missing.
-`make test-native` is the smaller native-only gate.
+The gate validates the native implementation, Ada integration, and repository
+checks. It fails when a required Ada toolchain is unavailable rather than
+silently skipping the Ada validation.
 
-For an installed native CMake consumer, an exported `ams_mel::ams_mel_c` target
-is provided:
+---
 
-```sh
-cmake --install native/build --prefix "$PWD/build/install"
+## Ada/SPARK, Rust, and Python Consumer Paths
+
+### SPARK
+
+SPARK is not a separate binary ABI from Ada. A SPARK-oriented Skill can use the
+same Ada binding and keep the language boundary in a small ordinary-Ada package:
+
+```text
+C++ MEL provider
+      |
+  ams_mel_c
+      |
+ordinary Ada FFI / ownership wrapper
+      |
+   SPARK core
+      |
+proved application logic
 ```
 
-## Start Git
+This creates a natural **trusted-boundary pattern**: the native/C++ interaction
+is isolated and reviewed, while selected logic above it can be written and
+proved in SPARK.
 
-The downloadable source archive does not contain `.git`, build outputs,
-credentials, remotes, or a fabricated author identity. After extraction:
+Potential SPARK candidates include:
 
-```sh
-git init -b main
-git add .
-git diff --cached --stat
-git commit -m "Bootstrap AMS MEL C and Ada workspace"
+- deterministic state machines;
+- sensor/resource arbitration;
+- scheduling and bounded queues;
+- validity and range invariants;
+- track/state management;
+- command validation; and
+- other logic where explicit contracts and proof are valuable.
+
+The current project does **not** claim SPARK proof across the C or C++ boundary.
+
+### Rust and Python
+
+Rust and Python consumers should reuse the same native boundary rather than
+binding the C++ MEL API independently.
+
+### Rust
+
+A likely Rust structure is:
+
+```text
+rust/
+  ams-mel-sys/       raw C ABI declarations
+  ams-mel/           safe Rust ownership/API wrapper
 ```
 
-Git uses your existing identity. If it asks for one, configure your own real
-name/email locally; this project does not configure them for you.
+Conceptually:
 
-Do not add `origin` until you have selected/created the remote repository.
-No release tags, registry submissions, or remote pushes are part of bootstrap.
+```text
+Rust Skill
+    |
+safe ams-mel crate
+    |
+ams-mel-sys
+    |
+C ABI
+    |
+ams_mel_c
+    |
+C++ MEL provider
+```
 
-## Implemented receive profile
+The safe Rust layer can turn opaque handles and explicit C lifecycle operations
+into Rust ownership types and RAII-managed resources.
 
-The task-002 profile is intentionally host-only and Mono8-only. C callers supply
-output storage; Ada callers receive owned arrays. Queue capacity is configured
-at stream creation, and incoming frames are dropped when full. Provider callback
-threads never call application code. See `docs/c-abi-policy.md` for ownership,
-metadata, timeout, teardown, and callback-quiescence limitations.
-At most one thread or Ada task may consume a given stream at a time. Frames
-already queued are drained after Stop or provider failure before the terminal
-status is returned.
+### Python
 
-## Implemented C2 profile
+A Python binding can sit on the same C ABI:
 
-Task 003 implements only `ModeCmd(State = Operate, Mode = TaskSched)` with the
-default `ScanParam`; it does not expose arbitrary scan modes, BIT/config/camera
-commands, or CommandStatus callbacks. Submission publishes an asynchronous
-request. A finite wait may time out and later succeed. Closing the public request
-does not cancel provider work: internal state retains the C2 channel, provider,
-and loaded library until the future reaches a terminal state. A provider future
-that never completes therefore safely retains those resources. Image and C2
-children can coexist beneath one Session and remain valid after its public owner
-closes.
+```text
+Python Skill
+     |
+Python package
+     |
+ctypes / cffi / native extension
+     |
+C ABI
+     |
+ams_mel_c
+     |
+C++ MEL provider
+```
 
-## Scope and compatibility
+For early functionality, `ctypes` or `cffi` can provide a low-friction binding.
+For high-rate image or RF data paths, a native Python extension can provide a
+more controlled route to Python buffer objects, `memoryview`, NumPy arrays, or
+other native-backed data structures while still depending on the same C ABI.
 
-The C-facing ABI here remains experimental version **0.1**, unrelated to upstream
-MEL API versions, the architecture revision, or provider versions.
+Python is particularly attractive for:
 
-Only Linux x86-64 is an initial validation target. The headers include normal
-Windows visibility declarations for later use; that does not claim a tested
-Windows build or provider compatibility. No SPARK proof claim is made.
+- rapid Skill prototyping;
+- algorithm exploration;
+- test and simulation tooling;
+- data analysis and visualization;
+- NumPy/SciPy/OpenCV integration;
+- ML inference and experimentation; and
+- orchestration around native high-performance processing.
 
-The candidate inventory remains historical. Task 001's selected immutable
-revisions and vendored declaration closure are recorded in
+A Python API should still preserve explicit ownership and bounded-buffer rules.
+It should not assume that Python callback execution is appropriate on arbitrary
+provider threads, and high-rate data paths need to account for copies, Python
+object creation, and interpreter/GIL behavior.
+
+### C++
+
+C++ needs none of these wrappers:
+
+```text
+C++ Skill
+    |
+published C++ MEL API
+    |
+C++ MEL provider
+```
+
+This direct path remains the reference/native consumer path.
+
+The overall result is:
+
+```text
+                              GRA MEL
+                                 |
+                 +---------------+----------------------+
+                 |                                      |
+                 v                                      v
+             C++ Skill                              ams_mel_c
+             direct                                     |
+                                      +----------------+----------------+
+                                      |        |         |              |
+                                      v        v         v              v
+                                    Ada      SPARK     Rust           Python
+                                   Skill     Skill     Skill           Skill
+```
+
+This keeps provider ownership, callback handling, exception containment, and
+C++ ABI compatibility in one bridge for the languages that need it, while
+leaving native C++ consumers untouched.
+
+---
+
+## Project-Relevant Acronym Glossary
+
+The GRA ecosystem contains many acronyms. These are the ones most relevant to
+this repository and the surrounding Hello World architecture.
+
+| Acronym | Meaning | Relevance |
+|---|---|---|
+| **AMS** | Agile Mission Suite | Mission-system architecture family. |
+| **GRA** | Government Reference Architecture | Government-defined reference architecture; together, **AMS GRA**. |
+| **AMS GRA** | Agile Mission Suite Government Reference Architecture | The open mission-system architecture this project targets. |
+| **MFA** | Multi-Function Aperture | Sensor/aperture component that interacts with the free-space environment and produces digital sensor data. |
+| **MEL** | MFA Encapsulation Layer | Standardized software boundary between an MFA and mission processing. |
+| **RF** | Radio Frequency | Radio-frequency sensor domain. |
+| **IR** | Infrared | Infrared / optical sensor domain. |
+| **EO/IR** | Electro-Optical / Infrared | Optical and infrared sensing domain. |
+| **IRST** | Infrared Search and Track | IR sensing/processing function; `IRSTImage` appears in the current receive profile. |
+| **I/Q** | In-phase / Quadrature | Complex sample representation commonly used for digitized RF data. |
+| **RX** | Receive | Receive-side RF operation. |
+| **TX** | Transmit | Transmit-side RF operation. |
+| **DIS** | Distributed Interactive Simulation | Simulation protocol used by the Hello World environment to distribute world truth. |
+| **OMS** | Open Mission Systems | Mission-system standards used for service/data interoperability. |
+| **UCI** | Universal Command and Control Interface | Standard message/data model used for higher-level mission products. |
+| **CAL** | Critical Abstraction Layer | OMS software boundary that isolates services from underlying transport details. |
+| **LA-CAL** | Language-Agnostic Critical Abstraction Layer | CAL pattern that allows services written in different languages to connect through a language-neutral protocol. |
+| **OWP** | OMS WebSocket Protocol | WebSocket protocol used by the Hello World LA-CAL/Sleet implementation. |
+| **ASB** | Abstract Service Bus | Logical OMS messaging network carrying UCI data among services. |
+| **MASI** | Mission Agnostic Service Infrastructure | Shared mission-system infrastructure such as routing, management, health, and observability services. |
+| **MPU** | Minimum Procurable Unit | AMS GRA unit intended to be independently procured/integrated. |
+| **OEM** | Original Equipment Manufacturer | Manufacturer of sensor hardware/firmware behind an MFA. |
+| **C2** | Command and Control | Mission command/control information and messaging. |
+| **API** | Application Programming Interface | Source-level programming interface exposed to callers. |
+| **ABI** | Application Binary Interface | Binary contract between compiled components; `ams_mel_c` exposes a C ABI. |
+| **FFI** | Foreign Function Interface | Mechanism through which one programming language calls code written in another. |
+| **IPC** | Inter-Process Communication | Communication between separate operating-system processes. |
+| **RPC** | Remote Procedure Call | Request/response interaction across a process or network boundary. |
+| **gRPC** | gRPC remote-procedure-call framework | RPC technology used in Squall's backend control path. |
+| **TCP** | Transmission Control Protocol | Reliable byte-stream network transport. |
+| **UDP** | User Datagram Protocol | Datagram transport useful for high-rate data paths such as Squall sensor payload delivery. |
+| **UDS** | Unix-Domain Socket | Local IPC socket used by Squall/Couloir for backend gRPC communication. |
+| **SPARK** | SPARK language/toolset for high-assurance Ada | Ada-based language/toolset used for contract-based analysis and formal proof; a SPARK Skill can use the same Ada MEL binding while keeping native FFI code outside the proved core. |
+
+---
+
+## Terminology at a Glance
+
+A useful mental model for the larger ecosystem is:
+
+```text
+Physical / simulated world
+          |
+          v
+         MFA
+   sensor / aperture
+          |
+          | MEL
+          v
+        Skill
+   raw-data processing
+          |
+          | OMS / UCI
+          v
+Mission-system services
+```
+
+For the public Hello World system:
+
+```text
+DIS truth
+   |
+   v
+Squall simulated MFA
+   |
+   +---- RF MEL ----> RF Skill ----+
+   |                               |
+   +---- IR MEL ----> IR Skill ----+----> OMS / UCI
+```
+
+For this project:
+
+```text
+      C++ MFA      Ada MFA      Rust MFA      Hardware MFA
+         \           |            |              /
+          +--------- GRA MEL (C++) -------------+
+                         |
+             standardized boundary
+                         |
+              +----------+------------------------------+
+              |                                         |
+              v                                         v
+          C++ Skill                                 ams_mel_c
+          direct                                        |
+                                  +--------------------+------------------+
+                                  |         |          |                 |
+                                  v         v          v                 v
+                                Ada       SPARK      Rust              Python
+                               Skill      Skill      Skill              Skill
+```
+
+---
+
+## Provider and Skill Languages Are Independent
+
+One of the architectural goals is to make these choices independent:
+
+```text
+Provider / MFA implementation:
+    C++ | Ada | Rust | hardware / firmware | other
+
+                    ↓
+
+              standard GRA MEL
+
+                    ↓
+
+Skill implementation:
+    C++ | Ada | SPARK | Rust | Python | other bridgeable language
+```
+
+An **Ada MFA** and a **SPARK Skill** therefore solve different problems and can
+exist independently:
+
+```text
+Ada MFA backend
+      |
+thin C++ MEL provider
+      |
+==== standardized MEL boundary ====
+      |
+ams_mel_c
+      |
+Ada binding
+      |
+SPARK Skill
+```
+
+They also do not have to be in the same process. MEL-provider internals may use
+FFI, IPC, network transport, device drivers, or other implementation-specific
+mechanisms behind the standardized boundary.
+
+## Scope and Compatibility
+
+The C-facing ABI remains experimental version **0.1** and is unrelated to:
+
+- an upstream MEL API version;
+- an AMS GRA architecture revision; or
+- a provider's own version number.
+
+Linux x86-64 is the initial validation target.
+
+The headers contain normal Windows visibility declarations for future work, but
+that is not a claim of tested Windows compatibility.
+
+No SPARK proof claim is made for the provider or FFI boundary.
+
+Provider declarations used by the native adapter are pinned and documented in
 `docs/upstream-provenance.md`.
+
+---
+
+## Design Principles
+
+1. **Preserve the published C++ MEL provider boundary.**
+2. **Do not invent a competing provider protocol.**
+3. **Keep C++ implementation details out of Ada/SPARK, Rust, and Python APIs.**
+4. **Use a small, explicit, ownership-aware C ABI for languages that need a bridge.**
+5. **Do not force native C++ Skills through the C ABI; let them consume MEL directly.**
+6. **Contain exceptions at the native bridge boundary.**
+7. **Do not call arbitrary language-runtime application code from provider callback threads.**
+8. **Prefer bounded ownership and explicit lifetimes before zero-copy designs.**
+9. **Keep provider loading and unloading safe across live child resources.**
+10. **Make metadata conversions loss-aware.**
+11. **Allow MFA implementation language and Skill implementation language to vary independently.**
+12. **Preserve a narrow ordinary-Ada boundary so SPARK logic can sit above it without pretending the native FFI is proved.**
+13. **Add capability vertically: provider boundary, C tests, language wrapper, language tests, documentation.**
+
+---
+
+## Background References
+
+Useful public background material:
+
+- AMS GRA Hello World — Overview and Terminology  
+  https://open-arsenal.gitlab.io/ams-gra/hello-world-sk/getting-started/tutorials/0-overview.html
+
+- AMS GRA Hello World — How to Build a Multi-Function Aperture  
+  https://open-arsenal.gitlab.io/ams-gra/hello-world-sk/getting-started/tutorials/3-build-mfa.html
+
+- Open Arsenal — Common MEL  
+  https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel
+
+- Open Arsenal — RF MEL  
+  https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel
+
+These references describe the surrounding GRA concepts. The behavior and
+supported surface of this repository are defined by this repository's own
+source, tests, architecture decisions, and pinned upstream provenance.
+
+---
 
 ## Licensing
 
-New scaffold code is supplied under Apache-2.0; see `LICENSE`. Confirm the
-project's intended license and complete maintainer metadata before publication.
-The vendored declaration closure retains upstream license and intent files; see
-`docs/upstream-provenance.md` and `docs/upstream-files.sha256.md`.
+New scaffold and binding code is supplied under Apache-2.0; see `LICENSE`.
+
+Vendored upstream declaration material retains its upstream licensing and
+provenance. See:
+
+```text
+docs/upstream-provenance.md
+docs/upstream-files.sha256.md
+```
+
+before changing, replacing, or publishing the pinned declaration closure.
