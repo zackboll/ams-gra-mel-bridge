@@ -1,6 +1,6 @@
 # Vendored source file checksums
 
-SHA-256 values for the exact task 001 source closure:
+SHA-256 values for the task 001 source closure, followed by task 002 additions:
 
 ```text
 f33e21b2d953e471f7f01be20bd218a3b848d1c9bbca6dbd055b12cb1d8eabec  native/vendor/ams-math/include/math/geometry/Quaternion.h
@@ -53,4 +53,36 @@ ca32907410241638bd03549e38650cddfe9d92a2aecaf070eba50ccbd6d041fc  native/vendor/
 141988fea20a9a577cdf73d480e6adf97409714100838d3917f1c5691fffe197  native/vendor/ir-mel/include/irmel/library/irmel-types/SensorNavState.h
 d27f3edaec6c975ecb5d55b12404be34926ad21bc24bf3bfcc852d6c67a49eaf  native/vendor/ir-mel/INTENT.md
 2f1aa718ddb1a34ed1581e3c57dddd1bb516fb7657a9c4076e8ff95b91d9844d  native/vendor/ir-mel/LICENSE
+```
+
+Task 002 adds these exact files at the same immutable revisions:
+
+```text
+c5de331e308d0a803f4f5f1a0bbca19f3db4526ba89af98a7aa2a988906e2294  native/vendor/ams-math/include/math/geometry/RangeAzEl.h
+14c42d0cc6cbb488696c8d616d134e9174da042d47bf3df28e6f92ae2137c22e  native/vendor/ir-mel/include/irmel/library/image/ImageChannel.h
+26fec8d33a70a3c59150d44badf7a88ef94dd33743cbf44dbbc805366494daab  native/vendor/ir-mel/include/irmel/library/image/NavigationReportResp.h
+e3cf0618f85c6b36547ae46cda4f5128c2f93994a34d968ca8c12cae976ba1b9  native/vendor/ir-mel/include/irmel/library/irmel-types/AbsoluteReferencePoint.h
+8f31f14846d01db5c29034523bde4d7ff576cf02a1e220a5577492ec067405d1  native/vendor/ir-mel/include/irmel/library/irmel-types/BadPixel.h
+40419c2d429c2ee53189fa145b282c75f4b1ea0acfab5e9feb8739f9d2f3d1fa  native/vendor/ir-mel/include/irmel/library/irmel-types/BadPixelList.h
+17a94889ee90852f904b6e39a2cdd6c8f8208cc2c439c65fbc9afd5ecf259c4f  native/vendor/ir-mel/include/irmel/library/irmel-types/CameraCommand.h
+020c2e1dd506ba29444ede1c0ad32a5ae5420575000a81796af4bad8145f44ee  native/vendor/ir-mel/include/irmel/library/irmel-types/CameraCommandResp.h
+29a552ae116680c540bd5bfb8a5e9bbd5b6cfe566ac893e14b4536266a8b3878  native/vendor/ir-mel/include/irmel/library/irmel-types/CandidateObject.h
+2ff8f60d75a044421d645145539bc67217bd02f911cb11e612d328b64de69392  native/vendor/ir-mel/include/irmel/library/irmel-types/CandidateObjectHeader.h
+3b4cc22d5dc91bc5c3243e523d7ae92da8c07fb6c74cb1fe9acabbc6e3722b2c  native/vendor/ir-mel/include/irmel/library/irmel-types/CandidateObjectMessage.h
+1fe5441a8ccb89a52ecc9bbde1852afb5822f6ba3f175abbd3e8d3c3fc446b9d  native/vendor/ir-mel/include/irmel/library/irmel-types/CandidateObjectPreProc.h
+48389032700729143590503efed82d87debf5cdbe4fde7c75054416519c2f205  native/vendor/ir-mel/include/irmel/library/irmel-types/CandidateObjectPreProcMessage.h
+2eea98159706c2325a4dad1ca9cc74131690c2032996b911142851ce96580584  native/vendor/ir-mel/include/irmel/library/irmel-types/FrameHeader.h
+51846910e086cf4addbc59a8cc95c53fd93a16bd974e834a67d2af06e0ba6381  native/vendor/ir-mel/include/irmel/library/irmel-types/HotRegion.h
+95641c9aa3fe6dab52a129f9826060c83c366feb64e3a7e084fc72ae715a310e  native/vendor/ir-mel/include/irmel/library/irmel-types/ImageListener.h
+8ceeb0519d9bd6d4e54f57fdd4690f6f4071f3a2a32b8e9bc0675bb88918adee  native/vendor/ir-mel/include/irmel/library/irmel-types/LineOfSightEuler.h
+fba32a4d3c6e3e83bb3759155f286a6a78ed80e12feda9810f3ef749bd3f7cdb  native/vendor/ir-mel/include/irmel/library/irmel-types/LineOfSightQuaternion.h
+3d120f017773ebea00cc1aa8f072fe899369973af6de668a7deb225bd53f3ed4  native/vendor/ir-mel/include/irmel/library/irmel-types/LineOfSightReport.h
+4ab3e9d4f56153db5e9547ee5403559db273c94067c04b23cd52cbe6fe66bbb4  native/vendor/ir-mel/include/irmel/library/irmel-types/LOS3D_KinematicsType.h
+cc1c2adccaf2fe743b321340e0161ede1112f1e3276ba13a55218b55b4208e6b  native/vendor/ir-mel/include/irmel/library/irmel-types/LOS3D_OrientationCovariance.h
+227b5dfaef9cdc0e5fd48b6fc97b0a4fa41db037e07c4ef23624d8d74b510bb2  native/vendor/ir-mel/include/irmel/library/irmel-types/NUC_TempData.h
+f404e2b1173277aa4660a50c3ae8d301f2c6abd4caeceba0d3123edac576fdd6  native/vendor/ir-mel/include/irmel/library/irmel-types/OpticalDistortionMap.h
+1981126148745ff5a728b27ac34c7864678d278c5c6452aea258eed109c43e1f  native/vendor/ir-mel/include/irmel/library/irmel-types/RelativeSlantRangeLOS3D.h
+54e02176b49fb55528d9d760f48e5de6344df35b85c48d0c3e33ee4c8e5b1f3d  native/vendor/ir-mel/include/irmel/library/irmel-types/SensorInertialState.h
+2a1c63db59dedb2e394ebf5dd8799f51c9358c28a9a0c105353d5b325700d57b  native/vendor/ir-mel/include/irmel/library/irmel-types/TempPoint.h
+34e31a2ee2485a4eeb96a096a5f3e72381c8f9ad654b35739f9a33c948aef1a0  native/vendor/ir-mel/include/irmel/library/irmel-types/Uncertainty.h
 ```

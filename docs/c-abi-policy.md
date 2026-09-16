@@ -67,3 +67,54 @@ The initial threading contract permits concurrent use of independent sessions.
 Calls using the same session, including close, must be externally serialized.
 No callback, asynchronous work, cancellation, timeout, or child-resource
 guarantee is introduced by this slice.
+
+## Task 002 IR receive contract
+
+`ams_mel_ir_stream` is a uniquely owned opaque child. It retains shared
+library/manager/control ownership independently of the C session owner.
+`open` attaches only `ChannelType::IRSTImage`; `start` creates provider `Buffer`
+objects through `getBuffer`, initializes stable façade-owned host memory,
+registers every buffer, then enables. Stop rejects new adapter work, calls
+disable, detaches, destroys channel owners, drains explicitly counted callbacks,
+then destroys buffers/storage. Close is idempotent after its owner is cleared.
+
+Configuration records preserve both UCI IDs as 16 UUID bytes plus UTF-8 labels.
+Component location preserves meter-valued X/Y/Z offsets and both `ForeignKey`
+strings. Unknown channel values and invalid UTF-8/NUL are rejected. No C++
+layout crosses the ABI.
+
+Callbacks are provider-controlled and may be concurrent. They are caught at the
+C++ boundary, validate non-null addresses, dimensions, Mono/8-bit/one-band
+format, known image enums/flags, checked byte arithmetic, and image containment
+inside the registered buffer. Valid pixels and metadata are copied into a
+bounded queue; overflow drops the incoming frame. Every non-null callback buffer
+is released exactly once, including malformed and overflow paths. A release
+failure or exception terminally poisons the stream and wakes receivers.
+
+Receive uses caller-owned pixel storage. At most one thread may execute receive
+for a stream at a time; this also makes Ada's size-discovery/copy pair one logical
+single-consumer operation. `BUFFER_TOO_SMALL` reports the exact
+required size and does not dequeue or partially return a frame. `TIMEOUT` means
+only that no frame arrived during the interval; `STREAM_STOPPED` is distinct.
+Counters are cumulative saturating `uint64_t` values. Times remain signed
+nanoseconds, FOV remains radians, and frame fields needed by the Mono8 profile
+are explicit fixed-width values.
+
+The returned task-002 record deliberately omits contributing-sensor identity
+and inertial/navigation vectors. These do not change the constrained raster
+byte interpretation, but full metadata consumers require a later versioned API.
+The pinned interface gives no generic callback-quiescence guarantee for
+`disable()`. Pinned Squall stops its `UdpDataReceiver` in channel destruction,
+not in `disable()`. The façade therefore retains listener, provider buffers, and
+host storage through detach and channel destruction, then waits for adapter
+callbacks already in flight. Generic unregister is not used during teardown.
+Successful channel destruction is the provider-side no-new-callback boundary;
+providers that retain callback work beyond destruction are incompatible.
+
+Lifecycle states are attached, starting, running, stopping, stopped, and
+terminal failed. Failed enable/disable/detach/release/rollback never permits a
+later successful Start. Already queued frames are drained deterministically;
+then receive returns `PROVIDER_FAILED` or `STREAM_STOPPED`. Close clears the C
+owner after safe cleanup even when returning `PROVIDER_FAILED`; if detach cannot
+establish safe cleanup, it retains the owner for retry. An open-time detach
+failure retains the internal graph as the only memory-safe fallback.

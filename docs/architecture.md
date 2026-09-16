@@ -9,6 +9,9 @@ will adapt it for C, Ada, and later Rust.
 The bootstrap implemented an independent ABI-version query. Task 001 adds only
 the first provider boundary: load a compatible IR MEL library, create and
 initialize its `Control`, copy its complete `VersionInfo`, and close it.
+Task 002 adds one vertical receive profile: attach an `IRSTImage` channel,
+register service-owned host buffers, receive `ImageListener::onImage` callbacks,
+copy validated Mono8 frames into a bounded queue, and poll them from C or Ada.
 
 ## Separation
 
@@ -37,6 +40,16 @@ locally, resolves the published C-linkage/C++-signature factories, and retains
 the loader owner until `Control` and `API_Manager` destruction completes. Mock
 providers and failure fixtures are test-only targets and are not installed.
 
+Sessions now hold a shared private provider state. An IR stream retains that
+state, so closing the public parent owner while a stream exists does not unload
+provider code. Stream close stops adapter acceptance, calls `disable`, detaches,
+destroys the last façade channel owners, waits for explicitly counted adapter
+callbacks to return, and only then destroys provider `Buffer` objects and host
+storage. Provider/library ownership is released last. Failed detach retains the
+whole callback-accessible graph for a later close attempt rather than risking a
+use-after-free; an open-time detach failure is retained internally because no C
+owner can safely be returned.
+
 ## First integration profile
 
 Start with IR host-memory, single-band Mono8 reception only after provider
@@ -44,6 +57,25 @@ loading, ownership, and shutdown tests exist. Use bounded owned copies first;
 leases/zero-copy require a separate reviewed API and explicit lifetime contract.
 Keep metadata conversions loss-aware. Do not convert every timestamp to one
 nanosecond value or copy Squall-private integer frequency conventions.
+
+The implemented queue owns copied pixels and has caller-selected finite
+capacity. Overflow drops the incoming frame. Provider callbacks never enter C or Ada and
+release each non-null callback buffer exactly once after processing. Release
+status/exceptions poison the stream and wake receivers. The pinned interface
+does not state that `disable()` waits for callbacks. More concretely, pinned
+Squall `disable()` only clears its enabled state and delegates control disable;
+its destructor resets `UdpDataReceiver`. The façade therefore treats successful
+detach plus destruction of all façade channel owners—not `disable()`—as the
+boundary after which no new image callback can begin, then waits for its own
+in-flight callback count to reach zero. The mock has both quiescing-disable and
+destruction-quiescing scenarios. Generic unregister was removed because it
+cannot establish this boundary and can race non-quiesced provider callbacks.
+
+The stream lifecycle is `Attached`, `Starting`, `Running`, `Stopping`, `Stopped`,
+or terminal `Failed`. Any provider operation/release/rollback failure stops frame
+acceptance and wakes receivers. Frames copied before a clean stop or failure are
+drained first; the next receive reports `STREAM_STOPPED` or `PROVIDER_FAILED`.
+At most one consumer thread/task may execute receive on a stream at a time.
 
 ## Parallel Ada work
 

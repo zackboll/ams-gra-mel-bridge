@@ -1,4 +1,4 @@
-# Task 001 upstream provenance
+# Task 001/002 upstream provenance
 
 Verified 2026-09-15 from immutable Git commit objects, not default-branch file
 URLs. The selected commits are the candidate submodule revisions recorded by
@@ -13,9 +13,11 @@ the umbrella inventory and all have commit message `Release 2026.06.01`.
 ## Selected closure
 
 `native/vendor` contains unmodified files at those revisions: 28 Common MEL
-headers, 15 IR MEL headers, and AMS Math's header-only `Quaternion.h`. This is
-the dependency output of GCC 14.2 preprocessing the pinned, unmodified
-`irmel/library/irmel-types/Control.h`; exact file checksums are recorded in
+headers, 41 IR MEL headers, and two AMS Math headers. Task 001's Control probe
+selected 44 headers. Task 002's GCC 14.2 dependency probe adds
+`image/ImageChannel.h`, `ImageListener.h`, `FrameHeader.h`, and `Buffer.h`, whose
+published include graph expands the complete closure to 71 headers. Exact file
+checksums are recorded in
 `upstream-files.sha256.md`.
 
 The required published boundary is:
@@ -26,6 +28,9 @@ getAPI_Manager(const std::string& instance);
 
 extern "C" std::shared_ptr<ams::iface::irmel::Control>
 getControl(std::string_view instance, std::shared_ptr<API_Manager> sam);
+
+extern "C" std::shared_ptr<ams::iface::irmel::Buffer>
+getBuffer(std::string_view instance, std::shared_ptr<API_Manager> sam);
 ```
 
 The used virtual operations are `Control::init(const std::string&)` and
@@ -41,6 +46,15 @@ in this slice's compiler-observed closure. Local build dependencies are Linux
 `dlopen`/`dlsym`, CMake 3.20+, and a C++20 compiler/standard library mutually
 ABI-compatible with the provider. The test provider is built by the same CMake
 configuration/compiler as the adapter.
+
+Task 002 uses `Control::attachChannel`/`detachChannel`,
+`Channel::registerBuffer`/`unregisterBuffer`/`enable`/`disable`, `Buffer::init`
+and `release`, and `ImageListener::onImage`. `Config` carries complete UCI IDs,
+component location, and the listener. `FrameHeader` supplies signed nanosecond
+times, dimensions, FOV radians, format/frame/subframe/image metadata, dither,
+offsets, and band index. The broad additional headers are compiler-required by
+the unmodified published `ImageChannel` interface; optional camera/metadata
+operations remain unsupported by this façade.
 
 ## License and notices
 
@@ -62,7 +76,12 @@ and installed as notices. The three license files share SHA-256
 - String encoding is not stated by upstream. This profile validates and
   requires UTF-8 vendor/description values without embedded NUL.
 - Provider destructors and shared-pointer deleters must not throw. No callbacks,
-  pending requests, channels, buffers, or child resources exist in this slice.
+  pending requests, channels, buffers, or child resources exist in task 001.
+- Task 002's `disable()` declaration does not document callback quiescence.
+  Pinned Squall (`b1015728f904c799fa0c07489fce48e78f67845f`) only clears
+  `enabled_` and delegates control disable there; `~SquallImageChannel` resets
+  its `UdpDataReceiver`. The façade therefore retains listener/buffers/storage
+  through channel destruction and then drains its own in-flight callbacks.
 - `Control.h` includes a cyclic and broad declaration graph (including Channel
   declarations and Quaternion) even though task 001 invokes no such feature.
 - Common MEL's `CMN_MEL_API_VERSION` string (`"4.0"`), numeric provider

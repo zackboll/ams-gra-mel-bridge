@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add a host-memory, single-band Mono8 `IRSTImage` receive profile for C and Ada.
+- Add bounded DROP-INCOMING frame queues, exact-size caller copies, saturating
+  counters, and distinct timeout/stopped results.
+- Extend the separately loaded C++ mock with asynchronous image production,
+  malformed/failure scenarios, and lifecycle instrumentation.
+- Expand the immutable upstream declaration closure from 44 to 71 headers.
+- Harden IR callback teardown around channel destruction and explicit in-flight
+  tracking; propagate release/provider cleanup failures through C and Ada.
+- Validate Mono8 channel capabilities and configuration integer ranges, and
+  document the per-stream single-consumer receive contract.
 - Add the task 001 IR MEL provider load/init/version/close slice in C and Ada.
 - Vendor the exact reviewed Common MEL, IR MEL, and AMS Math declaration closure.
 - Add separately loaded mock/failure providers and native/Ada lifecycle tests.

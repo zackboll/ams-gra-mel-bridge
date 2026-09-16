@@ -6,7 +6,7 @@ include(CMakePackageConfigHelpers)
 
 option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp)
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -18,6 +18,10 @@ target_include_directories(ams_mel_c PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
 target_link_libraries(ams_mel_c PRIVATE ${CMAKE_DL_LIBS})
+if(UNIX AND NOT APPLE)
+    target_link_options(ams_mel_c PRIVATE
+        "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/exports.map")
+endif()
 set_target_properties(ams_mel_c PROPERTIES
     CXX_EXTENSIONS OFF
     CXX_VISIBILITY_PRESET hidden
@@ -94,6 +98,16 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_provider mock_ir_provider missing_symbol_ir_provider)
     ams_mel_warnings(test_provider)
     add_test(NAME provider_contract COMMAND test_provider)
+
+    add_executable(test_ir_stream tests/test_ir_stream.c)
+    target_compile_features(test_ir_stream PRIVATE c_std_11)
+    set_target_properties(test_ir_stream PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_stream PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_stream PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_stream mock_ir_provider)
+    ams_mel_warnings(test_ir_stream)
+    add_test(NAME ir_stream_contract COMMAND test_ir_stream)
 
     add_executable(test_diagnostic_allocation
         tests/test_diagnostic_allocation.cpp)
