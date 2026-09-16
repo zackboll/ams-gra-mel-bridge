@@ -1,12 +1,38 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <ams_mel/abi.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <unistd.h>
 
 #ifndef AMS_MEL_TEST_MOCK_PROVIDER
 #error "mock provider path is required"
 #endif
+
+namespace {
+
+char lifetime_directory[] = "/tmp/ams-mel-diagnostic-allocation-XXXXXX";
+char lifetime_log[sizeof lifetime_directory + sizeof "/lifetime.log"];
+
+void cleanup_lifetime_log()
+{
+    (void)std::remove(lifetime_log);
+    (void)rmdir(lifetime_directory);
+}
+
+bool setup_lifetime_log()
+{
+    return mkdtemp(lifetime_directory) != nullptr &&
+           std::snprintf(lifetime_log, sizeof lifetime_log, "%s/lifetime.log",
+                         lifetime_directory) >= 0 &&
+           setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime_log, 1) == 0 &&
+           std::atexit(cleanup_lifetime_log) == 0;
+}
+
+} // namespace
 
 void *operator new(std::size_t size)
 {
@@ -46,6 +72,10 @@ void operator delete[](void *memory, std::size_t) noexcept
 
 int main()
 {
+    if (!setup_lifetime_log()) {
+        cleanup_lifetime_log();
+        return EXIT_FAILURE;
+    }
     ams_mel_session *session = nullptr;
     char diagnostic[128]{};
     std::size_t required = 0;

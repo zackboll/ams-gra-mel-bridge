@@ -33,6 +33,8 @@ jobs:
         run: |
           cmake --build build/native --parallel 2
           ctest --test-dir build/native --output-on-failure
+          ctest --test-dir build/native --parallel 4 \
+            --repeat until-fail:50 --output-on-failure
       - name: Test native installation
         run: cmake --install build/native --prefix "$PWD/build/install"
 

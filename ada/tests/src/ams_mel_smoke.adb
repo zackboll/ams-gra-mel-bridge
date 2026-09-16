@@ -1,11 +1,15 @@
 with Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Directories;
+with Ada.Environment_Variables;
 with AMS.MEL;
+with GNAT.OS_Lib;
 
 procedure AMS_MEL_Smoke is
    use type AMS.MEL.Version;
    use type AMS.MEL.Provider_Version_Number;
+   use type GNAT.OS_Lib.File_Descriptor;
+   use type GNAT.OS_Lib.String_Access;
 
    Workspace_Root : constant String := Ada.Directories.Full_Name
      (Ada.Directories.Containing_Directory
@@ -15,22 +19,59 @@ procedure AMS_MEL_Smoke is
                  (Ada.Command_Line.Command_Name)))));
    Provider_Path : constant String := Workspace_Root
      & "/native/build/test-providers/libmock_ir_provider.so";
-   Lifetime_Log : constant String := Workspace_Root
-     & "/native/build/provider-lifetime.log";
+   Lifetime_Directory : GNAT.OS_Lib.String_Access;
+   Lifetime_Log       : GNAT.OS_Lib.String_Access;
+
+   procedure Setup_Lifetime_Log is
+      Descriptor : GNAT.OS_Lib.File_Descriptor;
+      Closed     : Boolean;
+      Deleted    : Boolean;
+   begin
+      GNAT.OS_Lib.Create_Temp_File (Descriptor, Lifetime_Directory);
+      if Descriptor = GNAT.OS_Lib.Invalid_FD
+        or else Lifetime_Directory = null
+      then
+         raise Program_Error with "could not reserve a unique log directory";
+      end if;
+      GNAT.OS_Lib.Close (Descriptor, Closed);
+      GNAT.OS_Lib.Delete_File (Lifetime_Directory.all, Deleted);
+      if not Closed or else not Deleted then
+         raise Program_Error with "could not prepare the unique log directory";
+      end if;
+      Ada.Directories.Create_Directory (Lifetime_Directory.all);
+      Lifetime_Log := new String'(Lifetime_Directory.all & "/lifetime.log");
+      Ada.Environment_Variables.Set
+        ("AMS_MEL_TEST_LIFETIME_LOG", Lifetime_Log.all);
+   end Setup_Lifetime_Log;
 
    procedure Remove_Lifetime_Log is
    begin
-      if Ada.Directories.Exists (Lifetime_Log) then
-         Ada.Directories.Delete_File (Lifetime_Log);
+      if Lifetime_Log /= null
+        and then Ada.Directories.Exists (Lifetime_Log.all)
+      then
+         Ada.Directories.Delete_File (Lifetime_Log.all);
       end if;
    end Remove_Lifetime_Log;
+
+   procedure Cleanup_Lifetime_Log is
+   begin
+      Remove_Lifetime_Log;
+      if Lifetime_Directory /= null
+        and then Ada.Directories.Exists (Lifetime_Directory.all)
+      then
+         Ada.Directories.Delete_Directory (Lifetime_Directory.all);
+      end if;
+      Ada.Environment_Variables.Clear ("AMS_MEL_TEST_LIFETIME_LOG");
+      GNAT.OS_Lib.Free (Lifetime_Log);
+      GNAT.OS_Lib.Free (Lifetime_Directory);
+   end Cleanup_Lifetime_Log;
 
    function Lifetime_Events return String is
       Stream : Ada.Text_IO.File_Type;
       Result : String (1 .. 1_024);
       Last   : Natural := 0;
    begin
-      Ada.Text_IO.Open (Stream, Ada.Text_IO.In_File, Lifetime_Log);
+      Ada.Text_IO.Open (Stream, Ada.Text_IO.In_File, Lifetime_Log.all);
       while not Ada.Text_IO.End_Of_File (Stream) loop
          declare
             Line : constant String := Ada.Text_IO.Get_Line (Stream);
@@ -136,7 +177,7 @@ procedure AMS_MEL_Smoke is
       exception
          when Constraint_Error => null;
       end;
-      if Ada.Directories.Exists (Lifetime_Log) then
+      if Ada.Directories.Exists (Lifetime_Log.all) then
          raise Program_Error with "rejected NUL input invoked the provider";
       end if;
    end Test_Embedded_NUL;
@@ -152,6 +193,7 @@ procedure AMS_MEL_Smoke is
 
    Value : constant AMS.MEL.Version := AMS.MEL.ABI_Version;
 begin
+   Setup_Lifetime_Log;
    if Value /= (Major => 0, Minor => 1)
      or else AMS.MEL.ABI_Version /= Value
    then
@@ -167,6 +209,11 @@ begin
       when AMS.MEL.Provider_Error =>
          null;
    end;
+   Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line
      ("PASS: Ada provider load/init/version/close/finalization contract");
+exception
+   when others =>
+      Cleanup_Lifetime_Log;
+      raise;
 end AMS_MEL_Smoke;

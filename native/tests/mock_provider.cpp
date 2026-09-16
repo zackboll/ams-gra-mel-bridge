@@ -35,11 +35,6 @@ public:
 void record(const char *event)
 {
     const char *path = std::getenv("AMS_MEL_TEST_LIFETIME_LOG");
-#ifdef AMS_MEL_TEST_LIFETIME_LOG
-    if (path == nullptr) {
-        path = AMS_MEL_TEST_LIFETIME_LOG;
-    }
-#endif
     if (path != nullptr) {
         std::ofstream stream(path, std::ios::app);
         stream << event << '\n';

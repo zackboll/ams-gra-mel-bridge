@@ -48,8 +48,6 @@ if(AMS_MEL_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
-    target_compile_definitions(mock_ir_provider PRIVATE
-        AMS_MEL_TEST_LIFETIME_LOG="${CMAKE_CURRENT_BINARY_DIR}/provider-lifetime.log")
     set_target_properties(mock_ir_provider PROPERTIES
         CXX_EXTENSIONS OFF CXX_VISIBILITY_PRESET hidden
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-providers")
@@ -91,14 +89,11 @@ if(AMS_MEL_BUILD_TESTS)
     set_target_properties(test_provider PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_provider PRIVATE
         AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>"
-        AMS_MEL_TEST_MISSING_SYMBOL_PROVIDER="$<TARGET_FILE:missing_symbol_ir_provider>"
-        AMS_MEL_TEST_LIFETIME_LOG="${CMAKE_CURRENT_BINARY_DIR}/provider-lifetime.log")
+        AMS_MEL_TEST_MISSING_SYMBOL_PROVIDER="$<TARGET_FILE:missing_symbol_ir_provider>")
     target_link_libraries(test_provider PRIVATE ams_mel::ams_mel_c)
     add_dependencies(test_provider mock_ir_provider missing_symbol_ir_provider)
     ams_mel_warnings(test_provider)
     add_test(NAME provider_contract COMMAND test_provider)
-    set_tests_properties(provider_contract PROPERTIES
-        ENVIRONMENT "AMS_MEL_TEST_LIFETIME_LOG=${CMAKE_CURRENT_BINARY_DIR}/provider-lifetime.log")
 
     add_executable(test_diagnostic_allocation
         tests/test_diagnostic_allocation.cpp)

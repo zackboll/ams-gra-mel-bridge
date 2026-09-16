@@ -118,3 +118,59 @@ empty vendor diff passed.
 Clang/Clang++ remain unavailable, so no Clang result is claimed. Plain
 `make test-ada` cannot run from the base PATH because system `gprbuild` is not
 installed; the same command passed inside the available Alire environment.
+
+## Test-log isolation correction — 2026-09-16
+
+Review of `17506573fc55398dc717af954c661948e7f2ce65` found that
+`provider_contract`, `diagnostic_allocation`, and the Ada smoke test could all
+append to `native/build/provider-lifetime.log`. Parallel or overlapping runs
+could therefore interleave lifecycle events and make one process delete or
+inspect another process's log.
+
+The test-only mock now writes only to the path supplied in its process's
+`AMS_MEL_TEST_LIFETIME_LOG`; the compile-time shared fallback was removed. Each
+native test invocation creates its own `mkdtemp` directory, points the mock at a
+log within that directory, and removes only that log and directory at process
+exit. The Ada smoke executable independently reserves a unique name with
+`GNAT.OS_Lib.Create_Temp_File`, converts it to a private directory, configures a
+log within that directory before loading the mock, and cleans up on success or
+exception. Its executable-owned setup keeps direct execution independent of a
+launcher and still works with `LD_LIBRARY_PATH` unset. CMake remains the only
+native build owner, and the mock remains a separately loaded test provider.
+
+The C and Ada lifecycle checks still compare complete logs to exact event
+sequences. Allocation-test log setup finishes before the mock enables global
+allocation failure, and the mock clears that injection before unload logging;
+no setup or cleanup allocation was added to the exported failure path. Native
+CI now runs both ordinary CTest and parallel CTest with 50 until-fail
+repetitions for every existing GCC/Clang Debug/Release matrix entry.
+
+Local validation passed:
+
+```sh
+make test-native                         # CTest 4/4
+alr -C ada build
+alr -C ada/tests run
+alr -C ada exec -- make -C /home/zboll/git/ams-mel test-ada
+alr -C ada exec -- make -C /home/zboll/git/ams-mel check
+env -u LD_LIBRARY_PATH ./ada/tests/bin/ams_mel_smoke
+```
+
+Fresh isolated GCC 14.2.0 Debug and Release builds each passed ordinary CTest
+4/4 and:
+
+```sh
+ctest --test-dir <build-directory> --parallel 4 \
+  --repeat until-fail:50 --output-on-failure
+```
+
+Twenty already-built instances each of `test_provider`,
+`test_diagnostic_allocation`, and the Ada smoke executable also passed while
+all 60 processes ran concurrently. No test-log temporary directories remained.
+
+Local Clang/Clang++ remain unavailable, so no local Clang Debug or Release
+result is claimed. System `gprbuild` also remains absent from the base PATH;
+plain `make test-ada` is unavailable there, while its Alire-wrapped equivalent
+passed. Dedicated regressions for failure of the Ada `Open` function's second
+and third `New_String` allocations remain a follow-up coverage item; this
+test-harness correction does not add an Ada allocation-injection framework.

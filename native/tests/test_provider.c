@@ -1,8 +1,11 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <ams_mel/abi.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #ifndef AMS_MEL_TEST_MOCK_PROVIDER
 #error "mock provider path is required"
@@ -10,9 +13,10 @@
 #ifndef AMS_MEL_TEST_MISSING_SYMBOL_PROVIDER
 #error "missing-symbol provider path is required"
 #endif
-#ifndef AMS_MEL_TEST_LIFETIME_LOG
-#error "lifetime log path is required"
-#endif
+
+static char lifetime_directory[] =
+    "/tmp/ams-mel-provider-contract-XXXXXX";
+static char lifetime_log[sizeof lifetime_directory + sizeof "/lifetime.log"];
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -20,6 +24,25 @@
         return EXIT_FAILURE; \
     } \
 } while (0)
+
+static void cleanup_lifetime_log(void)
+{
+    (void)remove(lifetime_log);
+    (void)rmdir(lifetime_directory);
+}
+
+static int setup_lifetime_log(void)
+{
+    if (mkdtemp(lifetime_directory) == NULL ||
+        snprintf(lifetime_log, sizeof lifetime_log, "%s/lifetime.log",
+                 lifetime_directory) < 0 ||
+        setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime_log, 1) != 0 ||
+        atexit(cleanup_lifetime_log) != 0) {
+        cleanup_lifetime_log();
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
 
 static ams_mel_status_t open_instance(const char *path, const char *instance,
                                       ams_mel_session **session,
@@ -71,7 +94,7 @@ static int test_invalid_exception_diagnostic(void)
 
 static int expect_lifetime_log(const char *expected)
 {
-    FILE *stream = fopen(AMS_MEL_TEST_LIFETIME_LOG, "rb");
+    FILE *stream = fopen(lifetime_log, "rb");
     char contents[1024] = {0};
     size_t count;
     CHECK(stream != NULL);
@@ -87,7 +110,7 @@ static int expect_instrumented_open_failure(const char *instance,
                                             ams_mel_status_t expected,
                                             const char *events)
 {
-    (void)remove(AMS_MEL_TEST_LIFETIME_LOG);
+    (void)remove(lifetime_log);
     CHECK(expect_open_failure(AMS_MEL_TEST_MOCK_PROVIDER, instance, expected) ==
           EXIT_SUCCESS);
     CHECK(expect_lifetime_log(events) == EXIT_SUCCESS);
@@ -226,7 +249,8 @@ static int test_utf8_diagnostic_truncation(void)
 
 int main(void)
 {
-    (void)remove(AMS_MEL_TEST_LIFETIME_LOG);
+    CHECK(setup_lifetime_log() == EXIT_SUCCESS);
+    (void)remove(lifetime_log);
     CHECK(test_arguments() == EXIT_SUCCESS);
     CHECK(expect_open_failure("/definitely/missing/libirmel.so", "x",
           AMS_MEL_LIBRARY_LOAD_FAILED) == EXIT_SUCCESS);
@@ -242,7 +266,7 @@ int main(void)
     CHECK(expect_instrumented_open_failure("throw-manager",
           AMS_MEL_PROVIDER_EXCEPTION,
           "manager_factory_called\nlibrary_unloaded\n") == EXIT_SUCCESS);
-    (void)remove(AMS_MEL_TEST_LIFETIME_LOG);
+    (void)remove(lifetime_log);
     CHECK(test_invalid_exception_diagnostic() == EXIT_SUCCESS);
     CHECK(expect_instrumented_open_failure("throw-control",
           AMS_MEL_PROVIDER_EXCEPTION,
@@ -280,7 +304,7 @@ int main(void)
           AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_version_failure("nul-version", AMS_MEL_PROVIDER_EXCEPTION) ==
           EXIT_SUCCESS);
-    (void)remove(AMS_MEL_TEST_LIFETIME_LOG);
+    (void)remove(lifetime_log);
     CHECK(test_success() == EXIT_SUCCESS);
     CHECK(expect_lifetime_log(
           "manager_factory_called\ncontrol_factory_called\ninit_called\n"
