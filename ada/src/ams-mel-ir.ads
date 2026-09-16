@@ -61,6 +61,8 @@ package AMS.MEL.IR is
 
    Timeout_Error  : exception;
    Stream_Stopped : exception;
+   --  At most one task may call Receive for a given Image_Stream at a time.
+   --  Frames queued before Stop or provider failure are returned first.
    function Receive
      (Object : Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame;
 

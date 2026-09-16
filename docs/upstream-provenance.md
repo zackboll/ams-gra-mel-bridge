@@ -78,8 +78,10 @@ and installed as notices. The three license files share SHA-256
 - Provider destructors and shared-pointer deleters must not throw. No callbacks,
   pending requests, channels, buffers, or child resources exist in task 001.
 - Task 002's `disable()` declaration does not document callback quiescence.
-  The mock joins its producer before returning success; generic third-party
-  behavior remains an explicit compatibility requirement.
+  Pinned Squall (`b1015728f904c799fa0c07489fce48e78f67845f`) only clears
+  `enabled_` and delegates control disable there; `~SquallImageChannel` resets
+  its `UdpDataReceiver`. The façade therefore retains listener/buffers/storage
+  through channel destruction and then drains its own in-flight callbacks.
 - `Control.h` includes a cyclic and broad declaration graph (including Channel
   declarations and Quaternion) even though task 001 invokes no such feature.
 - Common MEL's `CMN_MEL_API_VERSION` string (`"4.0"`), numeric provider

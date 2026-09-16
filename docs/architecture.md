@@ -42,10 +42,13 @@ providers and failure fixtures are test-only targets and are not installed.
 
 Sessions now hold a shared private provider state. An IR stream retains that
 state, so closing the public parent owner while a stream exists does not unload
-provider code. Stream close disables, unregisters, detaches, destroys channel
-objects, and only then releases its provider reference. Failed disable,
-unregister, or detach retains callback-accessible resources rather than freeing
-memory still potentially referenced by the provider.
+provider code. Stream close stops adapter acceptance, calls `disable`, detaches,
+destroys the last façade channel owners, waits for explicitly counted adapter
+callbacks to return, and only then destroys provider `Buffer` objects and host
+storage. Provider/library ownership is released last. Failed detach retains the
+whole callback-accessible graph for a later close attempt rather than risking a
+use-after-free; an open-time detach failure is retained internally because no C
+owner can safely be returned.
 
 ## First integration profile
 
@@ -56,11 +59,23 @@ Keep metadata conversions loss-aware. Do not convert every timestamp to one
 nanosecond value or copy Squall-private integer frequency conventions.
 
 The implemented queue owns copied pixels and has caller-selected finite
-capacity. Overflow drops the incoming frame. Provider callbacks never enter C
-or Ada and release each callback buffer once after processing. The pinned
-interface does not state that `disable()` waits for callbacks; the mock proves
-quiescence by joining its producer, but the generic API documents this provider
-compatibility requirement rather than promising universal quiescence.
+capacity. Overflow drops the incoming frame. Provider callbacks never enter C or Ada and
+release each non-null callback buffer exactly once after processing. Release
+status/exceptions poison the stream and wake receivers. The pinned interface
+does not state that `disable()` waits for callbacks. More concretely, pinned
+Squall `disable()` only clears its enabled state and delegates control disable;
+its destructor resets `UdpDataReceiver`. The façade therefore treats successful
+detach plus destruction of all façade channel owners—not `disable()`—as the
+boundary after which no new image callback can begin, then waits for its own
+in-flight callback count to reach zero. The mock has both quiescing-disable and
+destruction-quiescing scenarios. Generic unregister was removed because it
+cannot establish this boundary and can race non-quiesced provider callbacks.
+
+The stream lifecycle is `Attached`, `Starting`, `Running`, `Stopping`, `Stopped`,
+or terminal `Failed`. Any provider operation/release/rollback failure stops frame
+acceptance and wakes receivers. Frames copied before a clean stop or failure are
+drained first; the next receive reports `STREAM_STOPPED` or `PROVIDER_FAILED`.
+At most one consumer thread/task may execute receive on a stream at a time.
 
 ## Parallel Ada work
 

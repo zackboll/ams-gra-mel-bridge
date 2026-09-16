@@ -6,6 +6,7 @@
 #include <string.h>
 #include <threads.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifndef AMS_MEL_TEST_MOCK_PROVIDER
 #error "mock provider path is required"
@@ -137,6 +138,8 @@ static int test_overflow(void)
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
     ams_mel_ir_stream_config_v1 config = configuration();
     ams_mel_ir_stream_counters_v1 counters;
+    ams_mel_ir_frame_v1 frame;
+    uint8_t pixels[12];
     struct timespec delay = {0, 50000000};
     config.queue_capacity = 2;
     CHECK(open_stream("overflow", &session, &stream, &config) == EXIT_SUCCESS);
@@ -145,6 +148,13 @@ static int test_overflow(void)
     CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(counters.frames_received == 20);
     CHECK(counters.frames_dropped_queue_full == 18);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    memset(&frame, 0, sizeof frame);
+    frame.pixels = pixels; frame.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 0, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive(stream, 0, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive(stream, 0, &frame, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
@@ -170,7 +180,25 @@ static int test_start_failure(const char *scenario)
     ams_mel_ir_stream_config_v1 config = configuration();
     CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
-    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_start_allocation_failure(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("buffer-factory-bad-alloc", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_INTERNAL_ERROR);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
     return EXIT_SUCCESS;
 }
 
@@ -233,6 +261,113 @@ static int test_concurrent_receive_stop(void)
     return EXIT_SUCCESS;
 }
 
+static int test_cleanup_failure(const char *scenario)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_release_failure(const char *scenario)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 frame;
+    memset(&frame, 0, sizeof frame);
+    CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) ==
+          AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_blocked_receive_provider_failure(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct receiver_arguments args;
+    struct timespec delay = {0, 2000000};
+    thrd_t receiver;
+    CHECK(open_stream("release-fail-blocked", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    args.stream = stream; args.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(thrd_create(&receiver, blocked_receiver, &args) == thrd_success);
+    (void)nanosleep(&delay, NULL);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(thrd_join(receiver, NULL) == thrd_success);
+    CHECK(args.status == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_nonquiescing_disable(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    char path[] = "/tmp/ams-mel-lifetime-XXXXXX";
+    char log[8192];
+    int descriptor = mkstemp(path);
+    FILE *file;
+    size_t count;
+    char *disable_event;
+    char *callback_returned;
+    char *channel_destroyed;
+    char *buffer_destroyed;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(open_stream("nonquiescing-disable", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(log, 1, sizeof log - 1U, file);
+    log[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(unlink(path) == 0);
+    disable_event = strstr(log, "disable_returned_with_callback_active");
+    callback_returned = strstr(log, "callback_returned");
+    channel_destroyed = strstr(log, "channel_destroyed");
+    buffer_destroyed = strstr(log, "buffer_destroyed");
+    CHECK(disable_event && callback_returned && channel_destroyed && buffer_destroyed);
+    CHECK(disable_event < callback_returned);
+    CHECK(callback_returned < channel_destroyed);
+    CHECK(channel_destroyed < buffer_destroyed);
+    CHECK(strstr(log, "buffer_released") != NULL);
+    CHECK(strstr(log, "library_unloaded") != NULL);
+    CHECK(buffer_destroyed < strstr(log, "library_unloaded"));
+    return EXIT_SUCCESS;
+}
+
+static int test_capability_failure(const char *scenario,
+                                   ams_mel_status_t expected)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(ams_mel_session_open(AMS_MEL_TEST_MOCK_PROVIDER, scenario, "",
+          &session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_open(session, &config, &stream, NULL, 0, NULL) == expected);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
 static int test_arguments(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
@@ -247,6 +382,14 @@ static int test_arguments(void)
     config = configuration(); config.channel_id.descriptive_label = view("bad\0ignored");
     config.channel_id.descriptive_label.size = 11;
     CHECK(ams_mel_ir_stream_open(session, &config, &stream, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    if (SIZE_MAX > INT64_MAX) {
+        config = configuration(); config.buffer_size = (size_t)INT64_MAX + 1U;
+        CHECK(ams_mel_ir_stream_open(session, &config, &stream, NULL, 0, NULL) ==
+              AMS_MEL_INVALID_ARGUMENT);
+        config = configuration(); config.buffer_count = (size_t)INT64_MAX + 2U;
+        CHECK(ams_mel_ir_stream_open(session, &config, &stream, NULL, 0, NULL) ==
+              AMS_MEL_INVALID_ARGUMENT);
+    }
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
     return EXIT_SUCCESS;
 }
@@ -263,12 +406,22 @@ int main(void)
     for (size_t i = 0; i < sizeof malformed / sizeof malformed[0]; ++i)
         CHECK(test_malformed(malformed[i]) == EXIT_SUCCESS);
     CHECK(test_start_failure("buffer-factory-null") == EXIT_SUCCESS);
+    CHECK(test_start_allocation_failure() == EXIT_SUCCESS);
     CHECK(test_start_failure("register-fail") == EXIT_SUCCESS);
     CHECK(test_start_failure("enable-fail") == EXIT_SUCCESS);
     CHECK(test_attach_failure("attach-null", AMS_MEL_FACTORY_FAILED) == EXIT_SUCCESS);
     CHECK(test_attach_failure("attach-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
+    CHECK(test_capability_failure("capability-format", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
+    CHECK(test_capability_failure("capability-depth", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
+    CHECK(test_capability_failure("capability-bands", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
+    CHECK(test_capability_failure("capability-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_shutdown_callback() == EXIT_SUCCESS);
+    CHECK(test_nonquiescing_disable() == EXIT_SUCCESS);
     CHECK(test_concurrent_receive_stop() == EXIT_SUCCESS);
+    CHECK(test_cleanup_failure("disable-fail") == EXIT_SUCCESS);
+    CHECK(test_cleanup_failure("detach-fail") == EXIT_SUCCESS);
+    CHECK(test_blocked_receive_provider_failure() == EXIT_SUCCESS);
+    CHECK(test_release_failure("release-throw") == EXIT_SUCCESS);
     for (unsigned i = 0; i < 10; ++i) CHECK(test_idle() == EXIT_SUCCESS);
     puts("PASS: C IR Mono8 stream receive/queue/lifetime contract");
     return EXIT_SUCCESS;

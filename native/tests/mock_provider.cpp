@@ -5,10 +5,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -21,6 +25,14 @@ using namespace ams::iface;
 using irmel::Return;
 std::atomic<std::uint64_t> callback_buffers{};
 std::atomic<std::uint64_t> buffer_releases{};
+
+struct CallbackBarrier {
+    std::mutex mutex;
+    std::condition_variable ready;
+    bool callback_inside{false};
+    bool disable_called{false};
+};
+std::shared_ptr<CallbackBarrier> callback_barrier = std::make_shared<CallbackBarrier>();
 
 void record(const char *event)
 {
@@ -47,7 +59,8 @@ public:
 
 class MockBuffer final : public irmel::Buffer {
 public:
-    explicit MockBuffer(std::string scenario) : scenario_{std::move(scenario)} {}
+    MockBuffer(std::string scenario, std::shared_ptr<CallbackBarrier> barrier)
+        : scenario_{std::move(scenario)}, barrier_{std::move(barrier)} {}
     ~MockBuffer() override
     {
         if (outstanding_) std::abort();
@@ -63,10 +76,22 @@ public:
     void *getImageAddress() const override
     {
         if (scenario_ == "null-image") return nullptr;
-        auto *bytes = static_cast<unsigned char *>(address_);
+        if (scenario_ == "nonquiescing-disable" ||
+            scenario_ == "release-fail-blocked") {
+            std::unique_lock lock{barrier_->mutex};
+            barrier_->callback_inside = true;
+            barrier_->ready.notify_all();
+            barrier_->ready.wait(lock, [this] { return barrier_->disable_called; });
+            if (scenario_ == "release-fail-blocked") return nullptr;
+        }
+        const auto numeric = reinterpret_cast<std::uintptr_t>(address_);
         if (scenario_ == "image-before")
-            return reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(address_) - 1U);
-        if (scenario_ == "image-after") return bytes + size_ + 1U;
+            return reinterpret_cast<void *>(numeric - 1U);
+        if (scenario_ == "image-after") {
+            if (size_ >= std::numeric_limits<std::uintptr_t>::max() - numeric)
+                return reinterpret_cast<void *>(numeric - 1U);
+            return reinterpret_cast<void *>(numeric + size_ + 1U);
+        }
         return address_;
     }
     std::int64_t getSize() const override { return static_cast<std::int64_t>(size_); }
@@ -75,7 +100,12 @@ public:
     {
         if (!outstanding_.exchange(false)) std::abort();
         ++buffer_releases;
-        record("buffer_released"); return Return::Success;
+        record("buffer_released");
+        if (scenario_ == "release-fail" || scenario_ == "release-fail-blocked")
+            return Return::Fail;
+        if (scenario_ == "release-throw")
+            throw std::runtime_error("mock release exception");
+        return Return::Success;
     }
     Return getFlags(std::vector<irmel::BufferFlag>& out) const override
     { out = flags_; return Return::Success; }
@@ -89,6 +119,7 @@ public:
     }
 private:
     std::string scenario_;
+    std::shared_ptr<CallbackBarrier> barrier_;
     void *address_{};
     std::size_t size_{};
     std::int64_t context_{};
@@ -103,10 +134,19 @@ private:
 class MockImageChannel final : public irmel::ImageChannel {
 public:
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
-        : scenario_{std::move(scenario)}, listener_{std::move(listener)} {}
+        : scenario_{std::move(scenario)}, listener_{std::move(listener)},
+          barrier_{callback_barrier} {}
     ~MockImageChannel() override
     {
-        if (producer_.joinable() || !buffers_.empty()) std::abort();
+        stopping_ = true;
+        {
+            std::lock_guard lock{barrier_->mutex};
+            barrier_->disable_called = true;
+            barrier_->ready.notify_all();
+        }
+        if (producer_.joinable()) producer_.join();
+        record("callbacks_quiesced_by_channel_destruction");
+        buffers_.clear();
         record("channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -133,15 +173,41 @@ public:
         if (scenario_ == "enable-fail") return Return::Fail;
         stopping_ = false;
         producer_ = std::thread([this] { produce(); });
+        if (scenario_ == "nonquiescing-disable" ||
+            scenario_ == "release-fail-blocked") {
+            std::unique_lock lock{barrier_->mutex};
+            barrier_->ready.wait(lock, [this] { return barrier_->callback_inside; });
+        }
         return Return::Success;
     }
     Return disable() override
     {
         if (!producer_.joinable()) return Return::Success;
-        record("channel_disabled"); stopping_ = true; producer_.join();
+        record("channel_disabled"); stopping_ = true;
+        if (scenario_ == "nonquiescing-disable" ||
+            scenario_ == "release-fail-blocked") {
+            std::unique_lock lock{barrier_->mutex};
+            barrier_->ready.wait(lock, [this] { return barrier_->callback_inside; });
+            barrier_->disable_called = true;
+            barrier_->ready.notify_all();
+            record("disable_returned_with_callback_active");
+            return Return::Success;
+        }
+        if (scenario_ == "disable-fail") return Return::Fail;
+        producer_.join();
         record("callbacks_quiesced"); return Return::Success;
     }
-    irmel::ChannelCapability getCapabilities() const override { return {}; }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        if (scenario_ == "capability-throw")
+            throw std::runtime_error("mock capability exception");
+        irmel::ChannelCapability capability;
+        capability.setFormat(scenario_ == "capability-format" ?
+                             irmel::PixelFormat::RGB : irmel::PixelFormat::Mono);
+        capability.setBitDepth(scenario_ == "capability-depth" ? 16U : 8U);
+        capability.setNumberOfBands(scenario_ == "capability-bands" ? 2U : 1U);
+        return capability;
+    }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
     { return Return::NotSupported; }
     UNSUPPORTED_CALLBACK(irmel::BadPixelList)
@@ -156,7 +222,6 @@ public:
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectMessage)
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectPreProcMessage)
     UNSUPPORTED_CALLBACK(irmel::NUC_TempData)
-    bool ready_to_detach() const { return !producer_.joinable() && buffers_.empty(); }
 private:
     void produce()
     {
@@ -172,6 +237,7 @@ private:
             std::uint32_t width = 4U, height = 3U, bpp = 8U, bands = 1U;
             auto format = irmel::PixelFormat::Mono;
             if (scenario_ == "invalid-dimensions") width = 0U;
+            if (scenario_ == "release-throw") width = 0U;
             if (scenario_ == "overflow-dimensions") { width = UINT32_MAX; height = UINT32_MAX; }
             if (scenario_ == "unsupported-bpp") bpp = 16U;
             if (scenario_ == "unsupported-bands") bands = 2U;
@@ -202,6 +268,7 @@ private:
     std::vector<std::shared_ptr<irmel::Buffer>> buffers_;
     std::atomic<bool> stopping_{false};
     std::thread producer_;
+    std::shared_ptr<CallbackBarrier> barrier_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -255,17 +322,28 @@ public:
                 location.getLocationId().getSystemName() != "mock-aircraft")
                 throw std::runtime_error("mock configuration conversion mismatch");
         }
+        {
+            std::lock_guard lock{callback_barrier->mutex};
+            callback_barrier->callback_inside = false;
+            callback_barrier->disable_called = false;
+        }
         return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
     }
     Return detachChannel(std::shared_ptr<irmel::Channel> channel) override
     {
         auto image = std::dynamic_pointer_cast<MockImageChannel>(channel);
-        if (!image || !image->ready_to_detach()) std::abort();
+        if (!image) std::abort();
+        if (instance_ == "detach-fail" && !detach_failed_) {
+            detach_failed_ = true;
+            record("channel_detach_failed");
+            return Return::Fail;
+        }
         record("channel_detached"); return Return::Success;
     }
 private:
     std::string instance_;
     bool initialized_{};
+    bool detach_failed_{};
     std::vector<irmel::ChannelCapability> capabilities_;
 };
 struct UnloadRecorder { ~UnloadRecorder() { record("library_unloaded"); } } unload_recorder;
@@ -298,5 +376,6 @@ std::shared_ptr<ams::iface::irmel::Buffer> getBuffer(
 {
     record("buffer_factory_called");
     if (instance == "buffer-factory-null") return {};
-    return std::make_shared<MockBuffer>(std::string{instance});
+    if (instance == "buffer-factory-bad-alloc") throw std::bad_alloc{};
+    return std::make_shared<MockBuffer>(std::string{instance}, callback_barrier);
 }

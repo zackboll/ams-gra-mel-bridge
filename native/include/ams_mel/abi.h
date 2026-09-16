@@ -203,6 +203,7 @@ AMS_MEL_API ams_mel_status_t ams_mel_session_close(
  * lifetime independently of the parent session. The session and stream calls
  * must be externally serialized during open/close. out_stream must be NULL.
  * Provider callbacks are internally synchronized with receive and counters.
+ * At most one thread may execute receive for a given stream at a time.
  * Start/stop/close on the same stream must otherwise be externally serialized;
  * stop may run while one receive waits and will wake it as STREAM_STOPPED.
  */
@@ -215,7 +216,8 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_open(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Calls getBuffer/init/registerBuffer for every configured host buffer, then
- * enables the channel. Partial failure is rolled back before returning.
+ * enables the channel. Partial failure poisons and safely tears down the stream;
+ * Start cannot retry a failed provider path.
  */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_start(
     ams_mel_ir_stream *stream,
@@ -226,7 +228,9 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_start(
 /* Waits at most timeout_ms for a copied frame. A zero timeout polls. Timeout is
  * not cancellation. pixels is caller-owned. BUFFER_TOO_SMALL writes only
  * pixel_required and leaves the queued frame available; no partial frame is
- * returned. One successful call removes one frame from the queue.
+ * returned. One successful call removes one frame from the queue. At most one
+ * receive operation may consume a stream at a time. Frames already queued are
+ * drained before STREAM_STOPPED or PROVIDER_FAILED is returned.
  * The copied output remains valid in caller storage until the caller changes it.
  */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_receive(
@@ -244,10 +248,12 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_counters(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
-/* Disables, unregisters all buffers, and detaches. Calls are idempotent after a
- * successful stop. The pinned interface does not state that disable quiesces
- * callbacks; compatible providers must ensure no callback uses listener/buffer
- * state after detach. The test provider joins its producer during disable.
+/* Stops acceptance, calls disable, detaches, destroys the provider channel,
+ * waits for adapter callbacks already in flight, then destroys buffers/storage.
+ * Calls are idempotent after a successful stop. disable is not treated as a
+ * callback-quiescence boundary. Provider cleanup failure poisons the stream and
+ * is reported as PROVIDER_FAILED; callback-accessible resources are retained
+ * when a safe channel-destruction boundary cannot be established.
  */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_stop(
     ams_mel_ir_stream *stream,
@@ -255,8 +261,10 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_stop(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
-/* Stops if necessary, clears the unique owner, and releases retained provider
- * state. Closing an already-cleared owner succeeds.
+/* Stops if necessary and releases retained provider state. The unique owner is
+ * cleared after safe teardown even when teardown reports PROVIDER_FAILED.
+ * If safe teardown cannot be established, the owner remains for a later retry.
+ * Closing an already-cleared owner succeeds.
  */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_close(
     ams_mel_ir_stream **stream,

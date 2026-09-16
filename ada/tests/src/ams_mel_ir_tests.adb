@@ -108,11 +108,40 @@ package body AMS_MEL_IR_Tests is
       end;
       AMS.MEL.Close (Parent);
    end Test_Finalization;
+
+   procedure Test_Provider_Failure (Provider_Path : String) is
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "release-throw");
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+   begin
+      AMS.MEL.IR.Start (Stream);
+      begin
+         declare
+            Unexpected : constant AMS.MEL.IR.Frame := AMS.MEL.IR.Receive (Stream, 1_000);
+         begin
+            raise Program_Error with
+              "failed provider returned frame" & Unexpected.Pixel_Count'Image;
+         end;
+      exception
+         when AMS.MEL.Provider_Error => null;
+      end;
+      begin
+         AMS.MEL.IR.Close (Stream);
+         raise Program_Error with "cleanup failure was reported as success";
+      exception
+         when AMS.MEL.Provider_Error => null;
+      end;
+      if AMS.MEL.IR.Is_Open (Stream) then
+         raise Program_Error with "safe failed cleanup did not clear stream owner";
+      end if;
+      AMS.MEL.Close (Parent);
+   end Test_Provider_Failure;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Success (Provider_Path);
       Test_Timeout_And_Stop (Provider_Path);
       Test_Finalization (Provider_Path);
+      Test_Provider_Failure (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR Mono8 receive/timeout/lifetime contract");
    end Run;
 end AMS_MEL_IR_Tests;

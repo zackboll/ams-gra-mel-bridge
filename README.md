@@ -123,6 +123,9 @@ output storage; Ada callers receive owned arrays. Queue capacity is configured
 at stream creation, and incoming frames are dropped when full. Provider callback
 threads never call application code. See `docs/c-abi-policy.md` for ownership,
 metadata, timeout, teardown, and callback-quiescence limitations.
+At most one thread or Ada task may consume a given stream at a time. Frames
+already queued are drained after Stop or provider failure before the terminal
+status is returned.
 
 ## Scope and compatibility
 
