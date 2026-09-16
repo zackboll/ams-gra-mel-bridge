@@ -1,0 +1,542 @@
+#include <ams_mel/abi.h>
+#include "internal.hpp"
+
+#include <irmel/library/c2/C2Channel.h>
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <cstring>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace {
+using namespace ams::iface;
+
+bool valid_utf8(std::string_view value) noexcept
+{
+    std::size_t index = 0;
+    while (index < value.size()) {
+        const auto lead = static_cast<unsigned char>(value[index]);
+        if (lead == 0U) return false;
+        if (lead <= 0x7fU) { ++index; continue; }
+        std::size_t trailing{};
+        std::uint32_t point{};
+        if (lead >= 0xc2U && lead <= 0xdfU) { trailing = 1U; point = lead & 0x1fU; }
+        else if (lead >= 0xe0U && lead <= 0xefU) { trailing = 2U; point = lead & 0x0fU; }
+        else if (lead >= 0xf0U && lead <= 0xf4U) { trailing = 3U; point = lead & 0x07U; }
+        else return false;
+        if (index + trailing >= value.size()) return false;
+        for (std::size_t offset = 1; offset <= trailing; ++offset) {
+            const auto byte = static_cast<unsigned char>(value[index + offset]);
+            if ((byte & 0xc0U) != 0x80U) return false;
+            point = (point << 6U) | (byte & 0x3fU);
+        }
+        if ((trailing == 2U && point < 0x800U) ||
+            (trailing == 3U && point < 0x10000U) || point > 0x10ffffU ||
+            (point >= 0xd800U && point <= 0xdfffU)) return false;
+        index += trailing + 1U;
+    }
+    return true;
+}
+
+void diagnostic(std::string_view text, char *out, std::size_t capacity,
+                std::size_t *required) noexcept
+{
+    if (required) *required = text.size() + 1U;
+    if (out && capacity) {
+        std::size_t copied = std::min(text.size(), capacity - 1U);
+        while (copied && !valid_utf8(text.substr(0U, copied))) --copied;
+        std::memcpy(out, text.data(), copied);
+        out[copied] = '\0';
+    }
+}
+
+bool valid_view(const ams_mel_string_view_v1& value) noexcept
+{
+    return value.data ? valid_utf8({value.data, value.size}) : value.size == 0U;
+}
+
+std::string copy_view(const ams_mel_string_view_v1& value)
+{ return value.size ? std::string{value.data, value.size} : std::string{}; }
+
+mel::UCI_ID convert_id(const ams_mel_uci_id_v1& value)
+{
+    std::array<std::uint8_t, mel::UUID_SIZE> uuid{};
+    std::copy(std::begin(value.uuid), std::end(value.uuid), uuid.begin());
+    return {uuid, copy_view(value.descriptive_label)};
+}
+
+bool has_c2(const irmel::ChannelCapability& capability)
+{
+    const auto& types = capability.getChannelTypes();
+    return std::find(types.begin(), types.end(), irmel::ChannelType::CommandAndControl) !=
+           types.end();
+}
+
+ams_mel_error_code_t map_error(mel::ErrorCode code, bool& known) noexcept
+{
+    known = true;
+    switch (code) {
+    case mel::ErrorCode::None: return AMS_MEL_ERROR_NONE;
+    case mel::ErrorCode::InvalidId: return AMS_MEL_ERROR_INVALID_ID;
+    case mel::ErrorCode::InvalidState: return AMS_MEL_ERROR_INVALID_STATE;
+    case mel::ErrorCode::InvalidParameters: return AMS_MEL_ERROR_INVALID_PARAMETERS;
+    case mel::ErrorCode::InsufficientPermissions: return AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS;
+    case mel::ErrorCode::InsufficientResources: return AMS_MEL_ERROR_INSUFFICIENT_RESOURCES;
+    case mel::ErrorCode::InsufficientLocalResources: return AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES;
+    case mel::ErrorCode::InsufficientRemoteResources: return AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES;
+    case mel::ErrorCode::Unsupported: return AMS_MEL_ERROR_UNSUPPORTED;
+    }
+    known = false;
+    return AMS_MEL_ERROR_NONE;
+}
+
+bool map_mode(irmel::MFA_Mode mode, ams_mel_ir_mfa_mode_t& value) noexcept
+{
+    switch (mode) {
+    case irmel::MFA_Mode::Unused: value = AMS_MEL_IR_MFA_MODE_UNUSED; return true;
+    case irmel::MFA_Mode::TaskSched: value = AMS_MEL_IR_MFA_MODE_TASK_SCHED; return true;
+    case irmel::MFA_Mode::ScanVolumeSched: value = AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED; return true;
+    case irmel::MFA_Mode::ScanBarSched: value = AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED; return true;
+    }
+    return false;
+}
+
+enum class C2Lifecycle { Attached, Enabled, Failed, Closed };
+
+struct ChannelState {
+    std::mutex mutex;
+    std::shared_ptr<SessionState> session;
+    std::shared_ptr<irmel::Channel> channel;
+    std::shared_ptr<irmel::C2Channel> c2;
+    C2Lifecycle lifecycle{C2Lifecycle::Attached};
+    bool enabled{};
+    bool enable_attempted{};
+    std::size_t requests{};
+    bool cleanup_started{};
+};
+
+/* A failed deferred detach cannot safely destroy its graph. Keep it for process
+ * lifetime rather than unload provider code that may still own the channel. */
+void retain_failed(std::shared_ptr<ChannelState> state) noexcept
+{
+    try {
+        static auto *mutex = new std::mutex;
+        static auto *states = new std::vector<std::shared_ptr<ChannelState>>;
+        std::lock_guard lock{*mutex};
+        states->push_back(std::move(state));
+    } catch (...) {
+        (void)new std::shared_ptr<ChannelState>(std::move(state));
+    }
+}
+
+bool cleanup(const std::shared_ptr<ChannelState>& state,
+             bool retain_if_orphaned) noexcept
+{
+    std::shared_ptr<irmel::Channel> channel;
+    bool disable = false;
+    {
+        std::lock_guard lock{state->mutex};
+        if (state->cleanup_started || state->requests != 0U) return true;
+        state->cleanup_started = true;
+        channel = state->channel;
+        disable = state->enable_attempted;
+    }
+    bool ok = true;
+    if (channel && disable) {
+        try { if (channel->disable() != irmel::Return::Success) ok = false; }
+        catch (...) { ok = false; }
+    }
+    bool detached = !channel;
+    if (channel) {
+        try {
+            detached = state->session->control->detachChannel(channel) ==
+                       irmel::Return::Success;
+        } catch (...) { detached = false; }
+    }
+    if (!detached) {
+        {
+            std::lock_guard lock{state->mutex};
+            state->cleanup_started = false;
+        }
+        if (retain_if_orphaned) retain_failed(state);
+        return false;
+    }
+    {
+        std::lock_guard lock{state->mutex};
+        state->c2.reset();
+        state->channel.reset();
+        state->enabled = false;
+        state->enable_attempted = false;
+        state->lifecycle = C2Lifecycle::Closed;
+    }
+    return ok;
+}
+
+enum class CompletionKind { Pending, Success, Rejected, ProviderException, ProviderFailure, InternalError };
+
+struct Completion {
+    std::mutex mutex;
+    std::condition_variable ready;
+    CompletionKind kind{CompletionKind::Pending};
+    ams_mel_ir_mode_result_v1 result{};
+    std::string message;
+    std::shared_ptr<ChannelState> channel;
+};
+
+struct WorkerInput {
+    std::shared_ptr<Completion> completion;
+    mel::RequestFor<irmel::MFA_Mode> future;
+};
+
+void retain_worker(std::shared_ptr<WorkerInput> input) noexcept
+{
+    try {
+        static auto *mutex = new std::mutex;
+        static auto *workers = new std::vector<std::shared_ptr<WorkerInput>>;
+        std::lock_guard lock{*mutex};
+        workers->push_back(std::move(input));
+    } catch (...) {
+        (void)new std::shared_ptr<WorkerInput>(std::move(input));
+    }
+}
+
+bool finish_channel(const std::shared_ptr<ChannelState>& channel) noexcept
+{
+    bool close = false;
+    {
+        std::lock_guard lock{channel->mutex};
+        if (channel->requests) --channel->requests;
+        close = channel->requests == 0U && channel->lifecycle == C2Lifecycle::Closed;
+    }
+    return !close || cleanup(channel, true);
+}
+
+void complete(const std::shared_ptr<Completion>& state,
+              mel::RequestFor<irmel::MFA_Mode> future) noexcept
+{
+    CompletionKind kind = CompletionKind::ProviderException;
+    ams_mel_ir_mode_result_v1 result{};
+    std::string message;
+    try {
+        auto outcome = future.get();
+        if (outcome) {
+            const auto& value = outcome.get();
+            if (!value) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned null successful mode result";
+            } else if (!map_mode(*value, result.mode)) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown MFA mode";
+            } else {
+                kind = CompletionKind::Success;
+            }
+        } else {
+            const mel::Error& error = outcome.getError();
+            bool known = false;
+            result.error_code = map_error(error.getCode(), known);
+            if (!known) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown MEL error code";
+            } else {
+                kind = CompletionKind::Rejected;
+                const std::string& description = error.getDescription();
+                message = valid_utf8(description) ? description :
+                          "provider rejection description was invalid UTF-8 or contained NUL";
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        kind = CompletionKind::InternalError;
+        message.clear();
+    } catch (const std::exception& error) {
+        kind = CompletionKind::ProviderException;
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
+        catch (...) { message.clear(); }
+    } catch (...) {
+        kind = CompletionKind::ProviderException;
+        try { message = "unknown provider future exception"; } catch (...) {}
+    }
+    auto channel = state->channel;
+    const bool cleanup_ok = finish_channel(channel);
+    if (!cleanup_ok) {
+        kind = CompletionKind::ProviderFailure;
+        try { message = "deferred C2 cleanup failed"; }
+        catch (...) { message.clear(); }
+    }
+    {
+        std::lock_guard lock{state->mutex};
+        state->kind = kind;
+        state->result = result;
+        state->message = std::move(message);
+        state->channel.reset();
+    }
+    channel.reset();
+    state->ready.notify_all();
+}
+} // namespace
+
+struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
+struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_open(
+    const ams_mel_session *session, const ams_mel_ir_c2_config_v1 *config,
+    ams_mel_ir_c2 **out_c2, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!session || !session->state || !config || !out_c2 || *out_c2 ||
+        (!out && capacity) ||
+        config->channel_type != AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL ||
+        !valid_view(config->channel_id.descriptive_label) ||
+        !valid_view(config->platform_id.descriptive_label) ||
+        !valid_view(config->sensor_location.key) ||
+        !valid_view(config->sensor_location.system_name)) {
+        diagnostic("invalid C2 configuration", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    std::shared_ptr<ChannelState> state;
+    try {
+        bool advertised = false;
+        for (const auto& capability : session->state->control->getCapabilities())
+            if (has_c2(capability)) { advertised = true; break; }
+        if (!advertised) {
+            diagnostic("provider does not advertise CommandAndControl", out, capacity, required);
+            return AMS_MEL_INITIALIZATION_FAILED;
+        }
+        state = std::make_shared<ChannelState>();
+        state->session = session->state;
+        mel::ForeignKey key{copy_view(config->sensor_location.key),
+                            copy_view(config->sensor_location.system_name)};
+        mel::ComponentLocation location{config->sensor_location.offset_x_m,
+            config->sensor_location.offset_y_m, config->sensor_location.offset_z_m,
+            key};
+        irmel::Config upstream{convert_id(config->channel_id),
+            irmel::ChannelType::CommandAndControl, convert_id(config->platform_id),
+            std::move(location), {}, false, false};
+        state->channel = state->session->control->attachChannel(upstream);
+        if (!state->channel) {
+            diagnostic("attachChannel returned null", out, capacity, required);
+            return AMS_MEL_FACTORY_FAILED;
+        }
+        state->c2 = std::dynamic_pointer_cast<irmel::C2Channel>(state->channel);
+        bool compatible = state->c2 && has_c2(state->channel->getCapabilities());
+        if (!compatible) {
+            bool detached = false;
+            try { detached = state->session->control->detachChannel(state->channel) == irmel::Return::Success; }
+            catch (...) {}
+            if (!detached) retain_failed(state);
+            diagnostic(detached ? "attached channel is not compatible C2" :
+                       "incompatible C2 channel and detach failed", out, capacity, required);
+            return detached ? AMS_MEL_INITIALIZATION_FAILED : AMS_MEL_PROVIDER_FAILED;
+        }
+        auto owner = std::make_unique<ams_mel_ir_c2>();
+        owner->state = std::move(state);
+        *out_c2 = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        if (state && state->channel) {
+            bool detached = false;
+            try { detached = state->session->control->detachChannel(state->channel) == irmel::Return::Success; }
+            catch (...) {}
+            if (!detached) retain_failed(state);
+        }
+        diagnostic("allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        if (state && state->channel) {
+            bool detached = false;
+            try { detached = state->session->control->detachChannel(state->channel) == irmel::Return::Success; }
+            catch (...) {}
+            if (!detached) {
+                retain_failed(state);
+                diagnostic("C2 open exception and detach failed", out, capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
+        }
+        diagnostic("provider exception during C2 open", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_enable(
+    ams_mel_ir_c2 *c2, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::lock_guard lock{c2->state->mutex};
+        if (c2->state->lifecycle == C2Lifecycle::Enabled) return AMS_MEL_OK;
+        if (c2->state->lifecycle != C2Lifecycle::Attached) {
+            diagnostic("C2 channel is not attachable", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        c2->state->enable_attempted = true;
+        if (c2->state->channel->enable() != irmel::Return::Success) {
+            c2->state->lifecycle = C2Lifecycle::Failed;
+            diagnostic("C2 enable failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        c2->state->lifecycle = C2Lifecycle::Enabled;
+        c2->state->enabled = true;
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        diagnostic("allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        c2->state->lifecycle = C2Lifecycle::Failed;
+        diagnostic("provider exception during C2 enable", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_operate(
+    ams_mel_ir_c2 *c2, std::uint32_t command_id,
+    ams_mel_ir_mode_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{c2->state->mutex};
+        if (c2->state->lifecycle != C2Lifecycle::Enabled) {
+            diagnostic("C2 channel is not enabled", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        irmel::ModeCmd command;
+        command.setCommandID(command_id);
+        command.setState(mel::MFA_State::Operate);
+        command.setMode(irmel::MFA_Mode::TaskSched);
+        auto future = c2->state->c2->send(std::move(command));
+        auto completion = std::make_shared<Completion>();
+        completion->channel = c2->state;
+        auto input = std::make_shared<WorkerInput>(
+            WorkerInput{completion, std::move(future)});
+        auto owner = std::make_unique<ams_mel_ir_mode_request>();
+        owner->state = completion;
+        ++c2->state->requests;
+        try {
+            auto worker = std::make_unique<std::thread>([input]() mutable {
+                complete(input->completion, std::move(input->future));
+            });
+            try {
+                worker->detach();
+            } catch (...) {
+                /* A started but unexpectedly non-detachable thread must not be
+                 * destroyed (which would terminate). Its worker still owns the
+                 * request graph and will account for completion. */
+                (void)worker.release();
+                throw;
+            }
+        } catch (...) {
+            /* Destroying some provider futures can block. Preserve the future
+             * and its provider graph as a safe failure mode. If no worker was
+             * created, the retained in-flight count intentionally prevents
+             * cleanup forever. */
+            retain_worker(std::move(input));
+            throw;
+        }
+        *out_request = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        diagnostic("allocation or worker creation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        diagnostic("unknown provider send exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_mode_request_wait(
+    const ams_mel_ir_mode_request *request, std::uint32_t timeout_ms,
+    ams_mel_ir_mode_result_v1 *result, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || !request->state || !result || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{request->state->mutex};
+        if (request->state->kind == CompletionKind::Pending &&
+            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                [&] { return request->state->kind != CompletionKind::Pending; }))
+            return AMS_MEL_TIMEOUT;
+        *result = request->state->result;
+        diagnostic(request->state->message, out, capacity, required);
+        switch (request->state->kind) {
+        case CompletionKind::Success: return AMS_MEL_OK;
+        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
+        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
+        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
+        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
+        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
+        }
+    } catch (...) {
+        diagnostic("mode request wait failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return AMS_MEL_INTERNAL_ERROR;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_mode_request_close(
+    ams_mel_ir_mode_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
+    catch (...) { diagnostic("request close failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_close(
+    ams_mel_ir_c2 **c2, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    ams_mel_ir_c2 *owner = *c2;
+    if (!owner) return AMS_MEL_OK;
+    try {
+        auto state = owner->state;
+        bool now = false;
+        {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = C2Lifecycle::Closed;
+            now = state->requests == 0U;
+        }
+        bool ok = !now || cleanup(state, false);
+        if (now && state->channel) {
+            diagnostic("C2 detach failed; provider state retained", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        *c2 = nullptr;
+        delete owner;
+        if (!ok) {
+            diagnostic("C2 disable failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        return AMS_MEL_OK;
+    } catch (...) {
+        diagnostic("C2 close failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}

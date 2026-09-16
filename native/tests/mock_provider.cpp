@@ -1,4 +1,5 @@
 #include <irmel/library/image/ImageChannel.h>
+#include <irmel/library/c2/C2Channel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -225,7 +227,8 @@ public:
 private:
     void produce()
     {
-        const unsigned count = scenario_ == "idle" ? 0U :
+        const unsigned count = (scenario_ == "idle" ||
+            (scenario_.rfind("c2-", 0U) == 0U && scenario_ != "c2-coexist")) ? 0U :
             (scenario_ == "overflow" ? 20U : 3U);
         for (unsigned id = 1; id <= count; ++id) {
             if (stopping_ && scenario_ != "shutdown-callback") break;
@@ -272,9 +275,158 @@ private:
 };
 #undef UNSUPPORTED_CALLBACK
 
+#define C2_UNSUPPORTED_CALLBACK(Type) \
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
+    { return Return::NotSupported; }
+
+template<typename T>
+mel::RequestFor<T> unsupported_request()
+{
+    std::promise<mel::ErrorOr<std::shared_ptr<T>>> promise;
+    promise.set_value(mel::ErrorOr<std::shared_ptr<T>>{
+        mel::Error{mel::ErrorCode::Unsupported}});
+    return promise.get_future();
+}
+
+class MockC2Channel final : public irmel::C2Channel {
+public:
+    explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockC2Channel() override
+    {
+        {
+            std::lock_guard lock{mutex_};
+            release_ = true;
+        }
+        ready_.notify_all();
+        if (producer_.joinable()) producer_.join();
+        record("c2_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    { return unsupported_request<Return>(); }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
+    { return unsupported_request<irmel::ChannelCommsTestRep>(); }
+    mel::RequestFor<Return> send(irmel::BIT_Command) override
+    { return unsupported_request<Return>(); }
+    mel::RequestFor<mel::CalibrationConfiguration> send(irmel::CalibrationConfigurationCmd) override
+    { return unsupported_request<mel::CalibrationConfiguration>(); }
+    mel::RequestFor<mel::CalibrationStatus> send(irmel::CalibrationStatusCmd) override
+    { return unsupported_request<mel::CalibrationStatus>(); }
+    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override
+    { return unsupported_request<irmel::CameraCommandResp>(); }
+    mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd) override
+    { return unsupported_request<irmel::CameraProtectCmdResp>(); }
+    mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand) override
+    { return unsupported_request<irmel::EraseCommandType>(); }
+    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
+    { return unsupported_request<irmel::CommandStatus>(); }
+    mel::RequestFor<Return> send(irmel::ConfigSetCommand) override
+    { return unsupported_request<Return>(); }
+    mel::RequestFor<irmel::MFA_Mode> send(irmel::ModeCmd command) override
+    {
+        record("mode_sent");
+        if (!enabled_) throw std::logic_error("mode sent before enable");
+        if (scenario_ == "c2-send-throw") throw std::runtime_error("mock send exception");
+        if (command.getState() != mel::MFA_State::Operate ||
+            command.getMode() != irmel::MFA_Mode::TaskSched ||
+            command.getScanParameters().getScanType().getContinuousScan() != 0U ||
+            command.getScanParameters().getScanType().getReturning() != 0U ||
+            command.getScanParameters().getScanType().getAgileScan() != 0U ||
+            command.getScanParameters().getScanId() != 0U)
+            throw std::runtime_error("unexpected ModeCmd profile");
+        if (scenario_ == "c2-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
+            throw std::runtime_error("command ID conversion mismatch");
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "c2-reject") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, "invalid task schedule"}});
+        } else if (scenario_ == "c2-reject-empty") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                mel::Error{mel::ErrorCode::InvalidParameters}});
+        } else if (scenario_ == "c2-reject-invalid-utf8") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, std::string{"bad\xC3\x28", 5}}});
+        } else if (scenario_ == "c2-null-result") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                std::shared_ptr<irmel::MFA_Mode>{}});
+        } else if (scenario_ == "c2-future-throw") {
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock future exception"}));
+        } else if (scenario_ == "c2-delayed" || scenario_ == "c2-lifetime" ||
+                   scenario_ == "c2-coexist") {
+            if (producer_.joinable()) throw std::logic_error("only one delayed request supported");
+            producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40},
+                                      [this] { return release_; });
+                lock.unlock();
+                record("mode_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                    std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched)});
+            }};
+        } else {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched)});
+        }
+        return future;
+    }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return enable() override
+    {
+        record("c2_enabled");
+        if (scenario_ == "c2-enable-fail") return Return::Fail;
+        enabled_ = true;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        record("c2_disabled");
+        enabled_ = false;
+        {
+            std::lock_guard lock{mutex_};
+            release_ = true;
+        }
+        ready_.notify_all();
+        if (scenario_ == "c2-disable-fail") return Return::Fail;
+        return Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        irmel::ChannelCapability capability;
+        if (scenario_ != "c2-channel-capability-wrong")
+            capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
+        return capability;
+    }
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { return Return::NotSupported; }
+    C2_UNSUPPORTED_CALLBACK(mel::BIT_Configuration)
+    C2_UNSUPPORTED_CALLBACK(irmel::CommandStatus)
+    C2_UNSUPPORTED_CALLBACK(mel::CalibrationConfiguration)
+    C2_UNSUPPORTED_CALLBACK(irmel::CameraProtectCmdResp)
+    C2_UNSUPPORTED_CALLBACK(mel::CalibrationStatus)
+    C2_UNSUPPORTED_CALLBACK(mel::BIT_Status)
+private:
+    std::string scenario_;
+    bool enabled_{};
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    bool release_{};
+    std::thread producer_;
+};
+#undef C2_UNSUPPORTED_CALLBACK
+
 class MockControl final : public irmel::Control {
 public:
-    explicit MockControl(std::string instance) : instance_{std::move(instance)} {}
+    explicit MockControl(std::string instance) : instance_{std::move(instance)}
+    {
+        irmel::ChannelCapability capability;
+        if (instance_ != "c2-control-capability-wrong")
+            capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
+        capabilities_.push_back(std::move(capability));
+    }
     ~MockControl() override
     {
         if (callback_buffers.load() != buffer_releases.load()) std::abort();
@@ -305,7 +457,30 @@ public:
     {
         record("channel_attached");
         if (instance_ == "attach-throw") throw std::runtime_error("mock attach exception");
-        if (instance_ == "attach-null" || config.getChannelType() != irmel::ChannelType::IRSTImage) return {};
+        if (instance_ == "attach-null" || instance_ == "c2-attach-null") return {};
+        if (config.getChannelType() == irmel::ChannelType::CommandAndControl) {
+            if (instance_ == "c2-wrong-type")
+                return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
+            if (instance_ == "c2-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != i ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock C2 ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR C2 channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    config.getImgLstnr())
+                    throw std::runtime_error("mock C2 configuration conversion mismatch");
+            }
+            return std::make_shared<MockC2Channel>(instance_);
+        }
+        if (config.getChannelType() != irmel::ChannelType::IRSTImage) return {};
         if (instance_ == "success") {
             const auto& channel_id = config.getChanID();
             const auto& platform = config.getPlatform();
@@ -331,9 +506,9 @@ public:
     }
     Return detachChannel(std::shared_ptr<irmel::Channel> channel) override
     {
-        auto image = std::dynamic_pointer_cast<MockImageChannel>(channel);
-        if (!image) std::abort();
-        if (instance_ == "detach-fail" && !detach_failed_) {
+        if (!std::dynamic_pointer_cast<MockImageChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockC2Channel>(channel)) std::abort();
+        if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

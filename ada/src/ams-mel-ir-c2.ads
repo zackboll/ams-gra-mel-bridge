@@ -1,0 +1,73 @@
+private with Ada.Finalization;
+private with Ada.Strings.Unbounded;
+private with AMS.MEL_C_API;
+
+package AMS.MEL.IR.C2 is
+   type Control_Config is private;
+   function Create_Config
+     (Channel_ID      : UCI_ID;
+      Platform_ID     : UCI_ID;
+      Sensor_Location : Component_Location) return Control_Config;
+
+   type Control_Channel is limited private;
+   function Open (Parent : Session; Config : Control_Config)
+     return Control_Channel;
+   function Is_Open (Channel : Control_Channel) return Boolean;
+   procedure Enable (Channel : in out Control_Channel);
+
+   type Command_ID is mod 2 ** 32 with Size => 32;
+   type Mode_Request is limited private;
+   function Submit_Operate
+     (Channel : Control_Channel; ID : Command_ID := 0) return Mode_Request;
+   function Is_Open (Request : Mode_Request) return Boolean;
+
+   type Outcome is (Success, Rejected);
+   type MFA_Mode is (Unused, Task_Sched, Scan_Volume_Sched, Scan_Bar_Sched);
+   type Error_Code is
+     (None, Invalid_ID, Invalid_State, Invalid_Parameters,
+      Insufficient_Permissions, Insufficient_Resources,
+      Insufficient_Local_Resources, Insufficient_Remote_Resources,
+      Unsupported);
+   type Mode_Result is private;
+   function Status (Result : Mode_Result) return Outcome;
+   function Mode (Result : Mode_Result) return MFA_Mode
+     with Pre => Status (Result) = Success;
+   function Rejection_Code (Result : Mode_Result) return Error_Code
+     with Pre => Status (Result) = Rejected;
+   function Description (Result : Mode_Result) return String
+     with Pre => Status (Result) = Rejected;
+
+   --  Timeout_Error is inherited from AMS.MEL.IR. Timeout never cancels or
+   --  consumes the request; a later Wait may return its terminal result.
+   function Wait
+     (Request : Mode_Request; Timeout_Milliseconds : Natural) return Mode_Result;
+
+   procedure Close (Request : in out Mode_Request);
+   procedure Close (Channel : in out Control_Channel);
+
+private
+   package US renames Ada.Strings.Unbounded;
+   type Control_Config is record
+      Channel  : UCI_ID;
+      Platform : UCI_ID;
+      Location : Component_Location;
+   end record;
+   type Control_Channel is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.C2_Handle := AMS.MEL_C_API.Null_C2;
+   end record;
+   overriding procedure Finalize (Channel : in out Control_Channel);
+   type Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Mode_Request_Handle :=
+        AMS.MEL_C_API.Null_Mode_Request;
+   end record;
+   overriding procedure Finalize (Request : in out Request_Owner);
+   type Mode_Request is limited record
+      Owner : Request_Owner;
+   end record;
+   type Mode_Result is record
+      Result_Status : Outcome := Success;
+      Result_Mode   : MFA_Mode := Unused;
+      Result_Code   : Error_Code := None;
+      Result_Text   : US.Unbounded_String;
+   end record;
+end AMS.MEL.IR.C2;

@@ -118,3 +118,28 @@ then receive returns `PROVIDER_FAILED` or `STREAM_STOPPED`. Close clears the C
 owner after safe cleanup even when returning `PROVIDER_FAILED`; if detach cannot
 establish safe cleanup, it retains the owner for retry. An open-time detach
 failure retains the internal graph as the only memory-safe fallback.
+
+## Task 003 IR C2 request contract
+
+`ams_mel_ir_c2` is a uniquely owned opaque child retaining SessionState. Open
+accepts a separate versioned C2 configuration, validates all UTF-8 string views,
+requires a published `CommandAndControl` capability, attaches that type with no
+image listener, and dynamic-casts the returned channel to `C2Channel`. Enable is
+explicit; submission before enable fails and never enables implicitly.
+
+`ams_mel_ir_c2_submit_operate` constructs only `MFA_State::Operate` and
+`MFA_Mode::TaskSched`, leaving `ScanParam` defaulted. It returns a unique public
+request without calling `future::get()`. A private completion worker retains the
+future, C2 channel, provider, and library; closing the request is idempotent,
+nonblocking, and is not cancellation. Timeout preserves the pending request.
+Terminal results are cached and repeatable, with exactly one future `get()`.
+
+`AMS_MEL_COMMAND_REJECTED` represents a normal upstream `ErrorOr(Error)` and
+maps every known `ErrorCode` explicitly to fixed-width C values. Its validated
+UTF-8 description is the per-call diagnostic, including exact required bytes;
+invalid text receives a fixed fallback. Provider exceptions, unknown values, and
+null successful shared pointers remain distinct provider failures. C2 close
+defers disable/detach until in-flight requests complete. Synchronous detach
+failure retains the public owner for retry; orphaned deferred failure is retained
+internally. A future that never completes safely retains provider/library state. This slice exposes no arbitrary
+scan, BIT, config, camera, or callback command API.

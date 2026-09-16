@@ -1,6 +1,6 @@
 # Vendored source file checksums
 
-SHA-256 values for the task 001 source closure, followed by task 002 additions:
+ SHA-256 values for the task 001 source closure, followed by task 002 and task 003 additions:
 
 ```text
 f33e21b2d953e471f7f01be20bd218a3b848d1c9bbca6dbd055b12cb1d8eabec  native/vendor/ams-math/include/math/geometry/Quaternion.h
@@ -53,6 +53,26 @@ ca32907410241638bd03549e38650cddfe9d92a2aecaf070eba50ccbd6d041fc  native/vendor/
 141988fea20a9a577cdf73d480e6adf97409714100838d3917f1c5691fffe197  native/vendor/ir-mel/include/irmel/library/irmel-types/SensorNavState.h
 d27f3edaec6c975ecb5d55b12404be34926ad21bc24bf3bfcc852d6c67a49eaf  native/vendor/ir-mel/INTENT.md
 2f1aa718ddb1a34ed1581e3c57dddd1bb516fb7657a9c4076e8ff95b91d9844d  native/vendor/ir-mel/LICENSE
+```
+
+Task 003's compiler-observed `C2Channel.h` closure adds these exact files at the
+same immutable IR MEL revision:
+
+```text
+9c86609cf1dced975b7f4c20b939c6df5276f0a057fdf2a6eb8bf1348d90923d  native/vendor/ir-mel/include/irmel/library/c2/BIT_Command.h
+a16e8f6ed7ff9a48d1ef4a13bf8148374ccc48f94a625d8224fc50085308ffc4  native/vendor/ir-mel/include/irmel/library/c2/C2Channel.h
+2c438d742a6e15cd9b79e9b95f975ecb573603b1fa5477590067b1f89015d2ed  native/vendor/ir-mel/include/irmel/library/c2/CalibrationConfigurationCmd.h
+4a42fc34bef99e964b134db637c6498ab87ca3554851c1267e6bd234829f5645  native/vendor/ir-mel/include/irmel/library/c2/CalibrationStatusCmd.h
+9efa2682ae041a72a8ac6cbd19296c353ddb3e3c50caca2ef21b870f0e37fdf4  native/vendor/ir-mel/include/irmel/library/c2/CameraProtectCmd.h
+f346d04ac026705ca2217a92bc6ba9f241c95b090201d1c446cfea50607b12e5  native/vendor/ir-mel/include/irmel/library/c2/ConfigSetCommand.h
+a2a7b2cffbb77ae6031276c340324affa1ca29fa751e77b410cef8d31ccbfaec  native/vendor/ir-mel/include/irmel/library/c2/EraseCommand.h
+664b261bd2d4a9c4ea537e35cf9727bb7862e0a2a104a7335308fe918f34170d  native/vendor/ir-mel/include/irmel/library/c2/EraseCommandType.h
+987d2d4c1f54931e2e5d0b2be1e96f56b96e8d20d1ca4f861dc5e245943d02a5  native/vendor/ir-mel/include/irmel/library/c2/ModeCmd.h
+de69f59856eddb7545c4cf9dbe0e1f878f592cf4dbc879d401595367490606a8  native/vendor/ir-mel/include/irmel/library/irmel-types/CommandStatus.h
+b201a8133ce63eccced821574fcd93545365d43c60e5553a3f5138b8dfcd2195  native/vendor/ir-mel/include/irmel/library/irmel-types/RequestSystemTrackData.h
+282a0c59bec3d8601ebf4b0db0557a0cffe4c29fd94cf5e1223afa1141633e05  native/vendor/ir-mel/include/irmel/library/irmel-types/ScanParam.h
+fd156acdea2e2498c002d0f8c84eb79767a9feb92ef7ae7c4b779a29819b0376  native/vendor/ir-mel/include/irmel/library/irmel-types/ScanType.h
+2f16f2903154f4541bd4e8715e28450e3073b93bda91ca2e80e7045b905c6ba7  native/vendor/ir-mel/include/irmel/library/irmel-types/SystemTrackDataResponse.h
 ```
 
 Task 002 adds these exact files at the same immutable revisions:

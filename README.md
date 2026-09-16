@@ -4,12 +4,15 @@ An independent, experimental **consumer-side language binding** for the
 Agile Mission Suite Government Reference Architecture (AMS GRA) C++ MFA
 Encapsulation Layer (MEL) interfaces.
 
-**Status: IR image reception foundation.** In addition to the façade ABI query, the C and
+**Status: IR image reception and C2 Operate foundation.** In addition to the façade ABI query, the C and
 Ada APIs can load a compatible IR MEL provider, create/initialize its published
 `Control`, copy complete provider version information, and receive host-memory
 single-band Mono8 frames from an `IRSTImage` channel. The adapter owns provider
 buffers, copies validated frames into a bounded DROP-INCOMING queue, and offers
-poll/wait receive APIs in C and `AMS.MEL.IR`. Tests use a separately loaded C++
+poll/wait receive APIs in C and `AMS.MEL.IR`. The C and `AMS.MEL.IR.C2` APIs can
+also attach/enable CommandAndControl, submit exactly `Operate`/`TaskSched`, and
+wait for the asynchronous MEL result. Timeout is not cancellation; MEL rejection
+is distinct from provider failure. Tests use a separately loaded C++
 mock provider. No real provider, RF, stacked images, tracking, OMS/UCI, OpenCV,
 device memory, zero-copy, or processing operations are implemented. This is not an official C MEL standard,
 a complete Skill, or a claim of GRA compliance.
@@ -40,7 +43,7 @@ shared library rather than recompiling its C++ source.
 make test-native
 ```
 
-This builds `native/build/lib/libams_mel_c.so` and runs C ABI/provider/IR stream
+This builds `native/build/lib/libams_mel_c.so` and runs C ABI/provider/IR stream/C2
 tests plus a C++ header test. Tests do not depend on `assert`, so they remain active in release
 builds. No upstream source or provider is downloaded.
 
@@ -126,6 +129,18 @@ metadata, timeout, teardown, and callback-quiescence limitations.
 At most one thread or Ada task may consume a given stream at a time. Frames
 already queued are drained after Stop or provider failure before the terminal
 status is returned.
+
+## Implemented C2 profile
+
+Task 003 implements only `ModeCmd(State = Operate, Mode = TaskSched)` with the
+default `ScanParam`; it does not expose arbitrary scan modes, BIT/config/camera
+commands, or CommandStatus callbacks. Submission publishes an asynchronous
+request. A finite wait may time out and later succeed. Closing the public request
+does not cancel provider work: internal state retains the C2 channel, provider,
+and loaded library until the future reaches a terminal state. A provider future
+that never completes therefore safely retains those resources. Image and C2
+children can coexist beneath one Session and remain valid after its public owner
+closes.
 
 ## Scope and compatibility
 

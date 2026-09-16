@@ -12,6 +12,9 @@ initialize its `Control`, copy its complete `VersionInfo`, and close it.
 Task 002 adds one vertical receive profile: attach an `IRSTImage` channel,
 register service-owned host buffers, receive `ImageListener::onImage` callbacks,
 copy validated Mono8 frames into a bounded queue, and poll them from C or Ada.
+Task 003 adds one command profile: attach and explicitly enable a
+`CommandAndControl` channel, send `Operate`/`TaskSched`, and preserve the
+asynchronous `RequestFor<MFA_Mode>` result in C and Ada.
 
 ## Separation
 
@@ -49,6 +52,17 @@ storage. Provider/library ownership is released last. Failed detach retains the
 whole callback-accessible graph for a later close attempt rather than risking a
 use-after-free; an open-time detach failure is retained internally because no C
 owner can safely be returned.
+
+A C2 channel likewise retains shared provider state. Each submitted request has
+a shared completion object and a blocking (non-polling) worker that owns the
+provider future and C2 graph until terminal completion. The worker calls
+`future::get()` once and caches success, MEL rejection, provider exception, null
+success, or unknown-value failure. Public request close only removes that owner;
+it neither joins nor cancels. C2 close stops submissions immediately and defers
+disable/detach while requests are in flight. The final worker performs cleanup
+and releases provider/library ownership. A never-completing provider future
+therefore retains the graph indefinitely rather than risking unload of live code.
+Failed detach is retained as the same conservative safe failure mode.
 
 ## First integration profile
 
