@@ -3,7 +3,7 @@
 help:
 	@printf '%s\n' \
 	  'make native       Build the native C ABI shared library' \
-	  'make test-native  Build and run provider-free native tests' \
+	  'make test-native  Build and run native and mock-provider tests' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
 	  'make check        Native + Ada tests and Git whitespace checks'
 

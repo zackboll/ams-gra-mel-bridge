@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the task 001 IR MEL provider load/init/version/close slice in C and Ada.
+- Vendor the exact reviewed Common MEL, IR MEL, and AMS Math declaration closure.
+- Add separately loaded mock/failure providers and native/Ada lifecycle tests.
+
 ## Unreleased — 0.1.0-dev
 
 - Create separate native and Ada development crates.

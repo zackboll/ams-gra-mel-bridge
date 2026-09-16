@@ -272,6 +272,12 @@ For owning containers, complex samples and time types, perform explicit value tr
 
 ### 9.1 Package structure
 
+> **Superseded implementation note (task 000):** the private hierarchy proposed
+> below was not legal for the required parent-body dependency. The validated
+> layout is public `AMS.MEL` plus private sibling `AMS.MEL_C_API`, as recorded in
+> `docs/architecture.md`. The proposal remains here only as historical review
+> material and must not be used to recreate `AMS.MEL.Internal`.
+
 Provisional public package arrangement:
 
 ```text

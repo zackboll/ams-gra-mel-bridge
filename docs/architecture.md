@@ -1,4 +1,4 @@
-# Architecture decisions — bootstrap
+# Architecture decisions
 
 ## Scope
 
@@ -6,8 +6,9 @@ Build a consumer-side binding, not a new official MEL standard and not a
 provider rewrite. Preserve the published C++ provider boundary. The C facade
 will adapt it for C, Ada, and later Rust.
 
-The only implemented operation is currently an independent ABI-version query.
-No upstream headers are compiled and no provider compatibility has been tested.
+The bootstrap implemented an independent ABI-version query. Task 001 adds only
+the first provider boundary: load a compatible IR MEL library, create and
+initialize its `Control`, copy its complete `VersionInfo`, and close it.
 
 ## Separation
 
@@ -29,6 +30,13 @@ submodule expectations to the normal build. Select, review, and record a source
 closure before adding upstream headers. The earlier review inventory is only a
 candidate baseline and belongs under `docs/reference`, not a release lock.
 
+Task 001 freezes the exact source closure in `upstream-provenance.md`. Production
+`ams_mel_c` compiles the private adapter against those declarations and has no
+link dependency on a provider. At runtime it loads the caller-selected library
+locally, resolves the published C-linkage/C++-signature factories, and retains
+the loader owner until `Control` and `API_Manager` destruction completes. Mock
+providers and failure fixtures are test-only targets and are not installed.
+
 ## First integration profile
 
 Start with IR host-memory, single-band Mono8 reception only after provider
@@ -46,6 +54,19 @@ coverage matrix. Test failures must not be hidden by reducing assertions.
 The root package `AMS` is owned by `ams_mel` for now. Do not duplicate it in
 future companion crates. No standalone-library `Interfaces` clause is needed
 in this bootstrap. No SPARK proof is claimed for the provider or FFI boundary.
+
+The validated private-import layout is:
+
+```text
+AMS.MEL                 public package and resource owner
+AMS.MEL_C_API           private sibling containing C representations/imports
+```
+
+`AMS.MEL` may legally depend on this private sibling. The earlier proposed
+`AMS.MEL.Internal` / `AMS.MEL.Internal.C_API` hierarchy caused a private-child
+dependency failure and is not to be recreated. The corresponding proposal in
+`reference/AMS_GRA_MEL_Design_Review.md` is retained as historical material but
+is explicitly superseded by this decision.
 
 ## References
 

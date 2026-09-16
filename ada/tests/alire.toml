@@ -1,6 +1,6 @@
 name = "ams_mel_tests"
 version = "0.1.0-dev"
-description = "Provider-free smoke tests for the AMS MEL Ada bootstrap"
+description = "Ada contract tests for the AMS MEL facade and mock provider"
 licenses = "Apache-2.0"
 project-files = ["ams_mel_tests.gpr"]
 executables = ["ams_mel_smoke"]
@@ -14,6 +14,10 @@ ams_mel = "=0.1.0-dev"
 [[pins]]
 ams_mel = { path = ".." }
 ams_mel_c = { path = "../../native" }
+
+[[actions]]
+type = "pre-build"
+command = ["sh", "../../native/scripts/build-test-providers.sh"]
 
 [[actions]]
 type = "test"
