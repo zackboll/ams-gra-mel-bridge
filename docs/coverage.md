@@ -19,7 +19,7 @@
 | Other C2 commands/callbacks | Not implemented | No scan scheduling, BIT, config, camera, or CommandStatus API |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Full FrameHeader metadata | Partial by design | Omits contributing sensor and inertial/navigation vectors |
-| Real IR provider validation | Source-evidence only | Pinned Squall inspected; no binary/hardware integration performed |
+| Real IR provider validation | Implemented and passed | Pinned Squall simulator: C2 TaskSched plus three 320x200 Mono8 frames in both C and Ada; opt-in and excluded from ordinary CI |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
 | Rust sys/safe bindings | Not implemented | Later; same native ABI |

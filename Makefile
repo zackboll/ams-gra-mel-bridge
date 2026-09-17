@@ -1,11 +1,12 @@
-.PHONY: help native test-native test-ada check
+.PHONY: help native test-native test-ada check test-squall-ir test-squall-ir-c test-squall-ir-ada
 
 help:
 	@printf '%s\n' \
 	  'make native       Build the native C ABI shared library' \
 	  'make test-native  Build and run native and mock-provider tests' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
-	  'make check        Native + Ada tests and Git whitespace checks'
+	  'make check        Native + Ada tests and Git whitespace checks' \
+	  'make test-squall-ir  Opt-in real Squall IR C and Ada integration'
 
 native:
 	@sh native/scripts/build.sh
@@ -18,3 +19,12 @@ test-ada:
 
 check:
 	@sh scripts/check.sh
+
+test-squall-ir:
+	@integration/squall/run.sh all
+
+test-squall-ir-c:
+	@integration/squall/run.sh c
+
+test-squall-ir-ada:
+	@integration/squall/run.sh ada

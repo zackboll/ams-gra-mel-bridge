@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an opt-in real Squall IR MEL integration harness with strict pinned-source
+  validation, hardware-free simulated optical/Couloir orchestration, and public
+  C11/Ada C2-plus-Mono8 smoke clients; ordinary builds and CI remain provider-free.
 - Add IR CommandAndControl attach/enable and asynchronous
   `ModeCmd(Operate, TaskSched)` requests for C and `AMS.MEL.IR.C2`.
 - Distinguish timeout, normal MEL `ErrorOr` rejection, provider exception,
