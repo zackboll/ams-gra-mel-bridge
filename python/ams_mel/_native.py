@@ -19,8 +19,23 @@ AMS_MEL_INTERNAL_ERROR = 8
 AMS_MEL_TIMEOUT = 9
 AMS_MEL_STREAM_STOPPED = 10
 AMS_MEL_PROVIDER_FAILED = 11
+AMS_MEL_COMMAND_REJECTED = 12
 
 AMS_MEL_IR_CHANNEL_IRST_IMAGE = 1
+AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL = 2
+AMS_MEL_IR_MFA_MODE_UNUSED = 0
+AMS_MEL_IR_MFA_MODE_TASK_SCHED = 1
+AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED = 2
+AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED = 3
+AMS_MEL_ERROR_NONE = 0
+AMS_MEL_ERROR_INVALID_ID = 1
+AMS_MEL_ERROR_INVALID_STATE = 2
+AMS_MEL_ERROR_INVALID_PARAMETERS = 3
+AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS = 4
+AMS_MEL_ERROR_INSUFFICIENT_RESOURCES = 5
+AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES = 6
+AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES = 7
+AMS_MEL_ERROR_UNSUPPORTED = 8
 AMS_MEL_IR_PIXEL_MONO = 0
 AMS_MEL_IR_IMAGE_STARING = 0
 AMS_MEL_IR_IMAGE_SCANNING = 1
@@ -89,6 +104,22 @@ class IrStreamConfigV1(ctypes.Structure):
     ]
 
 
+class IrC2ConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("channel_type", ctypes.c_uint32),
+        ("channel_id", UciIdV1),
+        ("platform_id", UciIdV1),
+        ("sensor_location", ComponentLocationV1),
+    ]
+
+
+class IrModeResultV1(ctypes.Structure):
+    _fields_ = [
+        ("mode", ctypes.c_uint32),
+        ("error_code", ctypes.c_uint32),
+    ]
+
+
 class IrFrameV1(ctypes.Structure):
     _fields_ = [
         ("system_time_ns", ctypes.c_int64),
@@ -128,6 +159,8 @@ class IrStreamCountersV1(ctypes.Structure):
 
 SessionHandle = ctypes.c_void_p
 IrStreamHandle = ctypes.c_void_p
+IrC2Handle = ctypes.c_void_p
+IrModeRequestHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -243,6 +276,66 @@ ams_mel_ir_stream_close.argtypes = [
 ]
 ams_mel_ir_stream_close.restype = ctypes.c_int32
 
+ams_mel_ir_c2_open = _LIBRARY.ams_mel_ir_c2_open
+ams_mel_ir_c2_open.argtypes = [
+    SessionHandle,
+    ctypes.POINTER(IrC2ConfigV1),
+    ctypes.POINTER(IrC2Handle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_c2_open.restype = ctypes.c_int32
+
+ams_mel_ir_c2_enable = _LIBRARY.ams_mel_ir_c2_enable
+ams_mel_ir_c2_enable.argtypes = [
+    IrC2Handle,
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_c2_enable.restype = ctypes.c_int32
+
+ams_mel_ir_c2_submit_operate = _LIBRARY.ams_mel_ir_c2_submit_operate
+ams_mel_ir_c2_submit_operate.argtypes = [
+    IrC2Handle,
+    ctypes.c_uint32,
+    ctypes.POINTER(IrModeRequestHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_c2_submit_operate.restype = ctypes.c_int32
+
+ams_mel_ir_mode_request_wait = _LIBRARY.ams_mel_ir_mode_request_wait
+ams_mel_ir_mode_request_wait.argtypes = [
+    IrModeRequestHandle,
+    ctypes.c_uint32,
+    ctypes.POINTER(IrModeResultV1),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_mode_request_wait.restype = ctypes.c_int32
+
+ams_mel_ir_mode_request_close = _LIBRARY.ams_mel_ir_mode_request_close
+ams_mel_ir_mode_request_close.argtypes = [
+    ctypes.POINTER(IrModeRequestHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_mode_request_close.restype = ctypes.c_int32
+
+ams_mel_ir_c2_close = _LIBRARY.ams_mel_ir_c2_close
+ams_mel_ir_c2_close.argtypes = [
+    ctypes.POINTER(IrC2Handle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_c2_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -254,4 +347,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_stream_get_counters",
     "ams_mel_ir_stream_stop",
     "ams_mel_ir_stream_close",
+    "ams_mel_ir_c2_open",
+    "ams_mel_ir_c2_enable",
+    "ams_mel_ir_c2_submit_operate",
+    "ams_mel_ir_mode_request_wait",
+    "ams_mel_ir_mode_request_close",
+    "ams_mel_ir_c2_close",
 )

@@ -10,6 +10,61 @@
 int main(void)
 {
     ams_mel_abi_version_v1 version = {0, 0};
+    ams_mel_status_t (*get_abi_version)(ams_mel_abi_version_v1 *) = ams_mel_get_abi_version;
+    ams_mel_status_t (*session_open)(const char *, const char *, const char *,
+        ams_mel_session **, char *, size_t, size_t *) = ams_mel_session_open;
+    ams_mel_status_t (*session_get_provider_version)(const ams_mel_session *,
+        ams_mel_provider_version_v1 *, char *, size_t, size_t *) =
+        ams_mel_session_get_provider_version;
+    ams_mel_status_t (*session_close)(ams_mel_session **, char *, size_t,
+        size_t *) = ams_mel_session_close;
+    ams_mel_status_t (*stream_open)(const ams_mel_session *,
+        const ams_mel_ir_stream_config_v1 *, ams_mel_ir_stream **, char *,
+        size_t, size_t *) = ams_mel_ir_stream_open;
+    ams_mel_status_t (*stream_start)(ams_mel_ir_stream *, char *, size_t,
+        size_t *) = ams_mel_ir_stream_start;
+    ams_mel_status_t (*stream_receive)(ams_mel_ir_stream *, uint32_t,
+        ams_mel_ir_frame_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_stream_receive;
+    ams_mel_status_t (*stream_get_counters)(const ams_mel_ir_stream *,
+        ams_mel_ir_stream_counters_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_stream_get_counters;
+    ams_mel_status_t (*stream_stop)(ams_mel_ir_stream *, char *, size_t,
+        size_t *) = ams_mel_ir_stream_stop;
+    ams_mel_status_t (*stream_close)(ams_mel_ir_stream **, char *, size_t,
+        size_t *) = ams_mel_ir_stream_close;
+    ams_mel_status_t (*c2_open)(const ams_mel_session *,
+        const ams_mel_ir_c2_config_v1 *, ams_mel_ir_c2 **, char *, size_t,
+        size_t *) = ams_mel_ir_c2_open;
+    ams_mel_status_t (*c2_enable)(ams_mel_ir_c2 *, char *, size_t, size_t *) =
+        ams_mel_ir_c2_enable;
+    ams_mel_status_t (*c2_submit_operate)(ams_mel_ir_c2 *, uint32_t,
+        ams_mel_ir_mode_request **, char *, size_t, size_t *) =
+        ams_mel_ir_c2_submit_operate;
+    ams_mel_status_t (*mode_request_wait)(const ams_mel_ir_mode_request *,
+        uint32_t, ams_mel_ir_mode_result_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_mode_request_wait;
+    ams_mel_status_t (*mode_request_close)(ams_mel_ir_mode_request **, char *,
+        size_t, size_t *) = ams_mel_ir_mode_request_close;
+    ams_mel_status_t (*c2_close)(ams_mel_ir_c2 **, char *, size_t, size_t *) =
+        ams_mel_ir_c2_close;
+
+    (void)get_abi_version;
+    (void)session_open;
+    (void)session_get_provider_version;
+    (void)session_close;
+    (void)stream_open;
+    (void)stream_start;
+    (void)stream_receive;
+    (void)stream_get_counters;
+    (void)stream_stop;
+    (void)stream_close;
+    (void)c2_open;
+    (void)c2_enable;
+    (void)c2_submit_operate;
+    (void)mode_request_wait;
+    (void)mode_request_close;
+    (void)c2_close;
 
     VALUE(AMS_MEL_OK);
     VALUE(AMS_MEL_INVALID_ARGUMENT);
@@ -23,7 +78,22 @@ int main(void)
     VALUE(AMS_MEL_TIMEOUT);
     VALUE(AMS_MEL_STREAM_STOPPED);
     VALUE(AMS_MEL_PROVIDER_FAILED);
+    VALUE(AMS_MEL_COMMAND_REJECTED);
     VALUE(AMS_MEL_IR_CHANNEL_IRST_IMAGE);
+    VALUE(AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL);
+    VALUE(AMS_MEL_IR_MFA_MODE_UNUSED);
+    VALUE(AMS_MEL_IR_MFA_MODE_TASK_SCHED);
+    VALUE(AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED);
+    VALUE(AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED);
+    VALUE(AMS_MEL_ERROR_NONE);
+    VALUE(AMS_MEL_ERROR_INVALID_ID);
+    VALUE(AMS_MEL_ERROR_INVALID_STATE);
+    VALUE(AMS_MEL_ERROR_INVALID_PARAMETERS);
+    VALUE(AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS);
+    VALUE(AMS_MEL_ERROR_INSUFFICIENT_RESOURCES);
+    VALUE(AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES);
+    VALUE(AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES);
+    VALUE(AMS_MEL_ERROR_UNSUPPORTED);
     VALUE(AMS_MEL_IR_PIXEL_MONO);
     VALUE(AMS_MEL_IR_IMAGE_STARING);
     VALUE(AMS_MEL_IR_IMAGE_SCANNING);
@@ -64,6 +134,14 @@ int main(void)
     FIELD(ams_mel_ir_stream_config_v1, buffer_count);
     FIELD(ams_mel_ir_stream_config_v1, buffer_size);
     FIELD(ams_mel_ir_stream_config_v1, queue_capacity);
+    LAYOUT(ams_mel_ir_c2_config_v1);
+    FIELD(ams_mel_ir_c2_config_v1, channel_type);
+    FIELD(ams_mel_ir_c2_config_v1, channel_id);
+    FIELD(ams_mel_ir_c2_config_v1, platform_id);
+    FIELD(ams_mel_ir_c2_config_v1, sensor_location);
+    LAYOUT(ams_mel_ir_mode_result_v1);
+    FIELD(ams_mel_ir_mode_result_v1, mode);
+    FIELD(ams_mel_ir_mode_result_v1, error_code);
     LAYOUT(ams_mel_ir_frame_v1);
     FIELD(ams_mel_ir_frame_v1, system_time_ns);
     FIELD(ams_mel_ir_frame_v1, integration_time_ns);

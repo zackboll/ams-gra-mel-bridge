@@ -15,7 +15,7 @@ class AbiTests(unittest.TestCase):
     def test_reports_exact_facade_version(self) -> None:
         self.assertEqual(abi_version(), AbiVersion(major=0, minor=1))
 
-    def test_private_layer_binds_only_task_011_functions(self) -> None:
+    def test_private_layer_binds_complete_current_python_subset(self) -> None:
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
@@ -29,9 +29,15 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_stream_get_counters",
                 "ams_mel_ir_stream_stop",
                 "ams_mel_ir_stream_close",
+                "ams_mel_ir_c2_open",
+                "ams_mel_ir_c2_enable",
+                "ams_mel_ir_c2_submit_operate",
+                "ams_mel_ir_mode_request_wait",
+                "ams_mel_ir_mode_request_close",
+                "ams_mel_ir_c2_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 10)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 16)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -82,7 +88,22 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_TIMEOUT,
             _native.AMS_MEL_STREAM_STOPPED,
             _native.AMS_MEL_PROVIDER_FAILED,
+            _native.AMS_MEL_COMMAND_REJECTED,
             _native.AMS_MEL_IR_CHANNEL_IRST_IMAGE,
+            _native.AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL,
+            _native.AMS_MEL_IR_MFA_MODE_UNUSED,
+            _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED,
+            _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED,
+            _native.AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED,
+            _native.AMS_MEL_ERROR_NONE,
+            _native.AMS_MEL_ERROR_INVALID_ID,
+            _native.AMS_MEL_ERROR_INVALID_STATE,
+            _native.AMS_MEL_ERROR_INVALID_PARAMETERS,
+            _native.AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS,
+            _native.AMS_MEL_ERROR_INSUFFICIENT_RESOURCES,
+            _native.AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES,
+            _native.AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES,
+            _native.AMS_MEL_ERROR_UNSUPPORTED,
             _native.AMS_MEL_IR_PIXEL_MONO,
             _native.AMS_MEL_IR_IMAGE_STARING,
             _native.AMS_MEL_IR_IMAGE_SCANNING,
@@ -121,6 +142,15 @@ class AbiTests(unittest.TestCase):
                 "channel_type", "channel_id", "platform_id", "sensor_location",
                 "buffer_count", "buffer_size", "queue_capacity",
             )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrC2ConfigV1,
+                "channel_type", "channel_id", "platform_id", "sensor_location",
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrModeResultV1, "mode", "error_code")
         )
         expected.extend(
             self._layout(
