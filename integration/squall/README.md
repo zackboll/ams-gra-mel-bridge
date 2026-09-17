@@ -1,11 +1,13 @@
 # Real Squall IR MEL integration
 
-This opt-in integration validates the public C and Ada façades against the real
-Squall IR MEL provider at commit
+This opt-in integration validates the public C, Ada, and safe Rust façades
+against the real Squall IR MEL provider at commit
 `b1015728f904c799fa0c07489fce48e78f67845f`. It uses Squall's hardware-free
 simulated checkerboard optical MFA (`320x200` Mono8 at 30 FPS), Couloir, and the published MEL
-boundary. The applications do not call Squall gRPC, Couloir, UDP, REST, or any
-private backend API.
+boundary. All three clients use the same provider/runtime invocation. The
+applications do not call Squall gRPC, Couloir, UDP, REST, or any private backend
+API; Rust uses `ams-mel` -> `ams-mel-sys` -> `libams_mel_c` -> the runtime-loaded
+provider.
 
 Provide an existing checkout with this exact source closure:
 
@@ -72,7 +74,7 @@ Running service discovery, status, logs, and network-mode inspection use the
 selected container runtime's Compose labels directly rather than version-specific
 Compose `ps` or `logs` syntax.
 
-For the host-side C/Ada clients, the harness writes a temporary runtime override
+For the host-side C/Ada/Rust clients, the harness writes a temporary runtime override
 and Couloir TOML under ignored `build/squall/tmp/`. The TOML preserves Squall's
 pinned RF/optical Unix-socket routes and binds Couloir directly at
 `127.0.0.1:<control-port>`; it also assigns a free Task-004 metrics port. The
@@ -90,8 +92,10 @@ four host-network ports are
 validated, required to be distinct, checked for existing listeners, and printed
 before startup.
 
-Before runtime startup, both integration clients must pass `file` and `readelf`
-checks as real ELF executables. Internal stub validation can redirect all
+Before runtime startup, each selected integration client must pass `file` and
+`readelf` checks as a real ELF executable with a readable dynamic section. No
+client may directly need Squall or a mock provider, and the Rust executable must
+need `libams_mel_c`. Internal stub validation can redirect all
 Task-004 outputs with `AMS_MEL_SQUALL_BUILD_DIR`; ordinary runs use the ignored
 repository `build/squall/` directory.
 
@@ -106,7 +110,9 @@ SQUALL_SOURCE_DIR=/home/zboll/git/squall \
 
 Optional controls:
 
-- `make test-squall-ir-c` or `make test-squall-ir-ada` selects one client.
+- `make test-squall-ir-c`, `make test-squall-ir-ada`, or
+  `make test-squall-ir-rust` selects one client; `make test-squall-ir` runs all
+  three in one runtime startup.
 - `AMS_MEL_SQUALL_REPEAT=3` repeats complete open/operate/receive/teardown runs.
 - `AMS_MEL_SQUALL_FRAMES=N` requests at least `N` frames (default 3).
 - `AMS_MEL_SQUALL_FRAME_TIMEOUT_MS=N` sets each finite receive timeout.
@@ -122,4 +128,8 @@ Otherwise its exit trap tears down only the compose project it started. No
 integration target is included in `make check`, normal CTest, Ada tests, or CI.
 On client failure it prints runtime status/logs and the generated profile; C
 receive failures additionally print IR stream counters. When available, `ss -lun`
-is recorded before and after each client for host UDP diagnostics.
+is recorded before and after each client for host UDP diagnostics. The Rust
+client opens image and C2 graphs on one Session, obtains TaskSched, closes the
+Session parent first, repeats the cached request wait, receives real 320x200
+Mono8 checkerboard frames, validates counters, and explicitly closes its child
+owners. This opt-in evidence implies no RF or additional C2 support.

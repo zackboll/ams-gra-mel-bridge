@@ -109,14 +109,20 @@ fn preserves_terminal_and_submission_failure_kinds() {
             .expect("open C2");
         c2.enable().expect("enable");
         let mut request = c2.submit_operate(1).expect("request was published");
-        assert_eq!(request.wait(1_000).expect_err("terminal failure").kind(), &expected);
+        assert_eq!(
+            request.wait(1_000).expect_err("terminal failure").kind(),
+            &expected
+        );
     }
 
     let session = open("c2-enable-fail");
     let mut c2 = session
         .open_control_channel(&control_config())
         .expect("open C2");
-    assert_eq!(c2.enable().expect_err("enable failure").kind(), &ErrorKind::ProviderFailed);
+    assert_eq!(
+        c2.enable().expect_err("enable failure").kind(),
+        &ErrorKind::ProviderFailed
+    );
     assert_eq!(
         c2.submit_operate(1).expect_err("still disabled").kind(),
         &ErrorKind::ProviderFailed
@@ -184,8 +190,7 @@ fn safe_config_selects_c2_and_rejects_nul_before_open() {
     for error in [
         UciId::new([0; 16], "bad\0label").expect_err("label NUL"),
         ComponentLocation::new(0.0, 0.0, 0.0, "bad\0key", "system").expect_err("key NUL"),
-        ComponentLocation::new(0.0, 0.0, 0.0, "key", "bad\0system")
-            .expect_err("system NUL"),
+        ComponentLocation::new(0.0, 0.0, 0.0, "key", "bad\0system").expect_err("system NUL"),
     ] {
         assert_eq!(error.kind(), &ErrorKind::InvalidArgument);
     }

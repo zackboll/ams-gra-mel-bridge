@@ -96,7 +96,7 @@ services:
 EOF
 }
 
-case "$mode" in all|c|ada) ;; *) fail "mode must be all, c, or ada" ;; esac
+case "$mode" in all|c|ada|rust) ;; *) fail "mode must be all, c, ada, or rust" ;; esac
 validate_port AMS_MEL_SQUALL_CONTROL_PORT "$control_port"
 validate_port AMS_MEL_SQUALL_COULOIR_METRICS_PORT "$couloir_metrics_port"
 validate_port AMS_MEL_SQUALL_OPTICAL_HEALTH_PORT "$optical_health_port"
@@ -393,16 +393,25 @@ readelf -d "$provider" | sed -n '/NEEDED/p'
 # are never installed or added to default CTest/Alire tests.
 cmake -S "$root/native" -B "$root/native/build" -DAMS_MEL_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build "$root/native/build" --parallel 2
-cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
-  -I"$root/native/include" "$root/integration/squall/squall_ir_c_smoke.c" \
-  -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c \
-  -o "$build_dir/bin/squall_ir_c_smoke"
+if test "$mode" = all || test "$mode" = c; then
+  cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
+    -I"$root/native/include" "$root/integration/squall/squall_ir_c_smoke.c" \
+    -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c \
+    -o "$build_dir/bin/squall_ir_c_smoke"
+fi
 
-if test "$mode" != c; then
+if test "$mode" = all || test "$mode" = ada; then
   need alr
   AMS_MEL_SQUALL_ADA_BUILD_DIR="$build_dir" \
   GPR_PROJECT_PATH="$root/native:$root/ada${GPR_PROJECT_PATH:+:$GPR_PROJECT_PATH}" \
     alr -C "$root/ada" exec -- gprbuild -f -p -P "$root/integration/squall/ams_mel_squall_ir.gpr"
+fi
+if test "$mode" = all || test "$mode" = rust; then
+  need cargo
+  CARGO_TARGET_DIR="$build_dir/rust-target" \
+  AMS_MEL_NATIVE_LIB_DIR="$root/native/build/lib" \
+    cargo build --manifest-path "$root/integration/squall/rust/Cargo.toml" \
+      --release --locked --offline
 fi
 
 check_client_elf() {
@@ -417,10 +426,21 @@ check_client_elf() {
   if printf '%s\n' "$dynamic_section" | grep -q 'libsquall_ir_mel'; then
     fail "$executable directly links Squall"
   fi
+  if printf '%s\n' "$dynamic_section" | grep -q 'mock.*provider'; then
+    fail "$executable directly links a mock provider"
+  fi
 }
-check_client_elf "$build_dir/bin/squall_ir_c_smoke" C
-if test "$mode" != c; then
+if test "$mode" = all || test "$mode" = c; then
+  check_client_elf "$build_dir/bin/squall_ir_c_smoke" C
+fi
+if test "$mode" = all || test "$mode" = ada; then
   check_client_elf "$build_dir/bin/ams_mel_squall_ir" Ada
+fi
+if test "$mode" = all || test "$mode" = rust; then
+  rust_client="$build_dir/rust-target/release/ams-mel-squall-ir"
+  check_client_elf "$rust_client" Rust
+  readelf -d "$rust_client" | grep -q 'libams_mel_c' || \
+    fail "$rust_client does not link through libams_mel_c"
 fi
 
 # Start only the hardware-free optical MFA and Couloir from upstream's
@@ -516,6 +536,14 @@ while test "$iteration" -le "$repeat"; do
     then
       print_udp_sockets
       fail "Ada client failed; see runtime logs and profile above"
+    fi
+  fi
+  if test "$mode" = all || test "$mode" = rust; then
+    if ! LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$rust_client" "$provider" "$profile" "$frames" "$timeout"
+    then
+      print_udp_sockets
+      fail "Rust client failed; see runtime logs and profile above"
     fi
   fi
   iteration=$((iteration + 1))

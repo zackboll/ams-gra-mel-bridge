@@ -208,7 +208,9 @@ pub enum MelErrorCode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModeResult {
-    Success { mode: MfaMode },
+    Success {
+        mode: MfaMode,
+    },
     Rejected {
         code: MelErrorCode,
         description: String,
@@ -628,12 +630,7 @@ impl ControlChannel {
             // an initially null writable request owner.
             unsafe {
                 sys::ams_mel_ir_c2_submit_operate(
-                    self.raw,
-                    command_id,
-                    &mut raw,
-                    diagnostic,
-                    capacity,
-                    required,
+                    self.raw, command_id, &mut raw, diagnostic, capacity, required,
                 )
             }
         });
@@ -692,12 +689,7 @@ impl ModeRequest {
             // SAFETY: this wrapper uniquely owns the request and no wait can race
             // this consuming close through the safe API.
             unsafe {
-                sys::ams_mel_ir_mode_request_close(
-                    &mut self.raw,
-                    diagnostic,
-                    capacity,
-                    required,
-                )
+                sys::ams_mel_ir_mode_request_close(&mut self.raw, diagnostic, capacity, required)
             }
         })
     }
@@ -941,9 +933,7 @@ fn mel_error_code(value: u32) -> MelErrorCode {
         sys::AMS_MEL_ERROR_INVALID_PARAMETERS => MelErrorCode::InvalidParameters,
         sys::AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS => MelErrorCode::InsufficientPermissions,
         sys::AMS_MEL_ERROR_INSUFFICIENT_RESOURCES => MelErrorCode::InsufficientResources,
-        sys::AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES => {
-            MelErrorCode::InsufficientLocalResources
-        }
+        sys::AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES => MelErrorCode::InsufficientLocalResources,
         sys::AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES => {
             MelErrorCode::InsufficientRemoteResources
         }
@@ -1148,7 +1138,5 @@ fn best_effort_close_c2(raw: &mut *mut sys::AmsMelIrC2) {
 fn best_effort_close_request(raw: &mut *mut sys::AmsMelIrModeRequest) {
     // SAFETY: called only for this wrapper's unique request owner. Public request
     // close is nonblocking and does not cancel pending provider work.
-    let _ = unsafe {
-        sys::ams_mel_ir_mode_request_close(raw, ptr::null_mut(), 0, ptr::null_mut())
-    };
+    let _ = unsafe { sys::ams_mel_ir_mode_request_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
 }

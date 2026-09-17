@@ -1,4 +1,4 @@
-.PHONY: help native test-native test-ada test-rust check test-squall-ir test-squall-ir-c test-squall-ir-ada
+.PHONY: help native test-native test-ada test-rust check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust
 
 help:
 	@printf '%s\n' \
@@ -7,7 +7,10 @@ help:
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
 	  'make test-rust    Test the Rust workspace against native/build' \
 	  'make check        Native + Ada tests and Git whitespace checks' \
-	  'make test-squall-ir  Opt-in real Squall IR C and Ada integration'
+	  'make test-squall-ir       Opt-in real Squall IR C, Ada, and Rust integration' \
+	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \
+	  'make test-squall-ir-ada   Opt-in real Squall IR Ada integration' \
+	  'make test-squall-ir-rust  Opt-in real Squall IR Rust integration'
 
 native:
 	@sh native/scripts/build.sh
@@ -32,3 +35,6 @@ test-squall-ir-c:
 
 test-squall-ir-ada:
 	@integration/squall/run.sh ada
+
+test-squall-ir-rust:
+	@integration/squall/run.sh rust
