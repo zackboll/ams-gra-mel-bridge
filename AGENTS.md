@@ -13,6 +13,10 @@ that its proposed APIs have already been implemented.
 - Keep OMS/UCI, processing algorithms, Squall-private transports, and Rust out
   of the generic MEL library. Do not add them to make a test pass.
 - Public API and ownership changes require matching tests in C and Ada.
+- All first-party compiled source must be warning-clean and build with warnings
+  treated as errors. Fix warnings when introduced rather than suppressing them;
+  vendored upstream source remains byte-identical and is not modified to satisfy
+  the local warning policy.
 - Keep builds provider-free. Use a separate mock provider before a real one.
 - Treat upstream revisions in the review as candidates, not verified locks.
 - Never silently drop metadata, narrow numeric representations, equate timeout

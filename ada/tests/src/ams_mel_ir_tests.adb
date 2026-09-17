@@ -10,7 +10,7 @@ package body AMS_MEL_IR_Tests is
    use type AMS.MEL.IR.Image_Type;
    use type Interfaces.Unsigned_32;
 
-   Zero_UUID : constant AMS.MEL.IR.UUID := (others => 0);
+   Zero_UUID : constant AMS.MEL.IR.UUID := [others => 0];
    Channel_ID : constant AMS.MEL.IR.UCI_ID :=
      AMS.MEL.IR.Create_UCI_ID (Zero_UUID, "Ada IR channel");
    Platform_ID : constant AMS.MEL.IR.UCI_ID :=

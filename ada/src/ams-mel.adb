@@ -94,7 +94,7 @@ package body AMS.MEL is
       Library_C  : C_String_Owner;
       Instance_C : C_String_Owner;
       Aperture_C : C_String_Owner;
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
    begin
       Reject_NUL (Library_Path, "Library_Path");
@@ -128,7 +128,7 @@ package body AMS.MEL is
          Vendor => System.Null_Address, Vendor_Capacity => 0,
          Vendor_Required => 0, Description => System.Null_Address,
          Description_Capacity => 0, Description_Required => 0);
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Status     : Interfaces.Integer_32;
    begin
@@ -146,9 +146,9 @@ package body AMS.MEL is
       end if;
       declare
          Vendor_Buffer : aliased Interfaces.C.char_array
-           (0 .. Raw.Vendor_Required - 1) := (others => Interfaces.C.nul);
+            (0 .. Raw.Vendor_Required - 1) := [others => Interfaces.C.nul];
          Description_Buffer : aliased Interfaces.C.char_array
-           (0 .. Raw.Description_Required - 1) := (others => Interfaces.C.nul);
+            (0 .. Raw.Description_Required - 1) := [others => Interfaces.C.nul];
       begin
          Raw.Vendor := Vendor_Buffer'Address;
          Raw.Vendor_Capacity := Vendor_Buffer'Length;
@@ -171,7 +171,7 @@ package body AMS.MEL is
    end Query_Provider_Version;
 
    procedure Close (Object : in out Session) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Status     : constant Interfaces.Integer_32 := C.Session_Close
         (Object.Handle'Access, Diagnostic'Address, Diagnostic'Length,

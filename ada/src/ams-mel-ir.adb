@@ -97,7 +97,7 @@ package body AMS.MEL.IR is
          Buffer_Count => Interfaces.C.size_t (Config.Buffers),
          Buffer_Size => Interfaces.C.size_t (Config.Size),
          Queue_Capacity => Interfaces.C.size_t (Config.Queue));
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
    begin
       if not AMS.MEL.Is_Open (Parent) then
@@ -120,7 +120,7 @@ package body AMS.MEL.IR is
      (Object.Handle /= C.Null_Stream);
 
    procedure Start (Object : in out Image_Stream) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
       Status : constant Interfaces.Integer_32 := C.IR_Stream_Start
         (Object.Handle, Diagnostic'Address, Diagnostic'Length, Required'Access);
@@ -135,7 +135,7 @@ package body AMS.MEL.IR is
        Subframe_ID => 0, Subframe_Total => 0, Image_Type => 0, Image_Flip => 0,
        Image_Flags => 0, Dither_Row => 0.0, Dither_Column => 0.0,
        Row_Offset => 0, Column_Offset => 0, Band_Index => 0,
-       Reserved => (others => 0), Pixels => System.Null_Address,
+        Reserved => [others => 0], Pixels => System.Null_Address,
        Pixel_Capacity => 0, Pixel_Required => 0));
 
    procedure Check_Receive_Status
@@ -152,7 +152,7 @@ package body AMS.MEL.IR is
      (Object : Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame
    is
       Raw : aliased C.IR_Frame_V1 := Empty_Raw_Frame;
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
       Timeout : Interfaces.Unsigned_32;
       Status : Interfaces.Integer_32;
@@ -197,7 +197,7 @@ package body AMS.MEL.IR is
 
    function Counters (Object : Image_Stream) return Stream_Counters is
       Raw : aliased C.IR_Counters_V1 := (others => 0);
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
       Status : constant Interfaces.Integer_32 := C.IR_Stream_Get_Counters
         (Object.Handle, Raw'Access, Diagnostic'Address, Diagnostic'Length,
@@ -209,7 +209,7 @@ package body AMS.MEL.IR is
    end Counters;
 
    procedure Stop (Object : in out Image_Stream) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
       Status : constant Interfaces.Integer_32 := C.IR_Stream_Stop
         (Object.Handle, Diagnostic'Address, Diagnostic'Length, Required'Access);
@@ -218,7 +218,7 @@ package body AMS.MEL.IR is
    end Stop;
 
    procedure Close (Object : in out Image_Stream) is
-      Diagnostic : aliased Diagnostic_Array := (others => Interfaces.C.nul);
+      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
       Status : constant Interfaces.Integer_32 := C.IR_Stream_Close
         (Object.Handle'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
