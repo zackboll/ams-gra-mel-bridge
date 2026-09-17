@@ -6,10 +6,10 @@ Multi-Function Aperture Encapsulation Layer (**MEL**) interfaces.
 
 The project preserves the published **C++ MEL provider boundary**, isolates
 non-C++ interoperability inside a native adapter, exposes a small **C ABI**, and
-builds idiomatic Ada and Rust interfaces above that ABI. The Ada API can also
-serve SPARK-oriented Skills at the reviewed FFI boundary, allowing higher-assurance
-application logic to remain in Ada/SPARK. The Rust consumer reuses the same C
-ABI, and future Python bindings can do likewise without requiring separate C++
+builds idiomatic Ada, Rust, and Python interfaces above that ABI. The Ada API
+can also serve SPARK-oriented Skills at the reviewed FFI boundary, allowing
+higher-assurance application logic to remain in Ada/SPARK. The Rust consumer
+and Python's private `ctypes` layer reuse the same C ABI without separate C++
 interoperability implementations.
 
 Native C++ Skills do **not** need this bridge: they can consume the published
@@ -21,10 +21,13 @@ themselves.
 > in C, Ada, and Rust. Rust supports provider Session lifecycle, IR host-memory
 > Mono8 streams, and asynchronous C2 mode requests with timeout, cached repeated
 > waits, rejection descriptions, and independent parent/channel/request lifetime.
-> Additional C2 commands and RF remain unimplemented. An opt-in real Squall
-> integration harness validates C, Ada, and the safe Rust API against the same
-> pinned provider/runtime stack; it is not part of ordinary builds or CI. Python
-> and crates.io publication remain unimplemented.
+> Python supports façade ABI queries and provider Session open, version, and
+> deterministic close with structured diagnostics; Python IR, C2, and RF are
+> not implemented. Additional C2 commands and RF remain unimplemented. An
+> opt-in real Squall integration harness validates C, Ada, and the safe Rust API against the same
+> pinned provider/runtime stack; it is not part of ordinary builds or CI. No
+> real Squall Python validation or Python/package registry publication has been
+> performed.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -730,8 +733,31 @@ directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
 directory. Cargo never invokes CMake or compiles the native adapter. The safe
 layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
 Rust `Frame` values own copied `Vec<u8>` pixels; this is not a zero-copy API.
-The Rust stream tests use the mock provider only. Real Squall Rust validation
-has not been performed.
+The ordinary Rust tests use the mock provider only. Task 009's preserved,
+opt-in evidence records successful real Squall validation.
+
+---
+
+## Use Python
+
+Python 3.11 or newer is the development target. Build the native façade and
+mock providers, set the explicit façade path, and place `python` on `PYTHONPATH`:
+
+```sh
+make test-python
+
+PYTHONPATH=python \
+AMS_MEL_NATIVE_LIB="$PWD/native/build/lib/libams_mel_c.so.0" \
+AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build/test-providers" \
+  python3 -W error -m unittest discover -s python/tests -v
+```
+
+The path passed to `Session.open` is the separate provider library. The safe
+API accepts only `str` provider paths (including `os.PathLike` values whose
+`os.fspath` result is `str`) and strictly encodes all inputs as UTF-8. Python
+uses `ams_mel -> private ctypes -> ams_mel_c -> C++ MEL`; it neither models nor
+loads C++ provider interfaces directly. This is not a native extension, wheel,
+published package, or zero-copy API.
 
 ---
 

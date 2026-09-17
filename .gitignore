@@ -36,3 +36,8 @@ alire.lock
 
 # Rust is a later phase
 target/
+
+# Python bytecode and local virtual environments
+__pycache__/
+*.py[cod]
+.venv/
