@@ -15,7 +15,7 @@ class AbiTests(unittest.TestCase):
     def test_reports_exact_facade_version(self) -> None:
         self.assertEqual(abi_version(), AbiVersion(major=0, minor=1))
 
-    def test_private_layer_binds_only_task_010_functions(self) -> None:
+    def test_private_layer_binds_only_task_011_functions(self) -> None:
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
@@ -23,8 +23,15 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_session_open",
                 "ams_mel_session_get_provider_version",
                 "ams_mel_session_close",
+                "ams_mel_ir_stream_open",
+                "ams_mel_ir_stream_start",
+                "ams_mel_ir_stream_receive",
+                "ams_mel_ir_stream_get_counters",
+                "ams_mel_ir_stream_stop",
+                "ams_mel_ir_stream_close",
             ),
         )
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 10)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -72,7 +79,17 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_PROVIDER_EXCEPTION,
             _native.AMS_MEL_BUFFER_TOO_SMALL,
             _native.AMS_MEL_INTERNAL_ERROR,
+            _native.AMS_MEL_TIMEOUT,
+            _native.AMS_MEL_STREAM_STOPPED,
             _native.AMS_MEL_PROVIDER_FAILED,
+            _native.AMS_MEL_IR_CHANNEL_IRST_IMAGE,
+            _native.AMS_MEL_IR_PIXEL_MONO,
+            _native.AMS_MEL_IR_IMAGE_STARING,
+            _native.AMS_MEL_IR_IMAGE_SCANNING,
+            _native.AMS_MEL_IR_FLIP_NONE,
+            _native.AMS_MEL_IR_FLIP_VERTICAL,
+            _native.AMS_MEL_IR_FLIP_HORIZONTAL,
+            _native.AMS_MEL_IR_FLIP_BOTH,
         ]
         expected.extend(self._layout(_native.AbiVersionV1, "major", "minor"))
         expected.extend(
@@ -86,6 +103,42 @@ class AbiTests(unittest.TestCase):
                 "description",
                 "description_capacity",
                 "description_required",
+            )
+        )
+        expected.extend(
+            self._layout(_native.StringViewV1, "data", "size")
+        )
+        expected.extend(self._layout(_native.UciIdV1, "uuid", "descriptive_label"))
+        expected.extend(
+            self._layout(
+                _native.ComponentLocationV1,
+                "offset_x_m", "offset_y_m", "offset_z_m", "key", "system_name",
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrStreamConfigV1,
+                "channel_type", "channel_id", "platform_id", "sensor_location",
+                "buffer_count", "buffer_size", "queue_capacity",
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrFrameV1,
+                "system_time_ns", "integration_time_ns", "width", "height",
+                "bits_per_pixel", "number_of_bands", "horizontal_fov_rad",
+                "vertical_fov_rad", "pixel_format", "frame_id", "subframe_id",
+                "subframe_total", "image_type", "image_flip", "image_flags",
+                "dither_row", "dither_column", "row_offset", "column_offset",
+                "band_index", "reserved", "pixels", "pixel_capacity",
+                "pixel_required",
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrStreamCountersV1,
+                "frames_received", "frames_dropped_queue_full",
+                "malformed_or_unsupported_frames",
             )
         )
         expected.extend(

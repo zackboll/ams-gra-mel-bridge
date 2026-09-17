@@ -28,7 +28,11 @@ safe API against the same pinned Squall provider/runtime used by C and Ada. RF
 and additional C2 commands remain later vertical slices. Task 010 adds the
 first Python consumer over the unchanged C ABI: façade version plus provider
 Session open/version/close, structured diagnostics, and deterministic cleanup.
-It does not add Python IR, C2, RF, real-provider validation, or packaging.
+Task 011 extends that same dependency-free consumer through the existing IR
+host-memory Mono8 stream ABI: open/start/receive/counters/stop/close, owned-copy
+frames, distinct timeout/stopped errors, and parent-first Session lifetime. It
+does not add Python C2, RF, real-provider validation, zero-copy/NumPy views, or
+packaging.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -43,8 +47,9 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. `rust/ams-mel-sys`: unsafe declarations for the reviewed subset of the C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
-6. `python/ams_mel`: safe Python API over a private, four-function `ctypes`
-   layer; no direct C++ or provider-factory path.
+6. `python/ams_mel`: safe Python API over a private, ten-function `ctypes`
+   layer for Session/version and IR image streams; no direct C++ or
+   provider-factory path.
 7. Separate integration applications: OMS/UCI, image processing, RF processing.
 
 `integration/squall` contains validation applications rather than production
@@ -167,6 +172,11 @@ or terminal `Failed`. Any provider operation/release/rollback failure stops fram
 acceptance and wakes receivers. Frames copied before a clean stop or failure are
 drained first; the next receive reports `STREAM_STOPPED` or `PROVIDER_FAILED`.
 At most one consumer thread/task may execute receive on a stream at a time.
+Python follows the same external-serialization contract and does not use the GIL
+or an added Python lock as a thread-safety claim. Its Frame pixels are an owned
+`bytes` copy, and its ImageStream does not retain the Python Session object;
+native child ownership keeps provider/library state alive when the parent closes
+first.
 
 ## Parallel Ada work
 

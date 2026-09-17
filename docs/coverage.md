@@ -25,8 +25,8 @@
 | Rust sys binding | Complete for the current project C ABI | Exactly 16 C functions; C-header layout/constant drift probe covers all raw records/constants in use; not a claim of complete MEL functionality |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched implemented | Owned configs/frames, async request, timeout/repeated wait, full rejection text, retryable C2 close, independent and coexistence lifetimes; no additional C2/RF |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; parent-first close, cached wait, TaskSched, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session foundation implemented | ABI version, open/provider-version/close, structured diagnostics, context manager and finalizer over private `ctypes`; strict C11 drift probe and mock-provider tests |
-| Python IR/C2/RF | Not implemented | Later vertical slices; no real Squall Python validation |
+| Python binding | Session + IR Mono8 implemented | ABI/version, Session lifecycle/version, ImageStream open/start/receive/counters/stop/close, owned bytes Frames, parent-first lifetime, retryable close, Timeout vs StreamStopped; strict C11 drift probe and mock-provider tests |
+| Python C2/RF | Not implemented | Later vertical slices; no real Squall Python validation or zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
 | Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |

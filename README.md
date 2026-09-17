@@ -21,13 +21,15 @@ themselves.
 > in C, Ada, and Rust. Rust supports provider Session lifecycle, IR host-memory
 > Mono8 streams, and asynchronous C2 mode requests with timeout, cached repeated
 > waits, rejection descriptions, and independent parent/channel/request lifetime.
-> Python supports façade ABI queries and provider Session open, version, and
-> deterministic close with structured diagnostics; Python IR, C2, and RF are
-> not implemented. Additional C2 commands and RF remain unimplemented. An
+> Python supports façade ABI queries, provider Session open/version/close, and
+> host-memory Mono8 ImageStream open/start/receive/counters/stop/close with
+> owned-bytes Frames, parent-first lifetime, and distinct Timeout/StreamStopped
+> errors. Python C2 and RF are not implemented. Additional C2 commands and RF
+> remain unimplemented. An
 > opt-in real Squall integration harness validates C, Ada, and the safe Rust API against the same
 > pinned provider/runtime stack; it is not part of ordinary builds or CI. No
 > real Squall Python validation or Python/package registry publication has been
-> performed.
+> performed; Python also has no zero-copy or NumPy image-view API.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
