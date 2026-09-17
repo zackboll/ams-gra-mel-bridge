@@ -1,4 +1,4 @@
-# Task 001/002/003 upstream provenance
+# Task 001/002/003/004 upstream provenance
 
 Verified 2026-09-15 from immutable Git commit objects, not default-branch file
 URLs. The selected commits are the candidate submodule revisions recorded by
@@ -99,3 +99,28 @@ and installed as notices. The three license files share SHA-256
 
 Normal configure, build, and tests use only the vendored closure and never
 fetch source, provider binaries, credentials, containers, or hardware.
+
+## Task 004 external integration baseline
+
+Task 004 does not vendor or install additional upstream source. Its opt-in
+integration dependency is
+`https://github.com/open-arsenal/ams-gra-hello-world-sk-sensors-squall` at exact
+commit `b1015728f904c799fa0c07489fce48e78f67845f`. The harness accepts only an
+explicit `SQUALL_SOURCE_DIR`, validates `HEAD` and repository identity, and does
+not mutate that checkout.
+
+Relevant immutable files include `README.md`, `compose.yaml`,
+`compose.build.yaml`, `Containerfile`, `config/couloir.toml`,
+`config/optical-simulated.toml`, `config/squall-ir-mel-profile.json`,
+`tests/mel-boundary-e2e/{run.sh,run.py,compose.yaml}`, and
+`interfaces/squall-ir-mel-impl/{CMakeLists.txt,src/*}`. Upstream builds the C++20
+provider as `build-ir/libsquall_ir_mel.so`; its MEL consumer image installs it as
+`/usr/lib64/libsquall_ir_mel.so`. The local harness extracts that binary to an
+ignored build directory and passes its path to `ams_mel_session_open`; neither
+`ams_mel_c` nor either integration executable links directly to it.
+
+The baseline uses Squall's default hardware-free optical simulation (Mono8,
+320x200, 8 FPS), a Task-004-published host Couloir control port, and a generated
+profile with a runtime-provided host alias and unique client ID. This records one
+integration target, not generic compatibility with every GRA provider or C++
+runtime combination.

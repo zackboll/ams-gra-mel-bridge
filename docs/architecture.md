@@ -15,6 +15,10 @@ copy validated Mono8 frames into a bounded queue, and poll them from C or Ada.
 Task 003 adds one command profile: attach and explicitly enable a
 `CommandAndControl` channel, send `Operate`/`TaskSched`, and preserve the
 asynchronous `RequestFor<MFA_Mode>` result in C and Ada.
+Task 004 adds no library API. Its isolated, opt-in applications exercise those
+Task-002/003 slices against Squall's published IR MEL provider and hardware-free
+simulated optical stack. Container deployment remains test orchestration, not a
+generic-library dependency or an application-facing transport.
 
 ## Separation
 
@@ -23,6 +27,11 @@ asynchronous `RequestFor<MFA_Mode>` result in C and Ada.
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. Future `rust/*`: sys crate and safe wrapper using the same native source.
 5. Separate integration applications: OMS/UCI, image processing, RF processing.
+
+`integration/squall` is a validation application rather than production library
+code. It may invoke Squall's supported container build/deployment mechanisms,
+but the C and Ada executables include/use only this project's public APIs. They
+do not expose or call Couloir, backend gRPC, UDP, REST, or Squall-private types.
 
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built. The current function needs no provider or C++ runtime

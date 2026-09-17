@@ -17,9 +17,10 @@ C++ MEL interface directly. `ams_mel_c` exists to make that same provider
 ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
-> **Current status:** IR image reception foundation. Ada support is implemented
-> for the current profile. Rust and Python consumer support are architectural
-> targets and are **not yet implemented**.
+> **Current status:** IR Mono8 reception and C2 Operate/TaskSched are implemented
+> in C and Ada. An opt-in real Squall integration harness is available; it is
+> not part of ordinary builds or CI. Rust and Python consumer support remain
+> architectural targets and are **not yet implemented**.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -595,6 +596,7 @@ docs/
 .clinerules/              repository workflow and architecture rules
 .github/workflows/        CI
 scripts/                  local validation helpers
+integration/squall/       opt-in real Squall IR MEL validation
 ```
 
 There is deliberately no root Alire crate.
@@ -631,6 +633,17 @@ native/build/lib/libams_mel_c.so
 ```
 
 and runs the native ABI/provider/IR-stream tests.
+
+Real Squall validation is deliberately separate from ordinary builds and CI.
+With an existing checkout at the pinned revision, run:
+
+```sh
+SQUALL_SOURCE_DIR=/path/to/ams-gra-hello-world-sk-sensors-squall \
+  make test-squall-ir
+```
+
+See `integration/squall/README.md` and `docs/task-004-validation.md` for runtime,
+revision, cleanup, and evidence requirements.
 
 To test another compiler, use a separate build directory:
 
