@@ -10,6 +10,8 @@
 - Add the dependency-free Python IR C2 Operate/TaskSched binding with explicit
   enable, asynchronous requests, complete structured rejection results, cached
   waits, retryable close, and independent/coexisting native lifetimes.
+- Validate the current safe Python IR Mono8 plus C2 slice against the pinned real
+  Squall stack and extend the opt-in harness to run C, Ada, Rust, and Python.
 - Add an opt-in real Squall IR MEL integration harness with strict pinned-source
   validation, hardware-free simulated optical/Couloir orchestration, and public
   C11/Ada C2-plus-Mono8 smoke clients; ordinary builds and CI remain provider-free.

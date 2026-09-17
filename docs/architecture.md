@@ -37,6 +37,10 @@ Operate/TaskSched profile: explicit enable, asynchronous finite waits, structure
 success/rejection values, complete rejection text, cached terminal results,
 retryable close, and independent Session/C2/request lifetime. It adds no native
 feature or additional command.
+Task 013 adds no library behavior: a standalone, opt-in Python application
+exercises the same current image+C2 slice against the pinned real Squall
+provider/runtime used by C, Ada, and Rust. It imports only the public `ams_mel`
+API and the standard library; container orchestration remains outside the binding.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -58,10 +62,12 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 
 `integration/squall` contains validation applications rather than production
 library code. It may invoke Squall's supported container build/deployment
-mechanisms, but the C, Ada, and Rust executables use only this project's public
-language APIs/C ABI. They do not expose or call Couloir, backend gRPC, UDP, REST,
-or Squall-private types. The standalone Rust application remains outside the
-published workspace and depends only on the repository's safe `ams-mel` crate.
+mechanisms, but the C, Ada, and Rust executables and interpreted Python client use
+only this project's public language APIs/C ABI. They do not expose or call
+Couloir, backend gRPC, UDP, REST, or Squall-private types. The standalone Rust
+application remains outside the published workspace and depends only on the
+repository's safe `ams-mel` crate. The standalone Python application imports only
+the standard library and public `ams_mel` API.
 
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built, and Cargo links it from an explicitly selected external

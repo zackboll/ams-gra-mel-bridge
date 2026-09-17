@@ -89,8 +89,9 @@ require_rendered_once() {
 # These run the real initialization, validator, collision checks, and renderer
 # under set -u without requiring a container runtime or touching Squall.
 expect_mode_preflight 0 'Task-004 runtime ports:' rust
-expect_mode_preflight 1 'mode must be all, c, ada, or rust' invalid
-printf '%s\n' 'PASS: Task-009 Rust mode validation preflights'
+expect_mode_preflight 0 'Task-004 runtime ports:' python
+expect_mode_preflight 1 'mode must be all, c, ada, rust, or python' invalid
+printf '%s\n' 'PASS: Task-013 language mode validation preflights'
 
 expect_port_preflight 0 'Couloir control:  21203'
 expect_port_preflight 0 'Optical health:   21315'
@@ -142,6 +143,7 @@ printf '%s\n' 'PASS: Task-004 port default/validation preflights'
 require 'if test "$mode" = all || test "$mode" = c; then'
 require 'if test "$mode" = all || test "$mode" = ada; then'
 require 'if test "$mode" = all || test "$mode" = rust; then'
+require 'if test "$mode" = all || test "$mode" = python; then'
 require 'need alr'
 require 'need cargo'
 require 'CARGO_TARGET_DIR="$build_dir/rust-target"'
@@ -153,7 +155,14 @@ require 'readelf -d "$rust_client" | grep -q '\''libams_mel_c'\'''
 require 'grep -q '\''libsquall_ir_mel'\'''
 require 'grep -q '\''mock.*provider'\'''
 require '"$rust_client" "$provider" "$profile" "$frames" "$timeout"'
-printf '%s\n' 'PASS: Task-009 language mode/build/link contracts'
+require 'PYTHONPYCACHEPREFIX="$build_dir/python-cache"'
+require 'python3 -W error -m py_compile'
+require '"$root/integration/squall/squall_ir_python.py"'
+require 'PYTHONPATH="$root/python"'
+require 'AMS_MEL_NATIVE_LIB="$root/native/build/lib/libams_mel_c.so.0"'
+require 'python3 -W error "$root/integration/squall/squall_ir_python.py"'
+require '"$provider" "$profile" "$frames" "$timeout"'
+printf '%s\n' 'PASS: Task-013 language mode/build/link contracts'
 
 for runtime in podman docker; do
   require 'RUNTIME_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.yaml"'

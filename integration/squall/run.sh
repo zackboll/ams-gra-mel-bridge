@@ -96,7 +96,7 @@ services:
 EOF
 }
 
-case "$mode" in all|c|ada|rust) ;; *) fail "mode must be all, c, ada, or rust" ;; esac
+case "$mode" in all|c|ada|rust|python) ;; *) fail "mode must be all, c, ada, rust, or python" ;; esac
 validate_port AMS_MEL_SQUALL_CONTROL_PORT "$control_port"
 validate_port AMS_MEL_SQUALL_COULOIR_METRICS_PORT "$couloir_metrics_port"
 validate_port AMS_MEL_SQUALL_OPTICAL_HEALTH_PORT "$optical_health_port"
@@ -413,6 +413,12 @@ if test "$mode" = all || test "$mode" = rust; then
     cargo build --manifest-path "$root/integration/squall/rust/Cargo.toml" \
       --release --locked --offline
 fi
+if test "$mode" = all || test "$mode" = python; then
+  mkdir -p "$build_dir/python-cache"
+  PYTHONPYCACHEPREFIX="$build_dir/python-cache" \
+    python3 -W error -m py_compile \
+      "$root/integration/squall/squall_ir_python.py"
+fi
 
 check_client_elf() {
   executable=$1
@@ -544,6 +550,17 @@ while test "$iteration" -le "$repeat"; do
     then
       print_udp_sockets
       fail "Rust client failed; see runtime logs and profile above"
+    fi
+  fi
+  if test "$mode" = all || test "$mode" = python; then
+    if ! PYTHONPATH="$root/python" \
+      AMS_MEL_NATIVE_LIB="$root/native/build/lib/libams_mel_c.so.0" \
+      LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      python3 -W error "$root/integration/squall/squall_ir_python.py" \
+        "$provider" "$profile" "$frames" "$timeout"
+    then
+      print_udp_sockets
+      fail "Python client failed; see runtime logs and profile above"
     fi
   fi
   iteration=$((iteration + 1))
