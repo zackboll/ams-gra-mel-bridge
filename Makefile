@@ -6,7 +6,7 @@ help:
 	  'make test-native  Build and run native and mock-provider tests' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
 	  'make test-rust    Test the Rust workspace against native/build' \
-	  'make test-python  Test the Python session API against mock providers' \
+	  'make test-python  Test the Python binding against mock providers' \
 	  'make check        Native + Ada tests and Git whitespace checks' \
 	  'make test-squall-ir       Opt-in real Squall IR C, Ada, and Rust integration' \
 	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \

@@ -17,19 +17,20 @@ C++ MEL interface directly. `ams_mel_c` exists to make that same provider
 ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
-> **Current status:** IR Mono8 reception and C2 Operate/TaskSched are implemented
-> in C, Ada, and Rust. Rust supports provider Session lifecycle, IR host-memory
-> Mono8 streams, and asynchronous C2 mode requests with timeout, cached repeated
-> waits, rejection descriptions, and independent parent/channel/request lifetime.
-> Python supports façade ABI queries, provider Session open/version/close, and
-> host-memory Mono8 ImageStream open/start/receive/counters/stop/close with
-> owned-bytes Frames, parent-first lifetime, and distinct Timeout/StreamStopped
-> errors. Python C2 and RF are not implemented. Additional C2 commands and RF
-> remain unimplemented. An
-> opt-in real Squall integration harness validates C, Ada, and the safe Rust API against the same
-> pinned provider/runtime stack; it is not part of ordinary builds or CI. No
-> real Squall Python validation or Python/package registry publication has been
-> performed; Python also has no zero-copy or NumPy image-view API.
+> **Current status:** Ada supports provider Session lifecycle, IR host-memory
+> Mono8 reception, and C2 Operate/TaskSched. Rust supports the same current slice,
+> including asynchronous C2 mode requests with timeout, cached repeated waits,
+> rejection descriptions, and independent parent/channel/request lifetime. An
+> opt-in real Squall integration harness validates C, Ada, and the safe Rust API
+> against the same pinned provider/runtime stack; it is not part of ordinary
+> builds or CI. Python supports façade ABI queries, provider Session
+> open/version/close, and host-memory Mono8 ImageStream
+> open/start/receive/counters/stop/close with owned-bytes Frames, parent-first
+> lifetime, and distinct Timeout/StreamStopped errors. Python remains a
+> dependency-free, development-use-only binding: Python C2 and RF are not
+> implemented, real Squall Python validation has not been performed, and there
+> is no wheel/PyPI publication or zero-copy/NumPy image API. RF and additional C2
+> commands also remain unimplemented in the other bindings.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -81,10 +82,10 @@ The important idea is that the project is **not tied to one MFA
 implementation**.
 
 A C++ MFA, a Rust-based MFA, simulated sensor software such as Squall, or real
-sensor hardware can all sit behind a conforming MEL provider. Native C++ Skills
-can consume the published C++ MEL interface directly. Ada Skills, and future
-Rust and Python Skills, can consume that same provider interface through the
-shared `ams_mel_c` compatibility layer.
+Native C++ Skills
+can consume the published C++ MEL interface directly. Ada, Rust, and Python
+Skills can consume the implemented portions of that same provider interface
+through the shared `ams_mel_c` compatibility layer.
 
 For an Ada MFA, Rust MFA, or hardware MFA, the provider-facing MEL library may
 still contain a thin C++ layer while the actual implementation lives in Ada,
@@ -160,8 +161,8 @@ layer.
 | **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
-| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session and IR host-memory Mono8 reception implemented; C2/RF not implemented |
-| **Python** | Python package → `ctypes`/`cffi`/native extension → `ams_mel_c` → C++ MEL | Planned |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented |
+| **Python** | Python API → private `ctypes` → `ams_mel_c` → C++ MEL | Session and IR host-memory Mono8 implemented and mock-tested; no C2/RF or real Squall Python validation |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 
 This split is intentional. C++ already speaks the native MEL interface, while
@@ -254,10 +255,10 @@ However:
 
 > **`ams-mel-ada` is not a Squall-specific binding.**
 
-Squall is one MEL provider. The goal of this project is to allow Ada, and later
-Rust and Python, software to consume the **standard MEL provider boundary**,
-whether the provider happens to be Squall or something else. Native C++ Skills
-continue to use that MEL boundary directly.
+Squall is one MEL provider. The goal of this project is to allow Ada, Rust, and
+Python software to consume the implemented portions of the **standard MEL
+provider boundary**, whether the provider happens to be Squall or something
+else. Native C++ Skills continue to use that MEL boundary directly.
 
 ---
 
@@ -520,17 +521,20 @@ Implemented:
 - finite DROP-INCOMING receive queue;
 - C poll/wait receive operations;
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
-- explicit lifecycle and callback-quiescence handling; and
-- native and Ada tests using a separately loaded C++ mock provider; and
-- safe Rust Session and IR host-memory Mono8 stream APIs over the existing C ABI,
-  with RAII cleanup and Rust-owned frame pixel copies.
+- C and Ada C2 Operate/TaskSched interfaces;
+- explicit lifecycle and callback-quiescence handling;
+- native and Ada tests using a separately loaded C++ mock provider;
+- safe Rust Session, IR host-memory Mono8, and C2 Operate/TaskSched APIs over the
+  existing C ABI, with RAII cleanup and Rust-owned frame pixel copies;
+- opt-in real Squall validation of the C, Ada, and safe Rust IR slices; and
+- dependency-free Python Session and IR host-memory Mono8 APIs with owned-bytes
+  frame copies and mock-provider tests.
 
 Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- Rust IR C2 bindings;
-- Python consumer bindings;
+- Python C2 and real Squall validation;
 - RF MEL;
 - stacked images;
 - tracking interfaces;
@@ -593,10 +597,11 @@ ada/
 
 rust/
   ams-mel-sys/            unsafe declarations for the reviewed C ABI subset
-  ams-mel/                safe Session API and mock-provider tests
+  ams-mel/                safe Session, IR Mono8, and C2 API and tests
 
-# Planned, not yet present:
-# python/                 Python package over the same C ABI
+python/
+  ams_mel/                 dependency-free Session and IR Mono8 API via ctypes
+  tests/                   Python mock-provider and C ABI drift tests
 
 docs/
   architecture.md        implemented architecture decisions
@@ -625,7 +630,8 @@ CMake owns native C/C++ compilation. The Ada project consumes the resulting
 native library rather than recompiling the C++ adapter through GPRbuild.
 Cargo likewise links that externally built library; neither Rust crate compiles
 native C++, vendored MEL headers, Squall, or a provider. The Rust crates have not
-been published to crates.io.
+been published to crates.io. The Python binding is used directly through
+`PYTHONPATH`; no wheel or PyPI package has been published.
 
 ---
 
@@ -759,7 +765,9 @@ API accepts only `str` provider paths (including `os.PathLike` values whose
 `os.fspath` result is `str`) and strictly encodes all inputs as UTF-8. Python
 uses `ams_mel -> private ctypes -> ams_mel_c -> C++ MEL`; it neither models nor
 loads C++ provider interfaces directly. This is not a native extension, wheel,
-published package, or zero-copy API.
+published package, or zero-copy API. The binding has no external Python
+dependencies and is intended for development use. Python C2, RF, real Squall
+validation, and NumPy image views are not implemented.
 
 ---
 
@@ -814,12 +822,12 @@ The current project does **not** claim SPARK proof across the C or C++ boundary.
 
 ### Rust and Python
 
-Rust and Python consumers should reuse the same native boundary rather than
-binding the C++ MEL API independently.
+The Rust and Python consumers reuse the same native boundary rather than binding
+the C++ MEL API independently.
 
 ### Rust
 
-A likely Rust structure is:
+The Rust implementation is structured as:
 
 ```text
 rust/
@@ -843,19 +851,20 @@ ams_mel_c
 C++ MEL provider
 ```
 
-The safe Rust layer can turn opaque handles and explicit C lifecycle operations
-into Rust ownership types and RAII-managed resources.
+The safe Rust layer turns opaque handles and explicit C lifecycle operations into
+Rust ownership types and RAII-managed Session, ImageStream, ControlChannel, and
+ModeRequest resources for the current IR slice.
 
 ### Python
 
-A Python binding can sit on the same C ABI:
+The dependency-free Python binding sits on the same C ABI:
 
 ```text
 Python Skill
      |
 Python package
      |
-ctypes / cffi / native extension
+     private ctypes layer
      |
 C ABI
      |
@@ -864,10 +873,9 @@ ams_mel_c
 C++ MEL provider
 ```
 
-For early functionality, `ctypes` or `cffi` can provide a low-friction binding.
-For high-rate image or RF data paths, a native Python extension can provide a
-more controlled route to Python buffer objects, `memoryview`, NumPy arrays, or
-other native-backed data structures while still depending on the same C ABI.
+The current implementation uses `ctypes` for Session and owned-copy IR Mono8
+reception. It does not provide C2, RF, real Squall validation, a native extension,
+zero-copy/NumPy image views, wheels, or PyPI publication.
 
 Python is particularly attractive for:
 

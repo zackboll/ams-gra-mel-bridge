@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add the safe Rust Session foundation over the existing C ABI.
+- Add safe Rust IR host-memory Mono8 and C2 Operate/TaskSched bindings.
+- Validate the current safe Rust IR slice against the pinned real Squall stack.
+- Add the dependency-free Python Session foundation and IR host-memory Mono8
+  binding with owned-copy frames and mock-provider tests.
 - Add an opt-in real Squall IR MEL integration harness with strict pinned-source
   validation, hardware-free simulated optical/Couloir orchestration, and public
   C11/Ada C2-plus-Mono8 smoke clients; ordinary builds and CI remain provider-free.
@@ -34,4 +39,5 @@
 - Add native installation support, local gates, and Linux CI definitions.
 - Record review provenance, scope, ABI policy, and the next implementation task.
 
-No provider, IR, RF, OMS client, or Rust binding is implemented yet.
+At that bootstrap snapshot, no provider, IR, RF, OMS client, or Rust binding was
+implemented yet.
