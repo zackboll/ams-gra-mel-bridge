@@ -4,7 +4,7 @@
 
 Build a consumer-side binding, not a new official MEL standard and not a
 provider rewrite. Preserve the published C++ provider boundary. The C facade
-adapts it for C, Ada, and Rust.
+adapts it for C, Ada, Rust, and Python.
 
 The bootstrap implemented an independent ABI-version query. Task 001 adds only
 the first provider boundary: load a compatible IR MEL library, create and
@@ -25,11 +25,15 @@ consumer for the existing IR host-memory Mono8 stream ABI. Task 008 adds the
 Rust consumer for exactly the existing IR C2 Operate/TaskSched profile. Task 009
 adds no library behavior: its standalone, opt-in Rust application exercises the
 safe API against the same pinned Squall provider/runtime used by C and Ada. RF
-and additional C2 commands remain later vertical slices.
+and additional C2 commands remain later vertical slices. Task 010 adds the
+first Python consumer over the unchanged C ABI: façade version plus provider
+Session open/version/close, structured diagnostics, and deterministic cleanup.
+It does not add Python IR, C2, RF, real-provider validation, or packaging.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
-                                      -> Rust
+                                     |-> Rust
+                                     `-> private ctypes -> Python API
 ```
 
 ## Separation
@@ -39,7 +43,9 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. `rust/ams-mel-sys`: unsafe declarations for the reviewed subset of the C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
-6. Separate integration applications: OMS/UCI, image processing, RF processing.
+6. `python/ams_mel`: safe Python API over a private, four-function `ctypes`
+   layer; no direct C++ or provider-factory path.
+7. Separate integration applications: OMS/UCI, image processing, RF processing.
 
 `integration/squall` contains validation applications rather than production
 library code. It may invoke Squall's supported container build/deployment
@@ -51,6 +57,9 @@ published workspace and depends only on the repository's safe `ams-mel` crate.
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built, and Cargo links it from an explicitly selected external
 build directory. CMake remains the sole owner of native C/C++ compilation.
+Python loads that same CMake-built façade from an explicit
+`AMS_MEL_NATIVE_LIB` path and passes the separate provider path through the C
+ABI. The Python layer is not a native extension and makes no zero-copy claim.
 Neither Rust crate models or links a provider directly. `Session`,
 `ImageStream`, `ControlChannel`, and `ModeRequest` are deliberately not `Send`
 or `Sync`; the safe receive API has

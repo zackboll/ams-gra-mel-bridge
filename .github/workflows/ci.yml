@@ -69,6 +69,24 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
 
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native facade and mock providers
+        run: make test-native
+      - name: Test Python session binding
+        env:
+          PYTHONPATH: python
+          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build/lib/libams_mel_c.so.0
+          AMS_MEL_TEST_PROVIDER_DIR: ${{ github.workspace }}/native/build/test-providers
+        run: python3 -W error -m unittest discover -s python/tests -v
+      - name: Compile Python package
+        env:
+          PYTHONPATH: python
+          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build/lib/libams_mel_c.so.0
+        run: python3 -W error -m compileall -q python/ams_mel
+
 # No remote run has occurred at bootstrap time.
 # This uses the host Ada toolchain, not Alire resolution; add a separately
 # validated Alire/package job before submitting either crate to an index.
