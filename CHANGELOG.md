@@ -7,6 +7,9 @@
 - Validate the current safe Rust IR slice against the pinned real Squall stack.
 - Add the dependency-free Python Session foundation and IR host-memory Mono8
   binding with owned-copy frames and mock-provider tests.
+- Add the dependency-free Python IR C2 Operate/TaskSched binding with explicit
+  enable, asynchronous requests, complete structured rejection results, cached
+  waits, retryable close, and independent/coexisting native lifetimes.
 - Add an opt-in real Squall IR MEL integration harness with strict pinned-source
   validation, hardware-free simulated optical/Couloir orchestration, and public
   C11/Ada C2-plus-Mono8 smoke clients; ordinary builds and CI remain provider-free.

@@ -31,8 +31,12 @@ Session open/version/close, structured diagnostics, and deterministic cleanup.
 Task 011 extends that same dependency-free consumer through the existing IR
 host-memory Mono8 stream ABI: open/start/receive/counters/stop/close, owned-copy
 frames, distinct timeout/stopped errors, and parent-first Session lifetime. It
-does not add Python C2, RF, real-provider validation, zero-copy/NumPy views, or
-packaging.
+does not add RF, real-provider validation, zero-copy/NumPy views, or packaging.
+Task 012 adds the Python consumer for exactly the existing C2
+Operate/TaskSched profile: explicit enable, asynchronous finite waits, structured
+success/rejection values, complete rejection text, cached terminal results,
+retryable close, and independent Session/C2/request lifetime. It adds no native
+feature or additional command.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -47,8 +51,8 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. `rust/ams-mel-sys`: unsafe declarations for the reviewed subset of the C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
-6. `python/ams_mel`: safe Python API over a private, ten-function `ctypes`
-   layer for Session/version and IR image streams; no direct C++ or
+6. `python/ams_mel`: safe Python API over a private, sixteen-function `ctypes`
+   layer for Session/version, IR image streams, and IR C2 Operate; no direct C++ or
    provider-factory path.
 7. Separate integration applications: OMS/UCI, image processing, RF processing.
 

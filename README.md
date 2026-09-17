@@ -23,14 +23,14 @@ themselves.
 > rejection descriptions, and independent parent/channel/request lifetime. An
 > opt-in real Squall integration harness validates C, Ada, and the safe Rust API
 > against the same pinned provider/runtime stack; it is not part of ordinary
-> builds or CI. Python supports façade ABI queries, provider Session
-> open/version/close, and host-memory Mono8 ImageStream
-> open/start/receive/counters/stop/close with owned-bytes Frames, parent-first
-> lifetime, and distinct Timeout/StreamStopped errors. Python remains a
-> dependency-free, development-use-only binding: Python C2 and RF are not
-> implemented, real Squall Python validation has not been performed, and there
-> is no wheel/PyPI publication or zero-copy/NumPy image API. RF and additional C2
-> commands also remain unimplemented in the other bindings.
+> builds or CI. Python supports the same current Session, Mono8, and C2
+> Operate/TaskSched slice, including owned-bytes Frames, asynchronous mode
+> requests, timeout and cached repeated waits, structured complete rejections,
+> retryable C2 close, and independent parent/child lifetimes. Python remains a
+> dependency-free, development-use-only binding: RF and additional C2 commands
+> are not implemented, real Squall Python validation has not been performed, and
+> there is no wheel/PyPI publication or zero-copy/NumPy image API. RF and
+> additional C2 commands also remain unimplemented in the other bindings.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.

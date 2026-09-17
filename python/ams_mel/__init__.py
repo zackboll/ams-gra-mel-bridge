@@ -1,16 +1,17 @@
-"""Safe Python sessions and IR Mono8 streams over the ``ams_mel_c`` façade.
+"""Safe Python sessions, IR Mono8 streams, and IR C2 over ``ams_mel_c``.
 
 Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume an :class:`ImageStream` at
 a time. The GIL is not a substitute for either contract; this API does not
-claim that ImageStream is thread-safe or support concurrent stop/receive.
+claim that owners are thread-safe. Wait must not race request close, and control
+enable, submit, and close operations require external serialization.
 """
 
 from __future__ import annotations
 
 import ctypes as _ctypes
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 import os
 from typing import Callable
 
@@ -18,6 +19,7 @@ from . import _native
 
 
 _DIAGNOSTIC_CAPACITY = 4096
+_WAIT_DIAGNOSTIC_CAPACITY = 512
 _INT64_MAX = (1 << 63) - 1
 _UINT32_MAX = (1 << 32) - 1
 _SIZE_T_MAX = (1 << (_ctypes.sizeof(_ctypes.c_size_t) * 8)) - 1
@@ -118,6 +120,72 @@ class ImageConfig:
             buffer_size,
             queue_capacity,
         )
+
+
+@dataclass(frozen=True)
+class ControlConfig:
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.channel_id, UciId):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "channel_id must be UciId")
+        if not isinstance(self.platform_id, UciId):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "platform_id must be UciId")
+        if not isinstance(self.sensor_location, ComponentLocation):
+            raise _local_error(
+                ErrorKind.INVALID_ARGUMENT,
+                "sensor_location must be ComponentLocation",
+            )
+
+    @classmethod
+    def new(
+        cls,
+        channel_id: UciId,
+        platform_id: UciId,
+        sensor_location: ComponentLocation,
+    ) -> ControlConfig:
+        return cls(channel_id, platform_id, sensor_location)
+
+
+class MfaMode(IntEnum):
+    UNUSED = _native.AMS_MEL_IR_MFA_MODE_UNUSED
+    TASK_SCHED = _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED
+    SCAN_VOLUME_SCHED = _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED
+    SCAN_BAR_SCHED = _native.AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED
+
+
+class MelErrorCode(IntEnum):
+    NONE = _native.AMS_MEL_ERROR_NONE
+    INVALID_ID = _native.AMS_MEL_ERROR_INVALID_ID
+    INVALID_STATE = _native.AMS_MEL_ERROR_INVALID_STATE
+    INVALID_PARAMETERS = _native.AMS_MEL_ERROR_INVALID_PARAMETERS
+    INSUFFICIENT_PERMISSIONS = _native.AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS
+    INSUFFICIENT_RESOURCES = _native.AMS_MEL_ERROR_INSUFFICIENT_RESOURCES
+    INSUFFICIENT_LOCAL_RESOURCES = _native.AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES
+    INSUFFICIENT_REMOTE_RESOURCES = _native.AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES
+    UNSUPPORTED = _native.AMS_MEL_ERROR_UNSUPPORTED
+
+    @classmethod
+    def _missing_(cls, value: object) -> MelErrorCode | None:
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= _UINT32_MAX:
+            unknown = int.__new__(cls, value)
+            unknown._name_ = f"UNKNOWN_0x{value:08X}"
+            unknown._value_ = value
+            return unknown
+        return None
+
+
+@dataclass(frozen=True)
+class ModeSuccess:
+    mode: MfaMode
+
+
+@dataclass(frozen=True)
+class ModeRejected:
+    code: MelErrorCode
+    description: str
 
 
 class ImageType(Enum):
@@ -316,6 +384,15 @@ def _validate_timeout(timeout_ms: int) -> None:
         )
 
 
+def _validate_uint32(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be an integer")
+    if value < 0 or value > _UINT32_MAX:
+        raise _local_error(
+            ErrorKind.INVALID_ARGUMENT, f"{name} must be representable in uint32_t"
+        )
+
+
 class _RawImageConfig:
     """Exact C config plus strong references to all borrowed string storage."""
 
@@ -351,6 +428,25 @@ class _RawImageConfig:
         return _native.UciIdV1(
             (_ctypes.c_uint8 * 16).from_buffer_copy(value.uuid),
             self._view(value.descriptive_label, "descriptive_label"),
+        )
+
+
+class _RawControlConfig(_RawImageConfig):
+    def __init__(self, config: ControlConfig) -> None:
+        self.buffers = []
+        self.raw = _native.IrC2ConfigV1(
+            channel_type=_native.AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL,
+            channel_id=self._id(config.channel_id),
+            platform_id=self._id(config.platform_id),
+            sensor_location=_native.ComponentLocationV1(
+                offset_x_m=config.sensor_location.offset_x_m,
+                offset_y_m=config.sensor_location.offset_y_m,
+                offset_z_m=config.sensor_location.offset_z_m,
+                key=self._view(config.sensor_location.key, "key"),
+                system_name=self._view(
+                    config.sensor_location.system_name, "system_name"
+                ),
+            ),
         )
 
 
@@ -538,6 +634,38 @@ class Session:
                 "stream open succeeded without returning an owner",
             )
         return ImageStream._from_owner(owner)
+
+    def open_control_channel(self, config: ControlConfig) -> ControlChannel:
+        """Open an IR CommandAndControl channel without retaining this object."""
+
+        self._require_open()
+        if not isinstance(config, ControlConfig):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "config must be ControlConfig")
+        bundle = _RawControlConfig(config)
+        owner = _native.IrC2Handle()
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_open(
+                    self._owner,
+                    _ctypes.byref(bundle.raw),
+                    _ctypes.byref(owner),
+                    diagnostic,
+                    len(diagnostic),
+                    _ctypes.byref(required),
+                )
+            )
+        except BaseException:
+            if owner.value:
+                _native.ams_mel_ir_c2_close(
+                    _ctypes.byref(owner), None, 0, None
+                )
+            raise
+        if not owner.value:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "control channel open succeeded without returning an owner",
+            )
+        return ControlChannel._from_owner(owner)
 
     def close(self) -> None:
         """Release this owner. Repeated successful close is harmless."""
@@ -743,6 +871,259 @@ class ImageStream:
             pass
 
 
+class ControlChannel:
+    """Unique C2 owner; enable, submit, and close require serialization."""
+
+    def __init__(self) -> None:
+        raise TypeError(
+            "ControlChannel objects must be created by Session.open_control_channel"
+        )
+
+    @classmethod
+    def _from_owner(cls, owner: _native.IrC2Handle) -> ControlChannel:
+        channel = cls.__new__(cls)
+        channel._owner = owner
+        channel._owner_pointer = _ctypes.pointer(owner)
+        channel._close_function = _native.ams_mel_ir_c2_close
+        return channel
+
+    @property
+    def is_open(self) -> bool:
+        return bool(self._owner.value)
+
+    def _require_open(self) -> None:
+        if not self.is_open:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "ControlChannel is closed")
+
+    def enable(self) -> None:
+        """Explicitly enable this control channel."""
+
+        self._require_open()
+        _call_with_diagnostic(
+            lambda diagnostic, required: _native.ams_mel_ir_c2_enable(
+                self._owner,
+                diagnostic,
+                len(diagnostic),
+                _ctypes.byref(required),
+            )
+        )
+
+    def submit_operate(self, command_id: int) -> ModeRequest:
+        """Submit exactly Operate/TaskSched and return its asynchronous request."""
+
+        self._require_open()
+        _validate_uint32(command_id, "command_id")
+        owner = _native.IrModeRequestHandle()
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_submit_operate(
+                    self._owner,
+                    command_id,
+                    _ctypes.byref(owner),
+                    diagnostic,
+                    len(diagnostic),
+                    _ctypes.byref(required),
+                )
+            )
+        except BaseException:
+            if owner.value:
+                _native.ams_mel_ir_mode_request_close(
+                    _ctypes.byref(owner), None, 0, None
+                )
+            raise
+        if not owner.value:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "control submission succeeded without returning a request owner",
+            )
+        return ModeRequest._from_owner(owner)
+
+    def close(self) -> None:
+        """Close this owner; retryable detach failure can leave it open."""
+
+        if not self.is_open:
+            return
+        _call_with_diagnostic(
+            lambda diagnostic, required: self._close_function(
+                self._owner_pointer,
+                diagnostic,
+                len(diagnostic),
+                _ctypes.byref(required),
+            )
+        )
+
+    def __enter__(self) -> ControlChannel:
+        self._require_open()
+        return self
+
+    def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        if exception_type is None:
+            self.close()
+        else:
+            try:
+                self.close()
+            except BaseException:
+                pass
+        return False
+
+    def __del__(self) -> None:
+        try:
+            owner = getattr(self, "_owner", None)
+            close_function = getattr(self, "_close_function", None)
+            owner_pointer = getattr(self, "_owner_pointer", None)
+            if owner is not None and owner.value and close_function is not None:
+                close_function(owner_pointer, None, 0, None)
+        except BaseException:
+            pass
+
+
+class ModeRequest:
+    """Unique asynchronous mode request; close does not cancel provider work."""
+
+    def __init__(self) -> None:
+        raise TypeError("ModeRequest objects must be created by ControlChannel.submit_operate")
+
+    @classmethod
+    def _from_owner(cls, owner: _native.IrModeRequestHandle) -> ModeRequest:
+        request = cls.__new__(cls)
+        request._owner = owner
+        request._owner_pointer = _ctypes.pointer(owner)
+        request._close_function = _native.ams_mel_ir_mode_request_close
+        return request
+
+    @property
+    def is_open(self) -> bool:
+        return bool(self._owner.value)
+
+    def _require_open(self) -> None:
+        if not self.is_open:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "ModeRequest is closed")
+
+    def wait(self, timeout_ms: int) -> ModeSuccess | ModeRejected:
+        """Wait finitely for a cached result. Zero polls; timeout does not cancel."""
+
+        self._require_open()
+        _validate_timeout(timeout_ms)
+        return _wait_for_mode(self._owner, timeout_ms)
+
+    def close(self) -> None:
+        """Release this public owner without cancelling pending provider work."""
+
+        if not self.is_open:
+            return
+        _call_with_diagnostic(
+            lambda diagnostic, required: self._close_function(
+                self._owner_pointer,
+                diagnostic,
+                len(diagnostic),
+                _ctypes.byref(required),
+            )
+        )
+
+    def __del__(self) -> None:
+        try:
+            owner = getattr(self, "_owner", None)
+            close_function = getattr(self, "_close_function", None)
+            owner_pointer = getattr(self, "_owner_pointer", None)
+            if owner is not None and owner.value and close_function is not None:
+                close_function(owner_pointer, None, 0, None)
+        except BaseException:
+            pass
+
+
+def _wait_for_mode(
+    owner: _native.IrModeRequestHandle, timeout_ms: int
+) -> ModeSuccess | ModeRejected:
+    result = _native.IrModeResultV1()
+    diagnostic = _ctypes.create_string_buffer(_WAIT_DIAGNOSTIC_CAPACITY)
+    _ctypes.memset(diagnostic, 0xFF, _WAIT_DIAGNOSTIC_CAPACITY)
+    required = _ctypes.c_size_t()
+    status = int(
+        _native.ams_mel_ir_mode_request_wait(
+            owner,
+            timeout_ms,
+            _ctypes.byref(result),
+            diagnostic,
+            len(diagnostic),
+            _ctypes.byref(required),
+        )
+    )
+    required_value = int(required.value)
+    if required_value == 0:
+        raise _local_error(
+            ErrorKind.PROTOCOL_INCONSISTENCY,
+            "native wait returned an invalid diagnostic size",
+        )
+    if status == _native.AMS_MEL_TIMEOUT:
+        message = None
+        if required_value <= len(diagnostic):
+            message = _decode_complete_buffer(
+                bytes(diagnostic.raw[:required_value]), "diagnostic"
+            ) or None
+        raise _error_from_status(status, message, required_value)
+
+    first_mode = int(result.mode)
+    first_error_code = int(result.error_code)
+    if required_value <= len(diagnostic):
+        message = _decode_complete_buffer(
+            bytes(diagnostic.raw[:required_value]), "diagnostic"
+        )
+    else:
+        try:
+            complete = _ctypes.create_string_buffer(required_value)
+        except (MemoryError, OverflowError, ValueError):
+            raise _local_error(
+                ErrorKind.INTERNAL_ERROR,
+                "unable to allocate complete wait diagnostic storage",
+            ) from None
+        retry_result = _native.IrModeResultV1()
+        retry_required = _ctypes.c_size_t()
+        retry_status = int(
+            _native.ams_mel_ir_mode_request_wait(
+                owner,
+                0,
+                _ctypes.byref(retry_result),
+                complete,
+                len(complete),
+                _ctypes.byref(retry_required),
+            )
+        )
+        if (
+            retry_status != status
+            or int(retry_result.mode) != first_mode
+            or int(retry_result.error_code) != first_error_code
+            or int(retry_required.value) != required_value
+        ):
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "native terminal wait changed during diagnostic retry",
+            )
+        result = retry_result
+        message = _decode_complete_buffer(bytes(complete.raw), "diagnostic")
+
+    if status == _native.AMS_MEL_OK:
+        if required_value != 1 or message:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "successful native wait returned a diagnostic",
+            )
+        if int(result.error_code) != _native.AMS_MEL_ERROR_NONE:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "successful native wait returned an error code",
+            )
+        try:
+            return ModeSuccess(MfaMode(int(result.mode)))
+        except ValueError as error:
+            raise _local_error(
+                ErrorKind.PROVIDER_FAILED,
+                "native provider returned an unknown MFA mode",
+            ) from error
+    if status == _native.AMS_MEL_COMMAND_REJECTED:
+        return ModeRejected(MelErrorCode(int(result.error_code)), message)
+    raise _error_from_status(status, message or None, required_value)
+
+
 def _frame_from_raw(
     raw: _native.IrFrameV1, pixels: bytes, pixel_required: int
 ) -> Frame:
@@ -813,6 +1194,8 @@ def _frame_from_raw(
 __all__ = [
     "AbiVersion",
     "ComponentLocation",
+    "ControlChannel",
+    "ControlConfig",
     "ErrorKind",
     "Frame",
     "ImageConfig",
@@ -820,6 +1203,11 @@ __all__ = [
     "ImageStream",
     "ImageType",
     "MelError",
+    "MelErrorCode",
+    "MfaMode",
+    "ModeRejected",
+    "ModeRequest",
+    "ModeSuccess",
     "ProviderVersion",
     "Session",
     "StreamCounters",
