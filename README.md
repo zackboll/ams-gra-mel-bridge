@@ -526,22 +526,25 @@ Implemented:
 - native and Ada tests using a separately loaded C++ mock provider;
 - safe Rust Session, IR host-memory Mono8, and C2 Operate/TaskSched APIs over the
   existing C ABI, with RAII cleanup and Rust-owned frame pixel copies;
-- opt-in real Squall validation of the C, Ada, and safe Rust IR slices; and
-- dependency-free Python Session and IR host-memory Mono8 APIs with owned-bytes
-  frame copies and mock-provider tests.
+- dependency-free Python Session, IR host-memory Mono8, and C2
+  Operate/TaskSched APIs with owned-bytes frames, asynchronous mode requests,
+  cached waits, retryable C2 close, and independent parent/child lifetimes; and
+- opt-in real Squall validation of the current C, Ada, safe Rust, and safe Python
+  IR slices.
 
 Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- Python C2 and real Squall validation;
+- additional C2 commands and callbacks;
 - RF MEL;
 - stacked images;
 - tracking interfaces;
 - OMS/UCI integration;
 - OpenCV processing;
 - device-memory buffers;
-- zero-copy leases; or
+- zero-copy/NumPy image views;
+- Python wheel/PyPI publication; or
 - full AMS GRA compliance.
 
 The present work should be viewed as a validated **vertical slice** of the
@@ -600,7 +603,7 @@ rust/
   ams-mel/                safe Session, IR Mono8, and C2 API and tests
 
 python/
-  ams_mel/                 dependency-free Session and IR Mono8 API via ctypes
+  ams_mel/                 dependency-free Session, IR Mono8, and C2 API via ctypes
   tests/                   Python mock-provider and C ABI drift tests
 
 docs/
@@ -767,8 +770,11 @@ API accepts only `str` provider paths (including `os.PathLike` values whose
 uses `ams_mel -> private ctypes -> ams_mel_c -> C++ MEL`; it neither models nor
 loads C++ provider interfaces directly. This is not a native extension, wheel,
 published package, or zero-copy API. The binding has no external Python
-dependencies and is intended for development use. Python C2, RF, real Squall
-validation, and NumPy image views are not implemented.
+dependencies and is intended for development use. Session, IR host-memory Mono8,
+and C2 Operate/TaskSched are implemented with owned-bytes frames, asynchronous
+mode requests, and independent parent/child lifetimes. The current IR slice has
+real Squall validation. RF and additional C2 operations are not implemented;
+NumPy/zero-copy image views and packaging remain absent.
 
 ---
 
@@ -874,8 +880,11 @@ ams_mel_c
 C++ MEL provider
 ```
 
-The current implementation uses `ctypes` for Session and owned-copy IR Mono8
-reception. It does not provide C2, RF, real Squall validation, a native extension,
+The current implementation uses `ctypes` for Session, owned-copy IR Mono8
+reception, and C2 Operate/TaskSched. Frames own Python `bytes`; mode requests are
+asynchronous and preserve cached waits, retryable C2 close, and independent
+parent/child lifetimes. The current IR slice is validated against real Squall.
+It does not provide RF, additional C2 operations, a native extension,
 zero-copy/NumPy image views, wheels, or PyPI publication.
 
 Python is particularly attractive for:

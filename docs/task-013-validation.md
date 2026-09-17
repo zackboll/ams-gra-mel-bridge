@@ -84,7 +84,7 @@ public binding/native library environment, exact provider/profile/frame/timeout
 arguments, retained C/Ada/Rust ELF checks, retained Rust link/build checks, and
 the unchanged pinned topology and cleanup assertions.
 
-`make test-python` passed native CTest 6/6 and 27 Python tests. `make test-rust`
+`make test-python` passed native CTest 6/6 and 41 Python tests. `make test-rust`
 passed native CTest 6/6 and all 25 Rust workspace integration/ABI tests. Plain
 `make check` passed native CTest 6/6, then correctly stopped because
 GNAT/GPRbuild is not on the ordinary shell `PATH`; it is not reported as passed.
