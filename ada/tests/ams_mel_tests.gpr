@@ -9,6 +9,6 @@ project AMS_MEL_Tests is
 
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-gnat2022", "-gnata", "-gnatVa", "-gnatwa");
+        ("-gnat2022", "-gnata", "-gnatVa", "-gnatwa", "-gnatwe");
    end Compiler;
 end AMS_MEL_Tests;

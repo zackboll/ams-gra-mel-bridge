@@ -9,7 +9,7 @@ package body AMS_MEL_IR_C2_Tests is
    use type C2.MFA_Mode;
    use type C2.Outcome;
 
-   Zero_UUID : constant AMS.MEL.IR.UUID := (others => 0);
+   Zero_UUID : constant AMS.MEL.IR.UUID := [others => 0];
    Channel_ID : constant AMS.MEL.IR.UCI_ID :=
      AMS.MEL.IR.Create_UCI_ID (Zero_UUID, "Ada IR C2 channel");
    Platform_ID : constant AMS.MEL.IR.UCI_ID :=
@@ -21,12 +21,12 @@ package body AMS_MEL_IR_C2_Tests is
      C2.Create_Config (Channel_ID, Platform_ID, Location);
 
    function Long_Rejection return String is
-      Result : String (1 .. 613) := (others => 'x');
+      Result : String (1 .. 613) := [others => 'x'];
    begin
       Result (511) := Character'Val (16#E2#);
       Result (512) := Character'Val (16#82#);
       Result (513) := Character'Val (16#AC#);
-      Result (514 .. Result'Last) := (others => 'y');
+      Result (514 .. Result'Last) := [others => 'y'];
       return Result;
    end Long_Rejection;
 
@@ -137,7 +137,7 @@ package body AMS_MEL_IR_C2_Tests is
    begin
       C2.Enable (Channel);
       declare
-         Request : C2.Mode_Request := C2.Submit_Operate (Channel);
+         Request : constant C2.Mode_Request := C2.Submit_Operate (Channel);
       begin
          if not C2.Is_Open (Request) then
             raise Program_Error with "Ada C2 request was not published";

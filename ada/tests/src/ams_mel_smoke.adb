@@ -129,7 +129,7 @@ procedure AMS_MEL_Smoke is
    begin
       Remove_Lifetime_Log;
       declare
-         Object : AMS.MEL.Session := AMS.MEL.Open
+         Object : constant AMS.MEL.Session := AMS.MEL.Open
            (Provider_Path, "ada-finalize", "aperture-B");
       begin
          if not AMS.MEL.Is_Open (Object) then
@@ -185,7 +185,7 @@ procedure AMS_MEL_Smoke is
    end Test_Embedded_NUL;
 
    procedure Test_Open_Failure is
-      Object : AMS.MEL.Session := AMS.MEL.Open
+      Object : constant AMS.MEL.Session := AMS.MEL.Open
         ("/definitely/missing/libirmel.so", "missing");
    begin
       if AMS.MEL.Is_Open (Object) then

@@ -71,7 +71,7 @@ package body AMS.MEL.IR.C2 is
             Offset_Y_M => Interfaces.C.double (Config.Location.Y),
             Offset_Z_M => Interfaces.C.double (Config.Location.Z),
             Key => String_View (Key), System_Name => String_View (System_Name)));
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
    begin
       if Parent.Handle = C.Null_Session then
@@ -94,7 +94,7 @@ package body AMS.MEL.IR.C2 is
      (Channel.Handle /= C.Null_C2);
 
    procedure Enable (Channel : in out Control_Channel) is
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_C2_Enable
         (Channel.Handle, Diagnostic'Address, Diagnostic'Length, Required'Access);
@@ -107,7 +107,7 @@ package body AMS.MEL.IR.C2 is
    function Submit_Operate
      (Channel : Control_Channel; ID : Command_ID := 0) return Mode_Request
    is
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
    begin
       return Result : Mode_Request do
@@ -137,7 +137,7 @@ package body AMS.MEL.IR.C2 is
      (Request : Mode_Request; Timeout_Milliseconds : Natural) return Mode_Result
    is
       Raw : aliased C.IR_Mode_Result_V1 := (Mode => 0, Error_Code => 0);
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Timeout : Interfaces.Unsigned_32;
       Code : Interfaces.Integer_32;
@@ -165,7 +165,7 @@ package body AMS.MEL.IR.C2 is
             if Required > Diagnostic'Length then
                declare
                   Complete : aliased Diagnostic_Array (0 .. Required - 1) :=
-                    (others => Interfaces.C.nul);
+                    [others => Interfaces.C.nul];
                   Retry_Raw : aliased C.IR_Mode_Result_V1 :=
                     (Mode => 0, Error_Code => 0);
                   Retry_Required : aliased C.Size_T := 0;
@@ -195,7 +195,7 @@ package body AMS.MEL.IR.C2 is
    end Wait;
 
    procedure Close (Request : in out Mode_Request) is
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_Mode_Request_Close
         (Request.Owner.Handle'Access, Diagnostic'Address, Diagnostic'Length,
@@ -207,7 +207,7 @@ package body AMS.MEL.IR.C2 is
    end Close;
 
    procedure Close (Channel : in out Control_Channel) is
-      Diagnostic : aliased Fixed_Diagnostic := (others => Interfaces.C.nul);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 := C.IR_C2_Close
         (Channel.Handle'Access, Diagnostic'Address, Diagnostic'Length,
