@@ -6,7 +6,6 @@
 use std::error;
 use std::ffi::{c_char, CString};
 use std::fmt;
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr;
 use std::rc::Rc;
@@ -50,6 +49,7 @@ pub enum ErrorKind {
 pub struct Error {
     kind: ErrorKind,
     diagnostic: Option<String>,
+    diagnostic_required: Option<usize>,
 }
 
 impl Error {
@@ -61,11 +61,20 @@ impl Error {
         self.diagnostic.as_deref()
     }
 
+    /// Returns the native diagnostic capacity required, including its trailing
+    /// NUL. A value larger than the binding's capture capacity means that
+    /// [`diagnostic`](Self::diagnostic) is `None`, because a partial diagnostic
+    /// is never exposed as complete.
+    pub fn diagnostic_required(&self) -> Option<usize> {
+        self.diagnostic_required
+    }
+
     fn new(kind: ErrorKind, diagnostic: impl Into<String>) -> Self {
         let diagnostic = diagnostic.into();
         Self {
             kind,
             diagnostic: (!diagnostic.is_empty()).then_some(diagnostic),
+            diagnostic_required: None,
         }
     }
 
@@ -98,7 +107,7 @@ pub fn abi_version() -> Result<AbiVersion, Error> {
             minor: raw.minor,
         })
     } else {
-        Err(error_from_status(status, String::new()))
+        Err(error_from_status(status, Some(String::new()), None))
     }
 }
 
@@ -248,7 +257,13 @@ fn empty_version() -> sys::AmsMelProviderVersionV1 {
 }
 
 fn c_path(path: &Path) -> Result<CString, Error> {
-    CString::new(path.as_os_str().as_bytes()).map_err(|_| Error::nul("provider_library"))
+    let path = path.to_str().ok_or_else(|| {
+        Error::new(
+            ErrorKind::InvalidArgument,
+            "provider_library must be valid UTF-8",
+        )
+    })?;
+    c_string(path, "provider_library")
 }
 
 fn c_string(value: &str, name: &str) -> Result<CString, Error> {
@@ -297,11 +312,20 @@ fn call_with_diagnostic(
         diagnostic.len(),
         &mut required,
     );
-    if required == 0 || required > diagnostic.len() {
+    if required == 0 {
         return Err(Error::new(
             ErrorKind::ProtocolInconsistency,
             format!("native diagnostic requires invalid capacity {required}"),
         ));
+    }
+    if required > diagnostic.len() {
+        if status == sys::AMS_MEL_OK {
+            return Err(Error::new(
+                ErrorKind::ProtocolInconsistency,
+                "successful native call returned an oversized diagnostic",
+            ));
+        }
+        return Err(error_from_status(status, None, Some(required)));
     }
     let message = decode_diagnostic(&diagnostic[..required])?;
     if status == sys::AMS_MEL_OK {
@@ -313,7 +337,7 @@ fn call_with_diagnostic(
         }
         Ok(())
     } else {
-        Err(error_from_status(status, message))
+        Err(error_from_status(status, Some(message), Some(required)))
     }
 }
 
@@ -321,7 +345,11 @@ fn decode_diagnostic(buffer: &[u8]) -> Result<String, Error> {
     decode_c_buffer(buffer, "diagnostic")
 }
 
-fn error_from_status(status: i32, diagnostic: String) -> Error {
+fn error_from_status(
+    status: i32,
+    diagnostic: Option<String>,
+    diagnostic_required: Option<usize>,
+) -> Error {
     let kind = match status {
         sys::AMS_MEL_INVALID_ARGUMENT => ErrorKind::InvalidArgument,
         sys::AMS_MEL_LIBRARY_LOAD_FAILED => ErrorKind::LibraryLoadFailed,
@@ -334,7 +362,11 @@ fn error_from_status(status: i32, diagnostic: String) -> Error {
         sys::AMS_MEL_INTERNAL_ERROR => ErrorKind::InternalError,
         unknown => ErrorKind::Unknown(unknown),
     };
-    Error::new(kind, diagnostic)
+    Error {
+        kind,
+        diagnostic: diagnostic.filter(|message| !message.is_empty()),
+        diagnostic_required,
+    }
 }
 
 fn best_effort_close(raw: &mut *mut sys::AmsMelSession) {

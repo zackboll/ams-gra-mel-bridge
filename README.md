@@ -151,7 +151,7 @@ layer.
 | **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
-| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Planned |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session foundation implemented; IR/C2 not yet implemented |
 | **Python** | Python package → `ctypes`/`cffi`/native extension → `ams_mel_c` → C++ MEL | Planned |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 

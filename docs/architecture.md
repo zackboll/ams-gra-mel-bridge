@@ -49,6 +49,14 @@ Neither Rust crate models or links a provider directly. `Session` is deliberatel
 not `Send` or `Sync`, because the current MEL contract does not establish
 arbitrary cross-thread Session use.
 
+The safe Rust wrapper captures diagnostics in a fixed local buffer during each
+native call. If an error reports a larger required capacity, Rust preserves the
+native error kind and required byte count but exposes no diagnostic string: a
+valid UTF-8 prefix is not the complete diagnostic. The wrapper does not retry
+Session operations merely to recover text because open and close have provider
+and ownership side effects. Consequently, the current C ABI cannot guarantee
+recovery of an arbitrarily long provider diagnostic after one such call.
+
 ## Native dependency baseline
 
 Do not add unpinned `FetchContent`, build-time network access, or recursive

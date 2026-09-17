@@ -456,6 +456,8 @@ public:
         if (!initialized_) throw std::logic_error("mock not initialized");
         if (instance_ == "throw-version") throw std::runtime_error("mock version exception");
         if (instance_ == "throw-version-utf8") throw std::runtime_error("mock \xC2\xB5 exception");
+        if (instance_ == "throw-version-oversized")
+            throw std::runtime_error(std::string(5000U, 'x') + "\xC2\xB5");
         if (instance_ == "bad-alloc-version") throw std::bad_alloc{};
         if (instance_ == "invalid-utf8-version") return {1, 2, std::string{"bad\xC3\x28", 5}, "unchanged"};
         if (instance_ == "nul-version") return {1, 2, std::string{"bad\0vendor", 10}, "unchanged"};

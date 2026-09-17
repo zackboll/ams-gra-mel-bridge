@@ -1,5 +1,11 @@
 use std::env;
+#[cfg(unix)]
+use std::ffi::OsString;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -92,6 +98,43 @@ fn rejects_invalid_provider_version_utf8() {
         error.diagnostic(),
         Some("provider version contains invalid UTF-8 or NUL")
     );
+}
+
+#[test]
+fn preserves_status_and_required_size_for_oversized_diagnostic() {
+    let _guard = PROVIDER_TEST.lock().expect("provider test lock");
+    let error = Session::open(mock_provider(), "throw-version-oversized", "aperture-A")
+        .expect("open")
+        .provider_version()
+        .expect_err("oversized provider exception");
+    assert_eq!(error.kind(), &ErrorKind::ProviderException);
+    assert_eq!(error.diagnostic(), None);
+    assert_eq!(error.diagnostic_required(), Some(5003));
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_non_utf8_provider_path_before_native_call() {
+    let _guard = PROVIDER_TEST.lock().expect("provider test lock");
+    let log = LifetimeLog::new();
+    let path = log
+        .directory
+        .join(OsString::from_vec(b"invalid-\xff-provider.so".to_vec()));
+    symlink(
+        mock_provider().canonicalize().expect("mock provider path"),
+        &path,
+    )
+    .expect("create non-UTF-8 provider symlink");
+    let error = Session::open(&path, "success", "aperture-A")
+        .expect_err("non-UTF-8 provider path rejected");
+    assert_eq!(error.kind(), &ErrorKind::InvalidArgument);
+    assert_eq!(
+        error.diagnostic(),
+        Some("provider_library must be valid UTF-8")
+    );
+    assert_eq!(error.diagnostic_required(), None);
+    assert_eq!(log.contents(), "");
+    fs::remove_file(path).expect("remove provider symlink");
 }
 
 fn success_lifecycle() -> &'static str {
