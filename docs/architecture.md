@@ -4,7 +4,7 @@
 
 Build a consumer-side binding, not a new official MEL standard and not a
 provider rewrite. Preserve the published C++ provider boundary. The C facade
-will adapt it for C, Ada, and later Rust.
+adapts it for C, Ada, and Rust.
 
 The bootstrap implemented an independent ABI-version query. Task 001 adds only
 the first provider boundary: load a compatible IR MEL library, create and
@@ -19,14 +19,23 @@ Task 004 adds no library API. Its isolated, opt-in applications exercise those
 Task-002/003 slices against Squall's published IR MEL provider and hardware-free
 simulated optical stack. Container deployment remains test orchestration, not a
 generic-library dependency or an application-facing transport.
+Task 006 adds the first Rust consumer without changing that C ABI: façade
+version query plus provider Session open/version/close. Rust IR reception and C2
+remain later vertical slices.
+
+```text
+C++ provider -> MEL API -> ams_mel_c -> Ada
+                                      -> Rust
+```
 
 ## Separation
 
 1. `native/include`: genuine C11 declarations, no STL or C++ object layouts.
 2. `native/src`: C++20 adapter implementation; CMake owns compilation.
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
-4. Future `rust/*`: sys crate and safe wrapper using the same native source.
-5. Separate integration applications: OMS/UCI, image processing, RF processing.
+4. `rust/ams-mel-sys`: unsafe declarations for the reviewed subset of the C ABI.
+5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
+6. Separate integration applications: OMS/UCI, image processing, RF processing.
 
 `integration/squall` is a validation application rather than production library
 code. It may invoke Squall's supported container build/deployment mechanisms,
@@ -34,9 +43,19 @@ but the C and Ada executables include/use only this project's public APIs. They
 do not expose or call Couloir, backend gRPC, UDP, REST, or Squall-private types.
 
 The shared native library deliberately owns its C++ boundary. GPR imports it
-as externally built. The current function needs no provider or C++ runtime
-allocation; provider implementations will introduce compatibility and lifetime
-requirements that the bootstrap does not solve.
+as externally built, and Cargo links it from an explicitly selected external
+build directory. CMake remains the sole owner of native C/C++ compilation.
+Neither Rust crate models or links a provider directly. `Session` is deliberately
+not `Send` or `Sync`, because the current MEL contract does not establish
+arbitrary cross-thread Session use.
+
+The safe Rust wrapper captures diagnostics in a fixed local buffer during each
+native call. If an error reports a larger required capacity, Rust preserves the
+native error kind and required byte count but exposes no diagnostic string: a
+valid UTF-8 prefix is not the complete diagnostic. The wrapper does not retry
+Session operations merely to recover text because open and close have provider
+and ownership side effects. Consequently, the current C ABI cannot guarantee
+recovery of an arbitrarily long provider diagnostic after one such call.
 
 ## Native dependency baseline
 

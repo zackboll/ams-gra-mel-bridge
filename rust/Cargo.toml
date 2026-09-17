@@ -1,0 +1,3 @@
+[workspace]
+members = ["ams-mel-sys", "ams-mel"]
+resolver = "2"

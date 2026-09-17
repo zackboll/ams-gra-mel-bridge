@@ -49,6 +49,24 @@ jobs:
       - name: Direct GPR Ada smoke test
         run: make test-ada
 
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Build native facade and mock providers
+        run: make test-native
+      - name: Check Rust workspace
+        run: cargo check --manifest-path rust/Cargo.toml --workspace
+      - name: Test Rust workspace
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+      - name: Lint Rust workspace
+        run: >-
+          cargo clippy --manifest-path rust/Cargo.toml
+          --workspace --all-targets -- -D warnings
+
 # No remote run has occurred at bootstrap time.
 # This uses the host Ada toolchain, not Alire resolution; add a separately
 # validated Alire/package job before submitting either crate to an index.

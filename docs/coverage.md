@@ -22,8 +22,9 @@
 | Real IR provider validation | Implemented and passed | Pinned Squall simulator: C2 TaskSched plus three 320x200 Mono8 frames in both C and Ada; opt-in and excluded from ordinary CI |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys/safe bindings | Not implemented | Later; same native ABI |
-| Alire/crates.io publication | Not performed | See packaging checklist |
+| Rust sys binding | Implemented for Session foundation | Four C exports only; C-header ABI drift probe |
+| Safe Rust binding | Session foundation implemented | ABI query, open/version/close, diagnostics, RAII Drop; no IR/C2 |
+| Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |
 
 Implementation and verification are different. See `bootstrap-validation.md`
