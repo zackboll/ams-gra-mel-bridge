@@ -5,6 +5,8 @@
 Task 009 adds a standalone, unpublished Rust integration application and extends
 the opt-in Task-004 Squall harness. It adds no MEL functionality and changes no
 public/native ABI, safe Rust semantics, Ada public API, or provider code. The
+only normal-workspace Rust source changes are rustfmt output needed to close the
+known Task-008 formatting-CI gap. The
 application is deliberately outside `rust/Cargo.toml` and depends only on the
 repository's safe `ams-mel` crate by path.
 
@@ -97,13 +99,15 @@ The following passed:
 - standalone locked/offline `cargo check` and Clippy with `-D warnings`;
 - `git diff --check` and the first-party final-newline audit.
 
-Local `cargo fmt` could not run because this distribution toolchain does not
-provide `rustfmt`/`cargo-fmt`. The hosted job installs rustfmt explicitly and
-enforces the normal workspace format check.
+The distribution toolchain did not initially provide `rustfmt`/`cargo-fmt`; the
+matching Debian 1.85.1 package was extracted without system installation and
+used to apply and check formatting for both manifests. The hosted job installs
+rustfmt explicitly and enforces the normal workspace format check.
 
-The public C header, `native/src`, `native/vendor`, exports map, safe Rust crates,
-and Ada public source are unchanged. Audits found exactly 16 public C function
-declarations, 16 Rust sys extern declarations, and 16 versioned ELF exports.
+The public C header, `native/src`, `native/vendor`, exports map, Rust sys crate,
+and Ada public source are unchanged. The safe Rust crate has rustfmt-only changes
+and no semantic changes. Audits found exactly 16 public C function declarations,
+16 Rust sys extern declarations, and 16 versioned ELF exports.
 The release Rust application is an ELF PIE whose direct dependencies include
 `libams_mel_c.so.0` and exclude `libsquall_ir_mel` and mock providers.
 

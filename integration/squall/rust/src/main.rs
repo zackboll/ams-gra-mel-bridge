@@ -7,12 +7,10 @@ use ams_mel::{
 };
 
 const CHANNEL_UUID: [u8; 16] = [
-    0x00, 0x40, 0x04, 0x00, 0x11, 0x22, 0x43, 0x44, 0x85, 0x66, 0x77, 0x88, 0x99, 0xaa,
-    0xbb, 0xcc,
+    0x00, 0x40, 0x04, 0x00, 0x11, 0x22, 0x43, 0x44, 0x85, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc,
 ];
 const PLATFORM_UUID: [u8; 16] = [
-    0x00, 0x40, 0x04, 0x01, 0x21, 0x32, 0x43, 0x54, 0x86, 0x67, 0x78, 0x89, 0x9a, 0xab,
-    0xbc, 0xcd,
+    0x00, 0x40, 0x04, 0x01, 0x21, 0x32, 0x43, 0x54, 0x86, 0x67, 0x78, 0x89, 0x9a, 0xab, 0xbc, 0xcd,
 ];
 const EXPECTED_WIDTH: u32 = 320;
 const EXPECTED_HEIGHT: u32 = 200;
@@ -55,7 +53,9 @@ fn run() -> Result<(), Failure> {
     if !(3..=5).contains(&arguments.len()) {
         return Err(Failure::Input(format!(
             "usage: {} PROVIDER_SO PROFILE_JSON [FRAME_COUNT] [TIMEOUT_MS]",
-            arguments.first().map_or("ams-mel-squall-ir", String::as_str)
+            arguments
+                .first()
+                .map_or("ams-mel-squall-ir", String::as_str)
         )));
     }
     let frame_count = parse_u32(arguments.get(3), 3, "frame count")?;
@@ -78,8 +78,8 @@ fn run() -> Result<(), Failure> {
         version.api_version, version.library_version, version.vendor, version.description
     );
 
-    let platform = UciId::new(PLATFORM_UUID, "Task 004 integration platform")
-        .at("construct platform ID")?;
+    let platform =
+        UciId::new(PLATFORM_UUID, "Task 004 integration platform").at("construct platform ID")?;
     let location = ComponentLocation::new(
         0.0,
         0.0,
@@ -162,9 +162,7 @@ fn run() -> Result<(), Failure> {
         counters.frames_dropped_queue_full,
         counters.malformed_or_unsupported
     );
-    if counters.frames_received < u64::from(frame_count)
-        || counters.malformed_or_unsupported != 0
-    {
+    if counters.frames_received < u64::from(frame_count) || counters.malformed_or_unsupported != 0 {
         return Err(Failure::Contract(format!(
             "stream counters violate contract: requested={frame_count}, received={}, malformed={}",
             counters.frames_received, counters.malformed_or_unsupported
@@ -206,9 +204,7 @@ fn close_control(control: &mut ControlChannel) -> Result<(), Failure> {
                 error: first,
             });
         }
-        control
-            .close()
-            .at("retry retained ControlChannel close")?;
+        control.close().at("retry retained ControlChannel close")?;
     }
     if control.is_open() {
         return Err(Failure::Contract(
