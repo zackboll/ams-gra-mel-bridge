@@ -8,6 +8,17 @@ exports. The external target is
 `b1015728f904c799fa0c07489fce48e78f67845f`. No Squall source is vendored,
 installed, or compiled into `ams_mel_c`.
 
+The accepted build used these exact external dependency checkouts:
+
+| Path below Squall root | Repository | Commit |
+|---|---|---|
+| `ams-interfaces/common-mel` | `open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel` | `f6908437d8fd2f7fb69896f9eb9cfd272d10c439` |
+| `ams-interfaces/ir-mel` | `open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel` | `8d9224519f12b44e0b28815755c56a32a28d24a0` |
+| `ams-interfaces/rf-mel` | `open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel` | `762ce84c5555dd0f3ea66f36b321fecf8839b89f` |
+| `ams-interfaces/ir-mel/ams-math` | `open-arsenal/ams-gra-hello-world-sk-libraries-ams-math` | `00be45190f0e47d268cece8b8c2f8fb58b5418d2` |
+| `ams-interfaces/rf-mel/ams-math` | `open-arsenal/ams-gra-hello-world-sk-libraries-ams-math` | `00be45190f0e47d268cece8b8c2f8fb58b5418d2` |
+| `ams-interfaces/rf-mel/ams-vita` | `open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita` | `8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8` |
+
 Pinned source inspection covered the upstream README, default/build compose
 files, Containerfile, `tests/mel-boundary-e2e`, the IR MEL profile and
 implementation, `SquallIRFactory.cc`, `SquallImageChannel.*`,
@@ -41,8 +52,10 @@ Runtime is instead equivalent to:
 
 ```sh
 cd "$SQUALL_SOURCE_DIR"
-<compose> -p <unique-project> -f compose.yaml \
-  -f <task-004-runtime-override> up -d squall-optical couloir
+<compose> -p <unique-project> -f compose.yaml -f compose.build.yaml \
+  -f <task-004-runtime-override> build squall-optical couloir
+<compose> -p <unique-project> -f compose.yaml -f compose.build.yaml \
+  -f <task-004-runtime-override> up -d --no-build squall-optical couloir
 ```
 
 The override retains `network_mode: host`, mounts the E2E checkerboard
@@ -58,6 +71,14 @@ destinations, so the value validates cleanly without converting the empty MEL
 runtime-fillable sink into a static destination. The readiness URL uses the
 same selected health port.
 
+The override also assigns unique local optical and Couloir image tags. Thus the
+three required inputs are rendered to one canonical temporary Compose file
+before build, avoiding multi-file implementations that also tag superseded
+image names. The build uses the verified checkout and startup cannot substitute
+either root Compose registry `:latest` image. The provider tag is removed after extraction;
+normal teardown removes only the two Task-004 runtime tags, without pruning
+shared layers or upstream/user tags. A retained stack retains its image tags.
+
 The harness verifies that exact image tag with the selected container runtime,
 then uses its `create`/`cp` operations to obtain
 `/usr/lib64/libsquall_ir_mel.so`. It does not rely on provider-specific Compose
@@ -69,11 +90,15 @@ Run:
 
 ```sh
 SQUALL_SOURCE_DIR=/path/to/ams-gra-hello-world-sk-sensors-squall \
-  AMS_MEL_SQUALL_REPEAT=3 make test-squall-ir
+  make test-squall-ir
 ```
 
+`AMS_MEL_SQUALL_REPEAT=3` is an optional stress setting. The accepted real run
+intentionally used the default single iteration.
+
 The combined target builds/runs both clients. The runtime uses Squall root
-compose plus a Task-004-owned override; both `squall-optical` and `couloir` are
+compose, its build overlay, and a Task-004-owned override; both
+`squall-optical` and `couloir` are
 required and inspected to use host networking. The host control port defaults to
 21203 and can be set explicitly with `AMS_MEL_SQUALL_CONTROL_PORT`; host
 networking cannot remap it. Each client opens the provider with a generated
@@ -112,7 +137,8 @@ vendor=Squall
 description="Squall Simulator IR MEL"
 ```
 
-The generated profile used `control_address=127.0.0.1:21204` and
+The corrective acceptance run generated
+`control_address=127.0.0.1:57485` and
 `data_host=127.0.0.1`. C2 completed with `TASK_SCHED`. Both image clients passed:
 
 | Client | Frames | Dimensions | Bytes/frame | Received | Dropped | Malformed | Result |

@@ -16,12 +16,17 @@ esac
 project="ams-mel-task004-$$"
 project_provider="$project-provider"
 provider_image="localhost/${project_provider}:latest"
+optical_image="localhost/${project}-optical:latest"
+couloir_image="localhost/${project}-couloir:latest"
 started=0
 provider_container=
+provider_image_present=0
+runtime_images_present=0
 temp_dir="$build_dir/tmp/$project"
 profile="$temp_dir/squall-ir-profile.json"
 couloir_config="$temp_dir/couloir.toml"
 runtime_override="$temp_dir/runtime.compose.override.yaml"
+runtime_compose="$temp_dir/runtime.compose.yaml"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "$1 is required"; }
@@ -67,12 +72,14 @@ EOF
   cat >"$runtime_override" <<EOF
 services:
   couloir:
+    image: $couloir_image
     network_mode: host
     command: --config /task004/couloir.toml
     volumes:
       - backend-sockets:/sockets
       - $couloir_config:/task004/couloir.toml:ro,Z
   squall-optical:
+    image: $optical_image
     network_mode: host
     command: --config /task004/optical.toml
     environment:
@@ -120,29 +127,39 @@ if test "${AMS_MEL_SQUALL_PREFLIGHT_ONLY:-0}" = 1; then
   exit 0
 fi
 test -n "${SQUALL_SOURCE_DIR:-}" || fail "SQUALL_SOURCE_DIR must name the pinned Squall checkout"
-test -d "$SQUALL_SOURCE_DIR/.git" || fail "SQUALL_SOURCE_DIR is not a Git checkout: $SQUALL_SOURCE_DIR"
 BUILD_COMPOSE_DIR="$SQUALL_SOURCE_DIR/tests/mel-boundary-e2e"
 BUILD_COMPOSE_FILE="$BUILD_COMPOSE_DIR/compose.yaml"
 RUNTIME_COMPOSE_DIR="$SQUALL_SOURCE_DIR"
 RUNTIME_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.yaml"
+RUNTIME_BUILD_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.build.yaml"
 test -f "$BUILD_COMPOSE_FILE" || fail "Squall MEL boundary compose file is missing: $BUILD_COMPOSE_FILE"
-actual_commit=$(git -C "$SQUALL_SOURCE_DIR" rev-parse HEAD 2>/dev/null) || fail "cannot read Squall checkout revision"
-test "$actual_commit" = "$expected_commit" || fail "Squall revision mismatch: expected $expected_commit, found $actual_commit"
-remote_urls=$(git -C "$SQUALL_SOURCE_DIR" remote -v 2>/dev/null || true)
-printf '%s\n' "$remote_urls" | grep -q 'open-arsenal/ams-gra-hello-world-sk-sensors-squall' || \
-  fail "SQUALL_SOURCE_DIR does not identify the expected open-arsenal Squall repository"
+verify_checkout() {
+  "$root/integration/squall/verify-checkout.sh" "$1" "$2" "$3"
+}
+verify_checkout "$SQUALL_SOURCE_DIR" \
+  open-arsenal/ams-gra-hello-world-sk-sensors-squall "$expected_commit"
+actual_commit=$expected_commit
 test -f "$SQUALL_SOURCE_DIR/compose.yaml" || fail "Squall compose.yaml is missing"
+test -f "$RUNTIME_BUILD_COMPOSE_FILE" || fail "Squall compose.build.yaml is missing"
 test -f "$SQUALL_SOURCE_DIR/config/squall-ir-mel-profile.json" || fail "Squall IR MEL profile is missing"
-for dependency in \
-  ams-interfaces/common-mel \
-  ams-interfaces/ir-mel \
-  ams-interfaces/rf-mel \
-  ams-interfaces/ir-mel/ams-math \
-  ams-interfaces/rf-mel/ams-math \
-  ams-interfaces/rf-mel/ams-vita
-do
-  test -d "$SQUALL_SOURCE_DIR/$dependency" || fail "Squall dependency is missing: $SQUALL_SOURCE_DIR/$dependency"
-done
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/common-mel" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel \
+  f6908437d8fd2f7fb69896f9eb9cfd272d10c439
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/ir-mel" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel \
+  8d9224519f12b44e0b28815755c56a32a28d24a0
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/rf-mel" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel \
+  762ce84c5555dd0f3ea66f36b321fecf8839b89f
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/ir-mel/ams-math" \
+  open-arsenal/ams-gra-hello-world-sk-libraries-ams-math \
+  00be45190f0e47d268cece8b8c2f8fb58b5418d2
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/rf-mel/ams-math" \
+  open-arsenal/ams-gra-hello-world-sk-libraries-ams-math \
+  00be45190f0e47d268cece8b8c2f8fb58b5418d2
+verify_checkout "$SQUALL_SOURCE_DIR/ams-interfaces/rf-mel/ams-vita" \
+  open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita \
+  8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8
 
 need git; need cmake; need cc; need file; need readelf; need python3; need awk
 if command -v podman >/dev/null 2>&1; then
@@ -175,17 +192,29 @@ run_compose() {
   )
 }
 
+render_runtime_compose() {
+  compose_project=$1
+  (
+    cd "$RUNTIME_COMPOSE_DIR"
+    if test "$compose_kind" = standalone; then
+      podman-compose -p "$compose_project" -f "$RUNTIME_COMPOSE_FILE" \
+        -f "$RUNTIME_BUILD_COMPOSE_FILE" -f "$runtime_override" config
+    else
+      "$runtime" compose -p "$compose_project" -f "$RUNTIME_COMPOSE_FILE" \
+        -f "$RUNTIME_BUILD_COMPOSE_FILE" -f "$runtime_override" config
+    fi
+  ) >"$runtime_compose"
+}
+
 run_runtime_compose() {
   compose_project=$1
   shift
   (
     cd "$RUNTIME_COMPOSE_DIR"
     if test "$compose_kind" = standalone; then
-      podman-compose -p "$compose_project" -f "$RUNTIME_COMPOSE_FILE" \
-        -f "$runtime_override" "$@"
+      podman-compose -p "$compose_project" -f "$runtime_compose" "$@"
     else
-      "$runtime" compose -p "$compose_project" -f "$RUNTIME_COMPOSE_FILE" \
-        -f "$runtime_override" "$@"
+      "$runtime" compose -p "$compose_project" -f "$runtime_compose" "$@"
     fi
   )
 }
@@ -277,6 +306,9 @@ cleanup() {
   if test -n "$provider_container"; then
     "$runtime" rm -f "$provider_container" >/dev/null 2>&1 || true
   fi
+  if test "$provider_image_present" = 1; then
+    "$runtime" image rm "$provider_image" >/dev/null 2>&1 || true
+  fi
   if test "$started" = 1 && test "$status" -ne 0; then
     printf '%s\n' '--- Squall runtime status ---' >&2
     print_service_status squall-optical >&2 || true
@@ -295,7 +327,12 @@ cleanup() {
   elif test "$started" = 1; then
     printf 'Leaving Task-004 Squall stack running (project %s).\n' "$project" >&2
   fi
-  rm -f "$profile" "$couloir_config" "$runtime_override"
+  if test "$runtime_images_present" = 1 && \
+    { test "$started" != 1 || test "${AMS_MEL_KEEP_SQUALL:-0}" != 1; }
+  then
+    "$runtime" image rm "$optical_image" "$couloir_image" >/dev/null 2>&1 || true
+  fi
+  rm -f "$profile" "$couloir_config" "$runtime_override" "$runtime_compose"
   rmdir "$temp_dir" "$build_dir/tmp" >/dev/null 2>&1 || true
   exit "$status"
 }
@@ -320,17 +357,21 @@ mkdir -p "$build_dir/bin" "$build_dir/ada-obj" "$build_dir/provider" "$temp_dir"
 export ARTIFACTS_DIR="$build_dir"
 export SQUALL_MEL_DATA_CONSUMER_IMAGE="$provider_image"
 write_runtime_configuration
+render_runtime_compose "$project"
 print_runtime_port_plan
 printf '%s\n' "Squall source: $SQUALL_SOURCE_DIR" "Squall revision: $actual_commit" \
   "Container runtime: $($runtime --version 2>/dev/null | head -n 1)" \
   "Compose command: $compose_description" \
   "Build compose file: $BUILD_COMPOSE_FILE" \
   "Runtime compose file: $RUNTIME_COMPOSE_FILE" \
+  "Runtime build compose file: $RUNTIME_BUILD_COMPOSE_FILE" \
   "Runtime override: $runtime_override" \
+  "Rendered runtime compose file: $runtime_compose" \
   "Generated Couloir configuration: $couloir_config"
 
 # The upstream E2E service is the supported image target containing the real MEL
 # library. Build it but do not run its application client.
+provider_image_present=1
 run_compose "$project_provider" build squall-ir-data-consumer
 "$runtime" image inspect "$provider_image" >/dev/null 2>&1 || \
   fail "could not identify built Squall MEL consumer image: $provider_image"
@@ -339,6 +380,8 @@ provider="$build_dir/provider/libsquall_ir_mel.so"
 "$runtime" cp "$provider_container:/usr/lib64/libsquall_ir_mel.so" "$provider"
 "$runtime" rm "$provider_container" >/dev/null
 provider_container=
+"$runtime" image rm "$provider_image" >/dev/null
+provider_image_present=0
 test -s "$provider" || fail "extracted Squall IR MEL library is empty"
 
 printf '%s\n' "Squall provider: $provider" 'Provider compiler comments:'
@@ -382,8 +425,12 @@ fi
 
 # Start only the hardware-free optical MFA and Couloir from upstream's
 # host-network deployment. The override supplies Task-004-owned configuration.
+runtime_images_present=1
+run_runtime_compose "$project" build squall-optical couloir
+"$runtime" image inspect "$optical_image" "$couloir_image" >/dev/null 2>&1 || \
+  fail "could not identify built Task-004 runtime images"
 started=1
-run_runtime_compose "$project" up -d squall-optical couloir
+run_runtime_compose "$project" up -d --no-build squall-optical couloir
 optical_container=$(service_container_id "$project" squall-optical)
 couloir_container=$(service_container_id "$project" couloir)
 assert_host_network squall-optical "$optical_container"

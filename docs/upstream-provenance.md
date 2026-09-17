@@ -119,8 +119,9 @@ provider as `build-ir/libsquall_ir_mel.so`; its MEL consumer image installs it a
 ignored build directory and passes its path to `ams_mel_session_open`; neither
 `ams_mel_c` nor either integration executable links directly to it.
 
-The baseline uses Squall's default hardware-free optical simulation (Mono8,
-320x200, 8 FPS), a Task-004-published host Couloir control port, and a generated
-profile with a runtime-provided host alias and unique client ID. This records one
+The baseline uses Squall's E2E simulated checkerboard (Mono8, 320x200, 30 FPS),
+host-network optical and Couloir services, and a generated profile with
+`data_host=127.0.0.1`, a generated loopback Couloir control address, and a unique
+client ID. This records one
 integration target, not generic compatibility with every GRA provider or C++
 runtime combination.

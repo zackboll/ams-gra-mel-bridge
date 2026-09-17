@@ -3,9 +3,12 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 script="$root/integration/squall/run.sh"
+verifier="$root/integration/squall/verify-checkout.sh"
+scratch="/tmp/ams-mel-task004-verifier-$$"
+trap 'rm -rf "$scratch"' EXIT INT TERM
 
 require() {
-  grep -F -q "$1" "$script" || {
+  grep -F -q -- "$1" "$script" || {
     printf 'FAIL: missing Task-004 runtime contract: %s\n' "$1" >&2
     exit 1
   }
@@ -112,7 +115,14 @@ printf '%s\n' 'PASS: Task-004 port default/validation preflights'
 
 for runtime in podman docker; do
   require 'RUNTIME_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.yaml"'
-  require 'run_runtime_compose "$project" up -d squall-optical couloir'
+  require 'RUNTIME_BUILD_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.build.yaml"'
+  require '-f "$RUNTIME_BUILD_COMPOSE_FILE" -f "$runtime_override" config'
+  require 'podman-compose -p "$compose_project" -f "$runtime_compose" "$@"'
+  require 'run_runtime_compose "$project" build squall-optical couloir'
+  require 'run_runtime_compose "$project" up -d --no-build squall-optical couloir'
+  require 'image: $optical_image'
+  require 'image: $couloir_image'
+  require '"$runtime" image inspect "$optical_image" "$couloir_image"'
   require 'assert_host_network squall-optical "$optical_container"'
   require 'assert_host_network couloir "$couloir_container"'
   require 'network_mode: host'
@@ -127,6 +137,8 @@ for runtime in podman docker; do
   require '"/squall.optical.control.v1.SquallIrControl/" = "/sockets/squall-optical-control.sock"'
   require 'run_compose "$project_provider" build squall-ir-data-consumer'
   require '"$runtime" image inspect "$provider_image"'
+  require '"$runtime" image rm "$provider_image"'
+  require '"$runtime" image rm "$optical_image" "$couloir_image"'
   printf 'PASS: %s stub runtime topology regression\n' "$runtime"
 done
 
@@ -137,4 +149,66 @@ for forbidden in host.containers.internal host.docker.internal podman_network_ga
   fi
 done
 
+if grep -E -q 'image[[:space:]]+prune|system[[:space:]]+prune|image[[:space:]]+rm.*registry\.gitlab\.com' "$script"; then
+  printf '%s\n' 'FAIL: Task-004 cleanup may prune layers or remove an upstream image tag' >&2
+  exit 1
+fi
+
 printf '%s\n' 'PASS: Task-004 host-network stub regressions'
+
+make_checkout() {
+  checkout=$1
+  remote=$2
+  mkdir -p "$checkout"
+  git -C "$checkout" init -q
+  git -C "$checkout" config user.name Task004
+  git -C "$checkout" config user.email task004@example.invalid
+  printf '%s\n' clean >"$checkout/input.txt"
+  git -C "$checkout" add input.txt
+  git -C "$checkout" commit -q -m initial
+  git -C "$checkout" remote add origin "$remote"
+}
+
+expect_verifier_failure() {
+  expected=$1
+  shift
+  output=$(sh "$verifier" "$@" 2>&1) && status=0 || status=$?
+  test "$status" -ne 0 || {
+    printf 'FAIL: checkout verifier unexpectedly accepted %s\n' "$*" >&2
+    exit 1
+  }
+  printf '%s\n' "$output" | grep -F -q "$expected" || {
+    printf 'FAIL: verifier output missing %s: %s\n' "$expected" "$output" >&2
+    exit 1
+  }
+}
+
+mkdir -p "$scratch"
+make_checkout "$scratch/root" \
+  https://github.com/open-arsenal/ams-gra-hello-world-sk-sensors-squall.git
+root_sha=$(git -C "$scratch/root" rev-parse HEAD)
+sh "$verifier" "$scratch/root" \
+  open-arsenal/ams-gra-hello-world-sk-sensors-squall "$root_sha"
+expect_verifier_failure 'revision mismatch' "$scratch/root" \
+  open-arsenal/ams-gra-hello-world-sk-sensors-squall \
+  0000000000000000000000000000000000000000
+expect_verifier_failure 'does not identify expected repository' "$scratch/root" \
+  open-arsenal/wrong-repository "$root_sha"
+printf '%s\n' dirty >"$scratch/root/untracked.txt"
+expect_verifier_failure 'tracked or untracked non-ignored changes' "$scratch/root" \
+  open-arsenal/ams-gra-hello-world-sk-sensors-squall "$root_sha"
+rm "$scratch/root/untracked.txt"
+
+make_checkout "$scratch/dependency" \
+  https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel.git
+dependency_sha=$(git -C "$scratch/dependency" rev-parse HEAD)
+expect_verifier_failure 'revision mismatch' "$scratch/dependency" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel \
+  1111111111111111111111111111111111111111
+expect_verifier_failure 'does not identify expected repository' "$scratch/dependency" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel "$dependency_sha"
+printf '%s\n' dirty >>"$scratch/dependency/input.txt"
+expect_verifier_failure 'tracked or untracked non-ignored changes' "$scratch/dependency" \
+  open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel "$dependency_sha"
+
+printf '%s\n' 'PASS: Task-004 pinned checkout verifier regressions'

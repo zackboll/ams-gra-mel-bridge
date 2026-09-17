@@ -280,11 +280,19 @@ static int test_release_failure(const char *scenario)
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
     ams_mel_ir_stream_config_v1 config = configuration();
     ams_mel_ir_frame_v1 frame;
+    ams_mel_status_t start_status;
     memset(&frame, 0, sizeof frame);
     CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
-    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
-    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) ==
-          AMS_MEL_PROVIDER_FAILED);
+    /* The provider starts its producer in enable(). The asynchronous release
+       failure may therefore poison the stream before Start returns, or just
+       after it returns successfully; the provider contract orders neither. */
+    start_status = ams_mel_ir_stream_start(stream, NULL, 0, NULL);
+    CHECK(start_status == AMS_MEL_OK || start_status == AMS_MEL_PROVIDER_FAILED);
+    if (start_status == AMS_MEL_OK) {
+        CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) ==
+              AMS_MEL_PROVIDER_FAILED);
+    }
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(stream == NULL);
