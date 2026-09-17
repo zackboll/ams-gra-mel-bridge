@@ -6,10 +6,10 @@ Multi-Function Aperture Encapsulation Layer (**MEL**) interfaces.
 
 The project preserves the published **C++ MEL provider boundary**, isolates
 non-C++ interoperability inside a native adapter, exposes a small **C ABI**, and
-builds an idiomatic Ada interface above that ABI. The Ada API can also serve
-SPARK-oriented Skills at the reviewed FFI boundary, allowing higher-assurance
-application logic to remain in Ada/SPARK. Future Rust and Python consumer
-bindings can reuse the same C ABI without requiring separate C++
+builds idiomatic Ada and Rust interfaces above that ABI. The Ada API can also
+serve SPARK-oriented Skills at the reviewed FFI boundary, allowing higher-assurance
+application logic to remain in Ada/SPARK. The Rust consumer reuses the same C
+ABI, and future Python bindings can do likewise without requiring separate C++
 interoperability implementations.
 
 Native C++ Skills do **not** need this bridge: they can consume the published
@@ -18,9 +18,9 @@ ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
 > **Current status:** IR Mono8 reception and C2 Operate/TaskSched are implemented
-> in C and Ada. An opt-in real Squall integration harness is available; it is
-> not part of ordinary builds or CI. Rust and Python consumer support remain
-> architectural targets and are **not yet implemented**.
+> in C and Ada. Rust currently supports only ABI version and provider Session
+> open/version/close. An opt-in real Squall integration harness is available; it
+> is not part of ordinary builds or CI. Rust IR/C2 and Python remain unimplemented.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -512,13 +512,14 @@ Implemented:
 - C poll/wait receive operations;
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
 - explicit lifecycle and callback-quiescence handling; and
-- native and Ada tests using a separately loaded C++ mock provider.
+- native and Ada tests using a separately loaded C++ mock provider; and
+- a safe Rust Session foundation over the existing C ABI, with RAII cleanup.
 
 Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- Rust consumer bindings;
+- Rust IR reception and C2 bindings;
 - Python consumer bindings;
 - RF MEL;
 - stacked images;
@@ -580,8 +581,11 @@ ada/
   src/                   idiomatic Ada API and private C imports
   tests/                 Ada integration tests
 
+rust/
+  ams-mel-sys/            unsafe declarations for the reviewed C ABI subset
+  ams-mel/                safe Session API and mock-provider tests
+
 # Planned, not yet present:
-# rust/                   safe Rust wrapper + raw C ABI crate
 # python/                 Python package over the same C ABI
 
 docs/
@@ -605,9 +609,13 @@ The current crates are:
 
 - `ams_mel_c` under `native/`
 - `ams_mel` under `ada/`
+- Cargo workspace crates `ams-mel-sys` and `ams-mel` under `rust/`
 
 CMake owns native C/C++ compilation. The Ada project consumes the resulting
 native library rather than recompiling the C++ adapter through GPRbuild.
+Cargo likewise links that externally built library; neither Rust crate compiles
+native C++, vendored MEL headers, Squall, or a provider. The Rust crates have not
+been published to crates.io.
 
 ---
 
@@ -687,6 +695,32 @@ make test-ada
 
 The current development manifests contain relative development pins and are not
 yet registry-ready release manifests.
+
+---
+
+## Build Rust
+
+Requirements:
+
+- stable Rust with Cargo and Clippy; and
+- the native prerequisites above.
+
+Build the externally owned native library and mock providers first, then run the
+workspace checks:
+
+```sh
+make test-native
+cargo check --manifest-path rust/Cargo.toml --workspace
+cargo test --manifest-path rust/Cargo.toml --workspace
+cargo clippy --manifest-path rust/Cargo.toml \
+  --workspace --all-targets -- -D warnings
+```
+
+The default linker search path is `native/build/lib`. Set
+`AMS_MEL_NATIVE_LIB_DIR` to select another existing CMake build's library
+directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
+directory. Cargo never invokes CMake or compiles the native adapter. The safe
+layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
 
 ---
 
