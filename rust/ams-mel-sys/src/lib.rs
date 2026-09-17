@@ -1,4 +1,4 @@
-//! Raw declarations for the Task 006/007 portions of the `ams_mel_c` ABI.
+//! Raw declarations for all current `ams_mel_c` ABI exports.
 
 use std::ffi::{c_char, c_void};
 
@@ -16,8 +16,23 @@ pub const AMS_MEL_INTERNAL_ERROR: AmsMelStatus = 8;
 pub const AMS_MEL_TIMEOUT: AmsMelStatus = 9;
 pub const AMS_MEL_STREAM_STOPPED: AmsMelStatus = 10;
 pub const AMS_MEL_PROVIDER_FAILED: AmsMelStatus = 11;
+pub const AMS_MEL_COMMAND_REJECTED: AmsMelStatus = 12;
 
 pub const AMS_MEL_IR_CHANNEL_IRST_IMAGE: u32 = 1;
+pub const AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL: u32 = 2;
+pub const AMS_MEL_IR_MFA_MODE_UNUSED: u32 = 0;
+pub const AMS_MEL_IR_MFA_MODE_TASK_SCHED: u32 = 1;
+pub const AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED: u32 = 2;
+pub const AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED: u32 = 3;
+pub const AMS_MEL_ERROR_NONE: u32 = 0;
+pub const AMS_MEL_ERROR_INVALID_ID: u32 = 1;
+pub const AMS_MEL_ERROR_INVALID_STATE: u32 = 2;
+pub const AMS_MEL_ERROR_INVALID_PARAMETERS: u32 = 3;
+pub const AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS: u32 = 4;
+pub const AMS_MEL_ERROR_INSUFFICIENT_RESOURCES: u32 = 5;
+pub const AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES: u32 = 6;
+pub const AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES: u32 = 7;
+pub const AMS_MEL_ERROR_UNSUPPORTED: u32 = 8;
 pub const AMS_MEL_IR_PIXEL_MONO: u32 = 0;
 pub const AMS_MEL_IR_IMAGE_STARING: u32 = 0;
 pub const AMS_MEL_IR_IMAGE_SCANNING: u32 = 1;
@@ -86,6 +101,22 @@ pub struct AmsMelIrStreamConfigV1 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrC2ConfigV1 {
+    pub channel_type: u32,
+    pub channel_id: AmsMelUciIdV1,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AmsMelIrModeResultV1 {
+    pub mode: u32,
+    pub error_code: u32,
+}
+
+#[repr(C)]
 #[derive(Debug)]
 pub struct AmsMelIrFrameV1 {
     pub system_time_ns: i64,
@@ -130,6 +161,18 @@ pub struct AmsMelSession {
 
 #[repr(C)]
 pub struct AmsMelIrStream {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+#[repr(C)]
+pub struct AmsMelIrC2 {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+#[repr(C)]
+pub struct AmsMelIrModeRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -204,6 +247,54 @@ extern "C" {
 
     pub fn ams_mel_ir_stream_close(
         stream: *mut *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_c2_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrC2ConfigV1,
+        out_c2: *mut *mut AmsMelIrC2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_c2_enable(
+        c2: *mut AmsMelIrC2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_c2_submit_operate(
+        c2: *mut AmsMelIrC2,
+        command_id: u32,
+        out_request: *mut *mut AmsMelIrModeRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_mode_request_wait(
+        request: *const AmsMelIrModeRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrModeResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_mode_request_close(
+        request: *mut *mut AmsMelIrModeRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_c2_close(
+        c2: *mut *mut AmsMelIrC2,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

@@ -18,11 +18,12 @@ ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
 > **Current status:** IR Mono8 reception and C2 Operate/TaskSched are implemented
-> in C and Ada. Rust supports provider Session lifecycle plus IR host-memory
-> Mono8 stream open/start/receive/counters/stop/close; Rust C2 and RF remain
-> unimplemented. An opt-in real Squall integration harness is available for C
-> and Ada, not Rust, and is not part of ordinary builds or CI. Python remains
-> unimplemented.
+> in C, Ada, and Rust. Rust supports provider Session lifecycle, IR host-memory
+> Mono8 streams, and asynchronous C2 mode requests with timeout, cached repeated
+> waits, rejection descriptions, and independent parent/channel/request lifetime.
+> Additional C2 commands and RF remain unimplemented. An opt-in real Squall
+> integration harness is available for C and Ada, not Rust, and is not part of
+> ordinary builds or CI. Python and crates.io publication remain unimplemented.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.

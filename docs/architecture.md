@@ -21,8 +21,9 @@ simulated optical stack. Container deployment remains test orchestration, not a
 generic-library dependency or an application-facing transport.
 Task 006 adds the first Rust consumer without changing that C ABI: façade
 version query plus provider Session open/version/close. Task 007 adds the Rust
-consumer for the existing IR host-memory Mono8 stream ABI. Rust C2 and RF remain
-later vertical slices.
+consumer for the existing IR host-memory Mono8 stream ABI. Task 008 adds the
+Rust consumer for exactly the existing IR C2 Operate/TaskSched profile. RF and
+additional C2 commands remain later vertical slices.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -46,12 +47,27 @@ do not expose or call Couloir, backend gRPC, UDP, REST, or Squall-private types.
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built, and Cargo links it from an explicitly selected external
 build directory. CMake remains the sole owner of native C/C++ compilation.
-Neither Rust crate models or links a provider directly. `Session` and
-`ImageStream` are deliberately not `Send` or `Sync`; the safe Task-007 API has
+Neither Rust crate models or links a provider directly. `Session`,
+`ImageStream`, `ControlChannel`, and `ModeRequest` are deliberately not `Send`
+or `Sync`; the safe receive API has
 one conceptual receiver and does not expose cross-thread stream sharing. A
 stream has no Rust borrow of its parent Session because the native stream
 independently retains provider state. Closing Session first therefore leaves its
 child stream valid, and provider unload waits for the stream owner.
+
+The Rust C2 owner likewise has no borrow of Session, and each `ModeRequest` has
+no borrow of either parent. Session and C2 may be closed while a request remains
+pending. Request timeout and request drop are not cancellation; terminal waits
+are cached and repeatable. A C2 close that cannot detach synchronously retains
+its owner for explicit retry, which `ControlChannel::is_open` exposes. Drop makes
+one best-effort close attempt and prioritizes native lifetime safety over leak
+avoidance when detach still cannot be established.
+
+Rust models command rejection as a terminal `ModeResult::Rejected`, preserving
+the MEL error code and complete validated UTF-8 description. The wait wrapper
+uses the C ABI's cached-terminal guarantee to repeat only an oversized terminal
+wait with timeout zero and exact fallible storage; generic side-effecting calls
+retain their non-retrying diagnostic behavior.
 
 Rust receive follows the native non-consuming `BUFFER_TOO_SMALL` handshake: it
 waits once with the requested timeout, fallibly allocates the exact required

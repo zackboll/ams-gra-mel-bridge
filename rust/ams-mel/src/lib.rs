@@ -1,8 +1,8 @@
-//! Safe Rust provider sessions and owned IR Mono8 frames through `ams_mel_c`.
+//! Safe Rust provider sessions, IR Mono8 frames, and IR C2 through `ams_mel_c`.
 //!
-//! [`Session`] and [`ImageStream`] are intentionally neither `Send` nor `Sync`.
-//! The Task-007 API exposes one conceptual receiver and no cross-thread stream
-//! sharing. A zero receive timeout polls; timeout does not stop the stream.
+//! [`Session`], [`ImageStream`], [`ControlChannel`], and [`ModeRequest`] are
+//! intentionally neither `Send` nor `Sync`. A zero receive or request timeout
+//! polls. Request timeout and request drop do not cancel provider work.
 
 use std::error;
 use std::ffi::{c_char, CString};
@@ -14,6 +14,7 @@ use std::rc::Rc;
 use ams_mel_sys as sys;
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
+const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AbiVersion {
@@ -106,6 +107,23 @@ pub struct ImageConfig {
     queue_capacity: usize,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ControlConfig {
+    channel_id: UciId,
+    platform_id: UciId,
+    sensor_location: ComponentLocation,
+}
+
+impl ControlConfig {
+    pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
+        Self {
+            channel_id,
+            platform_id,
+            sensor_location,
+        }
+    }
+}
+
 impl ImageConfig {
     pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
         Self {
@@ -163,6 +181,38 @@ pub enum ImageFlip {
     Horizontal,
     Both,
     Unknown(u32),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MfaMode {
+    Unused,
+    TaskSched,
+    ScanVolumeSched,
+    ScanBarSched,
+    Unknown(u32),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MelErrorCode {
+    None,
+    InvalidId,
+    InvalidState,
+    InvalidParameters,
+    InsufficientPermissions,
+    InsufficientResources,
+    InsufficientLocalResources,
+    InsufficientRemoteResources,
+    Unsupported,
+    Unknown(u32),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ModeResult {
+    Success { mode: MfaMode },
+    Rejected {
+        code: MelErrorCode,
+        description: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -408,6 +458,38 @@ impl Session {
         })
     }
 
+    pub fn open_control_channel(&self, config: &ControlConfig) -> Result<ControlChannel, Error> {
+        let raw_config = raw_control_config(config);
+        let mut raw = ptr::null_mut();
+        let result = call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: the Session is live, the exact C record and all borrowed
+            // string bytes remain valid for this call, and `raw` is writable.
+            unsafe {
+                sys::ams_mel_ir_c2_open(
+                    self.raw,
+                    &raw_config,
+                    &mut raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        });
+        if let Err(error) = result {
+            if !raw.is_null() {
+                best_effort_close_c2(&mut raw);
+            }
+            return Err(error);
+        }
+        if raw.is_null() {
+            return Err(protocol("C2 open succeeded without a channel owner"));
+        }
+        Ok(ControlChannel {
+            raw,
+            _not_send_sync: Rc::new(()),
+        })
+    }
+
     pub fn close(mut self) -> Result<(), Error> {
         self.close_inner()
     }
@@ -524,6 +606,111 @@ impl Drop for ImageStream {
     }
 }
 
+#[derive(Debug)]
+pub struct ControlChannel {
+    raw: *mut sys::AmsMelIrC2,
+    _not_send_sync: Rc<()>,
+}
+
+impl ControlChannel {
+    pub fn enable(&mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the live C2 handle.
+            unsafe { sys::ams_mel_ir_c2_enable(self.raw, diagnostic, capacity, required) }
+        })
+    }
+
+    /// Submits exactly Operate/TaskSched with native default scan parameters.
+    pub fn submit_operate(&mut self, command_id: u32) -> Result<ModeRequest, Error> {
+        let mut raw = ptr::null_mut();
+        let result = call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the live C2 handle and `raw` is
+            // an initially null writable request owner.
+            unsafe {
+                sys::ams_mel_ir_c2_submit_operate(
+                    self.raw,
+                    command_id,
+                    &mut raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        });
+        if let Err(error) = result {
+            if !raw.is_null() {
+                best_effort_close_request(&mut raw);
+            }
+            return Err(error);
+        }
+        if raw.is_null() {
+            return Err(protocol("C2 submit succeeded without a request owner"));
+        }
+        Ok(ModeRequest {
+            raw,
+            _not_send_sync: Rc::new(()),
+        })
+    }
+
+    /// Closes this owner. A detach failure can leave it open for an explicit retry.
+    pub fn close(&mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: native close may clear or retain this unique owner according
+            // to its documented retryable-detach contract.
+            unsafe { sys::ams_mel_ir_c2_close(&mut self.raw, diagnostic, capacity, required) }
+        })
+    }
+
+    pub fn is_open(&self) -> bool {
+        !self.raw.is_null()
+    }
+}
+
+impl Drop for ControlChannel {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_c2(&mut self.raw);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ModeRequest {
+    raw: *mut sys::AmsMelIrModeRequest,
+    _not_send_sync: Rc<()>,
+}
+
+impl ModeRequest {
+    /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    pub fn wait(&mut self, timeout_ms: u32) -> Result<ModeResult, Error> {
+        wait_for_mode(self.raw, timeout_ms)
+    }
+
+    /// Drops only the public request owner; pending provider work is not cancelled.
+    pub fn close(mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the request and no wait can race
+            // this consuming close through the safe API.
+            unsafe {
+                sys::ams_mel_ir_mode_request_close(
+                    &mut self.raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        })
+    }
+}
+
+impl Drop for ModeRequest {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_request(&mut self.raw);
+        }
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         if !self.raw.is_null() {
@@ -581,6 +768,21 @@ fn raw_image_config(value: &ImageConfig) -> sys::AmsMelIrStreamConfigV1 {
     }
 }
 
+fn raw_control_config(value: &ControlConfig) -> sys::AmsMelIrC2ConfigV1 {
+    sys::AmsMelIrC2ConfigV1 {
+        channel_type: sys::AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL,
+        channel_id: raw_uci_id(&value.channel_id),
+        platform_id: raw_uci_id(&value.platform_id),
+        sensor_location: sys::AmsMelComponentLocationV1 {
+            offset_x_m: value.sensor_location.offset_x_m,
+            offset_y_m: value.sensor_location.offset_y_m,
+            offset_z_m: value.sensor_location.offset_z_m,
+            key: string_view(&value.sensor_location.key),
+            system_name: string_view(&value.sensor_location.system_name),
+        },
+    }
+}
+
 fn empty_frame() -> sys::AmsMelIrFrameV1 {
     sys::AmsMelIrFrameV1 {
         system_time_ns: 0,
@@ -624,6 +826,130 @@ fn receive_raw(
             )
         }
     })
+}
+
+fn wait_for_mode(
+    request: *mut sys::AmsMelIrModeRequest,
+    timeout_ms: u32,
+) -> Result<ModeResult, Error> {
+    let mut result = sys::AmsMelIrModeResultV1::default();
+    let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
+    let mut required = 0_usize;
+    // SAFETY: the request is live and exclusively accessed through `&mut self`;
+    // result and diagnostic storage are writable for their advertised sizes.
+    let status = unsafe {
+        sys::ams_mel_ir_mode_request_wait(
+            request,
+            timeout_ms,
+            &mut result,
+            diagnostic.as_mut_ptr().cast::<c_char>(),
+            diagnostic.len(),
+            &mut required,
+        )
+    };
+    if required == 0 {
+        return Err(protocol("native wait returned an invalid diagnostic size"));
+    }
+    if status == sys::AMS_MEL_TIMEOUT {
+        return if required <= diagnostic.len() {
+            let message = decode_diagnostic(&diagnostic[..required])?;
+            Err(error_from_status(status, Some(message), Some(required)))
+        } else {
+            Err(error_from_status(status, None, Some(required)))
+        };
+    }
+
+    let message = if required <= diagnostic.len() {
+        decode_diagnostic(&diagnostic[..required])?
+    } else {
+        let first_result = result;
+        let first_required = required;
+        let mut complete = Vec::new();
+        complete.try_reserve_exact(first_required).map_err(|_| {
+            Error::new(
+                ErrorKind::InternalError,
+                "unable to allocate complete wait diagnostic storage",
+            )
+        })?;
+        complete.resize(first_required, 0);
+        let mut retry_result = sys::AmsMelIrModeResultV1::default();
+        let mut retry_required = 0_usize;
+        // SAFETY: terminal request results are cached and repeatable. The same
+        // live request is polled with exact writable diagnostic storage.
+        let retry_status = unsafe {
+            sys::ams_mel_ir_mode_request_wait(
+                request,
+                0,
+                &mut retry_result,
+                complete.as_mut_ptr().cast::<c_char>(),
+                complete.len(),
+                &mut retry_required,
+            )
+        };
+        if retry_status != status
+            || retry_result != first_result
+            || retry_required != first_required
+        {
+            return Err(protocol(
+                "native terminal wait changed during diagnostic retry",
+            ));
+        }
+        result = retry_result;
+        decode_diagnostic(&complete)?
+    };
+
+    match status {
+        sys::AMS_MEL_OK => {
+            if required != 1 || !message.is_empty() {
+                return Err(protocol("successful native wait returned a diagnostic"));
+            }
+            if result.error_code != sys::AMS_MEL_ERROR_NONE {
+                return Err(protocol("successful native wait returned an error code"));
+            }
+            let mode = mfa_mode(result.mode);
+            if matches!(mode, MfaMode::Unknown(_)) {
+                return Err(Error::new(
+                    ErrorKind::ProviderFailed,
+                    "native provider returned an unknown MFA mode",
+                ));
+            }
+            Ok(ModeResult::Success { mode })
+        }
+        sys::AMS_MEL_COMMAND_REJECTED => Ok(ModeResult::Rejected {
+            code: mel_error_code(result.error_code),
+            description: message,
+        }),
+        _ => Err(error_from_status(status, Some(message), Some(required))),
+    }
+}
+
+fn mfa_mode(value: u32) -> MfaMode {
+    match value {
+        sys::AMS_MEL_IR_MFA_MODE_UNUSED => MfaMode::Unused,
+        sys::AMS_MEL_IR_MFA_MODE_TASK_SCHED => MfaMode::TaskSched,
+        sys::AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED => MfaMode::ScanVolumeSched,
+        sys::AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED => MfaMode::ScanBarSched,
+        unknown => MfaMode::Unknown(unknown),
+    }
+}
+
+fn mel_error_code(value: u32) -> MelErrorCode {
+    match value {
+        sys::AMS_MEL_ERROR_NONE => MelErrorCode::None,
+        sys::AMS_MEL_ERROR_INVALID_ID => MelErrorCode::InvalidId,
+        sys::AMS_MEL_ERROR_INVALID_STATE => MelErrorCode::InvalidState,
+        sys::AMS_MEL_ERROR_INVALID_PARAMETERS => MelErrorCode::InvalidParameters,
+        sys::AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS => MelErrorCode::InsufficientPermissions,
+        sys::AMS_MEL_ERROR_INSUFFICIENT_RESOURCES => MelErrorCode::InsufficientResources,
+        sys::AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES => {
+            MelErrorCode::InsufficientLocalResources
+        }
+        sys::AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES => {
+            MelErrorCode::InsufficientRemoteResources
+        }
+        sys::AMS_MEL_ERROR_UNSUPPORTED => MelErrorCode::Unsupported,
+        unknown => MelErrorCode::Unknown(unknown),
+    }
 }
 
 fn frame_from_raw(raw: sys::AmsMelIrFrameV1, pixels: Vec<u8>) -> Result<Frame, Error> {
@@ -810,4 +1136,19 @@ fn best_effort_close_stream(raw: &mut *mut sys::AmsMelIrStream) {
     // SAFETY: called only for a unique stream owner. Null diagnostics are
     // supported. The result is ignored because cleanup cannot be reported here.
     let _ = unsafe { sys::ams_mel_ir_stream_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
+}
+
+fn best_effort_close_c2(raw: &mut *mut sys::AmsMelIrC2) {
+    // SAFETY: called only for this wrapper's unique C2 owner. Native close may
+    // retain it when safe detach cannot be established; Drop does not fabricate
+    // cleanup or retry further.
+    let _ = unsafe { sys::ams_mel_ir_c2_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
+}
+
+fn best_effort_close_request(raw: &mut *mut sys::AmsMelIrModeRequest) {
+    // SAFETY: called only for this wrapper's unique request owner. Public request
+    // close is nonblocking and does not cancel pending provider work.
+    let _ = unsafe {
+        sys::ams_mel_ir_mode_request_close(raw, ptr::null_mut(), 0, ptr::null_mut())
+    };
 }

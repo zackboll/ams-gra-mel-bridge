@@ -22,8 +22,8 @@
 | Real IR provider validation | Implemented and passed | Pinned Squall simulator: C2 TaskSched plus three 320x200 Mono8 frames in both C and Ada; opt-in and excluded from ordinary CI |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Implemented for Session + IR Mono8 | Ten C functions; C-header layout/constant drift probe; no C2 declarations |
-| Safe Rust binding | Session + IR Mono8 implemented | Owned config/frame pixels, receive/counters, parent-first lifetime, timeout/stopped distinction; no C2/RF |
+| Rust sys binding | Complete for the current project C ABI | Exactly 16 C functions; C-header layout/constant drift probe covers all raw records/constants in use; not a claim of complete MEL functionality |
+| Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched implemented | Owned configs/frames, async request, timeout/repeated wait, full rejection text, retryable C2 close, independent and coexistence lifetimes; no additional C2/RF |
 | Real Squall Rust validation | Not performed | Rust ordinary tests use the separate mock provider only |
 | Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |

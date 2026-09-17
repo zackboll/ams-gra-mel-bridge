@@ -70,7 +70,22 @@ fn declarations_match_the_c_header() {
         AMS_MEL_TIMEOUT as usize,
         AMS_MEL_STREAM_STOPPED as usize,
         AMS_MEL_PROVIDER_FAILED as usize,
+        AMS_MEL_COMMAND_REJECTED as usize,
         AMS_MEL_IR_CHANNEL_IRST_IMAGE as usize,
+        AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL as usize,
+        AMS_MEL_IR_MFA_MODE_UNUSED as usize,
+        AMS_MEL_IR_MFA_MODE_TASK_SCHED as usize,
+        AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED as usize,
+        AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED as usize,
+        AMS_MEL_ERROR_NONE as usize,
+        AMS_MEL_ERROR_INVALID_ID as usize,
+        AMS_MEL_ERROR_INVALID_STATE as usize,
+        AMS_MEL_ERROR_INVALID_PARAMETERS as usize,
+        AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS as usize,
+        AMS_MEL_ERROR_INSUFFICIENT_RESOURCES as usize,
+        AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES as usize,
+        AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES as usize,
+        AMS_MEL_ERROR_UNSUPPORTED as usize,
         AMS_MEL_IR_PIXEL_MONO as usize,
         AMS_MEL_IR_IMAGE_STARING as usize,
         AMS_MEL_IR_IMAGE_SCANNING as usize,
@@ -114,6 +129,15 @@ fn declarations_match_the_c_header() {
         buffer_size,
         queue_capacity
     );
+    layout!(
+        expected,
+        AmsMelIrC2ConfigV1,
+        channel_type,
+        channel_id,
+        platform_id,
+        sensor_location
+    );
+    layout!(expected, AmsMelIrModeResultV1, mode, error_code);
     layout!(
         expected,
         AmsMelIrFrameV1,
