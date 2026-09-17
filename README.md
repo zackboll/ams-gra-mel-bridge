@@ -18,9 +18,11 @@ ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
 > **Current status:** IR Mono8 reception and C2 Operate/TaskSched are implemented
-> in C and Ada. Rust currently supports only ABI version and provider Session
-> open/version/close. An opt-in real Squall integration harness is available; it
-> is not part of ordinary builds or CI. Rust IR/C2 and Python remain unimplemented.
+> in C and Ada. Rust supports provider Session lifecycle plus IR host-memory
+> Mono8 stream open/start/receive/counters/stop/close; Rust C2 and RF remain
+> unimplemented. An opt-in real Squall integration harness is available for C
+> and Ada, not Rust, and is not part of ordinary builds or CI. Python remains
+> unimplemented.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -151,7 +153,7 @@ layer.
 | **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
-| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session foundation implemented; IR/C2 not yet implemented |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session and IR host-memory Mono8 reception implemented; C2/RF not implemented |
 | **Python** | Python package → `ctypes`/`cffi`/native extension → `ams_mel_c` → C++ MEL | Planned |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 
@@ -513,13 +515,14 @@ Implemented:
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
 - explicit lifecycle and callback-quiescence handling; and
 - native and Ada tests using a separately loaded C++ mock provider; and
-- a safe Rust Session foundation over the existing C ABI, with RAII cleanup.
+- safe Rust Session and IR host-memory Mono8 stream APIs over the existing C ABI,
+  with RAII cleanup and Rust-owned frame pixel copies.
 
 Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- Rust IR reception and C2 bindings;
+- Rust IR C2 bindings;
 - Python consumer bindings;
 - RF MEL;
 - stacked images;
@@ -721,6 +724,9 @@ The default linker search path is `native/build/lib`. Set
 directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
 directory. Cargo never invokes CMake or compiles the native adapter. The safe
 layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
+Rust `Frame` values own copied `Vec<u8>` pixels; this is not a zero-copy API.
+The Rust stream tests use the mock provider only. Real Squall Rust validation
+has not been performed.
 
 ---
 

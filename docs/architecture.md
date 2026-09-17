@@ -20,8 +20,9 @@ Task-002/003 slices against Squall's published IR MEL provider and hardware-free
 simulated optical stack. Container deployment remains test orchestration, not a
 generic-library dependency or an application-facing transport.
 Task 006 adds the first Rust consumer without changing that C ABI: façade
-version query plus provider Session open/version/close. Rust IR reception and C2
-remain later vertical slices.
+version query plus provider Session open/version/close. Task 007 adds the Rust
+consumer for the existing IR host-memory Mono8 stream ABI. Rust C2 and RF remain
+later vertical slices.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -45,9 +46,18 @@ do not expose or call Couloir, backend gRPC, UDP, REST, or Squall-private types.
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built, and Cargo links it from an explicitly selected external
 build directory. CMake remains the sole owner of native C/C++ compilation.
-Neither Rust crate models or links a provider directly. `Session` is deliberately
-not `Send` or `Sync`, because the current MEL contract does not establish
-arbitrary cross-thread Session use.
+Neither Rust crate models or links a provider directly. `Session` and
+`ImageStream` are deliberately not `Send` or `Sync`; the safe Task-007 API has
+one conceptual receiver and does not expose cross-thread stream sharing. A
+stream has no Rust borrow of its parent Session because the native stream
+independently retains provider state. Closing Session first therefore leaves its
+child stream valid, and provider unload waits for the stream owner.
+
+Rust receive follows the native non-consuming `BUFFER_TOO_SMALL` handshake: it
+waits once with the requested timeout, fallibly allocates the exact required
+pixel count, then polls the retained queued frame with timeout zero. Returned
+`Frame` pixels are an owned `Vec<u8>` copy and never borrow provider storage.
+Timeout and clean stream stop remain distinct errors; a zero timeout is a poll.
 
 The safe Rust wrapper captures diagnostics in a fixed local buffer during each
 native call. If an error reports a larger required capacity, Rust preserves the
