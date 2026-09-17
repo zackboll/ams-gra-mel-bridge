@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build native facade and mock providers
         run: make test-native
-      - name: Test Python session binding
+      - name: Test Python binding
         env:
           PYTHONPATH: python
           AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build/lib/libams_mel_c.so.0

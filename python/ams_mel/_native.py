@@ -1,4 +1,4 @@
-"""Private ctypes declarations for the Task-010 ``ams_mel_c`` subset."""
+"""Private ctypes declarations for the Python ``ams_mel_c`` subset."""
 
 from __future__ import annotations
 
@@ -16,7 +16,18 @@ AMS_MEL_INITIALIZATION_FAILED = 5
 AMS_MEL_PROVIDER_EXCEPTION = 6
 AMS_MEL_BUFFER_TOO_SMALL = 7
 AMS_MEL_INTERNAL_ERROR = 8
+AMS_MEL_TIMEOUT = 9
+AMS_MEL_STREAM_STOPPED = 10
 AMS_MEL_PROVIDER_FAILED = 11
+
+AMS_MEL_IR_CHANNEL_IRST_IMAGE = 1
+AMS_MEL_IR_PIXEL_MONO = 0
+AMS_MEL_IR_IMAGE_STARING = 0
+AMS_MEL_IR_IMAGE_SCANNING = 1
+AMS_MEL_IR_FLIP_NONE = 0
+AMS_MEL_IR_FLIP_VERTICAL = 1
+AMS_MEL_IR_FLIP_HORIZONTAL = 2
+AMS_MEL_IR_FLIP_BOTH = 3
 
 AMS_MEL_ABI_VERSION_MAJOR = 0
 AMS_MEL_ABI_VERSION_MINOR = 1
@@ -42,7 +53,81 @@ class ProviderVersionV1(ctypes.Structure):
     ]
 
 
+class StringViewV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(ctypes.c_char)),
+        ("size", ctypes.c_size_t),
+    ]
+
+
+class UciIdV1(ctypes.Structure):
+    _fields_ = [
+        ("uuid", ctypes.c_uint8 * 16),
+        ("descriptive_label", StringViewV1),
+    ]
+
+
+class ComponentLocationV1(ctypes.Structure):
+    _fields_ = [
+        ("offset_x_m", ctypes.c_double),
+        ("offset_y_m", ctypes.c_double),
+        ("offset_z_m", ctypes.c_double),
+        ("key", StringViewV1),
+        ("system_name", StringViewV1),
+    ]
+
+
+class IrStreamConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("channel_type", ctypes.c_uint32),
+        ("channel_id", UciIdV1),
+        ("platform_id", UciIdV1),
+        ("sensor_location", ComponentLocationV1),
+        ("buffer_count", ctypes.c_size_t),
+        ("buffer_size", ctypes.c_size_t),
+        ("queue_capacity", ctypes.c_size_t),
+    ]
+
+
+class IrFrameV1(ctypes.Structure):
+    _fields_ = [
+        ("system_time_ns", ctypes.c_int64),
+        ("integration_time_ns", ctypes.c_int64),
+        ("width", ctypes.c_uint32),
+        ("height", ctypes.c_uint32),
+        ("bits_per_pixel", ctypes.c_uint32),
+        ("number_of_bands", ctypes.c_uint32),
+        ("horizontal_fov_rad", ctypes.c_double),
+        ("vertical_fov_rad", ctypes.c_double),
+        ("pixel_format", ctypes.c_uint32),
+        ("frame_id", ctypes.c_uint32),
+        ("subframe_id", ctypes.c_uint32),
+        ("subframe_total", ctypes.c_uint32),
+        ("image_type", ctypes.c_uint32),
+        ("image_flip", ctypes.c_uint32),
+        ("image_flags", ctypes.c_uint32),
+        ("dither_row", ctypes.c_double),
+        ("dither_column", ctypes.c_double),
+        ("row_offset", ctypes.c_uint32),
+        ("column_offset", ctypes.c_uint32),
+        ("band_index", ctypes.c_uint8),
+        ("reserved", ctypes.c_uint8 * 7),
+        ("pixels", ctypes.POINTER(ctypes.c_uint8)),
+        ("pixel_capacity", ctypes.c_size_t),
+        ("pixel_required", ctypes.c_size_t),
+    ]
+
+
+class IrStreamCountersV1(ctypes.Structure):
+    _fields_ = [
+        ("frames_received", ctypes.c_uint64),
+        ("frames_dropped_queue_full", ctypes.c_uint64),
+        ("malformed_or_unsupported_frames", ctypes.c_uint64),
+    ]
+
+
 SessionHandle = ctypes.c_void_p
+IrStreamHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -99,9 +184,74 @@ ams_mel_session_close.argtypes = [
 ]
 ams_mel_session_close.restype = ctypes.c_int32
 
+ams_mel_ir_stream_open = _LIBRARY.ams_mel_ir_stream_open
+ams_mel_ir_stream_open.argtypes = [
+    SessionHandle,
+    ctypes.POINTER(IrStreamConfigV1),
+    ctypes.POINTER(IrStreamHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_open.restype = ctypes.c_int32
+
+ams_mel_ir_stream_start = _LIBRARY.ams_mel_ir_stream_start
+ams_mel_ir_stream_start.argtypes = [
+    IrStreamHandle,
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_start.restype = ctypes.c_int32
+
+ams_mel_ir_stream_receive = _LIBRARY.ams_mel_ir_stream_receive
+ams_mel_ir_stream_receive.argtypes = [
+    IrStreamHandle,
+    ctypes.c_uint32,
+    ctypes.POINTER(IrFrameV1),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_receive.restype = ctypes.c_int32
+
+ams_mel_ir_stream_get_counters = _LIBRARY.ams_mel_ir_stream_get_counters
+ams_mel_ir_stream_get_counters.argtypes = [
+    IrStreamHandle,
+    ctypes.POINTER(IrStreamCountersV1),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_get_counters.restype = ctypes.c_int32
+
+ams_mel_ir_stream_stop = _LIBRARY.ams_mel_ir_stream_stop
+ams_mel_ir_stream_stop.argtypes = [
+    IrStreamHandle,
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_stop.restype = ctypes.c_int32
+
+ams_mel_ir_stream_close = _LIBRARY.ams_mel_ir_stream_close
+ams_mel_ir_stream_close.argtypes = [
+    ctypes.POINTER(IrStreamHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_stream_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
     "ams_mel_session_get_provider_version",
     "ams_mel_session_close",
+    "ams_mel_ir_stream_open",
+    "ams_mel_ir_stream_start",
+    "ams_mel_ir_stream_receive",
+    "ams_mel_ir_stream_get_counters",
+    "ams_mel_ir_stream_stop",
+    "ams_mel_ir_stream_close",
 )
