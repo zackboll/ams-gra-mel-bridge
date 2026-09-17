@@ -1,0 +1,10 @@
+[package]
+name = "ams-mel-squall-ir"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ams-mel = { path = "../../../rust/ams-mel" }
+
+[workspace]

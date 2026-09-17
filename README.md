@@ -22,8 +22,9 @@ themselves.
 > Mono8 streams, and asynchronous C2 mode requests with timeout, cached repeated
 > waits, rejection descriptions, and independent parent/channel/request lifetime.
 > Additional C2 commands and RF remain unimplemented. An opt-in real Squall
-> integration harness is available for C and Ada, not Rust, and is not part of
-> ordinary builds or CI. Python and crates.io publication remain unimplemented.
+> integration harness validates C, Ada, and the safe Rust API against the same
+> pinned provider/runtime stack; it is not part of ordinary builds or CI. Python
+> and crates.io publication remain unimplemented.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
@@ -654,8 +655,11 @@ SQUALL_SOURCE_DIR=/path/to/ams-gra-hello-world-sk-sensors-squall \
   make test-squall-ir
 ```
 
-See `integration/squall/README.md` and `docs/task-004-validation.md` for runtime,
-revision, cleanup, and evidence requirements.
+This runs the C, Ada, and Rust integration clients in one Squall startup. Use
+`make test-squall-ir-c`, `make test-squall-ir-ada`, or
+`make test-squall-ir-rust` to select one client. See
+`integration/squall/README.md`, `docs/task-004-validation.md`, and
+`docs/task-009-validation.md` for runtime, revision, cleanup, and evidence.
 
 To test another compiler, use a separate build directory:
 

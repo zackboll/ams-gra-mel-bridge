@@ -39,6 +39,27 @@ expect_port_preflight() {
   }
 }
 
+expect_mode_preflight() {
+  expected_status=$1
+  expected_output=$2
+  selected_mode=$3
+  output=$(env \
+    AMS_MEL_SQUALL_PREFLIGHT_ONLY=1 \
+    AMS_MEL_SQUALL_BUILD_DIR="/tmp/ams-mel-task004-mode-$$-$selected_mode" \
+    SQUALL_SOURCE_DIR=/task004-squall \
+    sh "$script" "$selected_mode" 2>&1) && status=0 || status=$?
+  test "$status" = "$expected_status" || {
+    printf 'FAIL: mode %s status=%s, expected=%s: %s\n' \
+      "$selected_mode" "$status" "$expected_status" "$output" >&2
+    exit 1
+  }
+  printf '%s\n' "$output" | grep -F -q "$expected_output" || {
+    printf 'FAIL: mode %s output missing %s: %s\n' \
+      "$selected_mode" "$expected_output" "$output" >&2
+    exit 1
+  }
+}
+
 render_hostile_optical_environment() {
   env \
     -u AMS_MEL_SQUALL_OPTICAL_HEALTH_PORT \
@@ -67,6 +88,10 @@ require_rendered_once() {
 
 # These run the real initialization, validator, collision checks, and renderer
 # under set -u without requiring a container runtime or touching Squall.
+expect_mode_preflight 0 'Task-004 runtime ports:' rust
+expect_mode_preflight 1 'mode must be all, c, ada, or rust' invalid
+printf '%s\n' 'PASS: Task-009 Rust mode validation preflights'
+
 expect_port_preflight 0 'Couloir control:  21203'
 expect_port_preflight 0 'Optical health:   21315'
 expect_port_preflight 0 'Optical metrics:  21316'
@@ -112,6 +137,23 @@ expect_port_preflight 1 'must use distinct host ports' AMS_MEL_SQUALL_OPTICAL_HE
 expect_port_preflight 1 'must use distinct host ports' AMS_MEL_SQUALL_OPTICAL_METRICS_PORT=21318
 expect_port_preflight 1 'must use distinct host ports' AMS_MEL_SQUALL_OPTICAL_METRICS_PORT=21315
 printf '%s\n' 'PASS: Task-004 port default/validation preflights'
+
+# Language builds and executions remain conditional while all selects each one.
+require 'if test "$mode" = all || test "$mode" = c; then'
+require 'if test "$mode" = all || test "$mode" = ada; then'
+require 'if test "$mode" = all || test "$mode" = rust; then'
+require 'need alr'
+require 'need cargo'
+require 'CARGO_TARGET_DIR="$build_dir/rust-target"'
+require 'AMS_MEL_NATIVE_LIB_DIR="$root/native/build/lib"'
+require '--release --locked --offline'
+require 'rust_client="$build_dir/rust-target/release/ams-mel-squall-ir"'
+require 'check_client_elf "$rust_client" Rust'
+require 'readelf -d "$rust_client" | grep -q '\''libams_mel_c'\'''
+require 'grep -q '\''libsquall_ir_mel'\'''
+require 'grep -q '\''mock.*provider'\'''
+require '"$rust_client" "$provider" "$profile" "$frames" "$timeout"'
+printf '%s\n' 'PASS: Task-009 language mode/build/link contracts'
 
 for runtime in podman docker; do
   require 'RUNTIME_COMPOSE_FILE="$SQUALL_SOURCE_DIR/compose.yaml"'

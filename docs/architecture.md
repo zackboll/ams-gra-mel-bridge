@@ -22,8 +22,10 @@ generic-library dependency or an application-facing transport.
 Task 006 adds the first Rust consumer without changing that C ABI: façade
 version query plus provider Session open/version/close. Task 007 adds the Rust
 consumer for the existing IR host-memory Mono8 stream ABI. Task 008 adds the
-Rust consumer for exactly the existing IR C2 Operate/TaskSched profile. RF and
-additional C2 commands remain later vertical slices.
+Rust consumer for exactly the existing IR C2 Operate/TaskSched profile. Task 009
+adds no library behavior: its standalone, opt-in Rust application exercises the
+safe API against the same pinned Squall provider/runtime used by C and Ada. RF
+and additional C2 commands remain later vertical slices.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -39,10 +41,12 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
 6. Separate integration applications: OMS/UCI, image processing, RF processing.
 
-`integration/squall` is a validation application rather than production library
-code. It may invoke Squall's supported container build/deployment mechanisms,
-but the C and Ada executables include/use only this project's public APIs. They
-do not expose or call Couloir, backend gRPC, UDP, REST, or Squall-private types.
+`integration/squall` contains validation applications rather than production
+library code. It may invoke Squall's supported container build/deployment
+mechanisms, but the C, Ada, and Rust executables use only this project's public
+language APIs/C ABI. They do not expose or call Couloir, backend gRPC, UDP, REST,
+or Squall-private types. The standalone Rust application remains outside the
+published workspace and depends only on the repository's safe `ams-mel` crate.
 
 The shared native library deliberately owns its C++ boundary. GPR imports it
 as externally built, and Cargo links it from an explicitly selected external
