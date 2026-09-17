@@ -1,4 +1,4 @@
-//! Raw declarations for the Task 006 portion of the `ams_mel_c` ABI.
+//! Raw declarations for the Task 006/007 portions of the `ams_mel_c` ABI.
 
 use std::ffi::{c_char, c_void};
 
@@ -13,7 +13,18 @@ pub const AMS_MEL_INITIALIZATION_FAILED: AmsMelStatus = 5;
 pub const AMS_MEL_PROVIDER_EXCEPTION: AmsMelStatus = 6;
 pub const AMS_MEL_BUFFER_TOO_SMALL: AmsMelStatus = 7;
 pub const AMS_MEL_INTERNAL_ERROR: AmsMelStatus = 8;
+pub const AMS_MEL_TIMEOUT: AmsMelStatus = 9;
+pub const AMS_MEL_STREAM_STOPPED: AmsMelStatus = 10;
 pub const AMS_MEL_PROVIDER_FAILED: AmsMelStatus = 11;
+
+pub const AMS_MEL_IR_CHANNEL_IRST_IMAGE: u32 = 1;
+pub const AMS_MEL_IR_PIXEL_MONO: u32 = 0;
+pub const AMS_MEL_IR_IMAGE_STARING: u32 = 0;
+pub const AMS_MEL_IR_IMAGE_SCANNING: u32 = 1;
+pub const AMS_MEL_IR_FLIP_NONE: u32 = 0;
+pub const AMS_MEL_IR_FLIP_VERTICAL: u32 = 1;
+pub const AMS_MEL_IR_FLIP_HORIZONTAL: u32 = 2;
+pub const AMS_MEL_IR_FLIP_BOTH: u32 = 3;
 
 pub const AMS_MEL_ABI_VERSION_MAJOR: u32 = 0;
 pub const AMS_MEL_ABI_VERSION_MINOR: u32 = 1;
@@ -39,7 +50,86 @@ pub struct AmsMelProviderVersionV1 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelStringViewV1 {
+    pub data: *const c_char,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelUciIdV1 {
+    pub uuid: [u8; 16],
+    pub descriptive_label: AmsMelStringViewV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelComponentLocationV1 {
+    pub offset_x_m: f64,
+    pub offset_y_m: f64,
+    pub offset_z_m: f64,
+    pub key: AmsMelStringViewV1,
+    pub system_name: AmsMelStringViewV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrStreamConfigV1 {
+    pub channel_type: u32,
+    pub channel_id: AmsMelUciIdV1,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+    pub buffer_count: usize,
+    pub buffer_size: usize,
+    pub queue_capacity: usize,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct AmsMelIrFrameV1 {
+    pub system_time_ns: i64,
+    pub integration_time_ns: i64,
+    pub width: u32,
+    pub height: u32,
+    pub bits_per_pixel: u32,
+    pub number_of_bands: u32,
+    pub horizontal_fov_rad: f64,
+    pub vertical_fov_rad: f64,
+    pub pixel_format: u32,
+    pub frame_id: u32,
+    pub subframe_id: u32,
+    pub subframe_total: u32,
+    pub image_type: u32,
+    pub image_flip: u32,
+    pub image_flags: u32,
+    pub dither_row: f64,
+    pub dither_column: f64,
+    pub row_offset: u32,
+    pub column_offset: u32,
+    pub band_index: u8,
+    pub reserved: [u8; 7],
+    pub pixels: *mut u8,
+    pub pixel_capacity: usize,
+    pub pixel_required: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AmsMelIrStreamCountersV1 {
+    pub frames_received: u64,
+    pub frames_dropped_queue_full: u64,
+    pub malformed_or_unsupported_frames: u64,
+}
+
+#[repr(C)]
 pub struct AmsMelSession {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+#[repr(C)]
+pub struct AmsMelIrStream {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -67,6 +157,53 @@ extern "C" {
 
     pub fn ams_mel_session_close(
         session: *mut *mut AmsMelSession,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrStreamConfigV1,
+        out_stream: *mut *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_start(
+        stream: *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_receive(
+        stream: *mut AmsMelIrStream,
+        timeout_ms: u32,
+        out_frame: *mut AmsMelIrFrameV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_get_counters(
+        stream: *const AmsMelIrStream,
+        out_counters: *mut AmsMelIrStreamCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_stop(
+        stream: *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_close(
+        stream: *mut *mut AmsMelIrStream,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
