@@ -24,6 +24,12 @@ pub const AMS_MEL_IR_MFA_MODE_UNUSED: u32 = 0;
 pub const AMS_MEL_IR_MFA_MODE_TASK_SCHED: u32 = 1;
 pub const AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED: u32 = 2;
 pub const AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED: u32 = 3;
+pub type AmsMelIrReturn = u32;
+pub const AMS_MEL_IR_RETURN_SUCCESS: AmsMelIrReturn = 0;
+pub const AMS_MEL_IR_RETURN_BAD_POINTER: AmsMelIrReturn = 1;
+pub const AMS_MEL_IR_RETURN_FAIL: AmsMelIrReturn = 2;
+pub const AMS_MEL_IR_RETURN_NOT_SUPPORTED: AmsMelIrReturn = 3;
+pub const AMS_MEL_IR_RETURN_NOT_IMPLEMENTED: AmsMelIrReturn = 4;
 pub const AMS_MEL_ERROR_NONE: u32 = 0;
 pub const AMS_MEL_ERROR_INVALID_ID: u32 = 1;
 pub const AMS_MEL_ERROR_INVALID_STATE: u32 = 2;
@@ -117,6 +123,13 @@ pub struct AmsMelIrModeResultV1 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AmsMelIrReturnResultV1 {
+    pub value: AmsMelIrReturn,
+    pub error_code: u32,
+}
+
+#[repr(C)]
 #[derive(Debug)]
 pub struct AmsMelIrFrameV1 {
     pub system_time_ns: i64,
@@ -173,6 +186,12 @@ pub struct AmsMelIrC2 {
 
 #[repr(C)]
 pub struct AmsMelIrModeRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+#[repr(C)]
+pub struct AmsMelIrReturnRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -288,6 +307,31 @@ extern "C" {
 
     pub fn ams_mel_ir_mode_request_close(
         request: *mut *mut AmsMelIrModeRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_c2_submit_bit_noop(
+        c2: *mut AmsMelIrC2,
+        command_id: u32,
+        out_request: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_return_request_wait(
+        request: *const AmsMelIrReturnRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrReturnResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_return_request_close(
+        request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

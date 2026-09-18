@@ -155,8 +155,14 @@ invalid text receives a fixed fallback. Provider exceptions, unknown values, and
 null successful shared pointers remain distinct provider failures. C2 close
 defers disable/detach until in-flight requests complete. Synchronous detach
 failure retains the public owner for retry; orphaned deferred failure is retained
-internally. A future that never completes safely retains provider/library state. This slice exposes no arbitrary
-scan, BIT, config, camera, or callback command API.
+internally. A future that never completes safely retains provider/library state.
+Task 014 adds the separate generic `ams_mel_ir_return_request` owner with the same
+accounting, timeout, cache, close, and deferred-cleanup guarantees. Its only
+producer is `ams_mel_ir_c2_submit_bit_noop`, which sets the command ID and leaves
+all BIT payload lists empty. A completed upstream `Return::Fail` is represented
+as `AMS_MEL_OK` plus `AMS_MEL_IR_RETURN_FAIL`; provider/facade failures remain
+distinct statuses. Payload-bearing BIT, config, camera, scan, and callbacks are
+not exposed.
 
 The Ada wrapper initially waits with a bounded diagnostic buffer. For a normal
 rejection whose required byte count is larger, it allocates exactly that count,

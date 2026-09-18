@@ -41,6 +41,11 @@ Task 013 adds no library behavior: a standalone, opt-in Python application
 exercises the same current image+C2 slice against the pinned real Squall
 provider/runtime used by C, Ada, and Rust. It imports only the public `ams_mel`
 API and the standard library; container orchestration remains outside the binding.
+Task 014 adds the required IR `BIT_Command` only in the empty/no-op profile
+accepted by pinned Squall: a caller command ID with empty initiate, cancel, and
+clear-fault lists. C and Ada expose a reusable asynchronous `RequestFor<Return>`
+owner. The raw Rust sys crate tracks the expanded ABI, while safe Rust and Python
+do not yet expose BIT. Payload-bearing BIT remains unsupported.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -53,7 +58,7 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 1. `native/include`: genuine C11 declarations, no STL or C++ object layouts.
 2. `native/src`: C++20 adapter implementation; CMake owns compilation.
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
-4. `rust/ams-mel-sys`: unsafe declarations for the reviewed subset of the C ABI.
+4. `rust/ams-mel-sys`: unsafe declarations for the complete current C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
 6. `python/ams_mel`: safe Python API over a private, sixteen-function `ctypes`
    layer for Session/version, IR image streams, and IR C2 Operate; no direct C++ or

@@ -10,6 +10,15 @@
 int main(void)
 {
     ams_mel_abi_version_v1 version = {0, 0};
+    ams_mel_status_t (*submit_bit)(ams_mel_ir_c2 *, uint32_t,
+        ams_mel_ir_return_request **, char *, size_t, size_t *) =
+        ams_mel_ir_c2_submit_bit_noop;
+    ams_mel_status_t (*wait_return)(const ams_mel_ir_return_request *, uint32_t,
+        ams_mel_ir_return_result_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_return_request_wait;
+    ams_mel_status_t (*close_return)(ams_mel_ir_return_request **, char *,
+        size_t, size_t *) = ams_mel_ir_return_request_close;
+    (void)submit_bit; (void)wait_return; (void)close_return;
 
     VALUE(AMS_MEL_OK); VALUE(AMS_MEL_INVALID_ARGUMENT);
     VALUE(AMS_MEL_LIBRARY_LOAD_FAILED); VALUE(AMS_MEL_SYMBOL_NOT_FOUND);
@@ -23,6 +32,9 @@ int main(void)
     VALUE(AMS_MEL_IR_MFA_MODE_UNUSED); VALUE(AMS_MEL_IR_MFA_MODE_TASK_SCHED);
     VALUE(AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED);
     VALUE(AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED);
+    VALUE(AMS_MEL_IR_RETURN_SUCCESS); VALUE(AMS_MEL_IR_RETURN_BAD_POINTER);
+    VALUE(AMS_MEL_IR_RETURN_FAIL); VALUE(AMS_MEL_IR_RETURN_NOT_SUPPORTED);
+    VALUE(AMS_MEL_IR_RETURN_NOT_IMPLEMENTED);
     VALUE(AMS_MEL_ERROR_NONE); VALUE(AMS_MEL_ERROR_INVALID_ID);
     VALUE(AMS_MEL_ERROR_INVALID_STATE); VALUE(AMS_MEL_ERROR_INVALID_PARAMETERS);
     VALUE(AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS);
@@ -72,6 +84,9 @@ int main(void)
     LAYOUT(ams_mel_ir_mode_result_v1);
     FIELD(ams_mel_ir_mode_result_v1, mode);
     FIELD(ams_mel_ir_mode_result_v1, error_code);
+    LAYOUT(ams_mel_ir_return_result_v1);
+    FIELD(ams_mel_ir_return_result_v1, value);
+    FIELD(ams_mel_ir_return_result_v1, error_code);
     LAYOUT(ams_mel_ir_frame_v1);
     FIELD(ams_mel_ir_frame_v1, system_time_ns);
     FIELD(ams_mel_ir_frame_v1, integration_time_ns);

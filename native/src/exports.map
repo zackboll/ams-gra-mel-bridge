@@ -15,6 +15,9 @@ AMS_MEL_0.1 {
         ams_mel_ir_c2_submit_operate;
         ams_mel_ir_mode_request_wait;
         ams_mel_ir_mode_request_close;
+        ams_mel_ir_c2_submit_bit_noop;
+        ams_mel_ir_return_request_wait;
+        ams_mel_ir_return_request_close;
         ams_mel_ir_c2_close;
     local:
         *;

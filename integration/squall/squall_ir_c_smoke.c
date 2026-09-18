@@ -92,6 +92,7 @@ int main(int argc, char **argv)
     ams_mel_ir_stream *stream = NULL;
     ams_mel_ir_c2 *c2 = NULL;
     ams_mel_ir_mode_request *request = NULL;
+    ams_mel_ir_return_request *bit_request = NULL;
     ams_mel_status_t status;
     uint32_t timeout_ms;
     unsigned long requested_frames;
@@ -176,6 +177,23 @@ int main(int argc, char **argv)
         }
         puts("C2 result: TASK_SCHED");
 
+        {
+            ams_mel_ir_return_result_v1 bit;
+            status = ams_mel_ir_c2_submit_bit_noop(
+                c2, UINT32_C(0x00401401), &bit_request,
+                diagnostic, sizeof diagnostic, NULL);
+            if (status != AMS_MEL_OK) { (void)failed("submit BIT no-op", status); goto cleanup; }
+            memset(&bit, 0, sizeof bit);
+            status = ams_mel_ir_return_request_wait(
+                bit_request, 5000U, &bit, diagnostic, sizeof diagnostic, NULL);
+            if (status != AMS_MEL_OK) { (void)failed("wait for BIT", status); goto cleanup; }
+            if (bit.value != AMS_MEL_IR_RETURN_SUCCESS) {
+                fprintf(stderr, "FAIL: BIT returned unexpected value=%" PRIu32 "\n", bit.value);
+                goto cleanup;
+            }
+            puts("BIT result: SUCCESS");
+        }
+
         /* Children and the completed request must retain provider state. */
         status = ams_mel_session_close(&session, diagnostic, sizeof diagnostic, NULL);
         if (status != AMS_MEL_OK) { (void)failed("close parent session", status); goto cleanup; }
@@ -245,6 +263,9 @@ int main(int argc, char **argv)
 
 cleanup:
     free(pixels);
+    if (bit_request != NULL && ams_mel_ir_return_request_close(&bit_request,
+            diagnostic, sizeof diagnostic, NULL) != AMS_MEL_OK)
+        result = EXIT_FAILURE;
     if (request != NULL && ams_mel_ir_mode_request_close(&request, diagnostic,
                                                           sizeof diagnostic, NULL) != AMS_MEL_OK)
         result = EXIT_FAILURE;

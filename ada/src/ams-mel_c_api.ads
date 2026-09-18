@@ -28,6 +28,9 @@ private package AMS.MEL_C_API is
    type Mode_Request_Handle is new System.Address;
    Null_Mode_Request : constant Mode_Request_Handle :=
      Mode_Request_Handle (System.Null_Address);
+   type Return_Request_Handle is new System.Address;
+   Null_Return_Request : constant Return_Request_Handle :=
+     Return_Request_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8
      with Convention => C;
@@ -63,6 +66,10 @@ private package AMS.MEL_C_API is
    end record with Convention => C;
    type IR_Mode_Result_V1 is record
       Mode       : Interfaces.Unsigned_32;
+      Error_Code : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Return_Result_V1 is record
+      Value      : Interfaces.Unsigned_32;
       Error_Code : Interfaces.Unsigned_32;
    end record with Convention => C;
 
@@ -227,6 +234,31 @@ private package AMS.MEL_C_API is
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C,
           External_Name => "ams_mel_ir_mode_request_close";
+   function IR_C2_Submit_BIT_No_Op
+     (Handle                : C2_Handle;
+      Command_ID            : Interfaces.Unsigned_32;
+      Output                : access Return_Request_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_c2_submit_bit_noop";
+   function IR_Return_Request_Wait
+     (Handle                : Return_Request_Handle;
+      Timeout_MS            : Interfaces.Unsigned_32;
+      Output                : access IR_Return_Result_V1;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_return_request_wait";
+   function IR_Return_Request_Close
+     (Handle                : access Return_Request_Handle;
+      Diagnostic            : System.Address;
+      Diagnostic_Capacity   : Size_T;
+      Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
+     with Import, Convention => C,
+          External_Name => "ams_mel_ir_return_request_close";
    function IR_C2_Close
      (Handle                : access C2_Handle;
       Diagnostic            : System.Address;

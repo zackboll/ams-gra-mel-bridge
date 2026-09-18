@@ -7,6 +7,7 @@ package body AMS_MEL_IR_C2_Tests is
    package C2 renames AMS.MEL.IR.C2;
    use type C2.Error_Code;
    use type C2.MFA_Mode;
+   use type C2.Command_Return;
    use type C2.Outcome;
 
    Zero_UUID : constant AMS.MEL.IR.UUID := [others => 0];
@@ -147,6 +148,109 @@ package body AMS_MEL_IR_C2_Tests is
       AMS.MEL.Close (Parent);
    end Test_Pending_Finalization;
 
+   procedure Test_BIT (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "bit-command-id");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : C2.Return_Request := C2.Submit_BIT_No_Op
+           (Channel, 16#89AB_CDEF#);
+         Result : constant C2.Return_Result := C2.Wait (Request, 1_000);
+      begin
+         if C2.Status (Result) /= C2.Success
+           or else C2.Value (Result) /= C2.Return_Success
+         then
+            raise Program_Error with "Ada BIT success conversion failed";
+         end if;
+         C2.Close (Request);
+         C2.Close (Request);
+      end;
+      C2.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_BIT;
+
+   procedure Test_BIT_Fail (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "bit-fail");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : C2.Return_Request := C2.Submit_BIT_No_Op (Channel);
+         Result : constant C2.Return_Result := C2.Wait (Request, 1_000);
+      begin
+         if C2.Status (Result) /= C2.Success or else C2.Value (Result) /= C2.Fail then
+            raise Program_Error with "Ada BIT Return::Fail was not preserved";
+         end if;
+         C2.Close (Request);
+      end;
+      C2.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_BIT_Fail;
+
+   procedure Test_BIT_Timeout (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "bit-delayed");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : C2.Return_Request := C2.Submit_BIT_No_Op (Channel);
+      begin
+         begin
+            declare
+               Unexpected : constant C2.Return_Result := C2.Wait (Request, 0);
+            begin
+               raise Program_Error with C2.Outcome'Image (C2.Status (Unexpected));
+            end;
+         exception
+            when AMS.MEL.IR.Timeout_Error => null;
+         end;
+         AMS.MEL.Close (Parent);
+         C2.Close (Channel);
+         if C2.Value (C2.Wait (Request, 1_000)) /= C2.Return_Success then
+            raise Program_Error with "Ada delayed BIT failed";
+         end if;
+         C2.Close (Request);
+      end;
+   end Test_BIT_Timeout;
+
+   procedure Test_BIT_Rejection (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "bit-reject-long");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : C2.Return_Request := C2.Submit_BIT_No_Op (Channel);
+         Result : constant C2.Return_Result := C2.Wait (Request, 1_000);
+      begin
+         if C2.Status (Result) /= C2.Rejected
+           or else C2.Rejection_Code (Result) /= C2.Invalid_Parameters
+           or else C2.Description (Result) /= Long_Rejection
+         then
+            raise Program_Error with "Ada BIT rejection conversion failed";
+         end if;
+         C2.Close (Request);
+      end;
+      C2.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_BIT_Rejection;
+
+   procedure Test_BIT_Pending_Finalization (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "bit-lifetime");
+      Channel : C2.Control_Channel := C2.Open (Parent, Config);
+   begin
+      C2.Enable (Channel);
+      declare
+         Request : constant C2.Return_Request := C2.Submit_BIT_No_Op (Channel);
+      begin
+         if not C2.Is_Open (Request) then
+            raise Program_Error with "Ada BIT request was not published";
+         end if;
+      end;
+      C2.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_BIT_Pending_Finalization;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Success (Provider_Path);
@@ -154,6 +258,11 @@ package body AMS_MEL_IR_C2_Tests is
       Test_Rejection (Provider_Path);
       Test_Long_Rejection (Provider_Path);
       Test_Pending_Finalization (Provider_Path);
-      Ada.Text_IO.Put_Line ("PASS: Ada IR C2 Operate/TaskSched contract");
+      Test_BIT (Provider_Path);
+      Test_BIT_Fail (Provider_Path);
+      Test_BIT_Timeout (Provider_Path);
+      Test_BIT_Rejection (Provider_Path);
+      Test_BIT_Pending_Finalization (Provider_Path);
+      Ada.Text_IO.Put_Line ("PASS: Ada IR C2 Operate/TaskSched + BIT no-op contract");
    end Run;
 end AMS_MEL_IR_C2_Tests;

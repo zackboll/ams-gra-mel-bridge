@@ -54,6 +54,7 @@ typedef struct ams_mel_session ams_mel_session;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
 typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
+typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_IMAGE UINT32_C(1)
@@ -63,6 +64,12 @@ typedef uint32_t ams_mel_ir_mfa_mode_t;
 #define AMS_MEL_IR_MFA_MODE_TASK_SCHED UINT32_C(1)
 #define AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED UINT32_C(2)
 #define AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED UINT32_C(3)
+typedef uint32_t ams_mel_ir_return_t;
+#define AMS_MEL_IR_RETURN_SUCCESS UINT32_C(0)
+#define AMS_MEL_IR_RETURN_BAD_POINTER UINT32_C(1)
+#define AMS_MEL_IR_RETURN_FAIL UINT32_C(2)
+#define AMS_MEL_IR_RETURN_NOT_SUPPORTED UINT32_C(3)
+#define AMS_MEL_IR_RETURN_NOT_IMPLEMENTED UINT32_C(4)
 typedef uint32_t ams_mel_error_code_t;
 #define AMS_MEL_ERROR_NONE UINT32_C(0)
 #define AMS_MEL_ERROR_INVALID_ID UINT32_C(1)
@@ -132,6 +139,17 @@ typedef struct ams_mel_ir_mode_result_v1 {
     ams_mel_ir_mfa_mode_t mode;
     ams_mel_error_code_t error_code;
 } ams_mel_ir_mode_result_v1;
+
+/* On AMS_MEL_OK, value is the completed upstream Return; Return::Fail is still
+ * AMS_MEL_OK, and error_code is AMS_MEL_ERROR_NONE for every normal Return
+ * completion. On AMS_MEL_COMMAND_REJECTED, error_code contains the mapped MEL
+ * error and the per-call diagnostic contains its description. For provider or
+ * facade failure statuses, output fields must not be treated as successful
+ * values. */
+typedef struct ams_mel_ir_return_result_v1 {
+    ams_mel_ir_return_t value;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_return_result_v1;
 
 /* Metadata copied with each Mono8 frame. Times retain upstream nanoseconds;
  * FOV values retain upstream radians. image_flags is a bitset (1 << ImageFlag).
@@ -354,6 +372,35 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_wait(
  * not cancel pending provider work. Internal ownership survives to completion. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_close(
     ams_mel_ir_mode_request **request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Sends the pinned-provider-compatible BIT profile: command ID plus empty
+ * initiate, cancel, and clear-fault lists. Payload-bearing BIT is not exposed. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_bit_noop(
+    ams_mel_ir_c2 *c2,
+    uint32_t command_id,
+    ams_mel_ir_return_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Generic RequestFor<Return> wait. Return::Fail is a normal AMS_MEL_OK result;
+ * it is not a provider/facade failure. Terminal results are cached exactly as
+ * for mode requests, and timeout neither consumes nor cancels the request. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_return_request_wait(
+    const ams_mel_ir_return_request *request,
+    uint32_t timeout_ms,
+    ams_mel_ir_return_result_v1 *out_result,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Idempotent and nonblocking. Drops only the public owner and does not cancel
+ * pending provider work. Close must not race wait on the same owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_return_request_close(
+    ams_mel_ir_return_request **request,
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

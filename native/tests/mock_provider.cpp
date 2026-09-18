@@ -310,8 +310,53 @@ public:
     { return unsupported_request<Return>(); }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
     { return unsupported_request<irmel::ChannelCommsTestRep>(); }
-    mel::RequestFor<Return> send(irmel::BIT_Command) override
-    { return unsupported_request<Return>(); }
+    mel::RequestFor<Return> send(irmel::BIT_Command command) override
+    {
+        record("bit_sent");
+        if (!enabled_) throw std::logic_error("BIT sent before enable");
+        if (!command.getInitiateBIT_ID().empty() ||
+            !command.getCancelBIT_ID().empty() ||
+            !command.getClearFaultCode().empty())
+            throw std::runtime_error("unexpected payload-bearing BIT profile");
+        if (scenario_ == "bit-send-throw") throw std::runtime_error("mock BIT send exception");
+        if (scenario_ == "bit-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
+            throw std::runtime_error("BIT command ID conversion mismatch");
+        std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "bit-fail") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                std::make_shared<Return>(Return::Fail)});
+        } else if (scenario_ == "bit-unknown-return") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                std::make_shared<Return>(static_cast<Return>(99U))});
+        } else if (scenario_ == "bit-reject") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, "invalid BIT command"}});
+        } else if (scenario_ == "bit-reject-long") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, long_rejection_description()}});
+        } else if (scenario_ == "bit-null-result") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{std::shared_ptr<Return>{}});
+        } else if (scenario_ == "bit-future-throw") {
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock BIT future exception"}));
+        } else if (scenario_ == "bit-delayed" || scenario_ == "bit-lifetime") {
+            if (producer_.joinable()) throw std::logic_error("only one delayed request supported");
+            producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40},
+                                      [this] { return release_; });
+                lock.unlock();
+                record("bit_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                    std::make_shared<Return>(Return::Success)});
+            }};
+        } else {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                std::make_shared<Return>(Return::Success)});
+        }
+        return future;
+    }
     mel::RequestFor<mel::CalibrationConfiguration> send(irmel::CalibrationConfigurationCmd) override
     { return unsupported_request<mel::CalibrationConfiguration>(); }
     mel::RequestFor<mel::CalibrationStatus> send(irmel::CalibrationStatusCmd) override
