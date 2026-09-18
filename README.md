@@ -19,9 +19,9 @@ themselves.
 
 > **Current status:** C and Ada support provider Session lifecycle, IR host-memory
 > Mono8 reception, C2 Operate/TaskSched, and the empty/no-op BIT command profile.
-> The raw Rust sys crate tracks the complete current 19-function C ABI, including
-> BIT, while safe Rust supports Session, Mono8, and Operate/TaskSched only.
-> Its mode requests include timeout, cached repeated waits,
+> The raw Rust sys crate tracks the complete current 19-function C ABI. Safe Rust
+> supports Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile.
+> Its mode and Return requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An
 > opt-in real Squall integration harness validates C, Ada, safe Rust, and safe Python
 > against the same pinned provider/runtime stack; it is not part of ordinary
@@ -162,7 +162,7 @@ layer.
 | **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
-| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op implemented and mock-tested; current safe-Rust slice also validated against real Squall; no payload-bearing BIT, additional C2 commands/callbacks, or RF |
 | **Python** | Python API → private `ctypes` → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented; no zero-copy/NumPy API or wheel/PyPI publication |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 
@@ -526,8 +526,10 @@ Implemented:
   remains unsupported;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
-- safe Rust Session, IR host-memory Mono8, and C2 Operate/TaskSched APIs over the
-  existing C ABI, with RAII cleanup and Rust-owned frame pixel copies;
+- safe Rust Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op
+  APIs over the existing C ABI, including reusable `ReturnRequest` and typed
+  Return completion/rejection behavior (`Return::Fail` is a normal completed
+  result); payload-bearing BIT remains unsupported;
 - dependency-free Python Session, IR host-memory Mono8, and C2
   Operate/TaskSched APIs with owned-bytes frames, asynchronous mode requests,
   cached waits, retryable C2 close, and independent parent/child lifetimes; and
@@ -672,11 +674,14 @@ SQUALL_SOURCE_DIR=/path/to/ams-gra-hello-world-sk-sensors-squall \
   make test-squall-ir
 ```
 
-This runs the C, Ada, Rust, and Python integration clients in one Squall startup. Use
+This runs the C, Ada, Rust, and Python integration clients in one Squall startup. C,
+Ada, and Rust validate BIT no-op plus TaskSched and Mono8; Python validates
+TaskSched plus Mono8 and still has no BIT API. Use
 `make test-squall-ir-c`, `make test-squall-ir-ada`, or
 `make test-squall-ir-rust`, or `make test-squall-ir-python` to select one client. See
 `integration/squall/README.md`, `docs/task-004-validation.md`, and
-`docs/task-009-validation.md` and `docs/task-013-validation.md` for runtime,
+`docs/task-009-validation.md`, `docs/task-013-validation.md`, and
+`docs/task-015-validation.md` for runtime,
 revision, cleanup, and evidence.
 
 To test another compiler, use a separate build directory:
@@ -748,6 +753,9 @@ directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
 directory. Cargo never invokes CMake or compiles the native adapter. The safe
 layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
 Rust `Frame` values own copied `Vec<u8>` pixels; this is not a zero-copy API.
+Safe Rust BIT support is intentionally limited to `submit_bit_noop`; no
+payload-bearing BIT data is exposed. `ReturnRequest` is reusable for cached
+terminal waits, and timeout or close/drop does not cancel provider work.
 The ordinary Rust tests use the mock provider only. Task 009's preserved,
 opt-in evidence records successful real Squall validation.
 
@@ -863,7 +871,10 @@ C++ MEL provider
 
 The safe Rust layer turns opaque handles and explicit C lifecycle operations into
 Rust ownership types and RAII-managed Session, ImageStream, ControlChannel, and
-ModeRequest resources for the current IR slice.
+ModeRequest and ReturnRequest resources for the current IR slice. Both request
+types are neither `Send` nor `Sync`; their timeout and close/drop operations do
+not cancel provider work. BIT is only the empty/no-op profile, not a generic or
+payload-bearing API.
 
 ### Python
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose the existing IR BIT empty/no-op profile through safe Rust with typed
+  `CommandReturn`, structured `ReturnResult`, and reusable asynchronous
+  `ReturnRequest` ownership; `Return::Fail` remains a normal completion.
 - Add the required IR BIT command in the pinned-provider-compatible empty/no-op
   profile for C and Ada, with reusable asynchronous `RequestFor<Return>` ownership.
 - Synchronize the complete 19-function raw Rust sys ABI while leaving safe Rust

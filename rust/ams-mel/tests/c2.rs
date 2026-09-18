@@ -7,8 +7,8 @@ use std::thread;
 use std::time::Duration;
 
 use ams_mel::{
-    ComponentLocation, ControlConfig, ErrorKind, ImageConfig, MelErrorCode, MfaMode, ModeResult,
-    Session, UciId,
+    CommandReturn, ComponentLocation, ControlConfig, ErrorKind, ImageConfig, MelErrorCode, MfaMode,
+    ModeResult, ReturnResult, Session, UciId,
 };
 
 static NEXT_LOG: AtomicU64 = AtomicU64::new(0);
@@ -40,6 +40,138 @@ fn success_requires_enable_and_repeats_cached_result() {
     assert!(!c2.is_open());
     c2.close().expect("repeated C2 close");
     session.close().expect("session close");
+}
+
+#[test]
+fn bit_success_requires_enable_and_repeats_cached_result() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    let session = open("bit-command-id");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    assert_eq!(
+        c2.submit_bit_noop(0x89ab_cdef)
+            .expect_err("submit before enable")
+            .kind(),
+        &ErrorKind::ProviderFailed
+    );
+    c2.enable().expect("enable");
+    let mut request = c2.submit_bit_noop(0x89ab_cdef).expect("submit BIT");
+    let expected = ReturnResult::Completed {
+        value: CommandReturn::Success,
+    };
+    assert_eq!(request.wait(1_000).expect("wait"), expected);
+    assert_eq!(request.wait(0).expect("cached poll"), expected);
+    request.close().expect("request close");
+    c2.close().expect("C2 close");
+    session.close().expect("session close");
+}
+
+#[test]
+fn bit_return_fail_is_a_normal_completion() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    let session = open("bit-fail");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    c2.enable().expect("enable");
+    let mut request = c2.submit_bit_noop(1).expect("submit BIT");
+    assert_eq!(
+        request.wait(1_000).expect("normal Return::Fail completion"),
+        ReturnResult::Completed {
+            value: CommandReturn::Fail
+        }
+    );
+}
+
+#[test]
+fn bit_timeout_does_not_cancel_and_request_outlives_parents() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    let session = open("bit-delayed");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    c2.enable().expect("enable");
+    let mut request = c2.submit_bit_noop(7).expect("submit BIT");
+    assert_eq!(
+        request.wait(0).expect_err("poll timeout").kind(),
+        &ErrorKind::Timeout
+    );
+    session.close().expect("parent close");
+    c2.close().expect("channel close");
+    assert_eq!(
+        request.wait(1_000).expect("request outlives parents"),
+        ReturnResult::Completed {
+            value: CommandReturn::Success
+        }
+    );
+}
+
+#[test]
+fn bit_preserves_complete_long_rejection_and_cached_result() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    let session = open("bit-reject-long");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    c2.enable().expect("enable");
+    let mut request = c2.submit_bit_noop(1).expect("submit BIT");
+    let expected = ReturnResult::Rejected {
+        code: MelErrorCode::InvalidParameters,
+        description: format!("{}€{}", "x".repeat(510), "y".repeat(100)),
+    };
+    assert_eq!(request.wait(1_000).expect("rejection"), expected);
+    assert_eq!(request.wait(0).expect("cached rejection"), expected);
+}
+
+#[test]
+fn bit_preserves_terminal_and_submission_failure_kinds() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    for (scenario, expected) in [
+        ("bit-null-result", ErrorKind::ProviderFailed),
+        ("bit-future-throw", ErrorKind::ProviderException),
+        ("bit-unknown-return", ErrorKind::ProviderFailed),
+    ] {
+        let session = open(scenario);
+        let mut c2 = session
+            .open_control_channel(&control_config())
+            .expect("open C2");
+        c2.enable().expect("enable");
+        let mut request = c2.submit_bit_noop(1).expect("request was published");
+        assert_eq!(
+            request.wait(1_000).expect_err("terminal failure").kind(),
+            &expected
+        );
+    }
+
+    let session = open("bit-send-throw");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    c2.enable().expect("enable");
+    assert_eq!(
+        c2.submit_bit_noop(1).expect_err("send exception").kind(),
+        &ErrorKind::ProviderException
+    );
+}
+
+#[test]
+fn dropping_pending_bit_request_is_non_cancelling_and_cleanup_is_ordered() {
+    let _guard = C2_TEST.lock().expect("C2 test lock");
+    let log = LifetimeLog::new("bit-pending");
+    let session = open("bit-lifetime");
+    let mut c2 = session
+        .open_control_channel(&control_config())
+        .expect("open C2");
+    c2.enable().expect("enable");
+    let request = c2.submit_bit_noop(8).expect("submit BIT");
+    drop(request);
+    c2.close().expect("C2 close remains nonblocking");
+    session.close().expect("session close remains nonblocking");
+
+    let events = log.wait_for("library_unloaded");
+    assert_order(&events, "bit_completed", "c2_channel_destroyed");
+    assert_order(&events, "c2_channel_destroyed", "library_unloaded");
 }
 
 #[test]
