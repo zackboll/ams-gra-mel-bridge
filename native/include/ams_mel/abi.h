@@ -64,6 +64,31 @@ typedef uint32_t ams_mel_ir_mfa_mode_t;
 #define AMS_MEL_IR_MFA_MODE_TASK_SCHED UINT32_C(1)
 #define AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED UINT32_C(2)
 #define AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED UINT32_C(3)
+typedef uint32_t ams_mel_ir_mfa_state_t;
+#define AMS_MEL_IR_MFA_STATE_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_MFA_STATE_UNKNOWN UINT32_C(1)
+#define AMS_MEL_IR_MFA_STATE_NOT_INSTALLED UINT32_C(2)
+#define AMS_MEL_IR_MFA_STATE_OFF UINT32_C(3)
+#define AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION UINT32_C(4)
+#define AMS_MEL_IR_MFA_STATE_INITIALIZATION UINT32_C(5)
+#define AMS_MEL_IR_MFA_STATE_STANDBY UINT32_C(6)
+#define AMS_MEL_IR_MFA_STATE_OPERATE UINT32_C(7)
+#define AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY UINT32_C(8)
+#define AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY UINT32_C(9)
+#define AMS_MEL_IR_MFA_STATE_MAINTENANCE UINT32_C(10)
+#define AMS_MEL_IR_MFA_STATE_CALIBRATION UINT32_C(11)
+#define AMS_MEL_IR_MFA_STATE_INITIATED_BIT UINT32_C(12)
+#define AMS_MEL_IR_MFA_STATE_SHUTDOWN UINT32_C(13)
+#define AMS_MEL_IR_MFA_STATE_DEGRADED UINT32_C(14)
+#define AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE UINT32_C(15)
+typedef uint32_t ams_mel_ir_coord_frame_ref_t;
+#define AMS_MEL_IR_COORD_FRAME_INERTIAL UINT32_C(0)
+#define AMS_MEL_IR_COORD_FRAME_AIRCRAFT UINT32_C(1)
+typedef uint32_t ams_mel_ir_degradation_method_t;
+#define AMS_MEL_IR_DEGRADATION_CAPACITY UINT32_C(0)
+#define AMS_MEL_IR_DEGRADATION_VOLUME UINT32_C(1)
+#define AMS_MEL_IR_DEGRADATION_RANGE UINT32_C(2)
+#define AMS_MEL_IR_DEGRADATION_REVISIT UINT32_C(3)
 typedef uint32_t ams_mel_ir_return_t;
 #define AMS_MEL_IR_RETURN_SUCCESS UINT32_C(0)
 #define AMS_MEL_IR_RETURN_BAD_POINTER UINT32_C(1)
@@ -95,6 +120,62 @@ typedef struct ams_mel_string_view_v1 {
     const char *data;
     size_t size;
 } ams_mel_string_view_v1;
+
+typedef struct ams_mel_u32_span_v1 {
+    const uint32_t *data;
+    size_t size;
+} ams_mel_u32_span_v1;
+
+typedef struct ams_mel_string_view_span_v1 {
+    const ams_mel_string_view_v1 *data;
+    size_t size;
+} ams_mel_string_view_span_v1;
+
+typedef struct ams_mel_ir_scan_type_v1 {
+    uint32_t continuous_scan;
+    uint32_t returning;
+    uint32_t agile_scan;
+} ams_mel_ir_scan_type_v1;
+
+typedef struct ams_mel_ir_scan_param_v1 {
+    uint32_t elevation_defined_with_range_and_altitude;
+    double center_az_rad;
+    double center_el_rad;
+    ams_mel_ir_coord_frame_ref_t center_frame_ref_el;
+    ams_mel_ir_coord_frame_ref_t center_frame_ref_az;
+    double scan_width_rad;
+    double scan_height_rad;
+    ams_mel_ir_scan_type_v1 scan_type;
+    uint32_t scan_id;
+    double scan_rate_rad_per_second;
+    double preferred_revisit_interval_seconds;
+    double required_revisit_interval_seconds;
+    uint32_t max_range_of_interest_m;
+    uint32_t min_range_of_interest_m;
+    uint32_t elevation_scan_center_altitude_m;
+    uint32_t elevation_scan_center_range_m;
+    ams_mel_ir_degradation_method_t degradation_method;
+} ams_mel_ir_scan_param_v1;
+
+typedef struct ams_mel_ir_mode_command_v1 {
+    uint32_t command_id;
+    ams_mel_ir_mfa_state_t state;
+    ams_mel_ir_mfa_mode_t mode;
+    ams_mel_ir_scan_param_v1 scan_parameters;
+} ams_mel_ir_mode_command_v1;
+
+typedef struct ams_mel_ir_bit_command_v1 {
+    uint32_t command_id;
+    ams_mel_u32_span_v1 initiate_bit_ids;
+    ams_mel_u32_span_v1 cancel_bit_ids;
+    ams_mel_string_view_span_v1 clear_fault_codes;
+} ams_mel_ir_bit_command_v1;
+
+typedef struct ams_mel_ir_config_set_command_v1 {
+    uint32_t command_id;
+    int64_t system_time_ns;
+    ams_mel_string_view_v1 config;
+} ams_mel_ir_config_set_command_v1;
 
 typedef struct ams_mel_uci_id_v1 {
     uint8_t uuid[16];
@@ -356,6 +437,16 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_operate(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Copies a complete published ModeCmd before provider send. Unknown enum
+ * values, MaxExclusive, and Boolean values other than 0/1 are rejected. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_mode(
+    ams_mel_ir_c2 *c2,
+    const ams_mel_ir_mode_command_v1 *command,
+    ams_mel_ir_mode_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Waits finitely for completion. TIMEOUT neither consumes nor cancels. A
  * terminal result is cached, so repeated waits are inspectable and future::get
  * is performed once by the adapter completion worker. Wait may be repeated,
@@ -381,6 +472,26 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_mode_request_close(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_bit_noop(
     ams_mel_ir_c2 *c2,
     uint32_t command_id,
+    ams_mel_ir_return_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* All borrowed spans and UTF-8 views are synchronously copied before send.
+ * Null span data is valid only for size zero. Multiple populated BIT choices
+ * are preserved so the provider can apply the published precedence rule. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_bit(
+    ams_mel_ir_c2 *c2,
+    const ams_mel_ir_bit_command_v1 *command,
+    ams_mel_ir_return_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Config is an opaque validated UTF-8 string and may be empty. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_config_set(
+    ams_mel_ir_c2 *c2,
+    const ams_mel_ir_config_set_command_v1 *command,
     ams_mel_ir_return_request **out_request,
     char *diagnostic,
     size_t diagnostic_capacity,

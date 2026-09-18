@@ -24,6 +24,28 @@ pub const AMS_MEL_IR_MFA_MODE_UNUSED: u32 = 0;
 pub const AMS_MEL_IR_MFA_MODE_TASK_SCHED: u32 = 1;
 pub const AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED: u32 = 2;
 pub const AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED: u32 = 3;
+pub const AMS_MEL_IR_MFA_STATE_NOT_SET: u32 = 0;
+pub const AMS_MEL_IR_MFA_STATE_UNKNOWN: u32 = 1;
+pub const AMS_MEL_IR_MFA_STATE_NOT_INSTALLED: u32 = 2;
+pub const AMS_MEL_IR_MFA_STATE_OFF: u32 = 3;
+pub const AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION: u32 = 4;
+pub const AMS_MEL_IR_MFA_STATE_INITIALIZATION: u32 = 5;
+pub const AMS_MEL_IR_MFA_STATE_STANDBY: u32 = 6;
+pub const AMS_MEL_IR_MFA_STATE_OPERATE: u32 = 7;
+pub const AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY: u32 = 8;
+pub const AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY: u32 = 9;
+pub const AMS_MEL_IR_MFA_STATE_MAINTENANCE: u32 = 10;
+pub const AMS_MEL_IR_MFA_STATE_CALIBRATION: u32 = 11;
+pub const AMS_MEL_IR_MFA_STATE_INITIATED_BIT: u32 = 12;
+pub const AMS_MEL_IR_MFA_STATE_SHUTDOWN: u32 = 13;
+pub const AMS_MEL_IR_MFA_STATE_DEGRADED: u32 = 14;
+pub const AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE: u32 = 15;
+pub const AMS_MEL_IR_COORD_FRAME_INERTIAL: u32 = 0;
+pub const AMS_MEL_IR_COORD_FRAME_AIRCRAFT: u32 = 1;
+pub const AMS_MEL_IR_DEGRADATION_CAPACITY: u32 = 0;
+pub const AMS_MEL_IR_DEGRADATION_VOLUME: u32 = 1;
+pub const AMS_MEL_IR_DEGRADATION_RANGE: u32 = 2;
+pub const AMS_MEL_IR_DEGRADATION_REVISIT: u32 = 3;
 pub type AmsMelIrReturn = u32;
 pub const AMS_MEL_IR_RETURN_SUCCESS: AmsMelIrReturn = 0;
 pub const AMS_MEL_IR_RETURN_BAD_POINTER: AmsMelIrReturn = 1;
@@ -75,6 +97,70 @@ pub struct AmsMelProviderVersionV1 {
 pub struct AmsMelStringViewV1 {
     pub data: *const c_char,
     pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelU32SpanV1 {
+    pub data: *const u32,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelStringViewSpanV1 {
+    pub data: *const AmsMelStringViewV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrScanTypeV1 {
+    pub continuous_scan: u32,
+    pub returning: u32,
+    pub agile_scan: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrScanParamV1 {
+    pub elevation_defined_with_range_and_altitude: u32,
+    pub center_az_rad: f64,
+    pub center_el_rad: f64,
+    pub center_frame_ref_el: u32,
+    pub center_frame_ref_az: u32,
+    pub scan_width_rad: f64,
+    pub scan_height_rad: f64,
+    pub scan_type: AmsMelIrScanTypeV1,
+    pub scan_id: u32,
+    pub scan_rate_rad_per_second: f64,
+    pub preferred_revisit_interval_seconds: f64,
+    pub required_revisit_interval_seconds: f64,
+    pub max_range_of_interest_m: u32,
+    pub min_range_of_interest_m: u32,
+    pub elevation_scan_center_altitude_m: u32,
+    pub elevation_scan_center_range_m: u32,
+    pub degradation_method: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrModeCommandV1 {
+    pub command_id: u32,
+    pub state: u32,
+    pub mode: u32,
+    pub scan_parameters: AmsMelIrScanParamV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrBitCommandV1 {
+    pub command_id: u32,
+    pub initiate_bit_ids: AmsMelU32SpanV1,
+    pub cancel_bit_ids: AmsMelU32SpanV1,
+    pub clear_fault_codes: AmsMelStringViewSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrConfigSetCommandV1 {
+    pub command_id: u32,
+    pub system_time_ns: i64,
+    pub config: AmsMelStringViewV1,
 }
 
 #[repr(C)]
@@ -295,6 +381,14 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_mode(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrModeCommandV1,
+        out_request: *mut *mut AmsMelIrModeRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
 
     pub fn ams_mel_ir_mode_request_wait(
         request: *const AmsMelIrModeRequest,
@@ -315,6 +409,22 @@ extern "C" {
     pub fn ams_mel_ir_c2_submit_bit_noop(
         c2: *mut AmsMelIrC2,
         command_id: u32,
+        out_request: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_bit(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrBitCommandV1,
+        out_request: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_config_set(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrConfigSetCommandV1,
         out_request: *mut *mut AmsMelIrReturnRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

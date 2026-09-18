@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Complete all three required IR C2 command sends in the native façade and Ada:
+  general ModeCmd with complete ScanParam, full raw BIT payload transport with a
+  safe one-choice Ada API, and opaque ConfigSet. Synchronize only the raw Rust
+  sys and private Python ctypes layers, expanding the façade to 22 functions.
 - Expose the existing IR BIT empty/no-op profile through dependency-free Python
   with typed `CommandReturn`, structured completion/rejection values, reusable
   `ReturnRequest`, complete cached diagnostics, and parent-independent ownership.

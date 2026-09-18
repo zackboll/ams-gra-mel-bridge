@@ -20,6 +20,7 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 using namespace ams::iface;
@@ -112,6 +113,59 @@ bool map_mode(irmel::MFA_Mode mode, ams_mel_ir_mfa_mode_t& value) noexcept
     case irmel::MFA_Mode::ScanBarSched: value = AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED; return true;
     }
     return false;
+}
+
+bool convert_state(ams_mel_ir_mfa_state_t value, mel::MFA_State& state) noexcept
+{
+    if (value >= AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE) return false;
+    state = static_cast<mel::MFA_State>(value);
+    return true;
+}
+
+bool convert_mode(ams_mel_ir_mfa_mode_t value, irmel::MFA_Mode& mode) noexcept
+{
+    if (value > AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED) return false;
+    mode = static_cast<irmel::MFA_Mode>(value);
+    return true;
+}
+
+bool valid_scan(const ams_mel_ir_scan_param_v1& value) noexcept
+{
+    return value.elevation_defined_with_range_and_altitude <= 1U &&
+           value.center_frame_ref_el <= AMS_MEL_IR_COORD_FRAME_AIRCRAFT &&
+           value.center_frame_ref_az <= AMS_MEL_IR_COORD_FRAME_AIRCRAFT &&
+           value.degradation_method <= AMS_MEL_IR_DEGRADATION_REVISIT;
+}
+
+irmel::ScanParam convert_scan(const ams_mel_ir_scan_param_v1& value)
+{
+    irmel::ScanType type;
+    type.setContinuousScan(value.scan_type.continuous_scan);
+    type.setReturning(value.scan_type.returning);
+    type.setAgileScan(value.scan_type.agile_scan);
+    return {value.elevation_defined_with_range_and_altitude != 0U,
+            AzEl{value.center_az_rad, value.center_el_rad},
+            static_cast<irmel::CoordFrameRef>(value.center_frame_ref_el),
+            static_cast<irmel::CoordFrameRef>(value.center_frame_ref_az),
+            value.scan_width_rad, value.scan_height_rad, std::move(type),
+            value.scan_id, value.scan_rate_rad_per_second,
+            value.preferred_revisit_interval_seconds,
+            value.required_revisit_interval_seconds,
+            value.max_range_of_interest_m, value.min_range_of_interest_m,
+            value.elevation_scan_center_altitude_m,
+            value.elevation_scan_center_range_m,
+            static_cast<irmel::DegradationMethod>(value.degradation_method)};
+}
+
+bool valid_span(const ams_mel_u32_span_v1& span) noexcept
+{ return span.data != nullptr || span.size == 0U; }
+
+bool valid_span(const ams_mel_string_view_span_v1& span) noexcept
+{
+    if (!span.data && span.size != 0U) return false;
+    for (std::size_t index = 0; index < span.size; ++index)
+        if (!valid_view(span.data[index])) return false;
+    return true;
 }
 
 bool map_return(irmel::Return input, ams_mel_ir_return_t& value) noexcept
@@ -457,6 +511,145 @@ struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_return_request { std::shared_ptr<ReturnCompletion> state; };
 
+namespace {
+ams_mel_status_t submit_mode_command(
+    ams_mel_ir_c2 *c2, irmel::ModeCmd command,
+    ams_mel_ir_mode_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    std::shared_ptr<Completion> completion;
+    std::shared_ptr<WorkerInput> input;
+    std::unique_ptr<ams_mel_ir_mode_request> owner;
+    std::unique_ptr<std::thread> worker;
+    try {
+        completion = std::make_shared<Completion>();
+        completion->channel = c2->state;
+        input = std::make_shared<WorkerInput>();
+        input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_mode_request>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
+    } catch (...) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::unique_lock<std::mutex> lock;
+    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
+    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
+    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
+        diagnostic("C2 channel is not enabled", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
+        try {
+            input->future = c2->state->c2->send(std::move(command));
+            arm_worker(input);
+            ++c2->state->requests;
+        } catch (const std::exception& error) {
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+        lock.unlock();
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        *worker = std::thread{[input] { run_worker(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
+        *out_request = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        retain_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        retain_worker(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+template<typename Command>
+ams_mel_status_t submit_return_command(
+    ams_mel_ir_c2 *c2, Command command,
+    ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    std::shared_ptr<ReturnCompletion> completion;
+    std::shared_ptr<ReturnWorkerInput> input;
+    std::unique_ptr<ams_mel_ir_return_request> owner;
+    std::unique_ptr<std::thread> worker;
+    try {
+        completion = std::make_shared<ReturnCompletion>();
+        completion->channel = c2->state;
+        input = std::make_shared<ReturnWorkerInput>();
+        input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_return_request>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
+    } catch (...) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::unique_lock<std::mutex> lock;
+    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
+    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
+    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
+        diagnostic("C2 channel is not enabled", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
+        try {
+            input->future = c2->state->c2->send(std::move(command));
+            arm_return_worker(input);
+            ++c2->state->requests;
+        } catch (const std::exception& error) {
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+        lock.unlock();
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        *worker = std::thread{[input] { run_return_worker(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
+        *out_request = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        retain_return_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        retain_return_worker(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+} // namespace
+
 extern "C" ams_mel_status_t ams_mel_ir_c2_open(
     const ams_mel_session *session, const ams_mel_ir_c2_config_v1 *config,
     ams_mel_ir_c2 **out_c2, char *out, std::size_t capacity,
@@ -577,86 +770,36 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_operate(
     diagnostic("", out, capacity, required);
     if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
-
-    std::shared_ptr<Completion> completion;
-    std::shared_ptr<WorkerInput> input;
-    std::unique_ptr<ams_mel_ir_mode_request> owner;
-    std::unique_ptr<std::thread> worker;
     irmel::ModeCmd command;
-    try {
-        completion = std::make_shared<Completion>();
-        completion->channel = c2->state;
-        input = std::make_shared<WorkerInput>();
-        input->completion = completion;
-        owner = std::make_unique<ams_mel_ir_mode_request>();
-        owner->state = completion;
-        worker = std::make_unique<std::thread>();
-        command.setCommandID(command_id);
-        command.setState(mel::MFA_State::Operate);
-        command.setMode(irmel::MFA_Mode::TaskSched);
-    } catch (const std::bad_alloc&) {
-        diagnostic("allocation failed before provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (...) {
-        diagnostic("request preparation failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
+    command.setCommandID(command_id);
+    command.setState(mel::MFA_State::Operate);
+    command.setMode(irmel::MFA_Mode::TaskSched);
+    return submit_mode_command(c2, std::move(command), out_request, out, capacity, required);
+}
 
-    std::unique_lock<std::mutex> lock;
-    try {
-        lock = std::unique_lock<std::mutex>{c2->state->mutex};
-    } catch (...) {
-        diagnostic("C2 submission lock failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
-        diagnostic("C2 channel is not enabled", out, capacity, required);
-        return AMS_MEL_PROVIDER_FAILED;
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_mode(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_mode_command_v1 *input,
+    ams_mel_ir_mode_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    mel::MFA_State state{};
+    irmel::MFA_Mode mode{};
+    if (!c2 || !c2->state || !input || !out_request || *out_request ||
+        (!out && capacity) || !convert_state(input->state, state) ||
+        !convert_mode(input->mode, mode) || !valid_scan(input->scan_parameters)) {
+        diagnostic("invalid ModeCmd input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
     }
     try {
-        try {
-            auto future = c2->state->c2->send(std::move(command));
-            input->future = std::move(future);
-            arm_worker(input);
-            ++c2->state->requests;
-        } catch (const std::exception& error) {
-            const char *what = error.what();
-            const std::string_view text = what ? std::string_view{what} : std::string_view{};
-            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
-                       out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        } catch (...) {
-            diagnostic("unknown provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        lock.unlock();
-
-#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-        const SubmitFailpoint failpoint = submit_failpoint();
-        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
-        if (failpoint == SubmitFailpoint::WorkerLaunch)
-            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
-#endif
-
-        *worker = std::thread{[input] { run_worker(input); }};
-        worker->detach();
-        input->emergency_self.reset();
-        input->launch_state.store(1U, std::memory_order_release);
-        *out_request = owner.release();
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        retain_worker(input);
-        diagnostic("facade allocation failed after provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
+        irmel::ModeCmd command;
+        command.setCommandID(input->command_id);
+        command.setState(state);
+        command.setMode(mode);
+        command.setScanParameters(convert_scan(input->scan_parameters));
+        return submit_mode_command(c2, std::move(command), out_request, out, capacity, required);
     } catch (...) {
-        retain_worker(input);
-        if (worker && worker->joinable()) {
-            /* Detach failure leaves a running worker. Leaking only the already
-             * allocated std::thread object avoids its terminating destructor. */
-            (void)worker.release();
-        }
-        input->launch_state.store(2U, std::memory_order_release);
-        diagnostic("facade worker launch failed", out, capacity, required);
+        diagnostic("ModeCmd preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
 }
@@ -710,77 +853,64 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_bit_noop(
     diagnostic("", out, capacity, required);
     if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
-
-    std::shared_ptr<ReturnCompletion> completion;
-    std::shared_ptr<ReturnWorkerInput> input;
-    std::unique_ptr<ams_mel_ir_return_request> owner;
-    std::unique_ptr<std::thread> worker;
     irmel::BIT_Command command;
-    try {
-        completion = std::make_shared<ReturnCompletion>();
-        completion->channel = c2->state;
-        input = std::make_shared<ReturnWorkerInput>();
-        input->completion = completion;
-        owner = std::make_unique<ams_mel_ir_return_request>();
-        owner->state = completion;
-        worker = std::make_unique<std::thread>();
-        command.setCommandID(command_id);
-    } catch (const std::bad_alloc&) {
-        diagnostic("allocation failed before provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (...) {
-        diagnostic("BIT request preparation failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
+    command.setCommandID(command_id);
+    return submit_return_command(c2, std::move(command), out_request, out, capacity, required);
+}
 
-    std::unique_lock<std::mutex> lock;
-    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
-    catch (...) {
-        diagnostic("C2 submission lock failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
-        diagnostic("C2 channel is not enabled", out, capacity, required);
-        return AMS_MEL_PROVIDER_FAILED;
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_bit(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_bit_command_v1 *input,
+    ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !input || !out_request || *out_request || (!out && capacity) ||
+        !valid_span(input->initiate_bit_ids) || !valid_span(input->cancel_bit_ids) ||
+        !valid_span(input->clear_fault_codes)) {
+        diagnostic("invalid BIT command input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
     }
     try {
-        try {
-            auto future = c2->state->c2->send(std::move(command));
-            input->future = std::move(future);
-            arm_return_worker(input);
-            ++c2->state->requests;
-        } catch (const std::exception& error) {
-            const char *what = error.what();
-            const std::string_view text = what ? std::string_view{what} : std::string_view{};
-            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
-                       out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        } catch (...) {
-            diagnostic("unknown provider send exception", out, capacity, required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        lock.unlock();
-#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-        const SubmitFailpoint failpoint = submit_failpoint();
-        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
-        if (failpoint == SubmitFailpoint::WorkerLaunch)
-            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
-#endif
-        *worker = std::thread{[input] { run_return_worker(input); }};
-        worker->detach();
-        input->emergency_self.reset();
-        input->launch_state.store(1U, std::memory_order_release);
-        *out_request = owner.release();
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        retain_return_worker(input);
-        diagnostic("facade allocation failed after provider send", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
+        std::vector<std::uint32_t> initiate;
+        std::vector<std::uint32_t> cancel;
+        if (input->initiate_bit_ids.size != 0U)
+            initiate.assign(input->initiate_bit_ids.data,
+                input->initiate_bit_ids.data + input->initiate_bit_ids.size);
+        if (input->cancel_bit_ids.size != 0U)
+            cancel.assign(input->cancel_bit_ids.data,
+                input->cancel_bit_ids.data + input->cancel_bit_ids.size);
+        std::vector<std::string> faults;
+        faults.reserve(input->clear_fault_codes.size);
+        for (std::size_t index = 0; index < input->clear_fault_codes.size; ++index)
+            faults.push_back(copy_view(input->clear_fault_codes.data[index]));
+        irmel::BIT_Command command{input->command_id, std::move(initiate),
+                                   std::move(cancel), std::move(faults)};
+        return submit_return_command(c2, std::move(command), out_request, out, capacity, required);
     } catch (...) {
-        retain_return_worker(input);
-        if (worker && worker->joinable()) (void)worker.release();
-        input->launch_state.store(2U, std::memory_order_release);
-        diagnostic("facade worker launch failed", out, capacity, required);
+        diagnostic("BIT command preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_config_set(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_config_set_command_v1 *input,
+    ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !input || !out_request || *out_request || (!out && capacity) ||
+        !valid_view(input->config)) {
+        diagnostic("invalid ConfigSet command input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    try {
+        irmel::ConfigSetCommand command;
+        command.setCommandID(input->command_id);
+        command.setSystemTime(std::chrono::nanoseconds{input->system_time_ns});
+        command.setConfig(copy_view(input->config));
+        return submit_return_command(c2, std::move(command), out_request, out, capacity, required);
+    } catch (...) {
+        diagnostic("ConfigSet command preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
 }

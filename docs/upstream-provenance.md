@@ -74,6 +74,15 @@ cancelBIT_ID, and clearFaultCode vectors remain empty. Pinned Squall accepts thi
 empty profile and returns `Return::Success`, but rejects non-empty BIT input, so
 payload-bearing BIT is intentionally outside this task. No vendored file changed.
 
+Task 017 uses all three `@Required` C2 send overloads at the same immutable IR
+revision: `send(ModeCmd)`, `send(BIT_Command)`, and `send(ConfigSetCommand)`.
+The façade now preserves complete ScanParam values, all three BIT vectors, and
+signed nanosecond/configuration data. Pinned Squall accepts supported general
+state transitions, BIT no-op, and empty ConfigSet. It returns normal `Fail` for
+payload-bearing BIT and nonempty ConfigSet, and rejects scan scheduling in
+Operate because that simulator requires TaskSched. Those are provider behaviors,
+not adapter restrictions. Required metadata callbacks remain unimplemented.
+
 ## License and notices
 
 Each selected repository supplies Apache License 2.0 `LICENSE` and federal

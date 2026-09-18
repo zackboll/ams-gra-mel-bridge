@@ -77,6 +77,28 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_MFA_MODE_TASK_SCHED as usize,
         AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED as usize,
         AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED as usize,
+        AMS_MEL_IR_MFA_STATE_NOT_SET as usize,
+        AMS_MEL_IR_MFA_STATE_UNKNOWN as usize,
+        AMS_MEL_IR_MFA_STATE_NOT_INSTALLED as usize,
+        AMS_MEL_IR_MFA_STATE_OFF as usize,
+        AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION as usize,
+        AMS_MEL_IR_MFA_STATE_INITIALIZATION as usize,
+        AMS_MEL_IR_MFA_STATE_STANDBY as usize,
+        AMS_MEL_IR_MFA_STATE_OPERATE as usize,
+        AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY as usize,
+        AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY as usize,
+        AMS_MEL_IR_MFA_STATE_MAINTENANCE as usize,
+        AMS_MEL_IR_MFA_STATE_CALIBRATION as usize,
+        AMS_MEL_IR_MFA_STATE_INITIATED_BIT as usize,
+        AMS_MEL_IR_MFA_STATE_SHUTDOWN as usize,
+        AMS_MEL_IR_MFA_STATE_DEGRADED as usize,
+        AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE as usize,
+        AMS_MEL_IR_COORD_FRAME_INERTIAL as usize,
+        AMS_MEL_IR_COORD_FRAME_AIRCRAFT as usize,
+        AMS_MEL_IR_DEGRADATION_CAPACITY as usize,
+        AMS_MEL_IR_DEGRADATION_VOLUME as usize,
+        AMS_MEL_IR_DEGRADATION_RANGE as usize,
+        AMS_MEL_IR_DEGRADATION_REVISIT as usize,
         AMS_MEL_IR_RETURN_SUCCESS as usize,
         AMS_MEL_IR_RETURN_BAD_POINTER as usize,
         AMS_MEL_IR_RETURN_FAIL as usize,
@@ -113,6 +135,59 @@ fn declarations_match_the_c_header() {
         description_required
     );
     layout!(expected, AmsMelStringViewV1, data, size);
+    layout!(expected, AmsMelU32SpanV1, data, size);
+    layout!(expected, AmsMelStringViewSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrScanTypeV1,
+        continuous_scan,
+        returning,
+        agile_scan
+    );
+    layout!(
+        expected,
+        AmsMelIrScanParamV1,
+        elevation_defined_with_range_and_altitude,
+        center_az_rad,
+        center_el_rad,
+        center_frame_ref_el,
+        center_frame_ref_az,
+        scan_width_rad,
+        scan_height_rad,
+        scan_type,
+        scan_id,
+        scan_rate_rad_per_second,
+        preferred_revisit_interval_seconds,
+        required_revisit_interval_seconds,
+        max_range_of_interest_m,
+        min_range_of_interest_m,
+        elevation_scan_center_altitude_m,
+        elevation_scan_center_range_m,
+        degradation_method
+    );
+    layout!(
+        expected,
+        AmsMelIrModeCommandV1,
+        command_id,
+        state,
+        mode,
+        scan_parameters
+    );
+    layout!(
+        expected,
+        AmsMelIrBitCommandV1,
+        command_id,
+        initiate_bit_ids,
+        cancel_bit_ids,
+        clear_fault_codes
+    );
+    layout!(
+        expected,
+        AmsMelIrConfigSetCommandV1,
+        command_id,
+        system_time_ns,
+        config
+    );
     layout!(expected, AmsMelUciIdV1, uuid, descriptive_label);
     layout!(
         expected,

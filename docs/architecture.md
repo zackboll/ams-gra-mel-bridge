@@ -57,6 +57,15 @@ Python. It adds typed `CommandReturn`, structured `ReturnCompleted` versus
 is normal completion; timeout and close do not cancel, complete terminal
 diagnostics are preserved, and unknown MEL rejection codes remain inspectable.
 Payload-bearing BIT remains unsupported.
+Task 017 begins an Ada-first feature-family cadence and completes the three
+published required C2 sends. The additive 22-function C ABI carries complete
+ModeCmd/ScanParam, every BIT vector through borrowed spans copied before send,
+and complete ConfigSet data. Ada exposes strong state/frame/degradation types,
+complete scan units, one-choice BIT operations, and opaque configuration text.
+The proven ModeRequest and ReturnRequest workers are reused. Rust sys and private
+Python ctypes track the raw ABI only; safe Rust and Python retain their existing
+Operate/TaskSched and BIT-no-op subsets. Required C2 callbacks remain Task 018;
+no callback or optional command is introduced here.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -71,9 +80,8 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. `rust/ams-mel-sys`: unsafe declarations for the complete current C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
-6. `python/ams_mel`: safe Python API over the complete current 19-function
-   `ctypes` façade for Session/version, IR image streams, IR C2 Operate, and BIT
-   no-op; no direct C++ or provider-factory path.
+6. `python/ams_mel`: safe Python Session/image/Operate/BIT-no-op API over a
+   private complete 22-function `ctypes` façade; no direct C++ path.
 7. Separate integration applications: OMS/UCI, image processing, RF processing.
 
 `integration/squall` contains validation applications rather than production

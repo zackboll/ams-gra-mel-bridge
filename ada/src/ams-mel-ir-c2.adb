@@ -124,6 +124,64 @@ package body AMS.MEL.IR.C2 is
       end return;
    end Submit_Operate;
 
+   function Raw_Scan (Value : Scan_Parameters) return C.IR_Scan_Param_V1 is
+     ((Elevation_Defined_With_Range_And_Altitude =>
+         (if Value.Elevation_Defined_With_Range_And_Altitude then 1 else 0),
+       Center_AZ_Rad => Interfaces.C.double (Value.Center_Azimuth_Rad),
+       Center_EL_Rad => Interfaces.C.double (Value.Center_Elevation_Rad),
+       Center_Frame_Ref_EL => Coordinate_Frame_Reference'Enum_Rep
+         (Value.Center_Frame_Reference_EL),
+       Center_Frame_Ref_AZ => Coordinate_Frame_Reference'Enum_Rep
+         (Value.Center_Frame_Reference_AZ),
+       Scan_Width_Rad => Interfaces.C.double (Value.Scan_Width_Rad),
+       Scan_Height_Rad => Interfaces.C.double (Value.Scan_Height_Rad),
+       Scan_Type => (Interfaces.Unsigned_32 (Value.Continuous_Scan),
+                     Interfaces.Unsigned_32 (Value.Returning),
+                     Interfaces.Unsigned_32 (Value.Agile_Scan)),
+       Scan_ID => Interfaces.Unsigned_32 (Value.Scan_ID),
+       Scan_Rate_Rad_Per_Second => Interfaces.C.double
+         (Value.Scan_Rate_Rad_Per_Second),
+       Preferred_Revisit_Interval_Seconds => Interfaces.C.double
+         (Value.Preferred_Revisit_Interval_Seconds),
+       Required_Revisit_Interval_Seconds => Interfaces.C.double
+         (Value.Required_Revisit_Interval_Seconds),
+       Max_Range_Of_Interest_M => Interfaces.Unsigned_32
+         (Value.Max_Range_Of_Interest_M),
+       Min_Range_Of_Interest_M => Interfaces.Unsigned_32
+         (Value.Min_Range_Of_Interest_M),
+       Elevation_Scan_Center_Altitude_M => Interfaces.Unsigned_32
+         (Value.Elevation_Scan_Center_Altitude_M),
+       Elevation_Scan_Center_Range_M => Interfaces.Unsigned_32
+         (Value.Elevation_Scan_Center_Range_M),
+       Degradation_Method => Degradation_Method'Enum_Rep (Value.Degradation)));
+
+   function Submit_Mode
+     (Channel : Control_Channel; ID : Command_ID; State : MFA_State;
+      Mode : MFA_Mode; Scan_Parameters : AMS.MEL.IR.C2.Scan_Parameters :=
+        Default_Scan_Parameters) return Mode_Request
+   is
+      Raw : aliased C.IR_Mode_Command_V1 :=
+        (Interfaces.Unsigned_32 (ID), MFA_State'Enum_Rep (State),
+         MFA_Mode'Enum_Rep (Mode), Raw_Scan (Scan_Parameters));
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : Mode_Request do
+         declare
+            Code : constant Interfaces.Integer_32 := C.IR_C2_Submit_Mode
+              (Channel.Handle, Raw'Access, Result.Owner.Handle'Access,
+               Diagnostic'Address, Diagnostic'Length, Required'Access);
+         begin
+            if Code /= C.Success then
+               raise Provider_Error with Failure_Message (Diagnostic);
+            end if;
+         end;
+      end return;
+   end Submit_Mode;
+
    function Is_Open (Request : Mode_Request) return Boolean is
      (Request.Owner.Handle /= C.Null_Mode_Request);
 
@@ -146,6 +204,119 @@ package body AMS.MEL.IR.C2 is
          end;
       end return;
    end Submit_BIT_No_Op;
+
+   type Raw_BIT_ID_Array is array (Positive range <>) of aliased Interfaces.Unsigned_32
+     with Convention => C;
+
+   function Submit_BIT_IDs
+     (Channel : Control_Channel; IDs : BIT_ID_Array; ID : Command_ID;
+      Initiate : Boolean) return Return_Request
+   is
+      Raw_IDs : aliased Raw_BIT_ID_Array (IDs'Range);
+      Raw : aliased C.IR_BIT_Command_V1 :=
+        (Interfaces.Unsigned_32 (ID),
+         (System.Null_Address, 0), (System.Null_Address, 0),
+         (System.Null_Address, 0));
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      for Index in IDs'Range loop
+         Raw_IDs (Index) := Interfaces.Unsigned_32 (IDs (Index));
+      end loop;
+      if Initiate then
+         Raw.Initiate_BIT_IDs := (Raw_IDs'Address, Raw_IDs'Length);
+      else
+         Raw.Cancel_BIT_IDs := (Raw_IDs'Address, Raw_IDs'Length);
+      end if;
+      return Result : Return_Request do
+         declare
+            Code : constant Interfaces.Integer_32 := C.IR_C2_Submit_BIT
+              (Channel.Handle, Raw'Access, Result.Owner.Handle'Access,
+               Diagnostic'Address, Diagnostic'Length, Required'Access);
+         begin
+            if Code /= C.Success then
+               raise Provider_Error with Failure_Message (Diagnostic);
+            end if;
+         end;
+      end return;
+   end Submit_BIT_IDs;
+
+   function Submit_BIT_Initiate
+     (Channel : Control_Channel; IDs : BIT_ID_Array; ID : Command_ID := 0)
+      return Return_Request is (Submit_BIT_IDs (Channel, IDs, ID, True));
+
+   function Submit_BIT_Cancel
+     (Channel : Control_Channel; IDs : BIT_ID_Array; ID : Command_ID := 0)
+      return Return_Request is (Submit_BIT_IDs (Channel, IDs, ID, False));
+
+   function Submit_BIT_Clear_Faults
+     (Channel : Control_Channel; Fault_Codes : Fault_Code_Vectors.Vector;
+      ID : Command_ID := 0) return Return_Request
+   is
+      Views : aliased C.String_View_Array
+        (1 .. Positive (Fault_Codes.Length));
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      for Index in Views'Range loop
+         declare
+            Element : constant Fault_Code_Vectors.Constant_Reference_Type :=
+              Fault_Codes.Constant_Reference (Index);
+         begin
+            Views (Index) := String_View (Element.Element.all);
+         end;
+      end loop;
+      declare
+         Raw : aliased C.IR_BIT_Command_V1 :=
+           (Interfaces.Unsigned_32 (ID), (System.Null_Address, 0),
+            (System.Null_Address, 0), (Views'Address, Views'Length));
+      begin
+         return Result : Return_Request do
+            declare
+               Code : constant Interfaces.Integer_32 := C.IR_C2_Submit_BIT
+                 (Channel.Handle, Raw'Access, Result.Owner.Handle'Access,
+                  Diagnostic'Address, Diagnostic'Length, Required'Access);
+            begin
+               if Code /= C.Success then
+                  raise Provider_Error with Failure_Message (Diagnostic);
+               end if;
+            end;
+         end return;
+      end;
+   end Submit_BIT_Clear_Faults;
+
+   function Submit_Config_Set
+     (Channel : Control_Channel; ID : Command_ID := 0;
+      System_Time_NS : System_Time_Nanoseconds := 0; Config : String := "")
+      return Return_Request
+   is
+      Raw : aliased C.IR_Config_Set_Command_V1 :=
+        (Interfaces.Unsigned_32 (ID), Interfaces.Integer_64 (System_Time_NS),
+         String_View (Config));
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : Return_Request do
+         declare
+            Code : constant Interfaces.Integer_32 := C.IR_C2_Submit_Config_Set
+              (Channel.Handle, Raw'Access, Result.Owner.Handle'Access,
+               Diagnostic'Address, Diagnostic'Length, Required'Access);
+         begin
+            if Code /= C.Success then
+               raise Provider_Error with Failure_Message (Diagnostic);
+            end if;
+         end;
+      end return;
+   end Submit_Config_Set;
 
    function Is_Open (Request : Return_Request) return Boolean is
      (Request.Owner.Handle /= C.Null_Return_Request);

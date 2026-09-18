@@ -11,6 +11,12 @@ applications do not call Squall gRPC, Couloir, UDP, REST, or any private backend
 API. Rust uses `ams-mel` -> `ams-mel-sys` -> `libams_mel_c`; Python uses the
 public `ams_mel` API -> private `ctypes` -> `libams_mel_c`. Both reach only the
 runtime-loaded provider through the façade.
+Ada additionally exercises Task 017's general Mode, BIT payload, and ConfigSet
+safe APIs. It requires Standby/Unused and Operate/TaskSched success, provider
+rejection of Operate/ScanVolumeSched, empty ConfigSet Success, nonempty ConfigSet
+Fail, and payload-bearing BIT Fail. Complete ScanParam fidelity is mock-proven;
+pinned Squall rejects scan scheduling before meaningfully consuming ScanParam.
+C, Rust, and Python retain the earlier integration subset.
 
 Provide an existing checkout with this exact source closure:
 

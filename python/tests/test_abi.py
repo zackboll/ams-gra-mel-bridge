@@ -32,15 +32,18 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_c2_open",
                 "ams_mel_ir_c2_enable",
                 "ams_mel_ir_c2_submit_operate",
+                "ams_mel_ir_c2_submit_mode",
                 "ams_mel_ir_mode_request_wait",
                 "ams_mel_ir_mode_request_close",
                 "ams_mel_ir_c2_submit_bit_noop",
+                "ams_mel_ir_c2_submit_bit",
+                "ams_mel_ir_c2_submit_config_set",
                 "ams_mel_ir_return_request_wait",
                 "ams_mel_ir_return_request_close",
                 "ams_mel_ir_c2_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 19)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 22)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -98,6 +101,14 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED,
             _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED,
             _native.AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED,
+            *range(_native.AMS_MEL_IR_MFA_STATE_NOT_SET,
+                   _native.AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE + 1),
+            _native.AMS_MEL_IR_COORD_FRAME_INERTIAL,
+            _native.AMS_MEL_IR_COORD_FRAME_AIRCRAFT,
+            _native.AMS_MEL_IR_DEGRADATION_CAPACITY,
+            _native.AMS_MEL_IR_DEGRADATION_VOLUME,
+            _native.AMS_MEL_IR_DEGRADATION_RANGE,
+            _native.AMS_MEL_IR_DEGRADATION_REVISIT,
             _native.AMS_MEL_IR_RETURN_SUCCESS,
             _native.AMS_MEL_IR_RETURN_BAD_POINTER,
             _native.AMS_MEL_IR_RETURN_FAIL,
@@ -137,6 +148,24 @@ class AbiTests(unittest.TestCase):
         expected.extend(
             self._layout(_native.StringViewV1, "data", "size")
         )
+        expected.extend(self._layout(_native.U32SpanV1, "data", "size"))
+        expected.extend(self._layout(_native.StringViewSpanV1, "data", "size"))
+        expected.extend(self._layout(_native.IrScanTypeV1,
+            "continuous_scan", "returning", "agile_scan"))
+        expected.extend(self._layout(_native.IrScanParamV1,
+            "elevation_defined_with_range_and_altitude", "center_az_rad",
+            "center_el_rad", "center_frame_ref_el", "center_frame_ref_az",
+            "scan_width_rad", "scan_height_rad", "scan_type", "scan_id",
+            "scan_rate_rad_per_second", "preferred_revisit_interval_seconds",
+            "required_revisit_interval_seconds", "max_range_of_interest_m",
+            "min_range_of_interest_m", "elevation_scan_center_altitude_m",
+            "elevation_scan_center_range_m", "degradation_method"))
+        expected.extend(self._layout(_native.IrModeCommandV1,
+            "command_id", "state", "mode", "scan_parameters"))
+        expected.extend(self._layout(_native.IrBitCommandV1,
+            "command_id", "initiate_bit_ids", "cancel_bit_ids", "clear_fault_codes"))
+        expected.extend(self._layout(_native.IrConfigSetCommandV1,
+            "command_id", "system_time_ns", "config"))
         expected.extend(self._layout(_native.UciIdV1, "uuid", "descriptive_label"))
         expected.extend(
             self._layout(

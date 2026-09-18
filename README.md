@@ -18,18 +18,19 @@ ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
 > **Current status:** C and Ada support provider Session lifecycle, IR host-memory
-> Mono8 reception, C2 Operate/TaskSched, and the empty/no-op BIT command profile.
+> Mono8 reception, and all three required C2 command sends: general ModeCmd with
+> complete ScanParam, BIT, and ConfigSet. Ada uses safe one-choice BIT operations.
 > The raw Rust sys crate and private Python ctypes layer track the complete current
-> 19-function C ABI. Safe Rust and Python support Session, Mono8,
-> Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
+> 22-function C ABI. Safe Rust and Python remain intentionally constrained to
+> Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An
 > opt-in real Squall integration harness validates C, Ada, safe Rust, and safe Python
 > against the same pinned provider/runtime stack; it is not part of ordinary
 > builds or CI. Python remains a dependency-free, development-use-only binding:
-> payload-bearing BIT, RF, and additional C2 commands are not implemented, and
-> there is no wheel/PyPI publication or zero-copy/NumPy
-> image API. Payload-bearing BIT is not exposed in any language.
+> payload-bearing BIT and general Mode/ConfigSet are absent from their safe APIs;
+> RF and C2 callbacks are not implemented, and there is no wheel/PyPI publication
+> or zero-copy/NumPy image API. Raw declarations alone are not safe-language parity.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
 binding, or a claim of GRA compliance.
