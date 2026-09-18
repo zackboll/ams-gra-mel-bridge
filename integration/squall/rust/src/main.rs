@@ -2,8 +2,8 @@ use std::env;
 use std::process::ExitCode;
 
 use ams_mel::{
-    ComponentLocation, ControlChannel, ControlConfig, Error, ImageConfig, MfaMode, ModeResult,
-    Session, UciId,
+    CommandReturn, ComponentLocation, ControlChannel, ControlConfig, Error, ImageConfig, MfaMode,
+    ModeResult, ReturnResult, Session, UciId,
 };
 
 const CHANNEL_UUID: [u8; 16] = [
@@ -111,14 +111,22 @@ fn run() -> Result<(), Failure> {
         .open_control_channel(&control_config)
         .at("open ControlChannel")?;
     control.enable().at("enable ControlChannel")?;
-    let mut request = control
+    let mut bit_request = control
+        .submit_bit_noop(0x0040_0402)
+        .at("submit BIT no-op")?;
+    require_bit_success(bit_request.wait(5_000).at("wait for BIT no-op")?)?;
+    println!("BIT result: SUCCESS");
+    let mut mode_request = control
         .submit_operate(0x0040_0403)
         .at("submit Operate/TaskSched")?;
-    require_task_sched(request.wait(5_000).at("wait for Operate/TaskSched")?)?;
+    require_task_sched(mode_request.wait(5_000).at("wait for Operate/TaskSched")?)?;
     println!("C2 result: TASK_SCHED");
 
     session.close().at("close parent Session")?;
-    require_task_sched(request.wait(0).at("repeat cached ModeRequest wait")?)?;
+    require_bit_success(bit_request.wait(0).at("repeat cached ReturnRequest wait")?)?;
+    println!("cached BIT success");
+    require_task_sched(mode_request.wait(0).at("repeat cached ModeRequest wait")?)?;
+    println!("cached TASK_SCHED");
 
     let mut previous_id = None;
     for index in 1..=frame_count {
@@ -169,7 +177,8 @@ fn run() -> Result<(), Failure> {
         )));
     }
 
-    request.close().at("close ModeRequest")?;
+    bit_request.close().at("close ReturnRequest")?;
+    mode_request.close().at("close ModeRequest")?;
     close_control(&mut control)?;
     stream.close().at("close ImageStream")?;
     Ok(())
@@ -192,6 +201,20 @@ fn require_task_sched(result: ModeResult) -> Result<(), Failure> {
         ))),
         ModeResult::Rejected { code, description } => Err(Failure::Contract(format!(
             "C2 rejected Operate/TaskSched: code={code:?}, description={description}"
+        ))),
+    }
+}
+
+fn require_bit_success(result: ReturnResult) -> Result<(), Failure> {
+    match result {
+        ReturnResult::Completed {
+            value: CommandReturn::Success,
+        } => Ok(()),
+        ReturnResult::Completed { value } => Err(Failure::Contract(format!(
+            "BIT returned unexpected normal completion {value:?}"
+        ))),
+        ReturnResult::Rejected { code, description } => Err(Failure::Contract(format!(
+            "C2 rejected BIT no-op: code={code:?}, description={description}"
         ))),
     }
 }

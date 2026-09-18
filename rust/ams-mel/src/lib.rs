@@ -1,8 +1,10 @@
 //! Safe Rust provider sessions, IR Mono8 frames, and IR C2 through `ams_mel_c`.
 //!
-//! [`Session`], [`ImageStream`], [`ControlChannel`], and [`ModeRequest`] are
-//! intentionally neither `Send` nor `Sync`. A zero receive or request timeout
-//! polls. Request timeout and request drop do not cancel provider work.
+//! [`Session`], [`ImageStream`], [`ControlChannel`], [`ModeRequest`], and
+//! [`ReturnRequest`] are intentionally neither `Send` nor `Sync`. A zero receive
+//! or request timeout polls. Request timeout and request close or drop do not
+//! cancel provider work. BIT support is limited to the empty/no-op profile;
+//! payload-bearing BIT is not exposed.
 
 use std::error;
 use std::ffi::{c_char, CString};
@@ -193,6 +195,15 @@ pub enum MfaMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommandReturn {
+    Success,
+    BadPointer,
+    Fail,
+    NotSupported,
+    NotImplemented,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MelErrorCode {
     None,
     InvalidId,
@@ -210,6 +221,17 @@ pub enum MelErrorCode {
 pub enum ModeResult {
     Success {
         mode: MfaMode,
+    },
+    Rejected {
+        code: MelErrorCode,
+        description: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ReturnResult {
+    Completed {
+        value: CommandReturn,
     },
     Rejected {
         code: MelErrorCode,
@@ -649,6 +671,33 @@ impl ControlChannel {
         })
     }
 
+    /// Submits only the empty/no-op BIT profile; payload-bearing BIT is not exposed.
+    pub fn submit_bit_noop(&mut self, command_id: u32) -> Result<ReturnRequest, Error> {
+        let mut raw = ptr::null_mut();
+        let result = call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the live C2 handle and `raw` is
+            // an initially null writable request owner.
+            unsafe {
+                sys::ams_mel_ir_c2_submit_bit_noop(
+                    self.raw, command_id, &mut raw, diagnostic, capacity, required,
+                )
+            }
+        });
+        if let Err(error) = result {
+            if !raw.is_null() {
+                best_effort_close_return_request(&mut raw);
+            }
+            return Err(error);
+        }
+        if raw.is_null() {
+            return Err(protocol("BIT submit succeeded without a request owner"));
+        }
+        Ok(ReturnRequest {
+            raw,
+            _not_send_sync: Rc::new(()),
+        })
+    }
+
     /// Closes this owner. A detach failure can leave it open for an explicit retry.
     pub fn close(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
@@ -699,6 +748,38 @@ impl Drop for ModeRequest {
     fn drop(&mut self) {
         if !self.raw.is_null() {
             best_effort_close_request(&mut self.raw);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ReturnRequest {
+    raw: *mut sys::AmsMelIrReturnRequest,
+    _not_send_sync: Rc<()>,
+}
+
+impl ReturnRequest {
+    /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    pub fn wait(&mut self, timeout_ms: u32) -> Result<ReturnResult, Error> {
+        wait_for_return(self.raw, timeout_ms)
+    }
+
+    /// Drops only the public request owner; pending provider work is not cancelled.
+    pub fn close(mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the request and no wait can race
+            // this consuming close through the safe API.
+            unsafe {
+                sys::ams_mel_ir_return_request_close(&mut self.raw, diagnostic, capacity, required)
+            }
+        })
+    }
+}
+
+impl Drop for ReturnRequest {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_return_request(&mut self.raw);
         }
     }
 }
@@ -912,6 +993,110 @@ fn wait_for_mode(
             description: message,
         }),
         _ => Err(error_from_status(status, Some(message), Some(required))),
+    }
+}
+
+fn wait_for_return(
+    request: *mut sys::AmsMelIrReturnRequest,
+    timeout_ms: u32,
+) -> Result<ReturnResult, Error> {
+    let mut result = sys::AmsMelIrReturnResultV1::default();
+    let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
+    let mut required = 0_usize;
+    // SAFETY: the request is live and exclusively accessed through `&mut self`;
+    // result and diagnostic storage are writable for their advertised sizes.
+    let status = unsafe {
+        sys::ams_mel_ir_return_request_wait(
+            request,
+            timeout_ms,
+            &mut result,
+            diagnostic.as_mut_ptr().cast::<c_char>(),
+            diagnostic.len(),
+            &mut required,
+        )
+    };
+    if required == 0 {
+        return Err(protocol("native wait returned an invalid diagnostic size"));
+    }
+    if status == sys::AMS_MEL_TIMEOUT {
+        return if required <= diagnostic.len() {
+            let message = decode_diagnostic(&diagnostic[..required])?;
+            Err(error_from_status(status, Some(message), Some(required)))
+        } else {
+            Err(error_from_status(status, None, Some(required)))
+        };
+    }
+
+    let message = if required <= diagnostic.len() {
+        decode_diagnostic(&diagnostic[..required])?
+    } else {
+        let first_result = result;
+        let first_required = required;
+        let mut complete = Vec::new();
+        complete.try_reserve_exact(first_required).map_err(|_| {
+            Error::new(
+                ErrorKind::InternalError,
+                "unable to allocate complete wait diagnostic storage",
+            )
+        })?;
+        complete.resize(first_required, 0);
+        let mut retry_result = sys::AmsMelIrReturnResultV1::default();
+        let mut retry_required = 0_usize;
+        // SAFETY: terminal request results are cached and repeatable. The same
+        // live request is polled with exact writable diagnostic storage.
+        let retry_status = unsafe {
+            sys::ams_mel_ir_return_request_wait(
+                request,
+                0,
+                &mut retry_result,
+                complete.as_mut_ptr().cast::<c_char>(),
+                complete.len(),
+                &mut retry_required,
+            )
+        };
+        if retry_status != status
+            || retry_result != first_result
+            || retry_required != first_required
+        {
+            return Err(protocol(
+                "native terminal wait changed during diagnostic retry",
+            ));
+        }
+        result = retry_result;
+        decode_diagnostic(&complete)?
+    };
+
+    match status {
+        sys::AMS_MEL_OK => {
+            if required != 1 || !message.is_empty() {
+                return Err(protocol("successful native wait returned a diagnostic"));
+            }
+            if result.error_code != sys::AMS_MEL_ERROR_NONE {
+                return Err(protocol("successful native wait returned an error code"));
+            }
+            Ok(ReturnResult::Completed {
+                value: command_return(result.value)?,
+            })
+        }
+        sys::AMS_MEL_COMMAND_REJECTED => Ok(ReturnResult::Rejected {
+            code: mel_error_code(result.error_code),
+            description: message,
+        }),
+        _ => Err(error_from_status(status, Some(message), Some(required))),
+    }
+}
+
+fn command_return(value: u32) -> Result<CommandReturn, Error> {
+    match value {
+        sys::AMS_MEL_IR_RETURN_SUCCESS => Ok(CommandReturn::Success),
+        sys::AMS_MEL_IR_RETURN_BAD_POINTER => Ok(CommandReturn::BadPointer),
+        sys::AMS_MEL_IR_RETURN_FAIL => Ok(CommandReturn::Fail),
+        sys::AMS_MEL_IR_RETURN_NOT_SUPPORTED => Ok(CommandReturn::NotSupported),
+        sys::AMS_MEL_IR_RETURN_NOT_IMPLEMENTED => Ok(CommandReturn::NotImplemented),
+        unknown => Err(Error::new(
+            ErrorKind::ProviderFailed,
+            format!("native provider returned unknown IR Return value {unknown}"),
+        )),
     }
 }
 
@@ -1139,4 +1324,43 @@ fn best_effort_close_request(raw: &mut *mut sys::AmsMelIrModeRequest) {
     // SAFETY: called only for this wrapper's unique request owner. Public request
     // close is nonblocking and does not cancel pending provider work.
     let _ = unsafe { sys::ams_mel_ir_mode_request_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
+}
+
+fn best_effort_close_return_request(raw: &mut *mut sys::AmsMelIrReturnRequest) {
+    // SAFETY: called only for this wrapper's unique request owner. Public request
+    // close is nonblocking and does not cancel pending provider work.
+    let _ =
+        unsafe { sys::ams_mel_ir_return_request_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_known_command_returns_and_rejects_unknown_values() {
+        for (raw, expected) in [
+            (sys::AMS_MEL_IR_RETURN_SUCCESS, CommandReturn::Success),
+            (
+                sys::AMS_MEL_IR_RETURN_BAD_POINTER,
+                CommandReturn::BadPointer,
+            ),
+            (sys::AMS_MEL_IR_RETURN_FAIL, CommandReturn::Fail),
+            (
+                sys::AMS_MEL_IR_RETURN_NOT_SUPPORTED,
+                CommandReturn::NotSupported,
+            ),
+            (
+                sys::AMS_MEL_IR_RETURN_NOT_IMPLEMENTED,
+                CommandReturn::NotImplemented,
+            ),
+        ] {
+            assert_eq!(command_return(raw).expect("known Return"), expected);
+        }
+        let error = command_return(u32::MAX).expect_err("unknown Return");
+        assert_eq!(error.kind(), &ErrorKind::ProviderFailed);
+        assert!(error
+            .diagnostic()
+            .is_some_and(|message| message.contains("4294967295")));
+    }
 }

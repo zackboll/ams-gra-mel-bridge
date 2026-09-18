@@ -45,7 +45,12 @@ Task 014 adds the required IR `BIT_Command` only in the empty/no-op profile
 accepted by pinned Squall: a caller command ID with empty initiate, cancel, and
 clear-fault lists. C and Ada expose a reusable asynchronous `RequestFor<Return>`
 owner. The raw Rust sys crate tracks the expanded ABI, while safe Rust and Python
-do not yet expose BIT. Payload-bearing BIT remains unsupported.
+do not yet expose BIT. Task 015 exposes that unchanged ABI through safe Rust with
+typed `CommandReturn`, structured normal completion versus MEL rejection, and a
+reusable `ReturnRequest`. A completed `Return::Fail` is a normal `ReturnResult`,
+not a Rust error. Timeout and request close/drop do not cancel provider work, and
+native request ownership remains valid after Rust Session/C2 closure. Python and
+payload-bearing BIT remain unsupported.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
