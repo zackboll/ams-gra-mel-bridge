@@ -224,3 +224,25 @@ ChannelCapability graph in provider iteration order. Its immutable view remains
 valid after C2/Session/provider teardown. Boolean outputs are normalized to 0/1.
 No provider-owned STL pointer crosses the ABI. Generic buffer registration is
 not exported by this task.
+
+## Task 020 IR Health/Status contract
+
+ABI 0.1 grows from 36 to exactly 46 functions: four Health channel operations
+and six Health metadata owner/event operations. The channel attaches only
+HealthAndStatus, enables explicitly, reuses the complete Task 019 capability
+snapshot, and retains Session/provider state independently of the public Session.
+
+Metadata registration attempts exactly MFA_Status, BIT_Status,
+SubsystemStatusResp, DiscreteStatus, MFA_SecurityAuditRecord, and
+MFA_StatusDetailed in that order. LFStatus and NUC_TempData are not registered.
+The bounded queue is ready before registration, uses DROP-INCOMING, and has
+saturating received/dropped/malformed counters. Every callback validates and
+deep-copies complete nested values, including all SecurityAudit variant fields;
+no provider pointer or STL storage enters a published C view.
+
+Upstream publishes no unregister. Partial registration failure publishes no
+metadata owner but retains callback-accessible state. Metadata close is
+idempotent and nonblocking. Health close destroys the provider channel before
+waiting for in-flight callbacks; disable is not a quiescence claim. A detach
+failure retains the owner for retry. Received event snapshots remain valid until
+event close and are independent of metadata/channel/session/provider lifetime.

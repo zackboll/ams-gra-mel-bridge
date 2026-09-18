@@ -19,6 +19,7 @@
 | C2/image coexistence | Implemented | One Session, parent-first close, provider unload last |
 | IR C2-specific required metadata | Complete in native C and safe Ada | BIT_Configuration, CommandStatus, and BIT_Status; complete ordered nested values through one queue |
 | C2 application-facing inherited Channel services | Complete in native C and safe Ada | KeepAlive; CommsTest async reply and callback; complete owned ChannelCapability; valid before Enable |
+| IR Health/Status required metadata | Complete in native C and safe Ada | Six required callbacks; complete MFA/BIT/subsystem/name-value/SecurityAudit values; bounded owned polling queue |
 | Explicit generic buffer management | Not application-exposed | IRSTImage registration remains adapter-managed; future resource task |
 | Optional/conditional C2 commands | Not implemented | No calibration, camera, erase, or system-track-response commands |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
@@ -26,10 +27,10 @@
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 36 C functions; raw common-channel declarations synchronized; not safe feature parity |
+| Rust sys binding | Complete for the current project C ABI | Exactly 46 C functions; raw Health declarations synchronized; no safe Health API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 36-function private ctypes binding; common-channel declarations have no public safe methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 46-function private ctypes binding; no public Health methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
@@ -48,7 +49,7 @@
 | Image metadata | Not implemented beyond current frame subset |
 | Scheduling | Not implemented |
 | Track | Not implemented |
-| Health/Status | Not implemented |
+| Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Not implemented |
 | StackedImage | Not implemented |
 | RF | Not implemented |

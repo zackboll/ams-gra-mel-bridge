@@ -55,6 +55,17 @@ d27f3edaec6c975ecb5d55b12404be34926ad21bc24bf3bfcc852d6c67a49eaf  native/vendor/
 2f1aa718ddb1a34ed1581e3c57dddd1bb516fb7657a9c4076e8ff95b91d9844d  native/vendor/ir-mel/LICENSE
 ```
 
+Task 020 adds the exact compiler-observed IR HealthStatus closure:
+
+```text
+0b128e49c2673546cd6ff188e0551fb11a1dad34a23e570df8296746eb677ccf  native/vendor/ir-mel/include/irmel/library/health-status/HealthStatusChannel.h
+512be63f648ff9c4dc17d3d167273d63cf753a9e6c57c70e88a39b634f102eca  native/vendor/ir-mel/include/irmel/library/health-status/LFStatus.h
+b0fb678c8b0e391bdf2e03f325123565b83bb18326780cb651377e8545a10cdd  native/vendor/ir-mel/include/irmel/library/health-status/SubsystemCSCIInfo.h
+62c4d9c5f6bfa421c2ec855f68fbfccb0f0a9b435923697236ed7402723b0c65  native/vendor/ir-mel/include/irmel/library/health-status/SubsystemDepInfo.h
+8737769cf886946ee3a5a12cb637af7cf8686cdc322003bd05002730c87c2055  native/vendor/ir-mel/include/irmel/library/health-status/SubsystemStatusResp.h
+84d9c889f57ae3316bfed9972a0d2945a116c6d9bfed73ba02d654b05d2d722f  native/vendor/ir-mel/include/irmel/library/health-status/Version.h
+```
+
 Task 003's compiler-observed `C2Channel.h` closure adds these exact files at the
 same immutable IR MEL revision:
 

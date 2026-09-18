@@ -1,3 +1,22 @@
+# Task 020 review note
+
+Task 020's GCC dependency probe for `HealthStatusChannel.h` observes 52 vendored
+headers and adds exactly six IR MEL headers to the existing closure:
+`HealthStatusChannel.h`, `LFStatus.h`, `SubsystemCSCIInfo.h`,
+`SubsystemDepInfo.h`, `SubsystemStatusResp.h`, and `Version.h`. Each is
+byte-identical to IR MEL commit `8d9224519f12b44e0b28815755c56a32a28d24a0`.
+`LFStatus.h` is required by the published include graph but LFStatus itself is
+not registered by this feature. The closure now contains 91 headers.
+
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` attaches
+HealthAndStatus and registers all six required callbacks. It periodically emits
+MFA_Status, BIT_Status, SubsystemStatusResp, DiscreteStatus, and
+MFAStatusDetailed but currently does not emit MFA_SecurityAuditRecord. Its
+capability metadata contains MFAStatus, BITStatus, SubsystemStatusResp,
+MFAStatusDetailed, and ChannelCommsTestRep. The pinned capability enum has no
+DiscreteStatus or MFA_SecurityAuditRecord entries; callback registration, not
+capability membership for those two values, establishes support.
+
 # Task 019 review note
 
 Task 019 reviewed the pinned base `Channel`, ChannelCommsTest request/reply,

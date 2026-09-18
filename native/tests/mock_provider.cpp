@@ -1,5 +1,6 @@
 #include <irmel/library/image/ImageChannel.h>
 #include <irmel/library/c2/C2Channel.h>
+#include <irmel/library/health-status/HealthStatusChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -813,12 +814,140 @@ private:
 };
 #undef C2_UNSUPPORTED_CALLBACK
 
+mel::MFA_Status rich_mfa_status()
+{
+    mel::MFA_Status value;
+    value.setMFAState(mel::MFA_State::Maintenance);
+    value.setMFAStateDescription("healthy-\xCE\xB1");
+    value.setMFAModeDescription("mode-\xE2\x82\xAC");
+    value.setStateTransitionStatus(mel::StateTransitionStatus::Transitioning);
+    value.setAbout(mel::About{"model", "serial", "software", "boot", "hardware"});
+    mel::ForeignKey location_id{"rack-\xCE\xB2", "aircraft"};
+    mel::ForeignKey physical_id{"bay", "platform-\xE2\x82\xAC"};
+    mel::ComponentLocation location{1.5, -2.5, 3.5, physical_id};
+    mel::Euler orientation; orientation.SetAllAxis(0.1, 0.2, 0.3);
+    mel::Euler boresight; boresight.SetAllAxis(-0.4, 0.5, -0.6);
+    value.setMFAComponents({
+        mel::MFA_Component{metadata_id(0x91U, "component-\xCE\xB3"),
+            mel::ComponentState::Operational,
+            mel::TemperatureStatus{42.25, mel::TemperatureState::Normal},
+            location_id, mel::InstallationDetails{location, orientation, boresight}},
+        mel::MFA_Component{metadata_id(0xa1U, "component two"),
+            mel::ComponentState::Degraded,
+            mel::TemperatureStatus{-12.5, mel::TemperatureState::UnderTemp},
+            location_id, mel::InstallationDetails{location, boresight, orientation}}});
+    return value;
+}
+
+irmel::SubsystemStatusResp rich_subsystem_status()
+{
+    irmel::SubsystemStatusResp value;
+    value.setSubsystemId(0x80000001U); value.setCriticality(7U);
+    value.setStatusSeqNum(0xf0000002U); value.setFailureLevel(irmel::Failure::Major);
+    value.setSubsystemCount(99U);
+    irmel::SubsystemDepInfo one; one.setSubsystemId(0x80000003U);
+    one.setCriticality(8U); one.setFailureLevel(irmel::Failure::Critical);
+    irmel::SubsystemDepInfo two; two.setSubsystemId(4U);
+    two.setCriticality(9U); two.setFailureLevel(irmel::Failure::Available);
+    value.setSubsystems({one, two}); value.setCsciCount(88U);
+    irmel::SubsystemCSCIInfo first; first.setCsci("flight-\xCE\xB4");
+    first.setMode(irmel::CSCIMode::Operational); first.setVersion({1U,2U,3U,4U});
+    first.setCriticality(10U); first.setFailureLevel(irmel::Failure::Parametric);
+    first.setBIT_report(0x80000005U); first.setConnectionEstablished(true);
+    irmel::SubsystemCSCIInfo second; second.setCsci("maintenance");
+    second.setMode(irmel::CSCIMode::Maintenance); second.setVersion({5U,6U,7U,8U});
+    second.setCriticality(11U); second.setFailureLevel(irmel::Failure::Informational);
+    second.setBIT_report(6U); second.setConnectionEstablished(false);
+    value.setCSCI({first, second}); return value;
+}
+
+mel::MFA_SecurityAuditRecord security_record(unsigned alternative)
+{
+    mel::MFA_SecurityAuditRecord value;
+    value.setSecurityEventID(metadata_id(0xd1U, "event-\xCE\xB5"));
+    value.setEventTimestamp(std::chrono::nanoseconds{-987654321});
+    value.setSubsystemID(metadata_id(0xe1U, "security subsystem"));
+    value.setSecurityArtifacts({
+        {metadata_id(0xf1U, "artifact one"), metadata_id(0x81U, "associated one")},
+        {metadata_id(0x82U, "artifact two"), metadata_id(0x83U, "associated two")}});
+    value.setOutcome(mel::MFA_SecurityAuditRecord::OutcomeEnum::Failure);
+    value.setSeverity(mel::MFA_SecurityAuditRecord::SeverityEnum::Warning);
+    switch (alternative) {
+    case 0: value.setEventType(std::monostate{}); break;
+    case 1: { mel::SecurityAuthenticationType event;
+        event.setCategory(mel::SecurityAuthenticationType::SecurityAuthenticationEnum::MDF_Authentication);
+        event.setDetails("auth-\xCE\xB6"); event.setSubsystemID(metadata_id(1U,"auth subsystem"));
+        event.setServiceID(metadata_id(2U,"auth service")); event.setMDF_ID(metadata_id(3U,"auth mdf"));
+        value.setEventType(event); break; }
+    case 2: value.setEventType(mel::SecurityIntegrityType{
+        mel::SecurityIntegrityType::SecurityIntegrityEnum::OtherIntegrityCheck,
+        metadata_id(4U,"integrity mdf"), "integrity-\xCE\xB7"}); break;
+    case 3: value.setEventType(mel::SecurityFileManagementType{"file-\xCE\xB8",
+        mel::SecurityFileManagementType::SecurityFileManagementEnum::OtherFileUpdate,
+        metadata_id(5U,"file mdf")}); break;
+    case 4: value.setEventType(mel::SecurityKeyManagementType{"key-\xCE\xB9",
+        mel::SecurityKeyManagementType::SecurityKeyManagementEnum::CertificateDeletion}); break;
+    case 5: value.setEventType(mel::SecuritySystemType{"system-\xCE\xBA",
+        mel::SecuritySystemType::SecuritySystemEnum::Fault}); break;
+    default: value.setEventType(mel::SecuritySanitizationType{"sanitize-\xCE\xBB",
+        mel::SecuritySanitizationType::SecuritySanitizationEnum::ClassifiedDataErase}); break;
+    }
+    return value;
+}
+
+class MockHealthStatusChannel final : public irmel::HealthStatusChannel {
+public:
+    explicit MockHealthStatusChannel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockHealthStatusChannel() override
+    {
+        if (scenario_ == "health-register-partial" && mfa_callback_) {
+            auto value=rich_mfa_status(); record("retained_health_callback_invoked");
+            mfa_callback_(*this,&value);
+        }
+        if (scenario_ == "health-metadata-nonquiescing-disable") {
+            const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");
+            if(!base)std::abort();
+            create_file(std::string{base}+".release");
+        }
+        if(producer_.joinable())producer_.join();
+        record("health_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override { return {}; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return enable() override { enabled_=true;record("health_enabled");return scenario_=="health-enable-fail"?Return::Fail:Return::Success; }
+    Return disable() override { enabled_=false;record("health_disabled");if(scenario_=="health-metadata-nonquiescing-disable"){const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".entered");record("disable_returned_with_health_callback_active");}return Return::Success; }
+    irmel::ChannelCapability getCapabilities() const override
+    { auto value=rich_channel_capability();value.setChannelTypes({irmel::ChannelType::HealthAndStatus});value.setChannelMetadataCapabilities({irmel::ChannelMetadataCapabilityType::MFAStatus,irmel::ChannelMetadataCapabilityType::BITStatus,irmel::ChannelMetadataCapabilityType::SubsystemStatusResp,irmel::ChannelMetadataCapabilityType::MFAStatusDetailed});return value; }
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::ChannelCommsTestRep*const)>) override{return Return::NotSupported;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::LFStatus*const)>) override{return Return::NotSupported;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_Status*const)> cb) override{mfa_callback_=std::move(cb);if(rich()){auto value=rich_mfa_status();mfa_callback_(*this,&value);}if(scenario_=="health-allocation"){auto value=rich_mfa_status();mfa_callback_(*this,&value);}if(scenario_=="health-malformed"){auto bad=rich_mfa_status();bad.setMFAStateDescription(std::string{"bad\xC3\x28",5});mfa_callback_(*this,&bad);auto good=rich_mfa_status();mfa_callback_(*this,&good);}return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::BIT_Status*const)> cb) override{bit_callback_=std::move(cb);if(rich()){auto value=rich_bit_status();bit_callback_(*this,&value);}if(scenario_=="health-allocation"){(void)setenv("AMS_MEL_TEST_HEALTH_CALLBACK_FAILURE","allocation",1);auto value=rich_bit_status();bit_callback_(*this,&value);(void)unsetenv("AMS_MEL_TEST_HEALTH_CALLBACK_FAILURE");}return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::SubsystemStatusResp*const)> cb) override{subsystem_callback_=std::move(cb);if(scenario_=="health-register-partial")return Return::Fail;if(rich()){auto value=rich_subsystem_status();subsystem_callback_(*this,&value);}return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::DiscreteStatus*const)> cb) override{discrete_callback_=std::move(cb);if(rich()){std::vector<mel::NameValuePair> pairs{{"duplicate","one"},{"duplicate",""},{"utf8","\xE2\x82\xAC"}};mel::DiscreteStatus value{pairs};discrete_callback_(*this,&value);}return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_SecurityAuditRecord*const)> cb) override{security_callback_=std::move(cb);if(rich())for(unsigned i=0;i<7U;++i){auto value=security_record(i);security_callback_(*this,&value);}return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_StatusDetailed*const)> cb) override{detailed_callback_=std::move(cb);if(rich()){std::vector<mel::NameValuePair> pairs{{"load","23"},{"load",""},{"label","\xCE\xBC"}};mel::MFA_StatusDetailed value{pairs};detailed_callback_(*this,&value);}if(scenario_=="health-metadata-nonquiescing-disable")producer_=std::thread{[this]{const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".start");auto value=rich_mfa_status();mfa_callback_(*this,&value);record("health_callback_returned");}};return Return::Success;}
+    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::NUC_TempData*const)>) override{return Return::NotSupported;}
+private:
+    bool rich()const{return scenario_=="health-rich"||scenario_=="health-overflow";}
+    std::string scenario_;bool enabled_{};std::thread producer_;
+    std::function<void(irmel::Channel&,const mel::MFA_Status*const)> mfa_callback_;
+    std::function<void(irmel::Channel&,const mel::BIT_Status*const)> bit_callback_;
+    std::function<void(irmel::Channel&,const irmel::SubsystemStatusResp*const)> subsystem_callback_;
+    std::function<void(irmel::Channel&,const mel::DiscreteStatus*const)> discrete_callback_;
+    std::function<void(irmel::Channel&,const mel::MFA_SecurityAuditRecord*const)> security_callback_;
+    std::function<void(irmel::Channel&,const mel::MFA_StatusDetailed*const)> detailed_callback_;
+};
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
         irmel::ChannelCapability capability;
-        if (instance_ != "c2-control-capability-wrong")
+        if (instance_.rfind("health-",0)==0)
+            capability.setChannelTypes({irmel::ChannelType::HealthAndStatus});
+        else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
     }
@@ -855,6 +984,8 @@ public:
         record("channel_attached");
         if (instance_ == "attach-throw") throw std::runtime_error("mock attach exception");
         if (instance_ == "attach-null" || instance_ == "c2-attach-null") return {};
+        if (config.getChannelType() == irmel::ChannelType::HealthAndStatus)
+            return std::make_shared<MockHealthStatusChannel>(instance_);
         if (config.getChannelType() == irmel::ChannelType::CommandAndControl) {
             if (instance_ == "c2-wrong-type")
                 return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
@@ -904,8 +1035,10 @@ public:
     Return detachChannel(std::shared_ptr<irmel::Channel> channel) override
     {
         if (!std::dynamic_pointer_cast<MockImageChannel>(channel) &&
-            !std::dynamic_pointer_cast<MockC2Channel>(channel)) std::abort();
-        if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail") && !detach_failed_) {
+            !std::dynamic_pointer_cast<MockC2Channel>(channel) &&
+            !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel)) std::abort();
+        if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail" ||
+             instance_ == "health-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

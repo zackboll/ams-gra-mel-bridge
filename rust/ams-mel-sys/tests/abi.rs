@@ -474,6 +474,134 @@ fn declarations_match_the_c_header() {
         image_bands,
         nav_frames
     );
+    layout!(
+        expected,
+        AmsMelIrHealthConfigV1,
+        channel_id,
+        channel_type,
+        platform_id,
+        sensor_location
+    );
+    layout!(expected, AmsMelEulerV1, roll, pitch, yaw);
+    layout!(expected, AmsMelForeignKeyV1, key, system_name);
+    layout!(
+        expected,
+        AmsMelInstallationDetailsV1,
+        location,
+        orientation,
+        boresight
+    );
+    layout!(expected, AmsMelTemperatureStatusV1, temperature_c, state);
+    layout!(
+        expected,
+        AmsMelMfaComponentV1,
+        component_id,
+        state,
+        temperature,
+        installation_location_id,
+        installation_details
+    );
+    layout!(expected, AmsMelMfaComponentSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelAboutV1,
+        model,
+        serial_number,
+        software_version,
+        bootloader_software_version,
+        hardware_version
+    );
+    layout!(
+        expected,
+        AmsMelMfaStatusV1,
+        state,
+        state_description,
+        mode_description,
+        transition_status,
+        about,
+        components
+    );
+    layout!(
+        expected,
+        AmsMelIrSubsystemDepInfoV1,
+        subsystem_id,
+        criticality,
+        failure
+    );
+    layout!(expected, AmsMelIrSubsystemDepInfoSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrVersionV1,
+        source,
+        major_revision,
+        minor_revision,
+        engineering_revision
+    );
+    layout!(
+        expected,
+        AmsMelIrSubsystemCsciInfoV1,
+        csci,
+        mode,
+        version,
+        criticality,
+        failure,
+        bit_report,
+        connection_established
+    );
+    layout!(expected, AmsMelIrSubsystemCsciInfoSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrSubsystemStatusV1,
+        subsystem_id,
+        criticality,
+        status_sequence_number,
+        failure,
+        subsystem_count,
+        subsystems,
+        csci_count,
+        csci
+    );
+    layout!(expected, AmsMelNameValuePairV1, name, value);
+    layout!(expected, AmsMelNameValuePairSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelSecurityArtifactV1,
+        component_id,
+        associated_id
+    );
+    layout!(expected, AmsMelSecurityArtifactSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelSecurityEventV1,
+        kind,
+        category,
+        details,
+        subsystem_id,
+        service_id,
+        mdf_id
+    );
+    layout!(
+        expected,
+        AmsMelSecurityAuditRecordV1,
+        security_event_id,
+        event_timestamp_ns,
+        subsystem_id,
+        artifacts,
+        event,
+        outcome,
+        severity
+    );
+    layout!(
+        expected,
+        AmsMelIrHealthMetadataEventV1,
+        kind,
+        mfa_status,
+        bit_status,
+        subsystem_status,
+        discrete_status,
+        security_audit,
+        mfa_status_detailed
+    );
     expected.extend([
         size_of::<*mut AmsMelIrC2Metadata>(),
         align_of::<*mut AmsMelIrC2Metadata>(),
@@ -489,6 +617,18 @@ fn declarations_match_the_c_header() {
     expected.extend([
         size_of::<*mut AmsMelIrChannelCapability>(),
         align_of::<*mut AmsMelIrChannelCapability>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrHealth>(),
+        align_of::<*mut AmsMelIrHealth>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrHealthMetadata>(),
+        align_of::<*mut AmsMelIrHealthMetadata>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrHealthMetadataEvent>(),
+        align_of::<*mut AmsMelIrHealthMetadataEvent>(),
     ]);
     expected.extend([
         AMS_MEL_OK as usize,

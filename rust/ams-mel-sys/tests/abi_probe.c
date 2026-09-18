@@ -42,6 +42,17 @@ int main(void)
     ams_mel_status_t (*view_cap)(const ams_mel_ir_channel_capability *, const ams_mel_ir_channel_capability_v1 **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_view;
     ams_mel_status_t (*close_cap)(ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_close;
     (void)keepalive; (void)submit_comms; (void)wait_comms; (void)close_comms; (void)register_comms; (void)get_cap; (void)view_cap; (void)close_cap;
+    ams_mel_status_t (*health_open)(ams_mel_session *, const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *, size_t, size_t *) = ams_mel_ir_health_open;
+    ams_mel_status_t (*health_enable)(ams_mel_ir_health *, char *, size_t, size_t *) = ams_mel_ir_health_enable;
+    ams_mel_status_t (*health_cap)(ams_mel_ir_health *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_health_get_capabilities;
+    ams_mel_status_t (*health_close)(ams_mel_ir_health **, char *, size_t, size_t *) = ams_mel_ir_health_close;
+    ams_mel_status_t (*health_metadata_open)(ams_mel_ir_health *, size_t, ams_mel_ir_health_metadata **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_open;
+    ams_mel_status_t (*health_receive)(ams_mel_ir_health_metadata *, uint32_t, ams_mel_ir_health_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_receive;
+    ams_mel_status_t (*health_counters)(const ams_mel_ir_health_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_health_metadata_get_counters;
+    ams_mel_status_t (*health_metadata_close)(ams_mel_ir_health_metadata **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_close;
+    ams_mel_status_t (*health_view)(const ams_mel_ir_health_metadata_event *, const ams_mel_ir_health_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_event_view;
+    ams_mel_status_t (*health_event_close)(ams_mel_ir_health_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_event_close;
+    (void)health_open; (void)health_enable; (void)health_cap; (void)health_close; (void)health_metadata_open; (void)health_receive; (void)health_counters; (void)health_metadata_close; (void)health_view; (void)health_event_close;
 
     VALUE(AMS_MEL_OK); VALUE(AMS_MEL_INVALID_ARGUMENT);
     VALUE(AMS_MEL_LIBRARY_LOAD_FAILED); VALUE(AMS_MEL_SYMBOL_NOT_FOUND);
@@ -239,8 +250,29 @@ int main(void)
     RECORD(ams_mel_ir_image_band_v1, FIELD(ams_mel_ir_image_band_v1,band_index); FIELD(ams_mel_ir_image_band_v1,bands));
     RECORD(ams_mel_ir_image_band_span_v1, FIELD(ams_mel_ir_image_band_span_v1,data); FIELD(ams_mel_ir_image_band_span_v1,size));
     RECORD(ams_mel_ir_channel_capability_v1, FIELD(ams_mel_ir_channel_capability_v1,channel_id); FIELD(ams_mel_ir_channel_capability_v1,height); FIELD(ams_mel_ir_channel_capability_v1,width); FIELD(ams_mel_ir_channel_capability_v1,bit_depth); FIELD(ams_mel_ir_channel_capability_v1,row_pitch); FIELD(ams_mel_ir_channel_capability_v1,buffer_size); FIELD(ams_mel_ir_channel_capability_v1,image_size); FIELD(ams_mel_ir_channel_capability_v1,number_of_bands); FIELD(ams_mel_ir_channel_capability_v1,pixel_format); FIELD(ams_mel_ir_channel_capability_v1,sensor_types); FIELD(ams_mel_ir_channel_capability_v1,platform_id); FIELD(ams_mel_ir_channel_capability_v1,sensor_location); FIELD(ams_mel_ir_channel_capability_v1,channel_types); FIELD(ams_mel_ir_channel_capability_v1,task_schedule_depth); FIELD(ams_mel_ir_channel_capability_v1,odc_available); FIELD(ams_mel_ir_channel_capability_v1,nuc_available); FIELD(ams_mel_ir_channel_capability_v1,metadata_capabilities); FIELD(ams_mel_ir_channel_capability_v1,image_bands); FIELD(ams_mel_ir_channel_capability_v1,nav_frames));
+    RECORD(ams_mel_ir_health_config_v1, FIELD(ams_mel_ir_health_config_v1,channel_id); FIELD(ams_mel_ir_health_config_v1,channel_type); FIELD(ams_mel_ir_health_config_v1,platform_id); FIELD(ams_mel_ir_health_config_v1,sensor_location));
+    RECORD(ams_mel_euler_v1, FIELD(ams_mel_euler_v1,roll); FIELD(ams_mel_euler_v1,pitch); FIELD(ams_mel_euler_v1,yaw));
+    RECORD(ams_mel_foreign_key_v1, FIELD(ams_mel_foreign_key_v1,key); FIELD(ams_mel_foreign_key_v1,system_name));
+    RECORD(ams_mel_installation_details_v1, FIELD(ams_mel_installation_details_v1,location); FIELD(ams_mel_installation_details_v1,orientation); FIELD(ams_mel_installation_details_v1,boresight));
+    RECORD(ams_mel_temperature_status_v1, FIELD(ams_mel_temperature_status_v1,temperature_c); FIELD(ams_mel_temperature_status_v1,state));
+    RECORD(ams_mel_mfa_component_v1, FIELD(ams_mel_mfa_component_v1,component_id); FIELD(ams_mel_mfa_component_v1,state); FIELD(ams_mel_mfa_component_v1,temperature); FIELD(ams_mel_mfa_component_v1,installation_location_id); FIELD(ams_mel_mfa_component_v1,installation_details));
+    RECORD(ams_mel_mfa_component_span_v1, FIELD(ams_mel_mfa_component_span_v1,data); FIELD(ams_mel_mfa_component_span_v1,size));
+    RECORD(ams_mel_about_v1, FIELD(ams_mel_about_v1,model); FIELD(ams_mel_about_v1,serial_number); FIELD(ams_mel_about_v1,software_version); FIELD(ams_mel_about_v1,bootloader_software_version); FIELD(ams_mel_about_v1,hardware_version));
+    RECORD(ams_mel_mfa_status_v1, FIELD(ams_mel_mfa_status_v1,state); FIELD(ams_mel_mfa_status_v1,state_description); FIELD(ams_mel_mfa_status_v1,mode_description); FIELD(ams_mel_mfa_status_v1,transition_status); FIELD(ams_mel_mfa_status_v1,about); FIELD(ams_mel_mfa_status_v1,components));
+    RECORD(ams_mel_ir_subsystem_dep_info_v1, FIELD(ams_mel_ir_subsystem_dep_info_v1,subsystem_id); FIELD(ams_mel_ir_subsystem_dep_info_v1,criticality); FIELD(ams_mel_ir_subsystem_dep_info_v1,failure));
+    RECORD(ams_mel_ir_subsystem_dep_info_span_v1, FIELD(ams_mel_ir_subsystem_dep_info_span_v1,data); FIELD(ams_mel_ir_subsystem_dep_info_span_v1,size));
+    RECORD(ams_mel_ir_version_v1, FIELD(ams_mel_ir_version_v1,source); FIELD(ams_mel_ir_version_v1,major_revision); FIELD(ams_mel_ir_version_v1,minor_revision); FIELD(ams_mel_ir_version_v1,engineering_revision));
+    RECORD(ams_mel_ir_subsystem_csci_info_v1, FIELD(ams_mel_ir_subsystem_csci_info_v1,csci); FIELD(ams_mel_ir_subsystem_csci_info_v1,mode); FIELD(ams_mel_ir_subsystem_csci_info_v1,version); FIELD(ams_mel_ir_subsystem_csci_info_v1,criticality); FIELD(ams_mel_ir_subsystem_csci_info_v1,failure); FIELD(ams_mel_ir_subsystem_csci_info_v1,bit_report); FIELD(ams_mel_ir_subsystem_csci_info_v1,connection_established));
+    RECORD(ams_mel_ir_subsystem_csci_info_span_v1, FIELD(ams_mel_ir_subsystem_csci_info_span_v1,data); FIELD(ams_mel_ir_subsystem_csci_info_span_v1,size));
+    RECORD(ams_mel_ir_subsystem_status_v1, FIELD(ams_mel_ir_subsystem_status_v1,subsystem_id); FIELD(ams_mel_ir_subsystem_status_v1,criticality); FIELD(ams_mel_ir_subsystem_status_v1,status_sequence_number); FIELD(ams_mel_ir_subsystem_status_v1,failure); FIELD(ams_mel_ir_subsystem_status_v1,subsystem_count); FIELD(ams_mel_ir_subsystem_status_v1,subsystems); FIELD(ams_mel_ir_subsystem_status_v1,csci_count); FIELD(ams_mel_ir_subsystem_status_v1,csci));
+    RECORD(ams_mel_name_value_pair_v1, FIELD(ams_mel_name_value_pair_v1,name); FIELD(ams_mel_name_value_pair_v1,value)); RECORD(ams_mel_name_value_pair_span_v1, FIELD(ams_mel_name_value_pair_span_v1,data); FIELD(ams_mel_name_value_pair_span_v1,size));
+    RECORD(ams_mel_security_artifact_v1, FIELD(ams_mel_security_artifact_v1,component_id); FIELD(ams_mel_security_artifact_v1,associated_id)); RECORD(ams_mel_security_artifact_span_v1, FIELD(ams_mel_security_artifact_span_v1,data); FIELD(ams_mel_security_artifact_span_v1,size));
+    RECORD(ams_mel_security_event_v1, FIELD(ams_mel_security_event_v1,kind); FIELD(ams_mel_security_event_v1,category); FIELD(ams_mel_security_event_v1,details); FIELD(ams_mel_security_event_v1,subsystem_id); FIELD(ams_mel_security_event_v1,service_id); FIELD(ams_mel_security_event_v1,mdf_id));
+    RECORD(ams_mel_security_audit_record_v1, FIELD(ams_mel_security_audit_record_v1,security_event_id); FIELD(ams_mel_security_audit_record_v1,event_timestamp_ns); FIELD(ams_mel_security_audit_record_v1,subsystem_id); FIELD(ams_mel_security_audit_record_v1,artifacts); FIELD(ams_mel_security_audit_record_v1,event); FIELD(ams_mel_security_audit_record_v1,outcome); FIELD(ams_mel_security_audit_record_v1,severity));
+    RECORD(ams_mel_ir_health_metadata_event_v1, FIELD(ams_mel_ir_health_metadata_event_v1,kind); FIELD(ams_mel_ir_health_metadata_event_v1,mfa_status); FIELD(ams_mel_ir_health_metadata_event_v1,bit_status); FIELD(ams_mel_ir_health_metadata_event_v1,subsystem_status); FIELD(ams_mel_ir_health_metadata_event_v1,discrete_status); FIELD(ams_mel_ir_health_metadata_event_v1,security_audit); FIELD(ams_mel_ir_health_metadata_event_v1,mfa_status_detailed));
     LAYOUT(ams_mel_ir_c2_metadata *); LAYOUT(ams_mel_ir_c2_metadata_event *);
     LAYOUT(ams_mel_ir_channel_comms_request *); LAYOUT(ams_mel_ir_channel_capability *);
+    LAYOUT(ams_mel_ir_health *); LAYOUT(ams_mel_ir_health_metadata *); LAYOUT(ams_mel_ir_health_metadata_event *);
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);
