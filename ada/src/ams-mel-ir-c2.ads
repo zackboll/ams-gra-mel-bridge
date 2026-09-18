@@ -13,8 +13,9 @@ package AMS.MEL.IR.C2 is
    function Open (Parent : Session; Config : Control_Config)
      return Control_Channel;
    function Is_Open (Channel : Control_Channel) return Boolean;
-   --  Enable, Submit_Operate, and Close calls for one Control_Channel must be
-   --  externally serialized. Parent Session close rules are unchanged.
+   --  Enable, Submit_Operate, Submit_BIT_No_Op, and Close calls for one
+   --  Control_Channel must be externally serialized. Parent Session close
+   --  rules are unchanged.
    procedure Enable (Channel : in out Control_Channel);
 
    type Command_ID is mod 2 ** 32 with Size => 32;
@@ -45,6 +46,10 @@ package AMS.MEL.IR.C2 is
      with Pre => Status (Result) = Rejected;
    type Command_Return is
      (Return_Success, Bad_Pointer, Fail, Not_Supported, Not_Implemented);
+   --  Success means RequestFor<Return> completed with a Command_Return value;
+   --  that value may be Fail or any other enumerator above. Rejected represents
+   --  upstream ErrorOr(Error), so Success with Value = Fail is not a facade or
+   --  provider failure.
    type Return_Result is private;
    function Status (Result : Return_Result) return Outcome;
    function Value (Result : Return_Result) return Command_Return
@@ -55,8 +60,9 @@ package AMS.MEL.IR.C2 is
      with Pre => Status (Result) = Rejected;
 
    --  Timeout_Error is inherited from AMS.MEL.IR. Timeout never cancels or
-   --  consumes the request; Wait may be repeated and a later Wait may return
-   --  its terminal result. Close must not race Wait on the same Mode_Request.
+   --  consumes either request type; Wait may be repeated and a later Wait may
+   --  return its cached terminal result. Close must not race Wait on the same
+   --  Mode_Request or on the same Return_Request.
    function Wait
      (Request : Mode_Request; Timeout_Milliseconds : Natural) return Mode_Result;
    function Wait

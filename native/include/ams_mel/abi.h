@@ -140,6 +140,12 @@ typedef struct ams_mel_ir_mode_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_ir_mode_result_v1;
 
+/* On AMS_MEL_OK, value is the completed upstream Return; Return::Fail is still
+ * AMS_MEL_OK, and error_code is AMS_MEL_ERROR_NONE for every normal Return
+ * completion. On AMS_MEL_COMMAND_REJECTED, error_code contains the mapped MEL
+ * error and the per-call diagnostic contains its description. For provider or
+ * facade failure statuses, output fields must not be treated as successful
+ * values. */
 typedef struct ams_mel_ir_return_result_v1 {
     ams_mel_ir_return_t value;
     ams_mel_error_code_t error_code;

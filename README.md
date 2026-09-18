@@ -522,7 +522,8 @@ Implemented:
 - finite DROP-INCOMING receive queue;
 - C poll/wait receive operations;
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
-- C and Ada C2 Operate/TaskSched interfaces;
+- C and Ada C2 Operate/TaskSched plus BIT no-op interfaces; payload-bearing BIT
+  remains unsupported;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
 - safe Rust Session, IR host-memory Mono8, and C2 Operate/TaskSched APIs over the
@@ -537,7 +538,8 @@ Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- additional C2 commands and callbacks;
+- C2 functionality beyond the currently exposed Operate/TaskSched and BIT no-op
+  slices, including payload-bearing BIT and callbacks;
 - RF MEL;
 - stacked images;
 - tracking interfaces;
