@@ -96,6 +96,26 @@ void record(const char *event)
     }
 }
 
+bool file_exists(const std::string& path)
+{
+    return std::ifstream{path}.good();
+}
+
+void wait_for_file(const std::string& path)
+{
+    for (unsigned attempt = 0; attempt < 5000U; ++attempt) {
+        if (file_exists(path)) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    throw std::runtime_error("mock metadata callback barrier timed out");
+}
+
+void create_file(const std::string& path)
+{
+    std::ofstream marker{path};
+    marker << "release\n";
+}
+
 class DiagnosticAllocationFailure final : public std::exception {
 public:
     ~DiagnosticAllocationFailure() override { (void)unsetenv("AMS_MEL_TEST_FAIL_ALLOCATION"); }
@@ -345,6 +365,11 @@ public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
     {
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
         {
             std::lock_guard lock{mutex_};
             release_ = true;
@@ -567,6 +592,13 @@ public:
     {
         record("c2_disabled");
         enabled_ = false;
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
+            if (!base) throw std::runtime_error("metadata callback barrier is not configured");
+            wait_for_file(std::string{base} + ".entered");
+            record("metadata_callback_entered");
+            record("disable_returned_with_metadata_callback_active");
+        }
         {
             std::lock_guard lock{mutex_};
             release_ = true;
@@ -639,6 +671,15 @@ public:
             mel::CompletedBIT bad{metadata_id(1U,"bad result"),std::chrono::nanoseconds{0},static_cast<mel::BIT_Result>(99U),"",{}};
             mel::BIT_Status invalid{{},{bad},{}}; bit_status_callback_(*this,&invalid);
             auto valid=rich_bit_status(); bit_status_callback_(*this,&valid);
+        }
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            producer_ = std::thread{[this] {
+                irmel::CommandStatus value;
+                value.setCommandID(88U);
+                value.setState(irmel::CommandState::Accepted);
+                command_status_callback_(*this, &value);
+                record("metadata_callback_returned");
+            }};
         }
         return Return::Success;
     }

@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -272,21 +273,53 @@ struct MetadataState {
     std::deque<std::unique_ptr<EventData>> queue; std::size_t capacity{};
     ams_mel_ir_c2_metadata_counters_v1 counters{}; MetadataLifecycle lifecycle{MetadataLifecycle::Active};
     std::atomic<std::uint64_t> callbacks{};
+
+    void fail() noexcept
+    {
+        try {
+            std::lock_guard lock{mutex};
+            lifecycle = MetadataLifecycle::Failed;
+            ready.notify_all();
+        } catch (...) {
+            /* No exception may cross the provider callback boundary. */
+        }
+    }
 };
 
-struct CallbackGuard { std::shared_ptr<MetadataState> state; explicit CallbackGuard(std::shared_ptr<MetadataState> value):state(std::move(value)){state->callbacks.fetch_add(1,std::memory_order_acq_rel);} ~CallbackGuard(){if(state->callbacks.fetch_sub(1,std::memory_order_acq_rel)==1)state->callbacks_done.notify_all();} };
+struct CallbackGuard { std::shared_ptr<MetadataState> state; explicit CallbackGuard(std::shared_ptr<MetadataState> value) noexcept:state(std::move(value)){state->callbacks.fetch_add(1,std::memory_order_acq_rel);} ~CallbackGuard() noexcept {if(state->callbacks.fetch_sub(1,std::memory_order_acq_rel)==1)state->callbacks_done.notify_all();} };
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+void metadata_callback_test_barrier()
+{
+    const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
+    if (!base) return;
+    const std::string entered = std::string{base} + ".entered";
+    const std::string release = std::string{base} + ".release";
+    { std::ofstream marker{entered}; marker << "entered\n"; }
+    /* The provider-side test waits at most five seconds to observe entry. Keep
+     * this watchdog longer so equal deadlines cannot race under heavy load. */
+    for (unsigned attempt = 0; attempt < 15000U; ++attempt) {
+        if (std::ifstream{release}.good()) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    throw std::runtime_error("metadata callback test barrier timed out");
+}
+#endif
 
 template<class Build> void metadata_callback(const std::shared_ptr<MetadataState>& state, Build build) noexcept
 {
-    CallbackGuard guard{state};
-    { std::lock_guard lock{state->mutex}; increment(state->counters.events_received); if(state->lifecycle!=MetadataLifecycle::Active)return; }
     try {
+        CallbackGuard guard{state};
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        metadata_callback_test_barrier();
+#endif
+        { std::lock_guard lock{state->mutex}; increment(state->counters.events_received); if(state->lifecycle!=MetadataLifecycle::Active)return; }
         auto event=build();
         std::lock_guard lock{state->mutex}; if(state->lifecycle!=MetadataLifecycle::Active)return;
         if(!event){increment(state->counters.malformed_or_unsupported);return;}
         if(state->queue.size()>=state->capacity){increment(state->counters.events_dropped_queue_full);return;}
         state->queue.push_back(std::move(event)); state->ready.notify_one();
-    } catch (...) { std::lock_guard lock{state->mutex}; state->lifecycle=MetadataLifecycle::Failed; state->ready.notify_all(); }
+    } catch (...) { state->fail(); }
 }
 
 std::unique_ptr<EventData> copy_command_status(const irmel::CommandStatus *input)

@@ -205,23 +205,39 @@ static int test_metadata_overflow_and_malformed(void)
     return EXIT_SUCCESS;
 }
 
-static int test_metadata_registration_failure(void)
+static int run_metadata_registration_failure(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
     ams_mel_ir_c2_metadata *metadata = NULL;
-    char path[] = "/tmp/ams-mel-metadata-registration-XXXXXX";
-    char log[4096];
-    int descriptor = mkstemp(path);
-    CHECK(descriptor >= 0);
-    CHECK(close(descriptor) == 0);
-    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
     CHECK(open_c2("metadata-register-fail", &session, &c2) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_c2_metadata_open(c2, 2, &metadata, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(metadata == NULL);
     CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_metadata_registration_failure(const char *program)
+{
+    char path[] = "/tmp/ams-mel-metadata-registration-XXXXXX";
+    char command[1024];
+    char log[4096];
+    int descriptor = mkstemp(path);
+    int status;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    {
+        int length = snprintf(command, sizeof command,
+            "AMS_MEL_TEST_LIFETIME_LOG='%s' '%s' metadata-registration-child",
+            path, program);
+        CHECK(length > 0 && (size_t)length < sizeof command);
+    }
+    status = system(command);
+    CHECK(status == 0);
     CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
-    CHECK(strstr(log, "retained_metadata_callback_invoked") != NULL);
-    CHECK(strstr(log, "c2_channel_destroyed") != NULL);
+    CHECK(check_order(log, "retained_metadata_callback_invoked",
+                      "c2_channel_destroyed") == EXIT_SUCCESS);
+    CHECK(check_order(log, "c2_channel_destroyed",
+                      "library_unloaded") == EXIT_SUCCESS);
     CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
     CHECK(unlink(path) == 0);
     return EXIT_SUCCESS;
@@ -267,6 +283,64 @@ static int test_metadata_callback_allocation_failure(void)
     CHECK(counters.events_received == 3U);
     CHECK(ams_mel_ir_c2_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int run_metadata_nonquiescing_disable(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_c2_metadata *metadata = NULL;
+    CHECK(open_c2("metadata-nonquiescing-disable", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_metadata_open(c2, 2, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_metadata_nonquiescing_disable(const char *program)
+{
+    char path[] = "/tmp/ams-mel-metadata-lifetime-XXXXXX";
+    char entered[128];
+    char release[128];
+    char command[1024];
+    char log[4096];
+    int descriptor = mkstemp(path);
+    int status;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    {
+        int entered_length = snprintf(entered, sizeof entered, "%s.entered", path);
+        int release_length = snprintf(release, sizeof release, "%s.release", path);
+        CHECK(entered_length > 0 && (size_t)entered_length < sizeof entered);
+        CHECK(release_length > 0 && (size_t)release_length < sizeof release);
+    }
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(setenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER", path, 1) == 0);
+    {
+        int length = snprintf(command, sizeof command,
+            "AMS_MEL_TEST_LIFETIME_LOG='%s' "
+            "AMS_MEL_TEST_METADATA_CALLBACK_BARRIER='%s' "
+            "'%s' metadata-nonquiescing-child", path, path, program);
+        CHECK(length > 0 && (size_t)length < sizeof command);
+    }
+    status = system(command);
+    CHECK(status == 0);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(check_order(log, "metadata_callback_entered",
+                      "disable_returned_with_metadata_callback_active") == EXIT_SUCCESS);
+    CHECK(check_order(log, "disable_returned_with_metadata_callback_active",
+                      "metadata_callback_returned") == EXIT_SUCCESS);
+    CHECK(check_order(log, "metadata_callback_returned",
+                      "c2_channel_destroyed") == EXIT_SUCCESS);
+    CHECK(check_order(log, "c2_channel_destroyed",
+                      "library_unloaded") == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(entered) == 0);
+    CHECK(unlink(release) == 0);
+    CHECK(unlink(path) == 0);
     return EXIT_SUCCESS;
 }
 
@@ -944,8 +1018,13 @@ static int test_coexistence(void)
     return EXIT_SUCCESS;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "metadata-registration-child") == 0)
+        return run_metadata_registration_failure();
+    if (argc == 2 && strcmp(argv[1], "metadata-nonquiescing-child") == 0)
+        return run_metadata_nonquiescing_disable();
+    CHECK(argc == 1);
     CHECK(test_arguments_and_config() == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-control-capability-wrong", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-attach-null", AMS_MEL_FACTORY_FAILED) == EXIT_SUCCESS);
@@ -978,9 +1057,10 @@ int main(void)
     CHECK(test_bit_post_send_failure("worker-launch") == EXIT_SUCCESS);
     CHECK(test_metadata_rich_and_lifetime() == EXIT_SUCCESS);
     CHECK(test_metadata_overflow_and_malformed() == EXIT_SUCCESS);
-    CHECK(test_metadata_registration_failure() == EXIT_SUCCESS);
+    CHECK(test_metadata_registration_failure(argv[0]) == EXIT_SUCCESS);
     CHECK(test_metadata_close_before_c2() == EXIT_SUCCESS);
     CHECK(test_metadata_callback_allocation_failure() == EXIT_SUCCESS);
+    CHECK(test_metadata_nonquiescing_disable(argv[0]) == EXIT_SUCCESS);
     CHECK(test_metadata_command_states() == EXIT_SUCCESS);
     puts("PASS: C IR C2 Operate/TaskSched + BIT no-op async/lifetime contract");
     return EXIT_SUCCESS;

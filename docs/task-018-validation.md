@@ -26,13 +26,35 @@ count, mark metadata stopped, and wake consumers.
 The mock provider supplies rich ordered configuration/status values, all four
 tested CommandState values, high-bit IDs, long UTF-8 descriptions, malformed
 root/nested values, capacity-two overflow, callbacks after public close, partial
-registration failure, and callback allocation failure. C tests also retain a raw
-event through metadata/C2/Session/provider teardown. Ada tests verify wholly
-owned values and report a distinct required C2 metadata contract group.
+registration failure, callback allocation failure, and a deterministic
+non-quiescing-disable scenario. The latter uses test-only entry/release marker
+files: the adapter creates the entry marker only after its in-flight callback
+guard is active; provider `disable()` waits for that marker, records that it is
+returning with the callback active; provider channel destruction releases and
+joins the callback thread before returning. Its observed strict log
+order is `metadata_callback_entered`,
+`disable_returned_with_metadata_callback_active`,
+`metadata_callback_returned`, `c2_channel_destroyed`, `library_unloaded`.
+
+The callback boundary now encloses guard construction, counter locking,
+provider value access/deep copy, queue locking/insertion, and notification in
+one exception barrier. `MetadataState::fail()` is itself non-throwing and catches
+failure-state mutex/notification exceptions. `CallbackGuard` destruction is
+explicitly non-throwing. The deterministic `command-allocation` failpoint still
+proves that an already queued valid event drains before receive reports
+`AMS_MEL_PROVIDER_FAILED`; malformed provider values remain non-terminal drops.
+
+Partial-registration validation runs in an isolated child so DSO teardown is
+observable and establishes `retained_metadata_callback_invoked` before
+`c2_channel_destroyed` before `library_unloaded`. C tests also retain a raw event
+through metadata/C2/Session/provider teardown. Ada tests verify wholly owned
+values and report a distinct required C2 metadata contract group.
 
 ## Validation results
 
 - `make test-native`: 6/6 CTest targets passed.
+- `ctest --test-dir native/build --repeat until-fail:50 --output-on-failure`:
+  all six targets passed 50 consecutive executions (47.03 seconds).
 - `alr -C ada build` and `alr -C ada/tests run`: passed; the executable reports
   a distinct `PASS: Ada required IR C2 metadata contract` group.
 - `make test-rust`: existing 31 safe tests, one complete raw ABI drift test, and
@@ -49,15 +71,17 @@ owned values and report a distinct required C2 metadata contract group.
 ## Real-provider evidence
 
 Pinned Squall currently emits empty default BIT_Configuration/BIT_Status values;
-this is recorded behavior, not a generic expectation. The final all-language run
-on 2026-09-17 used ports 44021/36443/57129/50029 with Squall
+this is recorded behavior, not a generic expectation. The correction's Ada-only
+and final all-language runs on 2026-09-17 both used ports
+21203/21318/21315/21316 with Squall
 `b1015728f904c799fa0c07489fce48e78f67845f`, podman 5.4.2, and extracted
 `libsquall_ir_mel.so` built with GCC 14.3.1. Ada observed both defaults, seven
 correlated command status events (accepted and rejected with complete
 reasons/descriptions), the accepted BIT status event, metadata counters 10
 received/0 dropped/0 malformed, and three 320x200 Mono8 frames. C, Ada, Rust,
 and Python each printed PASS, followed by the combined all-language PASS line;
-exit status was zero.
+exit status was zero. The separate Ada-only run also printed PASS with the same
+metadata counters and frame results.
 
 Common inherited Channel services, optional/conditional C2 commands, image
 metadata/commands, Scheduling, Track, Health/Status, Instrumentation,
