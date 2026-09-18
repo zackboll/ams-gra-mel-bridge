@@ -40,6 +40,12 @@ private package AMS.MEL_C_API is
    Null_Metadata : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
    Null_Metadata_Event : constant Metadata_Event_Handle := Metadata_Event_Handle (System.Null_Address);
+   type Health_Handle is new System.Address;
+   Null_Health : constant Health_Handle := Health_Handle (System.Null_Address);
+   type Health_Metadata_Handle is new System.Address;
+   Null_Health_Metadata : constant Health_Metadata_Handle := Health_Metadata_Handle (System.Null_Address);
+   type Health_Event_Handle is new System.Address;
+   Null_Health_Event : constant Health_Event_Handle := Health_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8
      with Convention => C;
@@ -54,6 +60,89 @@ private package AMS.MEL_C_API is
    type Span_V1 is record
       Data : System.Address;
       Size : Size_T;
+   end record with Convention => C;
+   type Component_Location_V1 is record
+      Offset_X_M : Interfaces.C.double;
+      Offset_Y_M : Interfaces.C.double;
+      Offset_Z_M : Interfaces.C.double;
+      Key         : String_View_V1;
+      System_Name : String_View_V1;
+   end record with Convention => C;
+   type IR_Health_Config_V1 is record
+      Channel_ID : UCI_ID_V1;
+      Channel_Type : Interfaces.Unsigned_32;
+      Platform_ID : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record with Convention => C;
+   type Euler_V1 is record
+      Roll, Pitch, Yaw : Interfaces.C.double;
+   end record with Convention => C;
+   type Foreign_Key_V1 is record
+      Key, System_Name : String_View_V1;
+   end record with Convention => C;
+   type Installation_Details_V1 is record
+      Location : Component_Location_V1;
+      Orientation, Boresight : Euler_V1;
+   end record with Convention => C;
+   type Temperature_Status_V1 is record
+      Temperature_C : Interfaces.C.double;
+      State : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type MFA_Component_V1 is record
+      Component_ID : UCI_ID_V1;
+      State : Interfaces.Unsigned_32;
+      Temperature : Temperature_Status_V1;
+      Installation_Location_ID : Foreign_Key_V1;
+      Installation_Details : Installation_Details_V1;
+   end record with Convention => C;
+   type About_V1 is record
+      Model, Serial_Number, Software_Version : String_View_V1;
+      Bootloader_Software_Version, Hardware_Version : String_View_V1;
+   end record with Convention => C;
+   type MFA_Status_V1 is record
+      State : Interfaces.Unsigned_32;
+      State_Description, Mode_Description : String_View_V1;
+      Transition_Status : Interfaces.Unsigned_32;
+      About_Data : About_V1;
+      Components : Span_V1;
+   end record with Convention => C;
+   type IR_Subsystem_Dep_Info_V1 is record
+      Subsystem_ID, Criticality, Failure : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Version_V1 is record
+      Source, Major_Revision, Minor_Revision, Engineering_Revision : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Subsystem_CSCI_Info_V1 is record
+      CSCI : String_View_V1;
+      Mode : Interfaces.Unsigned_32;
+      Version : IR_Version_V1;
+      Criticality, Failure, BIT_Report, Connection_Established : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Subsystem_Status_V1 is record
+      Subsystem_ID, Criticality, Status_Sequence_Number, Failure : Interfaces.Unsigned_32;
+      Subsystem_Count : Interfaces.Unsigned_32;
+      Subsystems : Span_V1;
+      CSCI_Count : Interfaces.Unsigned_32;
+      CSCI : Span_V1;
+   end record with Convention => C;
+   type Name_Value_Pair_V1 is record
+      Name, Value : String_View_V1;
+   end record with Convention => C;
+   type Security_Artifact_V1 is record
+      Component_ID, Associated_ID : UCI_ID_V1;
+   end record with Convention => C;
+   type Security_Event_V1 is record
+      Kind, Category : Interfaces.Unsigned_32;
+      Details : String_View_V1;
+      Subsystem_ID, Service_ID, MDF_ID : UCI_ID_V1;
+   end record with Convention => C;
+   type Security_Audit_Record_V1 is record
+      Security_Event_ID : UCI_ID_V1;
+      Event_Timestamp_NS : Interfaces.Integer_64;
+      Subsystem_ID : UCI_ID_V1;
+      Artifacts : Span_V1;
+      Event : Security_Event_V1;
+      Outcome, Severity : Interfaces.Unsigned_32;
    end record with Convention => C;
    type IR_Command_Status_V1 is record
       Command_ID : Interfaces.Unsigned_32;
@@ -89,6 +178,15 @@ private package AMS.MEL_C_API is
       Component_IDs, Ambiguity_Groups : Span_V1;
    end record with Convention => C;
    type BIT_Status_V1 is record Active_BITS, Completed_BITS, Faults : Span_V1; end record with Convention => C;
+   type IR_Health_Event_V1 is record
+      Kind : Interfaces.Unsigned_32;
+      MFA_Status : MFA_Status_V1;
+      BIT_Status : BIT_Status_V1;
+      Subsystem_Status : IR_Subsystem_Status_V1;
+      Discrete_Status : Span_V1;
+      Security_Audit : Security_Audit_Record_V1;
+      MFA_Status_Detailed : Span_V1;
+   end record with Convention => C;
    type IR_Channel_Comms_Test_Report_V1 is record
       Command_ID, Request_ID : Interfaces.Unsigned_32;
    end record with Convention => C;
@@ -102,13 +200,6 @@ private package AMS.MEL_C_API is
    type Metadata_Counters_V1 is record
       Events_Received, Events_Dropped_Queue_Full,
       Malformed_Or_Unsupported : Interfaces.Unsigned_64;
-   end record with Convention => C;
-   type Component_Location_V1 is record
-      Offset_X_M : Interfaces.C.double;
-      Offset_Y_M : Interfaces.C.double;
-      Offset_Z_M : Interfaces.C.double;
-      Key         : String_View_V1;
-      System_Name : String_View_V1;
    end record with Convention => C;
    type IR_Stream_Config_V1 is record
       Channel_Type   : Interfaces.Unsigned_32;
@@ -493,4 +584,60 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
       return Interfaces.Integer_32 with Import, Convention => C,
       External_Name => "ams_mel_ir_c2_metadata_event_close";
+   function IR_Health_Open
+     (Parent : Session_Handle; Config : access constant IR_Health_Config_V1;
+      Output : access Health_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_open";
+   function IR_Health_Enable
+     (Handle : Health_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_enable";
+   function IR_Health_Get_Capabilities
+     (Handle : Health_Handle; Output : access Capability_Handle;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_get_capabilities";
+   function IR_Health_Close
+     (Handle : access Health_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_close";
+   function IR_Health_Metadata_Open
+     (Handle : Health_Handle; Queue_Capacity : Size_T;
+      Output : access Health_Metadata_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_open";
+   function IR_Health_Metadata_Receive
+     (Handle : Health_Metadata_Handle; Timeout_MS : Interfaces.Unsigned_32;
+      Output : access Health_Event_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_receive";
+   function IR_Health_Metadata_Get_Counters
+     (Handle : Health_Metadata_Handle; Output : access Metadata_Counters_V1;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_get_counters";
+   function IR_Health_Metadata_Close
+     (Handle : access Health_Metadata_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_close";
+   function IR_Health_Event_View
+     (Handle : Health_Event_Handle; Output : access System.Address;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_event_view";
+   function IR_Health_Event_Close
+     (Handle : access Health_Event_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_health_metadata_event_close";
 end AMS.MEL_C_API;

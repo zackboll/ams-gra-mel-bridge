@@ -18,6 +18,15 @@ static_assert(std::is_standard_layout_v<ams_mel_ir_channel_comms_test_result_v1>
 static_assert(noexcept(ams_mel_ir_c2_metadata_event_close(nullptr, nullptr, 0, nullptr)));
 static_assert(noexcept(ams_mel_ir_return_request_close(nullptr, nullptr, 0, nullptr)));
 
+using provider_version_fn = ams_mel_status_t (*)(const ams_mel_session *,
+    ams_mel_provider_version_v1 *, char *, size_t, size_t *) noexcept;
+using health_open_fn = ams_mel_status_t (*)(const ams_mel_session *,
+    const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *, size_t,
+    size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_session_get_provider_version),
+                             provider_version_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_health_open), health_open_fn>);
+
 int main()
 {
     ams_mel_abi_version_v1 version{};

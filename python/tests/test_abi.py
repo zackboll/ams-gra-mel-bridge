@@ -55,9 +55,19 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_c2_metadata_close",
                 "ams_mel_ir_c2_metadata_event_view",
                 "ams_mel_ir_c2_metadata_event_close",
+                "ams_mel_ir_health_open",
+                "ams_mel_ir_health_enable",
+                "ams_mel_ir_health_get_capabilities",
+                "ams_mel_ir_health_close",
+                "ams_mel_ir_health_metadata_open",
+                "ams_mel_ir_health_metadata_receive",
+                "ams_mel_ir_health_metadata_get_counters",
+                "ams_mel_ir_health_metadata_close",
+                "ams_mel_ir_health_metadata_event_view",
+                "ams_mel_ir_health_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 36)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 46)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -328,10 +338,35 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.IrImageBandV1, 'band_index', 'bands'))
         expected.extend(self._layout(_native.IrImageBandSpanV1, 'data', 'size'))
         expected.extend(self._layout(_native.IrChannelCapabilityV1, 'channel_id', 'height', 'width', 'bit_depth', 'row_pitch', 'buffer_size', 'image_size', 'number_of_bands', 'pixel_format', 'sensor_types', 'platform_id', 'sensor_location', 'channel_types', 'task_schedule_depth', 'odc_available', 'nuc_available', 'metadata_capabilities', 'image_bands', 'nav_frames'))
+        expected.extend(self._layout(_native.IrHealthConfigV1, 'channel_id', 'channel_type', 'platform_id', 'sensor_location'))
+        expected.extend(self._layout(_native.EulerV1, 'roll', 'pitch', 'yaw'))
+        expected.extend(self._layout(_native.ForeignKeyV1, 'key', 'system_name'))
+        expected.extend(self._layout(_native.InstallationDetailsV1, 'location', 'orientation', 'boresight'))
+        expected.extend(self._layout(_native.TemperatureStatusV1, 'temperature_c', 'state'))
+        expected.extend(self._layout(_native.MfaComponentV1, 'component_id', 'state', 'temperature', 'installation_location_id', 'installation_details'))
+        expected.extend(self._layout(_native.MfaComponentSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.AboutV1, 'model', 'serial_number', 'software_version', 'bootloader_software_version', 'hardware_version'))
+        expected.extend(self._layout(_native.MfaStatusV1, 'state', 'state_description', 'mode_description', 'transition_status', 'about', 'components'))
+        expected.extend(self._layout(_native.IrSubsystemDepInfoV1, 'subsystem_id', 'criticality', 'failure'))
+        expected.extend(self._layout(_native.IrSubsystemDepInfoSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrVersionV1, 'source', 'major_revision', 'minor_revision', 'engineering_revision'))
+        expected.extend(self._layout(_native.IrSubsystemCsciInfoV1, 'csci', 'mode', 'version', 'criticality', 'failure', 'bit_report', 'connection_established'))
+        expected.extend(self._layout(_native.IrSubsystemCsciInfoSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrSubsystemStatusV1, 'subsystem_id', 'criticality', 'status_sequence_number', 'failure', 'subsystem_count', 'subsystems', 'csci_count', 'csci'))
+        expected.extend(self._layout(_native.NameValuePairV1, 'name', 'value'))
+        expected.extend(self._layout(_native.NameValuePairSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.SecurityArtifactV1, 'component_id', 'associated_id'))
+        expected.extend(self._layout(_native.SecurityArtifactSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.SecurityEventV1, 'kind', 'category', 'details', 'subsystem_id', 'service_id', 'mdf_id'))
+        expected.extend(self._layout(_native.SecurityAuditRecordV1, 'security_event_id', 'event_timestamp_ns', 'subsystem_id', 'artifacts', 'event', 'outcome', 'severity'))
+        expected.extend(self._layout(_native.IrHealthMetadataEventV1, 'kind', 'mfa_status', 'bit_status', 'subsystem_status', 'discrete_status', 'security_audit', 'mfa_status_detailed'))
         expected.extend([ctypes.sizeof(_native.IrC2MetadataHandle), ctypes.alignment(_native.IrC2MetadataHandle)])
         expected.extend([ctypes.sizeof(_native.IrC2MetadataEventHandle), ctypes.alignment(_native.IrC2MetadataEventHandle)])
         expected.extend([ctypes.sizeof(_native.IrChannelCommsRequestHandle), ctypes.alignment(_native.IrChannelCommsRequestHandle)])
         expected.extend([ctypes.sizeof(_native.IrChannelCapabilityHandle), ctypes.alignment(_native.IrChannelCapabilityHandle)])
+        expected.extend([ctypes.sizeof(_native.IrHealthHandle), ctypes.alignment(_native.IrHealthHandle)])
+        expected.extend([ctypes.sizeof(_native.IrHealthMetadataHandle), ctypes.alignment(_native.IrHealthMetadataHandle)])
+        expected.extend([ctypes.sizeof(_native.IrHealthMetadataEventHandle), ctypes.alignment(_native.IrHealthMetadataEventHandle)])
         expected.extend(
             [
                 _native.AMS_MEL_OK,

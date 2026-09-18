@@ -114,6 +114,24 @@ callback IDs, then continues all Task 017/018 commands, metadata, and Mono8
 frames. Zero/default capability fields are observations of pinned Squall only;
 mock tests establish complete capability fidelity.
 
+The Ada client also opens Health/Status and proves all six required callback
+registrations before enabling it. Its capability check requires HealthAndStatus
+and the currently enumerable ChannelCommsTestRep, MFAStatus, BITStatus,
+SubsystemStatusResp, and MFAStatusDetailed entries; the pinned interface has no
+capability enum values for the required DiscreteStatus and SecurityAudit
+callbacks. It polls without assuming order until Squall's five emitted Health
+kinds are observed. SecurityAudit registration succeeds, but pinned Squall does
+not emit a SecurityAudit event; mock coverage exercises its complete value graph.
+
+The final Task 020 Ada-only acceptance ran 2026-09-18 against Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` with Podman 5.4.2/podman-compose
+on ports 39203 (control), 39318 (Couloir metrics), 39315 (optical health), and
+39316 (optical metrics). It reported provider API/library 1/1, vendor Squall,
+and description `Squall Simulator IR MEL`; Health received five events with no
+drops or malformed events. See `docs/task-020-validation.md` for exact pinned
+Health values. Final all-language one-startup acceptance passed C, Ada, Rust,
+Python, and combined on ports 40203, 40318, 40315, and 40316.
+
 Before runtime startup, each selected compiled integration client (C, Ada, and
 Rust) must pass `file` and `readelf` checks as a real ELF executable with a
 readable dynamic section. The interpreted Python client instead passes

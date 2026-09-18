@@ -45,6 +45,14 @@ AMS_MEL_IR_MFA_STATE_INITIATED_BIT = 12
 AMS_MEL_IR_MFA_STATE_SHUTDOWN = 13
 AMS_MEL_IR_MFA_STATE_DEGRADED = 14
 AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE = 15
+AMS_MEL_STATE_TRANSITION_NOT_SET, AMS_MEL_STATE_TRANSITION_NOT_TRANSITIONING, AMS_MEL_STATE_TRANSITION_SHUTTING_DOWN, AMS_MEL_STATE_TRANSITION_TRANSITIONING = range(4)
+AMS_MEL_COMPONENT_STATE_NOT_SET, AMS_MEL_COMPONENT_STATE_UNKNOWN, AMS_MEL_COMPONENT_STATE_NOT_INSTALLED, AMS_MEL_COMPONENT_STATE_OFF, AMS_MEL_COMPONENT_STATE_INITIALIZING, AMS_MEL_COMPONENT_STATE_OPERATIONAL, AMS_MEL_COMPONENT_STATE_DEGRADED, AMS_MEL_COMPONENT_STATE_DISABLED, AMS_MEL_COMPONENT_STATE_FAULTED = range(9)
+AMS_MEL_TEMPERATURE_STATE_NOT_SET, AMS_MEL_TEMPERATURE_STATE_UNDER_TEMP, AMS_MEL_TEMPERATURE_STATE_NORMAL, AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_WARNING, AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_DEGRADED, AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_SHUTDOWN = range(6)
+AMS_MEL_IR_FAILURE_NA, AMS_MEL_IR_FAILURE_CRITICAL, AMS_MEL_IR_FAILURE_MAJOR, AMS_MEL_IR_FAILURE_PARAMETRIC, AMS_MEL_IR_FAILURE_INFORMATIONAL, AMS_MEL_IR_FAILURE_AVAILABLE, AMS_MEL_IR_FAILURE_NOT_PRESENT = range(7)
+AMS_MEL_IR_CSCI_MODE_UNKNOWN, AMS_MEL_IR_CSCI_MODE_UNUSED, AMS_MEL_IR_CSCI_MODE_INITIALIZATION, AMS_MEL_IR_CSCI_MODE_MAINTENANCE, AMS_MEL_IR_CSCI_MODE_IDLE, AMS_MEL_IR_CSCI_MODE_OPERATIONAL, AMS_MEL_IR_CSCI_MODE_VSA, AMS_MEL_IR_CSCI_MODE_QUICK_LOOK, AMS_MEL_IR_CSCI_MODE_TRACK, AMS_MEL_IR_CSCI_MODE_IMAGING, AMS_MEL_IR_CSCI_MODE_NOISE = range(11)
+AMS_MEL_SECURITY_EVENT_NONE, AMS_MEL_SECURITY_EVENT_AUTHENTICATION, AMS_MEL_SECURITY_EVENT_INTEGRITY, AMS_MEL_SECURITY_EVENT_FILE_MANAGEMENT, AMS_MEL_SECURITY_EVENT_KEY_MANAGEMENT, AMS_MEL_SECURITY_EVENT_SYSTEM, AMS_MEL_SECURITY_EVENT_SANITIZATION = range(7)
+AMS_MEL_SECURITY_OUTCOME_NOT_SET, AMS_MEL_SECURITY_OUTCOME_FAILURE, AMS_MEL_SECURITY_OUTCOME_SUCCESS = range(3)
+AMS_MEL_SECURITY_SEVERITY_NOT_SET, AMS_MEL_SECURITY_SEVERITY_CRITICAL, AMS_MEL_SECURITY_SEVERITY_ERROR, AMS_MEL_SECURITY_SEVERITY_INFORMATIONAL, AMS_MEL_SECURITY_SEVERITY_WARNING = range(5)
 AMS_MEL_IR_COORD_FRAME_INERTIAL = 0
 AMS_MEL_IR_COORD_FRAME_AIRCRAFT = 1
 AMS_MEL_IR_DEGRADATION_CAPACITY = 0
@@ -84,6 +92,7 @@ AMS_MEL_IR_C2_METADATA_COMMAND_STATUS = 1
 AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION = 2
 AMS_MEL_IR_C2_METADATA_BIT_STATUS = 3
 AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST = 4
+AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS, AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS, AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS, AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS, AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT, AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED = range(1, 7)
 AMS_MEL_IR_COMMAND_NOT_SET, AMS_MEL_IR_COMMAND_RECEIVED, AMS_MEL_IR_COMMAND_ACCEPTED, AMS_MEL_IR_COMMAND_REJECTED, AMS_MEL_IR_COMMAND_CANCELLED = range(5)
 (
     AMS_MEL_IR_CANNOT_COMPLY_NOT_SET, AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS,
@@ -247,6 +256,31 @@ class IrC2ConfigV1(ctypes.Structure):
     ]
 
 
+class IrHealthConfigV1(ctypes.Structure):
+    _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+class EulerV1(ctypes.Structure): _fields_ = [("roll", ctypes.c_double), ("pitch", ctypes.c_double), ("yaw", ctypes.c_double)]
+class ForeignKeyV1(ctypes.Structure): _fields_ = [("key", StringViewV1), ("system_name", StringViewV1)]
+class InstallationDetailsV1(ctypes.Structure): _fields_ = [("location", ComponentLocationV1), ("orientation", EulerV1), ("boresight", EulerV1)]
+class TemperatureStatusV1(ctypes.Structure): _fields_ = [("temperature_c", ctypes.c_double), ("state", ctypes.c_uint32)]
+class MfaComponentV1(ctypes.Structure): _fields_ = [("component_id", UciIdV1), ("state", ctypes.c_uint32), ("temperature", TemperatureStatusV1), ("installation_location_id", ForeignKeyV1), ("installation_details", InstallationDetailsV1)]
+class MfaComponentSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(MfaComponentV1)), ("size", ctypes.c_size_t)]
+class AboutV1(ctypes.Structure): _fields_ = [("model", StringViewV1), ("serial_number", StringViewV1), ("software_version", StringViewV1), ("bootloader_software_version", StringViewV1), ("hardware_version", StringViewV1)]
+class MfaStatusV1(ctypes.Structure): _fields_ = [("state", ctypes.c_uint32), ("state_description", StringViewV1), ("mode_description", StringViewV1), ("transition_status", ctypes.c_uint32), ("about", AboutV1), ("components", MfaComponentSpanV1)]
+class IrSubsystemDepInfoV1(ctypes.Structure): _fields_ = [("subsystem_id", ctypes.c_uint32), ("criticality", ctypes.c_uint32), ("failure", ctypes.c_uint32)]
+class IrSubsystemDepInfoSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(IrSubsystemDepInfoV1)), ("size", ctypes.c_size_t)]
+class IrVersionV1(ctypes.Structure): _fields_ = [("source", ctypes.c_uint32), ("major_revision", ctypes.c_uint32), ("minor_revision", ctypes.c_uint32), ("engineering_revision", ctypes.c_uint32)]
+class IrSubsystemCsciInfoV1(ctypes.Structure): _fields_ = [("csci", StringViewV1), ("mode", ctypes.c_uint32), ("version", IrVersionV1), ("criticality", ctypes.c_uint32), ("failure", ctypes.c_uint32), ("bit_report", ctypes.c_uint32), ("connection_established", ctypes.c_uint32)]
+class IrSubsystemCsciInfoSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(IrSubsystemCsciInfoV1)), ("size", ctypes.c_size_t)]
+class IrSubsystemStatusV1(ctypes.Structure): _fields_ = [("subsystem_id", ctypes.c_uint32), ("criticality", ctypes.c_uint32), ("status_sequence_number", ctypes.c_uint32), ("failure", ctypes.c_uint32), ("subsystem_count", ctypes.c_uint32), ("subsystems", IrSubsystemDepInfoSpanV1), ("csci_count", ctypes.c_uint32), ("csci", IrSubsystemCsciInfoSpanV1)]
+class NameValuePairV1(ctypes.Structure): _fields_ = [("name", StringViewV1), ("value", StringViewV1)]
+class NameValuePairSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(NameValuePairV1)), ("size", ctypes.c_size_t)]
+class SecurityArtifactV1(ctypes.Structure): _fields_ = [("component_id", UciIdV1), ("associated_id", UciIdV1)]
+class SecurityArtifactSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(SecurityArtifactV1)), ("size", ctypes.c_size_t)]
+class SecurityEventV1(ctypes.Structure): _fields_ = [("kind", ctypes.c_uint32), ("category", ctypes.c_uint32), ("details", StringViewV1), ("subsystem_id", UciIdV1), ("service_id", UciIdV1), ("mdf_id", UciIdV1)]
+class SecurityAuditRecordV1(ctypes.Structure): _fields_ = [("security_event_id", UciIdV1), ("event_timestamp_ns", ctypes.c_int64), ("subsystem_id", UciIdV1), ("artifacts", SecurityArtifactSpanV1), ("event", SecurityEventV1), ("outcome", ctypes.c_uint32), ("severity", ctypes.c_uint32)]
+class IrHealthMetadataEventV1(ctypes.Structure): _fields_ = [("kind", ctypes.c_uint32), ("mfa_status", MfaStatusV1), ("bit_status", BitStatusV1), ("subsystem_status", IrSubsystemStatusV1), ("discrete_status", NameValuePairSpanV1), ("security_audit", SecurityAuditRecordV1), ("mfa_status_detailed", NameValuePairSpanV1)]
+
+
 class IrModeResultV1(ctypes.Structure):
     _fields_ = [
         ("mode", ctypes.c_uint32),
@@ -307,6 +341,9 @@ IrChannelCommsRequestHandle = ctypes.c_void_p
 IrChannelCapabilityHandle = ctypes.c_void_p
 IrC2MetadataHandle = ctypes.c_void_p
 IrC2MetadataEventHandle = ctypes.c_void_p
+IrHealthHandle = ctypes.c_void_p
+IrHealthMetadataHandle = ctypes.c_void_p
+IrHealthMetadataEventHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -571,6 +608,37 @@ ams_mel_ir_c2_metadata_event_close = _LIBRARY.ams_mel_ir_c2_metadata_event_close
 ams_mel_ir_c2_metadata_event_close.argtypes = [ctypes.POINTER(IrC2MetadataEventHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_c2_metadata_event_close.restype = ctypes.c_int32
 
+ams_mel_ir_health_open = _LIBRARY.ams_mel_ir_health_open
+ams_mel_ir_health_open.argtypes = [SessionHandle, ctypes.POINTER(IrHealthConfigV1), ctypes.POINTER(IrHealthHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_open.restype = ctypes.c_int32
+ams_mel_ir_health_enable = _LIBRARY.ams_mel_ir_health_enable
+ams_mel_ir_health_enable.argtypes = [IrHealthHandle, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_enable.restype = ctypes.c_int32
+ams_mel_ir_health_get_capabilities = _LIBRARY.ams_mel_ir_health_get_capabilities
+ams_mel_ir_health_get_capabilities.argtypes = [IrHealthHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_health_close = _LIBRARY.ams_mel_ir_health_close
+ams_mel_ir_health_close.argtypes = [ctypes.POINTER(IrHealthHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_close.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_open = _LIBRARY.ams_mel_ir_health_metadata_open
+ams_mel_ir_health_metadata_open.argtypes = [IrHealthHandle, ctypes.c_size_t, ctypes.POINTER(IrHealthMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_receive = _LIBRARY.ams_mel_ir_health_metadata_receive
+ams_mel_ir_health_metadata_receive.argtypes = [IrHealthMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrHealthMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_get_counters = _LIBRARY.ams_mel_ir_health_metadata_get_counters
+ams_mel_ir_health_metadata_get_counters.argtypes = [IrHealthMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_close = _LIBRARY.ams_mel_ir_health_metadata_close
+ams_mel_ir_health_metadata_close.argtypes = [ctypes.POINTER(IrHealthMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_close.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_event_view = _LIBRARY.ams_mel_ir_health_metadata_event_view
+ams_mel_ir_health_metadata_event_view.argtypes = [IrHealthMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrHealthMetadataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_health_metadata_event_close = _LIBRARY.ams_mel_ir_health_metadata_event_close
+ams_mel_ir_health_metadata_event_close.argtypes = [ctypes.POINTER(IrHealthMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_metadata_event_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -608,4 +676,14 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_c2_metadata_close",
     "ams_mel_ir_c2_metadata_event_view",
     "ams_mel_ir_c2_metadata_event_close",
+    "ams_mel_ir_health_open",
+    "ams_mel_ir_health_enable",
+    "ams_mel_ir_health_get_capabilities",
+    "ams_mel_ir_health_close",
+    "ams_mel_ir_health_metadata_open",
+    "ams_mel_ir_health_metadata_receive",
+    "ams_mel_ir_health_metadata_get_counters",
+    "ams_mel_ir_health_metadata_close",
+    "ams_mel_ir_health_metadata_event_view",
+    "ams_mel_ir_health_metadata_event_close",
 )

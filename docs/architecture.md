@@ -239,6 +239,22 @@ Attached or Enabled lifecycle states. The inherited CommsTest callback is an
 explicit fourth registration into Task 018's existing queue and uses the same
 callback guard, retained state, and channel-destruction quiescence boundary.
 
+Task 020 adds the required IR HealthAndStatus channel and exactly six callback
+overloads: MFA_Status, BIT_Status, SubsystemStatusResp, DiscreteStatus,
+MFA_SecurityAuditRecord, and MFA_StatusDetailed. LFStatus and NUC_TempData remain
+out of scope. One bounded DROP-INCOMING FIFO deep-copies callback values before
+returning to provider code; Ada polls that queue and copies each complete graph
+again before releasing the native event. No provider thread invokes Ada code.
+
+The callback state belongs to the Health channel, not the public metadata owner.
+There is no unregister assumption: partial registration retains earlier closures,
+metadata close only deactivates public consumption, and provider channel
+destruction is the callback-quiescence boundary. Immutable native snapshots and
+Ada values can outlive metadata, Health channel, Session, and provider unload.
+Reusable Common-MEL status values live in `AMS.MEL.Status`; Health does not depend
+on C2 metadata types. Rust sys and private Python declarations track the 46-export
+raw ABI, but no safe Rust or public Python Health API is introduced.
+
 ChannelCapability is validated and deep-copied completely into an opaque native
 snapshot, then copied again into reusable Ada-native `AMS.MEL.IR.Channel` values.
 Neither snapshot references provider STL storage. `Channel::registerBuffer` and

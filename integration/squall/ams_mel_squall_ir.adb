@@ -7,6 +7,9 @@ with AMS.MEL.IR.C2;
 with AMS.MEL.IR.C2.Metadata;
 with AMS.MEL.IR.C2.Common;
 with AMS.MEL.IR.Channel;
+with AMS.MEL.IR.Health_Status;
+with AMS.MEL.IR.Health_Status.Metadata;
+with AMS.MEL.Status;
 with Interfaces;
 
 procedure AMS_MEL_Squall_IR is
@@ -14,6 +17,9 @@ procedure AMS_MEL_Squall_IR is
    package Metadata renames AMS.MEL.IR.C2.Metadata;
    package Common renames AMS.MEL.IR.C2.Common;
    package Channel_Value renames AMS.MEL.IR.Channel;
+   package Health renames AMS.MEL.IR.Health_Status;
+   package Health_Metadata renames AMS.MEL.IR.Health_Status.Metadata;
+   package Status renames AMS.MEL.Status;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
    use type C2.Command_Return;
@@ -27,6 +33,10 @@ procedure AMS_MEL_Squall_IR is
    use type Channel_Value.Metadata_Capability;
    use type Channel_Value.Comms_Request_ID;
    use type Channel_Value.Comms_Test_Report;
+   use type Health_Metadata.Metadata_Kind;
+   use type Health_Metadata.Failure_Level;
+   use type Status.MFA_State;
+   use type Status.State_Transition_Status;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
 
@@ -53,6 +63,8 @@ procedure AMS_MEL_Squall_IR is
         Buffer_Size => 1024 * 1024, Queue_Capacity => 8);
    C2_Config : constant C2.Control_Config :=
      C2.Create_Config (Channel_ID, Platform_ID, Location);
+   Health_Config : constant Health.Health_Config :=
+      Health.Create_Config (Channel_ID, Platform_ID, Location);
 
    function Checksum (Pixels : AMS.MEL.IR.Pixel_Array) return Interfaces.Unsigned_64 is
       Value : Interfaces.Unsigned_64 := 16#1465_0FB0_739D_0383#;
@@ -135,9 +147,39 @@ begin
       --  Data destination and buffers are ready before Operate is submitted.
       AMS.MEL.IR.Start (Stream);
       declare
+         Health_Channel : Health.Health_Channel := Health.Open (Parent, Health_Config);
+         Health_Stream : Health_Metadata.Metadata_Stream :=
+            Health_Metadata.Open (Health_Channel, 32);
          Channel : C2.Control_Channel := C2.Open (Parent, C2_Config);
          Metadata_Stream : Metadata.Metadata_Stream := Metadata.Open (Channel, 32);
       begin
+         --  Open succeeds only after native registration of all six required
+         --  Health callbacks; the capability enum does not advertise two of them.
+         Ada.Text_IO.Put_Line ("Health callbacks: all six registrations succeeded");
+         Health.Enable (Health_Channel);
+         declare
+            Capability : constant Channel_Value.Channel_Capability :=
+              Health.Capabilities (Health_Channel);
+         begin
+            if Channel_Value.Channel_Type_Count (Capability) /= 1
+              or else Channel_Value.Channel_Type_At (Capability, 1) /=
+                Channel_Value.Health_And_Status
+              or else not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.MFA_Status)
+              or else not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.BIT_Status)
+              or else not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.Subsystem_Status_Resp)
+              or else not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.MFA_Status_Detailed)
+              or else not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.Channel_Comms_Test_Rep)
+            then
+               raise Program_Error with "unexpected Squall Health capability";
+            end if;
+            Ada.Text_IO.Put_Line
+              ("Health capability: type=HEALTH_AND_STATUS required metadata present");
+         end;
          declare
             Configuration : constant Metadata.Metadata_Event :=
               Metadata.Receive (Metadata_Stream, 5_000);
@@ -218,6 +260,78 @@ begin
               (Metadata_Stream, 16#0040_1701#, Metadata.Accepted,
                Metadata.Not_Set, Description_Empty => True);
             C2.Close (Request);
+         end;
+         declare
+            Seen_MFA, Seen_BIT, Seen_Subsystem, Seen_Discrete, Seen_Detailed :
+              Boolean := False;
+         begin
+            for Attempt in 1 .. 20 loop
+               declare
+                  Event : constant Health_Metadata.Metadata_Event :=
+                    Health_Metadata.Receive (Health_Stream, 5_000);
+               begin
+                  case Health_Metadata.Kind (Event) is
+                     when Health_Metadata.MFA_Status_Event =>
+                        declare
+                           Value : constant Status.MFA_Status :=
+                             Health_Metadata.MFA_Status_Value (Event);
+                           About : constant Status.About := Status.About_Value (Value);
+                        begin
+                           if Status.State (Value) = Status.Standby
+                             and then Status.State_Description (Value) = "Squall OK"
+                             and then Status.Mode_Description (Value) = "IR backend status available"
+                             and then Status.Transition_Status (Value) = Status.Not_Transitioning
+                             and then Status.Model (About) = "Squall IR MFA"
+                             and then Status.Software_Version (About) = "unknown"
+                           then
+                              Ada.Text_IO.Put_Line
+                                ("Health MFA_Status: state=STANDBY description=Squall OK mode=IR backend status available " &
+                                 "transition=NOT_TRANSITIONING model=Squall IR MFA software=unknown serial=" &
+                                 Status.Serial_Number (About) & " bootloader=" &
+                                 Status.Bootloader_Software_Version (About) & " hardware=" &
+                                 Status.Hardware_Version (About));
+                              Seen_MFA := True;
+                           else
+                              Ada.Text_IO.Put_Line ("Health MFA_Status: ignored pre-Standby polling cycle");
+                           end if;
+                        end;
+                     when Health_Metadata.BIT_Status_Event =>
+                        declare Value : constant Status.BIT_Status := Health_Metadata.BIT_Status_Value (Event); begin
+                           if Status.Active_BIT_Count (Value) /= 0 or else Status.Completed_BIT_Count (Value) /= 0
+                             or else Status.Fault_Count (Value) /= 0
+                           then raise Program_Error with "unexpected Squall Health BIT_Status"; end if;
+                           Ada.Text_IO.Put_Line ("Health BIT_Status: active= 0 completed= 0 fault= 0");
+                        end;
+                        Seen_BIT := True;
+                     when Health_Metadata.Subsystem_Status_Event =>
+                        declare Value : constant Health_Metadata.Subsystem_Status := Health_Metadata.Subsystem_Status_Value (Event); begin
+                           if Health_Metadata.Subsystem_ID (Value) /= 0 or else Health_Metadata.Criticality (Value) /= 0
+                             or else Health_Metadata.Status_Sequence_Number (Value) /= 0
+                             or else Health_Metadata.Failure (Value) /= Health_Metadata.Available
+                             or else Health_Metadata.Reported_Subsystem_Count (Value) /= 0
+                             or else Health_Metadata.Subsystem_Count (Value) /= 0
+                             or else Health_Metadata.Reported_CSCI_Count (Value) /= 0
+                             or else Health_Metadata.CSCI_Count (Value) /= 0
+                           then raise Program_Error with "unexpected Squall SubsystemStatusResp"; end if;
+                           Ada.Text_IO.Put_Line ("Health SubsystemStatusResp: id= 0 criticality= 0 sequence= 0 failure=AVAILABLE subsystems= 0 csci= 0");
+                        end;
+                        Seen_Subsystem := True;
+                     when Health_Metadata.Discrete_Status_Event =>
+                        if Status.Pair_Count (Health_Metadata.Discrete_Status_Value (Event)) /= 0
+                        then raise Program_Error with "unexpected Squall DiscreteStatus"; end if;
+                        Ada.Text_IO.Put_Line ("Health DiscreteStatus: count= 0"); Seen_Discrete := True;
+                     when Health_Metadata.MFA_Status_Detailed_Event =>
+                        if Status.Pair_Count (Health_Metadata.MFA_Status_Detailed_Value (Event)) /= 0
+                        then raise Program_Error with "unexpected Squall MFA_StatusDetailed"; end if;
+                        Ada.Text_IO.Put_Line ("Health MFA_StatusDetailed: count= 0"); Seen_Detailed := True;
+                     when Health_Metadata.Security_Audit_Event => null;
+                  end case;
+               end;
+               exit when Seen_MFA and Seen_BIT and Seen_Subsystem and Seen_Discrete and Seen_Detailed;
+            end loop;
+            if not (Seen_MFA and Seen_BIT and Seen_Subsystem and Seen_Discrete and Seen_Detailed)
+            then raise Program_Error with "Squall required Health events were incomplete"; end if;
+            Ada.Text_IO.Put_Line ("Health events: MFA_STATUS BIT_STATUS SUBSYSTEM_STATUS DISCRETE_STATUS MFA_STATUS_DETAILED");
          end;
          declare
             Request : C2.Mode_Request := C2.Submit_Mode
@@ -386,6 +500,38 @@ begin
             when AMS.MEL.IR.Stream_Stopped => null;
          end;
          Metadata.Close (Metadata_Stream);
+         declare
+            Counts : constant Health_Metadata.Metadata_Counters :=
+              Health_Metadata.Counters (Health_Stream);
+         begin
+            Ada.Text_IO.Put_Line
+              ("Health metadata counters: received=" & Counts.Events_Received'Image &
+               " dropped=" & Counts.Events_Dropped_Queue_Full'Image &
+               " malformed=" & Counts.Malformed_Or_Unsupported'Image);
+            if Counts.Events_Received < 5
+              or else Counts.Events_Dropped_Queue_Full /= 0
+              or else Counts.Malformed_Or_Unsupported /= 0
+            then
+               raise Program_Error with "invalid Squall Health metadata counters";
+            end if;
+         end;
+         Health.Close (Health_Channel);
+         begin
+            loop
+               declare
+                  Retained : constant Health_Metadata.Metadata_Event :=
+                    Health_Metadata.Receive (Health_Stream, 0);
+                  pragma Unreferenced (Retained);
+               begin
+                  --  Deep-copied events queued before parent-first close remain
+                  --  valid; drain them before requiring terminal stop.
+                  null;
+               end;
+            end loop;
+         exception
+            when AMS.MEL.IR.Stream_Stopped => null;
+         end;
+         Health_Metadata.Close (Health_Stream);
       end;
       AMS.MEL.IR.Close (Stream);
       Ada.Text_IO.Put_Line ("PASS: real Squall IR Ada integration");

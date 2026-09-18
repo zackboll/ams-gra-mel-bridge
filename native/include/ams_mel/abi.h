@@ -59,6 +59,9 @@ typedef struct ams_mel_ir_channel_comms_request ams_mel_ir_channel_comms_request
 typedef struct ams_mel_ir_channel_capability ams_mel_ir_channel_capability;
 typedef struct ams_mel_ir_c2_metadata ams_mel_ir_c2_metadata;
 typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
+typedef struct ams_mel_ir_health ams_mel_ir_health;
+typedef struct ams_mel_ir_health_metadata ams_mel_ir_health_metadata;
+typedef struct ams_mel_ir_health_metadata_event ams_mel_ir_health_metadata_event;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -92,6 +95,67 @@ typedef uint32_t ams_mel_ir_mfa_state_t;
 #define AMS_MEL_IR_MFA_STATE_SHUTDOWN UINT32_C(13)
 #define AMS_MEL_IR_MFA_STATE_DEGRADED UINT32_C(14)
 #define AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE UINT32_C(15)
+typedef uint32_t ams_mel_state_transition_status_t;
+#define AMS_MEL_STATE_TRANSITION_NOT_SET UINT32_C(0)
+#define AMS_MEL_STATE_TRANSITION_NOT_TRANSITIONING UINT32_C(1)
+#define AMS_MEL_STATE_TRANSITION_SHUTTING_DOWN UINT32_C(2)
+#define AMS_MEL_STATE_TRANSITION_TRANSITIONING UINT32_C(3)
+typedef uint32_t ams_mel_component_state_t;
+#define AMS_MEL_COMPONENT_STATE_NOT_SET UINT32_C(0)
+#define AMS_MEL_COMPONENT_STATE_UNKNOWN UINT32_C(1)
+#define AMS_MEL_COMPONENT_STATE_NOT_INSTALLED UINT32_C(2)
+#define AMS_MEL_COMPONENT_STATE_OFF UINT32_C(3)
+#define AMS_MEL_COMPONENT_STATE_INITIALIZING UINT32_C(4)
+#define AMS_MEL_COMPONENT_STATE_OPERATIONAL UINT32_C(5)
+#define AMS_MEL_COMPONENT_STATE_DEGRADED UINT32_C(6)
+#define AMS_MEL_COMPONENT_STATE_DISABLED UINT32_C(7)
+#define AMS_MEL_COMPONENT_STATE_FAULTED UINT32_C(8)
+typedef uint32_t ams_mel_temperature_state_t;
+#define AMS_MEL_TEMPERATURE_STATE_NOT_SET UINT32_C(0)
+#define AMS_MEL_TEMPERATURE_STATE_UNDER_TEMP UINT32_C(1)
+#define AMS_MEL_TEMPERATURE_STATE_NORMAL UINT32_C(2)
+#define AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_WARNING UINT32_C(3)
+#define AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_DEGRADED UINT32_C(4)
+#define AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_SHUTDOWN UINT32_C(5)
+typedef uint32_t ams_mel_ir_failure_t;
+#define AMS_MEL_IR_FAILURE_NA UINT32_C(0)
+#define AMS_MEL_IR_FAILURE_CRITICAL UINT32_C(1)
+#define AMS_MEL_IR_FAILURE_MAJOR UINT32_C(2)
+#define AMS_MEL_IR_FAILURE_PARAMETRIC UINT32_C(3)
+#define AMS_MEL_IR_FAILURE_INFORMATIONAL UINT32_C(4)
+#define AMS_MEL_IR_FAILURE_AVAILABLE UINT32_C(5)
+#define AMS_MEL_IR_FAILURE_NOT_PRESENT UINT32_C(6)
+typedef uint32_t ams_mel_ir_csci_mode_t;
+#define AMS_MEL_IR_CSCI_MODE_UNKNOWN UINT32_C(0)
+#define AMS_MEL_IR_CSCI_MODE_UNUSED UINT32_C(1)
+#define AMS_MEL_IR_CSCI_MODE_INITIALIZATION UINT32_C(2)
+#define AMS_MEL_IR_CSCI_MODE_MAINTENANCE UINT32_C(3)
+#define AMS_MEL_IR_CSCI_MODE_IDLE UINT32_C(4)
+#define AMS_MEL_IR_CSCI_MODE_OPERATIONAL UINT32_C(5)
+#define AMS_MEL_IR_CSCI_MODE_VSA UINT32_C(6)
+#define AMS_MEL_IR_CSCI_MODE_QUICK_LOOK UINT32_C(7)
+#define AMS_MEL_IR_CSCI_MODE_TRACK UINT32_C(8)
+#define AMS_MEL_IR_CSCI_MODE_IMAGING UINT32_C(9)
+#define AMS_MEL_IR_CSCI_MODE_NOISE UINT32_C(10)
+typedef uint32_t ams_mel_security_event_kind_t;
+#define AMS_MEL_SECURITY_EVENT_NONE UINT32_C(0)
+#define AMS_MEL_SECURITY_EVENT_AUTHENTICATION UINT32_C(1)
+#define AMS_MEL_SECURITY_EVENT_INTEGRITY UINT32_C(2)
+#define AMS_MEL_SECURITY_EVENT_FILE_MANAGEMENT UINT32_C(3)
+#define AMS_MEL_SECURITY_EVENT_KEY_MANAGEMENT UINT32_C(4)
+#define AMS_MEL_SECURITY_EVENT_SYSTEM UINT32_C(5)
+#define AMS_MEL_SECURITY_EVENT_SANITIZATION UINT32_C(6)
+typedef uint32_t ams_mel_security_outcome_t;
+#define AMS_MEL_SECURITY_OUTCOME_NOT_SET UINT32_C(0)
+#define AMS_MEL_SECURITY_OUTCOME_FAILURE UINT32_C(1)
+#define AMS_MEL_SECURITY_OUTCOME_SUCCESS UINT32_C(2)
+typedef uint32_t ams_mel_security_severity_t;
+#define AMS_MEL_SECURITY_SEVERITY_NOT_SET UINT32_C(0)
+#define AMS_MEL_SECURITY_SEVERITY_CRITICAL UINT32_C(1)
+#define AMS_MEL_SECURITY_SEVERITY_ERROR UINT32_C(2)
+#define AMS_MEL_SECURITY_SEVERITY_INFORMATIONAL UINT32_C(3)
+#define AMS_MEL_SECURITY_SEVERITY_WARNING UINT32_C(4)
+typedef uint32_t ams_mel_security_category_t;
 typedef uint32_t ams_mel_ir_coord_frame_ref_t;
 #define AMS_MEL_IR_COORD_FRAME_INERTIAL UINT32_C(0)
 #define AMS_MEL_IR_COORD_FRAME_AIRCRAFT UINT32_C(1)
@@ -420,6 +484,7 @@ typedef struct ams_mel_ir_c2_metadata_counters_v1 {
     uint64_t events_dropped_queue_full;
     uint64_t malformed_or_unsupported;
 } ams_mel_ir_c2_metadata_counters_v1;
+typedef ams_mel_ir_c2_metadata_counters_v1 ams_mel_ir_metadata_counters_v1;
 #undef AMS_MEL_DECLARE_SPAN
 
 typedef struct ams_mel_component_location_v1 {
@@ -497,6 +562,119 @@ typedef struct ams_mel_ir_c2_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_c2_config_v1;
+
+typedef struct ams_mel_ir_health_config_v1 {
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_health_config_v1;
+
+typedef struct ams_mel_euler_v1 { double roll, pitch, yaw; } ams_mel_euler_v1;
+typedef struct ams_mel_foreign_key_v1 {
+    ams_mel_string_view_v1 key, system_name;
+} ams_mel_foreign_key_v1;
+typedef struct ams_mel_installation_details_v1 {
+    ams_mel_component_location_v1 location;
+    ams_mel_euler_v1 orientation, boresight;
+} ams_mel_installation_details_v1;
+typedef struct ams_mel_temperature_status_v1 {
+    double temperature_c;
+    ams_mel_temperature_state_t state;
+} ams_mel_temperature_status_v1;
+typedef struct ams_mel_mfa_component_v1 {
+    ams_mel_uci_id_v1 component_id;
+    ams_mel_component_state_t state;
+    ams_mel_temperature_status_v1 temperature;
+    ams_mel_foreign_key_v1 installation_location_id;
+    ams_mel_installation_details_v1 installation_details;
+} ams_mel_mfa_component_v1;
+typedef struct ams_mel_mfa_component_span_v1 {
+    const ams_mel_mfa_component_v1 *data; size_t size;
+} ams_mel_mfa_component_span_v1;
+typedef struct ams_mel_about_v1 {
+    ams_mel_string_view_v1 model, serial_number, software_version;
+    ams_mel_string_view_v1 bootloader_software_version, hardware_version;
+} ams_mel_about_v1;
+typedef struct ams_mel_mfa_status_v1 {
+    ams_mel_ir_mfa_state_t state;
+    ams_mel_string_view_v1 state_description, mode_description;
+    ams_mel_state_transition_status_t transition_status;
+    ams_mel_about_v1 about;
+    ams_mel_mfa_component_span_v1 components;
+} ams_mel_mfa_status_v1;
+typedef struct ams_mel_ir_subsystem_dep_info_v1 {
+    uint32_t subsystem_id, criticality;
+    ams_mel_ir_failure_t failure;
+} ams_mel_ir_subsystem_dep_info_v1;
+typedef struct ams_mel_ir_subsystem_dep_info_span_v1 {
+    const ams_mel_ir_subsystem_dep_info_v1 *data; size_t size;
+} ams_mel_ir_subsystem_dep_info_span_v1;
+typedef struct ams_mel_ir_version_v1 {
+    uint32_t source, major_revision, minor_revision, engineering_revision;
+} ams_mel_ir_version_v1;
+typedef struct ams_mel_ir_subsystem_csci_info_v1 {
+    ams_mel_string_view_v1 csci;
+    ams_mel_ir_csci_mode_t mode;
+    ams_mel_ir_version_v1 version;
+    uint32_t criticality;
+    ams_mel_ir_failure_t failure;
+    uint32_t bit_report, connection_established;
+} ams_mel_ir_subsystem_csci_info_v1;
+typedef struct ams_mel_ir_subsystem_csci_info_span_v1 {
+    const ams_mel_ir_subsystem_csci_info_v1 *data; size_t size;
+} ams_mel_ir_subsystem_csci_info_span_v1;
+typedef struct ams_mel_ir_subsystem_status_v1 {
+    uint32_t subsystem_id, criticality, status_sequence_number;
+    ams_mel_ir_failure_t failure;
+    uint32_t subsystem_count;
+    ams_mel_ir_subsystem_dep_info_span_v1 subsystems;
+    uint32_t csci_count;
+    ams_mel_ir_subsystem_csci_info_span_v1 csci;
+} ams_mel_ir_subsystem_status_v1;
+typedef struct ams_mel_name_value_pair_v1 {
+    ams_mel_string_view_v1 name, value;
+} ams_mel_name_value_pair_v1;
+typedef struct ams_mel_name_value_pair_span_v1 {
+    const ams_mel_name_value_pair_v1 *data; size_t size;
+} ams_mel_name_value_pair_span_v1;
+typedef struct ams_mel_security_artifact_v1 {
+    ams_mel_uci_id_v1 component_id, associated_id;
+} ams_mel_security_artifact_v1;
+typedef struct ams_mel_security_artifact_span_v1 {
+    const ams_mel_security_artifact_v1 *data; size_t size;
+} ams_mel_security_artifact_span_v1;
+typedef struct ams_mel_security_event_v1 {
+    ams_mel_security_event_kind_t kind;
+    ams_mel_security_category_t category;
+    ams_mel_string_view_v1 details;
+    ams_mel_uci_id_v1 subsystem_id, service_id, mdf_id;
+} ams_mel_security_event_v1;
+typedef struct ams_mel_security_audit_record_v1 {
+    ams_mel_uci_id_v1 security_event_id;
+    int64_t event_timestamp_ns;
+    ams_mel_uci_id_v1 subsystem_id;
+    ams_mel_security_artifact_span_v1 artifacts;
+    ams_mel_security_event_v1 event;
+    ams_mel_security_outcome_t outcome;
+    ams_mel_security_severity_t severity;
+} ams_mel_security_audit_record_v1;
+typedef uint32_t ams_mel_ir_health_metadata_kind_t;
+#define AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS UINT32_C(1)
+#define AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS UINT32_C(2)
+#define AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS UINT32_C(3)
+#define AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS UINT32_C(4)
+#define AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT UINT32_C(5)
+#define AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED UINT32_C(6)
+typedef struct ams_mel_ir_health_metadata_event_v1 {
+    ams_mel_ir_health_metadata_kind_t kind;
+    ams_mel_mfa_status_v1 mfa_status;
+    ams_mel_bit_status_v1 bit_status;
+    ams_mel_ir_subsystem_status_v1 subsystem_status;
+    ams_mel_name_value_pair_span_v1 discrete_status;
+    ams_mel_security_audit_record_v1 security_audit;
+    ams_mel_name_value_pair_span_v1 mfa_status_detailed;
+} ams_mel_ir_health_metadata_event_v1;
 
 /* Terminal ModeCmd value. On COMMAND_REJECTED, error_code is populated and
  * the per-call diagnostic contains the provider's validated description. */
@@ -885,6 +1063,48 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_close(
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* HealthAndStatus owner. Metadata registration and capability snapshots are
+ * valid while attached or enabled. Close retains the owner when detach fails. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_open(
+    const ams_mel_session *session, const ams_mel_ir_health_config_v1 *config,
+    ams_mel_ir_health **out_health, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_enable(
+    ams_mel_ir_health *health, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_get_capabilities(
+    ams_mel_ir_health *health, ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_close(
+    ams_mel_ir_health **health, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Registration order is MFA_Status, BIT_Status, SubsystemStatusResp,
+ * DiscreteStatus, MFA_SecurityAuditRecord, MFA_StatusDetailed. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_open(
+    ams_mel_ir_health *health, size_t queue_capacity,
+    ams_mel_ir_health_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_receive(
+    ams_mel_ir_health_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_health_metadata_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_get_counters(
+    const ams_mel_ir_health_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_close(
+    ams_mel_ir_health_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_view(
+    const ams_mel_ir_health_metadata_event *event,
+    const ams_mel_ir_health_metadata_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_close(
+    ams_mel_ir_health_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus
 }

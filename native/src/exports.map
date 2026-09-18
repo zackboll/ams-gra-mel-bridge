@@ -36,6 +36,16 @@ AMS_MEL_0.1 {
         ams_mel_ir_return_request_wait;
         ams_mel_ir_return_request_close;
         ams_mel_ir_c2_close;
+        ams_mel_ir_health_open;
+        ams_mel_ir_health_enable;
+        ams_mel_ir_health_get_capabilities;
+        ams_mel_ir_health_close;
+        ams_mel_ir_health_metadata_open;
+        ams_mel_ir_health_metadata_receive;
+        ams_mel_ir_health_metadata_get_counters;
+        ams_mel_ir_health_metadata_close;
+        ams_mel_ir_health_metadata_event_view;
+        ams_mel_ir_health_metadata_event_close;
     local:
         *;
 };

@@ -47,6 +47,58 @@ pub const AMS_MEL_IR_MFA_STATE_INITIATED_BIT: u32 = 12;
 pub const AMS_MEL_IR_MFA_STATE_SHUTDOWN: u32 = 13;
 pub const AMS_MEL_IR_MFA_STATE_DEGRADED: u32 = 14;
 pub const AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE: u32 = 15;
+pub const AMS_MEL_STATE_TRANSITION_NOT_SET: u32 = 0;
+pub const AMS_MEL_STATE_TRANSITION_NOT_TRANSITIONING: u32 = 1;
+pub const AMS_MEL_STATE_TRANSITION_SHUTTING_DOWN: u32 = 2;
+pub const AMS_MEL_STATE_TRANSITION_TRANSITIONING: u32 = 3;
+pub const AMS_MEL_COMPONENT_STATE_NOT_SET: u32 = 0;
+pub const AMS_MEL_COMPONENT_STATE_UNKNOWN: u32 = 1;
+pub const AMS_MEL_COMPONENT_STATE_NOT_INSTALLED: u32 = 2;
+pub const AMS_MEL_COMPONENT_STATE_OFF: u32 = 3;
+pub const AMS_MEL_COMPONENT_STATE_INITIALIZING: u32 = 4;
+pub const AMS_MEL_COMPONENT_STATE_OPERATIONAL: u32 = 5;
+pub const AMS_MEL_COMPONENT_STATE_DEGRADED: u32 = 6;
+pub const AMS_MEL_COMPONENT_STATE_DISABLED: u32 = 7;
+pub const AMS_MEL_COMPONENT_STATE_FAULTED: u32 = 8;
+pub const AMS_MEL_TEMPERATURE_STATE_NOT_SET: u32 = 0;
+pub const AMS_MEL_TEMPERATURE_STATE_UNDER_TEMP: u32 = 1;
+pub const AMS_MEL_TEMPERATURE_STATE_NORMAL: u32 = 2;
+pub const AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_WARNING: u32 = 3;
+pub const AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_DEGRADED: u32 = 4;
+pub const AMS_MEL_TEMPERATURE_STATE_OVER_TEMP_SHUTDOWN: u32 = 5;
+pub const AMS_MEL_IR_FAILURE_NA: u32 = 0;
+pub const AMS_MEL_IR_FAILURE_CRITICAL: u32 = 1;
+pub const AMS_MEL_IR_FAILURE_MAJOR: u32 = 2;
+pub const AMS_MEL_IR_FAILURE_PARAMETRIC: u32 = 3;
+pub const AMS_MEL_IR_FAILURE_INFORMATIONAL: u32 = 4;
+pub const AMS_MEL_IR_FAILURE_AVAILABLE: u32 = 5;
+pub const AMS_MEL_IR_FAILURE_NOT_PRESENT: u32 = 6;
+pub const AMS_MEL_IR_CSCI_MODE_UNKNOWN: u32 = 0;
+pub const AMS_MEL_IR_CSCI_MODE_UNUSED: u32 = 1;
+pub const AMS_MEL_IR_CSCI_MODE_INITIALIZATION: u32 = 2;
+pub const AMS_MEL_IR_CSCI_MODE_MAINTENANCE: u32 = 3;
+pub const AMS_MEL_IR_CSCI_MODE_IDLE: u32 = 4;
+pub const AMS_MEL_IR_CSCI_MODE_OPERATIONAL: u32 = 5;
+pub const AMS_MEL_IR_CSCI_MODE_VSA: u32 = 6;
+pub const AMS_MEL_IR_CSCI_MODE_QUICK_LOOK: u32 = 7;
+pub const AMS_MEL_IR_CSCI_MODE_TRACK: u32 = 8;
+pub const AMS_MEL_IR_CSCI_MODE_IMAGING: u32 = 9;
+pub const AMS_MEL_IR_CSCI_MODE_NOISE: u32 = 10;
+pub const AMS_MEL_SECURITY_EVENT_NONE: u32 = 0;
+pub const AMS_MEL_SECURITY_EVENT_AUTHENTICATION: u32 = 1;
+pub const AMS_MEL_SECURITY_EVENT_INTEGRITY: u32 = 2;
+pub const AMS_MEL_SECURITY_EVENT_FILE_MANAGEMENT: u32 = 3;
+pub const AMS_MEL_SECURITY_EVENT_KEY_MANAGEMENT: u32 = 4;
+pub const AMS_MEL_SECURITY_EVENT_SYSTEM: u32 = 5;
+pub const AMS_MEL_SECURITY_EVENT_SANITIZATION: u32 = 6;
+pub const AMS_MEL_SECURITY_OUTCOME_NOT_SET: u32 = 0;
+pub const AMS_MEL_SECURITY_OUTCOME_FAILURE: u32 = 1;
+pub const AMS_MEL_SECURITY_OUTCOME_SUCCESS: u32 = 2;
+pub const AMS_MEL_SECURITY_SEVERITY_NOT_SET: u32 = 0;
+pub const AMS_MEL_SECURITY_SEVERITY_CRITICAL: u32 = 1;
+pub const AMS_MEL_SECURITY_SEVERITY_ERROR: u32 = 2;
+pub const AMS_MEL_SECURITY_SEVERITY_INFORMATIONAL: u32 = 3;
+pub const AMS_MEL_SECURITY_SEVERITY_WARNING: u32 = 4;
 pub const AMS_MEL_IR_COORD_FRAME_INERTIAL: u32 = 0;
 pub const AMS_MEL_IR_COORD_FRAME_AIRCRAFT: u32 = 1;
 pub const AMS_MEL_IR_DEGRADATION_CAPACITY: u32 = 0;
@@ -137,6 +189,12 @@ pub const AMS_MEL_IR_C2_METADATA_COMMAND_STATUS: u32 = 1;
 pub const AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION: u32 = 2;
 pub const AMS_MEL_IR_C2_METADATA_BIT_STATUS: u32 = 3;
 pub const AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST: u32 = 4;
+pub const AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS: u32 = 1;
+pub const AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS: u32 = 2;
+pub const AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS: u32 = 3;
+pub const AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS: u32 = 4;
+pub const AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT: u32 = 5;
+pub const AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED: u32 = 6;
 pub const AMS_MEL_IR_COMMAND_NOT_SET: u32 = 0;
 pub const AMS_MEL_IR_COMMAND_RECEIVED: u32 = 1;
 pub const AMS_MEL_IR_COMMAND_ACCEPTED: u32 = 2;
@@ -512,6 +570,156 @@ pub struct AmsMelIrC2ConfigV1 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrHealthConfigV1 {
+    pub channel_id: AmsMelUciIdV1,
+    pub channel_type: u32,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelEulerV1 {
+    pub roll: f64,
+    pub pitch: f64,
+    pub yaw: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelForeignKeyV1 {
+    pub key: AmsMelStringViewV1,
+    pub system_name: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelInstallationDetailsV1 {
+    pub location: AmsMelComponentLocationV1,
+    pub orientation: AmsMelEulerV1,
+    pub boresight: AmsMelEulerV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelTemperatureStatusV1 {
+    pub temperature_c: f64,
+    pub state: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelMfaComponentV1 {
+    pub component_id: AmsMelUciIdV1,
+    pub state: u32,
+    pub temperature: AmsMelTemperatureStatusV1,
+    pub installation_location_id: AmsMelForeignKeyV1,
+    pub installation_details: AmsMelInstallationDetailsV1,
+}
+span!(AmsMelMfaComponentSpanV1, AmsMelMfaComponentV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelAboutV1 {
+    pub model: AmsMelStringViewV1,
+    pub serial_number: AmsMelStringViewV1,
+    pub software_version: AmsMelStringViewV1,
+    pub bootloader_software_version: AmsMelStringViewV1,
+    pub hardware_version: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelMfaStatusV1 {
+    pub state: u32,
+    pub state_description: AmsMelStringViewV1,
+    pub mode_description: AmsMelStringViewV1,
+    pub transition_status: u32,
+    pub about: AmsMelAboutV1,
+    pub components: AmsMelMfaComponentSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSubsystemDepInfoV1 {
+    pub subsystem_id: u32,
+    pub criticality: u32,
+    pub failure: u32,
+}
+span!(AmsMelIrSubsystemDepInfoSpanV1, AmsMelIrSubsystemDepInfoV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrVersionV1 {
+    pub source: u32,
+    pub major_revision: u32,
+    pub minor_revision: u32,
+    pub engineering_revision: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSubsystemCsciInfoV1 {
+    pub csci: AmsMelStringViewV1,
+    pub mode: u32,
+    pub version: AmsMelIrVersionV1,
+    pub criticality: u32,
+    pub failure: u32,
+    pub bit_report: u32,
+    pub connection_established: u32,
+}
+span!(AmsMelIrSubsystemCsciInfoSpanV1, AmsMelIrSubsystemCsciInfoV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSubsystemStatusV1 {
+    pub subsystem_id: u32,
+    pub criticality: u32,
+    pub status_sequence_number: u32,
+    pub failure: u32,
+    pub subsystem_count: u32,
+    pub subsystems: AmsMelIrSubsystemDepInfoSpanV1,
+    pub csci_count: u32,
+    pub csci: AmsMelIrSubsystemCsciInfoSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelNameValuePairV1 {
+    pub name: AmsMelStringViewV1,
+    pub value: AmsMelStringViewV1,
+}
+span!(AmsMelNameValuePairSpanV1, AmsMelNameValuePairV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelSecurityArtifactV1 {
+    pub component_id: AmsMelUciIdV1,
+    pub associated_id: AmsMelUciIdV1,
+}
+span!(AmsMelSecurityArtifactSpanV1, AmsMelSecurityArtifactV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelSecurityEventV1 {
+    pub kind: u32,
+    pub category: u32,
+    pub details: AmsMelStringViewV1,
+    pub subsystem_id: AmsMelUciIdV1,
+    pub service_id: AmsMelUciIdV1,
+    pub mdf_id: AmsMelUciIdV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelSecurityAuditRecordV1 {
+    pub security_event_id: AmsMelUciIdV1,
+    pub event_timestamp_ns: i64,
+    pub subsystem_id: AmsMelUciIdV1,
+    pub artifacts: AmsMelSecurityArtifactSpanV1,
+    pub event: AmsMelSecurityEventV1,
+    pub outcome: u32,
+    pub severity: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrHealthMetadataEventV1 {
+    pub kind: u32,
+    pub mfa_status: AmsMelMfaStatusV1,
+    pub bit_status: AmsMelBitStatusV1,
+    pub subsystem_status: AmsMelIrSubsystemStatusV1,
+    pub discrete_status: AmsMelNameValuePairSpanV1,
+    pub security_audit: AmsMelSecurityAuditRecordV1,
+    pub mfa_status_detailed: AmsMelNameValuePairSpanV1,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AmsMelIrModeResultV1 {
     pub mode: u32,
@@ -608,6 +816,21 @@ pub struct AmsMelIrC2Metadata {
 }
 #[repr(C)]
 pub struct AmsMelIrC2MetadataEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrHealth {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrHealthMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrHealthMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -876,6 +1099,75 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_c2_metadata_event_close(
         event: *mut *mut AmsMelIrC2MetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrHealthConfigV1,
+        out: *mut *mut AmsMelIrHealth,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_enable(
+        health: *mut AmsMelIrHealth,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_get_capabilities(
+        health: *mut AmsMelIrHealth,
+        out: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_close(
+        health: *mut *mut AmsMelIrHealth,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_open(
+        health: *mut AmsMelIrHealth,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrHealthMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_receive(
+        metadata: *mut AmsMelIrHealthMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrHealthMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_get_counters(
+        metadata: *const AmsMelIrHealthMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_close(
+        metadata: *mut *mut AmsMelIrHealthMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_event_view(
+        event: *const AmsMelIrHealthMetadataEvent,
+        out: *mut *const AmsMelIrHealthMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_metadata_event_close(
+        event: *mut *mut AmsMelIrHealthMetadataEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
