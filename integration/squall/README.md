@@ -4,7 +4,10 @@ This opt-in integration validates the public C, Ada, safe Rust, and safe Python 
 against the real Squall IR MEL provider at commit
 `b1015728f904c799fa0c07489fce48e78f67845f`. It uses Squall's hardware-free
 simulated checkerboard optical MFA (`320x200` Mono8 at 30 FPS), Couloir, and the published MEL
-boundary. All four clients use the same provider/runtime invocation. The
+boundary. C and Ada require one empty/no-op BIT command to return Success in
+addition to TaskSched and real Mono8 frames. Rust and Python retain their existing
+TaskSched-plus-Mono8 flow and do not expose BIT yet. All four clients use the same
+provider/runtime invocation. The
 applications do not call Squall gRPC, Couloir, UDP, REST, or any private backend
 API. Rust uses `ams-mel` -> `ams-mel-sys` -> `libams_mel_c`; Python uses the
 public `ams_mel` API -> private `ctypes` -> `libams_mel_c`. Both reach only the
@@ -116,7 +119,7 @@ Optional controls:
 - `make test-squall-ir-c`, `make test-squall-ir-ada`,
   `make test-squall-ir-rust`, or `make test-squall-ir-python` selects one client;
   `make test-squall-ir` runs all four in one runtime startup.
-- `AMS_MEL_SQUALL_REPEAT=3` repeats complete open/operate/receive/teardown runs.
+- `AMS_MEL_SQUALL_REPEAT=3` repeats complete open/command/receive/teardown runs.
 - `AMS_MEL_SQUALL_FRAMES=N` requests at least `N` frames (default 3).
 - `AMS_MEL_SQUALL_FRAME_TIMEOUT_MS=N` sets each finite receive timeout.
 - `AMS_MEL_SQUALL_CONTROL_PORT=N` selects the host MEL-control port (default 21203).
@@ -135,6 +138,8 @@ is recorded before and after each client for host UDP diagnostics. The Rust
 client opens image and C2 graphs on one Session, obtains TaskSched, closes the
 Session parent first, repeats the cached request wait, receives real 320x200
 Mono8 checkerboard frames, validates counters, and explicitly closes its child
-owners. This opt-in evidence implies no RF or additional C2 support.
+For `all`, C and Ada validate BIT Success + TaskSched + images; Rust and Python
+validate TaskSched + images. This is not BIT language parity and implies no
+payload-bearing BIT, RF, or additional C2 support.
 The Python client validates the same flow through the public safe API, including
 Python-owned `bytes` frames and explicit request/control/stream teardown.

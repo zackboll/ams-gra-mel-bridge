@@ -357,6 +357,171 @@ static int test_arguments_and_config(void)
     return EXIT_SUCCESS;
 }
 
+static int test_bit_result(const char *scenario, ams_mel_ir_return_t expected)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    ams_mel_ir_return_result_v1 result = {99, 99};
+    CHECK(open_c2(scenario, &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, UINT32_C(0x89abcdef), &request,
+          NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(request == NULL);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, UINT32_C(0x89abcdef), &request,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == expected);
+    CHECK(result.error_code == AMS_MEL_ERROR_NONE);
+    result.value = 99;
+    CHECK(ams_mel_ir_return_request_wait(request, 0, &result,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == expected);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_bit_timeout_lifetime(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    ams_mel_ir_return_result_v1 result = {0, 0};
+    CHECK(open_c2("bit-delayed", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 14, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == AMS_MEL_IR_RETURN_SUCCESS);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_bit_rejection(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    ams_mel_ir_return_result_v1 result = {0, 0};
+    char small[8];
+    char complete[700];
+    size_t required = 0;
+    CHECK(open_c2("bit-reject-long", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 15, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, small,
+          sizeof small, &required) == AMS_MEL_COMMAND_REJECTED);
+    CHECK(result.error_code == AMS_MEL_ERROR_INVALID_PARAMETERS);
+    CHECK(required == 614U);
+    CHECK(ams_mel_ir_return_request_wait(request, 0, &result, complete,
+          sizeof complete, &required) == AMS_MEL_COMMAND_REJECTED);
+    CHECK(strlen(complete) == 613U);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_bit_failures(void)
+{
+    const char *scenarios[] = {"bit-null-result", "bit-future-throw", "bit-unknown-return"};
+    const ams_mel_status_t statuses[] = {
+        AMS_MEL_PROVIDER_FAILED, AMS_MEL_PROVIDER_EXCEPTION, AMS_MEL_PROVIDER_FAILED};
+    for (size_t i = 0; i < 3U; ++i) {
+        ams_mel_session *session = NULL;
+        ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL;
+        ams_mel_ir_return_result_v1 result = {0, 0};
+        CHECK(open_c2(scenarios[i], &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 1, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == statuses[i]);
+        CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL;
+        ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL;
+        CHECK(open_c2("bit-send-throw", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 1, &request, NULL, 0, NULL) == AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(request == NULL);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    return EXIT_SUCCESS;
+}
+
+static int test_bit_request_close_pending(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    char path[] = "/tmp/ams-mel-bit-lifetime-XXXXXX";
+    char log[4096];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(open_c2("bit-lifetime", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 16, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    for (unsigned i = 0; i < 1000U; ++i) {
+        CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+        if (strstr(log, "library_unloaded") != NULL) break;
+        {
+            const struct timespec delay = {0, 1000000L};
+            CHECK(nanosleep(&delay, NULL) == 0);
+        }
+    }
+    CHECK(check_order(log, "bit_completed", "c2_channel_destroyed") == EXIT_SUCCESS);
+    CHECK(check_order(log, "c2_channel_destroyed", "library_unloaded") == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
+static int test_bit_post_send_failure(const char *failpoint)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    char path[] = "/tmp/ams-mel-bit-post-send-XXXXXX";
+    char log[4096];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(open_c2("bit-lifetime", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(setenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE", failpoint, 1) == 0);
+    CHECK(ams_mel_ir_c2_submit_bit_noop(c2, 17, &request, NULL, 0, NULL) ==
+          AMS_MEL_INTERNAL_ERROR);
+    CHECK(unsetenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE") == 0);
+    CHECK(request == NULL);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        const struct timespec delay = {0, 100000000L};
+        CHECK(nanosleep(&delay, NULL) == 0);
+    }
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "bit_sent") != NULL);
+    CHECK(strstr(log, "bit_completed") != NULL);
+    CHECK(strstr(log, "c2_channel_destroyed") == NULL);
+    CHECK(strstr(log, "library_unloaded") == NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
 static int test_coexistence(void)
 {
     ams_mel_session *session = NULL;
@@ -424,8 +589,16 @@ int main(void)
     CHECK(test_terminal_failure("c2-future-throw", AMS_MEL_PROVIDER_EXCEPTION, "future") == EXIT_SUCCESS);
     CHECK(test_coexistence() == EXIT_SUCCESS);
     CHECK(test_enable_send_cleanup_failures() == EXIT_SUCCESS);
+    CHECK(test_bit_result("bit-command-id", AMS_MEL_IR_RETURN_SUCCESS) == EXIT_SUCCESS);
+    CHECK(test_bit_result("bit-fail", AMS_MEL_IR_RETURN_FAIL) == EXIT_SUCCESS);
+    CHECK(test_bit_timeout_lifetime() == EXIT_SUCCESS);
+    CHECK(test_bit_rejection() == EXIT_SUCCESS);
+    CHECK(test_bit_failures() == EXIT_SUCCESS);
+    CHECK(test_bit_request_close_pending() == EXIT_SUCCESS);
     CHECK(test_post_send_failure("allocation") == EXIT_SUCCESS);
     CHECK(test_post_send_failure("worker-launch") == EXIT_SUCCESS);
-    puts("PASS: C IR C2 Operate/TaskSched async/lifetime contract");
+    CHECK(test_bit_post_send_failure("allocation") == EXIT_SUCCESS);
+    CHECK(test_bit_post_send_failure("worker-launch") == EXIT_SUCCESS);
+    puts("PASS: C IR C2 Operate/TaskSched + BIT no-op async/lifetime contract");
     return EXIT_SUCCESS;
 }

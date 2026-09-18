@@ -77,6 +77,11 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_MFA_MODE_TASK_SCHED as usize,
         AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED as usize,
         AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED as usize,
+        AMS_MEL_IR_RETURN_SUCCESS as usize,
+        AMS_MEL_IR_RETURN_BAD_POINTER as usize,
+        AMS_MEL_IR_RETURN_FAIL as usize,
+        AMS_MEL_IR_RETURN_NOT_SUPPORTED as usize,
+        AMS_MEL_IR_RETURN_NOT_IMPLEMENTED as usize,
         AMS_MEL_ERROR_NONE as usize,
         AMS_MEL_ERROR_INVALID_ID as usize,
         AMS_MEL_ERROR_INVALID_STATE as usize,
@@ -138,6 +143,7 @@ fn declarations_match_the_c_header() {
         sensor_location
     );
     layout!(expected, AmsMelIrModeResultV1, mode, error_code);
+    layout!(expected, AmsMelIrReturnResultV1, value, error_code);
     layout!(
         expected,
         AmsMelIrFrameV1,

@@ -10,6 +10,7 @@ procedure AMS_MEL_Squall_IR is
    package C2 renames AMS.MEL.IR.C2;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
+   use type C2.Command_Return;
    use type C2.Outcome;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
@@ -86,6 +87,19 @@ begin
          Channel : C2.Control_Channel := C2.Open (Parent, C2_Config);
       begin
          C2.Enable (Channel);
+         declare
+            BIT_Request : C2.Return_Request :=
+              C2.Submit_BIT_No_Op (Channel, 16#0040_1402#);
+            BIT_Result : constant C2.Return_Result := C2.Wait (BIT_Request, 5_000);
+         begin
+            if C2.Status (BIT_Result) /= C2.Success
+              or else C2.Value (BIT_Result) /= C2.Return_Success
+            then
+               raise Program_Error with "Squall did not return BIT Success";
+            end if;
+            Ada.Text_IO.Put_Line ("BIT result: SUCCESS");
+            C2.Close (BIT_Request);
+         end;
          declare
             Request : C2.Mode_Request :=
               C2.Submit_Operate (Channel, 16#0040_0402#);

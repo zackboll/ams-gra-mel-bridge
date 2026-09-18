@@ -23,6 +23,11 @@ package AMS.MEL.IR.C2 is
      (Channel : Control_Channel; ID : Command_ID := 0) return Mode_Request;
    function Is_Open (Request : Mode_Request) return Boolean;
 
+   type Return_Request is limited private;
+   function Submit_BIT_No_Op
+     (Channel : Control_Channel; ID : Command_ID := 0) return Return_Request;
+   function Is_Open (Request : Return_Request) return Boolean;
+
    type Outcome is (Success, Rejected);
    type MFA_Mode is (Unused, Task_Sched, Scan_Volume_Sched, Scan_Bar_Sched);
    type Error_Code is
@@ -38,14 +43,27 @@ package AMS.MEL.IR.C2 is
      with Pre => Status (Result) = Rejected;
    function Description (Result : Mode_Result) return String
      with Pre => Status (Result) = Rejected;
+   type Command_Return is
+     (Return_Success, Bad_Pointer, Fail, Not_Supported, Not_Implemented);
+   type Return_Result is private;
+   function Status (Result : Return_Result) return Outcome;
+   function Value (Result : Return_Result) return Command_Return
+     with Pre => Status (Result) = Success;
+   function Rejection_Code (Result : Return_Result) return Error_Code
+     with Pre => Status (Result) = Rejected;
+   function Description (Result : Return_Result) return String
+     with Pre => Status (Result) = Rejected;
 
    --  Timeout_Error is inherited from AMS.MEL.IR. Timeout never cancels or
    --  consumes the request; Wait may be repeated and a later Wait may return
    --  its terminal result. Close must not race Wait on the same Mode_Request.
    function Wait
      (Request : Mode_Request; Timeout_Milliseconds : Natural) return Mode_Result;
+   function Wait
+     (Request : Return_Request; Timeout_Milliseconds : Natural) return Return_Result;
 
    procedure Close (Request : in out Mode_Request);
+   procedure Close (Request : in out Return_Request);
    procedure Close (Channel : in out Control_Channel);
 
 private
@@ -67,9 +85,23 @@ private
    type Mode_Request is limited record
       Owner : Request_Owner;
    end record;
+   type Return_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Return_Request_Handle :=
+        AMS.MEL_C_API.Null_Return_Request;
+   end record;
+   overriding procedure Finalize (Request : in out Return_Request_Owner);
+   type Return_Request is limited record
+      Owner : Return_Request_Owner;
+   end record;
    type Mode_Result is record
       Result_Status : Outcome := Success;
       Result_Mode   : MFA_Mode := Unused;
+      Result_Code   : Error_Code := None;
+      Result_Text   : US.Unbounded_String;
+   end record;
+   type Return_Result is record
+      Result_Status : Outcome := Success;
+      Result_Value  : Command_Return := Return_Success;
       Result_Code   : Error_Code := None;
       Result_Text   : US.Unbounded_String;
    end record;

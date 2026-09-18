@@ -3,6 +3,8 @@
 
 static_assert(noexcept(ams_mel_get_abi_version(nullptr)));
 static_assert(std::is_standard_layout_v<ams_mel_abi_version_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_ir_return_result_v1>);
+static_assert(noexcept(ams_mel_ir_return_request_close(nullptr, nullptr, 0, nullptr)));
 
 int main()
 {

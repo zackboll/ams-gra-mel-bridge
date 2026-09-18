@@ -66,6 +66,14 @@ uses channel/control capability vectors, enable/disable, attach/detach, and all
 nine published `ErrorCode` values. The broad C2 header declares unrelated
 commands/callbacks, but the façade does not expose or invoke them.
 
+Task 014 additionally uses required `C2Channel::send(BIT_Command)`, whose return
+is `RequestFor<Return>`. The pinned `Return : uint32_t` declaration assigns
+Success=0, BadPointer=1, Fail=2, NotSupported=3, and NotImplemented=4. The adapter
+sets only the exact `uint32_t` command ID; the default initiateBIT_ID,
+cancelBIT_ID, and clearFaultCode vectors remain empty. Pinned Squall accepts this
+empty profile and returns `Return::Success`, but rejects non-empty BIT input, so
+payload-bearing BIT is intentionally outside this task. No vendored file changed.
+
 ## License and notices
 
 Each selected repository supplies Apache License 2.0 `LICENSE` and federal

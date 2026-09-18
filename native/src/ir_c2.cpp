@@ -114,6 +114,18 @@ bool map_mode(irmel::MFA_Mode mode, ams_mel_ir_mfa_mode_t& value) noexcept
     return false;
 }
 
+bool map_return(irmel::Return input, ams_mel_ir_return_t& value) noexcept
+{
+    switch (input) {
+    case irmel::Return::Success: value = AMS_MEL_IR_RETURN_SUCCESS; return true;
+    case irmel::Return::BadPointer: value = AMS_MEL_IR_RETURN_BAD_POINTER; return true;
+    case irmel::Return::Fail: value = AMS_MEL_IR_RETURN_FAIL; return true;
+    case irmel::Return::NotSupported: value = AMS_MEL_IR_RETURN_NOT_SUPPORTED; return true;
+    case irmel::Return::NotImplemented: value = AMS_MEL_IR_RETURN_NOT_IMPLEMENTED; return true;
+    }
+    return false;
+}
+
 enum class C2Lifecycle { Attached, Enabled, Failed, Closed };
 
 struct ChannelState {
@@ -316,6 +328,116 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
     }
 }
 
+struct ReturnCompletion {
+    std::mutex mutex;
+    std::condition_variable ready;
+    CompletionKind kind{CompletionKind::Pending};
+    ams_mel_ir_return_result_v1 result{};
+    std::string message;
+    std::shared_ptr<ChannelState> channel;
+};
+
+struct ReturnWorkerInput {
+    std::shared_ptr<ReturnCompletion> completion;
+    mel::RequestFor<irmel::Return> future;
+    std::shared_ptr<ReturnWorkerInput> emergency_self;
+    ReturnWorkerInput *emergency_next{};
+    std::atomic<bool> emergency_retained{};
+    std::atomic<unsigned> launch_state{};
+};
+
+void arm_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
+{
+    input->emergency_self = input;
+}
+
+void retain_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
+{
+    static std::atomic<ReturnWorkerInput *> retained{};
+    bool expected = false;
+    if (!input->emergency_retained.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) return;
+    ReturnWorkerInput *head = retained.load(std::memory_order_relaxed);
+    do { input->emergency_next = head; }
+    while (!retained.compare_exchange_weak(
+        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
+}
+
+void complete_return(const std::shared_ptr<ReturnCompletion>& state,
+                     mel::RequestFor<irmel::Return>& future)
+{
+    CompletionKind kind = CompletionKind::ProviderException;
+    ams_mel_ir_return_result_v1 result{};
+    std::string message;
+    try {
+        auto outcome = future.get();
+        if (outcome) {
+            const auto& value = outcome.get();
+            if (!value) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned null successful Return result";
+            } else if (!map_return(*value, result.value)) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown IR Return value";
+            } else {
+                kind = CompletionKind::Success;
+            }
+        } else {
+            const mel::Error& error = outcome.getError();
+            bool known = false;
+            result.error_code = map_error(error.getCode(), known);
+            if (!known) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown MEL error code";
+            } else {
+                kind = CompletionKind::Rejected;
+                const std::string& description = error.getDescription();
+                message = valid_utf8(description) ? description :
+                          "provider rejection description was invalid UTF-8 or contained NUL";
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        kind = CompletionKind::InternalError;
+        message.clear();
+    } catch (const std::exception& error) {
+        kind = CompletionKind::ProviderException;
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
+        catch (...) { message.clear(); }
+    } catch (...) {
+        kind = CompletionKind::ProviderException;
+        try { message = "unknown provider future exception"; } catch (...) {}
+    }
+    auto channel = state->channel;
+    if (!finish_channel(channel)) {
+        kind = CompletionKind::ProviderFailure;
+        try { message = "deferred C2 cleanup failed"; }
+        catch (...) { message.clear(); }
+    }
+    {
+        std::lock_guard lock{state->mutex};
+        state->kind = kind;
+        state->result = result;
+        state->message = std::move(message);
+        state->channel.reset();
+    }
+    channel.reset();
+    state->ready.notify_all();
+}
+
+void run_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
+{
+    while (input->launch_state.load(std::memory_order_acquire) == 0U)
+        std::this_thread::yield();
+    try {
+        complete_return(input->completion, input->future);
+    } catch (...) {
+        arm_return_worker(input);
+        retain_return_worker(input);
+    }
+}
+
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 enum class SubmitFailpoint { None, Allocation, WorkerLaunch };
 
@@ -333,6 +455,7 @@ SubmitFailpoint submit_failpoint() noexcept
 
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
+struct ams_mel_ir_return_request { std::shared_ptr<ReturnCompletion> state; };
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_open(
     const ams_mel_session *session, const ams_mel_ir_c2_config_v1 *config,
@@ -571,6 +694,130 @@ extern "C" ams_mel_status_t ams_mel_ir_mode_request_wait(
 
 extern "C" ams_mel_status_t ams_mel_ir_mode_request_close(
     ams_mel_ir_mode_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
+    catch (...) { diagnostic("request close failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_bit_noop(
+    ams_mel_ir_c2 *c2, std::uint32_t command_id,
+    ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+
+    std::shared_ptr<ReturnCompletion> completion;
+    std::shared_ptr<ReturnWorkerInput> input;
+    std::unique_ptr<ams_mel_ir_return_request> owner;
+    std::unique_ptr<std::thread> worker;
+    irmel::BIT_Command command;
+    try {
+        completion = std::make_shared<ReturnCompletion>();
+        completion->channel = c2->state;
+        input = std::make_shared<ReturnWorkerInput>();
+        input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_return_request>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
+        command.setCommandID(command_id);
+    } catch (const std::bad_alloc&) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        diagnostic("BIT request preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    std::unique_lock<std::mutex> lock;
+    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
+    catch (...) {
+        diagnostic("C2 submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
+        diagnostic("C2 channel is not enabled", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
+        try {
+            auto future = c2->state->c2->send(std::move(command));
+            input->future = std::move(future);
+            arm_return_worker(input);
+            ++c2->state->requests;
+        } catch (const std::exception& error) {
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+        lock.unlock();
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        *worker = std::thread{[input] { run_return_worker(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
+        *out_request = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        retain_return_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        retain_return_worker(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_return_request_wait(
+    const ams_mel_ir_return_request *request, std::uint32_t timeout_ms,
+    ams_mel_ir_return_result_v1 *result, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || !request->state || !result || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{request->state->mutex};
+        if (request->state->kind == CompletionKind::Pending &&
+            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                [&] { return request->state->kind != CompletionKind::Pending; }))
+            return AMS_MEL_TIMEOUT;
+        *result = request->state->result;
+        diagnostic(request->state->message, out, capacity, required);
+        switch (request->state->kind) {
+        case CompletionKind::Success: return AMS_MEL_OK;
+        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
+        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
+        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
+        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
+        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
+        }
+    } catch (...) {
+        diagnostic("return request wait failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return AMS_MEL_INTERNAL_ERROR;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_return_request_close(
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);

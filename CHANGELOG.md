@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the required IR BIT command in the pinned-provider-compatible empty/no-op
+  profile for C and Ada, with reusable asynchronous `RequestFor<Return>` ownership.
+- Synchronize the complete 19-function raw Rust sys ABI while leaving safe Rust
+  and Python BIT APIs for later tasks.
 - Add the safe Rust Session foundation over the existing C ABI.
 - Add safe Rust IR host-memory Mono8 and C2 Operate/TaskSched bindings.
 - Validate the current safe Rust IR slice against the pinned real Squall stack.
