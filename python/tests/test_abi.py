@@ -41,9 +41,15 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_return_request_wait",
                 "ams_mel_ir_return_request_close",
                 "ams_mel_ir_c2_close",
+                "ams_mel_ir_c2_metadata_open",
+                "ams_mel_ir_c2_metadata_receive",
+                "ams_mel_ir_c2_metadata_get_counters",
+                "ams_mel_ir_c2_metadata_close",
+                "ams_mel_ir_c2_metadata_event_view",
+                "ams_mel_ir_c2_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 22)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 28)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -211,6 +217,103 @@ class AbiTests(unittest.TestCase):
                 "malformed_or_unsupported_frames",
             )
         )
+        expected.extend([
+            _native.AMS_MEL_IR_C2_METADATA_COMMAND_STATUS,
+            _native.AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION,
+            _native.AMS_MEL_IR_C2_METADATA_BIT_STATUS,
+            _native.AMS_MEL_IR_COMMAND_NOT_SET,
+            _native.AMS_MEL_IR_COMMAND_RECEIVED,
+            _native.AMS_MEL_IR_COMMAND_ACCEPTED,
+            _native.AMS_MEL_IR_COMMAND_REJECTED,
+            _native.AMS_MEL_IR_COMMAND_CANCELLED,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_NOT_SET,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ENDURANCE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_CLASSIFICATION,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_FOR_FOV_LIMIT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_GATING,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_MANEUVER_LIMIT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OP,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OCCLUSION,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_RANGE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PERFORMANCE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_RF,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ROUTE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SAFETY,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TARGET_ANGLE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TIME,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SYSTEM,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INFEASIBLE_ROUTE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_MISSION_EVENT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS_CHANGE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_UNAVAILABLE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_FAULT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_CONFLICT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_UNAVAILABLE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_FAULT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_FAULT,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PRECEDENCE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_UNAVAILABLE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INSUFFICIENT_RESOURCES,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_RANKING,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_WEATHER,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INELIGIBLE_CONTROL_SOURCE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_PREDECESSOR,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_ALL_OR_NOTHING,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_EITHER_OR,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INIT_CRITERIA_NOT_MET,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN_ID,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INVALID_INPUT_PARAMETER,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_INPUT_OTHER,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_MDF_ACTIVATION_ERROR,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_MULTIPLE,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_CANCELLED,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_OTHER,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_ABORTED,
+            _native.AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER,
+            _native.AMS_MEL_BIT_CONTROL_NOT_SET,
+            _native.AMS_MEL_BIT_CONTROL_SUBSYSTEM_BIT_COMMAND,
+            _native.AMS_MEL_BIT_CONTROL_SUBSYSTEM_STATE_COMMAND,
+            _native.AMS_MEL_BIT_CONTROL_SUBSYSTEM_INITIATED,
+            _native.AMS_MEL_BIT_RESULT_NOT_SET,
+            _native.AMS_MEL_BIT_RESULT_PASS,
+            _native.AMS_MEL_BIT_RESULT_FAIL,
+            _native.AMS_MEL_BIT_RESULT_INTERRUPTED,
+            _native.AMS_MEL_BIT_RESULT_NOT_TESTED,
+            _native.AMS_MEL_FAULT_SEVERITY_NOT_SET,
+            _native.AMS_MEL_FAULT_SEVERITY_NOMINAL,
+            _native.AMS_MEL_FAULT_SEVERITY_CAUTION,
+            _native.AMS_MEL_FAULT_SEVERITY_WARNING,
+            _native.AMS_MEL_FAULT_SEVERITY_FAILED,
+            _native.AMS_MEL_FAULT_STATE_NOT_SET,
+            _native.AMS_MEL_FAULT_STATE_SET,
+            _native.AMS_MEL_FAULT_STATE_CLEARED,
+            _native.AMS_MEL_FAULT_STATE_UNKNOWN,
+        ])
+        expected.extend(self._layout(_native.UciIdSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrCommandStatusV1, 'command_id', 'state', 'reason_id', 'reason_description'))
+        expected.extend(self._layout(_native.BitTypeV1, 'bit_id', 'accepted_interface', 'bit_item_names', 'subsystem_component_ids', 'expected_duration_ns'))
+        expected.extend(self._layout(_native.BitTypeSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.BitConfigurationV1, 'bit_types'))
+        expected.extend(self._layout(_native.ActiveBitV1, 'bit_id', 'estimated_completion_time_ns', 'estimated_percent_complete'))
+        expected.extend(self._layout(_native.ActiveBitSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.CompletedBitItemV1, 'bit_item_name', 'result', 'fail_reason'))
+        expected.extend(self._layout(_native.CompletedBitItemSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.CompletedBitV1, 'bit_id', 'time_tag_ns', 'result', 'fail_reason', 'bit_items'))
+        expected.extend(self._layout(_native.CompletedBitSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.FaultDataV1, 'key', 'value', 'format', 'units'))
+        expected.extend(self._layout(_native.FaultDataSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.FaultAmbiguityGroupV1, 'diagnostic_test_ids', 'component_ids'))
+        expected.extend(self._layout(_native.FaultAmbiguityGroupSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.FaultV1, 'fault_id', 'severity', 'state', 'fault_data', 'detection_time_ns', 'fault_code', 'fault_description', 'component_ids', 'ambiguity_groups'))
+        expected.extend(self._layout(_native.FaultSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.BitStatusV1, 'active_bits', 'completed_bits', 'faults'))
+        expected.extend(self._layout(_native.IrC2MetadataEventV1, 'kind', 'command_status', 'bit_configuration', 'bit_status'))
+        expected.extend(self._layout(_native.IrC2MetadataCountersV1, 'events_received', 'events_dropped_queue_full', 'malformed_or_unsupported'))
+        expected.extend([ctypes.sizeof(_native.IrC2MetadataHandle), ctypes.alignment(_native.IrC2MetadataHandle)])
+        expected.extend([ctypes.sizeof(_native.IrC2MetadataEventHandle), ctypes.alignment(_native.IrC2MetadataEventHandle)])
         expected.extend(
             [
                 _native.AMS_MEL_OK,

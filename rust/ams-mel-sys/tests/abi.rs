@@ -255,6 +255,180 @@ fn declarations_match_the_c_header() {
         malformed_or_unsupported_frames
     );
     expected.extend([
+        AMS_MEL_IR_C2_METADATA_COMMAND_STATUS as usize,
+        AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION as usize,
+        AMS_MEL_IR_C2_METADATA_BIT_STATUS as usize,
+        AMS_MEL_IR_COMMAND_NOT_SET as usize,
+        AMS_MEL_IR_COMMAND_RECEIVED as usize,
+        AMS_MEL_IR_COMMAND_ACCEPTED as usize,
+        AMS_MEL_IR_COMMAND_REJECTED as usize,
+        AMS_MEL_IR_COMMAND_CANCELLED as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_NOT_SET as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ENDURANCE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_CLASSIFICATION as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_FOR_FOV_LIMIT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_GATING as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_MANEUVER_LIMIT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OP as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OCCLUSION as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_RANGE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PERFORMANCE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_RF as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ROUTE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SAFETY as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TARGET_ANGLE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TIME as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SYSTEM as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INFEASIBLE_ROUTE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_MISSION_EVENT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS_CHANGE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_UNAVAILABLE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_FAULT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_CONFLICT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_UNAVAILABLE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_FAULT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_FAULT as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PRECEDENCE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_UNAVAILABLE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INSUFFICIENT_RESOURCES as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_RANKING as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_WEATHER as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INELIGIBLE_CONTROL_SOURCE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_PREDECESSOR as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_ALL_OR_NOTHING as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_EITHER_OR as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INIT_CRITERIA_NOT_MET as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN_ID as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INVALID_INPUT_PARAMETER as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_INPUT_OTHER as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_MDF_ACTIVATION_ERROR as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_MULTIPLE as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_CANCELLED as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_OTHER as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_ABORTED as usize,
+        AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER as usize,
+        AMS_MEL_BIT_CONTROL_NOT_SET as usize,
+        AMS_MEL_BIT_CONTROL_SUBSYSTEM_BIT_COMMAND as usize,
+        AMS_MEL_BIT_CONTROL_SUBSYSTEM_STATE_COMMAND as usize,
+        AMS_MEL_BIT_CONTROL_SUBSYSTEM_INITIATED as usize,
+        AMS_MEL_BIT_RESULT_NOT_SET as usize,
+        AMS_MEL_BIT_RESULT_PASS as usize,
+        AMS_MEL_BIT_RESULT_FAIL as usize,
+        AMS_MEL_BIT_RESULT_INTERRUPTED as usize,
+        AMS_MEL_BIT_RESULT_NOT_TESTED as usize,
+        AMS_MEL_FAULT_SEVERITY_NOT_SET as usize,
+        AMS_MEL_FAULT_SEVERITY_NOMINAL as usize,
+        AMS_MEL_FAULT_SEVERITY_CAUTION as usize,
+        AMS_MEL_FAULT_SEVERITY_WARNING as usize,
+        AMS_MEL_FAULT_SEVERITY_FAILED as usize,
+        AMS_MEL_FAULT_STATE_NOT_SET as usize,
+        AMS_MEL_FAULT_STATE_SET as usize,
+        AMS_MEL_FAULT_STATE_CLEARED as usize,
+        AMS_MEL_FAULT_STATE_UNKNOWN as usize,
+    ]);
+    layout!(expected, AmsMelUciIdSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCommandStatusV1,
+        command_id,
+        state,
+        reason_id,
+        reason_description
+    );
+    layout!(
+        expected,
+        AmsMelBitTypeV1,
+        bit_id,
+        accepted_interface,
+        bit_item_names,
+        subsystem_component_ids,
+        expected_duration_ns
+    );
+    layout!(expected, AmsMelBitTypeSpanV1, data, size);
+    layout!(expected, AmsMelBitConfigurationV1, bit_types);
+    layout!(
+        expected,
+        AmsMelActiveBitV1,
+        bit_id,
+        estimated_completion_time_ns,
+        estimated_percent_complete
+    );
+    layout!(expected, AmsMelActiveBitSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelCompletedBitItemV1,
+        bit_item_name,
+        result,
+        fail_reason
+    );
+    layout!(expected, AmsMelCompletedBitItemSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelCompletedBitV1,
+        bit_id,
+        time_tag_ns,
+        result,
+        fail_reason,
+        bit_items
+    );
+    layout!(expected, AmsMelCompletedBitSpanV1, data, size);
+    layout!(expected, AmsMelFaultDataV1, key, value, format, units);
+    layout!(expected, AmsMelFaultDataSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelFaultAmbiguityGroupV1,
+        diagnostic_test_ids,
+        component_ids
+    );
+    layout!(expected, AmsMelFaultAmbiguityGroupSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelFaultV1,
+        fault_id,
+        severity,
+        state,
+        fault_data,
+        detection_time_ns,
+        fault_code,
+        fault_description,
+        component_ids,
+        ambiguity_groups
+    );
+    layout!(expected, AmsMelFaultSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelBitStatusV1,
+        active_bits,
+        completed_bits,
+        faults
+    );
+    layout!(
+        expected,
+        AmsMelIrC2MetadataEventV1,
+        kind,
+        command_status,
+        bit_configuration,
+        bit_status
+    );
+    layout!(
+        expected,
+        AmsMelIrC2MetadataCountersV1,
+        events_received,
+        events_dropped_queue_full,
+        malformed_or_unsupported
+    );
+    expected.extend([
+        size_of::<*mut AmsMelIrC2Metadata>(),
+        align_of::<*mut AmsMelIrC2Metadata>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrC2MetadataEvent>(),
+        align_of::<*mut AmsMelIrC2MetadataEvent>(),
+    ]);
+    expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,

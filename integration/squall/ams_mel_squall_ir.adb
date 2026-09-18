@@ -4,15 +4,21 @@ with Ada.Text_IO;
 with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.IR.C2;
+with AMS.MEL.IR.C2.Metadata;
 with Interfaces;
 
 procedure AMS_MEL_Squall_IR is
    package C2 renames AMS.MEL.IR.C2;
+   package Metadata renames AMS.MEL.IR.C2.Metadata;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
    use type C2.Command_Return;
    use type C2.Error_Code;
    use type C2.Outcome;
+   use type C2.Command_ID;
+   use type Metadata.Metadata_Kind;
+   use type Metadata.Command_State;
+   use type Metadata.Cannot_Comply;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
 
@@ -48,6 +54,42 @@ procedure AMS_MEL_Squall_IR is
       end loop;
       return Value;
    end Checksum;
+
+   procedure Expect_Command_Status
+     (Stream : Metadata.Metadata_Stream; ID : C2.Command_ID;
+      State : Metadata.Command_State; Reason : Metadata.Cannot_Comply;
+      Description_Empty : Boolean)
+   is
+      Event : constant Metadata.Metadata_Event := Metadata.Receive (Stream, 5_000);
+      Status : constant Metadata.Command_Status := Metadata.Command (Event);
+   begin
+      if Metadata.Kind (Event) /= Metadata.Command_Status_Event
+        or else Metadata.Command_ID (Status) /= ID
+        or else Metadata.State (Status) /= State
+        or else Metadata.Reason (Status) /= Reason
+        or else (Metadata.Reason_Description (Status)'Length = 0) /= Description_Empty
+      then
+         raise Program_Error with "Squall CommandStatus mismatch for" & ID'Image;
+      end if;
+      Ada.Text_IO.Put_Line
+        ("CommandStatus: id=" & ID'Image & " state=" &
+         Metadata.Command_State'Image (State) & " reason=" &
+         Metadata.Cannot_Comply'Image (Reason) & " description=" &
+         Metadata.Reason_Description (Status));
+   end Expect_Command_Status;
+
+   procedure Expect_Empty_BIT_Status (Stream : Metadata.Metadata_Stream) is
+      Event : constant Metadata.Metadata_Event := Metadata.Receive (Stream, 5_000);
+   begin
+      if Metadata.Kind (Event) /= Metadata.BIT_Status_Event
+        or else Metadata.Active_BIT_Count (Event) /= 0
+        or else Metadata.Completed_BIT_Count (Event) /= 0
+        or else Metadata.Fault_Count (Event) /= 0
+      then
+         raise Program_Error with "Squall BIT_Status was not well-formed and empty";
+      end if;
+      Ada.Text_IO.Put_Line ("BIT_Status: empty default");
+   end Expect_Empty_BIT_Status;
 
 begin
    if Ada.Command_Line.Argument_Count < 2 or else Ada.Command_Line.Argument_Count > 4 then
@@ -86,7 +128,21 @@ begin
       AMS.MEL.IR.Start (Stream);
       declare
          Channel : C2.Control_Channel := C2.Open (Parent, C2_Config);
+         Metadata_Stream : Metadata.Metadata_Stream := Metadata.Open (Channel, 32);
       begin
+         declare
+            Configuration : constant Metadata.Metadata_Event :=
+              Metadata.Receive (Metadata_Stream, 5_000);
+         begin
+            if Metadata.Kind (Configuration) /= Metadata.BIT_Configuration_Event
+              or else Metadata.BIT_Type_Count (Configuration) /= 0
+            then
+               raise Program_Error with
+                 "Squall BIT_Configuration was not well-formed and empty";
+            end if;
+            Ada.Text_IO.Put_Line ("BIT_Configuration: empty default");
+         end;
+         Expect_Empty_BIT_Status (Metadata_Stream);
          C2.Enable (Channel);
          declare
             Request : C2.Mode_Request := C2.Submit_Mode
@@ -97,6 +153,9 @@ begin
                raise Program_Error with "Squall did not accept Standby/Unused";
             end if;
             Ada.Text_IO.Put_Line ("general mode result: STANDBY/UNUSED");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1701#, Metadata.Accepted,
+               Metadata.Not_Set, Description_Empty => True);
             C2.Close (Request);
          end;
          declare
@@ -110,6 +169,9 @@ begin
                raise Program_Error with "Squall did not reject unsupported scan mode";
             end if;
             Ada.Text_IO.Put_Line ("scan mode result: REJECTED/INVALID_PARAMETERS");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1702#, Metadata.Rejected,
+               Metadata.Invalid_Input_Parameter, Description_Empty => False);
             C2.Close (Request);
          end;
          declare
@@ -124,7 +186,13 @@ begin
                raise Program_Error with "Squall ConfigSet behavior changed";
             end if;
             Ada.Text_IO.Put_Line ("ConfigSet empty result: SUCCESS");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1703#, Metadata.Accepted,
+               Metadata.Not_Set, Description_Empty => True);
             Ada.Text_IO.Put_Line ("ConfigSet payload result: FAIL");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1704#, Metadata.Rejected,
+               Metadata.Invalid_Input_Parameter, Description_Empty => False);
             C2.Close (Empty_Request); C2.Close (Payload_Request);
          end;
          declare
@@ -135,6 +203,9 @@ begin
                raise Program_Error with "Squall did not return Fail for BIT payload";
             end if;
             Ada.Text_IO.Put_Line ("BIT payload result: FAIL");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1705#, Metadata.Rejected,
+               Metadata.Invalid_Input_Parameter, Description_Empty => False);
             C2.Close (Payload_Request);
          end;
          declare
@@ -148,6 +219,10 @@ begin
                raise Program_Error with "Squall did not return BIT Success";
             end if;
             Ada.Text_IO.Put_Line ("BIT result: SUCCESS");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_1402#, Metadata.Accepted,
+               Metadata.Not_Set, Description_Empty => True);
+            Expect_Empty_BIT_Status (Metadata_Stream);
             C2.Close (BIT_Request);
          end;
          declare
@@ -161,6 +236,9 @@ begin
                raise Program_Error with "Squall did not return Task_Sched";
             end if;
             Ada.Text_IO.Put_Line ("C2 result: TASK_SCHED");
+            Expect_Command_Status
+              (Metadata_Stream, 16#0040_0402#, Metadata.Accepted,
+               Metadata.Not_Set, Description_Empty => True);
 
             --  Exercise retained child/request ownership after parent close.
             AMS.MEL.Close (Parent);
@@ -218,7 +296,35 @@ begin
             end;
             C2.Close (Request);
          end;
+         declare
+            Counts : constant Metadata.Metadata_Counters :=
+              Metadata.Counters (Metadata_Stream);
+         begin
+            Ada.Text_IO.Put_Line
+              ("metadata counters: received=" & Counts.Events_Received'Image &
+               " dropped=" & Counts.Events_Dropped_Queue_Full'Image &
+               " malformed=" & Counts.Malformed_Or_Unsupported'Image);
+            if Counts.Events_Received < 10
+              or else Counts.Events_Dropped_Queue_Full /= 0
+              or else Counts.Malformed_Or_Unsupported /= 0
+            then
+               raise Program_Error with "invalid Squall metadata counters";
+            end if;
+         end;
          C2.Close (Channel);
+         begin
+            declare
+               Unexpected : constant Metadata.Metadata_Event :=
+                 Metadata.Receive (Metadata_Stream, 0);
+            begin
+               raise Program_Error with
+                 "metadata remained after close: " &
+                 Metadata.Metadata_Kind'Image (Metadata.Kind (Unexpected));
+            end;
+         exception
+            when AMS.MEL.IR.Stream_Stopped => null;
+         end;
+         Metadata.Close (Metadata_Stream);
       end;
       AMS.MEL.IR.Close (Stream);
       Ada.Text_IO.Put_Line ("PASS: real Squall IR Ada integration");

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add all three required C2-specific metadata callbacks through a bounded native
+  FIFO queue with DROP-INCOMING overflow, complete deep-copied CommandStatus,
+  BIT_Configuration, BIT_Status, and nested Fault values, immutable event owners,
+  and safe Ada-owned events. Expand only the raw Rust sys/private Python ABI to
+  the complete 28-function façade; their safe metadata APIs remain unchanged.
 - Complete all three required IR C2 command sends in the native façade and Ada:
   general ModeCmd with complete ScanParam, full raw BIT payload transport with a
   safe one-choice Ada API, and opaque ConfigSet. Synchronize only the raw Rust

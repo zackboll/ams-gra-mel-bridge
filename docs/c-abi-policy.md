@@ -178,3 +178,26 @@ The Ada wrapper initially waits with a bounded diagnostic buffer. For a normal
 rejection whose required byte count is larger, it allocates exactly that count,
 repeats the cached wait with timeout zero, verifies the same rejection status and
 error code/size, and preserves the complete validated UTF-8 description.
+
+## Task 018 C2 metadata contract
+
+Task 018 retains ABI 0.1 and adds exactly six operations, producing a
+28-function façade. One opaque metadata owner registers, in order,
+`BIT_Configuration`, `CommandStatus`, and `BIT_Status`. Its bounded FIFO queue is
+ready before the first registration and drops incoming valid events when full.
+Provider callbacks validate and atomically deep-copy every nested string, ID,
+vector, enum, signed nanosecond value, and floating-point value. No provider or
+callback-stack pointer enters a published event view.
+
+There is no published callback unregister operation. Registration is attempted
+only once per C2 channel. The callback state is retained by the existing C2
+`ChannelState` even if a later registration fails or the public metadata owner
+closes. Public close is idempotent/nonblocking and deactivates consumption but
+does not close C2 or cancel requests. The provider C2 channel is destroyed before
+the adapter waits for its atomic in-flight callback count; `disable()` is not a
+quiescence claim. Queued events drain before stopped or provider-failed status.
+
+Each successful receive transfers an immutable event snapshot containing only
+adapter-owned storage. Its borrowed root/nested C views remain valid until event
+close and are independent of metadata, C2, Session, and provider unload. Safe Ada
+copies that complete graph again and closes the native event before returning.

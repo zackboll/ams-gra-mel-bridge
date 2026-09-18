@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -180,6 +181,154 @@ bool map_return(irmel::Return input, ams_mel_ir_return_t& value) noexcept
     return false;
 }
 
+void increment(std::uint64_t& value) noexcept
+{ if (value != UINT64_MAX) ++value; }
+
+struct OwnedID { std::array<std::uint8_t, 16> uuid{}; std::string label; };
+struct OwnedBitType { OwnedID id; std::uint32_t interface{}; std::vector<std::string> names; std::vector<OwnedID> components; std::int64_t duration{}; };
+struct OwnedActive { OwnedID id; std::int64_t completion{}; double percent{}; };
+struct OwnedItem { std::string name; std::uint32_t result{}; std::string reason; };
+struct OwnedCompleted { OwnedID id; std::int64_t time{}; std::uint32_t result{}; std::string reason; std::vector<OwnedItem> items; };
+struct OwnedFaultData { std::string key, value, format, units; };
+struct OwnedAmbiguity { std::vector<OwnedID> tests, components; };
+struct OwnedFault { OwnedID id; std::uint32_t severity{}, state{}; std::vector<OwnedFaultData> data; std::int64_t time{}; std::string code, description; std::vector<OwnedID> components; std::vector<OwnedAmbiguity> groups; };
+
+struct EventData {
+    ams_mel_ir_c2_metadata_event_v1 view{};
+    std::string command_description;
+    std::vector<OwnedBitType> bit_types;
+    std::vector<OwnedActive> active;
+    std::vector<OwnedCompleted> completed;
+    std::vector<OwnedFault> faults;
+    std::vector<ams_mel_bit_type_v1> bit_type_views;
+    std::vector<std::vector<ams_mel_string_view_v1>> name_views;
+    std::vector<std::vector<ams_mel_uci_id_v1>> bit_component_views;
+    std::vector<ams_mel_active_bit_v1> active_views;
+    std::vector<ams_mel_completed_bit_v1> completed_views;
+    std::vector<std::vector<ams_mel_completed_bit_item_v1>> item_views;
+    std::vector<ams_mel_fault_v1> fault_views;
+    std::vector<std::vector<ams_mel_fault_data_v1>> fault_data_views;
+    std::vector<std::vector<ams_mel_uci_id_v1>> fault_component_views;
+    std::vector<std::vector<ams_mel_fault_ambiguity_group_v1>> group_views;
+    std::vector<std::vector<std::vector<ams_mel_uci_id_v1>>> group_test_views, group_component_views;
+};
+
+ams_mel_string_view_v1 string_view(const std::string& value) noexcept
+{ return {value.empty() ? nullptr : value.data(), value.size()}; }
+ams_mel_uci_id_v1 id_view(const OwnedID& id) noexcept
+{
+    ams_mel_uci_id_v1 result{};
+    std::copy(id.uuid.begin(), id.uuid.end(), result.uuid);
+    result.descriptive_label = string_view(id.label);
+    return result;
+}
+bool copy_id(const mel::UCI_ID& input, OwnedID& output)
+{
+    if (!valid_utf8(input.getDescriptiveLabel())) return false;
+    output.uuid = input.getUUID(); output.label = input.getDescriptiveLabel(); return true;
+}
+bool valid_result(mel::BIT_Result value) noexcept
+{ return static_cast<std::uint32_t>(value) < static_cast<std::uint32_t>(mel::BIT_Result::MaxExclusive); }
+
+void build_views(EventData& event)
+{
+    if (event.view.kind == AMS_MEL_IR_C2_METADATA_COMMAND_STATUS) {
+        event.view.command_status.reason_description = string_view(event.command_description);
+        return;
+    }
+    if (event.view.kind == AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION) {
+        event.bit_type_views.resize(event.bit_types.size());
+        event.name_views.resize(event.bit_types.size()); event.bit_component_views.resize(event.bit_types.size());
+        for (std::size_t i=0; i<event.bit_types.size(); ++i) {
+            const auto& source=event.bit_types[i]; auto& names=event.name_views[i]; auto& ids=event.bit_component_views[i];
+            for (const auto& value:source.names) names.push_back(string_view(value));
+            for (const auto& value:source.components) ids.push_back(id_view(value));
+            event.bit_type_views[i]={id_view(source.id), source.interface, {names.data(),names.size()}, {ids.data(),ids.size()}, source.duration};
+        }
+        event.view.bit_configuration.bit_types={event.bit_type_views.data(),event.bit_type_views.size()}; return;
+    }
+    event.active_views.resize(event.active.size());
+    for (std::size_t i=0;i<event.active.size();++i) event.active_views[i]={id_view(event.active[i].id),event.active[i].completion,event.active[i].percent};
+    event.completed_views.resize(event.completed.size()); event.item_views.resize(event.completed.size());
+    for (std::size_t i=0;i<event.completed.size();++i) {
+        auto& items=event.item_views[i]; for(const auto& item:event.completed[i].items) items.push_back({string_view(item.name),item.result,string_view(item.reason)});
+        const auto& source=event.completed[i]; event.completed_views[i]={id_view(source.id),source.time,source.result,string_view(source.reason),{items.data(),items.size()}};
+    }
+    event.fault_views.resize(event.faults.size()); event.fault_data_views.resize(event.faults.size()); event.fault_component_views.resize(event.faults.size());
+    event.group_views.resize(event.faults.size()); event.group_test_views.resize(event.faults.size()); event.group_component_views.resize(event.faults.size());
+    for(std::size_t i=0;i<event.faults.size();++i){ const auto& source=event.faults[i]; auto& data=event.fault_data_views[i];
+        for(const auto& value:source.data)data.push_back({string_view(value.key),string_view(value.value),string_view(value.format),string_view(value.units)});
+        auto& components=event.fault_component_views[i]; for(const auto& value:source.components)components.push_back(id_view(value));
+        event.group_test_views[i].resize(source.groups.size()); event.group_component_views[i].resize(source.groups.size()); auto& groups=event.group_views[i];
+        for(std::size_t j=0;j<source.groups.size();++j){for(const auto& value:source.groups[j].tests)event.group_test_views[i][j].push_back(id_view(value)); for(const auto& value:source.groups[j].components)event.group_component_views[i][j].push_back(id_view(value)); groups.push_back({{event.group_test_views[i][j].data(),event.group_test_views[i][j].size()},{event.group_component_views[i][j].data(),event.group_component_views[i][j].size()}});}
+        event.fault_views[i]={id_view(source.id),source.severity,source.state,{data.data(),data.size()},source.time,string_view(source.code),string_view(source.description),{components.data(),components.size()},{groups.data(),groups.size()}};
+    }
+    event.view.bit_status={{event.active_views.data(),event.active_views.size()},{event.completed_views.data(),event.completed_views.size()},{event.fault_views.data(),event.fault_views.size()}};
+}
+
+enum class MetadataLifecycle { Active, Inactive, Stopped, Failed };
+struct MetadataState {
+    std::mutex mutex; std::condition_variable ready, callbacks_done;
+    std::deque<std::unique_ptr<EventData>> queue; std::size_t capacity{};
+    ams_mel_ir_c2_metadata_counters_v1 counters{}; MetadataLifecycle lifecycle{MetadataLifecycle::Active};
+    std::atomic<std::uint64_t> callbacks{};
+};
+
+struct CallbackGuard { std::shared_ptr<MetadataState> state; explicit CallbackGuard(std::shared_ptr<MetadataState> value):state(std::move(value)){state->callbacks.fetch_add(1,std::memory_order_acq_rel);} ~CallbackGuard(){if(state->callbacks.fetch_sub(1,std::memory_order_acq_rel)==1)state->callbacks_done.notify_all();} };
+
+template<class Build> void metadata_callback(const std::shared_ptr<MetadataState>& state, Build build) noexcept
+{
+    CallbackGuard guard{state};
+    { std::lock_guard lock{state->mutex}; increment(state->counters.events_received); if(state->lifecycle!=MetadataLifecycle::Active)return; }
+    try {
+        auto event=build();
+        std::lock_guard lock{state->mutex}; if(state->lifecycle!=MetadataLifecycle::Active)return;
+        if(!event){increment(state->counters.malformed_or_unsupported);return;}
+        if(state->queue.size()>=state->capacity){increment(state->counters.events_dropped_queue_full);return;}
+        state->queue.push_back(std::move(event)); state->ready.notify_one();
+    } catch (...) { std::lock_guard lock{state->mutex}; state->lifecycle=MetadataLifecycle::Failed; state->ready.notify_all(); }
+}
+
+std::unique_ptr<EventData> copy_command_status(const irmel::CommandStatus *input)
+{
+    if(!input)return {};
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    if (const char *value = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_FAILURE");
+        value && std::strcmp(value, "command-allocation") == 0)
+        throw std::bad_alloc{};
+#endif
+    const auto state=static_cast<std::uint32_t>(input->getState()), reason=static_cast<std::uint32_t>(input->getReasonID());
+    if(state>AMS_MEL_IR_COMMAND_CANCELLED || reason>AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER || !valid_utf8(input->getReasonDescription()))return {};
+    auto event=std::make_unique<EventData>(); event->view.kind=AMS_MEL_IR_C2_METADATA_COMMAND_STATUS;
+    event->view.command_status={input->getCommandID(),state,reason,{}}; event->command_description=input->getReasonDescription(); build_views(*event); return event;
+}
+std::unique_ptr<EventData> copy_bit_configuration(const mel::BIT_Configuration *input)
+{
+    if (!input) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION;
+    for(const auto& source:input->getBit()){
+        const auto interface=static_cast<std::uint32_t>(source.getAcceptedInterface()); if(interface>=static_cast<std::uint32_t>(mel::BIT_ControlInterface::MaxExclusive))return {};
+        OwnedBitType value; if(!copy_id(source.getBitID(),value.id))return {}; value.interface=interface; value.duration=source.getExpectedDuration().count();
+        for(const auto& text:source.getBitItemName()){if(!valid_utf8(text))return {};value.names.push_back(text);} for(const auto& id:source.getSubsystemComponentID()){OwnedID copied;if(!copy_id(id,copied))return {};value.components.push_back(std::move(copied));} event->bit_types.push_back(std::move(value));
+    } build_views(*event); return event;
+}
+std::unique_ptr<EventData> copy_bit_status(const mel::BIT_Status *input)
+{
+    if (!input) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_C2_METADATA_BIT_STATUS;
+    for(const auto& source:input->getActiveBITs()){OwnedActive value;if(!copy_id(source.getBitID(),value.id))return {};value.completion=source.getEstimatedCompletionTime().count();value.percent=source.getEstimatedPercentComplete();event->active.push_back(std::move(value));}
+    for(const auto& source:input->getCompletedBITs()){if(!valid_result(source.getResult())||!valid_utf8(source.getFailReason()))return {};OwnedCompleted value;if(!copy_id(source.getBitID(),value.id))return {};value.time=source.getTimeTag().count();value.result=static_cast<std::uint32_t>(source.getResult());value.reason=source.getFailReason();for(const auto& item:source.getBitItem()){if(!valid_result(item.getResult())||!valid_utf8(item.getBitItemName())||!valid_utf8(item.getFailReason()))return {};value.items.push_back({item.getBitItemName(),static_cast<std::uint32_t>(item.getResult()),item.getFailReason()});}event->completed.push_back(std::move(value));}
+    for(const auto& source:input->getFaults()){
+        const auto severity=static_cast<std::uint32_t>(source.getSeverity()), state=static_cast<std::uint32_t>(source.getState()); if(severity>=static_cast<std::uint32_t>(mel::FaultSeverity::MaxExclusive)||state>=static_cast<std::uint32_t>(mel::FaultState::MaxExclusive)||!valid_utf8(source.getFaultCode())||!valid_utf8(source.getFaultDescription()))return {};
+        OwnedFault value;if(!copy_id(source.getFaultID(),value.id))return {};value.severity=severity;value.state=state;value.time=source.getDetectionTime().count();value.code=source.getFaultCode();value.description=source.getFaultDescription();
+        for(const auto& data:source.getFaultData()){if(!valid_utf8(data.getKey())||!valid_utf8(data.getValue())||!valid_utf8(data.getFormat())||!valid_utf8(data.getUnits()))return {};value.data.push_back({data.getKey(),data.getValue(),data.getFormat(),data.getUnits()});}
+        for(const auto& id:source.getComponentID()){OwnedID copied;if(!copy_id(id,copied))return {};value.components.push_back(std::move(copied));}
+        for(const auto& group:source.getAmbiguityGroup()){OwnedAmbiguity copied;for(const auto& id:group.getDiagnosticTestID()){OwnedID item;if(!copy_id(id,item))return {};copied.tests.push_back(std::move(item));}for(const auto& id:group.getComponentID()){OwnedID item;if(!copy_id(id,item))return {};copied.components.push_back(std::move(item));}value.groups.push_back(std::move(copied));}event->faults.push_back(std::move(value));
+    } build_views(*event); return event;
+}
+
 enum class C2Lifecycle { Attached, Enabled, Failed, Closed };
 
 struct ChannelState {
@@ -195,6 +344,8 @@ struct ChannelState {
     std::shared_ptr<ChannelState> emergency_self;
     ChannelState *emergency_next{};
     std::atomic<bool> emergency_retained{};
+    std::shared_ptr<struct MetadataState> metadata;
+    bool metadata_attempted{};
 };
 
 /* A failed deferred detach cannot safely destroy its graph. Keep it for process
@@ -217,13 +368,20 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
              bool retain_if_orphaned)
 {
     std::shared_ptr<irmel::Channel> channel;
+    std::shared_ptr<MetadataState> metadata;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
         if (state->cleanup_started || state->requests != 0U) return true;
         state->cleanup_started = true;
         channel = state->channel;
+        metadata = state->metadata;
         disable = state->enable_attempted;
+    }
+    if (metadata) {
+        std::lock_guard lock{metadata->mutex};
+        if (metadata->lifecycle == MetadataLifecycle::Active)
+            metadata->lifecycle = MetadataLifecycle::Inactive;
     }
     bool ok = true;
     if (channel && disable) {
@@ -238,6 +396,11 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         } catch (...) { detached = false; }
     }
     if (!detached) {
+        if (metadata) {
+            std::lock_guard lock{metadata->mutex};
+            metadata->lifecycle = MetadataLifecycle::Failed;
+            metadata->ready.notify_all();
+        }
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -252,6 +415,13 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         state->enabled = false;
         state->enable_attempted = false;
         state->lifecycle = C2Lifecycle::Closed;
+    }
+    channel.reset();
+    if (metadata) {
+        std::unique_lock lock{metadata->mutex};
+        metadata->callbacks_done.wait(lock, [&]{ return metadata->callbacks.load(std::memory_order_acquire) == 0U; });
+        if (metadata->lifecycle != MetadataLifecycle::Failed) metadata->lifecycle = MetadataLifecycle::Stopped;
+        metadata->ready.notify_all();
     }
     return ok;
 }
@@ -510,6 +680,8 @@ SubmitFailpoint submit_failpoint() noexcept
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_return_request { std::shared_ptr<ReturnCompletion> state; };
+struct ams_mel_ir_c2_metadata { std::shared_ptr<MetadataState> state; };
+struct ams_mel_ir_c2_metadata_event { std::unique_ptr<EventData> data; };
 
 namespace {
 ams_mel_status_t submit_mode_command(
@@ -914,6 +1086,46 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_config_set(
         return AMS_MEL_INTERNAL_ERROR;
     }
 }
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_open(
+    ams_mel_ir_c2 *c2, std::size_t queue_capacity, ams_mel_ir_c2_metadata **output,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("",out,capacity,required);
+    if(!c2||!c2->state||!queue_capacity||!output||*output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<MetadataState> state;
+    try {
+        std::lock_guard channel_lock{c2->state->mutex};
+        if(c2->state->metadata_attempted||c2->state->lifecycle==C2Lifecycle::Closed)return AMS_MEL_INVALID_ARGUMENT;
+        c2->state->metadata_attempted=true; state=std::make_shared<MetadataState>(); state->capacity=queue_capacity; c2->state->metadata=state;
+        auto first=c2->state->c2->registerMetadataCallback(std::function<void(irmel::Channel&,const mel::BIT_Configuration*const)>{[state](irmel::Channel&,const mel::BIT_Configuration* value) noexcept {metadata_callback(state,[&]{return copy_bit_configuration(value);});}});
+        if(first!=irmel::Return::Success)throw std::runtime_error("BIT_Configuration callback registration failed");
+        auto second=c2->state->c2->registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::CommandStatus*const)>{[state](irmel::Channel&,const irmel::CommandStatus* value) noexcept {metadata_callback(state,[&]{return copy_command_status(value);});}});
+        if(second!=irmel::Return::Success)throw std::runtime_error("CommandStatus callback registration failed");
+        auto third=c2->state->c2->registerMetadataCallback(std::function<void(irmel::Channel&,const mel::BIT_Status*const)>{[state](irmel::Channel&,const mel::BIT_Status* value) noexcept {metadata_callback(state,[&]{return copy_bit_status(value);});}});
+        if(third!=irmel::Return::Success)throw std::runtime_error("BIT_Status callback registration failed");
+        auto owner=std::make_unique<ams_mel_ir_c2_metadata>(); owner->state=state; *output=owner.release(); return AMS_MEL_OK;
+    } catch(const std::bad_alloc&){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Failed;state->ready.notify_all();}diagnostic("metadata allocation failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}
+      catch(const std::exception& error){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Inactive;state->ready.notify_all();}diagnostic(error.what(),out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}
+      catch(...){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Inactive;state->ready.notify_all();}diagnostic("metadata registration failed",out,capacity,required);return AMS_MEL_PROVIDER_EXCEPTION;}
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_receive(ams_mel_ir_c2_metadata *metadata,std::uint32_t timeout_ms,ams_mel_ir_c2_metadata_event **output,char *out,std::size_t capacity,std::size_t *required) noexcept
+{
+    diagnostic("",out,capacity,required);if(!metadata||!metadata->state||!output||*output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;
+    try{std::unique_lock lock{metadata->state->mutex};if(metadata->state->queue.empty()&&metadata->state->lifecycle==MetadataLifecycle::Active&&!metadata->state->ready.wait_for(lock,std::chrono::milliseconds{timeout_ms},[&]{return !metadata->state->queue.empty()||metadata->state->lifecycle!=MetadataLifecycle::Active;}))return AMS_MEL_TIMEOUT;
+        if(!metadata->state->queue.empty()){auto owner=std::make_unique<ams_mel_ir_c2_metadata_event>();owner->data=std::move(metadata->state->queue.front());metadata->state->queue.pop_front();*output=owner.release();return AMS_MEL_OK;}
+        return metadata->state->lifecycle==MetadataLifecycle::Failed?AMS_MEL_PROVIDER_FAILED:(metadata->state->lifecycle==MetadataLifecycle::Active?AMS_MEL_TIMEOUT:AMS_MEL_STREAM_STOPPED);
+    }catch(...){diagnostic("metadata receive failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}
+}
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_get_counters(const ams_mel_ir_c2_metadata *metadata,ams_mel_ir_c2_metadata_counters_v1 *output,char *out,std::size_t capacity,std::size_t *required) noexcept
+{diagnostic("",out,capacity,required);if(!metadata||!metadata->state||!output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{std::lock_guard lock{metadata->state->mutex};*output=metadata->state->counters;return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_close(ams_mel_ir_c2_metadata **metadata,char *out,std::size_t capacity,std::size_t *required) noexcept
+{diagnostic("",out,capacity,required);if(!metadata||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{auto owner=std::exchange(*metadata,nullptr);if(owner){std::lock_guard lock{owner->state->mutex};if(owner->state->lifecycle==MetadataLifecycle::Active)owner->state->lifecycle=MetadataLifecycle::Inactive;owner->state->ready.notify_all();delete owner;}return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_event_view(const ams_mel_ir_c2_metadata_event *event,const ams_mel_ir_c2_metadata_event_v1 **output,char *out,std::size_t capacity,std::size_t *required) noexcept
+{diagnostic("",out,capacity,required);if(!event||!event->data||!output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;*output=&event->data->view;return AMS_MEL_OK;}
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_event_close(ams_mel_ir_c2_metadata_event **event,char *out,std::size_t capacity,std::size_t *required) noexcept
+{diagnostic("",out,capacity,required);if(!event||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{delete std::exchange(*event,nullptr);return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
 
 extern "C" ams_mel_status_t ams_mel_ir_return_request_wait(
     const ams_mel_ir_return_request *request, std::uint32_t timeout_ms,

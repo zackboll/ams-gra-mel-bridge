@@ -17,6 +17,13 @@ rejection of Operate/ScanVolumeSched, empty ConfigSet Success, nonempty ConfigSe
 Fail, and payload-bearing BIT Fail. Complete ScanParam fidelity is mock-proven;
 pinned Squall rejects scan scheduling before meaningfully consuming ScanParam.
 C, Rust, and Python retain the earlier integration subset.
+Ada also opens Task 018's metadata stream before command activity. It validates
+pinned Squall's current empty default BIT_Configuration/BIT_Status, correlates
+Accepted and Rejected CommandStatus values (including complete rejection text)
+for Mode, BIT, and ConfigSet command IDs, observes the no-op BIT status event,
+and requires zero malformed/dropped metadata counters. Rich nonempty metadata
+fidelity is established by the separate mock-provider tests, not by Squall's
+current empty defaults. Safe C/Rust/Python integration behavior is unchanged.
 
 Provide an existing checkout with this exact source closure:
 
@@ -144,9 +151,9 @@ and Python clients open image and C2 graphs on one Session, obtain BIT Success
 and TaskSched, close the Session parent first, repeat both cached request waits,
 receive real 320x200 Mono8 checkerboard frames, validate counters, and explicitly
 close their child resources. For `all`, C, Ada, Rust, and Python validate the
-cross-language BIT no-op + TaskSched + Mono8 subset. Ada additionally validates
-Task 017's general Mode, payload-bearing BIT, and ConfigSet extension. Required
-C2 metadata callbacks, optional/conditional C2 commands, RF, and other MEL
-families remain unsupported. The Python client uses only the public safe API,
+Ada additionally validates Task 017's general Mode, payload-bearing BIT, and
+ConfigSet extension plus Task 018's required C2-specific metadata. Common Channel
+services, optional/conditional C2 commands, RF, and other MEL families remain
+unsupported. The Python client uses only the public safe API,
 including Python-owned `bytes` frames and explicit Return/mode request, control,
 and stream teardown.

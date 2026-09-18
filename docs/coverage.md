@@ -17,17 +17,18 @@
 | IR C2 safe Rust/Python subset | Constrained existing subset | Operate/TaskSched and BIT no-op only; no safe Task-017 expansion |
 | Pending C2 lifetime | Hardened and lifecycle-tested | Pre-send allocation; allocation-free emergency roots; launch/allocation failure injection; deferred disable/detach/unload |
 | C2/image coexistence | Implemented | One Session, parent-first close, provider unload last |
-| IR C2 required callbacks | Not implemented | BIT Configuration, BIT Status, CommandStatus, and ChannelCommsTest require Task-018 queue architecture |
+| IR C2-specific required metadata | Complete in native C and safe Ada | BIT_Configuration, CommandStatus, and BIT_Status; complete ordered nested values through one queue |
+| Common inherited Channel services | Not implemented | KeepAlive, CommsTest, ChannelCommsTest callback, and common channel capabilities remain a later family |
 | Optional/conditional C2 commands | Not implemented | No calibration, camera, erase, or system-track-response commands |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Full FrameHeader metadata | Partial by design | Omits contributing sensor and inertial/navigation vectors |
-| Real IR provider validation | Implemented and passed | Ada adds general mode/rejection, BIT payload, and ConfigSet evidence; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
+| Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 22 C functions; raw records/signatures/layout/constants synchronized; not safe feature parity |
+| Rust sys binding | Complete for the current project C ABI | Exactly 28 C functions; raw metadata records/signatures/layout/constants synchronized; not safe feature parity |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 22-function private ctypes binding; new raw declarations have no public safe methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 28-function private ctypes binding; metadata declarations have no public safe methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
@@ -39,7 +40,8 @@
 | Feature family | Ada status |
 |---|---|
 | C2 required sends | Complete |
-| C2 required callbacks | Not implemented |
+| C2-specific required metadata callbacks | Complete: BIT_Configuration, CommandStatus, BIT_Status |
+| Common inherited Channel services | Not implemented |
 | Image receive | Partial: host-memory Mono8 |
 | Image metadata | Not implemented beyond current frame subset |
 | Scheduling | Not implemented |
