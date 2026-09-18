@@ -2,6 +2,7 @@ private with Ada.Containers.Vectors;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
+with AMS.MEL.IR.Channel;
 
 package AMS.MEL.IR.C2.Metadata is
    type Metadata_Stream is limited private;
@@ -9,7 +10,9 @@ package AMS.MEL.IR.C2.Metadata is
       return Metadata_Stream;
    function Is_Open (Stream : Metadata_Stream) return Boolean;
 
-   type Metadata_Kind is (Command_Status_Event, BIT_Configuration_Event, BIT_Status_Event);
+   procedure Enable_Comms_Test_Events (Stream : in out Metadata_Stream);
+   type Metadata_Kind is (Command_Status_Event, BIT_Configuration_Event,
+      BIT_Status_Event, Channel_Comms_Test_Event);
    type Command_State is (Not_Set, Received, Accepted, Rejected, Cancelled);
    for Command_State use (Not_Set => 0, Received => 1, Accepted => 2, Rejected => 3, Cancelled => 4);
    for Command_State'Size use 32;
@@ -167,6 +170,8 @@ package AMS.MEL.IR.C2.Metadata is
       with Pre => Kind (Event) = BIT_Status_Event;
    function Fault_At (Event : Metadata_Event; Index : Positive) return Fault
       with Pre => Kind (Event) = BIT_Status_Event;
+   function Comms_Test (Event : Metadata_Event) return IR.Channel.Comms_Test_Report
+      with Pre => Kind (Event) = Channel_Comms_Test_Event;
 
    type Metadata_Counters is record
       Events_Received, Events_Dropped_Queue_Full,
@@ -195,7 +200,7 @@ private
    package Group_Vectors is new Ada.Containers.Vectors (Positive, Fault_Ambiguity_Group);
    type Fault is record ID : UCI_ID; Severity_Value : Fault_Severity := Not_Set; State_Value : Fault_State := Not_Set; Time : Long_Long_Integer := 0; Code, Description : US.Unbounded_String; Data : Data_Vectors.Vector; Components : ID_Vectors.Vector; Groups : Group_Vectors.Vector; end record;
    package Fault_Vectors is new Ada.Containers.Vectors (Positive, Fault);
-   type Metadata_Event is record Event_Kind : Metadata_Kind := Command_Status_Event; Status : Command_Status; BIT_Types : BIT_Type_Vectors.Vector; Active : Active_Vectors.Vector; Completed : Completed_Vectors.Vector; Faults : Fault_Vectors.Vector; end record;
+   type Metadata_Event is record Event_Kind : Metadata_Kind := Command_Status_Event; Status : Command_Status; BIT_Types : BIT_Type_Vectors.Vector; Active : Active_Vectors.Vector; Completed : Completed_Vectors.Vector; Faults : Fault_Vectors.Vector; Comms : IR.Channel.Comms_Test_Report := (0, 0); end record;
    type Metadata_Stream is new Ada.Finalization.Limited_Controlled with record Handle : aliased AMS.MEL_C_API.Metadata_Handle := AMS.MEL_C_API.Null_Metadata; end record;
    overriding procedure Finalize (Stream : in out Metadata_Stream);
 end AMS.MEL.IR.C2.Metadata;

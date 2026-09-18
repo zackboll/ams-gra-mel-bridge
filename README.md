@@ -26,7 +26,7 @@ themselves.
 > into a bounded native queue; provider callback threads never invoke Ada
 > application code.
 > The raw Rust sys crate and private Python ctypes layer track the complete current
-> 28-function C ABI. Safe Rust and Python remain intentionally constrained to
+> 36-function C ABI. Safe Rust and Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An
@@ -34,8 +34,10 @@ themselves.
 > against the same pinned provider/runtime stack; it is not part of ordinary
 > builds or CI. Python remains a dependency-free, development-use-only binding:
 > payload-bearing BIT and general Mode/ConfigSet are absent from their safe APIs;
-> RF, Common Channel services, optional C2 operations, and safe Rust/Python
-> metadata are not implemented, and there is no wheel/PyPI publication
+> Ada additionally exposes inherited C2 KeepAlive, CommsTest request/callback,
+> and complete ChannelCapability values. RF, explicit generic buffer management,
+> Scheduling, optional C2 operations, and safe Rust/Python common-channel or
+> metadata APIs are not implemented, and there is no wheel/PyPI publication
 > or zero-copy/NumPy image API. Raw declarations alone are not safe-language parity.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
@@ -531,6 +533,9 @@ Implemented:
   intended one-choice payload-bearing BIT, BIT no-op, and ConfigSet interfaces;
 - native queue and safe Ada support for complete C2-specific BIT_Configuration,
   CommandStatus, and BIT_Status metadata;
+- native C and safe Ada application-facing inherited C2 Channel services:
+  KeepAlive, ChannelCommsTest request/reply/callback, and complete owned
+  ChannelCapability snapshots;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
 - safe Rust Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op
@@ -547,9 +552,11 @@ Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- inherited Common Channel services and optional/conditional C2 commands;
+- explicit generic Channel buffer management;
+- optional/conditional C2 commands;
 - safe Rust/Python catch-up for the expanded Task 017 command surface;
 - safe Rust/Python C2 metadata APIs;
+- safe Rust/Python common-channel APIs;
 - RF MEL;
 - stacked images;
 - tracking interfaces;

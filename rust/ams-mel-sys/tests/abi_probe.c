@@ -33,6 +33,15 @@ int main(void)
     ams_mel_status_t (*event_view)(const ams_mel_ir_c2_metadata_event *, const ams_mel_ir_c2_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_c2_metadata_event_view;
     ams_mel_status_t (*event_close)(ams_mel_ir_c2_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_c2_metadata_event_close;
     (void)metadata_open; (void)metadata_receive; (void)metadata_counters; (void)metadata_close; (void)event_view; (void)event_close;
+    ams_mel_status_t (*keepalive)(ams_mel_ir_c2 *, ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_c2_send_keepalive;
+    ams_mel_status_t (*submit_comms)(ams_mel_ir_c2 *, const ams_mel_ir_channel_comms_test_request_v1 *, ams_mel_ir_channel_comms_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_comms_test;
+    ams_mel_status_t (*wait_comms)(const ams_mel_ir_channel_comms_request *, uint32_t, ams_mel_ir_channel_comms_test_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_channel_comms_request_wait;
+    ams_mel_status_t (*close_comms)(ams_mel_ir_channel_comms_request **, char *, size_t, size_t *) = ams_mel_ir_channel_comms_request_close;
+    ams_mel_status_t (*register_comms)(ams_mel_ir_c2_metadata *, char *, size_t, size_t *) = ams_mel_ir_c2_metadata_register_comms_test;
+    ams_mel_status_t (*get_cap)(ams_mel_ir_c2 *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_c2_get_capabilities;
+    ams_mel_status_t (*view_cap)(const ams_mel_ir_channel_capability *, const ams_mel_ir_channel_capability_v1 **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_view;
+    ams_mel_status_t (*close_cap)(ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_close;
+    (void)keepalive; (void)submit_comms; (void)wait_comms; (void)close_comms; (void)register_comms; (void)get_cap; (void)view_cap; (void)close_cap;
 
     VALUE(AMS_MEL_OK); VALUE(AMS_MEL_INVALID_ARGUMENT);
     VALUE(AMS_MEL_LIBRARY_LOAD_FAILED); VALUE(AMS_MEL_SYMBOL_NOT_FOUND);
@@ -220,9 +229,18 @@ int main(void)
     RECORD(ams_mel_fault_v1, FIELD(ams_mel_fault_v1,fault_id); FIELD(ams_mel_fault_v1,severity); FIELD(ams_mel_fault_v1,state); FIELD(ams_mel_fault_v1,fault_data); FIELD(ams_mel_fault_v1,detection_time_ns); FIELD(ams_mel_fault_v1,fault_code); FIELD(ams_mel_fault_v1,fault_description); FIELD(ams_mel_fault_v1,component_ids); FIELD(ams_mel_fault_v1,ambiguity_groups));
     RECORD(ams_mel_fault_span_v1, FIELD(ams_mel_fault_span_v1,data); FIELD(ams_mel_fault_span_v1,size));
     RECORD(ams_mel_bit_status_v1, FIELD(ams_mel_bit_status_v1,active_bits); FIELD(ams_mel_bit_status_v1,completed_bits); FIELD(ams_mel_bit_status_v1,faults));
-    RECORD(ams_mel_ir_c2_metadata_event_v1, FIELD(ams_mel_ir_c2_metadata_event_v1,kind); FIELD(ams_mel_ir_c2_metadata_event_v1,command_status); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_configuration); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_status));
+    RECORD(ams_mel_ir_c2_metadata_event_v1, FIELD(ams_mel_ir_c2_metadata_event_v1,kind); FIELD(ams_mel_ir_c2_metadata_event_v1,command_status); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_configuration); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_status); FIELD(ams_mel_ir_c2_metadata_event_v1,channel_comms_test));
     RECORD(ams_mel_ir_c2_metadata_counters_v1, FIELD(ams_mel_ir_c2_metadata_counters_v1,events_received); FIELD(ams_mel_ir_c2_metadata_counters_v1,events_dropped_queue_full); FIELD(ams_mel_ir_c2_metadata_counters_v1,malformed_or_unsupported));
+    RECORD(ams_mel_ir_channel_comms_test_report_v1, FIELD(ams_mel_ir_channel_comms_test_report_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_report_v1,request_id));
+    RECORD(ams_mel_ir_channel_comms_test_request_v1, FIELD(ams_mel_ir_channel_comms_test_request_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,channel_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,request_id));
+    RECORD(ams_mel_ir_channel_comms_test_result_v1, FIELD(ams_mel_ir_channel_comms_test_result_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,request_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,error_code));
+    RECORD(ams_mel_ir_band_info_v1, FIELD(ams_mel_ir_band_info_v1,type); FIELD(ams_mel_ir_band_info_v1,min_wavelength_m); FIELD(ams_mel_ir_band_info_v1,max_wavelength_m));
+    RECORD(ams_mel_ir_band_info_span_v1, FIELD(ams_mel_ir_band_info_span_v1,data); FIELD(ams_mel_ir_band_info_span_v1,size));
+    RECORD(ams_mel_ir_image_band_v1, FIELD(ams_mel_ir_image_band_v1,band_index); FIELD(ams_mel_ir_image_band_v1,bands));
+    RECORD(ams_mel_ir_image_band_span_v1, FIELD(ams_mel_ir_image_band_span_v1,data); FIELD(ams_mel_ir_image_band_span_v1,size));
+    RECORD(ams_mel_ir_channel_capability_v1, FIELD(ams_mel_ir_channel_capability_v1,channel_id); FIELD(ams_mel_ir_channel_capability_v1,height); FIELD(ams_mel_ir_channel_capability_v1,width); FIELD(ams_mel_ir_channel_capability_v1,bit_depth); FIELD(ams_mel_ir_channel_capability_v1,row_pitch); FIELD(ams_mel_ir_channel_capability_v1,buffer_size); FIELD(ams_mel_ir_channel_capability_v1,image_size); FIELD(ams_mel_ir_channel_capability_v1,number_of_bands); FIELD(ams_mel_ir_channel_capability_v1,pixel_format); FIELD(ams_mel_ir_channel_capability_v1,sensor_types); FIELD(ams_mel_ir_channel_capability_v1,platform_id); FIELD(ams_mel_ir_channel_capability_v1,sensor_location); FIELD(ams_mel_ir_channel_capability_v1,channel_types); FIELD(ams_mel_ir_channel_capability_v1,task_schedule_depth); FIELD(ams_mel_ir_channel_capability_v1,odc_available); FIELD(ams_mel_ir_channel_capability_v1,nuc_available); FIELD(ams_mel_ir_channel_capability_v1,metadata_capabilities); FIELD(ams_mel_ir_channel_capability_v1,image_bands); FIELD(ams_mel_ir_channel_capability_v1,nav_frames));
     LAYOUT(ams_mel_ir_c2_metadata *); LAYOUT(ams_mel_ir_c2_metadata_event *);
+    LAYOUT(ams_mel_ir_channel_comms_request *); LAYOUT(ams_mel_ir_channel_capability *);
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);

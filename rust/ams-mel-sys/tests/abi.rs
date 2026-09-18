@@ -411,7 +411,8 @@ fn declarations_match_the_c_header() {
         kind,
         command_status,
         bit_configuration,
-        bit_status
+        bit_status,
+        channel_comms_test
     );
     layout!(
         expected,
@@ -420,6 +421,59 @@ fn declarations_match_the_c_header() {
         events_dropped_queue_full,
         malformed_or_unsupported
     );
+    layout!(
+        expected,
+        AmsMelIrChannelCommsTestReportV1,
+        command_id,
+        request_id
+    );
+    layout!(
+        expected,
+        AmsMelIrChannelCommsTestRequestV1,
+        command_id,
+        channel_id,
+        request_id
+    );
+    layout!(
+        expected,
+        AmsMelIrChannelCommsTestResultV1,
+        command_id,
+        request_id,
+        error_code
+    );
+    layout!(
+        expected,
+        AmsMelIrBandInfoV1,
+        kind,
+        min_wavelength_m,
+        max_wavelength_m
+    );
+    layout!(expected, AmsMelIrBandInfoSpanV1, data, size);
+    layout!(expected, AmsMelIrImageBandV1, band_index, bands);
+    layout!(expected, AmsMelIrImageBandSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrChannelCapabilityV1,
+        channel_id,
+        height,
+        width,
+        bit_depth,
+        row_pitch,
+        buffer_size,
+        image_size,
+        number_of_bands,
+        pixel_format,
+        sensor_types,
+        platform_id,
+        sensor_location,
+        channel_types,
+        task_schedule_depth,
+        odc_available,
+        nuc_available,
+        metadata_capabilities,
+        image_bands,
+        nav_frames
+    );
     expected.extend([
         size_of::<*mut AmsMelIrC2Metadata>(),
         align_of::<*mut AmsMelIrC2Metadata>(),
@@ -427,6 +481,14 @@ fn declarations_match_the_c_header() {
     expected.extend([
         size_of::<*mut AmsMelIrC2MetadataEvent>(),
         align_of::<*mut AmsMelIrC2MetadataEvent>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrChannelCommsRequest>(),
+        align_of::<*mut AmsMelIrChannelCommsRequest>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrChannelCapability>(),
+        align_of::<*mut AmsMelIrChannelCapability>(),
     ]);
     expected.extend([
         AMS_MEL_OK as usize,

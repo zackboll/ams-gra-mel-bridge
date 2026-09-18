@@ -108,6 +108,12 @@ four host-network ports are
 validated, required to be distinct, checked for existing listeners, and printed
 before startup.
 
+The Ada client registers CommsTest metadata, queries the sparse C2 capability,
+sends KeepAlive, and submits CommsTest before `C2.Enable`. It verifies async and
+callback IDs, then continues all Task 017/018 commands, metadata, and Mono8
+frames. Zero/default capability fields are observations of pinned Squall only;
+mock tests establish complete capability fidelity.
+
 Before runtime startup, each selected compiled integration client (C, Ada, and
 Rust) must pass `file` and `readelf` checks as a real ELF executable with a
 readable dynamic section. The interpreted Python client instead passes
@@ -151,9 +157,12 @@ and Python clients open image and C2 graphs on one Session, obtain BIT Success
 and TaskSched, close the Session parent first, repeat both cached request waits,
 receive real 320x200 Mono8 checkerboard frames, validate counters, and explicitly
 close their child resources. For `all`, C, Ada, Rust, and Python validate the
-Ada additionally validates Task 017's general Mode, payload-bearing BIT, and
-ConfigSet extension plus Task 018's required C2-specific metadata. Common Channel
-services, optional/conditional C2 commands, RF, and other MEL families remain
-unsupported. The Python client uses only the public safe API,
+shared integration subset: BIT no-op, TaskSched, and Mono8. Ada additionally
+validates Task 017's general Mode, payload-bearing BIT, and ConfigSet; Task 018's
+required C2-specific metadata; and Task 019's pre-enable KeepAlive, CommsTest
+request/reply and callback, and ChannelCapability. Explicit generic buffer
+management, optional/conditional C2 commands, Scheduling, RF, other unbound MEL
+families, and safe Rust/Python common-channel APIs remain unsupported. The Python
+client uses only the public safe API,
 including Python-owned `bytes` frames and explicit Return/mode request, control,
 and stream teardown.

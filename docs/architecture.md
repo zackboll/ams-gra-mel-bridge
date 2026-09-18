@@ -232,6 +232,21 @@ receivers. Channel destruction—not `disable()`—is the quiescence boundary.
 Immutable received native snapshots are independent of that graph and can outlive
 metadata, C2, Session, and provider library teardown.
 
+Task 019 adds the application-facing inherited services on the existing C2
+channel. KeepAlive reuses the Return request owner; CommsTest has a parallel
+typed asynchronous owner but shares `ChannelState.requests`; both work in
+Attached or Enabled lifecycle states. The inherited CommsTest callback is an
+explicit fourth registration into Task 018's existing queue and uses the same
+callback guard, retained state, and channel-destruction quiescence boundary.
+
+ChannelCapability is validated and deep-copied completely into an opaque native
+snapshot, then copied again into reusable Ada-native `AMS.MEL.IR.Channel` values.
+Neither snapshot references provider STL storage. `Channel::registerBuffer` and
+`unregisterBuffer` are deliberately not application-visible: existing image
+buffer registration remains adapter-managed. This completes application-facing
+common C2 Channel services, not every raw Channel virtual method. Scheduling is
+not part of Task 019.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

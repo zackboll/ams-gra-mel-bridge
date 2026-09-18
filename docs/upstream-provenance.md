@@ -1,3 +1,12 @@
+# Task 019 review note
+
+Task 019 reviewed the pinned base `Channel`, ChannelCommsTest request/reply,
+complete ChannelCapability/BandInfo/navigation declarations, and Squall's
+`SquallChannelSupport`/`SquallC2Channel`. Squall supports KeepAlive and CommsTest
+while attached, invokes the CommsTest callback synchronously during send, and
+reports C2 type plus BITConfiguration, CommandStatus, BITStatus, and
+ChannelCommsTestRep metadata capabilities. Vendored declarations are unchanged.
+
 # Task 001/002/003/004 upstream provenance
 
 Verified 2026-09-15 from immutable Git commit objects, not default-branch file

@@ -31,6 +31,11 @@ private package AMS.MEL_C_API is
    type Return_Request_Handle is new System.Address;
    Null_Return_Request : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
+   type Comms_Request_Handle is new System.Address;
+   Null_Comms_Request : constant Comms_Request_Handle :=
+     Comms_Request_Handle (System.Null_Address);
+   type Capability_Handle is new System.Address;
+   Null_Capability : constant Capability_Handle := Capability_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
    Null_Metadata : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
@@ -84,11 +89,15 @@ private package AMS.MEL_C_API is
       Component_IDs, Ambiguity_Groups : Span_V1;
    end record with Convention => C;
    type BIT_Status_V1 is record Active_BITS, Completed_BITS, Faults : Span_V1; end record with Convention => C;
+   type IR_Channel_Comms_Test_Report_V1 is record
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record with Convention => C;
    type Metadata_Event_V1 is record
       Kind : Interfaces.Unsigned_32;
       Command_Status : IR_Command_Status_V1;
       BIT_Configuration : BIT_Configuration_V1;
       BIT_Status : BIT_Status_V1;
+      Channel_Comms_Test : IR_Channel_Comms_Test_Report_V1;
    end record with Convention => C;
    type Metadata_Counters_V1 is record
       Events_Received, Events_Dropped_Queue_Full,
@@ -115,6 +124,31 @@ private package AMS.MEL_C_API is
       Channel_ID      : UCI_ID_V1;
       Platform_ID     : UCI_ID_V1;
       Sensor_Location : Component_Location_V1;
+   end record with Convention => C;
+   type IR_Channel_Comms_Test_Request_V1 is record
+      Command_ID, Channel_ID, Request_ID : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Channel_Comms_Test_Result_V1 is record
+      Command_ID, Request_ID, Error_Code : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Band_Info_V1 is record
+      Kind : Interfaces.Unsigned_32;
+      Min_Wavelength_M, Max_Wavelength_M : Interfaces.C.double;
+   end record with Convention => C;
+   type IR_Image_Band_V1 is record
+      Band_Index : Interfaces.Unsigned_32;
+      Bands : Span_V1;
+   end record with Convention => C;
+   type IR_Channel_Capability_V1 is record
+      Channel_ID : UCI_ID_V1;
+      Height, Width, Bit_Depth, Row_Pitch, Buffer_Size, Image_Size,
+        Number_Of_Bands, Pixel_Format : Interfaces.Unsigned_32;
+      Sensor_Types : Span_V1;
+      Platform_ID : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+      Channel_Types : Span_V1;
+      Task_Schedule_Depth, ODC_Available, NUC_Available : Interfaces.Unsigned_32;
+      Metadata_Capabilities, Image_Bands, Nav_Frames : Span_V1;
    end record with Convention => C;
    type IR_Mode_Result_V1 is record
       Mode       : Interfaces.Unsigned_32;
@@ -364,6 +398,43 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
       return Interfaces.Integer_32 with Import, Convention => C,
       External_Name => "ams_mel_ir_c2_submit_config_set";
+   function IR_C2_Send_Keepalive
+     (Handle : C2_Handle; Output : access Return_Request_Handle;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_c2_send_keepalive";
+   function IR_C2_Submit_Comms_Test
+     (Handle : C2_Handle; Request : access IR_Channel_Comms_Test_Request_V1;
+      Output : access Comms_Request_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_submit_comms_test";
+   function IR_Comms_Request_Wait
+     (Handle : Comms_Request_Handle; Timeout_MS : Interfaces.Unsigned_32;
+      Output : access IR_Channel_Comms_Test_Result_V1; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_channel_comms_request_wait";
+   function IR_Comms_Request_Close
+     (Handle : access Comms_Request_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_channel_comms_request_close";
+   function IR_C2_Get_Capabilities
+     (Handle : C2_Handle; Output : access Capability_Handle;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_c2_get_capabilities";
+   function IR_Capability_View
+     (Handle : Capability_Handle; Output : access System.Address;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_channel_capability_view";
+   function IR_Capability_Close
+     (Handle : access Capability_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_channel_capability_close";
    function IR_Return_Request_Wait
      (Handle                : Return_Request_Handle;
       Timeout_MS            : Interfaces.Unsigned_32;
@@ -391,6 +462,11 @@ private package AMS.MEL_C_API is
       Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
       with Import, Convention => C, External_Name => "ams_mel_ir_c2_metadata_open";
+   function IR_C2_Metadata_Register_Comms_Test
+     (Handle : Metadata_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_metadata_register_comms_test";
    function IR_C2_Metadata_Receive
      (Handle : Metadata_Handle; Timeout_MS : Interfaces.Unsigned_32;
       Output : access Metadata_Event_Handle; Diagnostic : System.Address;

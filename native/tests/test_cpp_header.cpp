@@ -13,6 +13,8 @@ static_assert(std::is_standard_layout_v<ams_mel_ir_bit_command_v1>);
 static_assert(std::is_standard_layout_v<ams_mel_ir_config_set_command_v1>);
 static_assert(std::is_standard_layout_v<ams_mel_fault_v1>);
 static_assert(std::is_standard_layout_v<ams_mel_ir_c2_metadata_event_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_ir_channel_capability_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_ir_channel_comms_test_result_v1>);
 static_assert(noexcept(ams_mel_ir_c2_metadata_event_close(nullptr, nullptr, 0, nullptr)));
 static_assert(noexcept(ams_mel_ir_return_request_close(nullptr, nullptr, 0, nullptr)));
 

@@ -55,12 +55,21 @@ typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
 typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
+typedef struct ams_mel_ir_channel_comms_request ams_mel_ir_channel_comms_request;
+typedef struct ams_mel_ir_channel_capability ams_mel_ir_channel_capability;
 typedef struct ams_mel_ir_c2_metadata ams_mel_ir_c2_metadata;
 typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
+#define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
 #define AMS_MEL_IR_CHANNEL_IRST_IMAGE UINT32_C(1)
 #define AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL UINT32_C(2)
+#define AMS_MEL_IR_CHANNEL_SCHEDULING UINT32_C(3)
+#define AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS UINT32_C(4)
+#define AMS_MEL_IR_CHANNEL_INSTRUMENTATION UINT32_C(5)
+#define AMS_MEL_IR_CHANNEL_STACKED_IMAGE UINT32_C(6)
+#define AMS_MEL_IR_CHANNEL_RESERVED_1 UINT32_C(7)
+#define AMS_MEL_IR_CHANNEL_RESERVED_2 UINT32_C(8)
 typedef uint32_t ams_mel_ir_mfa_mode_t;
 #define AMS_MEL_IR_MFA_MODE_UNUSED UINT32_C(0)
 #define AMS_MEL_IR_MFA_MODE_TASK_SCHED UINT32_C(1)
@@ -109,6 +118,68 @@ typedef uint32_t ams_mel_error_code_t;
 #define AMS_MEL_ERROR_UNSUPPORTED UINT32_C(8)
 typedef uint32_t ams_mel_ir_pixel_format_t;
 #define AMS_MEL_IR_PIXEL_MONO UINT32_C(0)
+#define AMS_MEL_IR_PIXEL_RGB UINT32_C(1)
+#define AMS_MEL_IR_PIXEL_BAYER UINT32_C(2)
+typedef uint32_t ams_mel_ir_sensor_type_t;
+#define AMS_MEL_IR_SENSOR_UNSPECIFIED UINT32_C(0)
+#define AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL UINT32_C(1)
+#define AMS_MEL_IR_SENSOR_GIMBAL_VERTICAL UINT32_C(2)
+#define AMS_MEL_IR_SENSOR_GIMBAL_ROTATION UINT32_C(3)
+#define AMS_MEL_IR_SENSOR_STEP_STARE UINT32_C(4)
+typedef uint32_t ams_mel_ir_band_type_t;
+#define AMS_MEL_IR_BAND_INVALID UINT32_C(0)
+#define AMS_MEL_IR_BAND_MULTIBAND UINT32_C(1)
+#define AMS_MEL_IR_BAND_IR_FAR UINT32_C(2)
+#define AMS_MEL_IR_BAND_IR_NEAR UINT32_C(3)
+#define AMS_MEL_IR_BAND_IR_LONGWAVE UINT32_C(4)
+#define AMS_MEL_IR_BAND_IR_MIDWAVE UINT32_C(5)
+#define AMS_MEL_IR_BAND_IR_SHORTWAVE UINT32_C(6)
+#define AMS_MEL_IR_BAND_VISIBLE_WHITE UINT32_C(7)
+#define AMS_MEL_IR_BAND_VISIBLE_RED UINT32_C(8)
+#define AMS_MEL_IR_BAND_VISIBLE_GREEN UINT32_C(9)
+#define AMS_MEL_IR_BAND_VISIBLE_BLUE UINT32_C(10)
+#define AMS_MEL_IR_BAND_UVA UINT32_C(11)
+#define AMS_MEL_IR_BAND_UVB UINT32_C(12)
+#define AMS_MEL_IR_BAND_UVC UINT32_C(13)
+#define AMS_MEL_IR_BAND_UV_VACUUM UINT32_C(14)
+typedef uint32_t ams_mel_ir_coordinate_system_type_t;
+#define AMS_MEL_IR_COORDINATE_LLA UINT32_C(0)
+#define AMS_MEL_IR_COORDINATE_ECEF UINT32_C(1)
+#define AMS_MEL_IR_COORDINATE_NED_PLATFORM UINT32_C(2)
+#define AMS_MEL_IR_COORDINATE_NED_SENSOR UINT32_C(3)
+typedef uint32_t ams_mel_ir_channel_metadata_capability_t;
+#define AMS_MEL_IR_METADATA_BAD_PIXEL_LIST UINT32_C(0)
+#define AMS_MEL_IR_METADATA_OPTICAL_DISTORTION_MAP UINT32_C(1)
+#define AMS_MEL_IR_METADATA_LF_STATUS UINT32_C(2)
+#define AMS_MEL_IR_METADATA_LINE_OF_SIGHT_REPORT UINT32_C(3)
+#define AMS_MEL_IR_METADATA_LINE_OF_SIGHT_QUATERNION UINT32_C(4)
+#define AMS_MEL_IR_METADATA_LINE_OF_SIGHT_EULER UINT32_C(5)
+#define AMS_MEL_IR_METADATA_MFA_STATUS UINT32_C(6)
+#define AMS_MEL_IR_METADATA_MFA_STATUS_DETAILED UINT32_C(7)
+#define AMS_MEL_IR_METADATA_BIT_CONFIGURATION UINT32_C(8)
+#define AMS_MEL_IR_METADATA_COMMAND_STATUS UINT32_C(9)
+#define AMS_MEL_IR_METADATA_BIT_STATUS UINT32_C(10)
+#define AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE UINT32_C(11)
+#define AMS_MEL_IR_METADATA_TASK_EXECUTING_REP UINT32_C(12)
+#define AMS_MEL_IR_METADATA_SUBSYSTEM_STATUS_RESP UINT32_C(13)
+#define AMS_MEL_IR_METADATA_EXECUTE_TASK_ACK UINT32_C(14)
+#define AMS_MEL_IR_METADATA_SCHED_CREATED_REP UINT32_C(15)
+#define AMS_MEL_IR_METADATA_IRST_TRACK_REPORT UINT32_C(16)
+#define AMS_MEL_IR_METADATA_CHANNEL_COMMS_TEST_REP UINT32_C(17)
+#define AMS_MEL_IR_METADATA_CAMERA_COMMAND_RESP UINT32_C(18)
+#define AMS_MEL_IR_METADATA_CAMERA_PROTECT_CMD_RESP UINT32_C(19)
+#define AMS_MEL_IR_METADATA_INSTRUMENTATION_REPORT UINT32_C(20)
+#define AMS_MEL_IR_METADATA_NAVIGATION_REPORT_RESP UINT32_C(21)
+#define AMS_MEL_IR_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(22)
+#define AMS_MEL_IR_METADATA_UPDATE_TRACK_LIST_RESPONSE UINT32_C(23)
+#define AMS_MEL_IR_METADATA_LOS_3D_KINEMATICS_TYPE UINT32_C(24)
+#define AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE UINT32_C(25)
+#define AMS_MEL_IR_METADATA_TASK_EVENTS UINT32_C(26)
+#define AMS_MEL_IR_METADATA_SCAN_PERFORMANCE_REPORT UINT32_C(27)
+#define AMS_MEL_IR_METADATA_RESERVED_3 UINT32_C(28)
+#define AMS_MEL_IR_METADATA_RESERVED_5 UINT32_C(29)
+#define AMS_MEL_IR_METADATA_RESERVED_9 UINT32_C(30)
+#define AMS_MEL_IR_METADATA_RESERVED_10 UINT32_C(31)
 typedef uint32_t ams_mel_ir_image_type_t;
 #define AMS_MEL_IR_IMAGE_STARING UINT32_C(0)
 #define AMS_MEL_IR_IMAGE_SCANNING UINT32_C(1)
@@ -122,6 +193,7 @@ typedef uint32_t ams_mel_ir_c2_metadata_kind_t;
 #define AMS_MEL_IR_C2_METADATA_COMMAND_STATUS UINT32_C(1)
 #define AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION UINT32_C(2)
 #define AMS_MEL_IR_C2_METADATA_BIT_STATUS UINT32_C(3)
+#define AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST UINT32_C(4)
 typedef uint32_t ams_mel_ir_command_state_t;
 #define AMS_MEL_IR_COMMAND_NOT_SET UINT32_C(0)
 #define AMS_MEL_IR_COMMAND_RECEIVED UINT32_C(1)
@@ -332,11 +404,16 @@ typedef struct ams_mel_bit_status_v1 {
     ams_mel_completed_bit_span_v1 completed_bits;
     ams_mel_fault_span_v1 faults;
 } ams_mel_bit_status_v1;
+typedef struct ams_mel_ir_channel_comms_test_report_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_channel_comms_test_report_v1;
 typedef struct ams_mel_ir_c2_metadata_event_v1 {
     ams_mel_ir_c2_metadata_kind_t kind;
     ams_mel_ir_command_status_v1 command_status;
     ams_mel_bit_configuration_v1 bit_configuration;
     ams_mel_bit_status_v1 bit_status;
+    ams_mel_ir_channel_comms_test_report_v1 channel_comms_test;
 } ams_mel_ir_c2_metadata_event_v1;
 typedef struct ams_mel_ir_c2_metadata_counters_v1 {
     uint64_t events_received;
@@ -352,6 +429,50 @@ typedef struct ams_mel_component_location_v1 {
     ams_mel_string_view_v1 key;
     ams_mel_string_view_v1 system_name;
 } ams_mel_component_location_v1;
+
+typedef struct ams_mel_ir_channel_comms_test_request_v1 {
+    uint32_t command_id;
+    uint32_t channel_id;
+    uint32_t request_id;
+} ams_mel_ir_channel_comms_test_request_v1;
+typedef struct ams_mel_ir_channel_comms_test_result_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_channel_comms_test_result_v1;
+typedef struct ams_mel_ir_band_info_v1 {
+    ams_mel_ir_band_type_t type;
+    double min_wavelength_m;
+    double max_wavelength_m;
+} ams_mel_ir_band_info_v1;
+typedef struct ams_mel_ir_band_info_span_v1 {
+    const ams_mel_ir_band_info_v1 *data;
+    size_t size;
+} ams_mel_ir_band_info_span_v1;
+typedef struct ams_mel_ir_image_band_v1 {
+    uint32_t band_index;
+    ams_mel_ir_band_info_span_v1 bands;
+} ams_mel_ir_image_band_v1;
+typedef struct ams_mel_ir_image_band_span_v1 {
+    const ams_mel_ir_image_band_v1 *data;
+    size_t size;
+} ams_mel_ir_image_band_span_v1;
+typedef struct ams_mel_ir_channel_capability_v1 {
+    ams_mel_uci_id_v1 channel_id;
+    uint32_t height, width, bit_depth, row_pitch, buffer_size, image_size;
+    uint32_t number_of_bands;
+    ams_mel_ir_pixel_format_t pixel_format;
+    ams_mel_u32_span_v1 sensor_types;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+    ams_mel_u32_span_v1 channel_types;
+    uint32_t task_schedule_depth;
+    uint32_t odc_available;
+    uint32_t nuc_available;
+    ams_mel_u32_span_v1 metadata_capabilities;
+    ams_mel_ir_image_band_span_v1 image_bands;
+    ams_mel_u32_span_v1 nav_frames;
+} ams_mel_ir_channel_capability_v1;
 
 /* Host-memory-only IRSTImage configuration. Labels and location strings are
  * UTF-8 byte views, need not be NUL-terminated, and are copied during open.
@@ -660,6 +781,38 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_config_set(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Common inherited Channel services are valid while attached or enabled. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_send_keepalive(
+    ams_mel_ir_c2 *c2, ams_mel_ir_return_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_comms_test(
+    ams_mel_ir_c2 *c2,
+    const ams_mel_ir_channel_comms_test_request_v1 *request,
+    ams_mel_ir_channel_comms_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_request_wait(
+    const ams_mel_ir_channel_comms_request *request, uint32_t timeout_ms,
+    ams_mel_ir_channel_comms_test_result_v1 *out_result,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_request_close(
+    ams_mel_ir_channel_comms_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_get_capabilities(
+    ams_mel_ir_c2 *c2, ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_capability_view(
+    const ams_mel_ir_channel_capability *capability,
+    const ams_mel_ir_channel_capability_v1 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_capability_close(
+    ams_mel_ir_channel_capability **capability, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Registers the three required C2-specific metadata callbacks in this order:
  * BIT_Configuration, CommandStatus, BIT_Status. The queue exists before the
  * first registration and uses bounded FIFO DROP-INCOMING. Registration is
@@ -670,6 +823,11 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_config_set(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_open(
     ams_mel_ir_c2 *c2, size_t queue_capacity,
     ams_mel_ir_c2_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Registers the inherited CommsTest callback into this existing queue exactly
+ * once. Failure does not release callback-accessible state and cannot be retried. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_register_comms_test(
+    ams_mel_ir_c2_metadata *metadata, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Finite wait; zero polls and timeout is not cancellation. At most one receive

@@ -17,6 +17,10 @@ _Static_assert(offsetof(ams_mel_ir_mode_command_v1, scan_parameters) >
 _Static_assert(sizeof(ams_mel_ir_c2_metadata_kind_t) == 4, "metadata kind width");
 _Static_assert(sizeof(ams_mel_ir_c2_metadata *) == sizeof(void *), "metadata owner pointer");
 _Static_assert(sizeof(ams_mel_ir_c2_metadata_event *) == sizeof(void *), "event owner pointer");
+_Static_assert(sizeof(ams_mel_ir_channel_comms_test_request_v1) == 12, "comms request layout");
+_Static_assert(sizeof(ams_mel_ir_channel_comms_test_result_v1) == 12, "comms result layout");
+_Static_assert(sizeof(ams_mel_ir_channel_comms_request *) == sizeof(void *), "comms owner pointer");
+_Static_assert(sizeof(ams_mel_ir_channel_capability *) == sizeof(void *), "capability owner pointer");
 _Static_assert(sizeof(ams_mel_ir_command_status_v1) >= 24, "command status layout");
 _Static_assert(offsetof(ams_mel_fault_v1, ambiguity_groups) >
                offsetof(ams_mel_fault_v1, component_ids), "complete fault layout");
@@ -65,6 +69,28 @@ int main(void)
         size_t *) = ams_mel_ir_c2_metadata_event_close;
     (void)metadata_open; (void)metadata_receive; (void)metadata_counters;
     (void)metadata_close; (void)event_view; (void)event_close;
+    ams_mel_status_t (*keepalive)(ams_mel_ir_c2 *, ams_mel_ir_return_request **,
+        char *, size_t, size_t *) = ams_mel_ir_c2_send_keepalive;
+    ams_mel_status_t (*submit_comms)(ams_mel_ir_c2 *,
+        const ams_mel_ir_channel_comms_test_request_v1 *,
+        ams_mel_ir_channel_comms_request **, char *, size_t, size_t *) =
+        ams_mel_ir_c2_submit_comms_test;
+    ams_mel_status_t (*wait_comms)(const ams_mel_ir_channel_comms_request *, uint32_t,
+        ams_mel_ir_channel_comms_test_result_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_channel_comms_request_wait;
+    ams_mel_status_t (*close_comms)(ams_mel_ir_channel_comms_request **, char *,
+        size_t, size_t *) = ams_mel_ir_channel_comms_request_close;
+    ams_mel_status_t (*register_comms)(ams_mel_ir_c2_metadata *, char *, size_t,
+        size_t *) = ams_mel_ir_c2_metadata_register_comms_test;
+    ams_mel_status_t (*get_capability)(ams_mel_ir_c2 *, ams_mel_ir_channel_capability **,
+        char *, size_t, size_t *) = ams_mel_ir_c2_get_capabilities;
+    ams_mel_status_t (*view_capability)(const ams_mel_ir_channel_capability *,
+        const ams_mel_ir_channel_capability_v1 **, char *, size_t, size_t *) =
+        ams_mel_ir_channel_capability_view;
+    ams_mel_status_t (*close_capability)(ams_mel_ir_channel_capability **, char *,
+        size_t, size_t *) = ams_mel_ir_channel_capability_close;
+    (void)keepalive; (void)submit_comms; (void)wait_comms; (void)close_comms;
+    (void)register_comms; (void)get_capability; (void)view_capability; (void)close_capability;
     CHECK(AMS_MEL_IR_C2_METADATA_COMMAND_STATUS == 1U);
     CHECK(AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION == 2U);
     CHECK(AMS_MEL_IR_C2_METADATA_BIT_STATUS == 3U);
