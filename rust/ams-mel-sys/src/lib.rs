@@ -849,7 +849,7 @@ extern "C" {
     ) -> AmsMelStatus;
 
     pub fn ams_mel_session_get_provider_version(
-        session: *mut AmsMelSession,
+        session: *const AmsMelSession,
         out_version: *mut AmsMelProviderVersionV1,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

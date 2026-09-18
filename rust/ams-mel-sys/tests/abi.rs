@@ -14,6 +14,25 @@ macro_rules! layout {
 }
 
 #[test]
+fn session_input_function_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *mut AmsMelProviderVersionV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_session_get_provider_version;
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *const AmsMelIrHealthConfigV1,
+        *mut *mut AmsMelIrHealth,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_health_open;
+}
+
+#[test]
 fn declarations_match_the_c_header() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repository = manifest.join("../..");

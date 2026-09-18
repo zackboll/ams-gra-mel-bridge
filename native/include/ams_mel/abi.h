@@ -1067,7 +1067,7 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_close(
 /* HealthAndStatus owner. Metadata registration and capability snapshots are
  * valid while attached or enabled. Close retains the owner when detach fails. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_health_open(
-    ams_mel_session *session, const ams_mel_ir_health_config_v1 *config,
+    const ams_mel_session *session, const ams_mel_ir_health_config_v1 *config,
     ams_mel_ir_health **out_health, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_health_enable(

@@ -67,7 +67,7 @@ int main(void)
     ams_mel_status_t (*get_cap)(ams_mel_ir_c2 *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_c2_get_capabilities;
     ams_mel_status_t (*view_cap)(const ams_mel_ir_channel_capability *, const ams_mel_ir_channel_capability_v1 **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_view;
     ams_mel_status_t (*close_cap)(ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_channel_capability_close;
-    ams_mel_status_t (*health_open)(ams_mel_session *, const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *, size_t, size_t *) = ams_mel_ir_health_open;
+    ams_mel_status_t (*health_open)(const ams_mel_session *, const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *, size_t, size_t *) = ams_mel_ir_health_open;
     ams_mel_status_t (*health_enable)(ams_mel_ir_health *, char *, size_t, size_t *) = ams_mel_ir_health_enable;
     ams_mel_status_t (*health_cap)(ams_mel_ir_health *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_health_get_capabilities;
     ams_mel_status_t (*health_close)(ams_mel_ir_health **, char *, size_t, size_t *) = ams_mel_ir_health_close;

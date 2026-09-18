@@ -37,6 +37,13 @@ _Static_assert(offsetof(ams_mel_ir_c2_metadata_event_v1, bit_status) >
 int main(void)
 {
     ams_mel_abi_version_v1 version = {UINT32_MAX, UINT32_MAX};
+    ams_mel_status_t (*provider_version)(const ams_mel_session *,
+        ams_mel_provider_version_v1 *, char *, size_t, size_t *) =
+        ams_mel_session_get_provider_version;
+    ams_mel_status_t (*health_open)(const ams_mel_session *,
+        const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *,
+        size_t, size_t *) = ams_mel_ir_health_open;
+    (void)provider_version; (void)health_open;
     ams_mel_status_t (*submit_bit)(ams_mel_ir_c2 *, uint32_t,
         ams_mel_ir_return_request **, char *, size_t, size_t *) =
         ams_mel_ir_c2_submit_bit_noop;
