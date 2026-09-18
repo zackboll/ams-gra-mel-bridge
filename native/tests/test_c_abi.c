@@ -10,6 +10,10 @@ _Static_assert(sizeof(ams_mel_ir_return_t) == 4, "IR Return must be 32 bits");
 _Static_assert(sizeof(ams_mel_ir_return_result_v1) == 8, "return result layout");
 _Static_assert(offsetof(ams_mel_ir_return_result_v1, value) == 0, "return offset");
 _Static_assert(offsetof(ams_mel_ir_return_result_v1, error_code) == 4, "error offset");
+_Static_assert(sizeof(ams_mel_ir_mfa_state_t) == 4, "MFA state width");
+_Static_assert(sizeof(ams_mel_ir_scan_type_v1) == 12, "scan type layout");
+_Static_assert(offsetof(ams_mel_ir_mode_command_v1, scan_parameters) >
+               offsetof(ams_mel_ir_mode_command_v1, mode), "mode command layout");
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -30,6 +34,18 @@ int main(void)
     ams_mel_status_t (*close_return)(ams_mel_ir_return_request **, char *,
         size_t, size_t *) = ams_mel_ir_return_request_close;
     (void)submit_bit; (void)wait_return; (void)close_return;
+    ams_mel_status_t (*submit_mode)(ams_mel_ir_c2 *, const ams_mel_ir_mode_command_v1 *,
+        ams_mel_ir_mode_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_mode;
+    ams_mel_status_t (*submit_full_bit)(ams_mel_ir_c2 *, const ams_mel_ir_bit_command_v1 *,
+        ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_bit;
+    ams_mel_status_t (*submit_config)(ams_mel_ir_c2 *, const ams_mel_ir_config_set_command_v1 *,
+        ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_config_set;
+    (void)submit_mode; (void)submit_full_bit; (void)submit_config;
+    CHECK(AMS_MEL_IR_MFA_STATE_NOT_SET == 0U);
+    CHECK(AMS_MEL_IR_MFA_STATE_DEGRADED == 14U);
+    CHECK(AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE == 15U);
+    CHECK(AMS_MEL_IR_COORD_FRAME_AIRCRAFT == 1U);
+    CHECK(AMS_MEL_IR_DEGRADATION_REVISIT == 3U);
     CHECK(AMS_MEL_IR_RETURN_SUCCESS == 0U);
     CHECK(AMS_MEL_IR_RETURN_BAD_POINTER == 1U);
     CHECK(AMS_MEL_IR_RETURN_FAIL == 2U);

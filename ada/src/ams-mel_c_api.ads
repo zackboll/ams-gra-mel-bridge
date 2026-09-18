@@ -72,6 +72,57 @@ private package AMS.MEL_C_API is
       Value      : Interfaces.Unsigned_32;
       Error_Code : Interfaces.Unsigned_32;
    end record with Convention => C;
+   type U32_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record with Convention => C;
+   type String_View_Array is array (Positive range <>) of aliased String_View_V1
+     with Convention => C;
+   type String_View_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record with Convention => C;
+   type IR_Scan_Type_V1 is record
+      Continuous_Scan : Interfaces.Unsigned_32;
+      Returning       : Interfaces.Unsigned_32;
+      Agile_Scan      : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Scan_Param_V1 is record
+      Elevation_Defined_With_Range_And_Altitude : Interfaces.Unsigned_32;
+      Center_AZ_Rad : Interfaces.C.double;
+      Center_EL_Rad : Interfaces.C.double;
+      Center_Frame_Ref_EL : Interfaces.Unsigned_32;
+      Center_Frame_Ref_AZ : Interfaces.Unsigned_32;
+      Scan_Width_Rad : Interfaces.C.double;
+      Scan_Height_Rad : Interfaces.C.double;
+      Scan_Type : IR_Scan_Type_V1;
+      Scan_ID : Interfaces.Unsigned_32;
+      Scan_Rate_Rad_Per_Second : Interfaces.C.double;
+      Preferred_Revisit_Interval_Seconds : Interfaces.C.double;
+      Required_Revisit_Interval_Seconds : Interfaces.C.double;
+      Max_Range_Of_Interest_M : Interfaces.Unsigned_32;
+      Min_Range_Of_Interest_M : Interfaces.Unsigned_32;
+      Elevation_Scan_Center_Altitude_M : Interfaces.Unsigned_32;
+      Elevation_Scan_Center_Range_M : Interfaces.Unsigned_32;
+      Degradation_Method : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Mode_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      State : Interfaces.Unsigned_32;
+      Mode : Interfaces.Unsigned_32;
+      Scan_Parameters : IR_Scan_Param_V1;
+   end record with Convention => C;
+   type IR_BIT_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      Initiate_BIT_IDs : U32_Span_V1;
+      Cancel_BIT_IDs : U32_Span_V1;
+      Clear_Fault_Codes : String_View_Span_V1;
+   end record with Convention => C;
+   type IR_Config_Set_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      System_Time_NS : Interfaces.Integer_64;
+      Config : String_View_V1;
+   end record with Convention => C;
 
    type Reserved_Byte_Array is array (0 .. 6) of Interfaces.Unsigned_8
      with Convention => C;
@@ -218,6 +269,12 @@ private package AMS.MEL_C_API is
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C,
           External_Name => "ams_mel_ir_c2_submit_operate";
+   function IR_C2_Submit_Mode
+     (Handle : C2_Handle; Command : access IR_Mode_Command_V1;
+      Output : access Mode_Request_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_submit_mode";
    function IR_Mode_Request_Wait
      (Handle                : Mode_Request_Handle;
       Timeout_MS            : Interfaces.Unsigned_32;
@@ -243,6 +300,18 @@ private package AMS.MEL_C_API is
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C,
           External_Name => "ams_mel_ir_c2_submit_bit_noop";
+   function IR_C2_Submit_BIT
+     (Handle : C2_Handle; Command : access IR_BIT_Command_V1;
+      Output : access Return_Request_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_submit_bit";
+   function IR_C2_Submit_Config_Set
+     (Handle : C2_Handle; Command : access IR_Config_Set_Command_V1;
+      Output : access Return_Request_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_submit_config_set";
    function IR_Return_Request_Wait
      (Handle                : Return_Request_Handle;
       Timeout_MS            : Interfaces.Unsigned_32;

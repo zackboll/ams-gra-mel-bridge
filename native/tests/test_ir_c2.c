@@ -122,6 +122,159 @@ static int test_success(void)
     return EXIT_SUCCESS;
 }
 
+static ams_mel_ir_mode_command_v1 full_mode_command(void)
+{
+    ams_mel_ir_mode_command_v1 command;
+    memset(&command, 0, sizeof command);
+    command.command_id = UINT32_C(0x89abcdef);
+    command.state = AMS_MEL_IR_MFA_STATE_OPERATE;
+    command.mode = AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED;
+    command.scan_parameters.elevation_defined_with_range_and_altitude = 1;
+    command.scan_parameters.center_az_rad = 0.25;
+    command.scan_parameters.center_el_rad = -0.5;
+    command.scan_parameters.center_frame_ref_el = AMS_MEL_IR_COORD_FRAME_AIRCRAFT;
+    command.scan_parameters.center_frame_ref_az = AMS_MEL_IR_COORD_FRAME_INERTIAL;
+    command.scan_parameters.scan_width_rad = 1.25;
+    command.scan_parameters.scan_height_rad = 0.75;
+    command.scan_parameters.scan_type.continuous_scan = 1;
+    command.scan_parameters.scan_type.returning = 2;
+    command.scan_parameters.scan_type.agile_scan = 3;
+    command.scan_parameters.scan_id = UINT32_C(0x89abcdef);
+    command.scan_parameters.scan_rate_rad_per_second = -0.125;
+    command.scan_parameters.preferred_revisit_interval_seconds = 2.5;
+    command.scan_parameters.required_revisit_interval_seconds = 3.5;
+    command.scan_parameters.max_range_of_interest_m = 123456;
+    command.scan_parameters.min_range_of_interest_m = 42;
+    command.scan_parameters.elevation_scan_center_altitude_m = 7000;
+    command.scan_parameters.elevation_scan_center_range_m = 9000;
+    command.scan_parameters.degradation_method = AMS_MEL_IR_DEGRADATION_REVISIT;
+    return command;
+}
+
+static int test_general_mode(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_mode_request *request = NULL;
+    ams_mel_ir_mode_result_v1 result;
+    ams_mel_ir_mode_command_v1 command = full_mode_command();
+    CHECK(open_c2("mode-full", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_mode_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.mode == AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED);
+    CHECK(ams_mel_ir_mode_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    command.state = AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.state = UINT32_MAX;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.state = AMS_MEL_IR_MFA_STATE_OPERATE;
+    command.mode = AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED + 1;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.mode = AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED;
+    command.scan_parameters.elevation_defined_with_range_and_altitude = 2;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.scan_parameters.elevation_defined_with_range_and_altitude = 1;
+    command.scan_parameters.center_frame_ref_el = AMS_MEL_IR_COORD_FRAME_AIRCRAFT + 1;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.scan_parameters.center_frame_ref_el = AMS_MEL_IR_COORD_FRAME_AIRCRAFT;
+    command.scan_parameters.center_frame_ref_az = AMS_MEL_IR_COORD_FRAME_AIRCRAFT + 1;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.scan_parameters.center_frame_ref_az = AMS_MEL_IR_COORD_FRAME_INERTIAL;
+    command.scan_parameters.degradation_method = AMS_MEL_IR_DEGRADATION_REVISIT + 1;
+    CHECK(ams_mel_ir_c2_submit_mode(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(request == NULL);
+    command.scan_parameters.degradation_method = AMS_MEL_IR_DEGRADATION_REVISIT;
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_general_bit(void)
+{
+    static const uint32_t initiate[] = {1, UINT32_C(0x80000001), UINT32_MAX};
+    static const uint32_t cancel[] = {7, 9};
+    static const char euro_fault[] = "fault-\xE2\x82\xAC";
+    const ams_mel_string_view_v1 faults[] = {view("fault-alpha"), view(euro_fault)};
+    ams_mel_ir_bit_command_v1 command = {UINT32_C(0xfedcba98),
+        {initiate, 3}, {cancel, 2}, {faults, 2}};
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    ams_mel_ir_return_result_v1 result;
+    CHECK(open_c2("bit-full", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == AMS_MEL_IR_RETURN_SUCCESS);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    command.initiate_bit_ids.data = NULL;
+    CHECK(ams_mel_ir_c2_submit_bit(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    command.initiate_bit_ids.data = initiate;
+    {
+        const char invalid[] = {(char)0xc3, '(', '\0'};
+        const ams_mel_string_view_v1 invalid_fault = {invalid, 2};
+        command.clear_fault_codes.data = &invalid_fault;
+        command.clear_fault_codes.size = 1;
+        CHECK(ams_mel_ir_c2_submit_bit(c2, &command, &request, NULL, 0, NULL) ==
+              AMS_MEL_INVALID_ARGUMENT);
+    }
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    command = (ams_mel_ir_bit_command_v1){0};
+    CHECK(open_c2("bit-empty", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_bit(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == AMS_MEL_IR_RETURN_SUCCESS);
+    CHECK(result.error_code == AMS_MEL_ERROR_NONE);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_config_set(void)
+{
+    static const char config_text[] = "configuration-\xE2\x82\xAC";
+    ams_mel_ir_config_set_command_v1 command = {
+        UINT32_C(0xfedcba98), INT64_C(-1234567890123), {config_text, sizeof config_text - 1U}};
+    ams_mel_session *session = NULL;
+    ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL;
+    ams_mel_ir_return_result_v1 result;
+    CHECK(open_c2("config-full", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_config_set(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == AMS_MEL_IR_RETURN_SUCCESS);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    command.config.data = "bad\0string";
+    command.config.size = 10;
+    CHECK(ams_mel_ir_c2_submit_config_set(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    command.command_id = 0;
+    command.system_time_ns = 0;
+    command.config = view("");
+    CHECK(open_c2("config-empty", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_config_set(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    command.command_id = UINT32_C(0x80000000);
+    command.system_time_ns = INT64_C(9876543210);
+    command.config = view("positive");
+    CHECK(open_c2("config-positive", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_config_set(c2, &command, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
 static int test_timeout_and_parent_close(void)
 {
     ams_mel_session *session = NULL;
@@ -578,6 +731,9 @@ int main(void)
     CHECK(test_open_failure("c2-wrong-type", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-channel-capability-wrong", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
     CHECK(test_success() == EXIT_SUCCESS);
+    CHECK(test_general_mode() == EXIT_SUCCESS);
+    CHECK(test_general_bit() == EXIT_SUCCESS);
+    CHECK(test_config_set() == EXIT_SUCCESS);
     CHECK(test_timeout_and_parent_close() == EXIT_SUCCESS);
     CHECK(test_request_close_pending() == EXIT_SUCCESS);
     CHECK(test_rejection("c2-reject", "invalid task schedule") == EXIT_SUCCESS);

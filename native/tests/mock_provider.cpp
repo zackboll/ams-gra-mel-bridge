@@ -314,9 +314,20 @@ public:
     {
         record("bit_sent");
         if (!enabled_) throw std::logic_error("BIT sent before enable");
-        if (!command.getInitiateBIT_ID().empty() ||
+        if (scenario_ == "bit-full") {
+            const std::vector<std::uint32_t> initiate{1U, 0x80000001U, 0xffffffffU};
+            const std::vector<std::uint32_t> cancel{7U, 9U};
+            const std::vector<std::string> faults{"fault-alpha", "fault-\xE2\x82\xAC"};
+            if (command.getCommandID() != 0xfedcba98U ||
+                command.getInitiateBIT_ID() != initiate ||
+                command.getCancelBIT_ID() != cancel ||
+                command.getClearFaultCode() != faults)
+                throw std::runtime_error("full BIT conversion mismatch");
+        }
+        if (scenario_ != "bit-full" && scenario_ != "bit-ada" &&
+            (!command.getInitiateBIT_ID().empty() ||
             !command.getCancelBIT_ID().empty() ||
-            !command.getClearFaultCode().empty())
+            !command.getClearFaultCode().empty()))
             throw std::runtime_error("unexpected payload-bearing BIT profile");
         if (scenario_ == "bit-send-throw") throw std::runtime_error("mock BIT send exception");
         if (scenario_ == "bit-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
@@ -369,19 +380,69 @@ public:
     { return unsupported_request<irmel::EraseCommandType>(); }
     mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
     { return unsupported_request<irmel::CommandStatus>(); }
-    mel::RequestFor<Return> send(irmel::ConfigSetCommand) override
-    { return unsupported_request<Return>(); }
+    mel::RequestFor<Return> send(irmel::ConfigSetCommand command) override
+    {
+        record("config_set_sent");
+        if (!enabled_) throw std::logic_error("ConfigSet sent before enable");
+        if (scenario_ == "config-full" &&
+            (command.getCommandID() != 0xfedcba98U ||
+             command.getSystemTime() != std::chrono::nanoseconds{-1234567890123LL} ||
+             command.getConfig() != "configuration-\xE2\x82\xAC"))
+            throw std::runtime_error("ConfigSet conversion mismatch");
+        if (scenario_ == "config-empty" &&
+            (command.getCommandID() != 0U || command.getSystemTime().count() != 0 ||
+             !command.getConfig().empty()))
+            throw std::runtime_error("empty ConfigSet conversion mismatch");
+        if (scenario_ == "config-positive" &&
+            (command.getCommandID() != 0x80000000U ||
+             command.getSystemTime() != std::chrono::nanoseconds{9876543210LL} ||
+             command.getConfig() != "positive"))
+            throw std::runtime_error("positive ConfigSet conversion mismatch");
+        std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+        if (scenario_ == "config-fail")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                std::make_shared<Return>(Return::Fail)});
+        else if (scenario_ == "config-reject")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, "invalid configuration"}});
+        else
+            promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                std::make_shared<Return>(Return::Success)});
+        return promise.get_future();
+    }
     mel::RequestFor<irmel::MFA_Mode> send(irmel::ModeCmd command) override
     {
         record("mode_sent");
         if (!enabled_) throw std::logic_error("mode sent before enable");
+        if (scenario_ == "mode-full") {
+            const auto& scan = command.getScanParameters();
+            const auto center = scan.getCenter();
+            const auto& type = scan.getScanType();
+            if (command.getCommandID() != 0x89abcdefU ||
+                command.getState() != mel::MFA_State::Operate ||
+                command.getMode() != irmel::MFA_Mode::ScanVolumeSched ||
+                !scan.getIsDefinedWithRangeAndAltitude() || center.az != 0.25 ||
+                center.el != -0.5 || scan.getCentFrameRefEl() != irmel::CoordFrameRef::Aircraft ||
+                scan.getCentFrameRefAz() != irmel::CoordFrameRef::Inertial ||
+                scan.getScanWidth() != 1.25 || scan.getScanHeight() != 0.75 ||
+                type.getContinuousScan() != 1U || type.getReturning() != 2U ||
+                type.getAgileScan() != 3U || scan.getScanId() != 0x89abcdefU ||
+                scan.getScanRate() != -0.125 || scan.getPreferredRevisitInterval() != 2.5 ||
+                scan.getRequiredRevisitInterval() != 3.5 ||
+                scan.getMaxRangeOfInterest() != 123456U || scan.getMinRangeOfInterest() != 42U ||
+                scan.getElevationScanCenterAltitude() != 7000U ||
+                scan.getElevationScanCenterRange() != 9000U ||
+                scan.getDegredationType() != irmel::DegradationMethod::REVISIT_DEGRADATION)
+                throw std::runtime_error("full ModeCmd conversion mismatch");
+        }
         if (scenario_ == "c2-send-throw") throw std::runtime_error("mock send exception");
-        if (command.getState() != mel::MFA_State::Operate ||
+        if (scenario_ != "mode-full" && scenario_ != "mode-general" &&
+            (command.getState() != mel::MFA_State::Operate ||
             command.getMode() != irmel::MFA_Mode::TaskSched ||
             command.getScanParameters().getScanType().getContinuousScan() != 0U ||
             command.getScanParameters().getScanType().getReturning() != 0U ||
             command.getScanParameters().getScanType().getAgileScan() != 0U ||
-            command.getScanParameters().getScanId() != 0U)
+            command.getScanParameters().getScanId() != 0U))
             throw std::runtime_error("unexpected ModeCmd profile");
         if (scenario_ == "c2-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
             throw std::runtime_error("command ID conversion mismatch");
@@ -418,6 +479,9 @@ public:
                 promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
                     std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched)});
             }};
+        } else if (scenario_ == "mode-full" || scenario_ == "mode-general") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
+                std::make_shared<irmel::MFA_Mode>(command.getMode())});
         } else {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
                 std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched)});

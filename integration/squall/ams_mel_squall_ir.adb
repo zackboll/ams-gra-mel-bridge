@@ -11,6 +11,7 @@ procedure AMS_MEL_Squall_IR is
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
    use type C2.Command_Return;
+   use type C2.Error_Code;
    use type C2.Outcome;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
@@ -88,6 +89,55 @@ begin
       begin
          C2.Enable (Channel);
          declare
+            Request : C2.Mode_Request := C2.Submit_Mode
+              (Channel, 16#0040_1701#, C2.Standby, C2.Unused);
+            Result : constant C2.Mode_Result := C2.Wait (Request, 5_000);
+         begin
+            if C2.Status (Result) /= C2.Success or else C2.Mode (Result) /= C2.Unused then
+               raise Program_Error with "Squall did not accept Standby/Unused";
+            end if;
+            Ada.Text_IO.Put_Line ("general mode result: STANDBY/UNUSED");
+            C2.Close (Request);
+         end;
+         declare
+            Request : C2.Mode_Request := C2.Submit_Mode
+              (Channel, 16#0040_1702#, C2.Operate, C2.Scan_Volume_Sched);
+            Result : constant C2.Mode_Result := C2.Wait (Request, 5_000);
+         begin
+            if C2.Status (Result) /= C2.Rejected or else
+              C2.Rejection_Code (Result) /= C2.Invalid_Parameters
+            then
+               raise Program_Error with "Squall did not reject unsupported scan mode";
+            end if;
+            Ada.Text_IO.Put_Line ("scan mode result: REJECTED/INVALID_PARAMETERS");
+            C2.Close (Request);
+         end;
+         declare
+            Empty_Request : C2.Return_Request := C2.Submit_Config_Set
+              (Channel, 16#0040_1703#);
+            Payload_Request : C2.Return_Request := C2.Submit_Config_Set
+              (Channel, 16#0040_1704#, Config => "task-017");
+         begin
+            if C2.Value (C2.Wait (Empty_Request, 5_000)) /= C2.Return_Success or else
+              C2.Value (C2.Wait (Payload_Request, 5_000)) /= C2.Fail
+            then
+               raise Program_Error with "Squall ConfigSet behavior changed";
+            end if;
+            Ada.Text_IO.Put_Line ("ConfigSet empty result: SUCCESS");
+            Ada.Text_IO.Put_Line ("ConfigSet payload result: FAIL");
+            C2.Close (Empty_Request); C2.Close (Payload_Request);
+         end;
+         declare
+            Payload_Request : C2.Return_Request := C2.Submit_BIT_Initiate
+              (Channel, [16#8000_0001#], 16#0040_1705#);
+         begin
+            if C2.Value (C2.Wait (Payload_Request, 5_000)) /= C2.Fail then
+               raise Program_Error with "Squall did not return Fail for BIT payload";
+            end if;
+            Ada.Text_IO.Put_Line ("BIT payload result: FAIL");
+            C2.Close (Payload_Request);
+         end;
+         declare
             BIT_Request : C2.Return_Request :=
               C2.Submit_BIT_No_Op (Channel, 16#0040_1402#);
             BIT_Result : constant C2.Return_Result := C2.Wait (BIT_Request, 5_000);
@@ -101,8 +151,8 @@ begin
             C2.Close (BIT_Request);
          end;
          declare
-            Request : C2.Mode_Request :=
-              C2.Submit_Operate (Channel, 16#0040_0402#);
+            Request : C2.Mode_Request := C2.Submit_Mode
+              (Channel, 16#0040_0402#, C2.Operate, C2.Task_Sched);
             Result : constant C2.Mode_Result := C2.Wait (Request, 5_000);
          begin
             if C2.Status (Result) /= C2.Success

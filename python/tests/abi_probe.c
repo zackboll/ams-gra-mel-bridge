@@ -41,6 +41,9 @@ int main(void)
     ams_mel_status_t (*c2_submit_operate)(ams_mel_ir_c2 *, uint32_t,
         ams_mel_ir_mode_request **, char *, size_t, size_t *) =
         ams_mel_ir_c2_submit_operate;
+    ams_mel_status_t (*c2_submit_mode)(ams_mel_ir_c2 *, const ams_mel_ir_mode_command_v1 *, ams_mel_ir_mode_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_mode;
+    ams_mel_status_t (*c2_submit_full_bit)(ams_mel_ir_c2 *, const ams_mel_ir_bit_command_v1 *, ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_bit;
+    ams_mel_status_t (*c2_submit_config)(ams_mel_ir_c2 *, const ams_mel_ir_config_set_command_v1 *, ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_config_set;
     ams_mel_status_t (*mode_request_wait)(const ams_mel_ir_mode_request *,
         uint32_t, ams_mel_ir_mode_result_v1 *, char *, size_t, size_t *) =
         ams_mel_ir_mode_request_wait;
@@ -70,6 +73,7 @@ int main(void)
     (void)c2_open;
     (void)c2_enable;
     (void)c2_submit_operate;
+    (void)c2_submit_mode; (void)c2_submit_full_bit; (void)c2_submit_config;
     (void)mode_request_wait;
     (void)mode_request_close;
     (void)c2_submit_bit_noop;
@@ -96,6 +100,7 @@ int main(void)
     VALUE(AMS_MEL_IR_MFA_MODE_TASK_SCHED);
     VALUE(AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED);
     VALUE(AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED);
+    VALUE(AMS_MEL_IR_MFA_STATE_NOT_SET); VALUE(AMS_MEL_IR_MFA_STATE_UNKNOWN); VALUE(AMS_MEL_IR_MFA_STATE_NOT_INSTALLED); VALUE(AMS_MEL_IR_MFA_STATE_OFF); VALUE(AMS_MEL_IR_MFA_STATE_PRE_INITIALIZATION); VALUE(AMS_MEL_IR_MFA_STATE_INITIALIZATION); VALUE(AMS_MEL_IR_MFA_STATE_STANDBY); VALUE(AMS_MEL_IR_MFA_STATE_OPERATE); VALUE(AMS_MEL_IR_MFA_STATE_OPERATE_RX_ONLY); VALUE(AMS_MEL_IR_MFA_STATE_OPERATE_TX_ONLY); VALUE(AMS_MEL_IR_MFA_STATE_MAINTENANCE); VALUE(AMS_MEL_IR_MFA_STATE_CALIBRATION); VALUE(AMS_MEL_IR_MFA_STATE_INITIATED_BIT); VALUE(AMS_MEL_IR_MFA_STATE_SHUTDOWN); VALUE(AMS_MEL_IR_MFA_STATE_DEGRADED); VALUE(AMS_MEL_IR_MFA_STATE_MAX_EXCLUSIVE); VALUE(AMS_MEL_IR_COORD_FRAME_INERTIAL); VALUE(AMS_MEL_IR_COORD_FRAME_AIRCRAFT); VALUE(AMS_MEL_IR_DEGRADATION_CAPACITY); VALUE(AMS_MEL_IR_DEGRADATION_VOLUME); VALUE(AMS_MEL_IR_DEGRADATION_RANGE); VALUE(AMS_MEL_IR_DEGRADATION_REVISIT);
     VALUE(AMS_MEL_IR_RETURN_SUCCESS);
     VALUE(AMS_MEL_IR_RETURN_BAD_POINTER);
     VALUE(AMS_MEL_IR_RETURN_FAIL);
@@ -133,6 +138,13 @@ int main(void)
     LAYOUT(ams_mel_string_view_v1);
     FIELD(ams_mel_string_view_v1, data);
     FIELD(ams_mel_string_view_v1, size);
+    LAYOUT(ams_mel_u32_span_v1); FIELD(ams_mel_u32_span_v1, data); FIELD(ams_mel_u32_span_v1, size);
+    LAYOUT(ams_mel_string_view_span_v1); FIELD(ams_mel_string_view_span_v1, data); FIELD(ams_mel_string_view_span_v1, size);
+    LAYOUT(ams_mel_ir_scan_type_v1); FIELD(ams_mel_ir_scan_type_v1, continuous_scan); FIELD(ams_mel_ir_scan_type_v1, returning); FIELD(ams_mel_ir_scan_type_v1, agile_scan);
+    LAYOUT(ams_mel_ir_scan_param_v1); FIELD(ams_mel_ir_scan_param_v1, elevation_defined_with_range_and_altitude); FIELD(ams_mel_ir_scan_param_v1, center_az_rad); FIELD(ams_mel_ir_scan_param_v1, center_el_rad); FIELD(ams_mel_ir_scan_param_v1, center_frame_ref_el); FIELD(ams_mel_ir_scan_param_v1, center_frame_ref_az); FIELD(ams_mel_ir_scan_param_v1, scan_width_rad); FIELD(ams_mel_ir_scan_param_v1, scan_height_rad); FIELD(ams_mel_ir_scan_param_v1, scan_type); FIELD(ams_mel_ir_scan_param_v1, scan_id); FIELD(ams_mel_ir_scan_param_v1, scan_rate_rad_per_second); FIELD(ams_mel_ir_scan_param_v1, preferred_revisit_interval_seconds); FIELD(ams_mel_ir_scan_param_v1, required_revisit_interval_seconds); FIELD(ams_mel_ir_scan_param_v1, max_range_of_interest_m); FIELD(ams_mel_ir_scan_param_v1, min_range_of_interest_m); FIELD(ams_mel_ir_scan_param_v1, elevation_scan_center_altitude_m); FIELD(ams_mel_ir_scan_param_v1, elevation_scan_center_range_m); FIELD(ams_mel_ir_scan_param_v1, degradation_method);
+    LAYOUT(ams_mel_ir_mode_command_v1); FIELD(ams_mel_ir_mode_command_v1, command_id); FIELD(ams_mel_ir_mode_command_v1, state); FIELD(ams_mel_ir_mode_command_v1, mode); FIELD(ams_mel_ir_mode_command_v1, scan_parameters);
+    LAYOUT(ams_mel_ir_bit_command_v1); FIELD(ams_mel_ir_bit_command_v1, command_id); FIELD(ams_mel_ir_bit_command_v1, initiate_bit_ids); FIELD(ams_mel_ir_bit_command_v1, cancel_bit_ids); FIELD(ams_mel_ir_bit_command_v1, clear_fault_codes);
+    LAYOUT(ams_mel_ir_config_set_command_v1); FIELD(ams_mel_ir_config_set_command_v1, command_id); FIELD(ams_mel_ir_config_set_command_v1, system_time_ns); FIELD(ams_mel_ir_config_set_command_v1, config);
     LAYOUT(ams_mel_uci_id_v1);
     FIELD(ams_mel_uci_id_v1, uuid);
     FIELD(ams_mel_uci_id_v1, descriptive_label);

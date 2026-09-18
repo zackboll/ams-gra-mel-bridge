@@ -162,7 +162,17 @@ producer is `ams_mel_ir_c2_submit_bit_noop`, which sets the command ID and leave
 all BIT payload lists empty. A completed upstream `Return::Fail` is represented
 as `AMS_MEL_OK` plus `AMS_MEL_IR_RETURN_FAIL`; provider/facade failures remain
 distinct statuses. Payload-bearing BIT, config, camera, scan, and callbacks are
-not exposed.
+not exposed by that task.
+
+Task 017 retains ABI 0.1 and adds exactly three submit functions. Versioned C
+records represent all published ModeCmd/ScanParam, BIT_Command, and
+ConfigSetCommand fields with fixed-width values and explicit borrowed spans.
+Inputs are validated and synchronously copied before provider `send`; no caller
+storage is retained. Unknown states/modes/frame references/degradation methods,
+the MFA state sentinel, invalid Boolean values, malformed spans, and invalid
+UTF-8 are rejected before provider activity. Multiple populated raw BIT vectors
+are preserved rather than normalized so provider precedence remains authoritative.
+The existing Operate and BIT-no-op operations retain their exact semantics.
 
 The Ada wrapper initially waits with a bounded diagnostic buffer. For a normal
 rejection whose required byte count is larger, it allocates exactly that count,
