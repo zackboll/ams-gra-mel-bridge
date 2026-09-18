@@ -11,6 +11,7 @@ import weakref
 from unittest import mock
 
 from ams_mel import (
+    CommandReturn,
     ComponentLocation,
     ControlChannel,
     ControlConfig,
@@ -22,6 +23,9 @@ from ams_mel import (
     ModeRejected,
     ModeRequest,
     ModeSuccess,
+    ReturnCompleted,
+    ReturnRejected,
+    ReturnRequest,
     Session,
     UciId,
     _native,
@@ -103,6 +107,102 @@ class ControlChannelTests(unittest.TestCase):
         control.close()
         control.close()
         session.close()
+
+    def test_bit_success_requires_enable_and_repeats_cached_result(self) -> None:
+        session = self.open("bit-command-id")
+        control = session.open_control_channel(self.config())
+        self.assert_error(
+            ErrorKind.PROVIDER_FAILED,
+            lambda: control.submit_bit_noop(0x89ABCDEF),
+        )
+        control.enable()
+        request = control.submit_bit_noop(0x89ABCDEF)
+        expected = ReturnCompleted(CommandReturn.SUCCESS)
+        self.assertEqual(request.wait(1000), expected)
+        self.assertEqual(request.wait(0), expected)
+        request.close()
+        request.close()
+        control.close()
+        session.close()
+
+    def test_bit_return_fail_is_normal_completion(self) -> None:
+        session = self.open("bit-fail")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        request = control.submit_bit_noop(1)
+        self.assertEqual(request.wait(1000), ReturnCompleted(CommandReturn.FAIL))
+        request.close()
+        control.close()
+        session.close()
+
+    def test_bit_timeout_and_independent_python_lifetimes(self) -> None:
+        session = self.open("bit-delayed")
+        session_reference = weakref.ref(session)
+        control = session.open_control_channel(self.config())
+        control_reference = weakref.ref(control)
+        control.enable()
+        request = control.submit_bit_noop(7)
+        self.assert_error(ErrorKind.TIMEOUT, lambda: request.wait(0))
+        session.close()
+        del session
+        gc.collect()
+        self.assertIsNone(session_reference())
+        control.close()
+        del control
+        gc.collect()
+        self.assertIsNone(control_reference())
+        self.assertEqual(request.wait(1000), ReturnCompleted(CommandReturn.SUCCESS))
+        request.close()
+
+    def test_bit_long_rejection_is_complete_and_cached(self) -> None:
+        session = self.open("bit-reject-long")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        request = control.submit_bit_noop(1)
+        expected = ReturnRejected(
+            MelErrorCode.INVALID_PARAMETERS, "x" * 510 + "€" + "y" * 100
+        )
+        self.assertEqual(request.wait(1000), expected)
+        self.assertEqual(request.wait(0), expected)
+        request.close()
+        control.close()
+        session.close()
+
+    def test_bit_failure_distinctions(self) -> None:
+        for scenario, expected in (
+            ("bit-null-result", ErrorKind.PROVIDER_FAILED),
+            ("bit-future-throw", ErrorKind.PROVIDER_EXCEPTION),
+            ("bit-unknown-return", ErrorKind.PROVIDER_FAILED),
+        ):
+            with self.subTest(scenario=scenario):
+                session = self.open(scenario)
+                control = session.open_control_channel(self.config())
+                control.enable()
+                request = control.submit_bit_noop(1)
+                self.assert_error(expected, lambda: request.wait(1000))
+                request.close()
+                control.close()
+                session.close()
+
+        session = self.open("bit-send-throw")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        self.assert_error(ErrorKind.PROVIDER_EXCEPTION, lambda: control.submit_bit_noop(1))
+        control.close()
+        session.close()
+
+    def test_pending_bit_request_close_does_not_cancel_or_unload_early(self) -> None:
+        session = self.open("bit-lifetime")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        request = control.submit_bit_noop(8)
+        request.close()
+        self.assertFalse(request.is_open)
+        control.close()
+        session.close()
+        events = self.wait_for_event("library_unloaded")
+        self.assertLess(events.index("bit_completed"), events.index("c2_channel_destroyed"))
+        self.assertLess(events.index("c2_channel_destroyed"), events.index("library_unloaded"))
 
     def test_timeout_parent_close_and_independent_python_lifetimes(self) -> None:
         session = self.open("c2-delayed")
@@ -200,6 +300,152 @@ class ControlChannelTests(unittest.TestCase):
         self.assertEqual(int(result.code), unknown_code)
         self.assertEqual(result.code.name, "UNKNOWN_0xFEDCBA98")
         self.assertEqual(result.description, description)
+
+    def test_bit_unknown_rejection_code_is_preserved_as_terminal_result(self) -> None:
+        unknown_code = 0xFEDCBA98
+        description = "future BIT rejection"
+
+        def wait(
+            owner: object,
+            timeout_ms: int,
+            result_pointer: object,
+            diagnostic: object,
+            diagnostic_capacity: int,
+            required_pointer: object,
+        ) -> int:
+            del owner, timeout_ms
+            result = ctypes.cast(
+                result_pointer, ctypes.POINTER(_native.IrReturnResultV1)
+            ).contents
+            result.value = _native.AMS_MEL_IR_RETURN_SUCCESS
+            result.error_code = unknown_code
+            encoded = description.encode("utf-8") + b"\0"
+            self.assertGreaterEqual(diagnostic_capacity, len(encoded))
+            ctypes.memmove(diagnostic, encoded, len(encoded))
+            ctypes.cast(
+                required_pointer, ctypes.POINTER(ctypes.c_size_t)
+            ).contents.value = len(encoded)
+            return _native.AMS_MEL_COMMAND_REJECTED
+
+        request = ReturnRequest._from_owner(_native.IrReturnRequestHandle(1))
+        try:
+            with mock.patch.object(_native, "ams_mel_ir_return_request_wait", wait):
+                result = request.wait(0)
+        finally:
+            request._owner.value = None
+        self.assertIsInstance(result, ReturnRejected)
+        self.assertEqual(int(result.code), unknown_code)
+        self.assertEqual(result.code.name, "UNKNOWN_0xFEDCBA98")
+        self.assertEqual(result.description, description)
+
+    def test_bit_timeout_does_not_retry_for_oversized_diagnostic(self) -> None:
+        call_count = 0
+
+        def wait(*arguments: object) -> int:
+            nonlocal call_count
+            call_count += 1
+            required_pointer = arguments[-1]
+            ctypes.cast(
+                required_pointer, ctypes.POINTER(ctypes.c_size_t)
+            ).contents.value = 2048
+            return _native.AMS_MEL_TIMEOUT
+
+        request = ReturnRequest._from_owner(_native.IrReturnRequestHandle(1))
+        try:
+            with mock.patch.object(_native, "ams_mel_ir_return_request_wait", wait):
+                self.assert_error(ErrorKind.TIMEOUT, lambda: request.wait(0))
+        finally:
+            request._owner.value = None
+        self.assertEqual(call_count, 1)
+
+    def test_bit_terminal_diagnostic_retry_requires_identical_result(self) -> None:
+        calls = 0
+
+        def wait(
+            owner: object,
+            timeout_ms: int,
+            result_pointer: object,
+            diagnostic: object,
+            diagnostic_capacity: int,
+            required_pointer: object,
+        ) -> int:
+            nonlocal calls
+            del owner, timeout_ms, diagnostic
+            calls += 1
+            result = ctypes.cast(
+                result_pointer, ctypes.POINTER(_native.IrReturnResultV1)
+            ).contents
+            result.value = _native.AMS_MEL_IR_RETURN_SUCCESS
+            result.error_code = (
+                _native.AMS_MEL_ERROR_INVALID_PARAMETERS if calls == 1
+                else _native.AMS_MEL_ERROR_INVALID_STATE
+            )
+            self.assertIn(diagnostic_capacity, (512, 600))
+            ctypes.cast(
+                required_pointer, ctypes.POINTER(ctypes.c_size_t)
+            ).contents.value = 600
+            return _native.AMS_MEL_COMMAND_REJECTED
+
+        request = ReturnRequest._from_owner(_native.IrReturnRequestHandle(1))
+        try:
+            with mock.patch.object(_native, "ams_mel_ir_return_request_wait", wait):
+                self.assert_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY, lambda: request.wait(1000)
+                )
+        finally:
+            request._owner.value = None
+        self.assertEqual(calls, 2)
+
+    def test_bit_malformed_submission_ownership_is_hardened(self) -> None:
+        session = self.open("success")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        closed: list[int] = []
+
+        def no_owner(*arguments: object) -> int:
+            required_pointer = arguments[-1]
+            ctypes.cast(
+                required_pointer, ctypes.POINTER(ctypes.c_size_t)
+            ).contents.value = 1
+            return _native.AMS_MEL_OK
+
+        with mock.patch.object(_native, "ams_mel_ir_c2_submit_bit_noop", no_owner):
+            self.assert_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY, lambda: control.submit_bit_noop(1)
+            )
+
+        def failed_with_owner(*arguments: object) -> int:
+            owner_pointer = arguments[2]
+            ctypes.cast(
+                owner_pointer, ctypes.POINTER(_native.IrReturnRequestHandle)
+            ).contents.value = 123
+            diagnostic = arguments[3]
+            ctypes.memset(diagnostic, 0, 1)
+            required_pointer = arguments[-1]
+            ctypes.cast(
+                required_pointer, ctypes.POINTER(ctypes.c_size_t)
+            ).contents.value = 1
+            return _native.AMS_MEL_PROVIDER_FAILED
+
+        def close(owner_pointer: object, *arguments: object) -> int:
+            del arguments
+            owner = ctypes.cast(
+                owner_pointer, ctypes.POINTER(_native.IrReturnRequestHandle)
+            ).contents
+            closed.append(int(owner.value))
+            owner.value = None
+            return _native.AMS_MEL_OK
+
+        with (
+            mock.patch.object(
+                _native, "ams_mel_ir_c2_submit_bit_noop", failed_with_owner
+            ),
+            mock.patch.object(_native, "ams_mel_ir_return_request_close", close),
+        ):
+            self.assert_error(ErrorKind.PROVIDER_FAILED, lambda: control.submit_bit_noop(1))
+        self.assertEqual(closed, [123])
+        control.close()
+        session.close()
 
     def test_provider_and_future_failures_remain_structured_errors(self) -> None:
         for scenario, expected in (
@@ -308,6 +554,41 @@ class ControlChannelTests(unittest.TestCase):
         control.close()
         session.close()
 
+    def test_bit_timeout_and_command_id_uint32_validation(self) -> None:
+        session = self.open("bit-command-id")
+        control = session.open_control_channel(self.config())
+        control.enable()
+        for command_id in (-1, 1 << 32, True, 1.0, "1", None):
+            self.assert_error(
+                ErrorKind.INVALID_ARGUMENT,
+                lambda value=command_id: control.submit_bit_noop(value),
+            )
+        request = control.submit_bit_noop(0x89ABCDEF)
+        for timeout in (-1, 1 << 32, True, 1.0, "1", None):
+            self.assert_error(
+                ErrorKind.INVALID_ARGUMENT,
+                lambda value=timeout: request.wait(value),
+            )
+        self.assertEqual(
+            request.wait((1 << 32) - 1), ReturnCompleted(CommandReturn.SUCCESS)
+        )
+        request.close()
+        control.close()
+        session.close()
+
+        for command_id in (0, 0xFFFFFFFF):
+            with self.subTest(command_id=command_id):
+                session = self.open("success")
+                control = session.open_control_channel(self.config())
+                control.enable()
+                request = control.submit_bit_noop(command_id)
+                self.assertEqual(
+                    request.wait(1000), ReturnCompleted(CommandReturn.SUCCESS)
+                )
+                request.close()
+                control.close()
+                session.close()
+
     def test_control_context_does_not_implicitly_enable(self) -> None:
         session = self.open("c2-command-id")
         control = session.open_control_channel(self.config())
@@ -346,6 +627,8 @@ class ControlChannelTests(unittest.TestCase):
             ControlChannel()
         with self.assertRaisesRegex(TypeError, "ControlChannel.submit_operate"):
             ModeRequest()
+        with self.assertRaisesRegex(TypeError, "ControlChannel.submit_bit_noop"):
+            ReturnRequest()
 
 
 if __name__ == "__main__":

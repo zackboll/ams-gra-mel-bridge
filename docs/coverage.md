@@ -14,21 +14,21 @@
 | Buffer and callback lifetimes | Hardened with non-quiescing mock | Channel destruction before in-flight drain/storage; release checked exactly once |
 | IR image receive | Mono8 receive implemented | Host memory, `IRSTImage`, C polling and `AMS.MEL.IR` |
 | IR C2 Operate/TaskSched | Implemented | Async C request and `AMS.MEL.IR.C2`; timeout/rejection/exception distinct |
-| IR C2 BIT no-op | Implemented in C, Ada, and safe Rust | Command ID plus empty initiate/cancel/clear-fault lists; reusable async Return request |
+| IR C2 BIT no-op | Implemented in C, Ada, safe Rust, and safe Python | Command ID plus empty initiate/cancel/clear-fault lists; reusable async Return request |
 | Pending C2 lifetime | Hardened and lifecycle-tested | Pre-send allocation; allocation-free emergency roots; launch/allocation failure injection; deferred disable/detach/unload |
 | C2/image coexistence | Implemented | One Session, parent-first close, provider unload last |
 | Other C2 commands/callbacks | Not implemented | No payload-bearing BIT, scan scheduling, config, camera, or CommandStatus API |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Full FrameHeader metadata | Partial by design | Omits contributing sensor and inertial/navigation vectors |
-| Real IR provider validation | Implemented and passed | Pinned Squall: C/Ada/Rust BIT no-op plus C/Ada/Rust/Python TaskSched and three 320x200 Mono8 frames; opt-in and excluded from ordinary CI |
+| Real IR provider validation | Implemented and passed | Pinned Squall: C/Ada/Rust/Python BIT no-op, TaskSched, and three 320x200 Mono8 frames; opt-in and excluded from ordinary CI |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
 | Rust sys binding | Complete for the current project C ABI | Exactly 19 C functions; C-header signature/layout/constant drift probe includes BIT; not a claim of complete MEL functionality |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched implemented | Intentional 16-function private subset; no BIT binding or safe BIT API |
-| Real Squall Python validation | Implemented and passed | Same pinned Task-004 provider/runtime; parent-first close, cached wait, TaskSched, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown through the public safe API |
-| Additional Python C2/RF | Not implemented | No scan/BIT/config/camera commands or RF; no zero-copy/NumPy views |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 19-function private façade binding; typed Return completion/rejection and reusable ReturnRequest |
+| Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
+| Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
 | Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |

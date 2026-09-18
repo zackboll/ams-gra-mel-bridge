@@ -51,6 +51,12 @@ reusable `ReturnRequest`. A completed `Return::Fail` is a normal `ReturnResult`,
 not a Rust error. Timeout and request close/drop do not cancel provider work, and
 native request ownership remains valid after Rust Session/C2 closure. Python and
 payload-bearing BIT remain unsupported.
+Task 016 exposes the same unchanged 19-function ABI through dependency-free
+Python. It adds typed `CommandReturn`, structured `ReturnCompleted` versus
+`ReturnRejected`, and an independent reusable `ReturnRequest`. `Return::Fail`
+is normal completion; timeout and close do not cancel, complete terminal
+diagnostics are preserved, and unknown MEL rejection codes remain inspectable.
+Payload-bearing BIT remains unsupported.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -65,9 +71,9 @@ C++ provider -> MEL API -> ams_mel_c -> Ada
 3. `ada/src`: idiomatic public Ada plus private imported C declarations.
 4. `rust/ams-mel-sys`: unsafe declarations for the complete current C ABI.
 5. `rust/ams-mel`: safe Rust API over `ams-mel-sys`; no direct C++ path.
-6. `python/ams_mel`: safe Python API over a private, sixteen-function `ctypes`
-   layer for Session/version, IR image streams, and IR C2 Operate; no direct C++ or
-   provider-factory path.
+6. `python/ams_mel`: safe Python API over the complete current 19-function
+   `ctypes` façade for Session/version, IR image streams, IR C2 Operate, and BIT
+   no-op; no direct C++ or provider-factory path.
 7. Separate integration applications: OMS/UCI, image processing, RF processing.
 
 `integration/squall` contains validation applications rather than production

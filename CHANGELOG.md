@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expose the existing IR BIT empty/no-op profile through dependency-free Python
+  with typed `CommandReturn`, structured completion/rejection values, reusable
+  `ReturnRequest`, complete cached diagnostics, and parent-independent ownership.
 - Expose the existing IR BIT empty/no-op profile through safe Rust with typed
   `CommandReturn`, structured `ReturnResult`, and reusable asynchronous
   `ReturnRequest` ownership; `Return::Fail` remains a normal completion.

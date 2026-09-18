@@ -1,4 +1,4 @@
-"""Private ctypes declarations for the Python ``ams_mel_c`` subset."""
+"""Private ctypes declarations for the complete current ``ams_mel_c`` façade."""
 
 from __future__ import annotations
 
@@ -27,6 +27,11 @@ AMS_MEL_IR_MFA_MODE_UNUSED = 0
 AMS_MEL_IR_MFA_MODE_TASK_SCHED = 1
 AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED = 2
 AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED = 3
+AMS_MEL_IR_RETURN_SUCCESS = 0
+AMS_MEL_IR_RETURN_BAD_POINTER = 1
+AMS_MEL_IR_RETURN_FAIL = 2
+AMS_MEL_IR_RETURN_NOT_SUPPORTED = 3
+AMS_MEL_IR_RETURN_NOT_IMPLEMENTED = 4
 AMS_MEL_ERROR_NONE = 0
 AMS_MEL_ERROR_INVALID_ID = 1
 AMS_MEL_ERROR_INVALID_STATE = 2
@@ -120,6 +125,13 @@ class IrModeResultV1(ctypes.Structure):
     ]
 
 
+class IrReturnResultV1(ctypes.Structure):
+    _fields_ = [
+        ("value", ctypes.c_uint32),
+        ("error_code", ctypes.c_uint32),
+    ]
+
+
 class IrFrameV1(ctypes.Structure):
     _fields_ = [
         ("system_time_ns", ctypes.c_int64),
@@ -161,6 +173,7 @@ SessionHandle = ctypes.c_void_p
 IrStreamHandle = ctypes.c_void_p
 IrC2Handle = ctypes.c_void_p
 IrModeRequestHandle = ctypes.c_void_p
+IrReturnRequestHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -327,6 +340,37 @@ ams_mel_ir_mode_request_close.argtypes = [
 ]
 ams_mel_ir_mode_request_close.restype = ctypes.c_int32
 
+ams_mel_ir_c2_submit_bit_noop = _LIBRARY.ams_mel_ir_c2_submit_bit_noop
+ams_mel_ir_c2_submit_bit_noop.argtypes = [
+    IrC2Handle,
+    ctypes.c_uint32,
+    ctypes.POINTER(IrReturnRequestHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_c2_submit_bit_noop.restype = ctypes.c_int32
+
+ams_mel_ir_return_request_wait = _LIBRARY.ams_mel_ir_return_request_wait
+ams_mel_ir_return_request_wait.argtypes = [
+    IrReturnRequestHandle,
+    ctypes.c_uint32,
+    ctypes.POINTER(IrReturnResultV1),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_return_request_wait.restype = ctypes.c_int32
+
+ams_mel_ir_return_request_close = _LIBRARY.ams_mel_ir_return_request_close
+ams_mel_ir_return_request_close.argtypes = [
+    ctypes.POINTER(IrReturnRequestHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_return_request_close.restype = ctypes.c_int32
+
 ams_mel_ir_c2_close = _LIBRARY.ams_mel_ir_c2_close
 ams_mel_ir_c2_close.argtypes = [
     ctypes.POINTER(IrC2Handle),
@@ -352,5 +396,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_c2_submit_operate",
     "ams_mel_ir_mode_request_wait",
     "ams_mel_ir_mode_request_close",
+    "ams_mel_ir_c2_submit_bit_noop",
+    "ams_mel_ir_return_request_wait",
+    "ams_mel_ir_return_request_close",
     "ams_mel_ir_c2_close",
 )

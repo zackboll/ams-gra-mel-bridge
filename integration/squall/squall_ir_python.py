@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import NoReturn, TypeVar
 
 from ams_mel import (
+    CommandReturn,
     ComponentLocation,
     ControlChannel,
     ControlConfig,
@@ -16,6 +17,8 @@ from ams_mel import (
     MfaMode,
     ModeRejected,
     ModeSuccess,
+    ReturnCompleted,
+    ReturnRejected,
     Session,
     UciId,
 )
@@ -66,6 +69,21 @@ def require_task_sched(result: ModeSuccess | ModeRejected, operation: str) -> No
             f"code={result.code.name}({int(result.code)}), description={result.description}"
         )
     if not isinstance(result, ModeSuccess) or result.mode is not MfaMode.TASK_SCHED:
+        raise ContractFailure(f"{operation} returned unexpected result: {result!r}")
+
+
+def require_bit_success(
+    result: ReturnCompleted | ReturnRejected, operation: str
+) -> None:
+    if isinstance(result, ReturnRejected):
+        raise ContractFailure(
+            f"{operation} rejected BIT no-op: "
+            f"code={result.code.name}({int(result.code)}), description={result.description}"
+        )
+    if (
+        not isinstance(result, ReturnCompleted)
+        or result.value is not CommandReturn.SUCCESS
+    ):
         raise ContractFailure(f"{operation} returned unexpected result: {result!r}")
 
 
@@ -134,6 +152,12 @@ def run(arguments: list[str]) -> None:
         "open ControlChannel", lambda: session.open_control_channel(control_config)
     )
     mel_call("enable ControlChannel", control.enable)
+    bit_request = mel_call(
+        "submit BIT no-op", lambda: control.submit_bit_noop(0x0040_0402)
+    )
+    bit_result = mel_call("wait for BIT no-op", lambda: bit_request.wait(5_000))
+    require_bit_success(bit_result, "BIT")
+    print("BIT result: SUCCESS")
     request = mel_call(
         "submit Operate/TaskSched", lambda: control.submit_operate(0x0040_0403)
     )
@@ -144,6 +168,11 @@ def run(arguments: list[str]) -> None:
     mel_call("close parent Session", session.close)
     if session.is_open:
         raise ContractFailure("Session remained open after parent-first close")
+    cached_bit = mel_call(
+        "repeat cached ReturnRequest wait", lambda: bit_request.wait(0)
+    )
+    require_bit_success(cached_bit, "cached BIT")
+    print("cached BIT success")
     cached = mel_call("repeat cached ModeRequest wait", lambda: request.wait(0))
     require_task_sched(cached, "cached C2")
     print("cached C2 result: TASK_SCHED")
@@ -192,6 +221,9 @@ def run(arguments: list[str]) -> None:
             f"malformed={counters.malformed_or_unsupported}"
         )
 
+    mel_call("close ReturnRequest", bit_request.close)
+    if bit_request.is_open:
+        raise ContractFailure("ReturnRequest remained open after explicit close")
     mel_call("close ModeRequest", request.close)
     if request.is_open:
         raise ContractFailure("ModeRequest remained open after explicit close")

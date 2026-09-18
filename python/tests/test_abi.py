@@ -15,7 +15,7 @@ class AbiTests(unittest.TestCase):
     def test_reports_exact_facade_version(self) -> None:
         self.assertEqual(abi_version(), AbiVersion(major=0, minor=1))
 
-    def test_private_layer_binds_complete_current_python_subset(self) -> None:
+    def test_private_layer_binds_complete_current_facade(self) -> None:
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
@@ -34,10 +34,13 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_c2_submit_operate",
                 "ams_mel_ir_mode_request_wait",
                 "ams_mel_ir_mode_request_close",
+                "ams_mel_ir_c2_submit_bit_noop",
+                "ams_mel_ir_return_request_wait",
+                "ams_mel_ir_return_request_close",
                 "ams_mel_ir_c2_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 16)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 19)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -95,6 +98,11 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED,
             _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED,
             _native.AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED,
+            _native.AMS_MEL_IR_RETURN_SUCCESS,
+            _native.AMS_MEL_IR_RETURN_BAD_POINTER,
+            _native.AMS_MEL_IR_RETURN_FAIL,
+            _native.AMS_MEL_IR_RETURN_NOT_SUPPORTED,
+            _native.AMS_MEL_IR_RETURN_NOT_IMPLEMENTED,
             _native.AMS_MEL_ERROR_NONE,
             _native.AMS_MEL_ERROR_INVALID_ID,
             _native.AMS_MEL_ERROR_INVALID_STATE,
@@ -151,6 +159,9 @@ class AbiTests(unittest.TestCase):
         )
         expected.extend(
             self._layout(_native.IrModeResultV1, "mode", "error_code")
+        )
+        expected.extend(
+            self._layout(_native.IrReturnResultV1, "value", "error_code")
         )
         expected.extend(
             self._layout(
