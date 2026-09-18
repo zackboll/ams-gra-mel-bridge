@@ -19,18 +19,16 @@ themselves.
 
 > **Current status:** C and Ada support provider Session lifecycle, IR host-memory
 > Mono8 reception, C2 Operate/TaskSched, and the empty/no-op BIT command profile.
-> The raw Rust sys crate tracks the complete current 19-function C ABI. Safe Rust
-> supports Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile.
-> Its mode and Return requests include timeout, cached repeated waits, structured
+> The raw Rust sys crate and private Python ctypes layer track the complete current
+> 19-function C ABI. Safe Rust and Python support Session, Mono8,
+> Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
+> requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An
 > opt-in real Squall integration harness validates C, Ada, safe Rust, and safe Python
 > against the same pinned provider/runtime stack; it is not part of ordinary
-> builds or CI. Python supports the existing Session, Mono8, and C2
-> Operate/TaskSched slice, including owned-bytes Frames, asynchronous mode
-> requests, timeout and cached repeated waits, structured complete rejections,
-> retryable C2 close, and independent parent/child lifetimes. Python remains a
-> dependency-free, development-use-only binding: BIT, RF, and additional C2 commands
-> are not implemented, and there is no wheel/PyPI publication or zero-copy/NumPy
+> builds or CI. Python remains a dependency-free, development-use-only binding:
+> payload-bearing BIT, RF, and additional C2 commands are not implemented, and
+> there is no wheel/PyPI publication or zero-copy/NumPy
 > image API. Payload-bearing BIT is not exposed in any language.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
@@ -163,7 +161,7 @@ layer.
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
 | **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op implemented and mock-tested; current safe-Rust slice also validated against real Squall; no payload-bearing BIT, additional C2 commands/callbacks, or RF |
-| **Python** | Python API → private `ctypes` → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented; no zero-copy/NumPy API or wheel/PyPI publication |
+| **Python** | Python API → private `ctypes` → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op implemented and mock-tested; current IR slice also validated against real Squall; no payload-bearing BIT, additional C2/RF, zero-copy/NumPy API, or wheel/PyPI publication |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 
 This split is intentional. C++ already speaks the native MEL interface, while
@@ -530,8 +528,8 @@ Implemented:
   APIs over the existing C ABI, including reusable `ReturnRequest` and typed
   Return completion/rejection behavior (`Return::Fail` is a normal completed
   result); payload-bearing BIT remains unsupported;
-- dependency-free Python Session, IR host-memory Mono8, and C2
-  Operate/TaskSched APIs with owned-bytes frames, asynchronous mode requests,
+- dependency-free Python Session, IR host-memory Mono8, C2 Operate/TaskSched,
+  and BIT no-op APIs with owned-bytes frames, asynchronous mode/Return requests,
   cached waits, retryable C2 close, and independent parent/child lifetimes; and
 - opt-in real Squall validation of the current C, Ada, safe Rust, and safe Python
   IR slices.
@@ -674,14 +672,13 @@ SQUALL_SOURCE_DIR=/path/to/ams-gra-hello-world-sk-sensors-squall \
   make test-squall-ir
 ```
 
-This runs the C, Ada, Rust, and Python integration clients in one Squall startup. C,
-Ada, and Rust validate BIT no-op plus TaskSched and Mono8; Python validates
-TaskSched plus Mono8 and still has no BIT API. Use
+This runs the C, Ada, Rust, and Python integration clients in one Squall startup.
+All four validate BIT no-op plus TaskSched and Mono8. Use
 `make test-squall-ir-c`, `make test-squall-ir-ada`, or
 `make test-squall-ir-rust`, or `make test-squall-ir-python` to select one client. See
 `integration/squall/README.md`, `docs/task-004-validation.md`, and
 `docs/task-009-validation.md`, `docs/task-013-validation.md`, and
-`docs/task-015-validation.md` for runtime,
+`docs/task-015-validation.md` and `docs/task-016-validation.md` for runtime,
 revision, cleanup, and evidence.
 
 To test another compiler, use a separate build directory:

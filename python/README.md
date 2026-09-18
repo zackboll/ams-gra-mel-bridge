@@ -14,23 +14,26 @@ models provider C++ interfaces directly.
 
 The current API supports façade ABI/version queries, provider `Session`
 open/version/close, host-memory Mono8 `ImageStream`
-open/start/receive/counters/stop/close, and the existing IR
-CommandAndControl Operate/TaskSched slice. `Session.open_control_channel()`
-returns a `ControlChannel`; `enable()` is explicit, and `submit_operate()` returns
-an asynchronous `ModeRequest`. `wait()` returns `ModeSuccess(MfaMode.TASK_SCHED)`
-or a structured `ModeRejected(MelErrorCode, description)`. Zero polls, timeout
-does not consume or cancel the request, and terminal results may be read again.
+open/start/receive/counters/stop/close, and the existing IR CommandAndControl
+Operate/TaskSched plus BIT no-op slices. `Session.open_control_channel()` returns
+a `ControlChannel`; `enable()` is explicit. `submit_operate()` returns an
+asynchronous `ModeRequest`, while `submit_bit_noop()` returns a `ReturnRequest`
+without exposing unsupported BIT payloads. Return waits yield `ReturnCompleted`
+with a typed `CommandReturn` or structured `ReturnRejected`; `CommandReturn.FAIL`
+is a normal completion. Zero polls, timeout does not consume or cancel either
+request, and terminal results may be read again.
 Complete rejection descriptions are preserved, including text larger than the
 initial diagnostic buffer. Known MEL error codes have named enum values; unknown
-rejection codes remain `ModeRejected` and preserve their exact uint32 value.
+rejection codes remain structured mode/Return rejections and preserve their
+exact uint32 value.
 
 Frames preserve the supported metadata, and `Frame.pixels` is an owned `bytes`
 copy: no view into ctypes storage, provider storage, or the native receive queue
 escapes. Timeout and clean stream stop are distinct structured errors.
 
-`ImageStream`, `ControlChannel`, and `ModeRequest` independently own their native
-handles and do not retain Python parent objects. Session and control owners may
-close first while a pending request remains valid. Request close only releases
+`ImageStream`, `ControlChannel`, `ModeRequest`, and `ReturnRequest` independently
+own their native handles and do not retain Python parent objects. Session and
+control owners may close first while a pending request remains valid. Request close only releases
 the public owner and does not cancel provider work. Native C2 close decides
 whether cleanup cleared the owner: a retryable detach failure leaves the Python
 object open for another explicit close, while a cleared cleanup failure leaves
@@ -38,16 +41,17 @@ it closed.
 
 Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume a stream at a time; request
-wait must not race request close; and control enable, submit, and close must be
-serialized. The GIL is not a substitute for those contracts. Context managers
+wait must not race its request close; and control enable, both submissions, and
+close must be serialized. The GIL is not a substitute for those contracts. Context managers
 do not implicitly start streams or enable controls. If a `with` body raises,
 cleanup is attempted without replacing that exception; close failures propagate
 on normal context exit.
 
 This is not a native extension or a zero-copy interface. The current Session +
-IR Mono8 + C2 Operate/TaskSched slice is also validated by the opt-in real Squall
+IR Mono8 + C2 Operate/TaskSched + BIT no-op slice is also validated by the opt-in real Squall
 client in `integration/squall`; that client adds no binding API and uses no
-external Python dependency. Additional C2 commands, RF, NumPy/zero-copy image
+external Python dependency. Payload-bearing BIT, additional C2 commands and
+callbacks, RF, NumPy/zero-copy image
 views, wheels, and PyPI publication are not included.
 
 From the repository root, run:
