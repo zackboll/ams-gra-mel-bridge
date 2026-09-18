@@ -162,7 +162,7 @@ layer.
 | **C++** | Directly consumes the published C++ MEL API | Native GRA path; does not require `ams_mel_c` |
 | **Ada** | Ada API → private C imports → `ams_mel_c` → C++ MEL | Implemented for the current IR vertical slice |
 | **SPARK** | SPARK/Ada code → Ada binding → `ams_mel_c` → C++ MEL | Architectural/high-assurance consumer path; FFI/native boundary itself is not SPARK-proved |
-| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented |
+| **Rust** | Safe Rust wrapper → `-sys` crate → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op implemented and mock-tested; current safe-Rust slice also validated against real Squall; no payload-bearing BIT, additional C2 commands/callbacks, or RF |
 | **Python** | Python API → private `ctypes` → `ams_mel_c` → C++ MEL | Session, IR host-memory Mono8, and C2 Operate/TaskSched implemented and mock-tested; current IR slice also validated against real Squall; additional C2/RF not implemented; no zero-copy/NumPy API or wheel/PyPI publication |
 | **C** | Calls the `ams_mel_c` C ABI directly | Low-level bridge API |
 
@@ -526,8 +526,10 @@ Implemented:
   remains unsupported;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
-- safe Rust Session, IR host-memory Mono8, and C2 Operate/TaskSched APIs over the
-  existing C ABI, with RAII cleanup and Rust-owned frame pixel copies;
+- safe Rust Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op
+  APIs over the existing C ABI, including reusable `ReturnRequest` and typed
+  Return completion/rejection behavior (`Return::Fail` is a normal completed
+  result); payload-bearing BIT remains unsupported;
 - dependency-free Python Session, IR host-memory Mono8, and C2
   Operate/TaskSched APIs with owned-bytes frames, asynchronous mode requests,
   cached waits, retryable C2 close, and independent parent/child lifetimes; and
