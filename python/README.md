@@ -44,12 +44,21 @@ do not implicitly start streams or enable controls. If a `with` body raises,
 cleanup is attempted without replacing that exception; close failures propagate
 on normal context exit.
 
-This is not a native extension or a zero-copy interface. Additional C2 commands,
-RF, real Squall Python validation, NumPy/zero-copy image views, wheels, and PyPI
-publication are not included.
+This is not a native extension or a zero-copy interface. The current Session +
+IR Mono8 + C2 Operate/TaskSched slice is also validated by the opt-in real Squall
+client in `integration/squall`; that client adds no binding API and uses no
+external Python dependency. Additional C2 commands, RF, NumPy/zero-copy image
+views, wheels, and PyPI publication are not included.
 
 From the repository root, run:
 
 ```sh
 make test-python
+```
+
+With the exact pinned external Squall checkout and a supported container runtime,
+the separate real-provider validation is:
+
+```sh
+SQUALL_SOURCE_DIR=/path/to/squall make test-squall-ir-python
 ```

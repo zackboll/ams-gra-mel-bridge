@@ -19,14 +19,15 @@
 | Other C2 commands/callbacks | Not implemented | No scan scheduling, BIT, config, camera, or CommandStatus API |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Full FrameHeader metadata | Partial by design | Omits contributing sensor and inertial/navigation vectors |
-| Real IR provider validation | Implemented and passed | Pinned Squall simulator: C2 TaskSched plus three 320x200 Mono8 frames in C, Ada, and safe Rust; opt-in and excluded from ordinary CI |
+| Real IR provider validation | Implemented and passed | Pinned Squall simulator: C2 TaskSched plus three 320x200 Mono8 frames in C, Ada, safe Rust, and safe Python; opt-in and excluded from ordinary CI |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
 | Rust sys binding | Complete for the current project C ABI | Exactly 16 C functions; C-header layout/constant drift probe covers all raw records/constants in use; not a claim of complete MEL functionality |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched implemented | Owned configs/frames, async request, timeout/repeated wait, full rejection text, retryable C2 close, independent and coexistence lifetimes; no additional C2/RF |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; parent-first close, cached wait, TaskSched, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
 | Python binding | Session + IR Mono8 + C2 Operate/TaskSched implemented | Owned Frames, async mode requests, timeout/repeated wait, full rejection text, retryable C2 close, independent/coexistence lifetimes; strict C11 drift probe and mock-provider tests |
-| Additional Python C2/RF | Not implemented | No scan/BIT/config/camera commands or RF; no real Squall Python validation or zero-copy/NumPy views |
+| Real Squall Python validation | Implemented and passed | Same pinned Task-004 provider/runtime; parent-first close, cached wait, TaskSched, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown through the public safe API |
+| Additional Python C2/RF | Not implemented | No scan/BIT/config/camera commands or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
 | Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |
