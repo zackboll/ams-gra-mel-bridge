@@ -10,6 +10,8 @@ package AMS.MEL.IR is
 
    type UCI_ID is private;
    function Create_UCI_ID (Value : UUID; Descriptive_Label : String) return UCI_ID;
+   function UUID_Value (ID : UCI_ID) return UUID;
+   function Descriptive_Label (ID : UCI_ID) return String;
 
    type Component_Location is private;
    function Create_Component_Location

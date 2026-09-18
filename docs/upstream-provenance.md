@@ -109,6 +109,14 @@ and installed as notices. The three license files share SHA-256
   `enabled_` and delegates control disable there; `~SquallImageChannel` resets
   its `UdpDataReceiver`. The façade therefore retains listener/buffers/storage
   through channel destruction and then drains its own in-flight callbacks.
+- Task 018 uses the pinned required C2 overloads for BIT_Configuration,
+  CommandStatus, and BIT_Status. The pinned interface has no unregister overload.
+  Pinned Squall stores each closure, synchronously emits an empty default
+  BIT_Configuration after its registration, synchronously emits an empty default
+  BIT_Status after its registration, and emits CommandStatus inside ModeCmd,
+  BIT_Command, and ConfigSetCommand sends. Accepted no-op BIT additionally emits
+  an empty BIT_Status. These empty values describe this pinned simulator only;
+  rich mock values establish complete nonempty fidelity.
 - `Control.h` includes a cyclic and broad declaration graph (including Channel
   declarations and Quaternion) even though task 001 invokes no such feature.
 - Common MEL's `CMN_MEL_API_VERSION` string (`"4.0"`), numeric provider

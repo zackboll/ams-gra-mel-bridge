@@ -19,9 +19,14 @@ themselves.
 
 > **Current status:** C and Ada support provider Session lifecycle, IR host-memory
 > Mono8 reception, and all three required C2 command sends: general ModeCmd with
-> complete ScanParam, BIT, and ConfigSet. Ada uses safe one-choice BIT operations.
+> complete ScanParam, BIT, and ConfigSet, plus all three required C2-specific
+> metadata callbacks. Ada uses safe one-choice BIT operations and fully owned
+> `AMS.MEL.IR.C2.Metadata` values for CommandStatus, BIT_Configuration, and
+> BIT_Status (including complete nested faults). Provider callbacks are copied
+> into a bounded native queue; provider callback threads never invoke Ada
+> application code.
 > The raw Rust sys crate and private Python ctypes layer track the complete current
-> 22-function C ABI. Safe Rust and Python remain intentionally constrained to
+> 28-function C ABI. Safe Rust and Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An
@@ -29,7 +34,8 @@ themselves.
 > against the same pinned provider/runtime stack; it is not part of ordinary
 > builds or CI. Python remains a dependency-free, development-use-only binding:
 > payload-bearing BIT and general Mode/ConfigSet are absent from their safe APIs;
-> RF and C2 callbacks are not implemented, and there is no wheel/PyPI publication
+> RF, Common Channel services, optional C2 operations, and safe Rust/Python
+> metadata are not implemented, and there is no wheel/PyPI publication
 > or zero-copy/NumPy image API. Raw declarations alone are not safe-language parity.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall
@@ -523,6 +529,8 @@ Implemented:
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
 - native C ABI and safe Ada C2 general ModeCmd with complete ScanParam,
   intended one-choice payload-bearing BIT, BIT no-op, and ConfigSet interfaces;
+- native queue and safe Ada support for complete C2-specific BIT_Configuration,
+  CommandStatus, and BIT_Status metadata;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
 - safe Rust Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op
@@ -539,8 +547,9 @@ Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- required C2 metadata callbacks and optional/conditional C2 commands;
+- inherited Common Channel services and optional/conditional C2 commands;
 - safe Rust/Python catch-up for the expanded Task 017 command surface;
+- safe Rust/Python C2 metadata APIs;
 - RF MEL;
 - stacked images;
 - tracking interfaces;

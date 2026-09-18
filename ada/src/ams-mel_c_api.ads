@@ -31,6 +31,10 @@ private package AMS.MEL_C_API is
    type Return_Request_Handle is new System.Address;
    Null_Return_Request : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
+   type Metadata_Handle is new System.Address;
+   Null_Metadata : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
+   type Metadata_Event_Handle is new System.Address;
+   Null_Metadata_Event : constant Metadata_Event_Handle := Metadata_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8
      with Convention => C;
@@ -41,6 +45,54 @@ private package AMS.MEL_C_API is
    type UCI_ID_V1 is record
       UUID              : Byte_Array_16;
       Descriptive_Label : String_View_V1;
+   end record with Convention => C;
+   type Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record with Convention => C;
+   type IR_Command_Status_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      State, Reason_ID : Interfaces.Unsigned_32;
+      Reason_Description : String_View_V1;
+   end record with Convention => C;
+   type BIT_Type_V1 is record
+      BIT_ID : UCI_ID_V1;
+      Accepted_Interface : Interfaces.Unsigned_32;
+      BIT_Item_Names, Subsystem_Component_IDs : Span_V1;
+      Expected_Duration_NS : Interfaces.Integer_64;
+   end record with Convention => C;
+   type BIT_Configuration_V1 is record BIT_Types : Span_V1; end record with Convention => C;
+   type Active_BIT_V1 is record
+      BIT_ID : UCI_ID_V1; Estimated_Completion_Time_NS : Interfaces.Integer_64;
+      Estimated_Percent_Complete : Interfaces.C.double;
+   end record with Convention => C;
+   type Completed_BIT_Item_V1 is record
+      BIT_Item_Name : String_View_V1; Result : Interfaces.Unsigned_32;
+      Fail_Reason : String_View_V1;
+   end record with Convention => C;
+   type Completed_BIT_V1 is record
+      BIT_ID : UCI_ID_V1; Time_Tag_NS : Interfaces.Integer_64;
+      Result : Interfaces.Unsigned_32; Fail_Reason : String_View_V1;
+      BIT_Items : Span_V1;
+   end record with Convention => C;
+   type Fault_Data_V1 is record Key, Value, Format, Units : String_View_V1; end record with Convention => C;
+   type Fault_Ambiguity_Group_V1 is record Diagnostic_Test_IDs, Component_IDs : Span_V1; end record with Convention => C;
+   type Fault_V1 is record
+      Fault_ID : UCI_ID_V1; Severity, State : Interfaces.Unsigned_32;
+      Fault_Data : Span_V1; Detection_Time_NS : Interfaces.Integer_64;
+      Fault_Code, Fault_Description : String_View_V1;
+      Component_IDs, Ambiguity_Groups : Span_V1;
+   end record with Convention => C;
+   type BIT_Status_V1 is record Active_BITS, Completed_BITS, Faults : Span_V1; end record with Convention => C;
+   type Metadata_Event_V1 is record
+      Kind : Interfaces.Unsigned_32;
+      Command_Status : IR_Command_Status_V1;
+      BIT_Configuration : BIT_Configuration_V1;
+      BIT_Status : BIT_Status_V1;
+   end record with Convention => C;
+   type Metadata_Counters_V1 is record
+      Events_Received, Events_Dropped_Queue_Full,
+      Malformed_Or_Unsupported : Interfaces.Unsigned_64;
    end record with Convention => C;
    type Component_Location_V1 is record
       Offset_X_M : Interfaces.C.double;
@@ -334,4 +386,35 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity   : Size_T;
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C, External_Name => "ams_mel_ir_c2_close";
+   function IR_C2_Metadata_Open
+     (Handle : C2_Handle; Queue_Capacity : Size_T; Output : access Metadata_Handle;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_c2_metadata_open";
+   function IR_C2_Metadata_Receive
+     (Handle : Metadata_Handle; Timeout_MS : Interfaces.Unsigned_32;
+      Output : access Metadata_Event_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_metadata_receive";
+   function IR_C2_Metadata_Get_Counters
+     (Handle : Metadata_Handle; Output : access Metadata_Counters_V1;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_c2_metadata_get_counters";
+   function IR_C2_Metadata_Close
+     (Handle : access Metadata_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_metadata_close";
+   function IR_C2_Metadata_Event_View
+     (Handle : Metadata_Event_Handle; Output : access System.Address;
+      Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+      with Import, Convention => C, External_Name => "ams_mel_ir_c2_metadata_event_view";
+   function IR_C2_Metadata_Event_Close
+     (Handle : access Metadata_Event_Handle; Diagnostic : System.Address;
+      Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+      return Interfaces.Integer_32 with Import, Convention => C,
+      External_Name => "ams_mel_ir_c2_metadata_event_close";
 end AMS.MEL_C_API;

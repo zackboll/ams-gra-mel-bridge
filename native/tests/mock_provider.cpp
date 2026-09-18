@@ -33,6 +33,53 @@ std::string long_rejection_description()
     return std::string(510U, 'x') + "\xE2\x82\xAC" + std::string(100U, 'y');
 }
 
+mel::UCI_ID metadata_id(std::uint8_t seed, std::string label)
+{
+    std::array<std::uint8_t, mel::UUID_SIZE> uuid{};
+    for (std::size_t index = 0; index < uuid.size(); ++index)
+        uuid[index] = static_cast<std::uint8_t>(seed + index * 7U);
+    return {uuid, std::move(label)};
+}
+
+mel::BIT_Configuration rich_bit_configuration()
+{
+    return mel::BIT_Configuration{{
+        mel::BIT_Type{metadata_id(0x80U, "BIT-\xCE\xB1"),
+            mel::BIT_ControlInterface::SubsystemBITCommand,
+            {"sensor", "optical-\xE2\x82\xAC"},
+            {metadata_id(0x90U, "component one"), metadata_id(0xa0U, "component-\xCE\xB2")},
+            std::chrono::nanoseconds{123456789}},
+        mel::BIT_Type{metadata_id(0xf0U, "startup"),
+            mel::BIT_ControlInterface::SubsystemInitiated, {}, {},
+            std::chrono::nanoseconds{0}}}};
+}
+
+mel::BIT_Status rich_bit_status()
+{
+    std::vector<mel::ActiveBIT> active{
+        {metadata_id(0x81U, "active negative"), std::chrono::nanoseconds{-5}, 1.25},
+        {metadata_id(0x82U, "active zero"), std::chrono::nanoseconds{0}, 0.0},
+        {metadata_id(0x83U, "active positive"), std::chrono::nanoseconds{987654321}, 0.5}};
+    std::vector<mel::CompletedBIT> completed{
+        {metadata_id(0x91U, "completed pass"), std::chrono::nanoseconds{42},
+         mel::BIT_Result::Pass, "", {{"item pass", mel::BIT_Result::Pass, ""},
+          {"item-\xCE\xB3", mel::BIT_Result::Fail, "item reason"}}},
+        {metadata_id(0x92U, "completed fail"), std::chrono::nanoseconds{-99},
+         mel::BIT_Result::Fail, "failure-\xE2\x82\xAC", {}}};
+    std::vector<mel::FaultData> data{{"temperature", "101", "integer", "\xC2\xB0" "C"},
+                                     {"phase-\xCE\xB4", "bad", "text", ""}};
+    std::vector<mel::FaultAmbiguityGroup> groups{
+        {{metadata_id(0xb1U, "diagnostic one"), metadata_id(0xb2U, "diagnostic two")},
+         {metadata_id(0xc1U, "ambiguous one"), metadata_id(0xc2U, "ambiguous two")}},
+        {{metadata_id(0xb3U, "diagnostic three")}, {metadata_id(0xc3U, "ambiguous three")}}};
+    std::vector<mel::Fault> faults{{metadata_id(0xd0U, "fault-\xCE\xB6"),
+        mel::FaultSeverity::Warning, mel::FaultState::Set, data,
+        std::chrono::nanoseconds{-1234567}, "F-42", "overheat-\xE2\x82\xAC",
+        {metadata_id(0xe1U, "fault component one"), metadata_id(0xe2U, "fault component two")},
+        groups}};
+    return {std::move(active), std::move(completed), std::move(faults)};
+}
+
 struct CallbackBarrier {
     std::mutex mutex;
     std::condition_variable ready;
@@ -47,6 +94,26 @@ void record(const char *event)
         std::ofstream stream(path, std::ios::app);
         stream << event << '\n';
     }
+}
+
+bool file_exists(const std::string& path)
+{
+    return std::ifstream{path}.good();
+}
+
+void wait_for_file(const std::string& path)
+{
+    for (unsigned attempt = 0; attempt < 5000U; ++attempt) {
+        if (file_exists(path)) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    throw std::runtime_error("mock metadata callback barrier timed out");
+}
+
+void create_file(const std::string& path)
+{
+    std::ofstream marker{path};
+    marker << "release\n";
 }
 
 class DiagnosticAllocationFailure final : public std::exception {
@@ -298,6 +365,11 @@ public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
     {
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
         {
             std::lock_guard lock{mutex_};
             release_ = true;
@@ -332,6 +404,8 @@ public:
         if (scenario_ == "bit-send-throw") throw std::runtime_error("mock BIT send exception");
         if (scenario_ == "bit-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
             throw std::runtime_error("BIT command ID conversion mismatch");
+        emit_status(command.getCommandID(), irmel::CommandState::Accepted,
+                    irmel::CannotComply::NotSet, "");
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
         auto future = promise.get_future();
         if (scenario_ == "bit-fail") {
@@ -398,6 +472,13 @@ public:
              command.getSystemTime() != std::chrono::nanoseconds{9876543210LL} ||
              command.getConfig() != "positive"))
             throw std::runtime_error("positive ConfigSet conversion mismatch");
+        if (scenario_ == "config-fail")
+            emit_status(command.getCommandID(), irmel::CommandState::Rejected,
+                        irmel::CannotComply::InvalidInputParameter,
+                        "invalid configuration payload");
+        else
+            emit_status(command.getCommandID(), irmel::CommandState::Accepted,
+                        irmel::CannotComply::NotSet, "");
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
         if (scenario_ == "config-fail")
             promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
@@ -446,6 +527,14 @@ public:
             throw std::runtime_error("unexpected ModeCmd profile");
         if (scenario_ == "c2-command-id" && command.getCommandID() != UINT32_C(0x89abcdef))
             throw std::runtime_error("command ID conversion mismatch");
+        if (scenario_ == "metadata-command-status") {
+            emit_status(command.getCommandID(), irmel::CommandState::Rejected,
+                        irmel::CannotComply::InvalidInputParameter,
+                        long_rejection_description());
+        } else {
+            emit_status(command.getCommandID(), irmel::CommandState::Received,
+                        irmel::CannotComply::NotSet, "");
+        }
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>> promise;
         auto future = promise.get_future();
         if (scenario_ == "c2-reject") {
@@ -503,6 +592,13 @@ public:
     {
         record("c2_disabled");
         enabled_ = false;
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
+            if (!base) throw std::runtime_error("metadata callback barrier is not configured");
+            wait_for_file(std::string{base} + ".entered");
+            record("metadata_callback_entered");
+            record("disable_returned_with_metadata_callback_active");
+        }
         {
             std::lock_guard lock{mutex_};
             release_ = true;
@@ -520,19 +616,91 @@ public:
     }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
     { return Return::NotSupported; }
-    C2_UNSUPPORTED_CALLBACK(mel::BIT_Configuration)
-    C2_UNSUPPORTED_CALLBACK(irmel::CommandStatus)
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const mel::BIT_Configuration *const)> callback) override
+    {
+        bit_configuration_callback_ = std::move(callback);
+        if (scenario_ == "metadata-rich" || scenario_ == "metadata-overflow") {
+            auto value = rich_bit_configuration(); bit_configuration_callback_(*this, &value);
+        } else if (scenario_ == "metadata-malformed") {
+            auto value = rich_bit_configuration();
+            value.addBIT_Type(mel::BIT_Type{metadata_id(1U, std::string{"bad\xC3\x28", 5}),
+                mel::BIT_ControlInterface::NotSet, {}, {}, std::chrono::nanoseconds{0}});
+            bit_configuration_callback_(*this, &value);
+        }
+        return Return::Success;
+    }
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::CommandStatus *const)> callback) override
+    {
+        command_status_callback_ = std::move(callback);
+        if (scenario_ == "metadata-register-fail") {
+            irmel::CommandStatus value; value.setCommandID(77U); value.setState(irmel::CommandState::Accepted);
+            record("retained_metadata_callback_invoked");
+            bit_configuration_callback_(*this, nullptr);
+            return Return::Fail;
+        }
+        if (scenario_ == "metadata-overflow") {
+            emit_status(1U, irmel::CommandState::Accepted, irmel::CannotComply::NotSet, "");
+            emit_status(2U, irmel::CommandState::Cancelled, irmel::CannotComply::Cancelled, "cancelled");
+        }
+        if (scenario_ == "metadata-command-states") {
+            emit_status(0x80000001U, irmel::CommandState::Accepted,
+                        irmel::CannotComply::NotSet, "");
+            emit_status(0x80000002U, irmel::CommandState::Rejected,
+                        irmel::CannotComply::InvalidInputParameter,
+                        long_rejection_description());
+            emit_status(0x80000003U, irmel::CommandState::Cancelled,
+                        irmel::CannotComply::Cancelled, "cancelled");
+            emit_status(0x80000004U, irmel::CommandState::Received,
+                        irmel::CannotComply::NotSet, "");
+        }
+        if (scenario_ == "metadata-malformed") {
+            emit_status(3U, static_cast<irmel::CommandState>(99U), irmel::CannotComply::NotSet, "");
+            emit_status(4U, irmel::CommandState::Accepted, irmel::CannotComply::NotSet, std::string{"bad\xC3\x28",5});
+            emit_status(5U, irmel::CommandState::Cancelled, irmel::CannotComply::Cancelled, "valid");
+        }
+        return Return::Success;
+    }
     C2_UNSUPPORTED_CALLBACK(mel::CalibrationConfiguration)
     C2_UNSUPPORTED_CALLBACK(irmel::CameraProtectCmdResp)
     C2_UNSUPPORTED_CALLBACK(mel::CalibrationStatus)
-    C2_UNSUPPORTED_CALLBACK(mel::BIT_Status)
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const mel::BIT_Status *const)> callback) override
+    {
+        bit_status_callback_ = std::move(callback);
+        if (scenario_ == "metadata-rich") { auto value=rich_bit_status(); bit_status_callback_(*this,&value); }
+        if (scenario_ == "metadata-malformed") {
+            mel::CompletedBIT bad{metadata_id(1U,"bad result"),std::chrono::nanoseconds{0},static_cast<mel::BIT_Result>(99U),"",{}};
+            mel::BIT_Status invalid{{},{bad},{}}; bit_status_callback_(*this,&invalid);
+            auto valid=rich_bit_status(); bit_status_callback_(*this,&valid);
+        }
+        if (scenario_ == "metadata-nonquiescing-disable") {
+            producer_ = std::thread{[this] {
+                irmel::CommandStatus value;
+                value.setCommandID(88U);
+                value.setState(irmel::CommandState::Accepted);
+                command_status_callback_(*this, &value);
+                record("metadata_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
 private:
+    void emit_status(std::uint32_t id, irmel::CommandState state,
+                     irmel::CannotComply reason, std::string description)
+    {
+        if (!command_status_callback_) return;
+        irmel::CommandStatus value; value.setCommandID(id); value.setState(state);
+        value.setReasonID(reason); value.setReasonDescription(description);
+        command_status_callback_(*this, &value);
+    }
     std::string scenario_;
     bool enabled_{};
     std::mutex mutex_;
     std::condition_variable ready_;
     bool release_{};
     std::thread producer_;
+    std::function<void(irmel::Channel&, const mel::BIT_Configuration *const)> bit_configuration_callback_;
+    std::function<void(irmel::Channel&, const irmel::CommandStatus *const)> command_status_callback_;
+    std::function<void(irmel::Channel&, const mel::BIT_Status *const)> bit_status_callback_;
 };
 #undef C2_UNSUPPORTED_CALLBACK
 

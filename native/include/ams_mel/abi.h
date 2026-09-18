@@ -55,6 +55,8 @@ typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
 typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
+typedef struct ams_mel_ir_c2_metadata ams_mel_ir_c2_metadata;
+typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_IMAGE UINT32_C(1)
@@ -115,6 +117,87 @@ typedef uint32_t ams_mel_ir_image_flip_t;
 #define AMS_MEL_IR_FLIP_VERTICAL UINT32_C(1)
 #define AMS_MEL_IR_FLIP_HORIZONTAL UINT32_C(2)
 #define AMS_MEL_IR_FLIP_BOTH UINT32_C(3)
+
+typedef uint32_t ams_mel_ir_c2_metadata_kind_t;
+#define AMS_MEL_IR_C2_METADATA_COMMAND_STATUS UINT32_C(1)
+#define AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION UINT32_C(2)
+#define AMS_MEL_IR_C2_METADATA_BIT_STATUS UINT32_C(3)
+typedef uint32_t ams_mel_ir_command_state_t;
+#define AMS_MEL_IR_COMMAND_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_COMMAND_RECEIVED UINT32_C(1)
+#define AMS_MEL_IR_COMMAND_ACCEPTED UINT32_C(2)
+#define AMS_MEL_IR_COMMAND_REJECTED UINT32_C(3)
+#define AMS_MEL_IR_COMMAND_CANCELLED UINT32_C(4)
+typedef uint32_t ams_mel_ir_cannot_comply_t;
+#define AMS_MEL_IR_CANNOT_COMPLY_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS UINT32_C(1)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ENDURANCE UINT32_C(2)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_CLASSIFICATION UINT32_C(3)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_FOR_FOV_LIMIT UINT32_C(4)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_GATING UINT32_C(5)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_MANEUVER_LIMIT UINT32_C(6)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OP UINT32_C(7)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OCCLUSION UINT32_C(8)
+#define AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_RANGE UINT32_C(9)
+#define AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PERFORMANCE UINT32_C(10)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_RF UINT32_C(11)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ROUTE UINT32_C(12)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SAFETY UINT32_C(13)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TARGET_ANGLE UINT32_C(14)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TIME UINT32_C(15)
+#define AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SYSTEM UINT32_C(16)
+#define AMS_MEL_IR_CANNOT_COMPLY_INFEASIBLE_ROUTE UINT32_C(17)
+#define AMS_MEL_IR_CANNOT_COMPLY_MISSION_EVENT UINT32_C(18)
+#define AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS UINT32_C(19)
+#define AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS_CHANGE UINT32_C(20)
+#define AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_UNAVAILABLE UINT32_C(21)
+#define AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_FAULT UINT32_C(22)
+#define AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_CONFLICT UINT32_C(23)
+#define AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_UNAVAILABLE UINT32_C(24)
+#define AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_FAULT UINT32_C(25)
+#define AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_FAULT UINT32_C(26)
+#define AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PRECEDENCE UINT32_C(27)
+#define AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_UNAVAILABLE UINT32_C(28)
+#define AMS_MEL_IR_CANNOT_COMPLY_INSUFFICIENT_RESOURCES UINT32_C(29)
+#define AMS_MEL_IR_CANNOT_COMPLY_RANKING UINT32_C(30)
+#define AMS_MEL_IR_CANNOT_COMPLY_WEATHER UINT32_C(31)
+#define AMS_MEL_IR_CANNOT_COMPLY_INELIGIBLE_CONTROL_SOURCE UINT32_C(32)
+#define AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_PREDECESSOR UINT32_C(33)
+#define AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_ALL_OR_NOTHING UINT32_C(34)
+#define AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_EITHER_OR UINT32_C(35)
+#define AMS_MEL_IR_CANNOT_COMPLY_INIT_CRITERIA_NOT_MET UINT32_C(36)
+#define AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN_ID UINT32_C(37)
+#define AMS_MEL_IR_CANNOT_COMPLY_INVALID_INPUT_PARAMETER UINT32_C(38)
+#define AMS_MEL_IR_CANNOT_COMPLY_INPUT_OTHER UINT32_C(39)
+#define AMS_MEL_IR_CANNOT_COMPLY_MDF_ACTIVATION_ERROR UINT32_C(40)
+#define AMS_MEL_IR_CANNOT_COMPLY_MULTIPLE UINT32_C(41)
+#define AMS_MEL_IR_CANNOT_COMPLY_CANCELLED UINT32_C(42)
+#define AMS_MEL_IR_CANNOT_COMPLY_OTHER UINT32_C(43)
+#define AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN UINT32_C(44)
+#define AMS_MEL_IR_CANNOT_COMPLY_ABORTED UINT32_C(45)
+#define AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER UINT32_C(46)
+typedef uint32_t ams_mel_bit_control_interface_t;
+#define AMS_MEL_BIT_CONTROL_NOT_SET UINT32_C(0)
+#define AMS_MEL_BIT_CONTROL_SUBSYSTEM_BIT_COMMAND UINT32_C(1)
+#define AMS_MEL_BIT_CONTROL_SUBSYSTEM_STATE_COMMAND UINT32_C(2)
+#define AMS_MEL_BIT_CONTROL_SUBSYSTEM_INITIATED UINT32_C(3)
+typedef uint32_t ams_mel_bit_result_t;
+#define AMS_MEL_BIT_RESULT_NOT_SET UINT32_C(0)
+#define AMS_MEL_BIT_RESULT_PASS UINT32_C(1)
+#define AMS_MEL_BIT_RESULT_FAIL UINT32_C(2)
+#define AMS_MEL_BIT_RESULT_INTERRUPTED UINT32_C(3)
+#define AMS_MEL_BIT_RESULT_NOT_TESTED UINT32_C(4)
+typedef uint32_t ams_mel_fault_severity_t;
+#define AMS_MEL_FAULT_SEVERITY_NOT_SET UINT32_C(0)
+#define AMS_MEL_FAULT_SEVERITY_NOMINAL UINT32_C(1)
+#define AMS_MEL_FAULT_SEVERITY_CAUTION UINT32_C(2)
+#define AMS_MEL_FAULT_SEVERITY_WARNING UINT32_C(3)
+#define AMS_MEL_FAULT_SEVERITY_FAILED UINT32_C(4)
+typedef uint32_t ams_mel_fault_state_t;
+#define AMS_MEL_FAULT_STATE_NOT_SET UINT32_C(0)
+#define AMS_MEL_FAULT_STATE_SET UINT32_C(1)
+#define AMS_MEL_FAULT_STATE_CLEARED UINT32_C(2)
+#define AMS_MEL_FAULT_STATE_UNKNOWN UINT32_C(3)
 
 typedef struct ams_mel_string_view_v1 {
     const char *data;
@@ -181,6 +264,86 @@ typedef struct ams_mel_uci_id_v1 {
     uint8_t uuid[16];
     ams_mel_string_view_v1 descriptive_label;
 } ams_mel_uci_id_v1;
+
+#define AMS_MEL_DECLARE_SPAN(name, element) \
+    typedef struct name { const element *data; size_t size; } name
+AMS_MEL_DECLARE_SPAN(ams_mel_uci_id_span_v1, ams_mel_uci_id_v1);
+
+typedef struct ams_mel_ir_command_status_v1 {
+    uint32_t command_id;
+    ams_mel_ir_command_state_t state;
+    ams_mel_ir_cannot_comply_t reason_id;
+    ams_mel_string_view_v1 reason_description;
+} ams_mel_ir_command_status_v1;
+typedef struct ams_mel_bit_type_v1 {
+    ams_mel_uci_id_v1 bit_id;
+    ams_mel_bit_control_interface_t accepted_interface;
+    ams_mel_string_view_span_v1 bit_item_names;
+    ams_mel_uci_id_span_v1 subsystem_component_ids;
+    int64_t expected_duration_ns;
+} ams_mel_bit_type_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_bit_type_span_v1, ams_mel_bit_type_v1);
+typedef struct ams_mel_bit_configuration_v1 {
+    ams_mel_bit_type_span_v1 bit_types;
+} ams_mel_bit_configuration_v1;
+typedef struct ams_mel_active_bit_v1 {
+    ams_mel_uci_id_v1 bit_id;
+    int64_t estimated_completion_time_ns;
+    double estimated_percent_complete;
+} ams_mel_active_bit_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_active_bit_span_v1, ams_mel_active_bit_v1);
+typedef struct ams_mel_completed_bit_item_v1 {
+    ams_mel_string_view_v1 bit_item_name;
+    ams_mel_bit_result_t result;
+    ams_mel_string_view_v1 fail_reason;
+} ams_mel_completed_bit_item_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_completed_bit_item_span_v1, ams_mel_completed_bit_item_v1);
+typedef struct ams_mel_completed_bit_v1 {
+    ams_mel_uci_id_v1 bit_id;
+    int64_t time_tag_ns;
+    ams_mel_bit_result_t result;
+    ams_mel_string_view_v1 fail_reason;
+    ams_mel_completed_bit_item_span_v1 bit_items;
+} ams_mel_completed_bit_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_completed_bit_span_v1, ams_mel_completed_bit_v1);
+typedef struct ams_mel_fault_data_v1 {
+    ams_mel_string_view_v1 key, value, format, units;
+} ams_mel_fault_data_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_fault_data_span_v1, ams_mel_fault_data_v1);
+typedef struct ams_mel_fault_ambiguity_group_v1 {
+    ams_mel_uci_id_span_v1 diagnostic_test_ids;
+    ams_mel_uci_id_span_v1 component_ids;
+} ams_mel_fault_ambiguity_group_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_fault_ambiguity_group_span_v1, ams_mel_fault_ambiguity_group_v1);
+typedef struct ams_mel_fault_v1 {
+    ams_mel_uci_id_v1 fault_id;
+    ams_mel_fault_severity_t severity;
+    ams_mel_fault_state_t state;
+    ams_mel_fault_data_span_v1 fault_data;
+    int64_t detection_time_ns;
+    ams_mel_string_view_v1 fault_code;
+    ams_mel_string_view_v1 fault_description;
+    ams_mel_uci_id_span_v1 component_ids;
+    ams_mel_fault_ambiguity_group_span_v1 ambiguity_groups;
+} ams_mel_fault_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_fault_span_v1, ams_mel_fault_v1);
+typedef struct ams_mel_bit_status_v1 {
+    ams_mel_active_bit_span_v1 active_bits;
+    ams_mel_completed_bit_span_v1 completed_bits;
+    ams_mel_fault_span_v1 faults;
+} ams_mel_bit_status_v1;
+typedef struct ams_mel_ir_c2_metadata_event_v1 {
+    ams_mel_ir_c2_metadata_kind_t kind;
+    ams_mel_ir_command_status_v1 command_status;
+    ams_mel_bit_configuration_v1 bit_configuration;
+    ams_mel_bit_status_v1 bit_status;
+} ams_mel_ir_c2_metadata_event_v1;
+typedef struct ams_mel_ir_c2_metadata_counters_v1 {
+    uint64_t events_received;
+    uint64_t events_dropped_queue_full;
+    uint64_t malformed_or_unsupported;
+} ams_mel_ir_c2_metadata_counters_v1;
+#undef AMS_MEL_DECLARE_SPAN
 
 typedef struct ams_mel_component_location_v1 {
     double offset_x_m;
@@ -496,6 +659,45 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_config_set(
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Registers the three required C2-specific metadata callbacks in this order:
+ * BIT_Configuration, CommandStatus, BIT_Status. The queue exists before the
+ * first registration and uses bounded FIFO DROP-INCOMING. Registration is
+ * attempted at most once per C2 channel. There is no upstream unregister;
+ * callback state survives public close and partial registration failure until
+ * provider C2 channel destruction. This call does not enable C2. Metadata open
+ * must be externally serialized with C2 enable, submit, and close operations. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_open(
+    ams_mel_ir_c2 *c2, size_t queue_capacity,
+    ams_mel_ir_c2_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Finite wait; zero polls and timeout is not cancellation. At most one receive
+ * may run per owner. Queued events drain before STOPPED or PROVIDER_FAILED. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_receive(
+    ams_mel_ir_c2_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_c2_metadata_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_get_counters(
+    const ams_mel_ir_c2_metadata *metadata,
+    ams_mel_ir_c2_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking. It deactivates public consumption/enqueueing but
+ * cannot unregister provider callbacks and does not close C2 or requests.
+ * Close must not race another call using this public metadata handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_close(
+    ams_mel_ir_c2_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* The view and all nested pointers borrow immutable adapter-owned event storage
+ * and remain valid only until event_close. The event itself is independent of
+ * metadata, C2, Session, and provider-library lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_event_view(
+    const ams_mel_ir_c2_metadata_event *event,
+    const ams_mel_ir_c2_metadata_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_metadata_event_close(
+    ams_mel_ir_c2_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Generic RequestFor<Return> wait. Return::Fail is a normal AMS_MEL_OK result;
  * it is not a provider/facade failure. Terminal results are cached exactly as

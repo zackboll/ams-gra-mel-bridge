@@ -65,7 +65,8 @@ complete scan units, one-choice BIT operations, and opaque configuration text.
 The proven ModeRequest and ReturnRequest workers are reused. Rust sys and private
 Python ctypes track the raw ABI only; safe Rust and Python retain their existing
 Operate/TaskSched and BIT-no-op subsets. Required C2 callbacks remain Task 018;
-no callback or optional command is introduced here.
+no callback or optional command is introduced by Task 017. Task 018's implemented
+callback architecture is documented below.
 
 ```text
 C++ provider -> MEL API -> ams_mel_c -> Ada
@@ -213,6 +214,23 @@ native child ownership keeps provider/library state alive when the parent closes
 first.
 
 ## Parallel Ada work
+
+Task 018 completes the required C2-specific metadata surface for native C and
+safe Ada: BIT_Configuration, CommandStatus, and BIT_Status. All three callbacks
+share one bounded FIFO callback-to-owned-event queue with DROP-INCOMING overflow.
+The provider callback stack performs validation/deep copy only and never invokes
+Ada application code. A successful Ada `Receive` returns a wholly Ada-owned graph
+including every nested BIT/fault vector and string.
+
+Upstream publishes no callback unregister. Callback state therefore belongs to
+the existing C2 `ChannelState`, not the public metadata owner. Partial registration
+failure publishes no metadata owner but retains already registered closures.
+Metadata close merely deactivates the public queue. Final C2 cleanup stops
+acceptance, disables/detaches under existing rules, destroys the provider channel,
+waits for adapter callbacks already in flight, marks metadata stopped, and wakes
+receivers. Channel destruction—not `disable()`—is the quiescence boundary.
+Immutable received native snapshots are independent of that graph and can outlive
+metadata, C2, Session, and provider library teardown.
 
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the

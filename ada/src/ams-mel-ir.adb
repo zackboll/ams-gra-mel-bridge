@@ -52,6 +52,10 @@ package body AMS.MEL.IR is
       return (Value => Value, Label => US.To_Unbounded_String (Descriptive_Label));
    end Create_UCI_ID;
 
+   function UUID_Value (ID : UCI_ID) return UUID is (ID.Value);
+   function Descriptive_Label (ID : UCI_ID) return String is
+     (US.To_String (ID.Label));
+
    function Create_Component_Location
      (Offset_X_M : Long_Float; Offset_Y_M : Long_Float; Offset_Z_M : Long_Float;
       Key : String; System_Name : String) return Component_Location is

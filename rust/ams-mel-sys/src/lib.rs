@@ -68,6 +68,79 @@ pub const AMS_MEL_IR_FLIP_NONE: u32 = 0;
 pub const AMS_MEL_IR_FLIP_VERTICAL: u32 = 1;
 pub const AMS_MEL_IR_FLIP_HORIZONTAL: u32 = 2;
 pub const AMS_MEL_IR_FLIP_BOTH: u32 = 3;
+pub const AMS_MEL_IR_C2_METADATA_COMMAND_STATUS: u32 = 1;
+pub const AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION: u32 = 2;
+pub const AMS_MEL_IR_C2_METADATA_BIT_STATUS: u32 = 3;
+pub const AMS_MEL_IR_COMMAND_NOT_SET: u32 = 0;
+pub const AMS_MEL_IR_COMMAND_RECEIVED: u32 = 1;
+pub const AMS_MEL_IR_COMMAND_ACCEPTED: u32 = 2;
+pub const AMS_MEL_IR_COMMAND_REJECTED: u32 = 3;
+pub const AMS_MEL_IR_COMMAND_CANCELLED: u32 = 4;
+pub const AMS_MEL_IR_CANNOT_COMPLY_NOT_SET: u32 = 0;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS: u32 = 1;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ENDURANCE: u32 = 2;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_CLASSIFICATION: u32 = 3;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_FOR_FOV_LIMIT: u32 = 4;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_GATING: u32 = 5;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_MANEUVER_LIMIT: u32 = 6;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OP: u32 = 7;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_OCCLUSION: u32 = 8;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_RANGE: u32 = 9;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PERFORMANCE: u32 = 10;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_RF: u32 = 11;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ROUTE: u32 = 12;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SAFETY: u32 = 13;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TARGET_ANGLE: u32 = 14;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_TIME: u32 = 15;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_SYSTEM: u32 = 16;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INFEASIBLE_ROUTE: u32 = 17;
+pub const AMS_MEL_IR_CANNOT_COMPLY_MISSION_EVENT: u32 = 18;
+pub const AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS: u32 = 19;
+pub const AMS_MEL_IR_CANNOT_COMPLY_STATE_OR_SETTINGS_CHANGE: u32 = 20;
+pub const AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_UNAVAILABLE: u32 = 21;
+pub const AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_FAULT: u32 = 22;
+pub const AMS_MEL_IR_CANNOT_COMPLY_SYSTEM_CONFLICT: u32 = 23;
+pub const AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_UNAVAILABLE: u32 = 24;
+pub const AMS_MEL_IR_CANNOT_COMPLY_SUBSYSTEM_FAULT: u32 = 25;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_FAULT: u32 = 26;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_PRECEDENCE: u32 = 27;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CAPABILITY_UNAVAILABLE: u32 = 28;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INSUFFICIENT_RESOURCES: u32 = 29;
+pub const AMS_MEL_IR_CANNOT_COMPLY_RANKING: u32 = 30;
+pub const AMS_MEL_IR_CANNOT_COMPLY_WEATHER: u32 = 31;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INELIGIBLE_CONTROL_SOURCE: u32 = 32;
+pub const AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_PREDECESSOR: u32 = 33;
+pub const AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_ALL_OR_NOTHING: u32 = 34;
+pub const AMS_MEL_IR_CANNOT_COMPLY_DEPENDENCY_EITHER_OR: u32 = 35;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INIT_CRITERIA_NOT_MET: u32 = 36;
+pub const AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN_ID: u32 = 37;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INVALID_INPUT_PARAMETER: u32 = 38;
+pub const AMS_MEL_IR_CANNOT_COMPLY_INPUT_OTHER: u32 = 39;
+pub const AMS_MEL_IR_CANNOT_COMPLY_MDF_ACTIVATION_ERROR: u32 = 40;
+pub const AMS_MEL_IR_CANNOT_COMPLY_MULTIPLE: u32 = 41;
+pub const AMS_MEL_IR_CANNOT_COMPLY_CANCELLED: u32 = 42;
+pub const AMS_MEL_IR_CANNOT_COMPLY_OTHER: u32 = 43;
+pub const AMS_MEL_IR_CANNOT_COMPLY_UNKNOWN: u32 = 44;
+pub const AMS_MEL_IR_CANNOT_COMPLY_ABORTED: u32 = 45;
+pub const AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER: u32 = 46;
+pub const AMS_MEL_BIT_CONTROL_NOT_SET: u32 = 0;
+pub const AMS_MEL_BIT_CONTROL_SUBSYSTEM_BIT_COMMAND: u32 = 1;
+pub const AMS_MEL_BIT_CONTROL_SUBSYSTEM_STATE_COMMAND: u32 = 2;
+pub const AMS_MEL_BIT_CONTROL_SUBSYSTEM_INITIATED: u32 = 3;
+pub const AMS_MEL_BIT_RESULT_NOT_SET: u32 = 0;
+pub const AMS_MEL_BIT_RESULT_PASS: u32 = 1;
+pub const AMS_MEL_BIT_RESULT_FAIL: u32 = 2;
+pub const AMS_MEL_BIT_RESULT_INTERRUPTED: u32 = 3;
+pub const AMS_MEL_BIT_RESULT_NOT_TESTED: u32 = 4;
+pub const AMS_MEL_FAULT_SEVERITY_NOT_SET: u32 = 0;
+pub const AMS_MEL_FAULT_SEVERITY_NOMINAL: u32 = 1;
+pub const AMS_MEL_FAULT_SEVERITY_CAUTION: u32 = 2;
+pub const AMS_MEL_FAULT_SEVERITY_WARNING: u32 = 3;
+pub const AMS_MEL_FAULT_SEVERITY_FAILED: u32 = 4;
+pub const AMS_MEL_FAULT_STATE_NOT_SET: u32 = 0;
+pub const AMS_MEL_FAULT_STATE_SET: u32 = 1;
+pub const AMS_MEL_FAULT_STATE_CLEARED: u32 = 2;
+pub const AMS_MEL_FAULT_STATE_UNKNOWN: u32 = 3;
 
 pub const AMS_MEL_ABI_VERSION_MAJOR: u32 = 0;
 pub const AMS_MEL_ABI_VERSION_MINOR: u32 = 1;
@@ -168,6 +241,118 @@ pub struct AmsMelIrConfigSetCommandV1 {
 pub struct AmsMelUciIdV1 {
     pub uuid: [u8; 16],
     pub descriptive_label: AmsMelStringViewV1,
+}
+macro_rules! span {
+    ($n:ident,$t:ty) => {
+        #[repr(C)]
+        #[derive(Clone, Copy, Debug)]
+        pub struct $n {
+            pub data: *const $t,
+            pub size: usize,
+        }
+    };
+}
+span!(AmsMelUciIdSpanV1, AmsMelUciIdV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCommandStatusV1 {
+    pub command_id: u32,
+    pub state: u32,
+    pub reason_id: u32,
+    pub reason_description: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelBitTypeV1 {
+    pub bit_id: AmsMelUciIdV1,
+    pub accepted_interface: u32,
+    pub bit_item_names: AmsMelStringViewSpanV1,
+    pub subsystem_component_ids: AmsMelUciIdSpanV1,
+    pub expected_duration_ns: i64,
+}
+span!(AmsMelBitTypeSpanV1, AmsMelBitTypeV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelBitConfigurationV1 {
+    pub bit_types: AmsMelBitTypeSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelActiveBitV1 {
+    pub bit_id: AmsMelUciIdV1,
+    pub estimated_completion_time_ns: i64,
+    pub estimated_percent_complete: f64,
+}
+span!(AmsMelActiveBitSpanV1, AmsMelActiveBitV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelCompletedBitItemV1 {
+    pub bit_item_name: AmsMelStringViewV1,
+    pub result: u32,
+    pub fail_reason: AmsMelStringViewV1,
+}
+span!(AmsMelCompletedBitItemSpanV1, AmsMelCompletedBitItemV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelCompletedBitV1 {
+    pub bit_id: AmsMelUciIdV1,
+    pub time_tag_ns: i64,
+    pub result: u32,
+    pub fail_reason: AmsMelStringViewV1,
+    pub bit_items: AmsMelCompletedBitItemSpanV1,
+}
+span!(AmsMelCompletedBitSpanV1, AmsMelCompletedBitV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelFaultDataV1 {
+    pub key: AmsMelStringViewV1,
+    pub value: AmsMelStringViewV1,
+    pub format: AmsMelStringViewV1,
+    pub units: AmsMelStringViewV1,
+}
+span!(AmsMelFaultDataSpanV1, AmsMelFaultDataV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelFaultAmbiguityGroupV1 {
+    pub diagnostic_test_ids: AmsMelUciIdSpanV1,
+    pub component_ids: AmsMelUciIdSpanV1,
+}
+span!(AmsMelFaultAmbiguityGroupSpanV1, AmsMelFaultAmbiguityGroupV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelFaultV1 {
+    pub fault_id: AmsMelUciIdV1,
+    pub severity: u32,
+    pub state: u32,
+    pub fault_data: AmsMelFaultDataSpanV1,
+    pub detection_time_ns: i64,
+    pub fault_code: AmsMelStringViewV1,
+    pub fault_description: AmsMelStringViewV1,
+    pub component_ids: AmsMelUciIdSpanV1,
+    pub ambiguity_groups: AmsMelFaultAmbiguityGroupSpanV1,
+}
+span!(AmsMelFaultSpanV1, AmsMelFaultV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelBitStatusV1 {
+    pub active_bits: AmsMelActiveBitSpanV1,
+    pub completed_bits: AmsMelCompletedBitSpanV1,
+    pub faults: AmsMelFaultSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrC2MetadataEventV1 {
+    pub kind: u32,
+    pub command_status: AmsMelIrCommandStatusV1,
+    pub bit_configuration: AmsMelBitConfigurationV1,
+    pub bit_status: AmsMelBitStatusV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrC2MetadataCountersV1 {
+    pub events_received: u64,
+    pub events_dropped_queue_full: u64,
+    pub malformed_or_unsupported: u64,
 }
 
 #[repr(C)]
@@ -278,6 +463,16 @@ pub struct AmsMelIrModeRequest {
 
 #[repr(C)]
 pub struct AmsMelIrReturnRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrC2Metadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrC2MetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -449,6 +644,48 @@ extern "C" {
 
     pub fn ams_mel_ir_c2_close(
         c2: *mut *mut AmsMelIrC2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_open(
+        c2: *mut AmsMelIrC2,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrC2Metadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_receive(
+        metadata: *mut AmsMelIrC2Metadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrC2MetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_get_counters(
+        metadata: *const AmsMelIrC2Metadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_close(
+        metadata: *mut *mut AmsMelIrC2Metadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_event_view(
+        event: *const AmsMelIrC2MetadataEvent,
+        out: *mut *const AmsMelIrC2MetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_event_close(
+        event: *mut *mut AmsMelIrC2MetadataEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
