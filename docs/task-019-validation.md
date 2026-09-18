@@ -12,6 +12,12 @@ parent-independent provider lifetime. Callback code never calls Ada; the existin
 bounded DROP-INCOMING queue, counters, callback guard, retained state, and
 channel-destruction quiescence boundary are reused.
 
+The failed CommsTest registration case runs in an isolated child process. The
+mock retains and invokes the callback despite returning failure, and the lifetime
+log requires `retained_comms_callback_invoked` before `c2_channel_destroyed`
+before `library_unloaded`. The retry remains `AMS_MEL_INVALID_ARGUMENT`, while
+the existing Task 018 metadata owner remains independently and safely closeable.
+
 Capabilities validate and deep-copy every field, enum, UTF-8 string, ID,
 ordered vector, set iteration, map entry, nested BandInfo vector, and nav frame.
 Native snapshots outlive provider teardown; Ada copies the complete graph and
@@ -31,7 +37,7 @@ commands, and other MEL families are excluded.
 - `make test-rust`: 31 existing safe tests, raw ABI drift test, and doc tests passed.
 - `make test-python`: 52 tests passed with the 36-function private ABI.
 - `ctest --test-dir native/build --repeat until-fail:50 --output-on-failure`:
-  all six targets passed 50 consecutive executions in 61.95 seconds.
+  all six targets passed 50 consecutive executions in 62.05 seconds.
 - `alr -C ada exec -- make -C /home/zboll/git/ams-mel check`: native,
   Ada, whitespace, and newline gates passed. Plain `make check` passed native
   6/6 then stopped because GNAT/GPRbuild is absent from ordinary `PATH`.

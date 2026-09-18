@@ -220,7 +220,7 @@ static int test_common_failures(void)
     return EXIT_SUCCESS;
 }
 
-static int test_comms_registration_failure(void)
+static int run_comms_registration_failure(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
     ams_mel_ir_c2_metadata *metadata = NULL;
@@ -231,6 +231,32 @@ static int test_comms_registration_failure(void)
     CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_c2_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_comms_registration_failure(const char *program)
+{
+    char path[] = "/tmp/ams-mel-comms-registration-XXXXXX";
+    char command[1024];
+    char log[4096];
+    int descriptor = mkstemp(path);
+    int status;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    {
+        int length = snprintf(command, sizeof command,
+            "AMS_MEL_TEST_LIFETIME_LOG='%s' '%s' comms-registration-child",
+            path, program);
+        CHECK(length > 0 && (size_t)length < sizeof command);
+    }
+    status = system(command);
+    CHECK(status == 0);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(check_order(log, "retained_comms_callback_invoked",
+                      "c2_channel_destroyed") == EXIT_SUCCESS);
+    CHECK(check_order(log, "c2_channel_destroyed",
+                      "library_unloaded") == EXIT_SUCCESS);
+    CHECK(unlink(path) == 0);
     return EXIT_SUCCESS;
 }
 
@@ -1295,6 +1321,8 @@ static int test_coexistence(void)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "comms-registration-child") == 0)
+        return run_comms_registration_failure();
     if (argc == 2 && strcmp(argv[1], "metadata-registration-child") == 0)
         return run_metadata_registration_failure();
     if (argc == 2 && strcmp(argv[1], "metadata-nonquiescing-child") == 0)
@@ -1308,7 +1336,7 @@ int main(int argc, char **argv)
     CHECK(test_common_pending_close() == EXIT_SUCCESS);
     CHECK(test_capability_snapshot() == EXIT_SUCCESS);
     CHECK(test_malformed_capabilities() == EXIT_SUCCESS);
-    CHECK(test_comms_registration_failure() == EXIT_SUCCESS);
+    CHECK(test_comms_registration_failure(argv[0]) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-control-capability-wrong", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-attach-null", AMS_MEL_FACTORY_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-wrong-type", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
