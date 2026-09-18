@@ -521,14 +521,14 @@ Implemented:
 - finite DROP-INCOMING receive queue;
 - C poll/wait receive operations;
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
-- C and Ada C2 Operate/TaskSched plus BIT no-op interfaces; payload-bearing BIT
-  remains unsupported;
+- native C ABI and safe Ada C2 general ModeCmd with complete ScanParam,
+  intended one-choice payload-bearing BIT, BIT no-op, and ConfigSet interfaces;
 - explicit lifecycle and callback-quiescence handling;
 - native and Ada tests using a separately loaded C++ mock provider;
 - safe Rust Session, IR host-memory Mono8, C2 Operate/TaskSched, and BIT no-op
   APIs over the existing C ABI, including reusable `ReturnRequest` and typed
   Return completion/rejection behavior (`Return::Fail` is a normal completed
-  result); payload-bearing BIT remains unsupported;
+  result); safe Rust does not yet expose payload-bearing BIT;
 - dependency-free Python Session, IR host-memory Mono8, C2 Operate/TaskSched,
   and BIT no-op APIs with owned-bytes frames, asynchronous mode/Return requests,
   cached waits, retryable C2 close, and independent parent/child lifetimes; and
@@ -539,8 +539,8 @@ Not yet implemented:
 
 - a real hardware provider integration;
 - SPARK proof of the native/FFI boundary;
-- C2 functionality beyond the currently exposed Operate/TaskSched and BIT no-op
-  slices, including payload-bearing BIT and callbacks;
+- required C2 metadata callbacks and optional/conditional C2 commands;
+- safe Rust/Python catch-up for the expanded Task 017 command surface;
 - RF MEL;
 - stacked images;
 - tracking interfaces;

@@ -140,11 +140,13 @@ integration target is included in `make check`, normal CTest, Ada tests, or CI.
 On client failure it prints runtime status/logs and the generated profile; C
 receive failures additionally print IR stream counters. When available, `ss -lun`
 is recorded before and after each client for host UDP diagnostics. The Rust
-Rust and Python clients open image and C2 graphs on one Session, obtain BIT Success and
-TaskSched, closes the Session parent first, repeats both cached request waits,
-receives real 320x200 Mono8 checkerboard frames, validates counters, and
-explicitly close their child resources. For `all`, C, Ada, Rust, and Python
-validate BIT Success + TaskSched + images. This parity is limited to BIT no-op;
-it implies no payload-bearing BIT, BIT metadata/CommandStatus callbacks, RF, or
-additional C2 support. The Python client uses only the public safe API, including
-Python-owned `bytes` frames and explicit Return/mode request, control, and stream teardown.
+and Python clients open image and C2 graphs on one Session, obtain BIT Success
+and TaskSched, close the Session parent first, repeat both cached request waits,
+receive real 320x200 Mono8 checkerboard frames, validate counters, and explicitly
+close their child resources. For `all`, C, Ada, Rust, and Python validate the
+cross-language BIT no-op + TaskSched + Mono8 subset. Ada additionally validates
+Task 017's general Mode, payload-bearing BIT, and ConfigSet extension. Required
+C2 metadata callbacks, optional/conditional C2 commands, RF, and other MEL
+families remain unsupported. The Python client uses only the public safe API,
+including Python-owned `bytes` frames and explicit Return/mode request, control,
+and stream teardown.
