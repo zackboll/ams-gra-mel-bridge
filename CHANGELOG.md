@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add application-facing inherited C2 Channel services in native C and safe Ada:
+  pre-enable KeepAlive, asynchronous ChannelCommsTest request/reply, its callback
+  through the existing metadata queue, and complete owned ChannelCapability
+  snapshots. Synchronize the 36-function raw Rust/Python ABI only; explicit
+  generic buffer management, Scheduling, and safe Rust/Python APIs remain out of scope.
 - Add all three required C2-specific metadata callbacks through a bounded native
   FIFO queue with DROP-INCOMING overflow, complete deep-copied CommandStatus,
   BIT_Configuration, BIT_Status, and nested Fault values, immutable event owners,

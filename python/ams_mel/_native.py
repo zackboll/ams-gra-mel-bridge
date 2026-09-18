@@ -21,8 +21,10 @@ AMS_MEL_STREAM_STOPPED = 10
 AMS_MEL_PROVIDER_FAILED = 11
 AMS_MEL_COMMAND_REJECTED = 12
 
+AMS_MEL_IR_CHANNEL_IRST_TRACK = 0
 AMS_MEL_IR_CHANNEL_IRST_IMAGE = 1
 AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL = 2
+AMS_MEL_IR_CHANNEL_SCHEDULING, AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS, AMS_MEL_IR_CHANNEL_INSTRUMENTATION, AMS_MEL_IR_CHANNEL_STACKED_IMAGE, AMS_MEL_IR_CHANNEL_RESERVED_1, AMS_MEL_IR_CHANNEL_RESERVED_2 = range(3, 9)
 AMS_MEL_IR_MFA_MODE_UNUSED = 0
 AMS_MEL_IR_MFA_MODE_TASK_SCHED = 1
 AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED = 2
@@ -64,6 +66,14 @@ AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES = 6
 AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES = 7
 AMS_MEL_ERROR_UNSUPPORTED = 8
 AMS_MEL_IR_PIXEL_MONO = 0
+AMS_MEL_IR_PIXEL_RGB = 1
+AMS_MEL_IR_PIXEL_BAYER = 2
+AMS_MEL_IR_SENSOR_UNSPECIFIED, AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL, AMS_MEL_IR_SENSOR_GIMBAL_VERTICAL, AMS_MEL_IR_SENSOR_GIMBAL_ROTATION, AMS_MEL_IR_SENSOR_STEP_STARE = range(5)
+AMS_MEL_IR_BAND_INVALID, AMS_MEL_IR_BAND_MULTIBAND, AMS_MEL_IR_BAND_IR_FAR, AMS_MEL_IR_BAND_IR_NEAR, AMS_MEL_IR_BAND_IR_LONGWAVE, AMS_MEL_IR_BAND_IR_MIDWAVE, AMS_MEL_IR_BAND_IR_SHORTWAVE, AMS_MEL_IR_BAND_VISIBLE_WHITE, AMS_MEL_IR_BAND_VISIBLE_RED, AMS_MEL_IR_BAND_VISIBLE_GREEN, AMS_MEL_IR_BAND_VISIBLE_BLUE, AMS_MEL_IR_BAND_UVA, AMS_MEL_IR_BAND_UVB, AMS_MEL_IR_BAND_UVC, AMS_MEL_IR_BAND_UV_VACUUM = range(15)
+AMS_MEL_IR_COORDINATE_LLA, AMS_MEL_IR_COORDINATE_ECEF, AMS_MEL_IR_COORDINATE_NED_PLATFORM, AMS_MEL_IR_COORDINATE_NED_SENSOR = range(4)
+AMS_MEL_IR_METADATA_BAD_PIXEL_LIST = 0
+AMS_MEL_IR_METADATA_OPTICAL_DISTORTION_MAP, AMS_MEL_IR_METADATA_LF_STATUS, AMS_MEL_IR_METADATA_LINE_OF_SIGHT_REPORT, AMS_MEL_IR_METADATA_LINE_OF_SIGHT_QUATERNION, AMS_MEL_IR_METADATA_LINE_OF_SIGHT_EULER, AMS_MEL_IR_METADATA_MFA_STATUS, AMS_MEL_IR_METADATA_MFA_STATUS_DETAILED, AMS_MEL_IR_METADATA_BIT_CONFIGURATION, AMS_MEL_IR_METADATA_COMMAND_STATUS, AMS_MEL_IR_METADATA_BIT_STATUS, AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE, AMS_MEL_IR_METADATA_TASK_EXECUTING_REP, AMS_MEL_IR_METADATA_SUBSYSTEM_STATUS_RESP, AMS_MEL_IR_METADATA_EXECUTE_TASK_ACK, AMS_MEL_IR_METADATA_SCHED_CREATED_REP, AMS_MEL_IR_METADATA_IRST_TRACK_REPORT, AMS_MEL_IR_METADATA_CHANNEL_COMMS_TEST_REP, AMS_MEL_IR_METADATA_CAMERA_COMMAND_RESP, AMS_MEL_IR_METADATA_CAMERA_PROTECT_CMD_RESP, AMS_MEL_IR_METADATA_INSTRUMENTATION_REPORT, AMS_MEL_IR_METADATA_NAVIGATION_REPORT_RESP, AMS_MEL_IR_METADATA_REQUEST_SYSTEM_TRACK_DATA, AMS_MEL_IR_METADATA_UPDATE_TRACK_LIST_RESPONSE, AMS_MEL_IR_METADATA_LOS_3D_KINEMATICS_TYPE, AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE, AMS_MEL_IR_METADATA_TASK_EVENTS, AMS_MEL_IR_METADATA_SCAN_PERFORMANCE_REPORT, AMS_MEL_IR_METADATA_RESERVED_3, AMS_MEL_IR_METADATA_RESERVED_5, AMS_MEL_IR_METADATA_RESERVED_9 = range(1, 31)
+AMS_MEL_IR_METADATA_RESERVED_10 = 31
 AMS_MEL_IR_IMAGE_STARING = 0
 AMS_MEL_IR_IMAGE_SCANNING = 1
 AMS_MEL_IR_FLIP_NONE = 0
@@ -73,6 +83,7 @@ AMS_MEL_IR_FLIP_BOTH = 3
 AMS_MEL_IR_C2_METADATA_COMMAND_STATUS = 1
 AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION = 2
 AMS_MEL_IR_C2_METADATA_BIT_STATUS = 3
+AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST = 4
 AMS_MEL_IR_COMMAND_NOT_SET, AMS_MEL_IR_COMMAND_RECEIVED, AMS_MEL_IR_COMMAND_ACCEPTED, AMS_MEL_IR_COMMAND_REJECTED, AMS_MEL_IR_COMMAND_CANCELLED = range(5)
 (
     AMS_MEL_IR_CANNOT_COMPLY_NOT_SET, AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS,
@@ -191,7 +202,8 @@ class FaultAmbiguityGroupSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.PO
 class FaultV1(ctypes.Structure): _fields_ = [("fault_id",UciIdV1),("severity",ctypes.c_uint32),("state",ctypes.c_uint32),("fault_data",FaultDataSpanV1),("detection_time_ns",ctypes.c_int64),("fault_code",StringViewV1),("fault_description",StringViewV1),("component_ids",UciIdSpanV1),("ambiguity_groups",FaultAmbiguityGroupSpanV1)]
 class FaultSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(FaultV1)),("size",ctypes.c_size_t)]
 class BitStatusV1(ctypes.Structure): _fields_ = [("active_bits",ActiveBitSpanV1),("completed_bits",CompletedBitSpanV1),("faults",FaultSpanV1)]
-class IrC2MetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("command_status",IrCommandStatusV1),("bit_configuration",BitConfigurationV1),("bit_status",BitStatusV1)]
+class IrChannelCommsTestReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("request_id",ctypes.c_uint32)]
+class IrC2MetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("command_status",IrCommandStatusV1),("bit_configuration",BitConfigurationV1),("bit_status",BitStatusV1),("channel_comms_test",IrChannelCommsTestReportV1)]
 class IrC2MetadataCountersV1(ctypes.Structure): _fields_ = [("events_received",ctypes.c_uint64),("events_dropped_queue_full",ctypes.c_uint64),("malformed_or_unsupported",ctypes.c_uint64)]
 
 
@@ -203,6 +215,15 @@ class ComponentLocationV1(ctypes.Structure):
         ("key", StringViewV1),
         ("system_name", StringViewV1),
     ]
+class IrChannelCommsTestRequestV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("channel_id",ctypes.c_uint32),("request_id",ctypes.c_uint32)]
+class IrChannelCommsTestResultV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("request_id",ctypes.c_uint32),("error_code",ctypes.c_uint32)]
+class IrBandInfoV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("min_wavelength_m",ctypes.c_double),("max_wavelength_m",ctypes.c_double)]
+class IrBandInfoSpanV1(ctypes.Structure): pass
+IrBandInfoSpanV1._fields_ = [("data",ctypes.POINTER(IrBandInfoV1)),("size",ctypes.c_size_t)]
+class IrImageBandV1(ctypes.Structure): _fields_ = [("band_index",ctypes.c_uint32),("bands",IrBandInfoSpanV1)]
+class IrImageBandSpanV1(ctypes.Structure): pass
+IrImageBandSpanV1._fields_ = [("data",ctypes.POINTER(IrImageBandV1)),("size",ctypes.c_size_t)]
+class IrChannelCapabilityV1(ctypes.Structure): _fields_ = [("channel_id",UciIdV1),("height",ctypes.c_uint32),("width",ctypes.c_uint32),("bit_depth",ctypes.c_uint32),("row_pitch",ctypes.c_uint32),("buffer_size",ctypes.c_uint32),("image_size",ctypes.c_uint32),("number_of_bands",ctypes.c_uint32),("pixel_format",ctypes.c_uint32),("sensor_types",U32SpanV1),("platform_id",UciIdV1),("sensor_location",ComponentLocationV1),("channel_types",U32SpanV1),("task_schedule_depth",ctypes.c_uint32),("odc_available",ctypes.c_uint32),("nuc_available",ctypes.c_uint32),("metadata_capabilities",U32SpanV1),("image_bands",IrImageBandSpanV1),("nav_frames",U32SpanV1)]
 
 
 class IrStreamConfigV1(ctypes.Structure):
@@ -282,6 +303,8 @@ IrStreamHandle = ctypes.c_void_p
 IrC2Handle = ctypes.c_void_p
 IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
+IrChannelCommsRequestHandle = ctypes.c_void_p
+IrChannelCapabilityHandle = ctypes.c_void_p
 IrC2MetadataHandle = ctypes.c_void_p
 IrC2MetadataEventHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
@@ -475,6 +498,27 @@ ams_mel_ir_c2_submit_config_set.argtypes = [IrC2Handle,
     ctypes.POINTER(IrConfigSetCommandV1), ctypes.POINTER(IrReturnRequestHandle),
     CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_c2_submit_config_set.restype = ctypes.c_int32
+ams_mel_ir_c2_send_keepalive = _LIBRARY.ams_mel_ir_c2_send_keepalive
+ams_mel_ir_c2_send_keepalive.argtypes = [IrC2Handle,ctypes.POINTER(IrReturnRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_c2_send_keepalive.restype = ctypes.c_int32
+ams_mel_ir_c2_submit_comms_test = _LIBRARY.ams_mel_ir_c2_submit_comms_test
+ams_mel_ir_c2_submit_comms_test.argtypes = [IrC2Handle,ctypes.POINTER(IrChannelCommsTestRequestV1),ctypes.POINTER(IrChannelCommsRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_c2_submit_comms_test.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_request_wait = _LIBRARY.ams_mel_ir_channel_comms_request_wait
+ams_mel_ir_channel_comms_request_wait.argtypes = [IrChannelCommsRequestHandle,ctypes.c_uint32,ctypes.POINTER(IrChannelCommsTestResultV1),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_channel_comms_request_wait.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_request_close = _LIBRARY.ams_mel_ir_channel_comms_request_close
+ams_mel_ir_channel_comms_request_close.argtypes = [ctypes.POINTER(IrChannelCommsRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_channel_comms_request_close.restype = ctypes.c_int32
+ams_mel_ir_c2_get_capabilities = _LIBRARY.ams_mel_ir_c2_get_capabilities
+ams_mel_ir_c2_get_capabilities.argtypes = [IrC2Handle,ctypes.POINTER(IrChannelCapabilityHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_c2_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_channel_capability_view = _LIBRARY.ams_mel_ir_channel_capability_view
+ams_mel_ir_channel_capability_view.argtypes = [IrChannelCapabilityHandle,ctypes.POINTER(ctypes.POINTER(IrChannelCapabilityV1)),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_channel_capability_view.restype = ctypes.c_int32
+ams_mel_ir_channel_capability_close = _LIBRARY.ams_mel_ir_channel_capability_close
+ams_mel_ir_channel_capability_close.argtypes = [ctypes.POINTER(IrChannelCapabilityHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_channel_capability_close.restype = ctypes.c_int32
 
 ams_mel_ir_return_request_wait = _LIBRARY.ams_mel_ir_return_request_wait
 ams_mel_ir_return_request_wait.argtypes = [
@@ -508,6 +552,9 @@ ams_mel_ir_c2_close.restype = ctypes.c_int32
 ams_mel_ir_c2_metadata_open = _LIBRARY.ams_mel_ir_c2_metadata_open
 ams_mel_ir_c2_metadata_open.argtypes = [IrC2Handle,ctypes.c_size_t,ctypes.POINTER(IrC2MetadataHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_c2_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_c2_metadata_register_comms_test = _LIBRARY.ams_mel_ir_c2_metadata_register_comms_test
+ams_mel_ir_c2_metadata_register_comms_test.argtypes = [IrC2MetadataHandle,CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_c2_metadata_register_comms_test.restype = ctypes.c_int32
 ams_mel_ir_c2_metadata_receive = _LIBRARY.ams_mel_ir_c2_metadata_receive
 ams_mel_ir_c2_metadata_receive.argtypes = [IrC2MetadataHandle,ctypes.c_uint32,ctypes.POINTER(IrC2MetadataEventHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_c2_metadata_receive.restype = ctypes.c_int32
@@ -544,10 +591,18 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_c2_submit_bit_noop",
     "ams_mel_ir_c2_submit_bit",
     "ams_mel_ir_c2_submit_config_set",
+    "ams_mel_ir_c2_send_keepalive",
+    "ams_mel_ir_c2_submit_comms_test",
+    "ams_mel_ir_channel_comms_request_wait",
+    "ams_mel_ir_channel_comms_request_close",
+    "ams_mel_ir_c2_get_capabilities",
+    "ams_mel_ir_channel_capability_view",
+    "ams_mel_ir_channel_capability_close",
     "ams_mel_ir_return_request_wait",
     "ams_mel_ir_return_request_close",
     "ams_mel_ir_c2_close",
     "ams_mel_ir_c2_metadata_open",
+    "ams_mel_ir_c2_metadata_register_comms_test",
     "ams_mel_ir_c2_metadata_receive",
     "ams_mel_ir_c2_metadata_get_counters",
     "ams_mel_ir_c2_metadata_close",

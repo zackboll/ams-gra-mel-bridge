@@ -5,11 +5,15 @@ with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.IR.C2;
 with AMS.MEL.IR.C2.Metadata;
+with AMS.MEL.IR.C2.Common;
+with AMS.MEL.IR.Channel;
 with Interfaces;
 
 procedure AMS_MEL_Squall_IR is
    package C2 renames AMS.MEL.IR.C2;
    package Metadata renames AMS.MEL.IR.C2.Metadata;
+   package Common renames AMS.MEL.IR.C2.Common;
+   package Channel_Value renames AMS.MEL.IR.Channel;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
    use type C2.Command_Return;
@@ -19,6 +23,10 @@ procedure AMS_MEL_Squall_IR is
    use type Metadata.Metadata_Kind;
    use type Metadata.Command_State;
    use type Metadata.Cannot_Comply;
+   use type Channel_Value.Channel_Type;
+   use type Channel_Value.Metadata_Capability;
+   use type Channel_Value.Comms_Request_ID;
+   use type Channel_Value.Comms_Test_Report;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
 
@@ -143,6 +151,59 @@ begin
             Ada.Text_IO.Put_Line ("BIT_Configuration: empty default");
          end;
          Expect_Empty_BIT_Status (Metadata_Stream);
+         --  Inherited Channel services are intentionally exercised while the
+         --  C2 channel is merely attached, before C2.Enable.
+         Metadata.Enable_Comms_Test_Events (Metadata_Stream);
+         declare
+            Capability : constant Channel_Value.Channel_Capability :=
+              Common.Capabilities (Channel);
+         begin
+            if Channel_Value.Channel_Type_Count (Capability) /= 1 or else
+              Channel_Value.Channel_Type_At (Capability, 1) /=
+                Channel_Value.Command_And_Control or else
+              Channel_Value.Metadata_Capability_Count (Capability) /= 4 or else
+              not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.BIT_Configuration) or else
+              not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.Command_Status) or else
+              not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.BIT_Status) or else
+              not Channel_Value.Has_Metadata_Capability
+                (Capability, Channel_Value.Channel_Comms_Test_Rep) or else
+              Channel_Value.Task_Schedule_Depth (Capability) /= 0 or else
+              Channel_Value.ODC_Available (Capability) or else
+              Channel_Value.NUC_Available (Capability)
+            then raise Program_Error with "unexpected Squall C2 capability"; end if;
+            Ada.Text_IO.Put_Line
+              ("C2 capability: type=COMMAND_AND_CONTROL metadata=4 schedule=0 odc=FALSE nuc=FALSE");
+         end;
+         declare
+            Request : C2.Return_Request := Common.Send_Keep_Alive (Channel);
+         begin
+            if C2.Value (C2.Wait (Request, 5_000)) /= C2.Return_Success or else
+              C2.Value (C2.Wait (Request, 0)) /= C2.Return_Success
+            then raise Program_Error with "Squall KeepAlive failed"; end if;
+            Ada.Text_IO.Put_Line ("KeepAlive result: SUCCESS"); C2.Close (Request);
+         end;
+         declare
+            Request : Common.Comms_Request := Common.Submit_Comms_Test
+              (Channel, 7, 16#0040_1901#, 16#8040_1902#);
+            Result : constant Common.Comms_Result := Common.Wait (Request, 5_000);
+            Reply : constant Channel_Value.Comms_Test_Report := Common.Report (Result);
+            Event : constant Metadata.Metadata_Event := Metadata.Receive (Metadata_Stream, 5_000);
+            Callback : constant Channel_Value.Comms_Test_Report := Metadata.Comms_Test (Event);
+         begin
+            if Common.Status (Result) /= C2.Success or else
+              Reply.Command_ID /= 16#0040_1901# or else Reply.Request_ID /= 16#8040_1902# or else
+              Metadata.Kind (Event) /= Metadata.Channel_Comms_Test_Event or else
+              Callback.Command_ID /= Reply.Command_ID or else Callback.Request_ID /= Reply.Request_ID or else
+              Common.Report (Common.Wait (Request, 0)) /= Reply
+            then raise Program_Error with "Squall CommsTest mismatch"; end if;
+            Ada.Text_IO.Put_Line
+              ("CommsTest response/callback: command=" & Reply.Command_ID'Image &
+               " request=" & Reply.Request_ID'Image);
+            Common.Close (Request);
+         end;
          C2.Enable (Channel);
          declare
             Request : C2.Mode_Request := C2.Submit_Mode
@@ -304,7 +365,7 @@ begin
               ("metadata counters: received=" & Counts.Events_Received'Image &
                " dropped=" & Counts.Events_Dropped_Queue_Full'Image &
                " malformed=" & Counts.Malformed_Or_Unsupported'Image);
-            if Counts.Events_Received < 10
+            if Counts.Events_Received < 11
               or else Counts.Events_Dropped_Queue_Full /= 0
               or else Counts.Malformed_Or_Unsupported /= 0
             then

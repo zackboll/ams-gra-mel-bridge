@@ -13,6 +13,7 @@
 #include <functional>
 #include <future>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -78,6 +79,37 @@ mel::BIT_Status rich_bit_status()
         {metadata_id(0xe1U, "fault component one"), metadata_id(0xe2U, "fault component two")},
         groups}};
     return {std::move(active), std::move(completed), std::move(faults)};
+}
+
+irmel::ChannelCapability rich_channel_capability()
+{
+    irmel::ChannelCapability value;
+    value.setChanID(metadata_id(0x11U, "channel-\xCE\xB1"));
+    value.setHeight(1080U); value.setWidth(1920U); value.setBitDepth(12U);
+    value.setRowPitch(4096U); value.setBufferSize(8'388'608U);
+    value.setImageSize(4'147'200U); value.setNumberOfBands(3U);
+    value.setFormat(irmel::PixelFormat::RGB);
+    value.setSensorTypes({irmel::SensorType::GIMBAL_HORIZONTAL,
+                           irmel::SensorType::STEPSTARE});
+    value.setPlatform(metadata_id(0x31U, "platform-\xE2\x82\xAC"));
+    mel::ForeignKey key{"sensor-key", "system-\xCE\xB2"};
+    value.setSensorLocation(mel::ComponentLocation{1.25, -2.5, 3.75, key});
+    value.setChannelTypes({irmel::ChannelType::CommandAndControl,
+                            irmel::ChannelType::Instrumentation,
+                            irmel::ChannelType::Reserved2});
+    value.setTaskScheduleDepth(17U); value.setOdmAvail(true); value.setNucAvail(true);
+    value.setChannelMetadataCapabilities({
+        irmel::ChannelMetadataCapabilityType::BadPixelList,
+        irmel::ChannelMetadataCapabilityType::CommandStatus,
+        irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep,
+        irmel::ChannelMetadataCapabilityType::Reserved10});
+    value.setImageBands({
+        {2U, {{irmel::BandType::IR_Longwave, 8.0e-6, 12.0e-6},
+              {irmel::BandType::IR_Midwave, 3.0e-6, 5.0e-6}}},
+        {9U, {{irmel::BandType::Visible_Red, 620.0e-9, 750.0e-9}}}});
+    value.setNavFrames({irmel::CoordinateSystemType::NED_SENSOR,
+                        irmel::CoordinateSystemType::ECEF});
+    return value;
 }
 
 struct CallbackBarrier {
@@ -365,6 +397,11 @@ public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
     {
+        if (scenario_ == "comms-register-retain-fail" && comms_callback_) {
+            irmel::ChannelCommsTestRep report{91U, 92U};
+            record("retained_comms_callback_invoked");
+            comms_callback_(*this, &report);
+        }
         if (scenario_ == "metadata-nonquiescing-disable") {
             const char *base = std::getenv("AMS_MEL_TEST_METADATA_CALLBACK_BARRIER");
             if (!base) std::abort();
@@ -379,9 +416,61 @@ public:
         record("c2_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override
-    { return unsupported_request<Return>(); }
-    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
-    { return unsupported_request<irmel::ChannelCommsTestRep>(); }
+    {
+        record("keepalive_sent");
+        if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "keepalive-fail") promise.set_value(
+            mel::ErrorOr<std::shared_ptr<Return>>{std::make_shared<Return>(Return::Fail)});
+        else if (scenario_ == "keepalive-reject") promise.set_value(
+            mel::ErrorOr<std::shared_ptr<Return>>{mel::Error{mel::ErrorCode::InvalidState,
+                long_rejection_description()}});
+        else if (scenario_ == "keepalive-null") promise.set_value(
+            mel::ErrorOr<std::shared_ptr<Return>>{std::shared_ptr<Return>{}});
+        else if (scenario_ == "keepalive-future-throw") promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock keepalive future exception"}));
+        else if (scenario_ == "keepalive-delayed" || scenario_ == "keepalive-lifetime") {
+            producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40}, [this] { return release_; });
+                lock.unlock(); record("keepalive_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+                    std::make_shared<Return>(Return::Success)});
+            }};
+        } else promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
+            std::make_shared<Return>(Return::Success)});
+        return future;
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        record("comms_sent");
+        if (scenario_ == "comms-send-throw") throw std::runtime_error("mock comms send exception");
+        if (scenario_ == "comms-high" && (request.getCommandID() != 0x80000001U ||
+            request.getChannelID() != 0xf0000002U || request.getRequestID() != 0xe0000003U))
+            throw std::runtime_error("CommsTest request conversion mismatch");
+        auto response = std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID());
+        if (comms_callback_) comms_callback_(*this, response.get());
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "comms-reject") promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, long_rejection_description()}});
+        else if (scenario_ == "comms-null") promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{
+                std::shared_ptr<irmel::ChannelCommsTestRep>{}});
+        else if (scenario_ == "comms-future-throw") promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock comms future exception"}));
+        else if (scenario_ == "comms-delayed" || scenario_ == "comms-lifetime") {
+            producer_ = std::thread{[this, promise = std::move(promise), response]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40}, [this] { return release_; });
+                lock.unlock(); record("comms_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{response});
+            }};
+        } else promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{response});
+        return future;
+    }
     mel::RequestFor<Return> send(irmel::BIT_Command command) override
     {
         record("bit_sent");
@@ -609,13 +698,31 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
+        if (scenario_ == "capability-throw" && capability_calls_++ != 0U)
+            throw std::runtime_error("mock capability exception");
+        if (scenario_.rfind("capability-", 0U) == 0U) {
+            auto capability = rich_channel_capability();
+            if (scenario_ == "capability-bad-pixel") capability.setFormat(static_cast<irmel::PixelFormat>(99U));
+            else if (scenario_ == "capability-bad-sensor") capability.setSensorTypes({irmel::SensorType::MAXEXCLUSIVE});
+            else if (scenario_ == "capability-bad-channel") capability.setChannelTypes(
+                {irmel::ChannelType::CommandAndControl, static_cast<irmel::ChannelType>(99U)});
+            else if (scenario_ == "capability-bad-metadata") capability.setChannelMetadataCapabilities({static_cast<irmel::ChannelMetadataCapabilityType>(99U)});
+            else if (scenario_ == "capability-bad-band") capability.setImageBands({{1U, {{static_cast<irmel::BandType>(99U), 1.0, 2.0}}}});
+            else if (scenario_ == "capability-bad-nav") capability.setNavFrames({static_cast<irmel::CoordinateSystemType>(99U)});
+            else if (scenario_ == "capability-bad-utf8") capability.setChanID(metadata_id(1U, std::string{"bad\xC3\x28", 5}));
+            return capability;
+        }
         irmel::ChannelCapability capability;
         if (scenario_ != "c2-channel-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         return capability;
     }
-    Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
-    { return Return::NotSupported; }
+    Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback) override
+    {
+        comms_callback_ = std::move(callback);
+        if (scenario_ == "comms-register-retain-fail") return Return::Fail;
+        return Return::Success;
+    }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const mel::BIT_Configuration *const)> callback) override
     {
         bit_configuration_callback_ = std::move(callback);
@@ -701,6 +808,8 @@ private:
     std::function<void(irmel::Channel&, const mel::BIT_Configuration *const)> bit_configuration_callback_;
     std::function<void(irmel::Channel&, const irmel::CommandStatus *const)> command_status_callback_;
     std::function<void(irmel::Channel&, const mel::BIT_Status *const)> bit_status_callback_;
+    std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> comms_callback_;
+    mutable unsigned capability_calls_{};
 };
 #undef C2_UNSUPPORTED_CALLBACK
 

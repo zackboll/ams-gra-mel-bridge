@@ -18,8 +18,15 @@ pub const AMS_MEL_STREAM_STOPPED: AmsMelStatus = 10;
 pub const AMS_MEL_PROVIDER_FAILED: AmsMelStatus = 11;
 pub const AMS_MEL_COMMAND_REJECTED: AmsMelStatus = 12;
 
+pub const AMS_MEL_IR_CHANNEL_IRST_TRACK: u32 = 0;
 pub const AMS_MEL_IR_CHANNEL_IRST_IMAGE: u32 = 1;
 pub const AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL: u32 = 2;
+pub const AMS_MEL_IR_CHANNEL_SCHEDULING: u32 = 3;
+pub const AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS: u32 = 4;
+pub const AMS_MEL_IR_CHANNEL_INSTRUMENTATION: u32 = 5;
+pub const AMS_MEL_IR_CHANNEL_STACKED_IMAGE: u32 = 6;
+pub const AMS_MEL_IR_CHANNEL_RESERVED_1: u32 = 7;
+pub const AMS_MEL_IR_CHANNEL_RESERVED_2: u32 = 8;
 pub const AMS_MEL_IR_MFA_MODE_UNUSED: u32 = 0;
 pub const AMS_MEL_IR_MFA_MODE_TASK_SCHED: u32 = 1;
 pub const AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED: u32 = 2;
@@ -62,6 +69,64 @@ pub const AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES: u32 = 6;
 pub const AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES: u32 = 7;
 pub const AMS_MEL_ERROR_UNSUPPORTED: u32 = 8;
 pub const AMS_MEL_IR_PIXEL_MONO: u32 = 0;
+pub const AMS_MEL_IR_PIXEL_RGB: u32 = 1;
+pub const AMS_MEL_IR_PIXEL_BAYER: u32 = 2;
+pub const AMS_MEL_IR_SENSOR_UNSPECIFIED: u32 = 0;
+pub const AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL: u32 = 1;
+pub const AMS_MEL_IR_SENSOR_GIMBAL_VERTICAL: u32 = 2;
+pub const AMS_MEL_IR_SENSOR_GIMBAL_ROTATION: u32 = 3;
+pub const AMS_MEL_IR_SENSOR_STEP_STARE: u32 = 4;
+pub const AMS_MEL_IR_BAND_INVALID: u32 = 0;
+pub const AMS_MEL_IR_BAND_MULTIBAND: u32 = 1;
+pub const AMS_MEL_IR_BAND_IR_FAR: u32 = 2;
+pub const AMS_MEL_IR_BAND_IR_NEAR: u32 = 3;
+pub const AMS_MEL_IR_BAND_IR_LONGWAVE: u32 = 4;
+pub const AMS_MEL_IR_BAND_IR_MIDWAVE: u32 = 5;
+pub const AMS_MEL_IR_BAND_IR_SHORTWAVE: u32 = 6;
+pub const AMS_MEL_IR_BAND_VISIBLE_WHITE: u32 = 7;
+pub const AMS_MEL_IR_BAND_VISIBLE_RED: u32 = 8;
+pub const AMS_MEL_IR_BAND_VISIBLE_GREEN: u32 = 9;
+pub const AMS_MEL_IR_BAND_VISIBLE_BLUE: u32 = 10;
+pub const AMS_MEL_IR_BAND_UVA: u32 = 11;
+pub const AMS_MEL_IR_BAND_UVB: u32 = 12;
+pub const AMS_MEL_IR_BAND_UVC: u32 = 13;
+pub const AMS_MEL_IR_BAND_UV_VACUUM: u32 = 14;
+pub const AMS_MEL_IR_COORDINATE_LLA: u32 = 0;
+pub const AMS_MEL_IR_COORDINATE_ECEF: u32 = 1;
+pub const AMS_MEL_IR_COORDINATE_NED_PLATFORM: u32 = 2;
+pub const AMS_MEL_IR_COORDINATE_NED_SENSOR: u32 = 3;
+pub const AMS_MEL_IR_METADATA_BAD_PIXEL_LIST: u32 = 0;
+pub const AMS_MEL_IR_METADATA_OPTICAL_DISTORTION_MAP: u32 = 1;
+pub const AMS_MEL_IR_METADATA_LF_STATUS: u32 = 2;
+pub const AMS_MEL_IR_METADATA_LINE_OF_SIGHT_REPORT: u32 = 3;
+pub const AMS_MEL_IR_METADATA_LINE_OF_SIGHT_QUATERNION: u32 = 4;
+pub const AMS_MEL_IR_METADATA_LINE_OF_SIGHT_EULER: u32 = 5;
+pub const AMS_MEL_IR_METADATA_MFA_STATUS: u32 = 6;
+pub const AMS_MEL_IR_METADATA_MFA_STATUS_DETAILED: u32 = 7;
+pub const AMS_MEL_IR_METADATA_BIT_CONFIGURATION: u32 = 8;
+pub const AMS_MEL_IR_METADATA_COMMAND_STATUS: u32 = 9;
+pub const AMS_MEL_IR_METADATA_BIT_STATUS: u32 = 10;
+pub const AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE: u32 = 11;
+pub const AMS_MEL_IR_METADATA_TASK_EXECUTING_REP: u32 = 12;
+pub const AMS_MEL_IR_METADATA_SUBSYSTEM_STATUS_RESP: u32 = 13;
+pub const AMS_MEL_IR_METADATA_EXECUTE_TASK_ACK: u32 = 14;
+pub const AMS_MEL_IR_METADATA_SCHED_CREATED_REP: u32 = 15;
+pub const AMS_MEL_IR_METADATA_IRST_TRACK_REPORT: u32 = 16;
+pub const AMS_MEL_IR_METADATA_CHANNEL_COMMS_TEST_REP: u32 = 17;
+pub const AMS_MEL_IR_METADATA_CAMERA_COMMAND_RESP: u32 = 18;
+pub const AMS_MEL_IR_METADATA_CAMERA_PROTECT_CMD_RESP: u32 = 19;
+pub const AMS_MEL_IR_METADATA_INSTRUMENTATION_REPORT: u32 = 20;
+pub const AMS_MEL_IR_METADATA_NAVIGATION_REPORT_RESP: u32 = 21;
+pub const AMS_MEL_IR_METADATA_REQUEST_SYSTEM_TRACK_DATA: u32 = 22;
+pub const AMS_MEL_IR_METADATA_UPDATE_TRACK_LIST_RESPONSE: u32 = 23;
+pub const AMS_MEL_IR_METADATA_LOS_3D_KINEMATICS_TYPE: u32 = 24;
+pub const AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE: u32 = 25;
+pub const AMS_MEL_IR_METADATA_TASK_EVENTS: u32 = 26;
+pub const AMS_MEL_IR_METADATA_SCAN_PERFORMANCE_REPORT: u32 = 27;
+pub const AMS_MEL_IR_METADATA_RESERVED_3: u32 = 28;
+pub const AMS_MEL_IR_METADATA_RESERVED_5: u32 = 29;
+pub const AMS_MEL_IR_METADATA_RESERVED_9: u32 = 30;
+pub const AMS_MEL_IR_METADATA_RESERVED_10: u32 = 31;
 pub const AMS_MEL_IR_IMAGE_STARING: u32 = 0;
 pub const AMS_MEL_IR_IMAGE_SCANNING: u32 = 1;
 pub const AMS_MEL_IR_FLIP_NONE: u32 = 0;
@@ -71,6 +136,7 @@ pub const AMS_MEL_IR_FLIP_BOTH: u32 = 3;
 pub const AMS_MEL_IR_C2_METADATA_COMMAND_STATUS: u32 = 1;
 pub const AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION: u32 = 2;
 pub const AMS_MEL_IR_C2_METADATA_BIT_STATUS: u32 = 3;
+pub const AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST: u32 = 4;
 pub const AMS_MEL_IR_COMMAND_NOT_SET: u32 = 0;
 pub const AMS_MEL_IR_COMMAND_RECEIVED: u32 = 1;
 pub const AMS_MEL_IR_COMMAND_ACCEPTED: u32 = 2;
@@ -340,12 +406,19 @@ pub struct AmsMelBitStatusV1 {
     pub faults: AmsMelFaultSpanV1,
 }
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrChannelCommsTestReportV1 {
+    pub command_id: u32,
+    pub request_id: u32,
+}
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrC2MetadataEventV1 {
     pub kind: u32,
     pub command_status: AmsMelIrCommandStatusV1,
     pub bit_configuration: AmsMelBitConfigurationV1,
     pub bit_status: AmsMelBitStatusV1,
+    pub channel_comms_test: AmsMelIrChannelCommsTestReportV1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -363,6 +436,58 @@ pub struct AmsMelComponentLocationV1 {
     pub offset_z_m: f64,
     pub key: AmsMelStringViewV1,
     pub system_name: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrChannelCommsTestRequestV1 {
+    pub command_id: u32,
+    pub channel_id: u32,
+    pub request_id: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrChannelCommsTestResultV1 {
+    pub command_id: u32,
+    pub request_id: u32,
+    pub error_code: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrBandInfoV1 {
+    pub kind: u32,
+    pub min_wavelength_m: f64,
+    pub max_wavelength_m: f64,
+}
+span!(AmsMelIrBandInfoSpanV1, AmsMelIrBandInfoV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrImageBandV1 {
+    pub band_index: u32,
+    pub bands: AmsMelIrBandInfoSpanV1,
+}
+span!(AmsMelIrImageBandSpanV1, AmsMelIrImageBandV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrChannelCapabilityV1 {
+    pub channel_id: AmsMelUciIdV1,
+    pub height: u32,
+    pub width: u32,
+    pub bit_depth: u32,
+    pub row_pitch: u32,
+    pub buffer_size: u32,
+    pub image_size: u32,
+    pub number_of_bands: u32,
+    pub pixel_format: u32,
+    pub sensor_types: AmsMelU32SpanV1,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+    pub channel_types: AmsMelU32SpanV1,
+    pub task_schedule_depth: u32,
+    pub odc_available: u32,
+    pub nuc_available: u32,
+    pub metadata_capabilities: AmsMelU32SpanV1,
+    pub image_bands: AmsMelIrImageBandSpanV1,
+    pub nav_frames: AmsMelU32SpanV1,
 }
 
 #[repr(C)]
@@ -463,6 +588,16 @@ pub struct AmsMelIrModeRequest {
 
 #[repr(C)]
 pub struct AmsMelIrReturnRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrChannelCommsRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrChannelCapability {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -625,6 +760,55 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_send_keepalive(
+        c2: *mut AmsMelIrC2,
+        out: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_comms_test(
+        c2: *mut AmsMelIrC2,
+        request: *const AmsMelIrChannelCommsTestRequestV1,
+        out: *mut *mut AmsMelIrChannelCommsRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_request_wait(
+        request: *const AmsMelIrChannelCommsRequest,
+        timeout_ms: u32,
+        out: *mut AmsMelIrChannelCommsTestResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_request_close(
+        request: *mut *mut AmsMelIrChannelCommsRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_get_capabilities(
+        c2: *mut AmsMelIrC2,
+        out: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_capability_view(
+        capability: *const AmsMelIrChannelCapability,
+        out: *mut *const AmsMelIrChannelCapabilityV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_capability_close(
+        capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
 
     pub fn ams_mel_ir_return_request_wait(
         request: *const AmsMelIrReturnRequest,
@@ -660,6 +844,12 @@ extern "C" {
         metadata: *mut AmsMelIrC2Metadata,
         timeout_ms: u32,
         out: *mut *mut AmsMelIrC2MetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_metadata_register_comms_test(
+        metadata: *mut AmsMelIrC2Metadata,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

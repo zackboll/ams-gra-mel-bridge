@@ -34,8 +34,10 @@ themselves.
 > against the same pinned provider/runtime stack; it is not part of ordinary
 > builds or CI. Python remains a dependency-free, development-use-only binding:
 > payload-bearing BIT and general Mode/ConfigSet are absent from their safe APIs;
-> RF, Common Channel services, optional C2 operations, and safe Rust/Python
-> metadata are not implemented, and there is no wheel/PyPI publication
+> Ada additionally exposes inherited C2 KeepAlive, CommsTest request/callback,
+> and complete ChannelCapability values. RF, explicit generic buffer management,
+> Scheduling, optional C2 operations, and safe Rust/Python common-channel or
+> metadata APIs are not implemented, and there is no wheel/PyPI publication
 > or zero-copy/NumPy image API. Raw declarations alone are not safe-language parity.
 
 This is not an official C MEL standard, a replacement for AMS GRA, a Squall

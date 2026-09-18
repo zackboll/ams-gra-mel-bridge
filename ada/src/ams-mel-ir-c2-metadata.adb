@@ -78,13 +78,20 @@ package body AMS.MEL.IR.C2.Metadata is
       end return;
    end Open;
    function Is_Open (Stream : Metadata_Stream) return Boolean is (Stream.Handle /= C.Null_Metadata);
+   procedure Enable_Comms_Test_Events (Stream : in out Metadata_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul]; R : aliased C.Size_T := 0;
+   begin
+      if C.IR_C2_Metadata_Register_Comms_Test
+        (Stream.Handle, D'Address, D'Length, R'Access) /= C.Success
+      then raise Provider_Error with Message (D); end if;
+   end Enable_Comms_Test_Events;
 
    function Copy_IDs (Span : C.Span_V1) return ID_Vectors.Vector is Result : ID_Vectors.Vector;
    begin for I in 0 .. Natural (Span.Size) - 1 loop Result.Append (Copy (To_ID (Address_At (Span.Data, I, C.UCI_ID_V1'Object_Size / System.Storage_Unit)).all)); end loop; return Result; end Copy_IDs;
    function Copy_Event (Raw : C.Metadata_Event_V1) return Metadata_Event is
       Result : Metadata_Event;
    begin
-      if Raw.Kind not in 1 .. 3 then raise Provider_Error with "invalid native metadata kind"; end if;
+      if Raw.Kind not in 1 .. 4 then raise Provider_Error with "invalid native metadata kind"; end if;
       Result.Event_Kind := Metadata_Kind'Val (Integer (Raw.Kind) - 1);
       if Raw.Kind = 1 then
          if Raw.Command_Status.State > 4 or else Raw.Command_Status.Reason_ID > 46 then raise Provider_Error with "invalid native CommandStatus enum"; end if;
@@ -99,7 +106,7 @@ package body AMS.MEL.IR.C2.Metadata is
                V.Components := Copy_IDs (B.Subsystem_Component_IDs); Result.BIT_Types.Append (V);
             end;
          end loop;
-      else
+      elsif Raw.Kind = 3 then
          for I in 0 .. Natural (Raw.BIT_Status.Active_BITS.Size) - 1 loop declare A : constant C.Active_BIT_V1 := To_Active (Address_At (Raw.BIT_Status.Active_BITS.Data, I, C.Active_BIT_V1'Object_Size / System.Storage_Unit)).all; begin Result.Active.Append (Active_BIT'(Copy (A.BIT_ID), Long_Long_Integer (A.Estimated_Completion_Time_NS), Long_Float (A.Estimated_Percent_Complete))); end; end loop;
          for I in 0 .. Natural (Raw.BIT_Status.Completed_BITS.Size) - 1 loop
             declare B : constant C.Completed_BIT_V1 := To_Completed (Address_At (Raw.BIT_Status.Completed_BITS.Data, I, C.Completed_BIT_V1'Object_Size / System.Storage_Unit)).all; V : Completed_BIT;
@@ -112,6 +119,9 @@ package body AMS.MEL.IR.C2.Metadata is
                for J in 0 .. Natural (F.Fault_Data.Size) - 1 loop declare X : constant C.Fault_Data_V1 := To_Data (Address_At (F.Fault_Data.Data, J, C.Fault_Data_V1'Object_Size / System.Storage_Unit)).all; begin V.Data.Append (Fault_Data'(US.To_Unbounded_String (Copy (X.Key)), US.To_Unbounded_String (Copy (X.Value)), US.To_Unbounded_String (Copy (X.Format)), US.To_Unbounded_String (Copy (X.Units)))); end; end loop;
                for J in 0 .. Natural (F.Ambiguity_Groups.Size) - 1 loop declare X : constant C.Fault_Ambiguity_Group_V1 := To_Group (Address_At (F.Ambiguity_Groups.Data, J, C.Fault_Ambiguity_Group_V1'Object_Size / System.Storage_Unit)).all; G : Fault_Ambiguity_Group; begin G.Tests := Copy_IDs (X.Diagnostic_Test_IDs); G.Components := Copy_IDs (X.Component_IDs); V.Groups.Append (G); end; end loop; Result.Faults.Append (V); end;
          end loop;
+      else
+         Result.Comms := (C2.Command_ID (Raw.Channel_Comms_Test.Command_ID),
+                           IR.Channel.Comms_Request_ID (Raw.Channel_Comms_Test.Request_ID));
       end if;
       return Result;
    end Copy_Event;
@@ -138,6 +148,7 @@ package body AMS.MEL.IR.C2.Metadata is
    function Active_BIT_Count (Event : Metadata_Event) return Natural is (Natural (Event.Active.Length)); function Active_BIT_At (Event : Metadata_Event; Index : Positive) return Active_BIT is (Event.Active (Index)); function BIT_ID (Value : Active_BIT) return UCI_ID is (Value.ID); function Estimated_Completion_Time_NS (Value : Active_BIT) return Long_Long_Integer is (Value.Completion); function Estimated_Percent_Complete (Value : Active_BIT) return Long_Float is (Value.Percent);
    function Completed_BIT_Count (Event : Metadata_Event) return Natural is (Natural (Event.Completed.Length)); function Completed_BIT_At (Event : Metadata_Event; Index : Positive) return Completed_BIT is (Event.Completed (Index)); function BIT_ID (Value : Completed_BIT) return UCI_ID is (Value.ID); function Time_Tag_NS (Value : Completed_BIT) return Long_Long_Integer is (Value.Time); function Result (Value : Completed_BIT) return BIT_Result is (Value.Value); function Fail_Reason (Value : Completed_BIT) return String is (US.To_String (Value.Why)); function BIT_Item_Count (Value : Completed_BIT) return Natural is (Natural (Value.Items.Length)); function BIT_Item_At (Value : Completed_BIT; Index : Positive) return Completed_BIT_Item is (Value.Items (Index)); function BIT_Item_Name (Value : Completed_BIT_Item) return String is (US.To_String (Value.Name)); function Result (Value : Completed_BIT_Item) return BIT_Result is (Value.Value); function Fail_Reason (Value : Completed_BIT_Item) return String is (US.To_String (Value.Why));
    function Fault_Count (Event : Metadata_Event) return Natural is (Natural (Event.Faults.Length)); function Fault_At (Event : Metadata_Event; Index : Positive) return Fault is (Event.Faults (Index)); function Fault_ID (Value : Fault) return UCI_ID is (Value.ID); function Severity (Value : Fault) return Fault_Severity is (Value.Severity_Value); function State (Value : Fault) return Fault_State is (Value.State_Value); function Detection_Time_NS (Value : Fault) return Long_Long_Integer is (Value.Time); function Fault_Code (Value : Fault) return String is (US.To_String (Value.Code)); function Fault_Description (Value : Fault) return String is (US.To_String (Value.Description)); function Fault_Data_Count (Value : Fault) return Natural is (Natural (Value.Data.Length)); function Fault_Data_At (Value : Fault; Index : Positive) return Fault_Data is (Value.Data (Index)); function Component_Count (Value : Fault) return Natural is (Natural (Value.Components.Length)); function Component_At (Value : Fault; Index : Positive) return UCI_ID is (Value.Components (Index)); function Ambiguity_Group_Count (Value : Fault) return Natural is (Natural (Value.Groups.Length)); function Ambiguity_Group_At (Value : Fault; Index : Positive) return Fault_Ambiguity_Group is (Value.Groups (Index));
+   function Comms_Test (Event : Metadata_Event) return IR.Channel.Comms_Test_Report is (Event.Comms);
    function Key (Value : Fault_Data) return String is (US.To_String (Value.K)); function Data_Value (Value : Fault_Data) return String is (US.To_String (Value.V)); function Format (Value : Fault_Data) return String is (US.To_String (Value.F)); function Units (Value : Fault_Data) return String is (US.To_String (Value.U)); function Diagnostic_Test_Count (Value : Fault_Ambiguity_Group) return Natural is (Natural (Value.Tests.Length)); function Diagnostic_Test_At (Value : Fault_Ambiguity_Group; Index : Positive) return UCI_ID is (Value.Tests (Index)); function Component_Count (Value : Fault_Ambiguity_Group) return Natural is (Natural (Value.Components.Length)); function Component_At (Value : Fault_Ambiguity_Group; Index : Positive) return UCI_ID is (Value.Components (Index));
 
    function Counters (Stream : Metadata_Stream) return Metadata_Counters is Raw : aliased C.Metadata_Counters_V1 := (others => 0); D : aliased Diagnostic := [others => Interfaces.C.nul]; R : aliased C.Size_T := 0; Code : constant Interfaces.Integer_32 := C.IR_C2_Metadata_Get_Counters (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access); begin if Code /= C.Success then raise Provider_Error with Message (D); end if; return (Counter (Raw.Events_Received), Counter (Raw.Events_Dropped_Queue_Full), Counter (Raw.Malformed_Or_Unsupported)); end Counters;

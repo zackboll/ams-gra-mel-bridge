@@ -56,6 +56,14 @@ package body AMS.MEL.IR is
    function Descriptive_Label (ID : UCI_ID) return String is
      (US.To_String (ID.Label));
 
+   function Offset_X_M (Location : Component_Location) return Long_Float is (Location.X);
+   function Offset_Y_M (Location : Component_Location) return Long_Float is (Location.Y);
+   function Offset_Z_M (Location : Component_Location) return Long_Float is (Location.Z);
+   function Key (Location : Component_Location) return String is
+     (US.To_String (Location.Key_Value));
+   function System_Name (Location : Component_Location) return String is
+     (US.To_String (Location.System_Value));
+
    function Create_Component_Location
      (Offset_X_M : Long_Float; Offset_Y_M : Long_Float; Offset_Z_M : Long_Float;
       Key : String; System_Name : String) return Component_Location is

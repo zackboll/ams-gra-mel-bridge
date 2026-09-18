@@ -108,6 +108,12 @@ four host-network ports are
 validated, required to be distinct, checked for existing listeners, and printed
 before startup.
 
+The Ada client registers CommsTest metadata, queries the sparse C2 capability,
+sends KeepAlive, and submits CommsTest before `C2.Enable`. It verifies async and
+callback IDs, then continues all Task 017/018 commands, metadata, and Mono8
+frames. Zero/default capability fields are observations of pinned Squall only;
+mock tests establish complete capability fidelity.
+
 Before runtime startup, each selected compiled integration client (C, Ada, and
 Rust) must pass `file` and `readelf` checks as a real ELF executable with a
 readable dynamic section. The interpreted Python client instead passes

@@ -19,7 +19,15 @@ AMS_MEL_0.1 {
         ams_mel_ir_c2_submit_bit_noop;
         ams_mel_ir_c2_submit_bit;
         ams_mel_ir_c2_submit_config_set;
+        ams_mel_ir_c2_send_keepalive;
+        ams_mel_ir_c2_submit_comms_test;
+        ams_mel_ir_channel_comms_request_wait;
+        ams_mel_ir_channel_comms_request_close;
+        ams_mel_ir_c2_get_capabilities;
+        ams_mel_ir_channel_capability_view;
+        ams_mel_ir_channel_capability_close;
         ams_mel_ir_c2_metadata_open;
+        ams_mel_ir_c2_metadata_register_comms_test;
         ams_mel_ir_c2_metadata_receive;
         ams_mel_ir_c2_metadata_get_counters;
         ams_mel_ir_c2_metadata_close;

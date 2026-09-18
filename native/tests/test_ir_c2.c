@@ -97,6 +97,274 @@ static int receive_metadata(ams_mel_ir_c2_metadata *metadata,
     return EXIT_SUCCESS;
 }
 
+static int test_common_pre_enable(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *keepalive = NULL;
+    ams_mel_ir_channel_comms_request *comms = NULL;
+    ams_mel_ir_c2_metadata *metadata = NULL;
+    ams_mel_ir_c2_metadata_event *event = NULL;
+    const ams_mel_ir_c2_metadata_event_v1 *event_view = NULL;
+    ams_mel_ir_return_result_v1 returned = {99, 99};
+    ams_mel_ir_channel_comms_test_result_v1 result = {0, 0, 99};
+    const ams_mel_ir_channel_comms_test_request_v1 input = {
+        UINT32_C(0x80000001), UINT32_C(0xf0000002), UINT32_C(0xe0000003)};
+    CHECK(open_c2("comms-high", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_metadata_open(c2, 4, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_register_comms_test(metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_register_comms_test(metadata, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_c2_send_keepalive(c2, &keepalive, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(keepalive, 1000, &returned, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(returned.value == AMS_MEL_IR_RETURN_SUCCESS && returned.error_code == AMS_MEL_ERROR_NONE);
+    CHECK(ams_mel_ir_return_request_wait(keepalive, 0, &returned, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &comms, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(receive_metadata(metadata, &event, &event_view) == EXIT_SUCCESS);
+    CHECK(event_view->kind == AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST);
+    CHECK(event_view->channel_comms_test.command_id == input.command_id);
+    CHECK(event_view->channel_comms_test.request_id == input.request_id);
+    CHECK(event_view->command_status.command_id == 0U);
+    CHECK(ams_mel_ir_channel_comms_request_wait(comms, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.command_id == input.command_id && result.request_id == input.request_id);
+    CHECK(result.error_code == AMS_MEL_ERROR_NONE);
+    CHECK(ams_mel_ir_channel_comms_request_wait(comms, 0, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_comms_request_close(&comms, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&keepalive, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_common_failures(void)
+{
+    static const struct { const char *scenario; ams_mel_status_t status; } keepalive[] = {
+        {"keepalive-null", AMS_MEL_PROVIDER_FAILED},
+        {"keepalive-future-throw", AMS_MEL_PROVIDER_EXCEPTION}};
+    for (size_t i = 0; i < sizeof keepalive / sizeof keepalive[0]; ++i) {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL; ams_mel_ir_return_result_v1 result = {0, 0};
+        CHECK(open_c2(keepalive[i].scenario, &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == keepalive[i].status);
+        CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL; ams_mel_ir_return_result_v1 result = {0, 0};
+        CHECK(open_c2("keepalive-fail", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(result.value == AMS_MEL_IR_RETURN_FAIL);
+        CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL; ams_mel_ir_return_result_v1 result = {0, 0};
+        char text[700]; size_t required = 0;
+        CHECK(open_c2("keepalive-reject", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, text,
+              sizeof text, &required) == AMS_MEL_COMMAND_REJECTED);
+        CHECK(result.error_code == AMS_MEL_ERROR_INVALID_STATE && required == 614U);
+        CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_return_request *request = NULL;
+        CHECK(open_c2("keepalive-send-throw", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(request == NULL); CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        static const struct { const char *scenario; ams_mel_status_t status; } cases[] = {
+            {"comms-null", AMS_MEL_PROVIDER_FAILED},
+            {"comms-future-throw", AMS_MEL_PROVIDER_EXCEPTION}};
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+            ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+            ams_mel_ir_channel_comms_request *request = NULL;
+            ams_mel_ir_channel_comms_test_result_v1 result = {0, 0, 0};
+            const ams_mel_ir_channel_comms_test_request_v1 input = {1, 2, 3};
+            CHECK(open_c2(cases[i].scenario, &session, &c2) == EXIT_SUCCESS);
+            CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &request, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_ir_channel_comms_request_wait(request, 1000, &result,
+                  NULL, 0, NULL) == cases[i].status);
+            CHECK(ams_mel_ir_channel_comms_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+        }
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_channel_comms_request *request = NULL;
+        const ams_mel_ir_channel_comms_test_request_v1 input = {1, 2, 3};
+        CHECK(open_c2("comms-send-throw", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &request, NULL, 0, NULL) == AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(request == NULL); CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_channel_comms_request *request = NULL;
+        ams_mel_ir_channel_comms_test_result_v1 result = {0, 0, 0};
+        const ams_mel_ir_channel_comms_test_request_v1 input = {1, 2, 3};
+        char text[700]; size_t required = 0;
+        CHECK(open_c2("comms-reject", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_channel_comms_request_wait(request, 1000, &result, text,
+              sizeof text, &required) == AMS_MEL_COMMAND_REJECTED);
+        CHECK(result.error_code == AMS_MEL_ERROR_INVALID_PARAMETERS && required == 614U);
+        CHECK(ams_mel_ir_channel_comms_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    return EXIT_SUCCESS;
+}
+
+static int test_comms_registration_failure(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_c2_metadata *metadata = NULL;
+    CHECK(open_c2("comms-register-retain-fail", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_metadata_open(c2, 4, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_register_comms_test(metadata, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_c2_metadata_register_comms_test(metadata, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_common_delayed_lifetime(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_channel_comms_request *request = NULL;
+    ams_mel_ir_channel_comms_test_result_v1 result = {0, 0, 0};
+    const ams_mel_ir_channel_comms_test_request_v1 input = {17, 7, 19};
+    CHECK(open_c2("comms-delayed", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_comms_request_wait(request, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_comms_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.command_id == 17U && result.request_id == 19U);
+    CHECK(ams_mel_ir_channel_comms_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_keepalive_delayed_lifetime(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *request = NULL; ams_mel_ir_return_result_v1 result = {0, 0};
+    CHECK(open_c2("keepalive-delayed", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_wait(request, 1000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.value == AMS_MEL_IR_RETURN_SUCCESS);
+    CHECK(ams_mel_ir_return_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_common_pending_close(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_return_request *keepalive = NULL;
+    CHECK(open_c2("keepalive-delayed", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_send_keepalive(c2, &keepalive, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_return_request_close(&keepalive, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    { const struct timespec delay = {0, 100000000L}; CHECK(nanosleep(&delay, NULL) == 0); }
+    {
+        ams_mel_ir_channel_comms_request *comms = NULL;
+        const ams_mel_ir_channel_comms_test_request_v1 input = {1, 2, 3};
+        CHECK(open_c2("comms-delayed", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &comms, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_channel_comms_request_close(&comms, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+        { const struct timespec delay = {0, 100000000L}; CHECK(nanosleep(&delay, NULL) == 0); }
+    }
+    return EXIT_SUCCESS;
+}
+
+static int test_common_post_send_failure(const char *scenario, const char *failpoint,
+                                         int comms)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    CHECK(open_c2(scenario, &session, &c2) == EXIT_SUCCESS);
+    CHECK(setenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE", failpoint, 1) == 0);
+    if (comms) {
+        ams_mel_ir_channel_comms_request *request = NULL;
+        const ams_mel_ir_channel_comms_test_request_v1 input = {1, 2, 3};
+        CHECK(ams_mel_ir_c2_submit_comms_test(c2, &input, &request, NULL, 0, NULL) == AMS_MEL_INTERNAL_ERROR);
+        CHECK(request == NULL);
+    } else {
+        ams_mel_ir_return_request *request = NULL;
+        CHECK(ams_mel_ir_c2_send_keepalive(c2, &request, NULL, 0, NULL) == AMS_MEL_INTERNAL_ERROR);
+        CHECK(request == NULL);
+    }
+    CHECK(unsetenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE") == 0);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int test_capability_snapshot(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+    ams_mel_ir_channel_capability *owner = NULL;
+    const ams_mel_ir_channel_capability_v1 *value = NULL;
+    CHECK(open_c2("capability-rich", &session, &c2) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_get_capabilities(c2, &owner, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_view(owner, &value, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(value->channel_id.uuid[0] == 0x11U && text_is(value->channel_id.descriptive_label, "channel-\xCE\xB1"));
+    CHECK(value->height == 1080U && value->width == 1920U && value->bit_depth == 12U);
+    CHECK(value->row_pitch == 4096U && value->buffer_size == 8388608U && value->image_size == 4147200U);
+    CHECK(value->number_of_bands == 3U && value->pixel_format == AMS_MEL_IR_PIXEL_RGB);
+    CHECK(value->sensor_types.size == 2U && value->sensor_types.data[0] == AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL);
+    CHECK(value->sensor_types.data[1] == AMS_MEL_IR_SENSOR_STEP_STARE);
+    CHECK(value->platform_id.uuid[0] == 0x31U && text_is(value->platform_id.descriptive_label, "platform-\xE2\x82\xAC"));
+    CHECK(value->sensor_location.offset_x_m == 1.25 && value->sensor_location.offset_y_m == -2.5);
+    CHECK(value->sensor_location.offset_z_m == 3.75 && text_is(value->sensor_location.key, "sensor-key"));
+    CHECK(text_is(value->sensor_location.system_name, "system-\xCE\xB2"));
+    CHECK(value->channel_types.size == 3U && value->channel_types.data[0] == AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL);
+    CHECK(value->channel_types.data[1] == AMS_MEL_IR_CHANNEL_INSTRUMENTATION && value->channel_types.data[2] == AMS_MEL_IR_CHANNEL_RESERVED_2);
+    CHECK(value->task_schedule_depth == 17U && value->odc_available == 1U && value->nuc_available == 1U);
+    CHECK(value->metadata_capabilities.size == 4U && value->metadata_capabilities.data[0] == 0U);
+    CHECK(value->metadata_capabilities.data[1] == 9U && value->metadata_capabilities.data[2] == 17U && value->metadata_capabilities.data[3] == 31U);
+    CHECK(value->image_bands.size == 2U && value->image_bands.data[0].band_index == 2U);
+    CHECK(value->image_bands.data[0].bands.size == 2U && value->image_bands.data[0].bands.data[0].type == AMS_MEL_IR_BAND_IR_LONGWAVE);
+    CHECK(value->image_bands.data[0].bands.data[1].min_wavelength_m == 3.0e-6);
+    CHECK(value->image_bands.data[1].band_index == 9U && value->image_bands.data[1].bands.data[0].type == AMS_MEL_IR_BAND_VISIBLE_RED);
+    CHECK(value->nav_frames.size == 2U && value->nav_frames.data[0] == AMS_MEL_IR_COORDINATE_NED_SENSOR && value->nav_frames.data[1] == AMS_MEL_IR_COORDINATE_ECEF);
+    CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    CHECK(value->height == 1080U && value->image_bands.data[1].band_index == 9U);
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_malformed_capabilities(void)
+{
+    static const char *scenarios[] = {"capability-bad-pixel", "capability-bad-sensor",
+        "capability-bad-channel", "capability-bad-metadata", "capability-bad-band",
+        "capability-bad-nav", "capability-bad-utf8"};
+    for (size_t i = 0; i < sizeof scenarios / sizeof scenarios[0]; ++i) {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_channel_capability *owner = NULL;
+        CHECK(open_c2(scenarios[i], &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_get_capabilities(c2, &owner, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+        CHECK(owner == NULL); CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    {
+        ams_mel_session *session = NULL; ams_mel_ir_c2 *c2 = NULL;
+        ams_mel_ir_channel_capability *owner = NULL;
+        CHECK(open_c2("capability-throw", &session, &c2) == EXIT_SUCCESS);
+        CHECK(ams_mel_ir_c2_get_capabilities(c2, &owner, NULL, 0, NULL) == AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(owner == NULL); CHECK(close_all(&session, &c2) == EXIT_SUCCESS);
+    }
+    return EXIT_SUCCESS;
+}
+
 static int test_metadata_rich_and_lifetime(void)
 {
     ams_mel_session *session = NULL;
@@ -700,8 +968,15 @@ static int test_post_send_failure(const char *failpoint)
     CHECK(open_c2("c2-lifetime", &session, &c2) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_c2_enable(c2, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(setenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE", failpoint, 1) == 0);
-    CHECK(ams_mel_ir_c2_submit_operate(c2, 9, &request, NULL, 0, NULL) ==
-          AMS_MEL_INTERNAL_ERROR);
+    {
+        char diagnostic[128] = {0};
+        const ams_mel_status_t status = ams_mel_ir_c2_submit_operate
+          (c2, 9, &request, diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_INTERNAL_ERROR)
+            fprintf(stderr, "post-send %s returned %d: %s\n", failpoint,
+                    (int)status, diagnostic);
+        CHECK(status == AMS_MEL_INTERNAL_ERROR);
+    }
     CHECK(unsetenv("AMS_MEL_TEST_C2_POST_SEND_FAILURE") == 0);
     CHECK(request == NULL);
     CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
@@ -1026,6 +1301,14 @@ int main(int argc, char **argv)
         return run_metadata_nonquiescing_disable();
     CHECK(argc == 1);
     CHECK(test_arguments_and_config() == EXIT_SUCCESS);
+    CHECK(test_common_pre_enable() == EXIT_SUCCESS);
+    CHECK(test_common_failures() == EXIT_SUCCESS);
+    CHECK(test_common_delayed_lifetime() == EXIT_SUCCESS);
+    CHECK(test_keepalive_delayed_lifetime() == EXIT_SUCCESS);
+    CHECK(test_common_pending_close() == EXIT_SUCCESS);
+    CHECK(test_capability_snapshot() == EXIT_SUCCESS);
+    CHECK(test_malformed_capabilities() == EXIT_SUCCESS);
+    CHECK(test_comms_registration_failure() == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-control-capability-wrong", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-attach-null", AMS_MEL_FACTORY_FAILED) == EXIT_SUCCESS);
     CHECK(test_open_failure("c2-wrong-type", AMS_MEL_INITIALIZATION_FAILED) == EXIT_SUCCESS);
@@ -1062,6 +1345,12 @@ int main(int argc, char **argv)
     CHECK(test_metadata_callback_allocation_failure() == EXIT_SUCCESS);
     CHECK(test_metadata_nonquiescing_disable(argv[0]) == EXIT_SUCCESS);
     CHECK(test_metadata_command_states() == EXIT_SUCCESS);
+    /* Post-send launch failures deliberately retain emergency provider roots for
+     * process lifetime, so they must follow every unload-order assertion. */
+    CHECK(test_common_post_send_failure("keepalive-lifetime", "allocation", 0) == EXIT_SUCCESS);
+    CHECK(test_common_post_send_failure("keepalive-lifetime", "worker-launch", 0) == EXIT_SUCCESS);
+    CHECK(test_common_post_send_failure("comms-lifetime", "allocation", 1) == EXIT_SUCCESS);
+    CHECK(test_common_post_send_failure("comms-lifetime", "worker-launch", 1) == EXIT_SUCCESS);
     puts("PASS: C IR C2 Operate/TaskSched + BIT no-op async/lifetime contract");
     return EXIT_SUCCESS;
 }

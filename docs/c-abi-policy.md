@@ -201,3 +201,26 @@ Each successful receive transfers an immutable event snapshot containing only
 adapter-owned storage. Its borrowed root/nested C views remain valid until event
 close and are independent of metadata, C2, Session, and provider unload. Safe Ada
 copies that complete graph again and closes the native event before returning.
+
+
+## Task 019 common C2 Channel contract
+
+ABI 0.1 grows from 28 to 36 functions. KeepAlive produces the existing Return
+request owner. CommsTest preserves all three uint32 request fields, returns a
+typed request owner, caches command/request IDs, and applies the established
+timeout, rejection, exception, null-result, non-cancelling close, failpoint, and
+parent-independent lifetime rules through `ChannelState.requests`. These common
+services are accepted while Attached or Enabled; required C2 commands still
+require Enabled.
+
+CommsTest callback registration is explicit and one-attempt-only on an existing
+metadata owner. It adds event kind 4 without renumbering kinds 1–3. Failed
+registration cannot discard callback-accessible state because upstream has no
+unregister; channel destruction remains quiescence.
+
+The capability owner validates every pinned enum, UTF-8 string, ID/location,
+band map entry, and nav frame before publication and deep-copies the complete
+ChannelCapability graph in provider iteration order. Its immutable view remains
+valid after C2/Session/provider teardown. Boolean outputs are normalized to 0/1.
+No provider-owned STL pointer crosses the ABI. Generic buffer registration is
+not exported by this task.

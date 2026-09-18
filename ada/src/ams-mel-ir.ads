@@ -20,6 +20,11 @@ package AMS.MEL.IR is
       Offset_Z_M : Long_Float;
       Key         : String;
       System_Name : String) return Component_Location;
+   function Offset_X_M (Location : Component_Location) return Long_Float;
+   function Offset_Y_M (Location : Component_Location) return Long_Float;
+   function Offset_Z_M (Location : Component_Location) return Long_Float;
+   function Key (Location : Component_Location) return String;
+   function System_Name (Location : Component_Location) return String;
 
    type Image_Config is private;
    function Create_Image_Config

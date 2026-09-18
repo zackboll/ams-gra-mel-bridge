@@ -38,10 +38,18 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_c2_submit_bit_noop",
                 "ams_mel_ir_c2_submit_bit",
                 "ams_mel_ir_c2_submit_config_set",
+                "ams_mel_ir_c2_send_keepalive",
+                "ams_mel_ir_c2_submit_comms_test",
+                "ams_mel_ir_channel_comms_request_wait",
+                "ams_mel_ir_channel_comms_request_close",
+                "ams_mel_ir_c2_get_capabilities",
+                "ams_mel_ir_channel_capability_view",
+                "ams_mel_ir_channel_capability_close",
                 "ams_mel_ir_return_request_wait",
                 "ams_mel_ir_return_request_close",
                 "ams_mel_ir_c2_close",
                 "ams_mel_ir_c2_metadata_open",
+                "ams_mel_ir_c2_metadata_register_comms_test",
                 "ams_mel_ir_c2_metadata_receive",
                 "ams_mel_ir_c2_metadata_get_counters",
                 "ams_mel_ir_c2_metadata_close",
@@ -49,7 +57,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_c2_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 28)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 36)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -310,10 +318,20 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.FaultV1, 'fault_id', 'severity', 'state', 'fault_data', 'detection_time_ns', 'fault_code', 'fault_description', 'component_ids', 'ambiguity_groups'))
         expected.extend(self._layout(_native.FaultSpanV1, 'data', 'size'))
         expected.extend(self._layout(_native.BitStatusV1, 'active_bits', 'completed_bits', 'faults'))
-        expected.extend(self._layout(_native.IrC2MetadataEventV1, 'kind', 'command_status', 'bit_configuration', 'bit_status'))
+        expected.extend(self._layout(_native.IrC2MetadataEventV1, 'kind', 'command_status', 'bit_configuration', 'bit_status', 'channel_comms_test'))
         expected.extend(self._layout(_native.IrC2MetadataCountersV1, 'events_received', 'events_dropped_queue_full', 'malformed_or_unsupported'))
+        expected.extend(self._layout(_native.IrChannelCommsTestReportV1, 'command_id', 'request_id'))
+        expected.extend(self._layout(_native.IrChannelCommsTestRequestV1, 'command_id', 'channel_id', 'request_id'))
+        expected.extend(self._layout(_native.IrChannelCommsTestResultV1, 'command_id', 'request_id', 'error_code'))
+        expected.extend(self._layout(_native.IrBandInfoV1, 'kind', 'min_wavelength_m', 'max_wavelength_m'))
+        expected.extend(self._layout(_native.IrBandInfoSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrImageBandV1, 'band_index', 'bands'))
+        expected.extend(self._layout(_native.IrImageBandSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrChannelCapabilityV1, 'channel_id', 'height', 'width', 'bit_depth', 'row_pitch', 'buffer_size', 'image_size', 'number_of_bands', 'pixel_format', 'sensor_types', 'platform_id', 'sensor_location', 'channel_types', 'task_schedule_depth', 'odc_available', 'nuc_available', 'metadata_capabilities', 'image_bands', 'nav_frames'))
         expected.extend([ctypes.sizeof(_native.IrC2MetadataHandle), ctypes.alignment(_native.IrC2MetadataHandle)])
         expected.extend([ctypes.sizeof(_native.IrC2MetadataEventHandle), ctypes.alignment(_native.IrC2MetadataEventHandle)])
+        expected.extend([ctypes.sizeof(_native.IrChannelCommsRequestHandle), ctypes.alignment(_native.IrChannelCommsRequestHandle)])
+        expected.extend([ctypes.sizeof(_native.IrChannelCapabilityHandle), ctypes.alignment(_native.IrChannelCapabilityHandle)])
         expected.extend(
             [
                 _native.AMS_MEL_OK,

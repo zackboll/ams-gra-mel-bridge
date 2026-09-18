@@ -186,6 +186,19 @@ void increment(std::uint64_t& value) noexcept
 { if (value != UINT64_MAX) ++value; }
 
 struct OwnedID { std::array<std::uint8_t, 16> uuid{}; std::string label; };
+struct OwnedLocation { double x{}, y{}, z{}; std::string key, system; };
+struct OwnedImageBand {
+    std::uint32_t index{};
+    std::vector<ams_mel_ir_band_info_v1> bands;
+};
+struct CapabilityData {
+    ams_mel_ir_channel_capability_v1 view{};
+    OwnedID channel_id, platform_id;
+    OwnedLocation location;
+    std::vector<std::uint32_t> sensors, channels, metadata, nav_frames;
+    std::vector<OwnedImageBand> image_bands;
+    std::vector<ams_mel_ir_image_band_v1> image_band_views;
+};
 struct OwnedBitType { OwnedID id; std::uint32_t interface{}; std::vector<std::string> names; std::vector<OwnedID> components; std::int64_t duration{}; };
 struct OwnedActive { OwnedID id; std::int64_t completion{}; double percent{}; };
 struct OwnedItem { std::string name; std::uint32_t result{}; std::string reason; };
@@ -228,11 +241,68 @@ bool copy_id(const mel::UCI_ID& input, OwnedID& output)
     if (!valid_utf8(input.getDescriptiveLabel())) return false;
     output.uuid = input.getUUID(); output.label = input.getDescriptiveLabel(); return true;
 }
+
+bool copy_capability(const irmel::ChannelCapability& input, CapabilityData& output)
+{
+    if (!copy_id(input.getChanID(), output.channel_id) ||
+        !copy_id(input.getPlatform(), output.platform_id)) return false;
+    const auto& location = input.getSensorLocation();
+    output.location = {location.getOffsetX(), location.getOffsetY(),
+        location.getOffsetZ(), location.getLocationId().getKey(),
+        location.getLocationId().getSystemName()};
+    if (!valid_utf8(output.location.key) || !valid_utf8(output.location.system)) return false;
+    const auto pixel = static_cast<std::uint32_t>(input.getFormat());
+    if (pixel > AMS_MEL_IR_PIXEL_BAYER) return false;
+    for (const auto value : input.getSensorTypes()) {
+        const auto raw = static_cast<std::uint32_t>(value);
+        if (raw >= static_cast<std::uint32_t>(irmel::SensorType::MAXEXCLUSIVE)) return false;
+        output.sensors.push_back(raw);
+    }
+    for (const auto value : input.getChannelTypes()) {
+        const auto raw = static_cast<std::uint32_t>(value);
+        if (raw > AMS_MEL_IR_CHANNEL_RESERVED_2) return false;
+        output.channels.push_back(raw);
+    }
+    for (const auto value : input.getChannelMetadataCapabilities()) {
+        const auto raw = static_cast<std::uint32_t>(value);
+        if (raw > AMS_MEL_IR_METADATA_RESERVED_10) return false;
+        output.metadata.push_back(raw);
+    }
+    for (const auto& [index, values] : input.getImageBands()) {
+        OwnedImageBand copied; copied.index = index;
+        for (const auto& value : values) {
+            const auto type = static_cast<std::uint32_t>(value.getBandType());
+            if (type > AMS_MEL_IR_BAND_UV_VACUUM) return false;
+            copied.bands.push_back({type, value.getMinWavelength(), value.getMaxWavelength()});
+        }
+        output.image_bands.push_back(std::move(copied));
+    }
+    for (const auto value : input.getNavFrames()) {
+        const auto raw = static_cast<std::uint32_t>(value);
+        if (raw > AMS_MEL_IR_COORDINATE_NED_SENSOR) return false;
+        output.nav_frames.push_back(raw);
+    }
+    output.image_band_views.reserve(output.image_bands.size());
+    for (const auto& value : output.image_bands)
+        output.image_band_views.push_back({value.index, {value.bands.data(), value.bands.size()}});
+    output.view = {id_view(output.channel_id), input.getHeight(), input.getWidth(),
+        input.getBitDepth(), input.getRowPitch(), input.getBufferSize(), input.getImageSize(),
+        input.getNumberOfBands(), pixel, {output.sensors.data(), output.sensors.size()},
+        id_view(output.platform_id), {output.location.x, output.location.y, output.location.z,
+            string_view(output.location.key), string_view(output.location.system)},
+        {output.channels.data(), output.channels.size()}, input.getTaskScheduleDepth(),
+        input.getOdcAvail() ? 1U : 0U, input.getNucAvail() ? 1U : 0U,
+        {output.metadata.data(), output.metadata.size()},
+        {output.image_band_views.data(), output.image_band_views.size()},
+        {output.nav_frames.data(), output.nav_frames.size()}};
+    return true;
+}
 bool valid_result(mel::BIT_Result value) noexcept
 { return static_cast<std::uint32_t>(value) < static_cast<std::uint32_t>(mel::BIT_Result::MaxExclusive); }
 
 void build_views(EventData& event)
 {
+    if (event.view.kind == AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST) return;
     if (event.view.kind == AMS_MEL_IR_C2_METADATA_COMMAND_STATUS) {
         event.view.command_status.reason_description = string_view(event.command_description);
         return;
@@ -265,6 +335,15 @@ void build_views(EventData& event)
         event.fault_views[i]={id_view(source.id),source.severity,source.state,{data.data(),data.size()},source.time,string_view(source.code),string_view(source.description),{components.data(),components.size()},{groups.data(),groups.size()}};
     }
     event.view.bit_status={{event.active_views.data(),event.active_views.size()},{event.completed_views.data(),event.completed_views.size()},{event.fault_views.data(),event.fault_views.size()}};
+}
+
+std::unique_ptr<EventData> copy_comms_test(const irmel::ChannelCommsTestRep *value)
+{
+    if (!value) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST;
+    event->view.channel_comms_test = {value->getCommandID(), value->getRequestID()};
+    return event;
 }
 
 enum class MetadataLifecycle { Active, Inactive, Stopped, Failed };
@@ -379,6 +458,7 @@ struct ChannelState {
     std::atomic<bool> emergency_retained{};
     std::shared_ptr<struct MetadataState> metadata;
     bool metadata_attempted{};
+    bool comms_metadata_attempted{};
 };
 
 /* A failed deferred detach cannot safely destroy its graph. Keep it for process
@@ -695,6 +775,100 @@ void run_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
     }
 }
 
+struct CommsCompletion {
+    std::mutex mutex;
+    std::condition_variable ready;
+    CompletionKind kind{CompletionKind::Pending};
+    ams_mel_ir_channel_comms_test_result_v1 result{};
+    std::string message;
+    std::shared_ptr<ChannelState> channel;
+};
+struct CommsWorkerInput {
+    std::shared_ptr<CommsCompletion> completion;
+    mel::RequestFor<irmel::ChannelCommsTestRep> future;
+    std::shared_ptr<CommsWorkerInput> emergency_self;
+    CommsWorkerInput *emergency_next{};
+    std::atomic<bool> emergency_retained{};
+    std::atomic<unsigned> launch_state{};
+};
+void arm_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
+{ input->emergency_self = input; }
+void retain_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
+{
+    static std::atomic<CommsWorkerInput *> retained{};
+    bool expected = false;
+    if (!input->emergency_retained.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) return;
+    CommsWorkerInput *head = retained.load(std::memory_order_relaxed);
+    do { input->emergency_next = head; }
+    while (!retained.compare_exchange_weak(
+        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
+}
+void complete_comms(const std::shared_ptr<CommsCompletion>& state,
+                    mel::RequestFor<irmel::ChannelCommsTestRep>& future)
+{
+    CompletionKind kind = CompletionKind::ProviderException;
+    ams_mel_ir_channel_comms_test_result_v1 result{};
+    std::string message;
+    try {
+        auto outcome = future.get();
+        if (outcome) {
+            const auto& value = outcome.get();
+            if (!value) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned null successful CommsTest result";
+            } else {
+                result.command_id = value->getCommandID();
+                result.request_id = value->getRequestID();
+                result.error_code = AMS_MEL_ERROR_NONE;
+                kind = CompletionKind::Success;
+            }
+        } else {
+            const mel::Error& error = outcome.getError();
+            bool known = false;
+            result.error_code = map_error(error.getCode(), known);
+            if (!known) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown MEL error code";
+            } else {
+                kind = CompletionKind::Rejected;
+                const std::string& description = error.getDescription();
+                message = valid_utf8(description) ? description :
+                    "provider rejection description was invalid UTF-8 or contained NUL";
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        kind = CompletionKind::InternalError;
+    } catch (const std::exception& error) {
+        kind = CompletionKind::ProviderException;
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
+        catch (...) { message.clear(); }
+    } catch (...) {
+        kind = CompletionKind::ProviderException;
+        try { message = "unknown provider future exception"; } catch (...) {}
+    }
+    auto channel = state->channel;
+    if (!finish_channel(channel)) {
+        kind = CompletionKind::ProviderFailure;
+        try { message = "deferred C2 cleanup failed"; } catch (...) { message.clear(); }
+    }
+    {
+        std::lock_guard lock{state->mutex};
+        state->kind = kind; state->result = result;
+        state->message = std::move(message); state->channel.reset();
+    }
+    channel.reset(); state->ready.notify_all();
+}
+void run_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
+{
+    while (input->launch_state.load(std::memory_order_acquire) == 0U)
+        std::this_thread::yield();
+    try { complete_comms(input->completion, input->future); }
+    catch (...) { arm_comms_worker(input); retain_comms_worker(input); }
+}
+
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 enum class SubmitFailpoint { None, Allocation, WorkerLaunch };
 
@@ -713,7 +887,12 @@ SubmitFailpoint submit_failpoint() noexcept
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_return_request { std::shared_ptr<ReturnCompletion> state; };
-struct ams_mel_ir_c2_metadata { std::shared_ptr<MetadataState> state; };
+struct ams_mel_ir_channel_comms_request { std::shared_ptr<CommsCompletion> state; };
+struct ams_mel_ir_channel_capability { std::unique_ptr<CapabilityData> data; };
+struct ams_mel_ir_c2_metadata {
+    std::shared_ptr<MetadataState> state;
+    std::weak_ptr<ChannelState> channel;
+};
 struct ams_mel_ir_c2_metadata_event { std::unique_ptr<EventData> data; };
 
 namespace {
@@ -785,9 +964,9 @@ ams_mel_status_t submit_mode_command(
     }
 }
 
-template<typename Command>
-ams_mel_status_t submit_return_command(
-    ams_mel_ir_c2 *c2, Command command,
+template<typename Send>
+ams_mel_status_t submit_return_operation(
+    ams_mel_ir_c2 *c2, Send send, bool require_enabled,
     ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
 {
@@ -810,13 +989,16 @@ ams_mel_status_t submit_return_command(
     std::unique_lock<std::mutex> lock;
     try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
     catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
-    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
-        diagnostic("C2 channel is not enabled", out, capacity, required);
+    if ((require_enabled && c2->state->lifecycle != C2Lifecycle::Enabled) ||
+        (!require_enabled && c2->state->lifecycle != C2Lifecycle::Attached &&
+         c2->state->lifecycle != C2Lifecycle::Enabled)) {
+        diagnostic(require_enabled ? "C2 channel is not enabled" :
+            "C2 channel is not available", out, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
     }
     try {
         try {
-            input->future = c2->state->c2->send(std::move(command));
+            input->future = send(*c2->state->c2);
             arm_return_worker(input);
             ++c2->state->requests;
         } catch (const std::exception& error) {
@@ -847,6 +1029,81 @@ ams_mel_status_t submit_return_command(
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
         retain_return_worker(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+template<typename Command>
+ams_mel_status_t submit_return_command(
+    ams_mel_ir_c2 *c2, Command command,
+    ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    return submit_return_operation(c2,
+        [command = std::move(command)](irmel::C2Channel& channel) mutable {
+            return channel.send(std::move(command));
+        }, true, out_request, out, capacity, required);
+}
+
+ams_mel_status_t submit_comms_operation(
+    ams_mel_ir_c2 *c2, irmel::ChannelCommsTestReq command,
+    ams_mel_ir_channel_comms_request **out_request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    std::shared_ptr<CommsCompletion> completion;
+    std::shared_ptr<CommsWorkerInput> input;
+    std::unique_ptr<ams_mel_ir_channel_comms_request> owner;
+    std::unique_ptr<std::thread> worker;
+    try {
+        completion = std::make_shared<CommsCompletion>(); completion->channel = c2->state;
+        input = std::make_shared<CommsWorkerInput>(); input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_channel_comms_request>(); owner->state = completion;
+        worker = std::make_unique<std::thread>();
+    } catch (...) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::unique_lock<std::mutex> lock;
+    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
+    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
+    if (c2->state->lifecycle != C2Lifecycle::Attached &&
+        c2->state->lifecycle != C2Lifecycle::Enabled) {
+        diagnostic("C2 channel is not available", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
+        try {
+            input->future = c2->state->c2->send(std::move(command));
+            arm_comms_worker(input); ++c2->state->requests;
+        } catch (const std::exception& error) {
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+        lock.unlock();
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        *worker = std::thread{[input] { run_comms_worker(input); }}; worker->detach();
+        input->emergency_self.reset(); input->launch_state.store(1U, std::memory_order_release);
+        *out_request = owner.release(); return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        retain_comms_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        retain_comms_worker(input);
         if (worker && worker->joinable()) (void)worker.release();
         input->launch_state.store(2U, std::memory_order_release);
         diagnostic("facade worker launch failed", out, capacity, required);
@@ -1120,6 +1377,138 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_config_set(
     }
 }
 
+extern "C" ams_mel_status_t ams_mel_ir_c2_send_keepalive(
+    ams_mel_ir_c2 *c2, ams_mel_ir_return_request **out_request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !out_request || *out_request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    return submit_return_operation(c2,
+        [](irmel::C2Channel& channel) { return channel.sendKeepAliveRep(); },
+        false, out_request, out, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_comms_test(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_channel_comms_test_request_v1 *request,
+    ams_mel_ir_channel_comms_request **out_request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !request || !out_request || *out_request || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        irmel::ChannelCommsTestReq command;
+        command.setCommandID(request->command_id);
+        command.setChannelID(request->channel_id);
+        command.setRequestID(request->request_id);
+        return submit_comms_operation(c2, std::move(command), out_request,
+                                      out, capacity, required);
+    } catch (...) {
+        diagnostic("CommsTest command preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_comms_request_wait(
+    const ams_mel_ir_channel_comms_request *request, std::uint32_t timeout_ms,
+    ams_mel_ir_channel_comms_test_result_v1 *result, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || !request->state || !result || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{request->state->mutex};
+        if (request->state->kind == CompletionKind::Pending &&
+            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                [&] { return request->state->kind != CompletionKind::Pending; }))
+            return AMS_MEL_TIMEOUT;
+        *result = request->state->result;
+        diagnostic(request->state->message, out, capacity, required);
+        switch (request->state->kind) {
+        case CompletionKind::Success: return AMS_MEL_OK;
+        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
+        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
+        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
+        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
+        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
+        }
+    } catch (...) {
+        diagnostic("CommsTest request wait failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return AMS_MEL_INTERNAL_ERROR;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_comms_request_close(
+    ams_mel_ir_channel_comms_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_get_capabilities(
+    ams_mel_ir_c2 *c2, ams_mel_ir_channel_capability **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        auto owner = std::make_unique<ams_mel_ir_channel_capability>();
+        owner->data = std::make_unique<CapabilityData>();
+        std::lock_guard lock{c2->state->mutex};
+        if (c2->state->lifecycle != C2Lifecycle::Attached &&
+            c2->state->lifecycle != C2Lifecycle::Enabled) {
+            diagnostic("C2 channel is not available", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        const auto value = c2->state->c2->getCapabilities();
+        if (!copy_capability(value, *owner->data)) {
+            diagnostic("provider returned malformed ChannelCapability", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        *output = owner.release(); return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        diagnostic("capability snapshot allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider capability exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        diagnostic("unknown provider capability exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_capability_view(
+    const ams_mel_ir_channel_capability *capability,
+    const ams_mel_ir_channel_capability_v1 **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!capability || !capability->data || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    *output = &capability->data->view; return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_capability_close(
+    ams_mel_ir_channel_capability **capability, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!capability || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try { delete std::exchange(*capability, nullptr); return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
 extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_open(
     ams_mel_ir_c2 *c2, std::size_t queue_capacity, ams_mel_ir_c2_metadata **output,
     char *out, std::size_t capacity, std::size_t *required) noexcept
@@ -1137,10 +1526,51 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_open(
         if(second!=irmel::Return::Success)throw std::runtime_error("CommandStatus callback registration failed");
         auto third=c2->state->c2->registerMetadataCallback(std::function<void(irmel::Channel&,const mel::BIT_Status*const)>{[state](irmel::Channel&,const mel::BIT_Status* value) noexcept {metadata_callback(state,[&]{return copy_bit_status(value);});}});
         if(third!=irmel::Return::Success)throw std::runtime_error("BIT_Status callback registration failed");
-        auto owner=std::make_unique<ams_mel_ir_c2_metadata>(); owner->state=state; *output=owner.release(); return AMS_MEL_OK;
+        auto owner=std::make_unique<ams_mel_ir_c2_metadata>();owner->state=state;
+        owner->channel=c2->state;*output=owner.release();return AMS_MEL_OK;
     } catch(const std::bad_alloc&){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Failed;state->ready.notify_all();}diagnostic("metadata allocation failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}
       catch(const std::exception& error){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Inactive;state->ready.notify_all();}diagnostic(error.what(),out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}
       catch(...){if(state){std::lock_guard lock{state->mutex};state->lifecycle=MetadataLifecycle::Inactive;state->ready.notify_all();}diagnostic("metadata registration failed",out,capacity,required);return AMS_MEL_PROVIDER_EXCEPTION;}
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_register_comms_test(
+    ams_mel_ir_c2_metadata *metadata, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!metadata || !metadata->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    auto channel = metadata->channel.lock();
+    if (!channel) return AMS_MEL_PROVIDER_FAILED;
+    try {
+        std::lock_guard lock{channel->mutex};
+        if (channel->comms_metadata_attempted) {
+            diagnostic("CommsTest metadata registration already attempted", out, capacity, required);
+            return AMS_MEL_INVALID_ARGUMENT;
+        }
+        if (channel->lifecycle != C2Lifecycle::Attached &&
+            channel->lifecycle != C2Lifecycle::Enabled) return AMS_MEL_PROVIDER_FAILED;
+        channel->comms_metadata_attempted = true;
+        auto state = metadata->state;
+        const auto result = channel->c2->registerMetadataCallback(
+            std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>{
+                [state](irmel::Channel&, const irmel::ChannelCommsTestRep *value) noexcept {
+                    metadata_callback(state, [&] { return copy_comms_test(value); });
+                }});
+        if (result != irmel::Return::Success) {
+            diagnostic("ChannelCommsTest callback registration failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        return AMS_MEL_OK;
+    } catch (const std::exception& error) {
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "metadata registration exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        diagnostic("unknown metadata registration exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_receive(ams_mel_ir_c2_metadata *metadata,std::uint32_t timeout_ms,ams_mel_ir_c2_metadata_event **output,char *out,std::size_t capacity,std::size_t *required) noexcept
