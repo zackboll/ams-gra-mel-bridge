@@ -521,12 +521,7 @@ fn declarations_match_the_c_header() {
         reported_count,
         pixels
     );
-    layout!(
-        expected,
-        AmsMelIrImageMetadataEventV1,
-        kind,
-        bad_pixel_list
-    );
+    layout!(expected, AmsMelIrImageMetadataEventV1, kind, bad_pixel_list);
     layout!(
         expected,
         AmsMelIrChannelCommsTestReportV1,
