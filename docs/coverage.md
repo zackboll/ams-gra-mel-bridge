@@ -25,8 +25,8 @@
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Legacy FrameHeader interface | Compatibility subset retained | `ams_mel_ir_frame_v1` and `AMS.MEL.IR.Receive` unchanged |
 | Full FrameHeader snapshot | Complete in native C and safe Ada | Owned snapshot, contributing sensor, ordered flags, inertial/nav vectors and independent orientations |
-| ImageChannel metadata callbacks | BadPixelList, LineOfSightReport, and LineOfSightEuler implemented in native C and safe Ada | One bounded DROP-INCOMING queue, complete owned events, counters, malformed/allocation recovery; NavigationReportResp remains missing |
-| Image commands | Not implemented | Later image command slice |
+| ImageChannel metadata callbacks | All required callbacks implemented in native C and safe Ada | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp share one bounded DROP-INCOMING queue; owned events, counters, malformed/allocation recovery |
+| NavigationReport send | NOT IMPLEMENTED | Task 027 |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
@@ -49,7 +49,7 @@
 | Common inherited Channel services | Complete: KeepAlive, CommsTest send/reply/callback, complete ChannelCapability |
 | Explicit generic buffer management | Not application-exposed |
 | Image receive | Partial: host-memory Mono8 |
-| Image metadata | BadPixelList, LineOfSightReport, and LineOfSightEuler complete; NavigationReportResp not implemented |
+| Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
 | Scheduling | Not implemented |
 | Track | Not implemented |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |

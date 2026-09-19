@@ -292,11 +292,17 @@ private package AMS.MEL_C_API is
       Attitude, Attitude_Rates : Euler_V1;
    end record
    with Convention => C;
+   type IR_Navigation_Response_V1 is record
+      System_Time_NS         : Interfaces.Integer_64;
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
    type IR_Image_Metadata_Event_V1 is record
       Kind                 : Interfaces.Unsigned_32;
       Bad_Pixel_List       : IR_Bad_Pixel_List_V1;
       Line_Of_Sight_Report : IR_Line_Of_Sight_Report_V1;
       Line_Of_Sight_Euler  : IR_Line_Of_Sight_Euler_V1;
+      Navigation_Response  : IR_Navigation_Response_V1;
    end record
    with Convention => C;
    type IR_Stream_Config_V1 is record

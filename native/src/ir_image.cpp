@@ -96,6 +96,18 @@ std::unique_ptr<EventData> copy_line_of_sight_euler(const irmel::LineOfSightEule
     output.attitude_rates = euler(input->getAttitudeRates());
     return event;
 }
+
+std::unique_ptr<EventData> copy_navigation_response(const irmel::NavigationReportResp *input)
+{
+    if (!input) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE;
+    auto& output = event->view.navigation_response;
+    output.system_time_ns = input->getSystemTime().count();
+    output.command_id = input->getCommandID();
+    output.request_id = input->getReqId();
+    return event;
+}
 } // namespace
 
 struct ImageMetadataState {
@@ -151,6 +163,8 @@ struct ImageMetadataState {
     { callback(input, copy_line_of_sight_report); }
     void line_of_sight_euler(const irmel::LineOfSightEuler *input) noexcept
     { callback(input, copy_line_of_sight_euler); }
+    void navigation_response(const irmel::NavigationReportResp *input) noexcept
+    { callback(input, copy_navigation_response); }
 };
 
 struct ams_mel_ir_image_metadata { std::shared_ptr<ImageMetadataState> state; };
@@ -211,20 +225,30 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
             diagnostic("LineOfSightEuler callback registration failed", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
+        const auto navigation_response = channel->registerMetadataCallback(
+            [state](irmel::Channel&, const irmel::NavigationReportResp *const value) {
+                state->navigation_response(value);
+            });
+        if (navigation_response != irmel::Return::Success) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            diagnostic("NavigationReportResp callback registration failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
         auto owner = std::make_unique<ams_mel_ir_image_metadata>();
         owner->state = std::move(state);
         *output = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
         image_metadata_stream_stopped(state);
-        diagnostic("BadPixelList metadata allocation failed", out, capacity, required);
+        diagnostic("Image metadata allocation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
         if (state) {
             std::lock_guard lock{state->mutex};
             state->lifecycle = MetadataLifecycle::Inactive;
         }
-        diagnostic("BadPixelList callback registration exception", out, capacity, required);
+        diagnostic("Image metadata callback registration exception", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }

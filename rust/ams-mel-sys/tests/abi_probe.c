@@ -177,7 +177,7 @@ int main(void)
     FIELD(ams_mel_ir_stream_counters_v1, frames_dropped_queue_full);
     FIELD(ams_mel_ir_stream_counters_v1, malformed_or_unsupported_frames);
     VALUE(AMS_MEL_IR_C2_METADATA_COMMAND_STATUS); VALUE(AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION); VALUE(AMS_MEL_IR_C2_METADATA_BIT_STATUS);
-    VALUE(AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST); VALUE(AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT); VALUE(AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER); VALUE(AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN);
+    VALUE(AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST); VALUE(AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT); VALUE(AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER); VALUE(AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE); VALUE(AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN);
     VALUE(AMS_MEL_IR_COMMAND_NOT_SET); VALUE(AMS_MEL_IR_COMMAND_RECEIVED); VALUE(AMS_MEL_IR_COMMAND_ACCEPTED); VALUE(AMS_MEL_IR_COMMAND_REJECTED); VALUE(AMS_MEL_IR_COMMAND_CANCELLED);
     VALUE(AMS_MEL_IR_CANNOT_COMPLY_NOT_SET);
     VALUE(AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS);
@@ -257,7 +257,8 @@ int main(void)
     RECORD(ams_mel_ir_az_el_v1, FIELD(ams_mel_ir_az_el_v1,azimuth_rad); FIELD(ams_mel_ir_az_el_v1,elevation_rad));
     RECORD(ams_mel_ir_line_of_sight_report_v1, FIELD(ams_mel_ir_line_of_sight_report_v1,system_time_ns); FIELD(ams_mel_ir_line_of_sight_report_v1,pointing_angle); FIELD(ams_mel_ir_line_of_sight_report_v1,pointing_angle_rates); FIELD(ams_mel_ir_line_of_sight_report_v1,at_speed); FIELD(ams_mel_ir_line_of_sight_report_v1,in_tolerance); FIELD(ams_mel_ir_line_of_sight_report_v1,platform_attitude); FIELD(ams_mel_ir_line_of_sight_report_v1,validity_flag_bitfield); FIELD(ams_mel_ir_line_of_sight_report_v1,image_rotation_rad));
     RECORD(ams_mel_ir_line_of_sight_euler_v1, FIELD(ams_mel_ir_line_of_sight_euler_v1,system_time_ns); FIELD(ams_mel_ir_line_of_sight_euler_v1,attitude); FIELD(ams_mel_ir_line_of_sight_euler_v1,attitude_rates));
-    RECORD(ams_mel_ir_image_metadata_event_v1, FIELD(ams_mel_ir_image_metadata_event_v1,kind); FIELD(ams_mel_ir_image_metadata_event_v1,bad_pixel_list); FIELD(ams_mel_ir_image_metadata_event_v1,line_of_sight_report); FIELD(ams_mel_ir_image_metadata_event_v1,line_of_sight_euler));
+    RECORD(ams_mel_ir_navigation_response_v1, FIELD(ams_mel_ir_navigation_response_v1,system_time_ns); FIELD(ams_mel_ir_navigation_response_v1,command_id); FIELD(ams_mel_ir_navigation_response_v1,request_id));
+    RECORD(ams_mel_ir_image_metadata_event_v1, FIELD(ams_mel_ir_image_metadata_event_v1,kind); FIELD(ams_mel_ir_image_metadata_event_v1,bad_pixel_list); FIELD(ams_mel_ir_image_metadata_event_v1,line_of_sight_report); FIELD(ams_mel_ir_image_metadata_event_v1,line_of_sight_euler); FIELD(ams_mel_ir_image_metadata_event_v1,navigation_response));
     RECORD(ams_mel_ir_channel_comms_test_report_v1, FIELD(ams_mel_ir_channel_comms_test_report_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_report_v1,request_id));
     RECORD(ams_mel_ir_channel_comms_test_request_v1, FIELD(ams_mel_ir_channel_comms_test_request_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,channel_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,request_id));
     RECORD(ams_mel_ir_channel_comms_test_result_v1, FIELD(ams_mel_ir_channel_comms_test_result_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,request_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,error_code));

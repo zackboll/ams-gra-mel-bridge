@@ -130,8 +130,11 @@ static int test_capability_snapshot_lifetime(void)
     CHECK(ams_mel_ir_stream_get_capabilities(stream, &owner, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_channel_capability_view(owner, &value, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(value->height == 200U && value->width == 320U &&
-          value->metadata_capabilities.size == 1U &&
-          value->metadata_capabilities.data[0] == AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);
+          value->metadata_capabilities.size == 4U &&
+          value->metadata_capabilities.data[0] == AMS_MEL_IR_METADATA_BAD_PIXEL_LIST &&
+          value->metadata_capabilities.data[1] == AMS_MEL_IR_METADATA_LINE_OF_SIGHT_REPORT &&
+          value->metadata_capabilities.data[2] == AMS_MEL_IR_METADATA_LINE_OF_SIGHT_EULER &&
+          value->metadata_capabilities.data[3] == AMS_MEL_IR_METADATA_NAVIGATION_REPORT_RESP);
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
     CHECK(value->height == 200U && value->metadata_capabilities.data[0] ==
           AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);

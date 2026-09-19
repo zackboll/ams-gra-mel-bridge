@@ -272,6 +272,7 @@ typedef uint32_t ams_mel_ir_image_metadata_kind_t;
 #define AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST UINT32_C(1)
 #define AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT UINT32_C(2)
 #define AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER UINT32_C(3)
+#define AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE UINT32_C(4)
 typedef uint32_t ams_mel_ir_bad_pixel_reason_t;
 #define AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN UINT32_C(0)
 typedef uint32_t ams_mel_ir_command_state_t;
@@ -531,11 +532,17 @@ typedef struct ams_mel_ir_line_of_sight_euler_v1 {
     ams_mel_euler_v1 attitude;
     ams_mel_euler_v1 attitude_rates;
 } ams_mel_ir_line_of_sight_euler_v1;
+typedef struct ams_mel_ir_navigation_response_v1 {
+    int64_t system_time_ns;
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_navigation_response_v1;
 typedef struct ams_mel_ir_image_metadata_event_v1 {
     ams_mel_ir_image_metadata_kind_t kind;
     ams_mel_ir_bad_pixel_list_v1 bad_pixel_list;
     ams_mel_ir_line_of_sight_report_v1 line_of_sight_report;
     ams_mel_ir_line_of_sight_euler_v1 line_of_sight_euler;
+    ams_mel_ir_navigation_response_v1 navigation_response;
 } ams_mel_ir_image_metadata_event_v1;
 typedef struct ams_mel_ir_c2_metadata_counters_v1 {
     uint64_t events_received;
