@@ -71,8 +71,9 @@ package body AMS.MEL.IR.Image is
       D : aliased Diagnostic := [others => Interfaces.C.nul]; R : aliased C.Size_T := 0;
    begin
       Check (C.IR_Stream_Receive_Snapshot (Object.Handle, Interfaces.Unsigned_32 (Timeout_Milliseconds), Handle'Access, D'Address, D'Length, R'Access), D);
-      Check (C.IR_Frame_Snapshot_View (Handle, Address'Access, D'Address, D'Length, R'Access), D);
-      declare
+      begin
+         Check (C.IR_Frame_Snapshot_View (Handle, Address'Access, D'Address, D'Length, R'Access), D);
+         declare
          Raw : constant C.IR_Frame_Snapshot_V1 := To_View (Address).all;
          Result : Full_Frame;
       begin
@@ -95,7 +96,8 @@ package body AMS.MEL.IR.Image is
          end loop; end if;
          Result.Band := Raw.Band_Index;
          if Raw.Pixels.Size > 0 then for I in 0 .. Natural (Raw.Pixels.Size) - 1 loop Result.Data.Append (To_Byte (Address_At (Raw.Pixels.Data, I, 1)).all); end loop; end if;
-         Close (Handle); return Result;
+            Close (Handle); return Result;
+         end;
       exception when others => Close (Handle); raise; end;
    end Receive;
    function System_Time_NS (Value : Full_Frame) return Long_Long_Integer is (Value.Time); function Integration_Time_NS (Value : Full_Frame) return Long_Long_Integer is (Value.Integration);
