@@ -20,48 +20,61 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
-   Null_Session              : constant Session_Handle := Session_Handle (System.Null_Address);
+   Null_Session                  : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream               : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   Null_Stream                   : constant Stream_Handle := Stream_Handle (System.Null_Address);
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot       : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot           : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2                   : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2                       : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request         : constant Mode_Request_Handle :=
+   Null_Mode_Request             : constant Mode_Request_Handle :=
      Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request       : constant Return_Request_Handle :=
+   Null_Return_Request           : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request        : constant Comms_Request_Handle :=
+   Null_Comms_Request            : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
-   Null_Capability           : constant Capability_Handle :=
+   Null_Capability               : constant Capability_Handle :=
      Capability_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
-   Null_Metadata             : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
+   Null_Metadata                 : constant Metadata_Handle :=
+     Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
-   Null_Metadata_Event       : constant Metadata_Event_Handle :=
+   Null_Metadata_Event           : constant Metadata_Event_Handle :=
      Metadata_Event_Handle (System.Null_Address);
    type Health_Handle is new System.Address;
-   Null_Health               : constant Health_Handle := Health_Handle (System.Null_Address);
+   Null_Health                   : constant Health_Handle := Health_Handle (System.Null_Address);
    type Health_Metadata_Handle is new System.Address;
-   Null_Health_Metadata      : constant Health_Metadata_Handle :=
+   Null_Health_Metadata          : constant Health_Metadata_Handle :=
      Health_Metadata_Handle (System.Null_Address);
    type Health_Event_Handle is new System.Address;
-   Null_Health_Event         : constant Health_Event_Handle :=
+   Null_Health_Event             : constant Health_Event_Handle :=
      Health_Event_Handle (System.Null_Address);
    type Image_Metadata_Handle is new System.Address;
-   Null_Image_Metadata       : constant Image_Metadata_Handle :=
+   Null_Image_Metadata           : constant Image_Metadata_Handle :=
      Image_Metadata_Handle (System.Null_Address);
    type Image_Metadata_Event_Handle is new System.Address;
-   Null_Image_Metadata_Event : constant Image_Metadata_Event_Handle :=
+   Null_Image_Metadata_Event     : constant Image_Metadata_Event_Handle :=
      Image_Metadata_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
-   Null_Navigation_Request   : constant Navigation_Request_Handle :=
+   Null_Navigation_Request       : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
+   type Instrumentation_Handle is new System.Address;
+   Null_Instrumentation          : constant Instrumentation_Handle :=
+     Instrumentation_Handle (System.Null_Address);
+   type Instrumentation_Request_Handle is new System.Address;
+   Null_Instrumentation_Request  : constant Instrumentation_Request_Handle :=
+     Instrumentation_Request_Handle (System.Null_Address);
+   type Instrumentation_Metadata_Handle is new System.Address;
+   Null_Instrumentation_Metadata : constant Instrumentation_Metadata_Handle :=
+     Instrumentation_Metadata_Handle (System.Null_Address);
+   type Instrumentation_Event_Handle is new System.Address;
+   Null_Instrumentation_Event    : constant Instrumentation_Event_Handle :=
+     Instrumentation_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -92,6 +105,35 @@ private package AMS.MEL_C_API is
       Channel_Type    : Interfaces.Unsigned_32;
       Platform_ID     : UCI_ID_V1;
       Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+   type IR_Instrumentation_Config_V1 is record
+      Channel_ID      : UCI_ID_V1;
+      Channel_Type    : Interfaces.Unsigned_32;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+   type IR_Instrumentation_Report_V1 is record
+      Command_ID   : Interfaces.Unsigned_32;
+      Size         : Interfaces.Unsigned_32;
+      Timestamp_NS : Interfaces.Integer_64;
+      Priority     : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Instrumentation_Level_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      Priority   : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Instrumentation_Result_V1 is record
+      Report     : IR_Instrumentation_Report_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Instrumentation_Event_V1 is record
+      Kind   : Interfaces.Unsigned_32;
+      Report : IR_Instrumentation_Report_V1;
    end record
    with Convention => C;
    type Euler_V1 is record
@@ -1036,4 +1078,98 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_health_metadata_event_close";
+   function IR_Instrumentation_Open
+     (Parent              : Session_Handle;
+      Config              : access constant IR_Instrumentation_Config_V1;
+      Output              : access Instrumentation_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_open";
+   function IR_Instrumentation_Enable
+     (Handle              : Instrumentation_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_enable";
+   function IR_Instrumentation_Get_Capabilities
+     (Handle              : Instrumentation_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_get_capabilities";
+   function IR_Instrumentation_Submit_Level
+     (Handle              : Instrumentation_Handle;
+      Command             : access constant IR_Instrumentation_Level_Command_V1;
+      Output              : access Instrumentation_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_submit_level";
+   function IR_Instrumentation_Request_Wait
+     (Handle              : Instrumentation_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Instrumentation_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_request_wait";
+   function IR_Instrumentation_Request_Close
+     (Handle              : access Instrumentation_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_request_close";
+   function IR_Instrumentation_Metadata_Open
+     (Handle              : Instrumentation_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Instrumentation_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_metadata_open";
+   function IR_Instrumentation_Metadata_Receive
+     (Handle              : Instrumentation_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Instrumentation_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_metadata_receive";
+   function IR_Instrumentation_Metadata_Get_Counters
+     (Handle              : Instrumentation_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_instrumentation_metadata_get_counters";
+   function IR_Instrumentation_Metadata_Close
+     (Handle              : access Instrumentation_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_metadata_close";
+   function IR_Instrumentation_Event_View
+     (Handle              : Instrumentation_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_metadata_event_view";
+   function IR_Instrumentation_Event_Close
+     (Handle              : access Instrumentation_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_metadata_event_close";
+   function IR_Instrumentation_Close
+     (Handle              : access Instrumentation_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_close";
 end AMS.MEL_C_API;

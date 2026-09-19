@@ -325,3 +325,89 @@ until the final request reaches terminal completion, mirroring the C2
 emergency retention path for a deferred detach failure. A synchronous
 detach failure with no pending request continues to retain the public stream
 owner for retry, unchanged from Task 027A.
+
+## Task 028 Instrumentation contract
+
+ABI 0.1 grows to exactly 72 exports. Thirteen new exports implement the
+conditionally required Instrumentation family (`@RequiredIfInstrumentation`):
+`ams_mel_ir_instrumentation_open`, `_enable`, `_get_capabilities`,
+`_submit_level`, `_request_wait`, `_request_close`, `_metadata_open`,
+`_metadata_receive`, `_metadata_get_counters`, `_metadata_close`,
+`_metadata_event_view`, `_metadata_event_close`, and `_close`.
+
+This is the Instrumentation-specific conditional surface plus Enable and
+ChannelCapability. Instrumentation-specific copies of the inherited generic
+`Channel` services -- KeepAlive, CommsTest, the ChannelCommsTest callback, and
+`registerBuffer`/`unregisterBuffer` -- are deliberately NOT part of this
+contract. Those inherited operations should eventually be generalized across
+non-C2 channel families rather than cloned into each family, so this task does
+not mark them complete for Instrumentation.
+
+`ams_mel_ir_priority_t` mirrors upstream `Priority` exactly: Normal is 0 and
+Debug is 1. Upstream defines no MaxExclusive value, so the facade invents none
+and instead rejects any value greater than Debug with
+`AMS_MEL_INVALID_ARGUMENT` on input and treats any such value received from a
+provider as `AMS_MEL_PROVIDER_FAILED`.
+`ams_mel_ir_instrumentation_level_command_v1` carries the complete
+`InstrumentationLevelCmd` (commandID and instrumentationPriority) with no
+omitted field. `ams_mel_ir_instrumentation_report_v1` carries the complete
+`InstrumentationReport` (commandID, size, timestamp, instrumentationPriority);
+`timestamp_ns` preserves signed `std::chrono::nanoseconds` and both `uint32`
+fields preserve their full range. That one canonical record is used for both
+the `RequestFor<InstrumentationReport>` completion and the
+`InstrumentationReport` metadata callback; no separate future-only or
+metadata-only report type exists.
+
+`ams_mel_ir_instrumentation_config_v1` follows the Health/C2 configuration
+pattern and must carry `AMS_MEL_IR_CHANNEL_INSTRUMENTATION`. All string views
+are validated as UTF-8 and copied before Open returns. No Image buffer or
+listener field belongs to this configuration.
+
+The facade lifecycle is Attached, Enabled, Failed, Closed. Open attaches the
+upstream channel. `_get_capabilities` is valid while Attached or Enabled and
+reuses the one existing native ChannelCapability snapshot. `_metadata_open` may
+be called while Attached. `_enable` explicitly calls upstream
+`Channel::enable()`. Instrumentation-specific submission requires Enabled.
+
+Provider `send()` executes with the channel lifecycle mutex released, because a
+provider is permitted to invoke the InstrumentationReport metadata callback
+synchronously from inside `send()`. The request is accounted before the call
+and released if `send()` throws before a future exists. `_request_wait` follows
+the established C2/Image model: a zero timeout polls, timeout is not
+cancellation and never consumes the pending request, a detached worker calls
+`future.get()` exactly once and caches the terminal result permanently, and
+repeated Waits -- including Wait(0) after completion -- return the identical
+cached result even with a differently sized diagnostic buffer. `_request_close`
+is idempotent, nonblocking, and not cancellation.
+
+Semantically, `AMS_MEL_OK` means the report is valid; `AMS_MEL_COMMAND_REJECTED`
+means `error_code` is valid and the per-call diagnostic carries the provider
+rejection description; `AMS_MEL_TIMEOUT` leaves the request pending and
+retryable.
+
+Metadata uses a bounded FIFO with DROP-INCOMING and saturating
+`ams_mel_ir_metadata_counters_v1` counters (`events_received`,
+`events_dropped_queue_full`, `malformed_or_unsupported`). A null callback
+payload is malformed. No callback exception may cross into provider code. The
+callback state belongs to the Instrumentation channel state, not to the public
+metadata owner: upstream has no unregister operation, `_metadata_close` only
+deactivates public consumption, and provider channel destruction remains the
+callback-quiescence boundary. `_metadata_open` publishes and retains the
+callback state and releases the lifecycle lock before calling provider
+registration, so a provider that invokes the callback synchronously from inside
+`registerMetadataCallback` cannot deadlock.
+
+`_close` with pending requests prevents new submissions, deactivates public
+metadata consumption, releases the public channel owner, and defers
+disable/detach/provider-channel destruction to final request completion. If
+that final deferred cleanup cannot detach after the public owner is gone, the
+complete channel/provider/callback graph is retained permanently through the
+same allocation-free emergency-root pattern proven in C2 and Image; provider
+code is never unloaded while provider objects may remain live. A synchronous
+detach failure with no pending request retains the public owner for retry.
+
+`AMS_MEL_TEST_INSTRUMENTATION_POST_SEND_FAILURE` (values `allocation` and
+`worker-launch`) deterministically injects a post-send facade failure in
+test-enabled builds. Submit then returns `AMS_MEL_INTERNAL_ERROR`, no public
+request escapes, the provider future is retained safely, and the channel and
+Session may still be closed publicly without unsafely unloading provider code.

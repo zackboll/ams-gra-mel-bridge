@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Add the conditionally required IR Instrumentation channel
+  (`@RequiredIfInstrumentation`) in native C, safe Ada, raw Rust, and private
+  Python. The slice is exactly the Instrumentation-specific conditional surface
+  -- `send(InstrumentationLevelCmd)` and the `InstrumentationReport` metadata
+  callback -- plus `Enable` and `ChannelCapability`. One canonical
+  `ams_mel_ir_instrumentation_report_v1` carries both future completions and
+  metadata events, preserving full `uint32` command ID/size and signed
+  nanosecond timestamps; upstream `Priority` is exposed as exactly Normal/Debug
+  with no invented MaxExclusive value. The mock provider validates positive
+  behavior, full payload fidelity, and synchronous callbacks emitted from both
+  `registerMetadataCallback` and `send`. Pinned Squall does not support this
+  channel and is validated only for clean unsupported-provider behavior. ABI 0.1
+  grows from 59 to 72 exports; native CTest grows from 9 to 10. No safe Rust or
+  public Python Instrumentation API is added, and Instrumentation-specific
+  copies of the inherited generic Channel services are deliberately not cloned.
+
 - Add the `ImageChannel::send(NavigationReport)` request/future vertical slice
   in native C, safe Ada, raw Rust, and private Python: the complete published
   `NavigationReport` (all 18 covariance terms), asynchronous submit/wait/close,

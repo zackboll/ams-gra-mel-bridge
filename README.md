@@ -33,8 +33,19 @@ themselves.
 > the complete published NavigationReport (all 18 covariance terms), asynchronous
 > completion independent of the public Image_Stream/Session owners, and deferred
 > provider teardown while a request is outstanding. LineOfSightQuaternion
-> and other optional Image metadata remain unimplemented. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 59-function C ABI. Safe Rust and
+> and other optional Image metadata remain unimplemented.
+> C and Ada also implement the conditionally required Instrumentation channel
+> (`AMS.MEL.IR.Instrumentation` and its `Metadata` child): `Open`, `Enable`,
+> `Capabilities`, `Submit`/`Wait`/`Close` for
+> `send(InstrumentationLevelCmd)`, and bounded DROP-INCOMING polling of the
+> `InstrumentationReport` callback. Upstream `Priority` is exactly
+> Normal/Debug, and one canonical report type carries both the future result
+> and metadata events. Positive Instrumentation behavior is mock-validated;
+> pinned Squall does not support this channel and is validated only for clean
+> unsupported-provider failure. The Instrumentation-specific copies of the
+> inherited generic Channel services (KeepAlive, CommsTest, buffers) are
+> deliberately not cloned. The raw Rust sys crate and private
+> Python ctypes layer track the complete current 72-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured

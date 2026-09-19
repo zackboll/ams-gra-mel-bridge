@@ -1,6 +1,7 @@
 #include <irmel/library/image/ImageChannel.h>
 #include <irmel/library/c2/C2Channel.h>
 #include <irmel/library/health-status/HealthStatusChannel.h>
+#include <irmel/library/instrumentation/InstrumentationChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -1332,6 +1333,171 @@ private:
     std::function<void(irmel::Channel&,const mel::MFA_StatusDetailed*const)> detailed_callback_;
 };
 
+irmel::InstrumentationReport rich_instrumentation_report()
+{
+    irmel::InstrumentationReport value;
+    value.setCommandID(0xf1234567U);
+    value.setSize(0x89abcdefU);
+    value.setTimestamp(std::chrono::nanoseconds{-8765432109LL});
+    value.setInstrumentationPriority(irmel::Priority::Debug);
+    return value;
+}
+
+class MockInstrumentationChannel final : public irmel::InstrumentationChannel {
+public:
+    explicit MockInstrumentationChannel(std::string scenario)
+        : scenario_{std::move(scenario)} {}
+    ~MockInstrumentationChannel() override
+    {
+        {
+            std::lock_guard lock{mutex_};
+            release_ = true;
+        }
+        ready_.notify_all();
+        if (producer_.joinable()) producer_.join();
+        record("instrumentation_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
+    { return {}; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return enable() override
+    {
+        record("instrumentation_enabled");
+        if (scenario_ == "instr-enable-throw")
+            throw std::runtime_error("mock Instrumentation enable exception");
+        if (scenario_ == "instr-enable-fail") return Return::Fail;
+        enabled_ = true;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        enabled_ = false;
+        record("instrumentation_disabled");
+        return Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        auto value = rich_channel_capability();
+        value.setChannelTypes(scenario_ == "instr-capability-wrong" ?
+            std::vector<irmel::ChannelType>{irmel::ChannelType::HealthAndStatus} :
+            std::vector<irmel::ChannelType>{irmel::ChannelType::Instrumentation});
+        value.setChannelMetadataCapabilities(
+            {irmel::ChannelMetadataCapabilityType::InstrumentationReport,
+             irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+        return value;
+    }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { return Return::NotSupported; }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&,
+                           const irmel::InstrumentationReport *const)> cb) override
+    {
+        if (scenario_ == "instr-register-fail") return Return::Fail;
+        report_callback_ = std::move(cb);
+        record("instrumentation_callback_registered");
+        /* Synchronous emission from inside registration. */
+        if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime") {
+            auto value = rich_instrumentation_report();
+            report_callback_(*this, &value);
+            record("instrumentation_registration_callback_returned");
+        }
+        if (scenario_ == "instr-overflow")
+            for (unsigned index = 0; index < 6U; ++index) {
+                auto value = rich_instrumentation_report();
+                value.setCommandID(index);
+                report_callback_(*this, &value);
+            }
+        if (scenario_ == "instr-callback-null") report_callback_(*this, nullptr);
+        if (scenario_ == "instr-callback-invalid-priority") {
+            irmel::InstrumentationReport value;
+            value.setInstrumentationPriority(static_cast<irmel::Priority>(7U));
+            report_callback_(*this, &value);
+        }
+        if (scenario_ == "instr-callback-allocation") {
+            (void)setenv("AMS_MEL_TEST_INSTRUMENTATION_CALLBACK_FAILURE", "allocation", 1);
+            auto value = rich_instrumentation_report();
+            report_callback_(*this, &value);
+            (void)unsetenv("AMS_MEL_TEST_INSTRUMENTATION_CALLBACK_FAILURE");
+        }
+        return Return::Success;
+    }
+    mel::RequestFor<irmel::InstrumentationReport> send(
+        irmel::InstrumentationLevelCmd command) override
+    {
+        record("instrumentation_level_sent");
+        if (!enabled_) throw std::logic_error("InstrumentationLevelCmd sent before enable");
+        if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime" ||
+            scenario_ == "instr-failpoint") {
+            /* Rich command fidelity is verified through upstream getters. */
+            if (command.getCommandID() != 0xe1234567U ||
+                command.getInstrumentationPriority() != irmel::Priority::Debug)
+                throw std::runtime_error("InstrumentationLevelCmd conversion mismatch");
+        }
+        if (scenario_ == "instr-normal-priority" &&
+            (command.getCommandID() != 7U ||
+             command.getInstrumentationPriority() != irmel::Priority::Normal))
+            throw std::runtime_error("Normal InstrumentationLevelCmd conversion mismatch");
+        if (scenario_ == "instr-send-throw")
+            throw std::runtime_error("mock Instrumentation send exception");
+
+        auto response = std::make_shared<irmel::InstrumentationReport>(
+            rich_instrumentation_report());
+        /* A provider is permitted to invoke metadata callbacks synchronously
+         * from inside send(); prove the adapter does not deadlock. */
+        if (report_callback_ && (scenario_ == "instr-rich" || scenario_ == "instr-lifetime")) {
+            auto value = rich_instrumentation_report();
+            report_callback_(*this, &value);
+            record("instrumentation_send_callback_returned");
+        }
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "instr-reject")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{
+                mel::Error{mel::ErrorCode::InvalidState, long_rejection_description()}});
+        else if (scenario_ == "instr-unknown-error")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{
+                mel::Error{static_cast<mel::ErrorCode>(99U), "unknown"}});
+        else if (scenario_ == "instr-null")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{
+                std::shared_ptr<irmel::InstrumentationReport>{}});
+        else if (scenario_ == "instr-invalid-priority") {
+            auto bad = std::make_shared<irmel::InstrumentationReport>();
+            bad->setInstrumentationPriority(static_cast<irmel::Priority>(5U));
+            promise.set_value(
+                mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{bad});
+        } else if (scenario_ == "instr-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock Instrumentation future exception"}));
+        else if (scenario_ == "instr-lifetime" || scenario_ == "instr-delayed") {
+            producer_ = std::thread{[this, promise = std::move(promise), response]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40},
+                                      [this] { return release_; });
+                lock.unlock();
+                record("instrumentation_completed");
+                promise.set_value(
+                    mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{response});
+            }};
+        } else promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{response});
+        return future;
+    }
+private:
+    std::string scenario_;
+    bool enabled_{};
+    bool release_{};
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::thread producer_;
+    std::function<void(irmel::Channel&, const irmel::InstrumentationReport *const)>
+        report_callback_;
+};
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
@@ -1339,6 +1505,8 @@ public:
         irmel::ChannelCapability capability;
         if (instance_.rfind("health-",0)==0)
             capability.setChannelTypes({irmel::ChannelType::HealthAndStatus});
+        else if (instance_.rfind("instr-",0)==0)
+            capability.setChannelTypes({irmel::ChannelType::Instrumentation});
         else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
@@ -1376,6 +1544,30 @@ public:
         record("channel_attached");
         if (instance_ == "attach-throw") throw std::runtime_error("mock attach exception");
         if (instance_ == "attach-null" || instance_ == "c2-attach-null") return {};
+        if (config.getChannelType() == irmel::ChannelType::Instrumentation) {
+            if (instance_ == "instr-attach-null") return {};
+            if (instance_ == "instr-wrong-type")
+                return std::make_shared<MockHealthStatusChannel>(instance_);
+            if (instance_ == "instr-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != i ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock Instrumentation ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR instrumentation channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    config.getImgLstnr())
+                    throw std::runtime_error(
+                        "mock Instrumentation configuration conversion mismatch");
+            }
+            return std::make_shared<MockInstrumentationChannel>(instance_);
+        }
         if (config.getChannelType() == irmel::ChannelType::HealthAndStatus)
             return std::make_shared<MockHealthStatusChannel>(instance_);
         if (config.getChannelType() == irmel::ChannelType::CommandAndControl) {
@@ -1428,9 +1620,11 @@ public:
     {
         if (!std::dynamic_pointer_cast<MockImageChannel>(channel) &&
             !std::dynamic_pointer_cast<MockC2Channel>(channel) &&
-            !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel)) std::abort();
+            !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel)) std::abort();
         if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail" ||
-             instance_ == "health-detach-fail") && !detach_failed_) {
+             instance_ == "health-detach-fail" ||
+             instance_ == "instr-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

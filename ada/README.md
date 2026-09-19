@@ -33,6 +33,22 @@ and `Session` owners. The canonical `Navigation_Response` lives here too;
 `AMS.MEL.IR.Image.Metadata.Navigation_Response` is now a source-compatible
 subtype. LineOfSightQuaternion and other optional Image metadata are not
 implemented.
+`AMS.MEL.IR.Instrumentation` implements the conditionally required
+Instrumentation family: `Instrumentation_Config`/`Open`/`Is_Open`/`Enable`/
+`Capabilities`/`Close`, the idiomatic `Instrumentation_Level_Command` and
+`Instrumentation_Report` records, `Priority` as exactly `Normal`/`Debug`, and
+the limited `Instrumentation_Request` owner returned by `Submit` with
+`Wait`/`Close` and a local `Instrumentation_Result`. Submission requires an
+enabled channel; `Close` on the request is not cancellation, and a pending
+request keeps the provider channel alive independently of the public
+`Instrumentation_Channel` and `Session` owners. `Capabilities` reuses the same
+internal ChannelCapability converter as C2 and Image.
+`AMS.MEL.IR.Instrumentation.Metadata` polls the `InstrumentationReport`
+callback from one bounded native DROP-INCOMING queue and returns wholly
+Ada-owned `Instrumentation_Report` values; `Close` deactivates public
+consumption only, since upstream has no unregister operation and channel
+destruction remains the callback-quiescence boundary. Instrumentation-specific
+copies of the inherited generic Channel services are deliberately absent.
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
 

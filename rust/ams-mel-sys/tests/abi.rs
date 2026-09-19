@@ -122,6 +122,97 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_navigation_request_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *const AmsMelIrInstrumentationConfigV1,
+        *mut *mut AmsMelIrInstrumentation,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrInstrumentation,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_enable;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrInstrumentation,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_get_capabilities;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrInstrumentation,
+        *const AmsMelIrInstrumentationLevelCommandV1,
+        *mut *mut AmsMelIrInstrumentationRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_submit_level;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrInstrumentationRequest,
+        u32,
+        *mut AmsMelIrInstrumentationResultV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrInstrumentationRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_request_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrInstrumentation,
+        usize,
+        *mut *mut AmsMelIrInstrumentationMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrInstrumentationMetadata,
+        u32,
+        *mut *mut AmsMelIrInstrumentationMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrInstrumentationMetadata,
+        *mut AmsMelIrC2MetadataCountersV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrInstrumentationMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrInstrumentationMetadataEvent,
+        *mut *const AmsMelIrInstrumentationMetadataEventV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_event_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrInstrumentationMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_metadata_event_close;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrInstrumentation,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_instrumentation_close;
 }
 
 #[test]
@@ -858,6 +949,57 @@ fn declarations_match_the_c_header() {
         position_velocity_covariance_uncertainty
     );
     layout!(expected, AmsMelIrNavigationResultV1, response, error_code);
+    expected.extend([
+        size_of::<*mut AmsMelIrInstrumentation>(),
+        align_of::<*mut AmsMelIrInstrumentation>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrInstrumentationRequest>(),
+        align_of::<*mut AmsMelIrInstrumentationRequest>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrInstrumentationMetadata>(),
+        align_of::<*mut AmsMelIrInstrumentationMetadata>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrInstrumentationMetadataEvent>(),
+        align_of::<*mut AmsMelIrInstrumentationMetadataEvent>(),
+    ]);
+    expected.extend([
+        AMS_MEL_IR_PRIORITY_NORMAL as usize,
+        AMS_MEL_IR_PRIORITY_DEBUG as usize,
+        AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT as usize,
+        AMS_MEL_IR_CHANNEL_INSTRUMENTATION as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelIrInstrumentationConfigV1,
+        channel_id,
+        channel_type,
+        platform_id,
+        sensor_location
+    );
+    layout!(
+        expected,
+        AmsMelIrInstrumentationLevelCommandV1,
+        command_id,
+        priority
+    );
+    layout!(
+        expected,
+        AmsMelIrInstrumentationReportV1,
+        command_id,
+        size,
+        timestamp_ns,
+        priority
+    );
+    layout!(expected, AmsMelIrInstrumentationResultV1, report, error_code);
+    layout!(
+        expected,
+        AmsMelIrInstrumentationMetadataEventV1,
+        kind,
+        report
+    );
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,

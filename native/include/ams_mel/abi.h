@@ -72,6 +72,11 @@ typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 typedef struct ams_mel_ir_health ams_mel_ir_health;
 typedef struct ams_mel_ir_health_metadata ams_mel_ir_health_metadata;
 typedef struct ams_mel_ir_health_metadata_event ams_mel_ir_health_metadata_event;
+typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
+typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
+typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
+typedef struct ams_mel_ir_instrumentation_metadata_event
+    ams_mel_ir_instrumentation_metadata_event;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -718,6 +723,60 @@ typedef struct ams_mel_ir_health_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_health_config_v1;
+
+/* Conditionally required Instrumentation family (@RequiredIfInstrumentation).
+ * Upstream Priority has exactly Normal=0 and Debug=1 and defines no
+ * MaxExclusive value; any value above Debug is rejected. */
+typedef uint32_t ams_mel_ir_priority_t;
+#define AMS_MEL_IR_PRIORITY_NORMAL UINT32_C(0)
+#define AMS_MEL_IR_PRIORITY_DEBUG  UINT32_C(1)
+
+/* Complete InstrumentationLevelCmd: commandID and instrumentationPriority. */
+typedef struct ams_mel_ir_instrumentation_level_command_v1 {
+    uint32_t command_id;
+    ams_mel_ir_priority_t priority;
+} ams_mel_ir_instrumentation_level_command_v1;
+
+/* Complete InstrumentationReport: commandID, size, timestamp, and
+ * instrumentationPriority. timestamp_ns preserves signed
+ * std::chrono::nanoseconds; command_id and size preserve full uint32 values.
+ * This one canonical record carries both RequestFor<InstrumentationReport>
+ * completions and InstrumentationReport metadata callbacks. */
+typedef struct ams_mel_ir_instrumentation_report_v1 {
+    uint32_t command_id;
+    uint32_t size;
+    int64_t timestamp_ns;
+    ams_mel_ir_priority_t priority;
+} ams_mel_ir_instrumentation_report_v1;
+
+/* Terminal Instrumentation request outcome. On AMS_MEL_OK, report is valid and
+ * error_code is AMS_MEL_ERROR_NONE. On AMS_MEL_COMMAND_REJECTED, error_code is
+ * valid, the per-call diagnostic carries the provider rejection description,
+ * and report must be ignored. AMS_MEL_TIMEOUT leaves the request pending. */
+typedef struct ams_mel_ir_instrumentation_result_v1 {
+    ams_mel_ir_instrumentation_report_v1 report;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_instrumentation_result_v1;
+
+typedef uint32_t ams_mel_ir_instrumentation_metadata_kind_t;
+#define AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT UINT32_C(1)
+
+/* Stable event representation even though the Instrumentation-specific
+ * conditional surface currently defines exactly one callback datatype. */
+typedef struct ams_mel_ir_instrumentation_metadata_event_v1 {
+    ams_mel_ir_instrumentation_metadata_kind_t kind;
+    ams_mel_ir_instrumentation_report_v1 report;
+} ams_mel_ir_instrumentation_metadata_event_v1;
+
+/* Instrumentation channel configuration; follows the Health/C2 pattern.
+ * channel_type must be AMS_MEL_IR_CHANNEL_INSTRUMENTATION. String views are
+ * UTF-8 byte views copied during open. No image buffer fields belong here. */
+typedef struct ams_mel_ir_instrumentation_config_v1 {
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_instrumentation_config_v1;
 
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
@@ -1414,6 +1473,99 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_close(
     ams_mel_ir_health_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Instrumentation owner. This façade implements only the Instrumentation-
+ * specific conditional surface (@RequiredIfInstrumentation) plus Enable and
+ * ChannelCapability. Instrumentation-specific copies of the inherited generic
+ * Channel services (KeepAlive, CommsTest, ChannelCommsTest callback, and
+ * registerBuffer/unregisterBuffer) are deliberately absent; those should be
+ * generalized across non-C2 channel families rather than cloned per family.
+ *
+ * Lifecycle is Attached -> Enabled -> Failed/Closed. Open attaches the upstream
+ * channel. Capabilities is valid while Attached or Enabled. Metadata
+ * registration may occur while Attached. Enable explicitly calls upstream
+ * Channel::enable(). Instrumentation-specific submission requires Enabled. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_open(
+    const ams_mel_session *session,
+    const ams_mel_ir_instrumentation_config_v1 *config,
+    ams_mel_ir_instrumentation **out_instrumentation, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_enable(
+    ams_mel_ir_instrumentation *instrumentation, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_get_capabilities(
+    ams_mel_ir_instrumentation *instrumentation,
+    ams_mel_ir_channel_capability **out_capability, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* The command is synchronously copied before send. Submission requires Enabled.
+ * Provider send() may synchronously invoke the registered InstrumentationReport
+ * metadata callback, so the adapter never holds the channel lifecycle mutex
+ * across it. The returned request remains valid independently of the public
+ * channel and Session owners. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_submit_level(
+    ams_mel_ir_instrumentation *instrumentation,
+    const ams_mel_ir_instrumentation_level_command_v1 *command,
+    ams_mel_ir_instrumentation_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits finitely. A zero timeout polls. Timeout is not cancellation and never
+ * consumes the pending request; the adapter completion worker is the only
+ * future::get() caller. A terminal result is cached permanently, so Wait may be
+ * repeated with a differently sized diagnostic buffer and returns identically.
+ * Close must not race Wait using the same request handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_request_wait(
+    const ams_mel_ir_instrumentation_request *request, uint32_t timeout_ms,
+    ams_mel_ir_instrumentation_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Drops only the public request owner. Idempotent, nonblocking, and not
+ * cancellation. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_request_close(
+    ams_mel_ir_instrumentation_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Registers the InstrumentationReport callback. Callback state belongs to the
+ * channel state, not to this public owner, and there is no upstream
+ * unregister. The callback state is published before the lifecycle lock is
+ * released and before provider registration, so a provider that invokes the
+ * callback synchronously inside registerMetadataCallback cannot deadlock.
+ * The queue is bounded FIFO with DROP-INCOMING and saturating counters. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_open(
+    ams_mel_ir_instrumentation *instrumentation, size_t queue_capacity,
+    ams_mel_ir_instrumentation_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_receive(
+    ams_mel_ir_instrumentation_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_instrumentation_metadata_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_get_counters(
+    const ams_mel_ir_instrumentation_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Deactivates public consumption only. It does not unregister the provider
+ * callback; channel destruction remains the callback-quiescence boundary. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_close(
+    ams_mel_ir_instrumentation_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_event_view(
+    const ams_mel_ir_instrumentation_metadata_event *event,
+    const ams_mel_ir_instrumentation_metadata_event_v1 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_event_close(
+    ams_mel_ir_instrumentation_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Stops new submissions and deactivates public metadata consumption. With no
+ * pending requests it disables, detaches, destroys the provider channel, and
+ * establishes callback quiescence synchronously. With requests pending it
+ * releases the public owner and defers provider teardown to final request
+ * completion. A deferred detach failure after the public owner is gone retains
+ * the complete channel/provider/callback graph permanently. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_close(
+    ams_mel_ir_instrumentation **instrumentation, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus

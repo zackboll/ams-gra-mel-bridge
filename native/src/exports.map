@@ -59,6 +59,19 @@ AMS_MEL_0.1 {
         ams_mel_ir_health_metadata_close;
         ams_mel_ir_health_metadata_event_view;
         ams_mel_ir_health_metadata_event_close;
+        ams_mel_ir_instrumentation_open;
+        ams_mel_ir_instrumentation_enable;
+        ams_mel_ir_instrumentation_get_capabilities;
+        ams_mel_ir_instrumentation_submit_level;
+        ams_mel_ir_instrumentation_request_wait;
+        ams_mel_ir_instrumentation_request_close;
+        ams_mel_ir_instrumentation_metadata_open;
+        ams_mel_ir_instrumentation_metadata_receive;
+        ams_mel_ir_instrumentation_metadata_get_counters;
+        ams_mel_ir_instrumentation_metadata_close;
+        ams_mel_ir_instrumentation_metadata_event_view;
+        ams_mel_ir_instrumentation_metadata_event_close;
+        ams_mel_ir_instrumentation_close;
     local:
         *;
 };

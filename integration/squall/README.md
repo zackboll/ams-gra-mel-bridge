@@ -211,3 +211,31 @@ families, and safe Rust/Python common-channel APIs remain unsupported. The Pytho
 client uses only the public safe API,
 including Python-owned `bytes` frames and explicit Return/mode request, control,
 and stream teardown.
+
+## Instrumentation is an expected unsupported-provider probe
+
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` does NOT support the
+conditionally required Instrumentation channel through the path this bridge
+uses. Its `SquallControl::attachChannel` handles only `IRSTImage`,
+`CommandAndControl`, and `HealthAndStatus` and returns `nullptr` for
+`Instrumentation`; its exported `createInstrumentationChannel` also returns
+`nullptr`. Squall is not modified to make anything pass.
+
+The C and Ada integration clients therefore probe Instrumentation explicitly and
+require a clean negative result: native `AMS_MEL_FACTORY_FAILED` with the
+existing `attachChannel returned null` diagnostic, and Ada `Provider_Error`
+carrying the same message. The run then continues and still requires Image,
+NavigationReport, C2, and Health to pass on the same Session, proving the failed
+conditional-channel attempt does not poison the provider graph. Rust and Python
+remain regression-only and do not probe Instrumentation.
+
+To be exact about what this evidence is:
+
+```text
+Mock provider validates positive Instrumentation behavior and full payload
+fidelity.
+
+Pinned Squall validates clean unsupported-provider behavior only.
+
+Pinned Squall does NOT provide positive Instrumentation execution evidence.
+```

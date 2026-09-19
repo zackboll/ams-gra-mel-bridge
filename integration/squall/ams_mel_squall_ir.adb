@@ -11,6 +11,7 @@ with AMS.MEL.IR.C2.Common;
 with AMS.MEL.IR.Channel;
 with AMS.MEL.IR.Health_Status;
 with AMS.MEL.IR.Health_Status.Metadata;
+with AMS.MEL.IR.Instrumentation;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -22,6 +23,7 @@ procedure AMS_MEL_Squall_IR is
    package Image_Metadata renames AMS.MEL.IR.Image.Metadata;
    package Health renames AMS.MEL.IR.Health_Status;
    package Health_Metadata renames AMS.MEL.IR.Health_Status.Metadata;
+   package Instrumentation renames AMS.MEL.IR.Instrumentation;
    package Status renames AMS.MEL.Status;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
@@ -76,6 +78,8 @@ procedure AMS_MEL_Squall_IR is
      C2.Create_Config (Channel_ID, Platform_ID, Location);
    Health_Config : constant Health.Health_Config :=
       Health.Create_Config (Channel_ID, Platform_ID, Location);
+   Instrumentation_Config : constant Instrumentation.Instrumentation_Config :=
+      Instrumentation.Create_Config (Channel_ID, Platform_ID, Location);
 
    function Checksum (Pixels : AMS.MEL.IR.Pixel_Array) return Interfaces.Unsigned_64 is
       Value : Interfaces.Unsigned_64 := 16#1465_0FB0_739D_0383#;
@@ -180,6 +184,35 @@ begin
          Ada.Text_IO.Put_Line
            ("Image capability: geometry=320x200 bit-depth=8 bands=1 format=MONO "
              & "metadata=BAD_PIXEL_LIST,LINE_OF_SIGHT_REPORT,LINE_OF_SIGHT_EULER,NAVIGATION_REPORT_RESP");
+      end;
+
+      --  Pinned Squall b1015728f904c799fa0c07489fce48e78f67845f does NOT
+      --  support the conditionally required Instrumentation channel: its
+      --  SquallControl::attachChannel handles only IRSTImage,
+      --  CommandAndControl, and HealthAndStatus and returns nullptr for
+      --  Instrumentation. This proves the binding surface fails cleanly
+      --  against that unsupported provider profile rather than treating an
+      --  unsupported optional family as a binding failure. It is NOT positive
+      --  Instrumentation execution evidence.
+      begin
+         declare
+            Rejected : Instrumentation.Instrumentation_Channel :=
+              Instrumentation.Open (Parent, Instrumentation_Config);
+         begin
+            Instrumentation.Close (Rejected);
+            raise Program_Error with
+              "pinned Squall unexpectedly attached an Instrumentation channel";
+         end;
+      exception
+         when Error : AMS.MEL.Provider_Error =>
+            if Ada.Exceptions.Exception_Message (Error) /= "attachChannel returned null" then
+               raise Program_Error with
+                 "unexpected Squall Instrumentation failure: "
+                 & Ada.Exceptions.Exception_Message (Error);
+            end if;
+            Ada.Text_IO.Put_Line
+              ("Instrumentation: pinned Squall unsupported as expected "
+               & "(Provider_Error: attachChannel returned null)");
       end;
 
       declare

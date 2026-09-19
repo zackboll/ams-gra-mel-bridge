@@ -117,3 +117,11 @@ f404e2b1173277aa4660a50c3ae8d301f2c6abd4caeceba0d3123edac576fdd6  native/vendor/
 2a1c63db59dedb2e394ebf5dd8799f51c9358c28a9a0c105353d5b325700d57b  native/vendor/ir-mel/include/irmel/library/irmel-types/TempPoint.h
 34e31a2ee2485a4eeb96a096a5f3e72381c8f9ad654b35739f9a33c948aef1a0  native/vendor/ir-mel/include/irmel/library/irmel-types/Uncertainty.h
 ```
+
+Task 028 adds the exact compiler-observed IR Instrumentation closure:
+
+```text
+2c862fa663f92990234e1f9db33840af8f4e278d00a6d8fa184f4aba95e71462  native/vendor/ir-mel/include/irmel/library/instrumentation/InstrumentationChannel.h
+de971b14b590a7912a10af204cf9dbadd3f151f6a9cb6024a2a72715b5f58450  native/vendor/ir-mel/include/irmel/library/instrumentation/InstrumentationLevelCmd.h
+98b44ecab71244f0b74ba688b5f5f92db2a72e1a7b0bdfe947b15f556927785a  native/vendor/ir-mel/include/irmel/library/instrumentation/InstrumentationReport.h
+```

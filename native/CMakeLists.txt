@@ -11,7 +11,8 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
-    src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp)
+    src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp
+    src/ir_instrumentation.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -154,6 +155,16 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_ir_health mock_ir_provider)
     ams_mel_warnings(test_ir_health)
     add_test(NAME ir_health_contract COMMAND test_ir_health)
+
+    add_executable(test_ir_instrumentation tests/test_ir_instrumentation.c)
+    target_compile_features(test_ir_instrumentation PRIVATE c_std_11)
+    set_target_properties(test_ir_instrumentation PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_instrumentation PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_instrumentation PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_instrumentation mock_ir_provider)
+    ams_mel_warnings(test_ir_instrumentation)
+    add_test(NAME ir_instrumentation_contract COMMAND test_ir_instrumentation)
 
     add_executable(test_diagnostic_allocation
         tests/test_diagnostic_allocation.cpp)
