@@ -740,6 +740,16 @@ To test with GNAT/GPRbuild directly:
 make test-ada
 ```
 
+Format and verify Ada sources with:
+
+```sh
+make format-ada
+make check-ada-format
+```
+
+GNATformat is pinned through the Ada test/development Alire environment. The
+canonical Ada line width is 100 characters, and CI rejects formatting drift.
+
 The current development manifests contain relative development pins and are not
 yet registry-ready release manifests.
 

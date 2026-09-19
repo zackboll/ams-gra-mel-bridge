@@ -17,14 +17,14 @@ procedure AMS_MEL_Smoke is
    use type GNAT.OS_Lib.File_Descriptor;
    use type GNAT.OS_Lib.String_Access;
 
-   Workspace_Root : constant String := Ada.Directories.Full_Name
-     (Ada.Directories.Containing_Directory
-        (Ada.Directories.Containing_Directory
-           (Ada.Directories.Containing_Directory
-              (Ada.Directories.Containing_Directory
-                 (Ada.Command_Line.Command_Name)))));
-   Provider_Path : constant String := Workspace_Root
-     & "/native/build/test-providers/libmock_ir_provider.so";
+   Workspace_Root     : constant String :=
+     Ada.Directories.Full_Name
+       (Ada.Directories.Containing_Directory
+          (Ada.Directories.Containing_Directory
+             (Ada.Directories.Containing_Directory
+                (Ada.Directories.Containing_Directory (Ada.Command_Line.Command_Name)))));
+   Provider_Path      : constant String :=
+     Workspace_Root & "/native/build/test-providers/libmock_ir_provider.so";
    Lifetime_Directory : GNAT.OS_Lib.String_Access;
    Lifetime_Log       : GNAT.OS_Lib.String_Access;
 
@@ -34,9 +34,7 @@ procedure AMS_MEL_Smoke is
       Deleted    : Boolean;
    begin
       GNAT.OS_Lib.Create_Temp_File (Descriptor, Lifetime_Directory);
-      if Descriptor = GNAT.OS_Lib.Invalid_FD
-        or else Lifetime_Directory = null
-      then
+      if Descriptor = GNAT.OS_Lib.Invalid_FD or else Lifetime_Directory = null then
          raise Program_Error with "could not reserve a unique log directory";
       end if;
       GNAT.OS_Lib.Close (Descriptor, Closed);
@@ -46,15 +44,12 @@ procedure AMS_MEL_Smoke is
       end if;
       Ada.Directories.Create_Directory (Lifetime_Directory.all);
       Lifetime_Log := new String'(Lifetime_Directory.all & "/lifetime.log");
-      Ada.Environment_Variables.Set
-        ("AMS_MEL_TEST_LIFETIME_LOG", Lifetime_Log.all);
+      Ada.Environment_Variables.Set ("AMS_MEL_TEST_LIFETIME_LOG", Lifetime_Log.all);
    end Setup_Lifetime_Log;
 
    procedure Remove_Lifetime_Log is
    begin
-      if Lifetime_Log /= null
-        and then Ada.Directories.Exists (Lifetime_Log.all)
-      then
+      if Lifetime_Log /= null and then Ada.Directories.Exists (Lifetime_Log.all) then
          Ada.Directories.Delete_File (Lifetime_Log.all);
       end if;
    end Remove_Lifetime_Log;
@@ -62,9 +57,7 @@ procedure AMS_MEL_Smoke is
    procedure Cleanup_Lifetime_Log is
    begin
       Remove_Lifetime_Log;
-      if Lifetime_Directory /= null
-        and then Ada.Directories.Exists (Lifetime_Directory.all)
-      then
+      if Lifetime_Directory /= null and then Ada.Directories.Exists (Lifetime_Directory.all) then
          Ada.Directories.Delete_Directory (Lifetime_Directory.all);
       end if;
       Ada.Environment_Variables.Clear ("AMS_MEL_TEST_LIFETIME_LOG");
@@ -99,25 +92,28 @@ procedure AMS_MEL_Smoke is
    end Lifetime_Events;
 
    Expected_Lifetime : constant String :=
-     "manager_factory_called" & Character'Val (10)
-     & "control_factory_called" & Character'Val (10)
-     & "init_called" & Character'Val (10)
-     & "control_destroyed" & Character'Val (10)
-     & "manager_destroyed" & Character'Val (10)
-     & "library_unloaded" & Character'Val (10);
+     "manager_factory_called"
+     & Character'Val (10)
+     & "control_factory_called"
+     & Character'Val (10)
+     & "init_called"
+     & Character'Val (10)
+     & "control_destroyed"
+     & Character'Val (10)
+     & "manager_destroyed"
+     & Character'Val (10)
+     & "library_unloaded"
+     & Character'Val (10);
 
    procedure Test_Explicit_Close is
-      Object : AMS.MEL.Session := AMS.MEL.Open
-        (Provider_Path, "ada-explicit", "aperture-A");
-      Value  : constant AMS.MEL.Provider_Version :=
-        AMS.MEL.Query_Provider_Version (Object);
+      Object : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "ada-explicit", "aperture-A");
+      Value  : constant AMS.MEL.Provider_Version := AMS.MEL.Query_Provider_Version (Object);
    begin
       if not AMS.MEL.Is_Open (Object)
         or else AMS.MEL.API_Version (Value) /= 16#1234_5678#
         or else AMS.MEL.Library_Version (Value) /= 16#90AB_CDEF#
         or else AMS.MEL.Vendor (Value) /= "Mock IR Provider µ"
-        or else AMS.MEL.Description (Value) /=
-          "Deterministic task 001 provider"
+        or else AMS.MEL.Description (Value) /= "Deterministic task 001 provider"
       then
          raise Program_Error with "provider version conversion failed";
       end if;
@@ -126,23 +122,22 @@ procedure AMS_MEL_Smoke is
          raise Program_Error with "explicit close did not clear owner";
       end if;
       AMS.MEL.Close (Object);
-      --  Finalization of this explicitly closed object must remain harmless.
+   --  Finalization of this explicitly closed object must remain harmless.
    end Test_Explicit_Close;
 
    procedure Test_Finalization_Only is
    begin
       Remove_Lifetime_Log;
       declare
-         Object : constant AMS.MEL.Session := AMS.MEL.Open
-           (Provider_Path, "ada-finalize", "aperture-B");
+         Object : constant AMS.MEL.Session :=
+           AMS.MEL.Open (Provider_Path, "ada-finalize", "aperture-B");
       begin
          if not AMS.MEL.Is_Open (Object) then
             raise Program_Error with "provider session did not open";
          end if;
       end;
       if Lifetime_Events /= Expected_Lifetime then
-         raise Program_Error with
-           "finalization did not destroy provider resources in order";
+         raise Program_Error with "finalization did not destroy provider resources in order";
       end if;
    end Test_Finalization_Only;
 
@@ -152,36 +147,38 @@ procedure AMS_MEL_Smoke is
       Remove_Lifetime_Log;
       begin
          declare
-            Object : AMS.MEL.Session := AMS.MEL.Open
-              (Provider_Path & NUL & "ignored", "nul-library");
+            Object : AMS.MEL.Session :=
+              AMS.MEL.Open (Provider_Path & NUL & "ignored", "nul-library");
          begin
             AMS.MEL.Close (Object);
             raise Program_Error with "Library_Path NUL was accepted";
          end;
       exception
-         when Constraint_Error => null;
+         when Constraint_Error =>
+            null;
       end;
       begin
          declare
-            Object : AMS.MEL.Session := AMS.MEL.Open
-              (Provider_Path, "nul" & NUL & "instance");
+            Object : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nul" & NUL & "instance");
          begin
             AMS.MEL.Close (Object);
             raise Program_Error with "Instance NUL was accepted";
          end;
       exception
-         when Constraint_Error => null;
+         when Constraint_Error =>
+            null;
       end;
       begin
          declare
-            Object : AMS.MEL.Session := AMS.MEL.Open
-              (Provider_Path, "nul-aperture", "aperture" & NUL & "ignored");
+            Object : AMS.MEL.Session :=
+              AMS.MEL.Open (Provider_Path, "nul-aperture", "aperture" & NUL & "ignored");
          begin
             AMS.MEL.Close (Object);
             raise Program_Error with "Aperture_Config_ID NUL was accepted";
          end;
       exception
-         when Constraint_Error => null;
+         when Constraint_Error =>
+            null;
       end;
       if Ada.Directories.Exists (Lifetime_Log.all) then
          raise Program_Error with "rejected NUL input invoked the provider";
@@ -189,8 +186,8 @@ procedure AMS_MEL_Smoke is
    end Test_Embedded_NUL;
 
    procedure Test_Open_Failure is
-      Object : constant AMS.MEL.Session := AMS.MEL.Open
-        ("/definitely/missing/libirmel.so", "missing");
+      Object : constant AMS.MEL.Session :=
+        AMS.MEL.Open ("/definitely/missing/libirmel.so", "missing");
    begin
       if AMS.MEL.Is_Open (Object) then
          raise Program_Error with "missing provider unexpectedly opened";
@@ -200,9 +197,7 @@ procedure AMS_MEL_Smoke is
    Value : constant AMS.MEL.Version := AMS.MEL.ABI_Version;
 begin
    Setup_Lifetime_Log;
-   if Value /= (Major => 0, Minor => 1)
-     or else AMS.MEL.ABI_Version /= Value
-   then
+   if Value /= (Major => 0, Minor => 1) or else AMS.MEL.ABI_Version /= Value then
       raise Program_Error with "unexpected AMS MEL C ABI version";
    end if;
    Test_Explicit_Close;
@@ -222,8 +217,7 @@ begin
    AMS_MEL_IR_C2_Common_Tests.Run (Provider_Path);
    AMS_MEL_IR_Health_Status_Tests.Run (Provider_Path);
    Cleanup_Lifetime_Log;
-   Ada.Text_IO.Put_Line
-     ("PASS: Ada provider load/init/version/close/finalization contract");
+   Ada.Text_IO.Put_Line ("PASS: Ada provider load/init/version/close/finalization contract");
 exception
    when others =>
       Cleanup_Lifetime_Log;
