@@ -284,6 +284,16 @@ Native event owners and safe Ada event values remain valid after metadata, strea
 Session, and provider teardown. NavigationReport send,
 LineOfSightQuaternion, and other optional Image metadata are not implemented.
 
+Task 027A is an internal Image ownership refactor only. The opaque public Image
+stream is a thin owner of shared `ImageStreamState`, which owns its SessionState,
+frame CallbackState and Listener, Channel and ImageChannel, stream-owned Image
+metadata state, buffer factory/configuration, provider Buffer objects, host
+storage, and enable state. This permits a future asynchronous Image request to
+retain the private resource graph without retaining `ams_mel_ir_stream *`.
+It changes neither ABI 0.1 nor application-visible behavior. No NavigationReport
+API exists yet; request submission, waiting, logical close with pending work, and
+deferred cleanup remain future work.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

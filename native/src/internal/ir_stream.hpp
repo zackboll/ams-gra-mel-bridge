@@ -18,9 +18,9 @@ struct ImageMetadataState;
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
 
-/* Private stream owner shared by the frame and Image metadata verticals.  The
- * ImageChannel is attached exactly once in ir_stream.cpp. */
-struct ams_mel_ir_stream {
+/* Shared private Image resource graph. The public stream is only an opaque
+ * handle to this state so future private asynchronous work can retain it. */
+struct ImageStreamState {
     std::shared_ptr<SessionState> session;
     std::shared_ptr<CallbackState> callback;
     std::shared_ptr<Listener> listener;
@@ -37,8 +37,12 @@ struct ams_mel_ir_stream {
     bool enable_attempted{false};
 };
 
+struct ams_mel_ir_stream {
+    std::shared_ptr<ImageStreamState> state;
+};
+
 void image_metadata_stream_stopped(const std::shared_ptr<ImageMetadataState>& state) noexcept;
 bool claim_image_metadata(
-    ams_mel_ir_stream& stream,
+    ImageStreamState& stream,
     const std::shared_ptr<ImageMetadataState>& state,
     std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;

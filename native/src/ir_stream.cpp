@@ -328,7 +328,7 @@ struct CallbackState {
 };
 
 bool claim_image_metadata(
-    ams_mel_ir_stream& stream,
+    ImageStreamState& stream,
     const std::shared_ptr<ImageMetadataState>& state,
     std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
 {
@@ -377,7 +377,7 @@ bool supported(const irmel::ChannelCapability& capability) noexcept
            capability.getBitDepth() == 8U && capability.getNumberOfBands() == 1U;
 }
 
-ams_mel_status_t teardown(ams_mel_ir_stream& stream, bool failed, char *out,
+ams_mel_status_t teardown(ImageStreamState& stream, bool failed, char *out,
                           std::size_t capacity, std::size_t *required) noexcept
 {
     try {
@@ -486,14 +486,16 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
     }
     try {
         auto stream = std::make_unique<ams_mel_ir_stream>();
-        stream->session = session->state;
-        stream->callback = std::make_shared<CallbackState>();
-        stream->callback->capacity = config->queue_capacity;
-        stream->listener = std::make_shared<Listener>(stream->callback);
-        stream->buffer_count = config->buffer_count;
-        stream->buffer_size = config->buffer_size;
-        stream->instance = stream->session->instance;
-        stream->buffer_factory = stream->session->library->symbol<BufferFactory>("getBuffer");
+        auto state = std::make_shared<ImageStreamState>();
+        stream->state = state;
+        state->session = session->state;
+        state->callback = std::make_shared<CallbackState>();
+        state->callback->capacity = config->queue_capacity;
+        state->listener = std::make_shared<Listener>(state->callback);
+        state->buffer_count = config->buffer_count;
+        state->buffer_size = config->buffer_size;
+        state->instance = state->session->instance;
+        state->buffer_factory = state->session->library->symbol<BufferFactory>("getBuffer");
         mel::ForeignKey key{copy_view(config->sensor_location.key),
                             copy_view(config->sensor_location.system_name)};
         mel::ComponentLocation location{config->sensor_location.offset_x_m,
@@ -501,22 +503,22 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
             config->sensor_location.offset_z_m, key};
         irmel::Config upstream{convert_id(config->channel_id),
             irmel::ChannelType::IRSTImage, convert_id(config->platform_id),
-            std::move(location), stream->listener, false, false};
-        stream->channel = stream->session->control->attachChannel(upstream);
-        if (!stream->channel) {
+            std::move(location), state->listener, false, false};
+        state->channel = state->session->control->attachChannel(upstream);
+        if (!state->channel) {
             diagnostic("attachChannel returned null", out, capacity, required);
             return AMS_MEL_FACTORY_FAILED;
         }
-        stream->image_channel =
-            std::dynamic_pointer_cast<irmel::ImageChannel>(stream->channel);
+        state->image_channel =
+            std::dynamic_pointer_cast<irmel::ImageChannel>(state->channel);
         bool compatible = false;
         try {
-            compatible = stream->image_channel &&
-                         supported(stream->channel->getCapabilities());
+            compatible = state->image_channel &&
+                         supported(state->channel->getCapabilities());
         } catch (...) {
             bool detached = false;
             try {
-                detached = stream->session->control->detachChannel(stream->channel) ==
+                detached = state->session->control->detachChannel(state->channel) ==
                            irmel::Return::Success;
             } catch (...) {}
             if (!detached) {
@@ -524,19 +526,19 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
                 (void)stream.release();
                 return AMS_MEL_PROVIDER_FAILED;
             }
-            stream->image_channel.reset();
-            stream->channel.reset();
+            state->image_channel.reset();
+            state->channel.reset();
             throw;
         }
         if (!compatible) {
             bool detached = false;
             try {
-                detached = stream->session->control->detachChannel(stream->channel) ==
+                detached = state->session->control->detachChannel(state->channel) ==
                            irmel::Return::Success;
             } catch (...) {}
             if (detached) {
-                stream->image_channel.reset();
-                stream->channel.reset();
+            state->image_channel.reset();
+            state->channel.reset();
             } else {
                 /* No owner may be destroyed while provider access can remain. */
                 (void)stream.release();
@@ -545,6 +547,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
                        "incompatible channel and detach failed", out, capacity, required);
             return detached ? AMS_MEL_INITIALIZATION_FAILED : AMS_MEL_PROVIDER_FAILED;
         }
+        stream->state = std::move(state);
         *out_stream = stream.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
@@ -564,8 +567,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
     if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
     try {
         {
-            std::lock_guard lock{stream->callback->mutex};
-            switch (stream->callback->lifecycle) {
+            std::lock_guard lock{stream->state->callback->mutex};
+            switch (stream->state->callback->lifecycle) {
             case Lifecycle::Running: return AMS_MEL_OK;
             case Lifecycle::Stopped: return AMS_MEL_STREAM_STOPPED;
             case Lifecycle::Failed: return AMS_MEL_PROVIDER_FAILED;
@@ -573,56 +576,57 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             case Lifecycle::Stopping: return AMS_MEL_PROVIDER_FAILED;
             case Lifecycle::Attached: break;
             }
-            stream->callback->lifecycle = Lifecycle::Starting;
+            stream->state->callback->lifecycle = Lifecycle::Starting;
         }
     } catch (...) {
         diagnostic("stream state transition failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
     try {
-        stream->storage.reserve(stream->buffer_count);
-        stream->buffers.reserve(stream->buffer_count);
-        for (std::size_t i = 0; i < stream->buffer_count; ++i) {
-            auto buffer = stream->buffer_factory(stream->instance, stream->session->manager);
+        auto& state = *stream->state;
+        state.storage.reserve(state.buffer_count);
+        state.buffers.reserve(state.buffer_count);
+        for (std::size_t i = 0; i < state.buffer_count; ++i) {
+            auto buffer = state.buffer_factory(state.instance, state.session->manager);
             if (!buffer) throw std::runtime_error("getBuffer returned null");
-            stream->storage.emplace_back(stream->buffer_size);
-            if (buffer->init(stream->storage.back().data(), stream->buffer_size,
+            state.storage.emplace_back(state.buffer_size);
+            if (buffer->init(state.storage.back().data(), state.buffer_size,
                              static_cast<std::int64_t>(i)) != irmel::Return::Success ||
-                stream->channel->registerBuffer(buffer) != irmel::Return::Success) {
+                state.channel->registerBuffer(buffer) != irmel::Return::Success) {
                 throw std::runtime_error("buffer initialization or registration failed");
             }
-            stream->buffers.push_back(std::move(buffer));
+            state.buffers.push_back(std::move(buffer));
         }
         {
-            std::lock_guard lock{stream->callback->mutex};
-            stream->callback->registered_ranges.clear();
-            stream->callback->registered_ranges.reserve(stream->storage.size());
-            for (const auto& bytes : stream->storage) {
-                stream->callback->registered_ranges.push_back(
+            std::lock_guard lock{state.callback->mutex};
+            state.callback->registered_ranges.clear();
+            state.callback->registered_ranges.reserve(state.storage.size());
+            for (const auto& bytes : state.storage) {
+                state.callback->registered_ranges.push_back(
                     {reinterpret_cast<std::uintptr_t>(bytes.data()), bytes.size()});
             }
-            stream->callback->accepting = true;
+            state.callback->accepting = true;
         }
-        stream->enable_attempted = true;
-        if (stream->channel->enable() != irmel::Return::Success) {
+        state.enable_attempted = true;
+        if (state.channel->enable() != irmel::Return::Success) {
             throw std::runtime_error("channel enable failed");
         }
         bool callback_failed = false;
         {
-            std::lock_guard lock{stream->callback->mutex};
-            callback_failed = stream->callback->lifecycle == Lifecycle::Failed;
-            if (!callback_failed) stream->callback->lifecycle = Lifecycle::Running;
+            std::lock_guard lock{state.callback->mutex};
+            callback_failed = state.callback->lifecycle == Lifecycle::Failed;
+            if (!callback_failed) state.callback->lifecycle = Lifecycle::Running;
         }
-        if (callback_failed) return teardown(*stream, true, out, capacity, required);
+        if (callback_failed) return teardown(state, true, out, capacity, required);
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
-        stream->callback->fail();
-        (void)teardown(*stream, true, nullptr, 0U, nullptr);
+        stream->state->callback->fail();
+        (void)teardown(*stream->state, true, nullptr, 0U, nullptr);
         diagnostic("allocation failed during stream start", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
-        stream->callback->fail();
-        (void)teardown(*stream, true, nullptr, 0U, nullptr);
+        stream->state->callback->fail();
+        (void)teardown(*stream->state, true, nullptr, 0U, nullptr);
         diagnostic("provider failure during stream start", out, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
     }
@@ -637,24 +641,25 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
     if (!stream || !frame || (!frame->pixels && frame->pixel_capacity != 0U) ||
         (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
     try {
-        std::unique_lock lock{stream->callback->mutex};
-        const auto terminal = [&stream] {
-            return stream->callback->lifecycle == Lifecycle::Stopped ||
-                   stream->callback->lifecycle == Lifecycle::Failed;
+        const auto& state = *stream->state;
+        std::unique_lock lock{state.callback->mutex};
+        const auto terminal = [&state] {
+            return state.callback->lifecycle == Lifecycle::Stopped ||
+                   state.callback->lifecycle == Lifecycle::Failed;
         };
-        if (stream->callback->queue.empty() && !terminal()) {
-            (void)stream->callback->ready.wait_for(lock,
+        if (state.callback->queue.empty() && !terminal()) {
+            (void)state.callback->ready.wait_for(lock,
                 std::chrono::milliseconds{timeout_ms}, [&] {
-                    return !stream->callback->queue.empty() || terminal();
+                    return !state.callback->queue.empty() || terminal();
                 });
         }
-        if (stream->callback->queue.empty()) {
-            if (stream->callback->lifecycle == Lifecycle::Failed)
+        if (state.callback->queue.empty()) {
+            if (state.callback->lifecycle == Lifecycle::Failed)
                 return AMS_MEL_PROVIDER_FAILED;
-            return stream->callback->lifecycle == Lifecycle::Stopped ?
+            return state.callback->lifecycle == Lifecycle::Stopped ?
                    AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
-        const QueuedFrame& queued = stream->callback->queue.front();
+        const QueuedFrame& queued = state.callback->queue.front();
         frame->pixel_required = queued.pixels.size();
         if (!frame->pixels || frame->pixel_capacity < queued.pixels.size()) {
             return AMS_MEL_BUFFER_TOO_SMALL;
@@ -681,7 +686,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         frame->pixel_capacity = pixel_capacity;
         frame->pixel_required = queued.pixels.size();
         std::memcpy(pixels, queued.pixels.data(), queued.pixels.size());
-        stream->callback->queue.pop_front();
+        state.callback->queue.pop_front();
         return AMS_MEL_OK;
     } catch (...) {
         diagnostic("receive failed", out, capacity, required);
@@ -698,20 +703,21 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
     if (!stream || !snapshot || *snapshot || (!out && capacity != 0U))
         return AMS_MEL_INVALID_ARGUMENT;
     try {
-        std::unique_lock lock{stream->callback->mutex};
-        const auto terminal = [&stream] { return stream->callback->lifecycle == Lifecycle::Stopped ||
-            stream->callback->lifecycle == Lifecycle::Failed; };
-        if (stream->callback->queue.empty() && !terminal()) {
-            (void)stream->callback->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms}, [&] {
-                return !stream->callback->queue.empty() || terminal(); });
+        const auto& state = *stream->state;
+        std::unique_lock lock{state.callback->mutex};
+        const auto terminal = [&state] { return state.callback->lifecycle == Lifecycle::Stopped ||
+            state.callback->lifecycle == Lifecycle::Failed; };
+        if (state.callback->queue.empty() && !terminal()) {
+            (void)state.callback->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms}, [&] {
+                return !state.callback->queue.empty() || terminal(); });
         }
-        if (stream->callback->queue.empty()) {
-            if (stream->callback->lifecycle == Lifecycle::Failed) return AMS_MEL_PROVIDER_FAILED;
-            return stream->callback->lifecycle == Lifecycle::Stopped ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
+        if (state.callback->queue.empty()) {
+            if (state.callback->lifecycle == Lifecycle::Failed) return AMS_MEL_PROVIDER_FAILED;
+            return state.callback->lifecycle == Lifecycle::Stopped ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
         auto owner = std::make_unique<ams_mel_ir_frame_snapshot>();
-        owner->frame = std::move(stream->callback->queue.front());
-        stream->callback->queue.pop_front();
+        owner->frame = std::move(state.callback->queue.front());
+        state.callback->queue.pop_front();
         owner->frame.bind();
         *snapshot = owner.release();
         return AMS_MEL_OK;
@@ -749,8 +755,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_get_counters(
     try {
         if (!stream || !counters || (!out && capacity != 0U))
             return AMS_MEL_INVALID_ARGUMENT;
-        std::lock_guard lock{stream->callback->mutex};
-        *counters = stream->callback->counters;
+        std::lock_guard lock{stream->state->callback->mutex};
+        *counters = stream->state->callback->counters;
         return AMS_MEL_OK;
     } catch (...) {
         diagnostic("counter query failed", out, capacity, required);
@@ -768,13 +774,13 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_get_capabilities(
     try {
         std::shared_ptr<irmel::ImageChannel> image_channel;
         {
-            std::lock_guard lock{stream->callback->mutex};
-            if (!stream->image_channel ||
-                stream->callback->lifecycle == Lifecycle::Stopping ||
-                stream->callback->lifecycle == Lifecycle::Stopped ||
-                stream->callback->lifecycle == Lifecycle::Failed)
+            std::lock_guard lock{stream->state->callback->mutex};
+            if (!stream->state->image_channel ||
+                stream->state->callback->lifecycle == Lifecycle::Stopping ||
+                stream->state->callback->lifecycle == Lifecycle::Stopped ||
+                stream->state->callback->lifecycle == Lifecycle::Failed)
                 return AMS_MEL_PROVIDER_FAILED;
-            image_channel = stream->image_channel;
+            image_channel = stream->state->image_channel;
         }
         return ams_mel::internal::snapshot_capability(*image_channel, output,
                                                        out, capacity, required);
@@ -793,12 +799,12 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_stop(
         if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
         bool failed;
         {
-            std::lock_guard lock{stream->callback->mutex};
-            if (stream->callback->lifecycle == Lifecycle::Stopped) return AMS_MEL_OK;
-            failed = stream->callback->lifecycle == Lifecycle::Failed;
+            std::lock_guard lock{stream->state->callback->mutex};
+            if (stream->state->callback->lifecycle == Lifecycle::Stopped) return AMS_MEL_OK;
+            failed = stream->state->callback->lifecycle == Lifecycle::Failed;
         }
-        if (!stream->channel) return failed ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK;
-        return teardown(*stream, failed, out, capacity, required);
+        if (!stream->state->channel) return failed ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK;
+        return teardown(*stream->state, failed, out, capacity, required);
     } catch (const std::bad_alloc&) {
         diagnostic("allocation failed during stream stop", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
@@ -818,7 +824,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
         ams_mel_ir_stream *owned = *stream;
         if (!owned) return AMS_MEL_OK;
         const auto status = ams_mel_ir_stream_stop(owned, out, capacity, required);
-        if (owned->channel) return status;
+        if (owned->state->channel) return status;
         *stream = nullptr;
         delete owned;
         return status;
