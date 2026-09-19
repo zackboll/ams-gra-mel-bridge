@@ -16,16 +16,16 @@ package body AMS.MEL is
       Value : CS.chars_ptr := CS.Null_Ptr;
    end record;
 
-   overriding procedure Finalize (Object : in out C_String_Owner) is
+   overriding
+   procedure Finalize (Object : in out C_String_Owner) is
    begin
       CS.Free (Object.Value);
    end Finalize;
 
    Diagnostic_Capacity : constant := 512;
-   subtype Diagnostic_Index is Interfaces.C.size_t range
-     0 .. Diagnostic_Capacity - 1;
+   subtype Diagnostic_Index is Interfaces.C.size_t range 0 .. Diagnostic_Capacity - 1;
    type Diagnostic_Array is array (Diagnostic_Index) of aliased Interfaces.C.char
-     with Convention => C;
+   with Convention => C;
 
    function Message (Buffer : Diagnostic_Array) return String is
       Length : Natural := 0;
@@ -42,9 +42,8 @@ package body AMS.MEL is
          Result : String (1 .. Length);
       begin
          for Index in Result'Range loop
-            Result (Index) := Character'Val
-              (Interfaces.C.char'Pos
-                 (Buffer (Interfaces.C.size_t (Index - 1))));
+            Result (Index) :=
+              Character'Val (Interfaces.C.char'Pos (Buffer (Interfaces.C.size_t (Index - 1))));
          end loop;
          return Result;
       end;
@@ -65,17 +64,17 @@ package body AMS.MEL is
       return (Major => Natural (Raw.Major), Minor => Natural (Raw.Minor));
    end ABI_Version;
 
-   function API_Version (Value : Provider_Version)
-     return Provider_Version_Number is (Value.API_Value);
+   function API_Version (Value : Provider_Version) return Provider_Version_Number
+   is (Value.API_Value);
 
-   function Library_Version (Value : Provider_Version)
-     return Provider_Version_Number is (Value.Library_Value);
+   function Library_Version (Value : Provider_Version) return Provider_Version_Number
+   is (Value.Library_Value);
 
-   function Vendor (Value : Provider_Version) return String is
-     (US.To_String (Value.Vendor_Value));
+   function Vendor (Value : Provider_Version) return String
+   is (US.To_String (Value.Vendor_Value));
 
-   function Description (Value : Provider_Version) return String is
-     (US.To_String (Value.Description_Value));
+   function Description (Value : Provider_Version) return String
+   is (US.To_String (Value.Description_Value));
 
    procedure Reject_NUL (Value : String; Name : String) is
    begin
@@ -87,9 +86,7 @@ package body AMS.MEL is
    end Reject_NUL;
 
    function Open
-     (Library_Path       : String;
-      Instance           : String;
-      Aperture_Config_ID : String := "") return Session
+     (Library_Path : String; Instance : String; Aperture_Config_ID : String := "") return Session
    is
       Library_C  : C_String_Owner;
       Instance_C : C_String_Owner;
@@ -105,10 +102,15 @@ package body AMS.MEL is
       Aperture_C.Value := CS.New_String (Aperture_Config_ID);
       return Result : Session do
          declare
-            Status : constant Interfaces.Integer_32 := C.Session_Open
-               (Library_C.Value, Instance_C.Value, Aperture_C.Value,
-                Result.Handle'Access,
-               Diagnostic'Address, Diagnostic'Length, Required'Access);
+            Status : constant Interfaces.Integer_32 :=
+              C.Session_Open
+                (Library_C.Value,
+                 Instance_C.Value,
+                 Aperture_C.Value,
+                 Result.Handle'Access,
+                 Diagnostic'Address,
+                 Diagnostic'Length,
+                 Required'Access);
          begin
             if Status /= C.Success then
                raise Provider_Error with Message (Diagnostic);
@@ -117,17 +119,19 @@ package body AMS.MEL is
       end return;
    end Open;
 
-   function Is_Open (Object : Session) return Boolean is
-     (Object.Handle /= C.Null_Session);
+   function Is_Open (Object : Session) return Boolean
+   is (Object.Handle /= C.Null_Session);
 
-   function Query_Provider_Version
-     (Object : Session) return Provider_Version
-   is
+   function Query_Provider_Version (Object : Session) return Provider_Version is
       Raw        : aliased C.Provider_Version_V1 :=
-        (API_Version => 0, Library_Version => 0,
-         Vendor => System.Null_Address, Vendor_Capacity => 0,
-         Vendor_Required => 0, Description => System.Null_Address,
-         Description_Capacity => 0, Description_Required => 0);
+        (API_Version          => 0,
+         Library_Version      => 0,
+         Vendor               => System.Null_Address,
+         Vendor_Capacity      => 0,
+         Vendor_Required      => 0,
+         Description          => System.Null_Address,
+         Description_Capacity => 0,
+         Description_Required => 0);
       Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
       Status     : Interfaces.Integer_32;
@@ -135,9 +139,9 @@ package body AMS.MEL is
       if not Is_Open (Object) then
          raise Provider_Error with "provider session is closed";
       end if;
-      Status := C.Session_Get_Provider_Version
-        (Object.Handle, Raw'Access, Diagnostic'Address, Diagnostic'Length,
-         Required'Access);
+      Status :=
+        C.Session_Get_Provider_Version
+          (Object.Handle, Raw'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
       if Status /= C.Buffer_Too_Small then
          raise Provider_Error with Message (Diagnostic);
       end if;
@@ -145,48 +149,46 @@ package body AMS.MEL is
          raise Program_Error with "native provider returned invalid string sizes";
       end if;
       declare
-         Vendor_Buffer : aliased Interfaces.C.char_array
-            (0 .. Raw.Vendor_Required - 1) := [others => Interfaces.C.nul];
-         Description_Buffer : aliased Interfaces.C.char_array
-            (0 .. Raw.Description_Required - 1) := [others => Interfaces.C.nul];
+         Vendor_Buffer      : aliased Interfaces.C.char_array (0 .. Raw.Vendor_Required - 1) :=
+           [others => Interfaces.C.nul];
+         Description_Buffer : aliased Interfaces.C.char_array (0 .. Raw.Description_Required - 1) :=
+           [others => Interfaces.C.nul];
       begin
          Raw.Vendor := Vendor_Buffer'Address;
          Raw.Vendor_Capacity := Vendor_Buffer'Length;
          Raw.Description := Description_Buffer'Address;
          Raw.Description_Capacity := Description_Buffer'Length;
-         Status := C.Session_Get_Provider_Version
-           (Object.Handle, Raw'Access, Diagnostic'Address, Diagnostic'Length,
-            Required'Access);
+         Status :=
+           C.Session_Get_Provider_Version
+             (Object.Handle, Raw'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
          if Status /= C.Success then
             raise Provider_Error with Message (Diagnostic);
          end if;
          return
-           (API_Value => Provider_Version_Number (Raw.API_Version),
-            Library_Value => Provider_Version_Number (Raw.Library_Version),
-            Vendor_Value => US.To_Unbounded_String
-              (Interfaces.C.To_Ada (Vendor_Buffer)),
-            Description_Value => US.To_Unbounded_String
-              (Interfaces.C.To_Ada (Description_Buffer)));
+           (API_Value         => Provider_Version_Number (Raw.API_Version),
+            Library_Value     => Provider_Version_Number (Raw.Library_Version),
+            Vendor_Value      => US.To_Unbounded_String (Interfaces.C.To_Ada (Vendor_Buffer)),
+            Description_Value => US.To_Unbounded_String (Interfaces.C.To_Ada (Description_Buffer)));
       end;
    end Query_Provider_Version;
 
    procedure Close (Object : in out Session) is
       Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;
-      Status     : constant Interfaces.Integer_32 := C.Session_Close
-        (Object.Handle'Access, Diagnostic'Address, Diagnostic'Length,
-         Required'Access);
+      Status     : constant Interfaces.Integer_32 :=
+        C.Session_Close
+          (Object.Handle'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
    begin
       if Status /= C.Success then
          raise Provider_Error with Message (Diagnostic);
       end if;
    end Close;
 
-   overriding procedure Finalize (Object : in out Session) is
+   overriding
+   procedure Finalize (Object : in out Session) is
       Ignored : Interfaces.Integer_32;
    begin
-      Ignored := C.Session_Close
-        (Object.Handle'Access, System.Null_Address, 0, null);
+      Ignored := C.Session_Close (Object.Handle'Access, System.Null_Address, 0, null);
    exception
       when others =>
          Object.Handle := C.Null_Session;

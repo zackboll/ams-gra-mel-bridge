@@ -15,20 +15,16 @@ package AMS.MEL is
 
    Provider_Error : exception;
 
-   type Provider_Version_Number is mod 2 ** 32 with Size => 32;
+   type Provider_Version_Number is mod 2**32 with Size => 32;
    type Provider_Version is private;
-   function API_Version (Value : Provider_Version)
-     return Provider_Version_Number;
-   function Library_Version (Value : Provider_Version)
-     return Provider_Version_Number;
+   function API_Version (Value : Provider_Version) return Provider_Version_Number;
+   function Library_Version (Value : Provider_Version) return Provider_Version_Number;
    function Vendor (Value : Provider_Version) return String;
    function Description (Value : Provider_Version) return String;
 
    type Session is limited private;
    function Open
-     (Library_Path       : String;
-      Instance           : String;
-      Aperture_Config_ID : String := "") return Session;
+     (Library_Path : String; Instance : String; Aperture_Config_ID : String := "") return Session;
    --  Library_Path, Instance, and Aperture_Config_ID are interpreted as UTF-8
    --  bytes without transcoding.
    --  Raises Constraint_Error if any contains an embedded NUL, which cannot be
@@ -36,8 +32,7 @@ package AMS.MEL is
    --  Aperture_Config_ID remains supported. Raises Provider_Error for native or
    --  provider failures.
    function Is_Open (Object : Session) return Boolean;
-   function Query_Provider_Version
-     (Object : Session) return Provider_Version;
+   function Query_Provider_Version (Object : Session) return Provider_Version;
    procedure Close (Object : in out Session);
 
 private
@@ -49,8 +44,8 @@ private
    end record;
 
    type Session is new Ada.Finalization.Limited_Controlled with record
-      Handle : aliased AMS.MEL_C_API.Session_Handle :=
-        AMS.MEL_C_API.Null_Session;
+      Handle : aliased AMS.MEL_C_API.Session_Handle := AMS.MEL_C_API.Null_Session;
    end record;
-   overriding procedure Finalize (Object : in out Session);
+   overriding
+   procedure Finalize (Object : in out Session);
 end AMS.MEL;

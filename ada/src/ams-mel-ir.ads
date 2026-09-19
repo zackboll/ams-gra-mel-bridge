@@ -15,9 +15,9 @@ package AMS.MEL.IR is
 
    type Component_Location is private;
    function Create_Component_Location
-     (Offset_X_M : Long_Float;
-      Offset_Y_M : Long_Float;
-      Offset_Z_M : Long_Float;
+     (Offset_X_M  : Long_Float;
+      Offset_Y_M  : Long_Float;
+      Offset_Z_M  : Long_Float;
       Key         : String;
       System_Name : String) return Component_Location;
    function Offset_X_M (Location : Component_Location) return Long_Float;
@@ -36,8 +36,7 @@ package AMS.MEL.IR is
       Queue_Capacity  : Positive := 4) return Image_Config;
 
    type Image_Stream is limited private;
-   function Open_Image_Stream
-     (Parent : Session; Config : Image_Config) return Image_Stream;
+   function Open_Image_Stream (Parent : Session; Config : Image_Config) return Image_Stream;
    function Is_Open (Object : Image_Stream) return Boolean;
    procedure Start (Object : in out Image_Stream);
 
@@ -70,10 +69,9 @@ package AMS.MEL.IR is
    Stream_Stopped : exception;
    --  At most one task may call Receive for a given Image_Stream at a time.
    --  Frames queued before Stop or provider failure are returned first.
-   function Receive
-     (Object : Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame;
+   function Receive (Object : Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame;
 
-   type Counter is mod 2 ** 64 with Size => 64;
+   type Counter is mod 2**64 with Size => 64;
    type Stream_Counters is record
       Frames_Received           : Counter;
       Frames_Dropped_Queue_Full : Counter;
@@ -90,8 +88,8 @@ private
       Label : US.Unbounded_String;
    end record;
    type Component_Location is record
-      X, Y, Z     : Long_Float;
-      Key_Value   : US.Unbounded_String;
+      X, Y, Z      : Long_Float;
+      Key_Value    : US.Unbounded_String;
       System_Value : US.Unbounded_String;
    end record;
    type Image_Config is record
@@ -105,5 +103,6 @@ private
    type Image_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Stream_Handle := AMS.MEL_C_API.Null_Stream;
    end record;
-   overriding procedure Finalize (Object : in out Image_Stream);
+   overriding
+   procedure Finalize (Object : in out Image_Stream);
 end AMS.MEL.IR;
