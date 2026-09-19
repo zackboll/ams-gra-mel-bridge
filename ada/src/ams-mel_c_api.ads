@@ -275,7 +275,7 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type Az_El_V1 is record
-      Azimuth_Rad, Elevation_Rad : Long_Float;
+      Azimuth_Rad, Elevation_Rad : Interfaces.C.double;
    end record
    with Convention => C;
    type IR_Line_Of_Sight_Report_V1 is record
@@ -284,7 +284,7 @@ private package AMS.MEL_C_API is
       At_Speed, In_Tolerance               : Interfaces.Unsigned_8;
       Platform_Attitude                    : Euler_V1;
       Validity_Flag_Bitfield               : Interfaces.Unsigned_32;
-      Image_Rotation_Rad                   : Long_Float;
+      Image_Rotation_Rad                   : Interfaces.C.double;
    end record
    with Convention => C;
    type IR_Line_Of_Sight_Euler_V1 is record

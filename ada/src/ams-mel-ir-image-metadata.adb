@@ -131,15 +131,16 @@ package body AMS.MEL.IR.Image.Metadata is
                         Report_Value =>
                           (System_Time_NS         => Long_Long_Integer (Value.System_Time_NS),
                            Pointing_Angle         =>
-                             (Value.Pointing_Angle.Azimuth_Rad, Value.Pointing_Angle.Elevation_Rad),
+                             (Long_Float (Value.Pointing_Angle.Azimuth_Rad),
+                              Long_Float (Value.Pointing_Angle.Elevation_Rad)),
                            Pointing_Angle_Rates   =>
-                             (Value.Pointing_Angle_Rates.Azimuth_Rad,
-                              Value.Pointing_Angle_Rates.Elevation_Rad),
+                             (Long_Float (Value.Pointing_Angle_Rates.Azimuth_Rad),
+                              Long_Float (Value.Pointing_Angle_Rates.Elevation_Rad)),
                            At_Speed               => Value.At_Speed = 1,
                            In_Tolerance           => Value.In_Tolerance = 1,
                            Platform_Attitude      => Euler (Value.Platform_Attitude),
                            Validity_Flag_Bitfield => Value.Validity_Flag_Bitfield,
-                           Image_Rotation_Rad     => Value.Image_Rotation_Rad));
+                           Image_Rotation_Rad     => Long_Float (Value.Image_Rotation_Rad)));
                   begin
                      if Value.At_Speed > 1 or else Value.In_Tolerance > 1 then
                         raise Provider_Error with "invalid LineOfSightReport Boolean";

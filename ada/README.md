@@ -20,11 +20,11 @@ owned native snapshot, deep-copies every nested value and pixel, closes the nati
 owner, and returns an Ada-owned `Full_Frame`; the existing `AMS.MEL.IR.Receive`
 remains the source-compatible Mono8 compatibility subset.
 `AMS.MEL.IR.Image.Capabilities` reuses the complete internal ChannelCapability
-> converter used by C2. `AMS.MEL.IR.Image.Metadata` owns BadPixelList,
-> LineOfSightReport, and LineOfSightEuler values from one bounded native DROP-INCOMING
-> queue and releases the native event before returning. NavigationReportResp,
-> NavigationReport send, LineOfSightQuaternion, and other optional Image metadata are not
-> implemented.
+converter used by C2. `AMS.MEL.IR.Image.Metadata` owns BadPixelList,
+LineOfSightReport, and LineOfSightEuler values from one bounded native DROP-INCOMING
+queue and releases the native event before returning. NavigationReportResp,
+NavigationReport send, LineOfSightQuaternion, and other optional Image metadata are not
+implemented.
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
 
