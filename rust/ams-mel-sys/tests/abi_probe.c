@@ -53,6 +53,14 @@ int main(void)
     ams_mel_status_t (*health_view)(const ams_mel_ir_health_metadata_event *, const ams_mel_ir_health_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_event_view;
     ams_mel_status_t (*health_event_close)(ams_mel_ir_health_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_health_metadata_event_close;
     (void)health_open; (void)health_enable; (void)health_cap; (void)health_close; (void)health_metadata_open; (void)health_receive; (void)health_counters; (void)health_metadata_close; (void)health_view; (void)health_event_close;
+    ams_mel_status_t (*image_cap)(ams_mel_ir_stream *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_stream_get_capabilities;
+    ams_mel_status_t (*image_open)(ams_mel_ir_stream *, size_t, ams_mel_ir_image_metadata **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_open;
+    ams_mel_status_t (*image_receive)(ams_mel_ir_image_metadata *, uint32_t, ams_mel_ir_image_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_receive;
+    ams_mel_status_t (*image_counters)(const ams_mel_ir_image_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_image_metadata_get_counters;
+    ams_mel_status_t (*image_close)(ams_mel_ir_image_metadata **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_close;
+    ams_mel_status_t (*image_view)(const ams_mel_ir_image_metadata_event *, const ams_mel_ir_image_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_event_view;
+    ams_mel_status_t (*image_event_close)(ams_mel_ir_image_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_event_close;
+    (void)image_cap; (void)image_open; (void)image_receive; (void)image_counters; (void)image_close; (void)image_view; (void)image_event_close;
 
     VALUE(AMS_MEL_OK); VALUE(AMS_MEL_INVALID_ARGUMENT);
     VALUE(AMS_MEL_LIBRARY_LOAD_FAILED); VALUE(AMS_MEL_SYMBOL_NOT_FOUND);
@@ -169,6 +177,7 @@ int main(void)
     FIELD(ams_mel_ir_stream_counters_v1, frames_dropped_queue_full);
     FIELD(ams_mel_ir_stream_counters_v1, malformed_or_unsupported_frames);
     VALUE(AMS_MEL_IR_C2_METADATA_COMMAND_STATUS); VALUE(AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION); VALUE(AMS_MEL_IR_C2_METADATA_BIT_STATUS);
+    VALUE(AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST); VALUE(AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN);
     VALUE(AMS_MEL_IR_COMMAND_NOT_SET); VALUE(AMS_MEL_IR_COMMAND_RECEIVED); VALUE(AMS_MEL_IR_COMMAND_ACCEPTED); VALUE(AMS_MEL_IR_COMMAND_REJECTED); VALUE(AMS_MEL_IR_COMMAND_CANCELLED);
     VALUE(AMS_MEL_IR_CANNOT_COMPLY_NOT_SET);
     VALUE(AMS_MEL_IR_CANNOT_COMPLY_CONSTRAINT_ATTEMPTS);
@@ -242,6 +251,10 @@ int main(void)
     RECORD(ams_mel_bit_status_v1, FIELD(ams_mel_bit_status_v1,active_bits); FIELD(ams_mel_bit_status_v1,completed_bits); FIELD(ams_mel_bit_status_v1,faults));
     RECORD(ams_mel_ir_c2_metadata_event_v1, FIELD(ams_mel_ir_c2_metadata_event_v1,kind); FIELD(ams_mel_ir_c2_metadata_event_v1,command_status); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_configuration); FIELD(ams_mel_ir_c2_metadata_event_v1,bit_status); FIELD(ams_mel_ir_c2_metadata_event_v1,channel_comms_test));
     RECORD(ams_mel_ir_c2_metadata_counters_v1, FIELD(ams_mel_ir_c2_metadata_counters_v1,events_received); FIELD(ams_mel_ir_c2_metadata_counters_v1,events_dropped_queue_full); FIELD(ams_mel_ir_c2_metadata_counters_v1,malformed_or_unsupported));
+    RECORD(ams_mel_ir_bad_pixel_v1, FIELD(ams_mel_ir_bad_pixel_v1,row); FIELD(ams_mel_ir_bad_pixel_v1,column); FIELD(ams_mel_ir_bad_pixel_v1,reason));
+    RECORD(ams_mel_ir_bad_pixel_span_v1, FIELD(ams_mel_ir_bad_pixel_span_v1,data); FIELD(ams_mel_ir_bad_pixel_span_v1,size));
+    RECORD(ams_mel_ir_bad_pixel_list_v1, FIELD(ams_mel_ir_bad_pixel_list_v1,reported_size); FIELD(ams_mel_ir_bad_pixel_list_v1,reported_count); FIELD(ams_mel_ir_bad_pixel_list_v1,pixels));
+    RECORD(ams_mel_ir_image_metadata_event_v1, FIELD(ams_mel_ir_image_metadata_event_v1,kind); FIELD(ams_mel_ir_image_metadata_event_v1,bad_pixel_list));
     RECORD(ams_mel_ir_channel_comms_test_report_v1, FIELD(ams_mel_ir_channel_comms_test_report_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_report_v1,request_id));
     RECORD(ams_mel_ir_channel_comms_test_request_v1, FIELD(ams_mel_ir_channel_comms_test_request_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,channel_id); FIELD(ams_mel_ir_channel_comms_test_request_v1,request_id));
     RECORD(ams_mel_ir_channel_comms_test_result_v1, FIELD(ams_mel_ir_channel_comms_test_result_v1,command_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,request_id); FIELD(ams_mel_ir_channel_comms_test_result_v1,error_code));
@@ -271,6 +284,7 @@ int main(void)
     RECORD(ams_mel_security_audit_record_v1, FIELD(ams_mel_security_audit_record_v1,security_event_id); FIELD(ams_mel_security_audit_record_v1,event_timestamp_ns); FIELD(ams_mel_security_audit_record_v1,subsystem_id); FIELD(ams_mel_security_audit_record_v1,artifacts); FIELD(ams_mel_security_audit_record_v1,event); FIELD(ams_mel_security_audit_record_v1,outcome); FIELD(ams_mel_security_audit_record_v1,severity));
     RECORD(ams_mel_ir_health_metadata_event_v1, FIELD(ams_mel_ir_health_metadata_event_v1,kind); FIELD(ams_mel_ir_health_metadata_event_v1,mfa_status); FIELD(ams_mel_ir_health_metadata_event_v1,bit_status); FIELD(ams_mel_ir_health_metadata_event_v1,subsystem_status); FIELD(ams_mel_ir_health_metadata_event_v1,discrete_status); FIELD(ams_mel_ir_health_metadata_event_v1,security_audit); FIELD(ams_mel_ir_health_metadata_event_v1,mfa_status_detailed));
     LAYOUT(ams_mel_ir_c2_metadata *); LAYOUT(ams_mel_ir_c2_metadata_event *);
+    LAYOUT(ams_mel_ir_image_metadata *); LAYOUT(ams_mel_ir_image_metadata_event *);
     LAYOUT(ams_mel_ir_channel_comms_request *); LAYOUT(ams_mel_ir_channel_capability *);
     LAYOUT(ams_mel_ir_health *); LAYOUT(ams_mel_ir_health_metadata *); LAYOUT(ams_mel_ir_health_metadata_event *);
 

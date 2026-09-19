@@ -1,5 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
+#include "internal/ir_channel.hpp"
+#include "internal/ir_stream.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
@@ -23,8 +25,6 @@
 
 namespace {
 using namespace ams::iface;
-using BufferFactory = std::shared_ptr<irmel::Buffer> (*)(
-    std::string_view, std::shared_ptr<API_Manager>);
 
 void diagnostic(std::string_view text, char *out, std::size_t capacity,
                 std::size_t *required) noexcept
@@ -200,6 +200,10 @@ QueuedFrame copy_frame(const irmel::FrameHeader& header, const std::uint8_t *pix
     return frame;
 }
 
+} // namespace
+
+using namespace ams::iface;
+
 enum class Lifecycle {
     Attached,
     Starting,
@@ -323,6 +327,23 @@ struct CallbackState {
     }
 };
 
+bool claim_image_metadata(
+    ams_mel_ir_stream& stream,
+    const std::shared_ptr<ImageMetadataState>& state,
+    std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
+{
+    std::lock_guard lock{stream.callback->mutex};
+    if (!stream.image_channel || stream.callback->lifecycle == Lifecycle::Stopping ||
+        stream.callback->lifecycle == Lifecycle::Stopped ||
+        stream.callback->lifecycle == Lifecycle::Failed ||
+        stream.image_metadata_attempted)
+        return false;
+    stream.image_metadata_attempted = true;
+    stream.image_metadata = state;
+    image_channel = stream.image_channel;
+    return true;
+}
+
 class Listener final : public irmel::ImageListener {
 public:
     explicit Listener(std::shared_ptr<CallbackState> state) : state_{std::move(state)} {}
@@ -343,22 +364,6 @@ public:
     }
 private:
     std::shared_ptr<CallbackState> state_;
-};
-} // namespace
-
-struct ams_mel_ir_stream {
-    std::shared_ptr<SessionState> session;
-    std::shared_ptr<CallbackState> callback;
-    std::shared_ptr<Listener> listener;
-    std::shared_ptr<ams::iface::irmel::Channel> channel;
-    std::shared_ptr<ams::iface::irmel::ImageChannel> image_channel;
-    BufferFactory buffer_factory{};
-    std::string instance;
-    std::size_t buffer_count{};
-    std::size_t buffer_size{};
-    std::vector<std::vector<std::uint8_t>> storage;
-    std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> buffers;
-    bool enable_attempted{false};
 };
 
 struct ams_mel_ir_frame_snapshot {
@@ -414,6 +419,8 @@ ams_mel_status_t teardown(ams_mel_ir_stream& stream, bool failed, char *out,
             stream.image_channel.reset();
             stream.channel.reset();
         }
+
+        image_metadata_stream_stopped(stream.image_metadata);
 
         std::size_t in_flight = stream.callback->callbacks_in_flight.load(
             std::memory_order_acquire);
@@ -748,6 +755,32 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_get_counters(
     } catch (...) {
         diagnostic("counter query failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_stream_get_capabilities(
+    ams_mel_ir_stream *stream, ams_mel_ir_channel_capability **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!stream || !output || *output || (!out && capacity != 0U))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::shared_ptr<irmel::ImageChannel> image_channel;
+        {
+            std::lock_guard lock{stream->callback->mutex};
+            if (!stream->image_channel ||
+                stream->callback->lifecycle == Lifecycle::Stopping ||
+                stream->callback->lifecycle == Lifecycle::Stopped ||
+                stream->callback->lifecycle == Lifecycle::Failed)
+                return AMS_MEL_PROVIDER_FAILED;
+            image_channel = stream->image_channel;
+        }
+        return ams_mel::internal::snapshot_capability(*image_channel, output,
+                                                       out, capacity, required);
+    } catch (...) {
+        diagnostic("Image capability query failed", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }
 

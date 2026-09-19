@@ -155,11 +155,22 @@ irmel::ChannelCapability rich_channel_capability()
     return value;
 }
 
+irmel::BadPixelList rich_bad_pixels(std::uint32_t base = 0U)
+{
+    std::vector<irmel::BadPixel> pixels;
+    pixels.emplace_back(1U + base, UINT32_C(0x80000001), irmel::BadPixelReason::Unknown);
+    pixels.emplace_back(UINT32_C(0xf0000002), 17U + base, irmel::BadPixelReason::Unknown);
+    pixels.emplace_back(123U + base, 456U, irmel::BadPixelReason::Unknown);
+    return {UINT32_C(0xa5a50001), UINT32_C(0x5a5a0003), pixels};
+}
+
 struct CallbackBarrier {
     std::mutex mutex;
     std::condition_variable ready;
     bool callback_inside{false};
     bool disable_called{false};
+    bool capability_called{false};
+    bool callback_returned{false};
 };
 std::shared_ptr<CallbackBarrier> callback_barrier = std::make_shared<CallbackBarrier>();
 
@@ -288,12 +299,18 @@ public:
     ~MockImageChannel() override
     {
         stopping_ = true;
+        if (scenario_ == "image-metadata-nonquiescing") {
+            const char *base = std::getenv("AMS_MEL_TEST_IMAGE_METADATA_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
         {
             std::lock_guard lock{barrier_->mutex};
             barrier_->disable_called = true;
             barrier_->ready.notify_all();
         }
         if (producer_.joinable()) producer_.join();
+        if (metadata_producer_.joinable()) metadata_producer_.join();
         record("callbacks_quiesced_by_channel_destruction");
         buffers_.clear();
         record("channel_destroyed");
@@ -348,8 +365,23 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
+        if (scenario_ == "capability-inflight" && capability_calls_++ != 0U) {
+            std::unique_lock lock{barrier_->mutex};
+            barrier_->capability_called = true;
+            barrier_->ready.notify_all();
+            barrier_->ready.wait(lock, [this] { return barrier_->callback_returned; });
+        }
         if (scenario_ == "capability-throw")
             throw std::runtime_error("mock capability exception");
+        if (scenario_ == "image-capability-rich") {
+            irmel::ChannelCapability capability;
+            capability.setHeight(200U); capability.setWidth(320U); capability.setBitDepth(8U);
+            capability.setNumberOfBands(1U); capability.setFormat(irmel::PixelFormat::Mono);
+            capability.setChannelTypes({irmel::ChannelType::IRSTImage});
+            capability.setChannelMetadataCapabilities(
+                {irmel::ChannelMetadataCapabilityType::BadPixelList});
+            return capability;
+        }
         irmel::ChannelCapability capability;
         capability.setFormat(scenario_ == "capability-format" ?
                              irmel::PixelFormat::RGB : irmel::PixelFormat::Mono);
@@ -359,7 +391,51 @@ public:
     }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
     { return Return::NotSupported; }
-    UNSUPPORTED_CALLBACK(irmel::BadPixelList)
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> callback) override
+    {
+        ++bad_pixel_registration_count_;
+        record("bad_pixel_registration_attempted");
+        bad_pixel_callback_ = std::move(callback);
+        if (scenario_ == "image-metadata-register-blocked") {
+            const char *base = std::getenv("AMS_MEL_TEST_IMAGE_METADATA_REGISTER_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".entered");
+            wait_for_file(std::string{base} + ".release");
+        }
+        if (scenario_ == "image-metadata-register-fail") return Return::Fail;
+        if (scenario_ == "image-metadata-register-not-supported") return Return::NotSupported;
+        if (scenario_ == "image-metadata-register-throw")
+            throw std::runtime_error("BadPixel registration exception");
+        if (scenario_ == "image-metadata-sync" || scenario_ == "image-metadata-rich") {
+            auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
+        } else if (scenario_ == "image-metadata-malformed") {
+            std::vector<irmel::BadPixel> invalid;
+            invalid.emplace_back(1U, 2U, static_cast<irmel::BadPixelReason>(99U));
+            irmel::BadPixelList bad{1U, 1U, invalid}; bad_pixel_callback_(*this, &bad);
+            auto valid = rich_bad_pixels(); bad_pixel_callback_(*this, &valid);
+        } else if (scenario_ == "image-metadata-overflow") {
+            for (std::uint32_t i = 0; i < 5U; ++i) {
+                auto value = rich_bad_pixels(i); bad_pixel_callback_(*this, &value);
+            }
+        } else if (scenario_ == "image-metadata-allocation") {
+            auto failed = rich_bad_pixels(); bad_pixel_callback_(*this, &failed);
+            auto valid = rich_bad_pixels(9U); bad_pixel_callback_(*this, &valid);
+        } else if (scenario_ == "image-metadata-nonquiescing") {
+            metadata_producer_ = std::thread{[this] {
+                const char *base = std::getenv("AMS_MEL_TEST_IMAGE_METADATA_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                record("image_metadata_callback_entered");
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+                auto value = rich_bad_pixels();
+                bad_pixel_callback_(*this, &value);
+                record("image_metadata_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
     UNSUPPORTED_CALLBACK(irmel::OpticalDistortionMap)
     UNSUPPORTED_CALLBACK(irmel::LineOfSightReport)
     UNSUPPORTED_CALLBACK(irmel::LineOfSightQuaternion)
@@ -414,6 +490,10 @@ private:
             if (id == 1U && scenario_ == "frame-copy-allocation")
                 (void)setenv("AMS_MEL_TEST_FRAME_COPY_FAILURE", "allocation", 1);
             record("callback_entered");
+            if (scenario_ == "capability-inflight") {
+                std::unique_lock lock{barrier_->mutex};
+                barrier_->ready.wait(lock, [this] { return barrier_->capability_called; });
+            }
             if (scenario_ == "shutdown-callback")
                 std::this_thread::sleep_for(std::chrono::milliseconds{20});
             if (scenario_ == "null-buffer") listener_->onImage(*this, header, {});
@@ -423,6 +503,11 @@ private:
                 listener_->onImage(*this, header, buffer);
             }
             record("callback_returned");
+            if (scenario_ == "capability-inflight") {
+                std::lock_guard lock{barrier_->mutex};
+                barrier_->callback_returned = true;
+                barrier_->ready.notify_all();
+            }
             if (scenario_ == "shutdown-callback" && stopping_) break;
             if (scenario_ != "overflow") {
                 std::this_thread::sleep_for(std::chrono::milliseconds{2});
@@ -434,7 +519,11 @@ private:
     std::vector<std::shared_ptr<irmel::Buffer>> buffers_;
     std::atomic<bool> stopping_{false};
     std::thread producer_;
+    std::thread metadata_producer_;
     std::shared_ptr<CallbackBarrier> barrier_;
+    mutable unsigned capability_calls_{};
+    unsigned bad_pixel_registration_count_{};
+    std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> bad_pixel_callback_;
 };
 #undef UNSUPPORTED_CALLBACK
 

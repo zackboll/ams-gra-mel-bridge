@@ -7,10 +7,17 @@ AMS_MEL_0.1 {
         ams_mel_ir_stream_open;
         ams_mel_ir_stream_start;
         ams_mel_ir_stream_receive;
+        ams_mel_ir_stream_get_capabilities;
         ams_mel_ir_stream_receive_snapshot;
         ams_mel_ir_frame_snapshot_view;
         ams_mel_ir_frame_snapshot_close;
         ams_mel_ir_stream_get_counters;
+        ams_mel_ir_image_metadata_open;
+        ams_mel_ir_image_metadata_receive;
+        ams_mel_ir_image_metadata_get_counters;
+        ams_mel_ir_image_metadata_close;
+        ams_mel_ir_image_metadata_event_view;
+        ams_mel_ir_image_metadata_event_close;
         ams_mel_ir_stream_stop;
         ams_mel_ir_stream_close;
         ams_mel_ir_c2_open;

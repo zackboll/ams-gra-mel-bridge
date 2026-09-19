@@ -19,6 +19,11 @@ Scheduling, and all other MEL families remain future work.
 owned native snapshot, deep-copies every nested value and pixel, closes the native
 owner, and returns an Ada-owned `Full_Frame`; the existing `AMS.MEL.IR.Receive`
 remains the source-compatible Mono8 compatibility subset.
+`AMS.MEL.IR.Image.Capabilities` reuses the complete internal ChannelCapability
+converter used by C2. `AMS.MEL.IR.Image.Metadata` adds only BadPixelList: it opens a
+bounded native DROP-INCOMING queue, copies reported size/count and ordered pixels into
+Ada-owned values, and releases the native event before returning. Line-of-sight and
+NavigationReport metadata are not implemented.
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
 

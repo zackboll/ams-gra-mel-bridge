@@ -485,6 +485,29 @@ pub struct AmsMelIrC2MetadataEventV1 {
     pub bit_status: AmsMelBitStatusV1,
     pub channel_comms_test: AmsMelIrChannelCommsTestReportV1,
 }
+pub const AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST: u32 = 1;
+pub const AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN: u32 = 0;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrBadPixelV1 {
+    pub row: u32,
+    pub column: u32,
+    pub reason: u32,
+}
+span!(AmsMelIrBadPixelSpanV1, AmsMelIrBadPixelV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrBadPixelListV1 {
+    pub reported_size: u32,
+    pub reported_count: u32,
+    pub pixels: AmsMelIrBadPixelSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrImageMetadataEventV1 {
+    pub kind: u32,
+    pub bad_pixel_list: AmsMelIrBadPixelListV1,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrC2MetadataCountersV1 {
@@ -949,6 +972,16 @@ pub struct AmsMelIrHealthMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelIrImageMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrImageMetadataEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 
 extern "C" {
     pub fn ams_mel_get_abi_version(out_version: *mut AmsMelAbiVersionV1) -> AmsMelStatus;
@@ -998,6 +1031,55 @@ extern "C" {
         stream: *mut AmsMelIrStream,
         timeout_ms: u32,
         out_frame: *mut AmsMelIrFrameV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stream_get_capabilities(
+        stream: *mut AmsMelIrStream,
+        out: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_open(
+        stream: *mut AmsMelIrStream,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrImageMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_receive(
+        metadata: *mut AmsMelIrImageMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrImageMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_get_counters(
+        metadata: *const AmsMelIrImageMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_close(
+        metadata: *mut *mut AmsMelIrImageMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_event_view(
+        event: *const AmsMelIrImageMetadataEvent,
+        out: *mut *const AmsMelIrImageMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_metadata_event_close(
+        event: *mut *mut AmsMelIrImageMetadataEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

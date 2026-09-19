@@ -1,7 +1,7 @@
 with Ada.Unchecked_Conversion;
+with AMS.MEL.IR.Capability_Conversion;
 with Interfaces.C;
 with System;
-with System.Storage_Elements;
 
 package body AMS.MEL.IR.C2.Common is
    package C renames AMS.MEL_C_API;
@@ -10,7 +10,6 @@ package body AMS.MEL.IR.C2.Common is
    use type Interfaces.C.char;
    use type Interfaces.C.size_t;
    use type Interfaces.Unsigned_32;
-   use System.Storage_Elements;
    type Diagnostic_Array is array (C.Size_T range <>) of aliased Interfaces.C.char
    with Convention => C;
    subtype Diagnostic is Diagnostic_Array (0 .. 1023);
@@ -29,41 +28,8 @@ package body AMS.MEL.IR.C2.Common is
          return (if N = 0 then "native common Channel operation failed" else S);
       end;
    end Message;
-   function Address_At (Base : System.Address; Index, Bytes : Natural) return System.Address
-   is (Base + Storage_Offset (Index * Bytes));
-   type U32_Access is access all Interfaces.Unsigned_32;
    type Cap_Access is access all C.IR_Channel_Capability_V1;
-   type Band_Access is access all C.IR_Image_Band_V1;
-   type Info_Access is access all C.IR_Band_Info_V1;
-   type Char_Access is access all Interfaces.C.char;
-   function To_U32 is new Ada.Unchecked_Conversion (System.Address, U32_Access);
    function To_Cap is new Ada.Unchecked_Conversion (System.Address, Cap_Access);
-   function To_Band is new Ada.Unchecked_Conversion (System.Address, Band_Access);
-   function To_Info is new Ada.Unchecked_Conversion (System.Address, Info_Access);
-   function To_Char is new Ada.Unchecked_Conversion (System.Address, Char_Access);
-   function Copy (S : C.String_View_V1) return String is
-   begin
-      if S.Size = 0 then
-         return "";
-      end if;
-      declare
-         R : String (1 .. Natural (S.Size));
-      begin
-         for I in R'Range loop
-            R (I) :=
-              Character'Val (Interfaces.C.char'Pos (To_Char (Address_At (S.Data, I - 1, 1)).all));
-         end loop;
-         return R;
-      end;
-   end Copy;
-   function Copy (ID : C.UCI_ID_V1) return UCI_ID is
-      B : UUID;
-   begin
-      for I in B'Range loop
-         B (I) := ID.UUID (I);
-      end loop;
-      return Create_UCI_ID (B, Copy (ID.Descriptive_Label));
-   end Copy;
 
    function Send_Keep_Alive (Channel : Control_Channel) return Return_Request is
       D : aliased Diagnostic := [others => Interfaces.C.nul];
@@ -214,92 +180,10 @@ package body AMS.MEL.IR.C2.Common is
          Release;
          raise Provider_Error with Message (D);
       end if;
-      declare
-         Raw      : constant Cap_Access := To_Cap (Address);
-         Sensors  : V.Sensor_Type_Vectors.Vector;
-         Channels : V.Channel_Type_Vectors.Vector;
-         Metadata : V.Metadata_Vectors.Vector;
-         Bands    : V.Image_Band_Vectors.Vector;
-         Frames   : V.Coordinate_Vectors.Vector;
       begin
-         if Raw.Sensor_Types.Size > 0 then
-            for I in 0 .. Natural (Raw.Sensor_Types.Size) - 1 loop
-               Sensors.Append
-                 (V.Sensor_Type'Val (To_U32 (Address_At (Raw.Sensor_Types.Data, I, 4)).all));
-            end loop;
-         end if;
-         if Raw.Channel_Types.Size > 0 then
-            for I in 0 .. Natural (Raw.Channel_Types.Size) - 1 loop
-               Channels.Append
-                 (V.Channel_Type'Val (To_U32 (Address_At (Raw.Channel_Types.Data, I, 4)).all));
-            end loop;
-         end if;
-         if Raw.Metadata_Capabilities.Size > 0 then
-            for I in 0 .. Natural (Raw.Metadata_Capabilities.Size) - 1 loop
-               Metadata.Append
-                 (V.Metadata_Capability'Val
-                    (To_U32 (Address_At (Raw.Metadata_Capabilities.Data, I, 4)).all));
-            end loop;
-         end if;
-         if Raw.Image_Bands.Size > 0 then
-            for I in 0 .. Natural (Raw.Image_Bands.Size) - 1 loop
-               declare
-                  B     : constant Band_Access :=
-                    To_Band (Address_At (Raw.Image_Bands.Data, I, C.IR_Image_Band_V1'Size / 8));
-                  Infos : V.Band_Info_Vectors.Vector;
-               begin
-                  if B.Bands.Size > 0 then
-                     for J in 0 .. Natural (B.Bands.Size) - 1 loop
-                        declare
-                           X : constant Info_Access :=
-                             To_Info (Address_At (B.Bands.Data, J, C.IR_Band_Info_V1'Size / 8));
-                        begin
-                           Infos.Append
-                             (V.Band_Info'
-                                (V.Band_Type'Val (X.Kind),
-                                 Long_Float (X.Min_Wavelength_M),
-                                 Long_Float (X.Max_Wavelength_M)));
-                        end;
-                     end loop;
-                  end if;
-                  Bands.Append (V.Image_Band'(B.Band_Index, Infos));
-               end;
-            end loop;
-         end if;
-         if Raw.Nav_Frames.Size > 0 then
-            for I in 0 .. Natural (Raw.Nav_Frames.Size) - 1 loop
-               Frames.Append
-                 (V.Coordinate_System_Type'Val
-                    (To_U32 (Address_At (Raw.Nav_Frames.Data, I, 4)).all));
-            end loop;
-         end if;
          declare
             Result : constant V.Channel_Capability :=
-              V.Create_Capability
-                (Copy (Raw.Channel_ID),
-                 Raw.Height,
-                 Raw.Width,
-                 Raw.Bit_Depth,
-                 Raw.Row_Pitch,
-                 Raw.Buffer_Size,
-                 Raw.Image_Size,
-                 Raw.Number_Of_Bands,
-                 V.Pixel_Format'Val (Raw.Pixel_Format),
-                 Sensors,
-                 Copy (Raw.Platform_ID),
-                 Create_Component_Location
-                   (Long_Float (Raw.Sensor_Location.Offset_X_M),
-                    Long_Float (Raw.Sensor_Location.Offset_Y_M),
-                    Long_Float (Raw.Sensor_Location.Offset_Z_M),
-                    Copy (Raw.Sensor_Location.Key),
-                    Copy (Raw.Sensor_Location.System_Name)),
-                 Channels,
-                 Raw.Task_Schedule_Depth,
-                 Raw.ODC_Available = 1,
-                 Raw.NUC_Available = 1,
-                 Metadata,
-                 Bands,
-                 Frames);
+              Capability_Conversion.To_Channel_Capability (To_Cap (Address).all);
          begin
             Release;
             return Result;

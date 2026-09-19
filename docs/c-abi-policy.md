@@ -256,3 +256,22 @@ probe does not consume the head. Snapshot nested pointers borrow only adapter-ow
 storage and remain valid until snapshot close, including after stream, Session, and
 provider unload. Full flags retain provider vector order and duplicates; each nav
 orientation has an independent discriminator.
+
+## Task 024 Image capability and BadPixel metadata contract
+
+ABI 0.1 grows from 49 to exactly 56 functions: one Image stream capability getter
+and six Image metadata owner/event operations. The existing fixed
+`ams_mel_ir_frame_v1`, legacy receive, and full-frame snapshot signatures are unchanged.
+
+The Image capability operation reuses the complete immutable ChannelCapability
+snapshot and remains valid after stream/Session/provider teardown. BadPixelList is
+the sole Image metadata kind: reported size, reported count, actual ordered pixel
+count, uint32 row/column values, and validated reason are preserved independently.
+The callback-ready bounded FIFO uses DROP-INCOMING and saturating received/dropped/
+malformed counters. Registration is one-shot and may invoke synchronously.
+
+Metadata close is idempotent and nonblocking and does not assume unregister or callback
+quiescence. Callback state remains attached to the Image stream until provider channel
+destruction. Each received immutable event owns its complete graph and remains valid
+after metadata, stream, Session, and provider teardown. Line-of-sight and navigation
+metadata and requests are outside this contract.

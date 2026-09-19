@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add ImageChannel capability access and the first Image metadata vertical slice:
+  bounded DROP-INCOMING BadPixelList callbacks with complete owned C and Ada values,
+  synchronous-registration safety, malformed/allocation recovery, and teardown-safe
+  event lifetime. The raw Rust/private Python ABI now tracks all 56 exports; no safe
+  Rust or public Python metadata API is added.
 - Add an additive owned full `FrameHeader` snapshot (`receive_snapshot`/view/close)
   while preserving legacy `ams_mel_ir_frame_v1` and `ams_mel_ir_stream_receive`.
   One bounded FIFO serves both receives.  Native C and safe Ada preserve complete

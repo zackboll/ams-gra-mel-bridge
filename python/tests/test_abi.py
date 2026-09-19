@@ -26,6 +26,13 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_stream_open",
                 "ams_mel_ir_stream_start",
                 "ams_mel_ir_stream_receive",
+                "ams_mel_ir_stream_get_capabilities",
+                "ams_mel_ir_image_metadata_open",
+                "ams_mel_ir_image_metadata_receive",
+                "ams_mel_ir_image_metadata_get_counters",
+                "ams_mel_ir_image_metadata_close",
+                "ams_mel_ir_image_metadata_event_view",
+                "ams_mel_ir_image_metadata_event_close",
                 "ams_mel_ir_stream_receive_snapshot",
                 "ams_mel_ir_frame_snapshot_view",
                 "ams_mel_ir_frame_snapshot_close",
@@ -70,7 +77,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_health_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 49)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 56)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -255,6 +262,8 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_IR_C2_METADATA_COMMAND_STATUS,
             _native.AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION,
             _native.AMS_MEL_IR_C2_METADATA_BIT_STATUS,
+            _native.AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST,
+            _native.AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN,
             _native.AMS_MEL_IR_COMMAND_NOT_SET,
             _native.AMS_MEL_IR_COMMAND_RECEIVED,
             _native.AMS_MEL_IR_COMMAND_ACCEPTED,
@@ -346,6 +355,10 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.BitStatusV1, 'active_bits', 'completed_bits', 'faults'))
         expected.extend(self._layout(_native.IrC2MetadataEventV1, 'kind', 'command_status', 'bit_configuration', 'bit_status', 'channel_comms_test'))
         expected.extend(self._layout(_native.IrC2MetadataCountersV1, 'events_received', 'events_dropped_queue_full', 'malformed_or_unsupported'))
+        expected.extend(self._layout(_native.IrBadPixelV1, 'row', 'column', 'reason'))
+        expected.extend(self._layout(_native.IrBadPixelSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrBadPixelListV1, 'reported_size', 'reported_count', 'pixels'))
+        expected.extend(self._layout(_native.IrImageMetadataEventV1, 'kind', 'bad_pixel_list'))
         expected.extend(self._layout(_native.IrChannelCommsTestReportV1, 'command_id', 'request_id'))
         expected.extend(self._layout(_native.IrChannelCommsTestRequestV1, 'command_id', 'channel_id', 'request_id'))
         expected.extend(self._layout(_native.IrChannelCommsTestResultV1, 'command_id', 'request_id', 'error_code'))
@@ -378,6 +391,8 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.IrHealthMetadataEventV1, 'kind', 'mfa_status', 'bit_status', 'subsystem_status', 'discrete_status', 'security_audit', 'mfa_status_detailed'))
         expected.extend([ctypes.sizeof(_native.IrC2MetadataHandle), ctypes.alignment(_native.IrC2MetadataHandle)])
         expected.extend([ctypes.sizeof(_native.IrC2MetadataEventHandle), ctypes.alignment(_native.IrC2MetadataEventHandle)])
+        expected.extend([ctypes.sizeof(_native.IrImageMetadataHandle), ctypes.alignment(_native.IrImageMetadataHandle)])
+        expected.extend([ctypes.sizeof(_native.IrImageMetadataEventHandle), ctypes.alignment(_native.IrImageMetadataEventHandle)])
         expected.extend([ctypes.sizeof(_native.IrChannelCommsRequestHandle), ctypes.alignment(_native.IrChannelCommsRequestHandle)])
         expected.extend([ctypes.sizeof(_native.IrChannelCapabilityHandle), ctypes.alignment(_native.IrChannelCapabilityHandle)])
         expected.extend([ctypes.sizeof(_native.IrHealthHandle), ctypes.alignment(_native.IrHealthHandle)])

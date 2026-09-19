@@ -119,6 +119,26 @@ static int test_success(void)
     return EXIT_SUCCESS;
 }
 
+static int test_capability_snapshot_lifetime(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_channel_capability *owner = NULL;
+    const ams_mel_ir_channel_capability_v1 *value = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("image-capability-rich", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_get_capabilities(stream, &owner, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_view(owner, &value, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(value->height == 200U && value->width == 320U &&
+          value->metadata_capabilities.size == 1U &&
+          value->metadata_capabilities.data[0] == AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(value->height == 200U && value->metadata_capabilities.data[0] ==
+          AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
 static int test_snapshot_fifo_and_lifetime(void)
 {
     ams_mel_session *session = NULL;
@@ -336,6 +356,41 @@ struct receiver_arguments {
     ams_mel_status_t status;
 };
 
+struct capability_arguments {
+    ams_mel_ir_stream *stream;
+    ams_mel_ir_channel_capability *capability;
+    ams_mel_status_t status;
+};
+
+static int capability_query(void *argument)
+{
+    struct capability_arguments *args = argument;
+    args->status = ams_mel_ir_stream_get_capabilities(
+        args->stream, &args->capability, NULL, 0, NULL);
+    return 0;
+}
+
+static int test_capability_during_inflight_callback(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct capability_arguments args = {0};
+    thrd_t query;
+    CHECK(open_stream("capability-inflight", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    args.stream = stream;
+    args.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(thrd_create(&query, capability_query, &args) == thrd_success);
+    CHECK(thrd_join(query, NULL) == thrd_success);
+    CHECK(args.status == AMS_MEL_OK);
+    CHECK(args.capability != NULL);
+    CHECK(ams_mel_ir_channel_capability_close(&args.capability, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
 static int blocked_receiver(void *argument)
 {
     struct receiver_arguments *args = argument;
@@ -513,6 +568,7 @@ int main(void)
         "unsupported-bpp", "unsupported-bands", "unsupported-format"};
     CHECK(test_arguments() == EXIT_SUCCESS);
     CHECK(test_success() == EXIT_SUCCESS);
+    CHECK(test_capability_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
     CHECK(test_full_snapshot_rich() == EXIT_SUCCESS);
     CHECK(test_rich_snapshot_lifetime() == EXIT_SUCCESS);
@@ -537,6 +593,7 @@ int main(void)
     CHECK(test_capability_failure("capability-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_shutdown_callback() == EXIT_SUCCESS);
     CHECK(test_nonquiescing_disable() == EXIT_SUCCESS);
+    CHECK(test_capability_during_inflight_callback() == EXIT_SUCCESS);
     CHECK(test_concurrent_receive_stop() == EXIT_SUCCESS);
     CHECK(test_cleanup_failure("disable-fail") == EXIT_SUCCESS);
     CHECK(test_cleanup_failure("detach-fail") == EXIT_SUCCESS);
