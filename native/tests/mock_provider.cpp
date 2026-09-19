@@ -43,6 +43,48 @@ mel::UCI_ID metadata_id(std::uint8_t seed, std::string label)
     return {uuid, std::move(label)};
 }
 
+irmel::FrameHeader rich_frame_header()
+{
+    mel::ForeignKey key{"face-\xCE\xB1", "system-\xE2\x82\xAC"};
+    mel::ComponentLocation location{1.25, -2.5, 3.75, key};
+    irmel::SensorInertialState first;
+    first.setSystemTime(std::chrono::nanoseconds{-101});
+    first.setQ_xyzw(irmel::Quaternion{1.0, 2.0, 3.0, 4.0});
+    first.setQECEF_xyzw(irmel::Quaternion{5.0, 6.0, 7.0, 8.0});
+    first.setSensorPosition(irmel::IR_Directional{9.0, 10.0, 11.0});
+    first.setSensorVelocity(irmel::IR_Directional{12.0, 13.0, 14.0});
+    first.setUncertainties(irmel::Uncertainty{0x81234567U, 0xfedcba98U});
+    irmel::SensorInertialState second;
+    second.setSystemTime(std::chrono::nanoseconds{202});
+    second.setQ_xyzw(irmel::Quaternion{15.0, 16.0, 17.0, 18.0});
+    second.setQECEF_xyzw(irmel::Quaternion{19.0, 20.0, 21.0, 22.0});
+    second.setSensorPosition(irmel::IR_Directional{23.0, 24.0, 25.0});
+    second.setSensorVelocity(irmel::IR_Directional{26.0, 27.0, 28.0});
+    second.setUncertainties(irmel::Uncertainty{29U, 30U});
+    irmel::SensorNavState nav;
+    nav.setPosition(irmel::IR_Directional{31.0, 32.0, 33.0}); nav.setPositionError({34,35,36,37});
+    nav.setVelocity(irmel::IR_Directional{38.0,39.0,40.0}); nav.setVelocityError({41,42,43,44});
+    nav.setAccel(irmel::IR_Directional{45.0,46.0,47.0}); nav.setAccelError({48,49,50,51});
+    nav.setEulerOrientation(mel::Euler{52,53,54}); nav.setOrientationError({55,56,57,58});
+    nav.setQuaternionOrientationVel(irmel::Quaternion{59,60,61,62}); nav.setOrientationVelError({63,64,65,66});
+    nav.setEulerOrientationAccel(mel::Euler{67,68,69}); nav.setOrientationAccelError({70,71,72,73});
+    nav.setCoordinateSystem(irmel::CoordinateSystemType::NED_PLATFORM);
+    irmel::SensorNavState nav2;
+    nav2.setPosition(irmel::IR_Directional{74,75,76}); nav2.setPositionError({77,78,79,80});
+    nav2.setVelocity(irmel::IR_Directional{81,82,83}); nav2.setVelocityError({84,85,86,87});
+    nav2.setAccel(irmel::IR_Directional{88,89,90}); nav2.setAccelError({91,92,93,94});
+    nav2.setQuaternionOrientation(irmel::Quaternion{95,96,97,98}); nav2.setOrientationError({99,100,101,102});
+    nav2.setEulerOrientationVel(mel::Euler{103,104,105}); nav2.setOrientationVelError({106,107,108,109});
+    nav2.setQuaternionOrientationAccel(irmel::Quaternion{110,111,112,113}); nav2.setOrientationAccelError({114,115,116,117});
+    nav2.setCoordinateSystem(irmel::CoordinateSystemType::NED_SENSOR);
+    return {std::chrono::nanoseconds{-123456789}, std::chrono::nanoseconds{987654321},
+        4U, 3U, 8U, 1U, 1.25, 2.5, {location, 0xf1234567U}, irmel::PixelFormat::Mono,
+        0xfedcba98U, 17U, 19U, irmel::ImageType::Reserved13, irmel::ImageFlip::Both,
+        {irmel::ImageFlag::StareSnapshot, irmel::ImageFlag::ScanFirst,
+         irmel::ImageFlag::StareSnapshot, irmel::ImageFlag::ScanLast},
+        -0.75, 0.625, 23U, 29U, {first, second}, {nav, nav2}, 31U};
+}
+
 mel::BIT_Configuration rich_bit_configuration()
 {
     return mel::BIT_Configuration{{
@@ -342,6 +384,8 @@ private:
             if (!buffer || buffer->size() < 12U) break;
             for (std::size_t i = 0; i < 12U; ++i)
                 buffer->data()[i] = static_cast<unsigned char>(id * 16U + i);
+            if (scenario_ == "full-frame-rich")
+                for (std::size_t i = 0; i < 12U; ++i) buffer->data()[i] = static_cast<unsigned char>(0xa0U + i);
             std::uint32_t width = 4U, height = 3U, bpp = 8U, bands = 1U;
             auto format = irmel::PixelFormat::Mono;
             if (scenario_ == "invalid-dimensions") width = 0U;
@@ -355,6 +399,20 @@ private:
                 0.25, 0.125, {}, format, id, 2U, 4U, irmel::ImageType::Staring,
                 irmel::ImageFlip::Horizontal, {irmel::ImageFlag::StareSnapshot},
                 0.5, -0.25, 7U, 9U, {}, {}, 3U};
+            if (scenario_ == "full-frame-rich") header = rich_frame_header();
+            if (id == 1U && scenario_ == "malformed-image-type")
+                header.setImageType(static_cast<irmel::ImageType>(99U));
+            if (id == 1U && scenario_ == "malformed-image-flip")
+                header.setImageFlip(static_cast<irmel::ImageFlip>(99U));
+            if (id == 1U && scenario_ == "malformed-image-flag")
+                header.setFlags({static_cast<irmel::ImageFlag>(99U)});
+            if (id == 1U && scenario_ == "malformed-coordinate") {
+                irmel::SensorNavState bad;
+                bad.setCoordinateSystem(static_cast<irmel::CoordinateSystemType>(99U));
+                header.setSensorNavState({bad});
+            }
+            if (id == 1U && scenario_ == "frame-copy-allocation")
+                (void)setenv("AMS_MEL_TEST_FRAME_COPY_FAILURE", "allocation", 1);
             record("callback_entered");
             if (scenario_ == "shutdown-callback")
                 std::this_thread::sleep_for(std::chrono::milliseconds{20});

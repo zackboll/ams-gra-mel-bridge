@@ -119,6 +119,110 @@ static int test_success(void)
     return EXIT_SUCCESS;
 }
 
+static int test_snapshot_fifo_and_lifetime(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 legacy;
+    uint8_t pixels[12] = {0};
+    CHECK(open_stream("success", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    memset(&legacy, 0, sizeof legacy); legacy.pixels = pixels; legacy.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &legacy, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(legacy.frame_id == 1U);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(snapshot, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->frame_id == 2U && view->pixels.size == 12U);
+    CHECK(view->image_flags.size == 1U && view->image_flags.data[0] == AMS_MEL_IR_IMAGE_FLAG_STARE_SNAPSHOT);
+    memset(&legacy, 0, sizeof legacy); legacy.pixels = pixels; legacy.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &legacy, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(legacy.frame_id == 3U);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->frame_id == 2U && view->pixels.data[0] == 32U);
+    CHECK(ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(snapshot == NULL);
+    return EXIT_SUCCESS;
+}
+
+static int test_full_snapshot_rich(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *frame = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("full-frame-rich", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(snapshot, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(frame->system_time_ns == -123456789 && frame->integration_time_ns == 987654321);
+    CHECK(frame->width == 4 && frame->height == 3 && frame->bits_per_pixel == 8 && frame->number_of_bands == 1);
+    CHECK(frame->horizontal_fov_rad == 1.25 && frame->vertical_fov_rad == 2.5 && frame->pixel_format == AMS_MEL_IR_PIXEL_MONO);
+    CHECK(frame->frame_id == UINT32_C(0xfedcba98) && frame->subframe_id == 17 && frame->subframe_total == 19);
+    CHECK(frame->image_type == AMS_MEL_IR_IMAGE_RESERVED13 && frame->image_flip == AMS_MEL_IR_FLIP_BOTH);
+    CHECK(frame->contributing_sensor.location.offset_x_m == 1.25 && frame->contributing_sensor.location.offset_y_m == -2.5 && frame->contributing_sensor.location.offset_z_m == 3.75);
+    CHECK(frame->contributing_sensor.sensor_id == UINT32_C(0xf1234567));
+    CHECK(frame->contributing_sensor.location.key.size == 7 && memcmp(frame->contributing_sensor.location.key.data, "face-\xce\xb1", 7) == 0);
+    CHECK(frame->contributing_sensor.location.system_name.size == 10 && memcmp(frame->contributing_sensor.location.system_name.data, "system-\xe2\x82\xac", 10) == 0);
+    CHECK(frame->image_flags.size == 4 && frame->image_flags.data[0] == 2 && frame->image_flags.data[1] == 0 && frame->image_flags.data[2] == 2 && frame->image_flags.data[3] == 1);
+    CHECK(frame->dither_row == -0.75 && frame->dither_column == 0.625 && frame->row_offset == 23 && frame->column_offset == 29 && frame->band_index == 31);
+    CHECK(frame->sensor_inertial_states.size == 2 && frame->sensor_inertial_states.data[0].system_time_ns == -101);
+    CHECK(frame->sensor_inertial_states.data[0].q_xyzw.x == 1 && frame->sensor_inertial_states.data[0].q_xyzw.y == 2 && frame->sensor_inertial_states.data[0].q_xyzw.z == 3 && frame->sensor_inertial_states.data[0].q_xyzw.w == 4);
+    CHECK(frame->sensor_inertial_states.data[1].q_ecef_xyzw.x == 19 && frame->sensor_inertial_states.data[1].q_ecef_xyzw.w == 22 && frame->sensor_inertial_states.data[1].sensor_velocity.z == 28);
+    CHECK(frame->sensor_inertial_states.data[0].uncertainties.sensor_uncertainties == UINT32_C(0x81234567) && frame->sensor_inertial_states.data[0].uncertainties.platform_uncertainties == UINT32_C(0xfedcba98));
+    CHECK(frame->sensor_nav_states.size == 2 && frame->sensor_nav_states.data[0].coordinate_system == AMS_MEL_IR_COORDINATE_NED_PLATFORM && frame->sensor_nav_states.data[1].coordinate_system == AMS_MEL_IR_COORDINATE_NED_SENSOR);
+    CHECK(frame->sensor_nav_states.data[0].position.x == 31 && frame->sensor_nav_states.data[0].position_error.w == 37 && frame->sensor_nav_states.data[0].acceleration_error.z == 50);
+    CHECK(frame->sensor_nav_states.data[0].orientation.kind == AMS_MEL_IR_ORIENTATION_EULER && frame->sensor_nav_states.data[0].orientation.euler.roll == 52 && frame->sensor_nav_states.data[0].orientation_velocity.kind == AMS_MEL_IR_ORIENTATION_QUATERNION && frame->sensor_nav_states.data[0].orientation_velocity.quaternion.w == 62 && frame->sensor_nav_states.data[0].orientation_acceleration.kind == AMS_MEL_IR_ORIENTATION_EULER && frame->sensor_nav_states.data[0].orientation_acceleration.euler.yaw == 69);
+    CHECK(frame->sensor_nav_states.data[1].orientation.kind == AMS_MEL_IR_ORIENTATION_QUATERNION && frame->sensor_nav_states.data[1].orientation.quaternion.x == 95 && frame->sensor_nav_states.data[1].orientation_velocity.kind == AMS_MEL_IR_ORIENTATION_EULER && frame->sensor_nav_states.data[1].orientation_velocity.euler.pitch == 104 && frame->sensor_nav_states.data[1].orientation_acceleration.kind == AMS_MEL_IR_ORIENTATION_QUATERNION && frame->sensor_nav_states.data[1].orientation_acceleration.quaternion.z == 112 && frame->sensor_nav_states.data[1].orientation_acceleration_error.w == 117);
+    CHECK(frame->pixels.size == 12 && frame->pixels.data[0] == 0xa0 && frame->pixels.data[11] == 0xab);
+    CHECK(ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_rich_snapshot_lifetime(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("full-frame-rich", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(snapshot, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->contributing_sensor.sensor_id == UINT32_C(0xf1234567));
+    CHECK(view->contributing_sensor.location.key.size == 7 && memcmp(view->contributing_sensor.location.key.data, "face-\xce\xb1", 7) == 0);
+    CHECK(view->contributing_sensor.location.system_name.size == 10 && memcmp(view->contributing_sensor.location.system_name.data, "system-\xe2\x82\xac", 10) == 0);
+    CHECK(view->image_flags.size == 4 && view->image_flags.data[0] == 2 && view->image_flags.data[1] == 0 && view->image_flags.data[2] == 2 && view->image_flags.data[3] == 1);
+    CHECK(view->sensor_inertial_states.size == 2 && view->sensor_inertial_states.data[0].q_xyzw.w == 4 && view->sensor_inertial_states.data[0].sensor_position.z == 11 && view->sensor_inertial_states.data[0].uncertainties.platform_uncertainties == UINT32_C(0xfedcba98));
+    CHECK(view->sensor_nav_states.size == 2 && view->sensor_nav_states.data[0].coordinate_system == AMS_MEL_IR_COORDINATE_NED_PLATFORM && view->sensor_nav_states.data[0].orientation.kind == AMS_MEL_IR_ORIENTATION_EULER && view->sensor_nav_states.data[0].orientation.euler.roll == 52 && view->sensor_nav_states.data[0].orientation_velocity.kind == AMS_MEL_IR_ORIENTATION_QUATERNION && view->sensor_nav_states.data[0].orientation_velocity.quaternion.w == 62);
+    CHECK(view->pixels.size == 12 && view->pixels.data[0] == 0xa0 && view->pixels.data[11] == 0xab);
+    CHECK(ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_nested_malformed_recovery(const char *scenario)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 frame; uint8_t pixels[12]; ams_mel_ir_stream_counters_v1 counters;
+    CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    memset(&frame, 0, sizeof frame); frame.pixels = pixels; frame.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(frame.frame_id == 2U);
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.malformed_or_unsupported_frames >= 1U);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
 static int test_idle(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
@@ -409,6 +513,14 @@ int main(void)
         "unsupported-bpp", "unsupported-bands", "unsupported-format"};
     CHECK(test_arguments() == EXIT_SUCCESS);
     CHECK(test_success() == EXIT_SUCCESS);
+    CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
+    CHECK(test_full_snapshot_rich() == EXIT_SUCCESS);
+    CHECK(test_rich_snapshot_lifetime() == EXIT_SUCCESS);
+    CHECK(test_nested_malformed_recovery("malformed-image-type") == EXIT_SUCCESS);
+    CHECK(test_nested_malformed_recovery("malformed-image-flip") == EXIT_SUCCESS);
+    CHECK(test_nested_malformed_recovery("malformed-image-flag") == EXIT_SUCCESS);
+    CHECK(test_nested_malformed_recovery("malformed-coordinate") == EXIT_SUCCESS);
+    CHECK(test_nested_malformed_recovery("frame-copy-allocation") == EXIT_SUCCESS);
     CHECK(test_idle() == EXIT_SUCCESS);
     CHECK(test_overflow() == EXIT_SUCCESS);
     for (size_t i = 0; i < sizeof malformed / sizeof malformed[0]; ++i)

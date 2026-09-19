@@ -26,6 +26,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_stream_open",
                 "ams_mel_ir_stream_start",
                 "ams_mel_ir_stream_receive",
+                "ams_mel_ir_stream_receive_snapshot",
+                "ams_mel_ir_frame_snapshot_view",
+                "ams_mel_ir_frame_snapshot_close",
                 "ams_mel_ir_stream_get_counters",
                 "ams_mel_ir_stream_stop",
                 "ams_mel_ir_stream_close",
@@ -67,7 +70,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_health_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 46)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 49)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -235,6 +238,19 @@ class AbiTests(unittest.TestCase):
                 "malformed_or_unsupported_frames",
             )
         )
+        expected.extend(self._layout(_native.U8SpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrContributingSensorV1, 'location', 'sensor_id'))
+        expected.extend(self._layout(_native.IrDirectionalV1, 'x', 'y', 'z'))
+        expected.extend(self._layout(_native.IrQuaternionV1, 'x', 'y', 'z', 'w'))
+        expected.extend(self._layout(_native.IrNavErrorV1, 'x', 'y', 'z', 'w'))
+        expected.extend(self._layout(_native.IrUncertaintyV1, 'sensor_uncertainties', 'platform_uncertainties'))
+        expected.extend(self._layout(_native.IrOrientationV1, 'kind', 'euler', 'quaternion'))
+        expected.extend(self._layout(_native.IrSensorInertialStateV1, 'system_time_ns', 'q_xyzw', 'q_ecef_xyzw', 'sensor_position', 'sensor_velocity', 'uncertainties'))
+        expected.extend(self._layout(_native.IrSensorInertialStateSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrSensorNavStateV1, 'position', 'position_error', 'velocity', 'velocity_error', 'acceleration', 'acceleration_error', 'orientation', 'orientation_error', 'orientation_velocity', 'orientation_velocity_error', 'orientation_acceleration', 'orientation_acceleration_error', 'coordinate_system'))
+        expected.extend(self._layout(_native.IrSensorNavStateSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrFrameSnapshotV1, 'system_time_ns', 'integration_time_ns', 'width', 'height', 'bits_per_pixel', 'number_of_bands', 'horizontal_fov_rad', 'vertical_fov_rad', 'contributing_sensor', 'pixel_format', 'frame_id', 'subframe_id', 'subframe_total', 'image_type', 'image_flip', 'image_flags', 'dither_row', 'dither_column', 'row_offset', 'column_offset', 'sensor_inertial_states', 'sensor_nav_states', 'band_index', 'pixels'))
+        expected.extend([ctypes.sizeof(_native.IrFrameSnapshotHandle), ctypes.alignment(_native.IrFrameSnapshotHandle)])
         expected.extend([
             _native.AMS_MEL_IR_C2_METADATA_COMMAND_STATUS,
             _native.AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION,

@@ -304,6 +304,13 @@ pub struct AmsMelU32SpanV1 {
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+pub struct AmsMelU8SpanV1 {
+    pub data: *const u8,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct AmsMelStringViewSpanV1 {
     pub data: *const AmsMelStringViewV1,
     pub size: usize,
@@ -494,6 +501,109 @@ pub struct AmsMelComponentLocationV1 {
     pub offset_z_m: f64,
     pub key: AmsMelStringViewV1,
     pub system_name: AmsMelStringViewV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrContributingSensorV1 {
+    pub location: AmsMelComponentLocationV1,
+    pub sensor_id: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrDirectionalV1 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrQuaternionV1 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub w: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrNavErrorV1 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub w: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrUncertaintyV1 {
+    pub sensor_uncertainties: u32,
+    pub platform_uncertainties: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrOrientationV1 {
+    pub kind: u32,
+    pub euler: AmsMelEulerV1,
+    pub quaternion: AmsMelIrQuaternionV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSensorInertialStateV1 {
+    pub system_time_ns: i64,
+    pub q_xyzw: AmsMelIrQuaternionV1,
+    pub q_ecef_xyzw: AmsMelIrQuaternionV1,
+    pub sensor_position: AmsMelIrDirectionalV1,
+    pub sensor_velocity: AmsMelIrDirectionalV1,
+    pub uncertainties: AmsMelIrUncertaintyV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrSensorNavStateV1 {
+    pub position: AmsMelIrDirectionalV1,
+    pub position_error: AmsMelIrNavErrorV1,
+    pub velocity: AmsMelIrDirectionalV1,
+    pub velocity_error: AmsMelIrNavErrorV1,
+    pub acceleration: AmsMelIrDirectionalV1,
+    pub acceleration_error: AmsMelIrNavErrorV1,
+    pub orientation: AmsMelIrOrientationV1,
+    pub orientation_error: AmsMelIrNavErrorV1,
+    pub orientation_velocity: AmsMelIrOrientationV1,
+    pub orientation_velocity_error: AmsMelIrNavErrorV1,
+    pub orientation_acceleration: AmsMelIrOrientationV1,
+    pub orientation_acceleration_error: AmsMelIrNavErrorV1,
+    pub coordinate_system: u32,
+}
+span!(
+    AmsMelIrSensorInertialStateSpanV1,
+    AmsMelIrSensorInertialStateV1
+);
+span!(AmsMelIrSensorNavStateSpanV1, AmsMelIrSensorNavStateV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrFrameSnapshotV1 {
+    pub system_time_ns: i64,
+    pub integration_time_ns: i64,
+    pub width: u32,
+    pub height: u32,
+    pub bits_per_pixel: u32,
+    pub number_of_bands: u32,
+    pub horizontal_fov_rad: f64,
+    pub vertical_fov_rad: f64,
+    pub contributing_sensor: AmsMelIrContributingSensorV1,
+    pub pixel_format: u32,
+    pub frame_id: u32,
+    pub subframe_id: u32,
+    pub subframe_total: u32,
+    pub image_type: u32,
+    pub image_flip: u32,
+    pub image_flags: AmsMelU32SpanV1,
+    pub dither_row: f64,
+    pub dither_column: f64,
+    pub row_offset: u32,
+    pub column_offset: u32,
+    pub sensor_inertial_states: AmsMelIrSensorInertialStateSpanV1,
+    pub sensor_nav_states: AmsMelIrSensorNavStateSpanV1,
+    pub band_index: u8,
+    pub pixels: AmsMelU8SpanV1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -781,6 +891,11 @@ pub struct AmsMelIrStream {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelIrFrameSnapshot {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 
 #[repr(C)]
 pub struct AmsMelIrC2 {
@@ -883,6 +998,30 @@ extern "C" {
         stream: *mut AmsMelIrStream,
         timeout_ms: u32,
         out_frame: *mut AmsMelIrFrameV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_receive_snapshot(
+        stream: *mut AmsMelIrStream,
+        timeout_ms: u32,
+        out_snapshot: *mut *mut AmsMelIrFrameSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_frame_snapshot_view(
+        snapshot: *const AmsMelIrFrameSnapshot,
+        out_view: *mut *const AmsMelIrFrameSnapshotV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_frame_snapshot_close(
+        snapshot: *mut *mut AmsMelIrFrameSnapshot,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

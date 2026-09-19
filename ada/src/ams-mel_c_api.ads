@@ -23,6 +23,8 @@ private package AMS.MEL_C_API is
    Null_Session : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
    Null_Stream : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   type Frame_Snapshot_Handle is new System.Address;
+   Null_Frame_Snapshot : constant Frame_Snapshot_Handle := Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
    Null_C2 : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
@@ -330,6 +332,44 @@ private package AMS.MEL_C_API is
       Pixel_Capacity       : Size_T;
       Pixel_Required       : Size_T;
    end record with Convention => C;
+   type U8_Span_V1 is record Data : System.Address; Size : Size_T; end record with Convention => C;
+   type IR_Contributing_Sensor_V1 is record
+      Location : Component_Location_V1; Sensor_ID : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Directional_V1 is record X, Y, Z : Interfaces.C.double; end record with Convention => C;
+   type IR_Quaternion_V1 is record X, Y, Z, W : Interfaces.C.double; end record with Convention => C;
+   type IR_Nav_Error_V1 is record X, Y, Z, W : Interfaces.C.double; end record with Convention => C;
+   type IR_Uncertainty_V1 is record Sensor_Uncertainties, Platform_Uncertainties : Interfaces.Unsigned_32; end record with Convention => C;
+   type IR_Orientation_V1 is record
+      Kind : Interfaces.Unsigned_32; Euler : Euler_V1; Quaternion : IR_Quaternion_V1;
+   end record with Convention => C;
+   type IR_Sensor_Inertial_State_V1 is record
+      System_Time_NS : Interfaces.Integer_64; Q_XYZW, Q_ECEF_XYZW : IR_Quaternion_V1;
+      Sensor_Position, Sensor_Velocity : IR_Directional_V1; Uncertainties : IR_Uncertainty_V1;
+   end record with Convention => C;
+   type IR_Sensor_Nav_State_V1 is record
+      Position : IR_Directional_V1; Position_Error : IR_Nav_Error_V1;
+      Velocity : IR_Directional_V1; Velocity_Error : IR_Nav_Error_V1;
+      Acceleration : IR_Directional_V1; Acceleration_Error : IR_Nav_Error_V1;
+      Orientation : IR_Orientation_V1; Orientation_Error : IR_Nav_Error_V1;
+      Orientation_Velocity : IR_Orientation_V1; Orientation_Velocity_Error : IR_Nav_Error_V1;
+      Orientation_Acceleration : IR_Orientation_V1; Orientation_Acceleration_Error : IR_Nav_Error_V1;
+      Coordinate_System : Interfaces.Unsigned_32;
+   end record with Convention => C;
+   type IR_Sensor_Inertial_State_Span_V1 is record Data : System.Address; Size : Size_T; end record with Convention => C;
+   type IR_Sensor_Nav_State_Span_V1 is record Data : System.Address; Size : Size_T; end record with Convention => C;
+   type IR_Frame_Snapshot_V1 is record
+      System_Time_NS, Integration_Time_NS : Interfaces.Integer_64;
+      Width, Height, Bits_Per_Pixel, Number_Of_Bands : Interfaces.Unsigned_32;
+      Horizontal_FOV_Rad, Vertical_FOV_Rad : Interfaces.C.double;
+      Contributing_Sensor : IR_Contributing_Sensor_V1;
+      Pixel_Format, Frame_ID, Subframe_ID, Subframe_Total, Image_Type, Image_Flip : Interfaces.Unsigned_32;
+      Image_Flags : U32_Span_V1; Dither_Row, Dither_Column : Interfaces.C.double;
+      Row_Offset, Column_Offset : Interfaces.Unsigned_32;
+      Sensor_Inertial_States : IR_Sensor_Inertial_State_Span_V1;
+      Sensor_Nav_States : IR_Sensor_Nav_State_Span_V1;
+      Band_Index : Interfaces.Unsigned_8; Pixels : U8_Span_V1;
+   end record with Convention => C;
 
    type IR_Counters_V1 is record
       Frames_Received           : Interfaces.Unsigned_64;
@@ -411,6 +451,22 @@ private package AMS.MEL_C_API is
       Diagnostic_Required   : access Size_T) return Interfaces.Integer_32
      with Import, Convention => C,
           External_Name => "ams_mel_ir_stream_get_counters";
+   function IR_Stream_Receive_Snapshot
+      (Handle : Stream_Handle; Timeout_MS : Interfaces.Unsigned_32;
+       Output : access Frame_Snapshot_Handle; Diagnostic : System.Address;
+       Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+       return Interfaces.Integer_32 with Import, Convention => C,
+       External_Name => "ams_mel_ir_stream_receive_snapshot";
+   function IR_Frame_Snapshot_View
+      (Handle : Frame_Snapshot_Handle; Output : access System.Address;
+       Diagnostic : System.Address; Diagnostic_Capacity : Size_T;
+       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+       with Import, Convention => C, External_Name => "ams_mel_ir_frame_snapshot_view";
+   function IR_Frame_Snapshot_Close
+      (Handle : access Frame_Snapshot_Handle; Diagnostic : System.Address;
+       Diagnostic_Capacity : Size_T; Diagnostic_Required : access Size_T)
+       return Interfaces.Integer_32 with Import, Convention => C,
+       External_Name => "ams_mel_ir_frame_snapshot_close";
    function IR_Stream_Stop
      (Stream                : Stream_Handle;
       Diagnostic            : System.Address;

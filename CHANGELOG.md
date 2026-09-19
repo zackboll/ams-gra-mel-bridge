@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an additive owned full `FrameHeader` snapshot (`receive_snapshot`/view/close)
+  while preserving legacy `ams_mel_ir_frame_v1` and `ams_mel_ir_stream_receive`.
+  One bounded FIFO serves both receives.  Native C and safe Ada preserve complete
+  contributing sensor, ordered duplicate flags, inertial/nav states, independent
+  Euler/quaternion variants, and owned pixels; raw Rust/private Python track 49 exports.
+
 - Add application-facing inherited C2 Channel services in native C and safe Ada:
   pre-enable KeepAlive, asynchronous ChannelCommsTest request/reply, its callback
   through the existing metadata queue, and complete owned ChannelCapability

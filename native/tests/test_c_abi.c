@@ -26,6 +26,9 @@ _Static_assert(offsetof(ams_mel_fault_v1, ambiguity_groups) >
                offsetof(ams_mel_fault_v1, component_ids), "complete fault layout");
 _Static_assert(offsetof(ams_mel_ir_c2_metadata_event_v1, bit_status) >
                offsetof(ams_mel_ir_c2_metadata_event_v1, bit_configuration), "event root layout");
+_Static_assert(sizeof(ams_mel_ir_frame_snapshot *) == sizeof(void *), "snapshot owner pointer");
+_Static_assert(offsetof(ams_mel_ir_frame_snapshot_v1, sensor_nav_states) >
+               offsetof(ams_mel_ir_frame_snapshot_v1, sensor_inertial_states), "snapshot layout");
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -44,6 +47,15 @@ int main(void)
         const ams_mel_ir_health_config_v1 *, ams_mel_ir_health **, char *,
         size_t, size_t *) = ams_mel_ir_health_open;
     (void)provider_version; (void)health_open;
+    ams_mel_status_t (*receive_snapshot)(ams_mel_ir_stream *, uint32_t,
+        ams_mel_ir_frame_snapshot **, char *, size_t, size_t *) =
+        ams_mel_ir_stream_receive_snapshot;
+    ams_mel_status_t (*snapshot_view)(const ams_mel_ir_frame_snapshot *,
+        const ams_mel_ir_frame_snapshot_v1 **, char *, size_t, size_t *) =
+        ams_mel_ir_frame_snapshot_view;
+    ams_mel_status_t (*snapshot_close)(ams_mel_ir_frame_snapshot **, char *,
+        size_t, size_t *) = ams_mel_ir_frame_snapshot_close;
+    (void)receive_snapshot; (void)snapshot_view; (void)snapshot_close;
     ams_mel_status_t (*submit_bit)(ams_mel_ir_c2 *, uint32_t,
         ams_mel_ir_return_request **, char *, size_t, size_t *) =
         ams_mel_ir_c2_submit_bit_noop;

@@ -1,5 +1,12 @@
 # Task 020 review note
 
+# Task 021 review note
+
+Task 021 uses the already-vendored `FrameHeader.h` include closure, including
+`SensorInertialState.h`, `SensorNavState.h`, `NavError.h`, `Uncertainty.h`, and
+`IR_Directional.h`.  A test-enabled compiler build required no additional vendor
+files; `native/vendor` remains byte-identical to the pinned declaration closure.
+
 Task 020's GCC dependency probe for `HealthStatusChannel.h` observes 52 vendored
 headers and adds exactly six IR MEL headers to the existing closure:
 `HealthStatusChannel.h`, `LFStatus.h`, `SubsystemCSCIInfo.h`,

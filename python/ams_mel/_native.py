@@ -259,6 +259,18 @@ class IrC2ConfigV1(ctypes.Structure):
 class IrHealthConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
 class EulerV1(ctypes.Structure): _fields_ = [("roll", ctypes.c_double), ("pitch", ctypes.c_double), ("yaw", ctypes.c_double)]
+class U8SpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(ctypes.c_uint8)),("size",ctypes.c_size_t)]
+class IrContributingSensorV1(ctypes.Structure): _fields_ = [("location",ComponentLocationV1),("sensor_id",ctypes.c_uint32)]
+class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]
+class IrQuaternionV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double),("w",ctypes.c_double)]
+class IrNavErrorV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double),("w",ctypes.c_double)]
+class IrUncertaintyV1(ctypes.Structure): _fields_ = [("sensor_uncertainties",ctypes.c_uint32),("platform_uncertainties",ctypes.c_uint32)]
+class IrOrientationV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("euler",EulerV1),("quaternion",IrQuaternionV1)]
+class IrSensorInertialStateV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("q_xyzw",IrQuaternionV1),("q_ecef_xyzw",IrQuaternionV1),("sensor_position",IrDirectionalV1),("sensor_velocity",IrDirectionalV1),("uncertainties",IrUncertaintyV1)]
+class IrSensorNavStateV1(ctypes.Structure): _fields_ = [("position",IrDirectionalV1),("position_error",IrNavErrorV1),("velocity",IrDirectionalV1),("velocity_error",IrNavErrorV1),("acceleration",IrDirectionalV1),("acceleration_error",IrNavErrorV1),("orientation",IrOrientationV1),("orientation_error",IrNavErrorV1),("orientation_velocity",IrOrientationV1),("orientation_velocity_error",IrNavErrorV1),("orientation_acceleration",IrOrientationV1),("orientation_acceleration_error",IrNavErrorV1),("coordinate_system",ctypes.c_uint32)]
+class IrSensorInertialStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorInertialStateV1)),("size",ctypes.c_size_t)]
+class IrSensorNavStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorNavStateV1)),("size",ctypes.c_size_t)]
+class IrFrameSnapshotV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("integration_time_ns",ctypes.c_int64),("width",ctypes.c_uint32),("height",ctypes.c_uint32),("bits_per_pixel",ctypes.c_uint32),("number_of_bands",ctypes.c_uint32),("horizontal_fov_rad",ctypes.c_double),("vertical_fov_rad",ctypes.c_double),("contributing_sensor",IrContributingSensorV1),("pixel_format",ctypes.c_uint32),("frame_id",ctypes.c_uint32),("subframe_id",ctypes.c_uint32),("subframe_total",ctypes.c_uint32),("image_type",ctypes.c_uint32),("image_flip",ctypes.c_uint32),("image_flags",U32SpanV1),("dither_row",ctypes.c_double),("dither_column",ctypes.c_double),("row_offset",ctypes.c_uint32),("column_offset",ctypes.c_uint32),("sensor_inertial_states",IrSensorInertialStateSpanV1),("sensor_nav_states",IrSensorNavStateSpanV1),("band_index",ctypes.c_uint8),("pixels",U8SpanV1)]
 class ForeignKeyV1(ctypes.Structure): _fields_ = [("key", StringViewV1), ("system_name", StringViewV1)]
 class InstallationDetailsV1(ctypes.Structure): _fields_ = [("location", ComponentLocationV1), ("orientation", EulerV1), ("boresight", EulerV1)]
 class TemperatureStatusV1(ctypes.Structure): _fields_ = [("temperature_c", ctypes.c_double), ("state", ctypes.c_uint32)]
@@ -334,6 +346,7 @@ class IrStreamCountersV1(ctypes.Structure):
 
 SessionHandle = ctypes.c_void_p
 IrStreamHandle = ctypes.c_void_p
+IrFrameSnapshotHandle = ctypes.c_void_p
 IrC2Handle = ctypes.c_void_p
 IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
@@ -430,6 +443,15 @@ ams_mel_ir_stream_receive.argtypes = [
     SizePointer,
 ]
 ams_mel_ir_stream_receive.restype = ctypes.c_int32
+ams_mel_ir_stream_receive_snapshot = _LIBRARY.ams_mel_ir_stream_receive_snapshot
+ams_mel_ir_stream_receive_snapshot.argtypes = [IrStreamHandle,ctypes.c_uint32,ctypes.POINTER(IrFrameSnapshotHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_stream_receive_snapshot.restype = ctypes.c_int32
+ams_mel_ir_frame_snapshot_view = _LIBRARY.ams_mel_ir_frame_snapshot_view
+ams_mel_ir_frame_snapshot_view.argtypes = [IrFrameSnapshotHandle,ctypes.POINTER(ctypes.POINTER(IrFrameSnapshotV1)),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_frame_snapshot_view.restype = ctypes.c_int32
+ams_mel_ir_frame_snapshot_close = _LIBRARY.ams_mel_ir_frame_snapshot_close
+ams_mel_ir_frame_snapshot_close.argtypes = [ctypes.POINTER(IrFrameSnapshotHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_frame_snapshot_close.restype = ctypes.c_int32
 
 ams_mel_ir_stream_get_counters = _LIBRARY.ams_mel_ir_stream_get_counters
 ams_mel_ir_stream_get_counters.argtypes = [
@@ -647,6 +669,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_stream_open",
     "ams_mel_ir_stream_start",
     "ams_mel_ir_stream_receive",
+    "ams_mel_ir_stream_receive_snapshot",
+    "ams_mel_ir_frame_snapshot_view",
+    "ams_mel_ir_frame_snapshot_close",
     "ams_mel_ir_stream_get_counters",
     "ams_mel_ir_stream_stop",
     "ams_mel_ir_stream_close",

@@ -246,3 +246,13 @@ idempotent and nonblocking. Health close destroys the provider channel before
 waiting for in-flight callbacks; disable is not a quiescence claim. A detach
 failure retains the owner for retry. Received event snapshots remain valid until
 event close and are independent of metadata/channel/session/provider lifetime.
+
+## Task 021 full FrameHeader contract
+
+ABI 0.1 grows from 46 to exactly 49 functions with an additive opaque frame snapshot
+owner, immutable view, and close. The fixed legacy `frame_v1` layout and legacy receive
+signature remain unchanged. Both receives consume one FIFO; a legacy `BUFFER_TOO_SMALL`
+probe does not consume the head. Snapshot nested pointers borrow only adapter-owned
+storage and remain valid until snapshot close, including after stream, Session, and
+provider unload. Full flags retain provider vector order and duplicates; each nav
+orientation has an independent discriminator.

@@ -30,6 +30,27 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_health_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrStream,
+        u32,
+        *mut *mut AmsMelIrFrameSnapshot,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_stream_receive_snapshot;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrFrameSnapshot,
+        *mut *const AmsMelIrFrameSnapshotV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_frame_snapshot_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrFrameSnapshot,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_frame_snapshot_close;
 }
 
 #[test]
