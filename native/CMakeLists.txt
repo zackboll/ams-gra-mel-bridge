@@ -5,6 +5,10 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
+# Scripts use this marker to reset build trees created before runtime-path
+# sanitization was introduced.
+set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
+    "Native build was configured without caller LD_RUN_PATH" FORCE)
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp)
