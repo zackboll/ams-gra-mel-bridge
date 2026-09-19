@@ -24,6 +24,10 @@ that its proposed APIs have already been implemented.
 - Never unload provider code while any object, deleter, request, or callback can
   still use it. C++ ABI compatibility remains necessary behind the C facade.
 - Do not report a test as passed if the toolchain or provider was unavailable.
+- Whenever a task changes first-party Ada sources under `ada/src` or
+  `ada/tests/src`, run `make format-ada` before build/test and
+  `make check-ada-format` before final validation/commit. Do not manually fight
+  formatter output; investigate/configure GNATformat when its output is undesirable.
 - Do not publish, push, create releases, or alter global Git settings unless
   the user explicitly requests that action.
 

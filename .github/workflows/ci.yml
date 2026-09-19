@@ -48,6 +48,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends gnat gprbuild
       - name: Direct GPR Ada smoke test
         run: make test-ada
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v6
+      - name: Check Ada formatting
+        run: make check-ada-format
 
   rust:
     runs-on: ubuntu-24.04

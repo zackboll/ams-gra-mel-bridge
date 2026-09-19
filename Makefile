@@ -1,13 +1,15 @@
-.PHONY: help native test-native test-ada test-rust test-python check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python
+.PHONY: help native test-native test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python
 
 help:
 	@printf '%s\n' \
 	  'make native       Build the native C ABI shared library' \
 	  'make test-native  Build and run native and mock-provider tests' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
+	  'make format-ada       Format Ada crate sources with GNATformat' \
+	  'make check-ada-format Verify Ada crate sources are GNATformat-clean' \
 	  'make test-rust    Test the Rust workspace against native/build' \
 	  'make test-python  Test the Python binding against mock providers' \
-	  'make check        Native + Ada tests and Git whitespace checks' \
+	  'make check        Native + Ada formatting/tests and Git whitespace checks' \
 	  'make test-squall-ir       Opt-in real Squall IR C, Ada, Rust, and Python integration' \
 	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \
 	  'make test-squall-ir-ada   Opt-in real Squall IR Ada integration' \
@@ -22,6 +24,12 @@ test-native:
 
 test-ada:
 	@sh scripts/test_ada.sh
+
+format-ada:
+	@sh scripts/format_ada.sh format
+
+check-ada-format:
+	@sh scripts/format_ada.sh check
 
 test-rust: test-native
 	@cargo test --manifest-path rust/Cargo.toml --workspace

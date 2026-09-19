@@ -11,4 +11,8 @@ project AMS_MEL_Tests is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-gnata", "-gnatVa", "-gnatwa", "-gnatwe");
    end Compiler;
+
+   package Format is
+      for Width ("Ada") use "100";
+   end Format;
 end AMS_MEL_Tests;

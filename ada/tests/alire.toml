@@ -11,6 +11,9 @@ disabled = true
 [[depends-on]]
 ams_mel = "=0.1.0-dev"
 
+[[depends-on]]
+gnatformat_bin = "=26.0.0"
+
 [[pins]]
 ams_mel = { path = ".." }
 ams_mel_c = { path = "../../native" }
