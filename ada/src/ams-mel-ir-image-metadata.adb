@@ -48,6 +48,10 @@ package body AMS.MEL.IR.Image.Metadata is
    begin
       Ignored := C.IR_Image_Metadata_Event_Close (Handle'Access, System.Null_Address, 0, null);
    end Release;
+   function Euler (Value : C.Euler_V1) return AMS.MEL.Status.Euler
+   is ((Roll  => Long_Float (Value.Roll),
+        Pitch => Long_Float (Value.Pitch),
+        Yaw   => Long_Float (Value.Yaw)));
    function Open
      (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive) return Metadata_Stream
    is
@@ -88,31 +92,79 @@ package body AMS.MEL.IR.Image.Metadata is
            (C.IR_Image_Metadata_Event_View (Handle, Address'Access, D'Address, D'Length, R'Access),
             D);
          declare
-            Raw    : constant View_Access := To_View (Address);
-            Result : Metadata_Event;
+            Raw : constant View_Access := To_View (Address);
          begin
-            if Raw.Kind /= 1 then
-               raise Provider_Error with "invalid Image metadata kind";
-            end if;
-            Result.Value.Size := Raw.Bad_Pixel_List.Reported_Size;
-            Result.Value.Count := Raw.Bad_Pixel_List.Reported_Count;
-            if Raw.Bad_Pixel_List.Pixels.Size > 0 then
-               for I in 0 .. Natural (Raw.Bad_Pixel_List.Pixels.Size) - 1 loop
+            case Raw.Kind is
+               when 1      =>
                   declare
-                     P : constant Pixel_Access :=
-                       To_Pixel
-                         (Address_At
-                            (Raw.Bad_Pixel_List.Pixels.Data, I, C.IR_Bad_Pixel_V1'SIZE / 8));
+                     Result : Metadata_Event (Bad_Pixel_List_Event);
                   begin
-                     if P.Reason /= 0 then
-                        raise Provider_Error with "invalid BadPixel reason";
+                     Result.Bad_Pixel_Value.Size := Raw.Bad_Pixel_List.Reported_Size;
+                     Result.Bad_Pixel_Value.Count := Raw.Bad_Pixel_List.Reported_Count;
+                     if Raw.Bad_Pixel_List.Pixels.Size > 0 then
+                        for I in 0 .. Natural (Raw.Bad_Pixel_List.Pixels.Size) - 1 loop
+                           declare
+                              P : constant Pixel_Access :=
+                                To_Pixel
+                                  (Address_At
+                                     (Raw.Bad_Pixel_List.Pixels.Data,
+                                      I,
+                                      C.IR_Bad_Pixel_V1'SIZE / 8));
+                           begin
+                              if P.Reason /= 0 then
+                                 raise Provider_Error with "invalid BadPixel reason";
+                              end if;
+                              Result.Bad_Pixel_Value.Pixels.Append
+                                (Bad_Pixel'(P.Row, P.Column, Unknown));
+                           end;
+                        end loop;
                      end if;
-                     Result.Value.Pixels.Append (Bad_Pixel'(P.Row, P.Column, Unknown));
+                     Release (Handle);
+                     return Result;
                   end;
-               end loop;
-            end if;
-            Release (Handle);
-            return Result;
+
+               when 2      =>
+                  declare
+                     Value  : constant C.IR_Line_Of_Sight_Report_V1 := Raw.Line_Of_Sight_Report;
+                     Result : constant Metadata_Event :=
+                       (Kind_Value   => Line_Of_Sight_Report_Event,
+                        Report_Value =>
+                          (System_Time_NS         => Long_Long_Integer (Value.System_Time_NS),
+                           Pointing_Angle         =>
+                             (Value.Pointing_Angle.Azimuth_Rad, Value.Pointing_Angle.Elevation_Rad),
+                           Pointing_Angle_Rates   =>
+                             (Value.Pointing_Angle_Rates.Azimuth_Rad,
+                              Value.Pointing_Angle_Rates.Elevation_Rad),
+                           At_Speed               => Value.At_Speed = 1,
+                           In_Tolerance           => Value.In_Tolerance = 1,
+                           Platform_Attitude      => Euler (Value.Platform_Attitude),
+                           Validity_Flag_Bitfield => Value.Validity_Flag_Bitfield,
+                           Image_Rotation_Rad     => Value.Image_Rotation_Rad));
+                  begin
+                     if Value.At_Speed > 1 or else Value.In_Tolerance > 1 then
+                        raise Provider_Error with "invalid LineOfSightReport Boolean";
+                     end if;
+                     Release (Handle);
+                     return Result;
+                  end;
+
+               when 3      =>
+                  declare
+                     Value  : constant C.IR_Line_Of_Sight_Euler_V1 := Raw.Line_Of_Sight_Euler;
+                     Result : constant Metadata_Event :=
+                       (Kind_Value  => Line_Of_Sight_Euler_Event,
+                        Euler_Value =>
+                          (System_Time_NS => Long_Long_Integer (Value.System_Time_NS),
+                           Attitude       => Euler (Value.Attitude),
+                           Attitude_Rates => Euler (Value.Attitude_Rates)));
+                  begin
+                     Release (Handle);
+                     return Result;
+                  end;
+
+               when others =>
+                  raise Provider_Error with "invalid Image metadata kind";
+            end case;
          end;
       exception
          when others =>
@@ -158,7 +210,26 @@ package body AMS.MEL.IR.Image.Metadata is
    function Pixel_At (Value : Bad_Pixel_List; Index : Positive) return Bad_Pixel
    is (Value.Pixels.Element (Index));
    function Kind (Event : Metadata_Event) return Metadata_Kind
-   is (Bad_Pixel_List_Event);
-   function Bad_Pixel_List_Value (Event : Metadata_Event) return Bad_Pixel_List
-   is (Event.Value);
+   is (Event.Kind_Value);
+   function Bad_Pixel_List_Value (Event : Metadata_Event) return Bad_Pixel_List is
+   begin
+      if Event.Kind_Value /= Bad_Pixel_List_Event then
+         raise Provider_Error with "Image metadata event is not BadPixelList";
+      end if;
+      return Event.Bad_Pixel_Value;
+   end;
+   function Line_Of_Sight_Report_Value (Event : Metadata_Event) return Line_Of_Sight_Report is
+   begin
+      if Event.Kind_Value /= Line_Of_Sight_Report_Event then
+         raise Provider_Error with "Image metadata event is not LineOfSightReport";
+      end if;
+      return Event.Report_Value;
+   end;
+   function Line_Of_Sight_Euler_Value (Event : Metadata_Event) return Line_Of_Sight_Euler is
+   begin
+      if Event.Kind_Value /= Line_Of_Sight_Euler_Event then
+         raise Provider_Error with "Image metadata event is not LineOfSightEuler";
+      end if;
+      return Event.Euler_Value;
+   end;
 end AMS.MEL.IR.Image.Metadata;

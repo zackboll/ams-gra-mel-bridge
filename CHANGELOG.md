@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Extend the existing Image metadata FIFO with complete owned LineOfSightReport and
+  LineOfSightEuler values in C and Ada. Raw Rust and private Python ABI declarations
+  track the added records and constants; ABI 0.1 remains exactly 56 exports.
 - Add ImageChannel capability access and the first Image metadata vertical slice:
   bounded DROP-INCOMING BadPixelList callbacks with complete owned C and Ada values,
   synchronous-registration safety, malformed/allocation recovery, and teardown-safe

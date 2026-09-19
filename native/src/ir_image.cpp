@@ -63,6 +63,39 @@ std::unique_ptr<EventData> copy_bad_pixels(const irmel::BadPixelList *input)
     event->bind();
     return event;
 }
+
+ams_mel_ir_az_el_v1 az_el(const AzEl& value) noexcept { return {value.az, value.el}; }
+ams_mel_euler_v1 euler(const mel::Euler& value) noexcept
+{ return {value.getRoll(), value.getPitch(), value.getYaw()}; }
+
+std::unique_ptr<EventData> copy_line_of_sight_report(const irmel::LineOfSightReport *input)
+{
+    if (!input) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT;
+    auto& output = event->view.line_of_sight_report;
+    output.system_time_ns = input->getSystemTime().count();
+    output.pointing_angle = az_el(input->getPointingAngle());
+    output.pointing_angle_rates = az_el(input->getPointingAngleRates());
+    output.at_speed = input->getAtSpeed() ? UINT8_C(1) : UINT8_C(0);
+    output.in_tolerance = input->getInTolerance() ? UINT8_C(1) : UINT8_C(0);
+    output.platform_attitude = euler(input->getPlatformAttitude());
+    output.validity_flag_bitfield = input->getValidityFlagBitfield();
+    output.image_rotation_rad = input->getImageRotation();
+    return event;
+}
+
+std::unique_ptr<EventData> copy_line_of_sight_euler(const irmel::LineOfSightEuler *input)
+{
+    if (!input) return {};
+    auto event = std::make_unique<EventData>();
+    event->view.kind = AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER;
+    auto& output = event->view.line_of_sight_euler;
+    output.system_time_ns = input->getSystemTime().count();
+    output.attitude = euler(input->getAttitude());
+    output.attitude_rates = euler(input->getAttitudeRates());
+    return event;
+}
 } // namespace
 
 struct ImageMetadataState {
@@ -73,7 +106,8 @@ struct ImageMetadataState {
     ams_mel_ir_metadata_counters_v1 counters{};
     MetadataLifecycle lifecycle{MetadataLifecycle::Active};
 
-    void bad_pixels(const irmel::BadPixelList *input) noexcept
+    template<typename Input, typename Copy>
+    void callback(const Input *input, Copy copy) noexcept
     {
         try {
             {
@@ -88,7 +122,7 @@ struct ImageMetadataState {
                 throw std::bad_alloc{};
             }
 #endif
-            auto event = copy_bad_pixels(input);
+            auto event = copy(input);
             std::lock_guard lock{mutex};
             if (lifecycle != MetadataLifecycle::Active) return;
             if (!event) {
@@ -110,6 +144,13 @@ struct ImageMetadataState {
             }
         }
     }
+
+    void bad_pixels(const irmel::BadPixelList *input) noexcept
+    { callback(input, copy_bad_pixels); }
+    void line_of_sight_report(const irmel::LineOfSightReport *input) noexcept
+    { callback(input, copy_line_of_sight_report); }
+    void line_of_sight_euler(const irmel::LineOfSightEuler *input) noexcept
+    { callback(input, copy_line_of_sight_euler); }
 };
 
 struct ams_mel_ir_image_metadata { std::shared_ptr<ImageMetadataState> state; };
@@ -142,12 +183,32 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
         state->capacity = queue_capacity;
         if (!claim_image_metadata(*stream, state, channel))
             return AMS_MEL_INVALID_ARGUMENT;
-        const auto result = channel->registerMetadataCallback(
+        const auto bad_pixels = channel->registerMetadataCallback(
             [state](irmel::Channel&, const irmel::BadPixelList *const value) { state->bad_pixels(value); });
-        if (result != irmel::Return::Success) {
+        if (bad_pixels != irmel::Return::Success) {
             std::lock_guard lock{state->mutex};
             state->lifecycle = MetadataLifecycle::Inactive;
             diagnostic("BadPixelList callback registration failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        const auto report = channel->registerMetadataCallback(
+            [state](irmel::Channel&, const irmel::LineOfSightReport *const value) {
+                state->line_of_sight_report(value);
+            });
+        if (report != irmel::Return::Success) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            diagnostic("LineOfSightReport callback registration failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        const auto euler_callback = channel->registerMetadataCallback(
+            [state](irmel::Channel&, const irmel::LineOfSightEuler *const value) {
+                state->line_of_sight_euler(value);
+            });
+        if (euler_callback != irmel::Return::Success) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            diagnostic("LineOfSightEuler callback registration failed", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
         auto owner = std::make_unique<ams_mel_ir_image_metadata>();

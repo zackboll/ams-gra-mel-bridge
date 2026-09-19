@@ -486,6 +486,8 @@ pub struct AmsMelIrC2MetadataEventV1 {
     pub channel_comms_test: AmsMelIrChannelCommsTestReportV1,
 }
 pub const AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST: u32 = 1;
+pub const AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT: u32 = 2;
+pub const AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER: u32 = 3;
 pub const AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN: u32 = 0;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -503,10 +505,37 @@ pub struct AmsMelIrBadPixelListV1 {
     pub pixels: AmsMelIrBadPixelSpanV1,
 }
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrAzElV1 {
+    pub azimuth_rad: f64,
+    pub elevation_rad: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrLineOfSightReportV1 {
+    pub system_time_ns: i64,
+    pub pointing_angle: AmsMelIrAzElV1,
+    pub pointing_angle_rates: AmsMelIrAzElV1,
+    pub at_speed: u8,
+    pub in_tolerance: u8,
+    pub platform_attitude: AmsMelEulerV1,
+    pub validity_flag_bitfield: u32,
+    pub image_rotation_rad: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrLineOfSightEulerV1 {
+    pub system_time_ns: i64,
+    pub attitude: AmsMelEulerV1,
+    pub attitude_rates: AmsMelEulerV1,
+}
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrImageMetadataEventV1 {
     pub kind: u32,
     pub bad_pixel_list: AmsMelIrBadPixelListV1,
+    pub line_of_sight_report: AmsMelIrLineOfSightReportV1,
+    pub line_of_sight_euler: AmsMelIrLineOfSightEulerV1,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]

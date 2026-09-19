@@ -263,6 +263,8 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION,
             _native.AMS_MEL_IR_C2_METADATA_BIT_STATUS,
             _native.AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST,
+            _native.AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT,
+            _native.AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER,
             _native.AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN,
             _native.AMS_MEL_IR_COMMAND_NOT_SET,
             _native.AMS_MEL_IR_COMMAND_RECEIVED,
@@ -358,7 +360,10 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.IrBadPixelV1, 'row', 'column', 'reason'))
         expected.extend(self._layout(_native.IrBadPixelSpanV1, 'data', 'size'))
         expected.extend(self._layout(_native.IrBadPixelListV1, 'reported_size', 'reported_count', 'pixels'))
-        expected.extend(self._layout(_native.IrImageMetadataEventV1, 'kind', 'bad_pixel_list'))
+        expected.extend(self._layout(_native.IrAzElV1, 'azimuth_rad', 'elevation_rad'))
+        expected.extend(self._layout(_native.IrLineOfSightReportV1, 'system_time_ns', 'pointing_angle', 'pointing_angle_rates', 'at_speed', 'in_tolerance', 'platform_attitude', 'validity_flag_bitfield', 'image_rotation_rad'))
+        expected.extend(self._layout(_native.IrLineOfSightEulerV1, 'system_time_ns', 'attitude', 'attitude_rates'))
+        expected.extend(self._layout(_native.IrImageMetadataEventV1, 'kind', 'bad_pixel_list', 'line_of_sight_report', 'line_of_sight_euler'))
         expected.extend(self._layout(_native.IrChannelCommsTestReportV1, 'command_id', 'request_id'))
         expected.extend(self._layout(_native.IrChannelCommsTestRequestV1, 'command_id', 'channel_id', 'request_id'))
         expected.extend(self._layout(_native.IrChannelCommsTestResultV1, 'command_id', 'request_id', 'error_code'))

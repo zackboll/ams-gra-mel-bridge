@@ -3,7 +3,7 @@
 This opt-in integration validates the public C, Ada, safe Rust, and safe Python façades
 against the real Squall IR MEL provider at commit
 `b1015728f904c799fa0c07489fce48e78f67845f`. It uses Squall's hardware-free
-simulated checkerboard optical MFA (`320x200` Mono8 at 30 FPS), Couloir, and the published MEL
+`ir_environment` optical MFA (`320x200` Mono8 at 8 FPS), Couloir, and the published MEL
 boundary. C, Ada, safe Rust, and safe Python require one empty/no-op BIT command
 to return Success in addition to TaskSched and real Mono8 frames. All four clients use the same
 provider/runtime invocation. The
@@ -28,12 +28,19 @@ for Mode, BIT, and ConfigSet command IDs, observes the no-op BIT status event,
 and requires zero malformed/dropped metadata counters. Rich nonempty metadata
 fidelity is established by the separate mock-provider tests, not by Squall's
 current empty defaults. Safe C/Rust/Python integration behavior is unchanged.
-Task 024 additionally has Ada query the Image capability before start and require
+Task 025 changes only the runtime optical TOML to pinned `config/optical-simulated.toml`:
+the historical checkerboard profile intentionally reports `los_valid=false`, whereas
+`ir_environment` reports valid configured-boresight LOS without a DIS fixture. Ada retains
+Image metadata through frame emission and requires LineOfSightReport/LineOfSightEuler
+consistency: Report azimuth/elevation match Euler yaw/pitch, all documented no-DIS defaults
+are zero, and timestamps are not required to match. It continues to query the Image capability
+before start and require
 320x200, 8-bit, one-band Mono with BadPixelList advertised. It opens Image metadata
 before image start and validates Squall's synchronous initial empty BadPixelList
 (reported size/count and actual pixel count all zero). Rich BadPixel fidelity and
-callback lifetime are mock-proven. C, Rust, and Python safe integration behavior remains
-unchanged; LOS and NavigationReport are not asserted.
+callback lifetime are mock-proven. NavigationReportResp, NavigationReport send, quaternion
+LOS, and optional Image metadata are not asserted. C, Rust, and Python safe integration
+behavior remains unchanged.
 
 Provide an existing checkout with this exact source closure:
 
@@ -111,7 +118,7 @@ network mode for both services and waits finitely for optical HTTP readiness,
 Couloir metrics TCP, and MEL-control TCP. The generated override explicitly
 sets numeric optical health/metrics ports, so inherited `SQUALL_OPTICAL_*_PORT`
 values cannot override the Task-004 selection. It also pins Squall's numeric
-`SQUALL_IR_DATA_PORT=21600` default. The checkerboard sink has no static
+`SQUALL_IR_DATA_PORT=21600` default. The ir_environment sink has no static
 destinations, so Squall validates this deployment override but its static-
 destination loop does not replace the runtime-fillable MEL destination. All
 four host-network ports are
@@ -183,7 +190,7 @@ receive failures additionally print IR stream counters. When available, `ss -lun
 is recorded before and after each client for host UDP diagnostics. The Rust
 and Python clients open image and C2 graphs on one Session, obtain BIT Success
 and TaskSched, close the Session parent first, repeat both cached request waits,
-receive real 320x200 Mono8 checkerboard frames, validate counters, and explicitly
+receive real 320x200 Mono8 ir_environment frames, validate counters, and explicitly
 close their child resources. For `all`, C, Ada, Rust, and Python validate the
 shared integration subset: BIT no-op, TaskSched, and Mono8. Ada additionally
 validates Task 017's general Mode, payload-bearing BIT, and ConfigSet; Task 018's

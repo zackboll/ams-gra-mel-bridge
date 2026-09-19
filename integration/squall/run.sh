@@ -86,13 +86,13 @@ services:
       SQUALL_OPTICAL_HEALTH_ADDRESS: "127.0.0.1"
       SQUALL_OPTICAL_HEALTH_PORT: "$optical_health_port"
       SQUALL_OPTICAL_METRICS_PORT: "$optical_metrics_port"
-      # Pinned Squall defaults this to 21600. The checkerboard sink has no
+      # Pinned Squall defaults this to 21600. The ir_environment sink has no
       # static destinations, so Squall's static-destination override loop
       # validates this port without replacing the runtime-fillable MEL slot.
       SQUALL_IR_DATA_PORT: "21600"
     volumes:
       - backend-sockets:/sockets
-      - $SQUALL_SOURCE_DIR/tests/mel-boundary-e2e/config/optical.toml:/task004/optical.toml:ro,Z
+      - $SQUALL_SOURCE_DIR/config/optical-simulated.toml:/task004/optical.toml:ro,Z
 EOF
 }
 
