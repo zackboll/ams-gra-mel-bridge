@@ -23,6 +23,8 @@ target_include_directories(ams_mel_c PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+target_include_directories(ams_mel_c SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
 target_link_libraries(ams_mel_c PRIVATE ${CMAKE_DL_LIBS})
 if(UNIX AND NOT APPLE)
     target_link_options(ams_mel_c PRIVATE
@@ -51,6 +53,7 @@ endfunction()
 ams_mel_warnings(ams_mel_c)
 
 if(AMS_MEL_BUILD_TESTS)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     enable_testing()
     target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_ENABLE_TEST_FAILPOINTS)
     add_library(mock_ir_provider SHARED tests/mock_provider.cpp)
@@ -87,6 +90,31 @@ if(AMS_MEL_BUILD_TESTS)
     set_target_properties(test_c_abi PROPERTIES C_EXTENSIONS OFF)
     target_link_libraries(test_c_abi PRIVATE ams_mel::ams_mel_c)
     ams_mel_warnings(test_c_abi)
+
+    # Declaration-only probe: TrackChannel's published closure includes
+    # TrackDataUpdate declarations, but this target implements no Track API.
+    add_library(track_header_compile_probe OBJECT tests/track_header_compile_probe.cpp)
+    target_compile_features(track_header_compile_probe PRIVATE cxx_std_20)
+    target_include_directories(track_header_compile_probe PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+    target_include_directories(track_header_compile_probe SYSTEM PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
+    set_target_properties(track_header_compile_probe PROPERTIES CXX_EXTENSIONS OFF)
+    ams_mel_warnings(track_header_compile_probe)
+    add_custom_target(check_track_header_boost_closure ALL
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_track_boost_closure.py
+            --compiler ${CMAKE_CXX_COMPILER}
+            --source ${CMAKE_CURRENT_SOURCE_DIR}/tests/track_header_compile_probe.cpp
+            --boost-root ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0
+            --include ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0
+            --include ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+            --include ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
+            --include ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include
+        DEPENDS track_header_compile_probe
+        VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
 
     add_executable(test_cpp_header tests/test_cpp_header.cpp)
@@ -188,6 +216,8 @@ foreach(upstream IN ITEMS common-mel ir-mel ams-math)
         DESTINATION
         ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c/upstream/${upstream})
 endforeach()
+install(FILES vendor/boost-1.83.0/LICENSE_1_0.txt
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c/upstream/boost-1.83.0)
 install(EXPORT ams_mel_cTargets NAMESPACE ams_mel::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ams_mel_c)
 configure_package_config_file(cmake/ams_mel_cConfig.cmake.in

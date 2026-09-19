@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.pdf binary
+# Immutable upstream Boost headers retain their original whitespace exactly.
+native/vendor/boost-1.83.0/** -whitespace
