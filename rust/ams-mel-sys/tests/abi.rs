@@ -993,7 +993,12 @@ fn declarations_match_the_c_header() {
         timestamp_ns,
         priority
     );
-    layout!(expected, AmsMelIrInstrumentationResultV1, report, error_code);
+    layout!(
+        expected,
+        AmsMelIrInstrumentationResultV1,
+        report,
+        error_code
+    );
     layout!(
         expected,
         AmsMelIrInstrumentationMetadataEventV1,
