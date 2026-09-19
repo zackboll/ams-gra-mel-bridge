@@ -241,14 +241,14 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
         image_metadata_stream_stopped(state);
-        diagnostic("BadPixelList metadata allocation failed", out, capacity, required);
+        diagnostic("Image metadata allocation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
         if (state) {
             std::lock_guard lock{state->mutex};
             state->lifecycle = MetadataLifecycle::Inactive;
         }
-        diagnostic("BadPixelList callback registration exception", out, capacity, required);
+        diagnostic("Image metadata callback registration exception", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }

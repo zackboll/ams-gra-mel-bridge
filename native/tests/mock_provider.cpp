@@ -329,6 +329,14 @@ public:
     ~MockImageChannel() override
     {
         stopping_ = true;
+        if (scenario_ == "image-metadata-navigation-register-fail" ||
+            scenario_ == "image-metadata-navigation-register-throw") {
+            if (!bad_pixel_callback_) std::abort();
+            record("retained_callback_invoked");
+            auto value = rich_bad_pixels();
+            bad_pixel_callback_(*this, &value);
+            record("retained_callback_returned");
+        }
         if (scenario_ == "image-metadata-nonquiescing") {
             const char *base = std::getenv("AMS_MEL_TEST_IMAGE_METADATA_CALLBACK_BARRIER");
             if (!base) std::abort();
@@ -528,10 +536,12 @@ public:
         navigation_response_callback_ = std::move(callback);
         if (scenario_ == "image-metadata-navigation-register-fail") {
             auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
+            record("navigation_registration_failed");
             return Return::Fail;
         }
         if (scenario_ == "image-metadata-navigation-register-throw") {
             auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
+            record("navigation_registration_failed");
             throw std::runtime_error("NavigationReportResp registration exception");
         }
         if (scenario_ == "image-metadata-navigation-sync" || scenario_ == "image-metadata-navigation-rich") {

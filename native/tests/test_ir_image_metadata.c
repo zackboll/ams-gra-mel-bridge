@@ -308,6 +308,40 @@ static int test_registration_failure(const char *scenario, ams_mel_status_t expe
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
+static int test_navigation_registration_failure_lifetime(const char *scenario, ams_mel_status_t expected)
+{
+    char log[] = "/tmp/ams-navigation-registration-log-XXXXXX";
+    char contents[4096];
+    FILE *file;
+    size_t count;
+    int descriptor = mkstemp(log);
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
+    CHECK(descriptor >= 0); CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
+    CHECK(open_all(scenario, &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == expected);
+    CHECK(metadata == NULL);
+    CHECK(append_log(log, "metadata_open_returned_failure") == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    file = fopen(log, "rb"); CHECK(file != NULL);
+    count = fread(contents, 1, sizeof contents - 1U, file); contents[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(strstr(contents, "navigation_registration_failed") != NULL);
+    CHECK(strstr(contents, "metadata_open_returned_failure") != NULL);
+    CHECK(strstr(contents, "retained_callback_invoked") != NULL);
+    CHECK(strstr(contents, "retained_callback_returned") != NULL);
+    CHECK(strstr(contents, "channel_destroyed") != NULL);
+    CHECK(strstr(contents, "library_unloaded") != NULL);
+    CHECK(strstr(contents, "navigation_registration_failed") < strstr(contents, "metadata_open_returned_failure"));
+    CHECK(strstr(contents, "metadata_open_returned_failure") < strstr(contents, "retained_callback_invoked"));
+    CHECK(strstr(contents, "retained_callback_invoked") < strstr(contents, "retained_callback_returned"));
+    CHECK(strstr(contents, "retained_callback_returned") < strstr(contents, "channel_destroyed"));
+    CHECK(strstr(contents, "channel_destroyed") < strstr(contents, "library_unloaded"));
+    CHECK(unlink(log) == 0);
+    return EXIT_SUCCESS;
+}
 static int check_navigation(const ams_mel_ir_image_metadata_event_v1 *view)
 {
     CHECK(view->kind == AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE);
@@ -374,8 +408,8 @@ int main(void)
     CHECK(test_registration_failure("image-metadata-report-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-euler-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-euler-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
-    CHECK(test_registration_failure("image-metadata-navigation-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
-    CHECK(test_registration_failure("image-metadata-navigation-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
+    CHECK(test_navigation_registration_failure_lifetime("image-metadata-navigation-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
+    CHECK(test_navigation_registration_failure_lifetime("image-metadata-navigation-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_concurrent_open_one_shot() == EXIT_SUCCESS);
     CHECK(test_metadata_close_before_callback() == EXIT_SUCCESS);
     puts("PASS: C IR Image metadata contract");

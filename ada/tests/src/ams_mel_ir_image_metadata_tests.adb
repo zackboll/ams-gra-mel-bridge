@@ -292,6 +292,29 @@ package body AMS_MEL_IR_Image_Metadata_Tests is
       AMS.MEL.Close (Parent);
    end Test_Navigation_Response;
 
+   procedure Test_Navigation_Response_Wrong_Kind (Provider_Path : String) is
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "image-metadata-sync");
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      Queue  : Metadata.Metadata_Stream := Metadata.Open (Stream, 2);
+      Event  : constant Metadata.Metadata_Event := Metadata.Receive (Queue);
+   begin
+      begin
+         declare
+            Ignored : constant Metadata.Navigation_Response :=
+              Metadata.Navigation_Response_Value (Event);
+         begin
+            null;
+         end;
+         raise Program_Error with "Ada NavigationReportResp wrong-kind accessor did not fail";
+      exception
+         when AMS.MEL.Provider_Error =>
+            null;
+      end;
+      Metadata.Close (Queue);
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_Navigation_Response_Wrong_Kind;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Capability (Provider_Path);
@@ -304,6 +327,7 @@ package body AMS_MEL_IR_Image_Metadata_Tests is
       Test_Allocation_Recovery (Provider_Path);
       Test_Overflow (Provider_Path);
       Test_Navigation_Response (Provider_Path);
+      Test_Navigation_Response_Wrong_Kind (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR Image metadata contract");
    end Run;
 end AMS_MEL_IR_Image_Metadata_Tests;
