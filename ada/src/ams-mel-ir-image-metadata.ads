@@ -6,7 +6,10 @@ private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Image.Metadata is
    type Metadata_Kind is
-     (Bad_Pixel_List_Event, Line_Of_Sight_Report_Event, Line_Of_Sight_Euler_Event);
+     (Bad_Pixel_List_Event,
+      Line_Of_Sight_Report_Event,
+      Line_Of_Sight_Euler_Event,
+      Navigation_Response_Event);
    type Bad_Pixel_Reason is (Unknown);
    type Bad_Pixel is record
       Row    : Interfaces.Unsigned_32;
@@ -32,6 +35,11 @@ package AMS.MEL.IR.Image.Metadata is
       Attitude       : AMS.MEL.Status.Euler;
       Attitude_Rates : AMS.MEL.Status.Euler;
    end record;
+   type Navigation_Response is record
+      System_Time_NS : Long_Long_Integer;
+      Command_ID     : Interfaces.Unsigned_32;
+      Request_ID     : Interfaces.Unsigned_32;
+   end record;
    function Reported_Size (Value : Bad_Pixel_List) return Interfaces.Unsigned_32;
    function Reported_Count (Value : Bad_Pixel_List) return Interfaces.Unsigned_32;
    function Pixel_Count (Value : Bad_Pixel_List) return Natural;
@@ -53,6 +61,7 @@ package AMS.MEL.IR.Image.Metadata is
    function Bad_Pixel_List_Value (Event : Metadata_Event) return Bad_Pixel_List;
    function Line_Of_Sight_Report_Value (Event : Metadata_Event) return Line_Of_Sight_Report;
    function Line_Of_Sight_Euler_Value (Event : Metadata_Event) return Line_Of_Sight_Euler;
+   function Navigation_Response_Value (Event : Metadata_Event) return Navigation_Response;
 private
    package Pixel_Vectors is new Ada.Containers.Vectors (Positive, Bad_Pixel);
    type Bad_Pixel_List is record
@@ -74,6 +83,9 @@ private
 
          when Line_Of_Sight_Euler_Event =>
             Euler_Value : Line_Of_Sight_Euler;
+
+         when Navigation_Response_Event =>
+            Navigation_Response_Value : Navigation_Response;
       end case;
    end record;
 end AMS.MEL.IR.Image.Metadata;

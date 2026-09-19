@@ -35,10 +35,11 @@ Image metadata through frame emission and requires LineOfSightReport/LineOfSight
 consistency: Report azimuth/elevation match Euler yaw/pitch, all documented no-DIS defaults
 are zero, and timestamps are not required to match. It continues to query the Image capability
 before start and require
-320x200, 8-bit, one-band Mono with BadPixelList advertised. It opens Image metadata
+320x200, 8-bit, one-band Mono with all four required metadata types advertised. It opens Image metadata
 before image start and validates Squall's synchronous initial empty BadPixelList
 (reported size/count and actual pixel count all zero). Rich BadPixel fidelity and
-callback lifetime are mock-proven. NavigationReportResp, NavigationReport send, quaternion
+callback lifetime are mock-proven. NavigationReportResp registration is real-provider proven;
+positive response delivery awaits Task 027 because NavigationReport send is absent. Quaternion
 LOS, and optional Image metadata are not asserted. C, Rust, and Python safe integration
 behavior remains unchanged.
 

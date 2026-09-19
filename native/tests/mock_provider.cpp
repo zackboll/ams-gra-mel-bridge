@@ -185,6 +185,15 @@ irmel::LineOfSightEuler rich_line_of_sight_euler()
     return value;
 }
 
+irmel::NavigationReportResp rich_navigation_response()
+{
+    irmel::NavigationReportResp value;
+    value.setSystemTime(std::chrono::nanoseconds{-8765432109LL});
+    value.setCommandID(0xf1234567U);
+    value.setReqId(0x89abcdefU);
+    return value;
+}
+
 struct CallbackBarrier {
     std::mutex mutex;
     std::condition_variable ready;
@@ -400,7 +409,10 @@ public:
             capability.setNumberOfBands(1U); capability.setFormat(irmel::PixelFormat::Mono);
             capability.setChannelTypes({irmel::ChannelType::IRSTImage});
             capability.setChannelMetadataCapabilities(
-                {irmel::ChannelMetadataCapabilityType::BadPixelList});
+                {irmel::ChannelMetadataCapabilityType::BadPixelList,
+                 irmel::ChannelMetadataCapabilityType::LineOfSightReport,
+                 irmel::ChannelMetadataCapabilityType::LineOfSightEuler,
+                 irmel::ChannelMetadataCapabilityType::NavigationReportResp});
             return capability;
         }
         irmel::ChannelCapability capability;
@@ -429,7 +441,7 @@ public:
         if (scenario_ == "image-metadata-register-throw")
             throw std::runtime_error("BadPixel registration exception");
         if (scenario_ == "image-metadata-sync" || scenario_ == "image-metadata-rich" ||
-            scenario_ == "image-metadata-los-mixed") {
+            scenario_ == "image-metadata-los-mixed" || scenario_ == "image-metadata-four-mixed") {
             auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
         } else if (scenario_ == "image-metadata-malformed") {
             std::vector<irmel::BadPixel> invalid;
@@ -470,7 +482,8 @@ public:
         }
         if (scenario_ == "image-metadata-report-register-throw")
             throw std::runtime_error("LineOfSightReport registration exception");
-        if (scenario_ == "image-metadata-los-rich" || scenario_ == "image-metadata-los-mixed") {
+        if (scenario_ == "image-metadata-los-rich" || scenario_ == "image-metadata-los-mixed" ||
+            scenario_ == "image-metadata-four-mixed") {
             auto value = rich_line_of_sight_report(); line_of_sight_report_callback_(*this, &value);
         } else if (scenario_ == "image-metadata-los-report-null") {
             line_of_sight_report_callback_(*this, nullptr);
@@ -502,11 +515,40 @@ public:
             auto euler = rich_line_of_sight_euler(); line_of_sight_euler_callback_(*this, &euler);
             auto bad = rich_bad_pixels(1U); bad_pixel_callback_(*this, &bad);
             auto report = rich_line_of_sight_report(); line_of_sight_report_callback_(*this, &report);
+        } else if (scenario_ == "image-metadata-four-mixed") {
+            auto value = rich_line_of_sight_euler(); line_of_sight_euler_callback_(*this, &value);
         }
         return Return::Success;
     }
     UNSUPPORTED_CALLBACK(irmel::CameraCommandResp)
-    UNSUPPORTED_CALLBACK(irmel::NavigationReportResp)
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> callback) override
+    {
+        record("navigation_response_registration_attempted");
+        navigation_response_callback_ = std::move(callback);
+        if (scenario_ == "image-metadata-navigation-register-fail") {
+            auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
+            return Return::Fail;
+        }
+        if (scenario_ == "image-metadata-navigation-register-throw") {
+            auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
+            throw std::runtime_error("NavigationReportResp registration exception");
+        }
+        if (scenario_ == "image-metadata-navigation-sync" || scenario_ == "image-metadata-navigation-rich") {
+            auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);
+        } else if (scenario_ == "image-metadata-navigation-null") {
+            navigation_response_callback_(*this, nullptr);
+            auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);
+        } else if (scenario_ == "image-metadata-navigation-allocation") {
+            auto failed = rich_navigation_response(); navigation_response_callback_(*this, &failed);
+            auto valid = rich_navigation_response(); navigation_response_callback_(*this, &valid);
+        } else if (scenario_ == "image-metadata-four-mixed") {
+            auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);
+            auto bad = rich_bad_pixels(1U); bad_pixel_callback_(*this, &bad);
+            navigation_response_callback_(*this, &value);
+        }
+        return Return::Success;
+    }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::LOS3D_KinematicsType *const)> const&) override
     { return Return::NotSupported; }
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectMessage)
@@ -591,6 +633,7 @@ private:
     std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> bad_pixel_callback_;
     std::function<void(irmel::Channel&, const irmel::LineOfSightReport *const)> line_of_sight_report_callback_;
     std::function<void(irmel::Channel&, const irmel::LineOfSightEuler *const)> line_of_sight_euler_callback_;
+    std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> navigation_response_callback_;
 };
 #undef UNSUPPORTED_CALLBACK
 

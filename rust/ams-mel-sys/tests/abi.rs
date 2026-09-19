@@ -350,6 +350,7 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST as usize,
         AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT as usize,
         AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER as usize,
+        AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE as usize,
         AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN as usize,
         AMS_MEL_IR_COMMAND_NOT_SET as usize,
         AMS_MEL_IR_COMMAND_RECEIVED as usize,
@@ -545,11 +546,19 @@ fn declarations_match_the_c_header() {
     );
     layout!(
         expected,
+        AmsMelIrNavigationResponseV1,
+        system_time_ns,
+        command_id,
+        request_id
+    );
+    layout!(
+        expected,
         AmsMelIrImageMetadataEventV1,
         kind,
         bad_pixel_list,
         line_of_sight_report,
-        line_of_sight_euler
+        line_of_sight_euler,
+        navigation_response
     );
     layout!(
         expected,

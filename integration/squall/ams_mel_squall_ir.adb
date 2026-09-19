@@ -167,12 +167,18 @@ begin
            or else Channel_Value.Format (Capability) /= Channel_Value.Mono
            or else not Channel_Value.Has_Metadata_Capability
              (Capability, Channel_Value.Bad_Pixel_List)
+            or else not Channel_Value.Has_Metadata_Capability
+              (Capability, Channel_Value.Line_Of_Sight_Report)
+            or else not Channel_Value.Has_Metadata_Capability
+              (Capability, Channel_Value.Line_Of_Sight_Euler)
+            or else not Channel_Value.Has_Metadata_Capability
+              (Capability, Channel_Value.Navigation_Report_Resp)
          then
             raise Program_Error with "unexpected Squall Image capability";
          end if;
          Ada.Text_IO.Put_Line
            ("Image capability: geometry=320x200 bit-depth=8 bands=1 format=MONO "
-            & "metadata=BAD_PIXEL_LIST");
+             & "metadata=BAD_PIXEL_LIST,LINE_OF_SIGHT_REPORT,LINE_OF_SIGHT_EULER,NAVIGATION_REPORT_RESP");
       end;
 
       declare
@@ -566,6 +572,8 @@ begin
                               end if;
                               Have_Euler := True;
                            end;
+                        when Image_Metadata.Navigation_Response_Event =>
+                           raise Program_Error with "unexpected Squall NavigationReportResp before Task 027";
                      end case;
                   end;
                end loop;

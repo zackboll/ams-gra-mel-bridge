@@ -282,6 +282,6 @@ ABI 0.1 remains exactly 56 exports. The existing six Image metadata operations c
 BadPixelList (kind 1), LineOfSightReport (kind 2), and LineOfSightEuler (kind 3) in one
 bounded DROP-INCOMING FIFO. The fixed LOS C values preserve signed nanoseconds, radians,
 Euler values, normalized fixed-width Booleans, and validity flags without conversion.
-Registration is BadPixelList, Report, then Euler; partial registration keeps all callback
-state stream-owned until ImageChannel destruction. NavigationReportResp, NavigationReport
-send, quaternion LOS, and optional Image metadata remain outside this contract.
+Registration is BadPixelList, Report, Euler, then NavigationReportResp; partial registration
+keeps all callback state stream-owned until ImageChannel destruction. NavigationReport send,
+quaternion LOS, and optional Image metadata remain outside this contract.

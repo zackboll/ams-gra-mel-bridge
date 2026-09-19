@@ -1,3 +1,11 @@
+# Task 026 review note
+
+Task 026 uses already-vendored `NavigationReportResp` from pinned IR MEL
+`8d9224519f12b44e0b28815755c56a32a28d24a0`; no vendor closure expanded.
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` accepts registration but emits a
+response only from `send(NavigationReport)`. Registration/capability is real-provider proven;
+payload fidelity is mock-proven; positive real emission is deferred to Task 027.
+
 # Task 025 review note
 
 Task 025 uses the already-vendored ImageChannel closure, including LineOfSightReport and

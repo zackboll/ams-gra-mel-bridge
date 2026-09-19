@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add owned Image `NavigationReportResp` metadata (kind 4) in C and safe Ada.
+  ABI 0.1 remains exactly 56 exports; NavigationReport send is not implemented.
 - Extend the existing Image metadata FIFO with complete owned LineOfSightReport and
   LineOfSightEuler values in C and Ada. Raw Rust and private Python ABI declarations
   track the added records and constants; ABI 0.1 remains exactly 56 exports.

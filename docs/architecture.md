@@ -275,13 +275,13 @@ ImageChannel. One internal Ada converter deep-copies a native capability view fo
 both C2 and Image; each caller independently owns acquisition, view, diagnostics,
 and exception-safe native-owner closure.
 
-Task 025 registers BadPixelList, LineOfSightReport, and LineOfSightEuler in that order on
+Task 026 registers BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp in that order on
 one Image metadata FIFO. A stream-retained
 callback state supports synchronous registration callbacks and outlives public metadata
 closure. It deep-copies each valid event into a bounded DROP-INCOMING FIFO with
 saturating counters; ImageChannel destruction is the callback-quiescence boundary.
 Native event owners and safe Ada event values remain valid after metadata, stream,
-Session, and provider teardown. NavigationReportResp, NavigationReport send,
+Session, and provider teardown. NavigationReport send,
 LineOfSightQuaternion, and other optional Image metadata are not implemented.
 
 For each added operation: sketch Ada usage, define C ownership, implement the

@@ -163,6 +163,20 @@ package body AMS.MEL.IR.Image.Metadata is
                      return Result;
                   end;
 
+               when 4      =>
+                  declare
+                     Value  : constant C.IR_Navigation_Response_V1 := Raw.Navigation_Response;
+                     Result : constant Metadata_Event :=
+                       (Kind_Value                => Navigation_Response_Event,
+                        Navigation_Response_Value =>
+                          (System_Time_NS => Long_Long_Integer (Value.System_Time_NS),
+                           Command_ID     => Value.Command_ID,
+                           Request_ID     => Value.Request_ID));
+                  begin
+                     Release (Handle);
+                     return Result;
+                  end;
+
                when others =>
                   raise Provider_Error with "invalid Image metadata kind";
             end case;
@@ -232,5 +246,12 @@ package body AMS.MEL.IR.Image.Metadata is
          raise Provider_Error with "Image metadata event is not LineOfSightEuler";
       end if;
       return Event.Euler_Value;
+   end;
+   function Navigation_Response_Value (Event : Metadata_Event) return Navigation_Response is
+   begin
+      if Event.Kind_Value /= Navigation_Response_Event then
+         raise Provider_Error with "Image metadata event is not NavigationReportResp";
+      end if;
+      return Event.Navigation_Response_Value;
    end;
 end AMS.MEL.IR.Image.Metadata;
