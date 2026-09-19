@@ -213,6 +213,33 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_instrumentation_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *const AmsMelIrTrackConfigV1,
+        *mut *mut AmsMelIrTrack,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrack,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_enable;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrack,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_get_capabilities;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrTrack,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_close;
 }
 
 #[test]
@@ -1004,6 +1031,19 @@ fn declarations_match_the_c_header() {
         AmsMelIrInstrumentationMetadataEventV1,
         kind,
         report
+    );
+    expected.extend([
+        size_of::<*mut AmsMelIrTrack>(),
+        align_of::<*mut AmsMelIrTrack>(),
+    ]);
+    expected.extend([AMS_MEL_IR_CHANNEL_IRST_TRACK as usize]);
+    layout!(
+        expected,
+        AmsMelIrTrackConfigV1,
+        channel_id,
+        channel_type,
+        platform_id,
+        sensor_location
     );
     expected.extend([
         AMS_MEL_OK as usize,

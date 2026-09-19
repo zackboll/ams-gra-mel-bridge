@@ -12,7 +12,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp
-    src/ir_instrumentation.cpp)
+    src/ir_instrumentation.cpp src/ir_track.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -62,6 +62,10 @@ if(AMS_MEL_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ir-mel/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
+    # The mock provider derives from TrackChannel, whose published declaration
+    # closure includes Boost. Only the vendored pinned Boost is visible.
+    target_include_directories(mock_ir_provider SYSTEM PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
     set_target_properties(mock_ir_provider PROPERTIES
         CXX_EXTENSIONS OFF CXX_VISIBILITY_PRESET hidden
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-providers")
@@ -193,6 +197,16 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_ir_instrumentation mock_ir_provider)
     ams_mel_warnings(test_ir_instrumentation)
     add_test(NAME ir_instrumentation_contract COMMAND test_ir_instrumentation)
+
+    add_executable(test_ir_track_foundation tests/test_ir_track_foundation.c)
+    target_compile_features(test_ir_track_foundation PRIVATE c_std_11)
+    set_target_properties(test_ir_track_foundation PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_track_foundation PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_track_foundation PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_track_foundation mock_ir_provider)
+    ams_mel_warnings(test_ir_track_foundation)
+    add_test(NAME ir_track_foundation_contract COMMAND test_ir_track_foundation)
 
     add_executable(test_diagnostic_allocation
         tests/test_diagnostic_allocation.cpp)

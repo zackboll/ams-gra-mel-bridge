@@ -827,6 +827,16 @@ pub struct AmsMelIrInstrumentationConfigV1 {
     pub platform_id: AmsMelUciIdV1,
     pub sensor_location: AmsMelComponentLocationV1,
 }
+/// Track channel configuration. `channel_type` must be
+/// `AMS_MEL_IR_CHANNEL_IRST_TRACK`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackConfigV1 {
+    pub channel_id: AmsMelUciIdV1,
+    pub channel_type: u32,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrInstrumentationLevelCommandV1 {
@@ -1147,6 +1157,13 @@ pub struct AmsMelIrInstrumentationMetadata {
 }
 #[repr(C)]
 pub struct AmsMelIrInstrumentationMetadataEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Opaque Track channel owner. Task 029B1 provides only the ownership and
+/// lifecycle foundation; no Track metadata or Track request owner exists.
+#[repr(C)]
+pub struct AmsMelIrTrack {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -1671,6 +1688,33 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_instrumentation_close(
         instrumentation: *mut *mut AmsMelIrInstrumentation,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrTrackConfigV1,
+        out_track: *mut *mut AmsMelIrTrack,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_enable(
+        track: *mut AmsMelIrTrack,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_get_capabilities(
+        track: *mut AmsMelIrTrack,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_close(
+        track: *mut *mut AmsMelIrTrack,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

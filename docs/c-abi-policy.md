@@ -411,3 +411,50 @@ detach failure with no pending request retains the public owner for retry.
 test-enabled builds. Submit then returns `AMS_MEL_INTERNAL_ERROR`, no public
 request escapes, the provider future is retained safely, and the channel and
 Session may still be closed publicly without unsafely unloading provider code.
+
+## Task 029B1 Track channel foundation contract
+
+ABI 0.1 grows to exactly 76 exports. Four new exports implement the
+conditionally required Track family's (`@RequiredIfTrack`) channel
+ownership/lifecycle foundation only: `ams_mel_ir_track_open`,
+`ams_mel_ir_track_enable`, `ams_mel_ir_track_get_capabilities`, and
+`ams_mel_ir_track_close`. `ams_mel_ir_track` is the single new opaque owner;
+no Track metadata owner, Track metadata event, or Track request owner exists.
+
+`ams_mel_ir_track_config_v1` mirrors the Health and Instrumentation
+configurations, requires `channel_type == AMS_MEL_IR_CHANNEL_IRST_TRACK`, and
+applies the same UTF-8 and copied-string rules. Open constructs the pinned
+upstream `irmel::Config` with `ChannelType::IRSTTrack`, then requires all three
+of: a non-null `attachChannel` result, a successful
+`dynamic_pointer_cast<TrackChannel>`, and a reported `ChannelCapability` whose
+channel types contain `ChannelType::IRSTTrack`.
+
+Open failures are distinguished. A null `attachChannel` yields
+`AMS_MEL_FACTORY_FAILED` without any detach attempt. A wrong concrete channel
+type, an omitted IRSTTrack capability, and a throwing `getCapabilities` all
+attempt rollback detach; a proven detach yields `AMS_MEL_INITIALIZATION_FAILED`.
+When detach ownership cannot be proven, the complete provider graph is retained
+permanently through the same allocation-free emergency-root pattern used by the
+other families and `AMS_MEL_PROVIDER_FAILED` is returned. No provider object is
+destructed while detach ownership remains uncertain.
+
+Lifecycle is `Attached`, `Enabled`, `Failed`, `Closed`. Capability snapshots are
+valid while attached or enabled and reuse the one shared
+`ams_mel::internal::snapshot_capability`. Enable moves `Attached -> Enabled`; an
+already enabled channel returns `AMS_MEL_OK`; a failed or closed channel returns
+`AMS_MEL_PROVIDER_FAILED`. A non-Success provider enable sets `Failed` and
+returns `AMS_MEL_PROVIDER_FAILED`; a throwing enable sets `Failed` and returns
+`AMS_MEL_PROVIDER_EXCEPTION`.
+
+Close rejects a null pointer-to-owner with `AMS_MEL_INVALID_ARGUMENT` and
+accepts an already null owner with `AMS_MEL_OK`. It calls provider `disable()`
+only when Enable was attempted. A failed disable does not prove ownership
+safety, so detach is still attempted; if that detach succeeds the provider
+channel is destroyed, the caller's owner is cleared, and
+`AMS_MEL_PROVIDER_FAILED` reports the disable failure. A failed detach returns
+`AMS_MEL_PROVIDER_FAILED`, leaves the caller's Track owner non-null, resets
+`cleanup_started`, and retains the complete graph so a later Close retries.
+
+The IRSTTrackReport callback, `TrackDataUpdate`, `SystemTrackDataResponse`,
+`CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
+`RequestSystemTrackData` are not implemented in this ABI.

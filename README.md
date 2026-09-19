@@ -45,7 +45,7 @@ themselves.
 > unsupported-provider failure. The Instrumentation-specific copies of the
 > inherited generic Channel services (KeepAlive, CommsTest, buffers) are
 > deliberately not cloned. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 72-function C ABI. Safe Rust and
+> Python ctypes layer track the complete current 76-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured

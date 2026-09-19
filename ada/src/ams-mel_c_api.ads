@@ -75,6 +75,8 @@ private package AMS.MEL_C_API is
    type Instrumentation_Event_Handle is new System.Address;
    Null_Instrumentation_Event    : constant Instrumentation_Event_Handle :=
      Instrumentation_Event_Handle (System.Null_Address);
+   type Track_Handle is new System.Address;
+   Null_Track                    : constant Track_Handle := Track_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -108,6 +110,13 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type IR_Instrumentation_Config_V1 is record
+      Channel_ID      : UCI_ID_V1;
+      Channel_Type    : Interfaces.Unsigned_32;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+   type IR_Track_Config_V1 is record
       Channel_ID      : UCI_ID_V1;
       Channel_Type    : Interfaces.Unsigned_32;
       Platform_ID     : UCI_ID_V1;
@@ -1172,4 +1181,31 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_instrumentation_close";
+   function IR_Track_Open
+     (Session             : Session_Handle;
+      Config              : access constant IR_Track_Config_V1;
+      Output              : access Track_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_open";
+   function IR_Track_Enable
+     (Handle              : Track_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_enable";
+   function IR_Track_Get_Capabilities
+     (Handle              : Track_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_get_capabilities";
+   function IR_Track_Close
+     (Handle              : access Track_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_close";
 end AMS.MEL_C_API;

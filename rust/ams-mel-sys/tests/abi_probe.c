@@ -251,6 +251,11 @@ int main(void)
     (void)instr_wait; (void)instr_req_close; (void)instr_meta_open; (void)instr_meta_recv;
     (void)instr_meta_counters; (void)instr_meta_close; (void)instr_ev_view;
     (void)instr_ev_close; (void)instr_close;
+    ams_mel_status_t (*track_open)(const ams_mel_session *, const ams_mel_ir_track_config_v1 *, ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_open;
+    ams_mel_status_t (*track_enable)(ams_mel_ir_track *, char *, size_t, size_t *) = ams_mel_ir_track_enable;
+    ams_mel_status_t (*track_caps)(ams_mel_ir_track *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_track_get_capabilities;
+    ams_mel_status_t (*track_close)(ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_close;
+    (void)track_open; (void)track_enable; (void)track_caps; (void)track_close;
 #define RECORD(type, ...) LAYOUT(type); __VA_ARGS__
     RECORD(ams_mel_uci_id_span_v1, FIELD(ams_mel_uci_id_span_v1,data); FIELD(ams_mel_uci_id_span_v1,size));
     RECORD(ams_mel_ir_command_status_v1, FIELD(ams_mel_ir_command_status_v1,command_id); FIELD(ams_mel_ir_command_status_v1,state); FIELD(ams_mel_ir_command_status_v1,reason_id); FIELD(ams_mel_ir_command_status_v1,reason_description));
@@ -378,6 +383,14 @@ int main(void)
     RECORD(ams_mel_ir_instrumentation_metadata_event_v1,
         FIELD(ams_mel_ir_instrumentation_metadata_event_v1,kind);
         FIELD(ams_mel_ir_instrumentation_metadata_event_v1,report));
+
+    LAYOUT(ams_mel_ir_track *);
+    VALUE(AMS_MEL_IR_CHANNEL_IRST_TRACK);
+    RECORD(ams_mel_ir_track_config_v1,
+        FIELD(ams_mel_ir_track_config_v1,channel_id);
+        FIELD(ams_mel_ir_track_config_v1,channel_type);
+        FIELD(ams_mel_ir_track_config_v1,platform_id);
+        FIELD(ams_mel_ir_track_config_v1,sensor_location));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);
