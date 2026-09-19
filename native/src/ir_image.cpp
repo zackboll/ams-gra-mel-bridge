@@ -135,18 +135,13 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
     diagnostic("", out, capacity, required);
     if (!stream || !queue_capacity || !output || *output || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<ImageMetadataState> state;
     try {
-        std::shared_ptr<ImageMetadataState> state;
         std::shared_ptr<irmel::ImageChannel> channel;
-        {
-            if (!stream->image_channel || stream->image_metadata_attempted)
-                return AMS_MEL_INVALID_ARGUMENT;
-            state = std::make_shared<ImageMetadataState>();
-            state->capacity = queue_capacity;
-            stream->image_metadata_attempted = true;
-            stream->image_metadata = state;
-            channel = stream->image_channel;
-        }
+        state = std::make_shared<ImageMetadataState>();
+        state->capacity = queue_capacity;
+        if (!claim_image_metadata(*stream, state, channel))
+            return AMS_MEL_INVALID_ARGUMENT;
         const auto result = channel->registerMetadataCallback(
             [state](irmel::Channel&, const irmel::BadPixelList *const value) { state->bad_pixels(value); });
         if (result != irmel::Return::Success) {
@@ -160,13 +155,13 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
         *output = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
-        if (stream->image_metadata) image_metadata_stream_stopped(stream->image_metadata);
+        image_metadata_stream_stopped(state);
         diagnostic("BadPixelList metadata allocation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
-        if (stream->image_metadata) {
-            std::lock_guard lock{stream->image_metadata->mutex};
-            stream->image_metadata->lifecycle = MetadataLifecycle::Inactive;
+        if (state) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
         }
         diagnostic("BadPixelList callback registration exception", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;

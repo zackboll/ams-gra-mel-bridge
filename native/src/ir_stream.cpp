@@ -327,6 +327,23 @@ struct CallbackState {
     }
 };
 
+bool claim_image_metadata(
+    ams_mel_ir_stream& stream,
+    const std::shared_ptr<ImageMetadataState>& state,
+    std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
+{
+    std::lock_guard lock{stream.callback->mutex};
+    if (!stream.image_channel || stream.callback->lifecycle == Lifecycle::Stopping ||
+        stream.callback->lifecycle == Lifecycle::Stopped ||
+        stream.callback->lifecycle == Lifecycle::Failed ||
+        stream.image_metadata_attempted)
+        return false;
+    stream.image_metadata_attempted = true;
+    stream.image_metadata = state;
+    image_channel = stream.image_channel;
+    return true;
+}
+
 class Listener final : public irmel::ImageListener {
 public:
     explicit Listener(std::shared_ptr<CallbackState> state) : state_{std::move(state)} {}
@@ -749,11 +766,17 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_get_capabilities(
     if (!stream || !output || *output || (!out && capacity != 0U))
         return AMS_MEL_INVALID_ARGUMENT;
     try {
-        std::lock_guard lock{stream->callback->mutex};
-        if (!stream->image_channel || stream->callback->lifecycle == Lifecycle::Stopped ||
-            stream->callback->lifecycle == Lifecycle::Failed)
-            return AMS_MEL_PROVIDER_FAILED;
-        return ams_mel::internal::snapshot_capability(*stream->image_channel, output,
+        std::shared_ptr<irmel::ImageChannel> image_channel;
+        {
+            std::lock_guard lock{stream->callback->mutex};
+            if (!stream->image_channel ||
+                stream->callback->lifecycle == Lifecycle::Stopping ||
+                stream->callback->lifecycle == Lifecycle::Stopped ||
+                stream->callback->lifecycle == Lifecycle::Failed)
+                return AMS_MEL_PROVIDER_FAILED;
+            image_channel = stream->image_channel;
+        }
+        return ams_mel::internal::snapshot_capability(*image_channel, output,
                                                        out, capacity, required);
     } catch (...) {
         diagnostic("Image capability query failed", out, capacity, required);

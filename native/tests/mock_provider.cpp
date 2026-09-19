@@ -169,6 +169,8 @@ struct CallbackBarrier {
     std::condition_variable ready;
     bool callback_inside{false};
     bool disable_called{false};
+    bool capability_called{false};
+    bool callback_returned{false};
 };
 std::shared_ptr<CallbackBarrier> callback_barrier = std::make_shared<CallbackBarrier>();
 
@@ -363,6 +365,12 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
+        if (scenario_ == "capability-inflight" && capability_calls_++ != 0U) {
+            std::unique_lock lock{barrier_->mutex};
+            barrier_->capability_called = true;
+            barrier_->ready.notify_all();
+            barrier_->ready.wait(lock, [this] { return barrier_->callback_returned; });
+        }
         if (scenario_ == "capability-throw")
             throw std::runtime_error("mock capability exception");
         if (scenario_ == "image-capability-rich") {
@@ -387,7 +395,14 @@ public:
         std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> callback) override
     {
         ++bad_pixel_registration_count_;
+        record("bad_pixel_registration_attempted");
         bad_pixel_callback_ = std::move(callback);
+        if (scenario_ == "image-metadata-register-blocked") {
+            const char *base = std::getenv("AMS_MEL_TEST_IMAGE_METADATA_REGISTER_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".entered");
+            wait_for_file(std::string{base} + ".release");
+        }
         if (scenario_ == "image-metadata-register-fail") return Return::Fail;
         if (scenario_ == "image-metadata-register-not-supported") return Return::NotSupported;
         if (scenario_ == "image-metadata-register-throw")
@@ -475,6 +490,10 @@ private:
             if (id == 1U && scenario_ == "frame-copy-allocation")
                 (void)setenv("AMS_MEL_TEST_FRAME_COPY_FAILURE", "allocation", 1);
             record("callback_entered");
+            if (scenario_ == "capability-inflight") {
+                std::unique_lock lock{barrier_->mutex};
+                barrier_->ready.wait(lock, [this] { return barrier_->capability_called; });
+            }
             if (scenario_ == "shutdown-callback")
                 std::this_thread::sleep_for(std::chrono::milliseconds{20});
             if (scenario_ == "null-buffer") listener_->onImage(*this, header, {});
@@ -484,6 +503,11 @@ private:
                 listener_->onImage(*this, header, buffer);
             }
             record("callback_returned");
+            if (scenario_ == "capability-inflight") {
+                std::lock_guard lock{barrier_->mutex};
+                barrier_->callback_returned = true;
+                barrier_->ready.notify_all();
+            }
             if (scenario_ == "shutdown-callback" && stopping_) break;
             if (scenario_ != "overflow") {
                 std::this_thread::sleep_for(std::chrono::milliseconds{2});
@@ -497,6 +521,7 @@ private:
     std::thread producer_;
     std::thread metadata_producer_;
     std::shared_ptr<CallbackBarrier> barrier_;
+    mutable unsigned capability_calls_{};
     unsigned bad_pixel_registration_count_{};
     std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> bad_pixel_callback_;
 };

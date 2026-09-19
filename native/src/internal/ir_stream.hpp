@@ -38,3 +38,7 @@ struct ams_mel_ir_stream {
 };
 
 void image_metadata_stream_stopped(const std::shared_ptr<ImageMetadataState>& state) noexcept;
+bool claim_image_metadata(
+    ams_mel_ir_stream& stream,
+    const std::shared_ptr<ImageMetadataState>& state,
+    std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;

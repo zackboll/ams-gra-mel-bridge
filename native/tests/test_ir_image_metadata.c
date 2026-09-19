@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -58,6 +59,61 @@ static int append_log(const char *path, const char *value)
     CHECK(file != NULL);
     CHECK(fprintf(file, "%s\n", value) > 0);
     CHECK(fclose(file) == 0);
+    return EXIT_SUCCESS;
+}
+struct metadata_open_arguments {
+    ams_mel_ir_stream *stream;
+    ams_mel_ir_image_metadata *metadata;
+    ams_mel_status_t status;
+};
+static int metadata_open(void *argument)
+{
+    struct metadata_open_arguments *args = argument;
+    args->status = ams_mel_ir_image_metadata_open(
+        args->stream, 2, &args->metadata, NULL, 0, NULL);
+    return 0;
+}
+static int test_concurrent_open_one_shot(void)
+{
+    char log[] = "/tmp/ams-image-register-log-XXXXXX";
+    char barrier[] = "/tmp/ams-image-register-barrier-XXXXXX";
+    char entered[256], release[256], contents[4096];
+    int descriptor = mkstemp(log);
+    FILE *file;
+    size_t count;
+    struct metadata_open_arguments first = {0};
+    ams_mel_ir_image_metadata *second = NULL;
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    thrd_t opener;
+    CHECK(descriptor >= 0); CHECK(close(descriptor) == 0);
+    descriptor = mkstemp(barrier); CHECK(descriptor >= 0); CHECK(close(descriptor) == 0);
+    CHECK(unlink(barrier) == 0);
+    CHECK(snprintf(entered, sizeof entered, "%s.entered", barrier) > 0);
+    CHECK(snprintf(release, sizeof release, "%s.release", barrier) > 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
+    CHECK(setenv("AMS_MEL_TEST_IMAGE_METADATA_REGISTER_BARRIER", barrier, 1) == 0);
+    CHECK(open_all("image-metadata-register-blocked", &session, &stream) == EXIT_SUCCESS);
+    first.stream = stream; first.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(thrd_create(&opener, metadata_open, &first) == thrd_success);
+    CHECK(wait_for_file(entered) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &second, NULL, 0, NULL) ==
+          AMS_MEL_INVALID_ARGUMENT);
+    CHECK(second == NULL);
+    CHECK(append_log(release, "release") == EXIT_SUCCESS);
+    CHECK(thrd_join(opener, NULL) == thrd_success);
+    CHECK(first.status == AMS_MEL_OK && first.metadata != NULL);
+    CHECK(ams_mel_ir_image_metadata_close(&first.metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_METADATA_REGISTER_BARRIER") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    file = fopen(log, "rb"); CHECK(file != NULL);
+    count = fread(contents, 1, sizeof contents - 1U, file); contents[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(strstr(contents, "bad_pixel_registration_attempted") != NULL);
+    CHECK(strstr(strstr(contents, "bad_pixel_registration_attempted") + 1,
+                 "bad_pixel_registration_attempted") == NULL);
+    CHECK(unlink(entered) == 0); CHECK(unlink(release) == 0); CHECK(unlink(log) == 0);
     return EXIT_SUCCESS;
 }
 static int test_rich_and_lifetime(void)
@@ -167,6 +223,7 @@ int main(void)
     CHECK(test_registration_failure("image-metadata-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-register-not-supported", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
+    CHECK(test_concurrent_open_one_shot() == EXIT_SUCCESS);
     CHECK(test_metadata_close_before_callback() == EXIT_SUCCESS);
     puts("PASS: C IR Image BadPixel metadata contract");
     return EXIT_SUCCESS;

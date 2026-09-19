@@ -945,7 +945,9 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
     ams_mel_ir_frame_snapshot **out_snapshot, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* Deep-copy ImageChannel capability snapshot. The returned owner remains valid
- * after Image_Stream, Session, and provider-library teardown. */
+ * after Image_Stream, Session, and provider-library teardown. This call must be
+ * externally serialized with stream_start, stream_stop, and stream_close. It
+ * may execute while provider frame callbacks are occurring. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_capabilities(
     ams_mel_ir_stream *stream, ams_mel_ir_channel_capability **out_capability,
     char *diagnostic, size_t diagnostic_capacity,
@@ -966,8 +968,9 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_counters(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* BadPixelList is the sole Image metadata event in Task 024. The FIFO is
- * bounded DROP-INCOMING; at most one receive may execute per owner. Public
- * close is idempotent/nonblocking and does not unregister the provider callback. */
+ * bounded DROP-INCOMING; at most one receive may execute per owner. Metadata
+ * open must be externally serialized with stream_start, stream_stop, and
+ * stream_close. Provider callbacks may execute synchronously during open. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_open(
     ams_mel_ir_stream *stream, size_t queue_capacity,
     ams_mel_ir_image_metadata **out_metadata, char *diagnostic,
@@ -980,6 +983,10 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_get_counters(
     const ams_mel_ir_image_metadata *metadata,
     ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking. It does not unregister the provider callback.
+ * Close must not race receive or counters using the same public metadata
+ * handle. Provider callbacks may race public close safely because callback
+ * state is stream-owned. Event handles remain independent. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_close(
     ams_mel_ir_image_metadata **metadata, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
