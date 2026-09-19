@@ -378,3 +378,14 @@ is explicitly superseded by this decision.
 The full proposal and its source list are preserved in
 `reference/AMS_GRA_MEL_Design_Review.md`. An implemented behavior may differ from
 a proposal only through a documented design decision and matching tests.
+
+## Task 029A Track declaration dependency
+
+Task 029A adds no Track adapter or public ABI. It vendors a measured,
+declaration-only Boost 1.83.0 header closure so the byte-identical pinned IR
+MEL `TrackChannel.h` can compile even though its deferred `TrackDataUpdate.h`
+declaration includes Boost uBLAS. Boost remains a private native include and
+is not exported through the C ABI. A compiler dependency check rejects system
+Boost leakage. The presence of TrackDataUpdate declarations and Boost headers
+does not implement TrackDataUpdate; Task 029B is the earliest possible Track
+adapter task.

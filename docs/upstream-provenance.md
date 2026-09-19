@@ -1,3 +1,24 @@
+# Task 029A review note
+
+Pinned IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`
+`TrackChannel.h` includes the deferred `TrackDataUpdate.h` declaration, whose
+published closure reaches Boost uBLAS. Task 029A vendors the exact measured
+Boost 1.83.0 declaration closure only: the official
+`boost_1_83_0.tar.bz2` archive SHA-256 is
+`6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e`,
+and its official source commit is `564e2ac16907019696cdaba8a93e3588ec596062`.
+GCC 14.2 observes 481 Boost headers, Clang 19.1 observes 482, and the union is
+483 byte-identical Boost 1.83.0 headers under `native/vendor/boost-1.83.0`.
+The exact Boost Software License is preserved there. A build-time dependency
+probe rejects any Boost header outside that root; no system Boost path, network
+fetch, FetchContent, or ExternalProject is part of normal builds.
+
+Boost 1.83.0 is a project compatibility pin because pinned Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` builds with `boost-devel` and
+carries Boost 1.83.0. It is not a claim that IR MEL itself requires that Boost
+release. Header presence is not feature support: Task 029A adds no Track API;
+TrackDataUpdate and all Track behavior remain unimplemented.
+
 # Task 028 review note
 
 Task 028 expands the reviewed vendored closure by exactly three files from
