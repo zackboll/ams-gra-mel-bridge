@@ -49,6 +49,22 @@ Ada-owned `Instrumentation_Report` values; `Close` deactivates public
 consumption only, since upstream has no unregister operation and channel
 destruction remains the callback-quiescence boundary. Instrumentation-specific
 copies of the inherited generic Channel services are deliberately absent.
+
+`AMS.MEL.IR.Track` implements only the conditionally required Track family's
+(`@RequiredIfTrack`) channel ownership/lifecycle foundation:
+`Track_Config`/`Create_Config`, and the limited controlled `Track_Channel` with
+`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`. `Capabilities` is valid while
+attached or enabled and reuses the one shared Ada `ChannelCapability`
+converter; `Enable` is idempotent once enabled. Finalization closes an
+un-closed channel through the same non-raising fallback used by the other
+families, and a native detach failure deliberately leaves the underlying owner
+intact so the retained provider graph is never destroyed. A `Track_Channel`
+keeps the provider/session graph alive independently of its parent `Session`.
+No `IRST_Track_Report`, Track metadata package, Track enumerations, or NED type
+is declared: `IRSTTrackReport`, `TrackDataUpdate`, `SystemTrackDataResponse`,
+`CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
+`RequestSystemTrackData` are not implemented.
+
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
 

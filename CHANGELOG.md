@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Add the IR Track channel ownership/lifecycle foundation
+  (`@RequiredIfTrack`) in native C, safe Ada, raw Rust, and private Python.
+  The slice is exactly `Open`, `Enable`, `ChannelCapability`, and `Close` over
+  a shared private `TrackState` that follows the Health/Instrumentation channel
+  architecture without metadata state or request accounting. Open constructs
+  the pinned upstream `irmel::Config` with `ChannelType::IRSTTrack` and requires
+  all three of a non-null `attachChannel`, a successful concrete
+  `TrackChannel` cast, and a reported capability containing `IRSTTrack`; each
+  failure rolls back through detach, and a graph whose detach ownership cannot
+  be proven is retained permanently by an allocation-free emergency root rather
+  than destroyed. Close disables only when Enable was attempted, always attempts
+  detach, and a failed detach leaves the caller's owner non-null for a later
+  retry. The mock provider derives from the abstract upstream `TrackChannel`,
+  implements every pure virtual Track operation as unsupported/not-supported,
+  and records any invocation so the tests prove the deferred surface was never
+  exercised; it uses only the vendored pinned Boost include root and the
+  `check_track_header_boost_closure` target remains green with a vendor delta of
+  zero. ABI 0.1 grows from 72 to 76 exports; native CTest grows from 10 to 11.
+  No safe Rust or public Python Track API is added, and no real Squall Track
+  validation is added. `IRSTTrackReport`, `TrackDataUpdate`,
+  `SystemTrackDataResponse`, `CandidateObjectMessage`,
+  `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
+  implemented; Track is not complete.
+
 - Add the conditionally required IR Instrumentation channel
   (`@RequiredIfInstrumentation`) in native C, safe Ada, raw Rust, and private
   Python. The slice is exactly the Instrumentation-specific conditional surface

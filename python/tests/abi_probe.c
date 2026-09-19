@@ -256,6 +256,11 @@ int main(void)
     ams_mel_status_t (*instr_ev_view)(const ams_mel_ir_instrumentation_metadata_event *, const ams_mel_ir_instrumentation_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_event_view;
     ams_mel_status_t (*instr_ev_close)(ams_mel_ir_instrumentation_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_event_close;
     ams_mel_status_t (*instr_close)(ams_mel_ir_instrumentation **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_close;
+    ams_mel_status_t (*track_open)(const ams_mel_session *, const ams_mel_ir_track_config_v1 *, ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_open;
+    ams_mel_status_t (*track_enable)(ams_mel_ir_track *, char *, size_t, size_t *) = ams_mel_ir_track_enable;
+    ams_mel_status_t (*track_caps)(ams_mel_ir_track *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_track_get_capabilities;
+    ams_mel_status_t (*track_close)(ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_close;
+    (void)track_open; (void)track_enable; (void)track_caps; (void)track_close;
     (void)instr_open; (void)instr_enable; (void)instr_cap; (void)instr_submit;
     (void)instr_wait; (void)instr_req_close; (void)instr_meta_open; (void)instr_meta_recv;
     (void)instr_meta_counters; (void)instr_meta_close; (void)instr_ev_view;
@@ -428,6 +433,14 @@ int main(void)
     RECORD(ams_mel_ir_instrumentation_metadata_event_v1,
         FIELD(ams_mel_ir_instrumentation_metadata_event_v1,kind);
         FIELD(ams_mel_ir_instrumentation_metadata_event_v1,report));
+
+    LAYOUT(ams_mel_ir_track *);
+    VALUE(AMS_MEL_IR_CHANNEL_IRST_TRACK);
+    RECORD(ams_mel_ir_track_config_v1,
+        FIELD(ams_mel_ir_track_config_v1,channel_id);
+        FIELD(ams_mel_ir_track_config_v1,channel_type);
+        FIELD(ams_mel_ir_track_config_v1,platform_id);
+        FIELD(ams_mel_ir_track_config_v1,sensor_location));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);

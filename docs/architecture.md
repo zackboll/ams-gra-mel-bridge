@@ -352,6 +352,30 @@ only: pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` returns
 `nullptr` from `attachChannel` for Instrumentation, so real-provider validation
 covers clean unsupported-provider failure and continued Session health only.
 
+Task 029B1 adds the conditionally required Track family's (`@RequiredIfTrack`)
+channel ownership/lifecycle foundation and nothing else. `AMS.MEL.IR.Track`
+and four C exports provide Open, Enable, ChannelCapability, and Close over a
+shared private `TrackState` that mirrors the Health/Instrumentation channel
+architecture minus metadata state and request accounting. Open validates the
+concrete `TrackChannel` type and the reported `ChannelType::IRSTTrack`
+capability, rolls back through detach when either check fails, and retains the
+complete provider graph through the same allocation-free emergency root when
+detach ownership cannot be proven. Close disables only when Enable was
+attempted, always attempts detach, and leaves the caller's owner non-null for a
+later retry when detach fails. Capability snapshots reuse the existing native
+`snapshot_capability` and the existing Ada `Capability_Conversion`. ABI 0.1
+grows from 72 to 76 exports and native CTest from 10 to 11 targets. Raw Rust
+and private Python declarations track all 76 exports; no safe Rust or public
+Python Track API is added. The `IRSTTrackReport` callback, `TrackDataUpdate`,
+`SystemTrackDataResponse`, `CandidateObjectMessage`,
+`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` remain
+unimplemented, and no real Squall Track validation was added: pinned Squall
+negative Track validation waits for the complete `@RequiredIfTrack` report
+surface. The mock provider derives from the abstract upstream `TrackChannel`,
+implements every pure virtual Track operation as unsupported/not-supported, and
+records any call so tests prove the deferred surface was never exercised; it
+sees only the vendored pinned Boost include root.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

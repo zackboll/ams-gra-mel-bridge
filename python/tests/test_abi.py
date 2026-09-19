@@ -91,9 +91,13 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_instrumentation_metadata_event_view",
                 "ams_mel_ir_instrumentation_metadata_event_close",
                 "ams_mel_ir_instrumentation_close",
+                "ams_mel_ir_track_open",
+                "ams_mel_ir_track_enable",
+                "ams_mel_ir_track_get_capabilities",
+                "ams_mel_ir_track_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 72)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 76)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -509,6 +513,17 @@ class AbiTests(unittest.TestCase):
         )
         expected.extend(self._layout(_native.IrInstrumentationResultV1, 'report', 'error_code'))
         expected.extend(self._layout(_native.IrInstrumentationMetadataEventV1, 'kind', 'report'))
+        expected.extend([ctypes.sizeof(_native.IrTrackHandle), ctypes.alignment(_native.IrTrackHandle)])
+        expected.extend([_native.AMS_MEL_IR_CHANNEL_IRST_TRACK])
+        expected.extend(
+            self._layout(
+                _native.IrTrackConfigV1,
+                'channel_id',
+                'channel_type',
+                'platform_id',
+                'sensor_location',
+            )
+        )
         expected.extend(
             [
                 _native.AMS_MEL_OK,

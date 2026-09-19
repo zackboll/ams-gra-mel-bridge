@@ -304,6 +304,8 @@ class NavigationReportV1(ctypes.Structure): _fields_ = [
 class IrNavigationResultV1(ctypes.Structure): _fields_ = [("response",IrNavigationResponseV1),("error_code",ctypes.c_uint32)]
 class IrInstrumentationConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+class IrTrackConfigV1(ctypes.Structure):
+    _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
@@ -413,6 +415,8 @@ IrInstrumentationHandle = ctypes.c_void_p
 IrInstrumentationRequestHandle = ctypes.c_void_p
 IrInstrumentationMetadataHandle = ctypes.c_void_p
 IrInstrumentationMetadataEventHandle = ctypes.c_void_p
+# Task 029B1 declares only the Track channel ownership/lifecycle foundation.
+IrTrackHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -789,6 +793,18 @@ ams_mel_ir_instrumentation_metadata_event_close.restype = ctypes.c_int32
 ams_mel_ir_instrumentation_close = _LIBRARY.ams_mel_ir_instrumentation_close
 ams_mel_ir_instrumentation_close.argtypes = [ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_instrumentation_close.restype = ctypes.c_int32
+ams_mel_ir_track_open = _LIBRARY.ams_mel_ir_track_open
+ams_mel_ir_track_open.argtypes = [SessionHandle, ctypes.POINTER(IrTrackConfigV1), ctypes.POINTER(IrTrackHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_open.restype = ctypes.c_int32
+ams_mel_ir_track_enable = _LIBRARY.ams_mel_ir_track_enable
+ams_mel_ir_track_enable.argtypes = [IrTrackHandle, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_enable.restype = ctypes.c_int32
+ams_mel_ir_track_get_capabilities = _LIBRARY.ams_mel_ir_track_get_capabilities
+ams_mel_ir_track_get_capabilities.argtypes = [IrTrackHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_track_close = _LIBRARY.ams_mel_ir_track_close
+ams_mel_ir_track_close.argtypes = [ctypes.POINTER(IrTrackHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_close.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
@@ -863,4 +879,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_instrumentation_metadata_event_view",
     "ams_mel_ir_instrumentation_metadata_event_close",
     "ams_mel_ir_instrumentation_close",
+    "ams_mel_ir_track_open",
+    "ams_mel_ir_track_enable",
+    "ams_mel_ir_track_get_capabilities",
+    "ams_mel_ir_track_close",
 )

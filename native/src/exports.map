@@ -72,6 +72,10 @@ AMS_MEL_0.1 {
         ams_mel_ir_instrumentation_metadata_event_view;
         ams_mel_ir_instrumentation_metadata_event_close;
         ams_mel_ir_instrumentation_close;
+        ams_mel_ir_track_open;
+        ams_mel_ir_track_enable;
+        ams_mel_ir_track_get_capabilities;
+        ams_mel_ir_track_close;
     local:
         *;
 };

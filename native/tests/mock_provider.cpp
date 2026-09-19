@@ -2,6 +2,7 @@
 #include <irmel/library/c2/C2Channel.h>
 #include <irmel/library/health-status/HealthStatusChannel.h>
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
+#include <irmel/library/track/TrackChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -1498,6 +1499,104 @@ private:
         report_callback_;
 };
 
+/* Task 029B1 implements only Track channel ownership/lifecycle. Every deferred
+ * Track operation is instrumented and reports unsupported, so the foundation
+ * tests can prove none of them were accidentally exercised. */
+std::atomic<std::uint64_t> track_deferred_calls{};
+
+class MockTrackChannel final : public irmel::TrackChannel {
+public:
+    explicit MockTrackChannel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockTrackChannel() override
+    {
+        /* Any deferred Track operation would have been recorded already; the
+         * saturating counter is reported so a test can assert exactly zero. */
+        if (track_deferred_calls.load() != 0U)
+            record("track_deferred_operation_invoked");
+        record("track_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
+    { return {}; }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
+    { return Return::NotSupported; }
+    Return enable() override
+    {
+        record("track_enabled");
+        if (scenario_ == "track-enable-throw")
+            throw std::runtime_error("mock Track enable exception");
+        if (scenario_ == "track-enable-fail") return Return::Fail;
+        enabled_ = true;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        enabled_ = false;
+        record("track_disabled");
+        return scenario_ == "track-disable-fail" ? Return::Fail : Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        if (scenario_ == "track-capability-throw")
+            throw std::runtime_error("mock Track capability exception");
+        auto value = rich_channel_capability();
+        value.setChannelTypes(scenario_ == "track-capability-wrong" ?
+            std::vector<irmel::ChannelType>{irmel::ChannelType::HealthAndStatus} :
+            std::vector<irmel::ChannelType>{irmel::ChannelType::IRSTTrack});
+        value.setChannelMetadataCapabilities(
+            {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
+             irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+        return value;
+    }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { return Return::NotSupported; }
+
+    /* Deferred to Task 029B2 and beyond; never positively implemented here. */
+    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
+    { return deferred_send("track_system_track_data_response_sent"); }
+    mel::RequestFor<irmel::CommandStatus> send(irmel::TrackDataUpdate) override
+    { return deferred_send("track_data_update_sent"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&,
+                           const irmel::CandidateObjectMessage *const)>) override
+    { return deferred_registration("track_candidate_object_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>) override
+    { return deferred_registration("track_report_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&,
+                           const irmel::RequestSystemTrackData *const)>) override
+    { return deferred_registration("track_request_system_track_data_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&,
+                           const irmel::CandidateObjectPreProcMessage *const)>) override
+    { return deferred_registration("track_candidate_object_preproc_registered"); }
+
+private:
+    static mel::RequestFor<irmel::CommandStatus> deferred_send(const char *event)
+    {
+        track_deferred_calls.fetch_add(1U);
+        record(event);
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
+        auto future = promise.get_future();
+        promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+            mel::Error{mel::ErrorCode::Unsupported,
+                       "Track send is not implemented in task 029B1"}});
+        return future;
+    }
+    static Return deferred_registration(const char *event)
+    {
+        track_deferred_calls.fetch_add(1U);
+        record(event);
+        return Return::NotSupported;
+    }
+    std::string scenario_;
+    bool enabled_{};
+};
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
@@ -1507,6 +1606,8 @@ public:
             capability.setChannelTypes({irmel::ChannelType::HealthAndStatus});
         else if (instance_.rfind("instr-",0)==0)
             capability.setChannelTypes({irmel::ChannelType::Instrumentation});
+        else if (instance_.rfind("track-",0)==0)
+            capability.setChannelTypes({irmel::ChannelType::IRSTTrack});
         else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
@@ -1544,6 +1645,30 @@ public:
         record("channel_attached");
         if (instance_ == "attach-throw") throw std::runtime_error("mock attach exception");
         if (instance_ == "attach-null" || instance_ == "c2-attach-null") return {};
+        if (config.getChannelType() == irmel::ChannelType::IRSTTrack) {
+            if (instance_ == "track-attach-null") return {};
+            if (instance_ == "track-wrong-concrete" ||
+                instance_ == "track-open-detach-fail")
+                return std::make_shared<MockHealthStatusChannel>(instance_);
+            if (instance_ == "track-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != i ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock Track ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR track channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    config.getImgLstnr())
+                    throw std::runtime_error("mock Track configuration conversion mismatch");
+            }
+            return std::make_shared<MockTrackChannel>(instance_);
+        }
         if (config.getChannelType() == irmel::ChannelType::Instrumentation) {
             if (instance_ == "instr-attach-null") return {};
             if (instance_ == "instr-wrong-type")
@@ -1621,10 +1746,13 @@ public:
         if (!std::dynamic_pointer_cast<MockImageChannel>(channel) &&
             !std::dynamic_pointer_cast<MockC2Channel>(channel) &&
             !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
-            !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel)) std::abort();
+            !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockTrackChannel>(channel)) std::abort();
         if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail" ||
              instance_ == "health-detach-fail" ||
-             instance_ == "instr-detach-fail") && !detach_failed_) {
+             instance_ == "instr-detach-fail" ||
+             instance_ == "track-detach-fail" ||
+             instance_ == "track-open-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;

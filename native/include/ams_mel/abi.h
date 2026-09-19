@@ -77,6 +77,11 @@ typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_req
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
 typedef struct ams_mel_ir_instrumentation_metadata_event
     ams_mel_ir_instrumentation_metadata_event;
+/* Conditionally required Track channel (@RequiredIfTrack) owner. This release
+ * implements only channel ownership/lifecycle: Open, Enable, ChannelCapability,
+ * and Close. No Track metadata owner, Track metadata event, or Track request
+ * owner exists yet. */
+typedef struct ams_mel_ir_track ams_mel_ir_track;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -777,6 +782,17 @@ typedef struct ams_mel_ir_instrumentation_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_instrumentation_config_v1;
+
+/* Track channel configuration; follows the Health/Instrumentation pattern.
+ * channel_type must be AMS_MEL_IR_CHANNEL_IRST_TRACK. String views are UTF-8
+ * byte views, need not be NUL-terminated, and are copied during open. No image
+ * buffer or metadata queue fields belong here. */
+typedef struct ams_mel_ir_track_config_v1 {
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_track_config_v1;
 
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
@@ -1566,6 +1582,45 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_metadata_event_close(
  * the complete channel/provider/callback graph permanently. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_close(
     ams_mel_ir_instrumentation **instrumentation, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Conditionally required Track channel (@RequiredIfTrack) ownership/lifecycle
+ * foundation. This release implements exactly Open, Enable, ChannelCapability,
+ * and Close. The IRSTTrackReport callback, TrackDataUpdate,
+ * SystemTrackDataResponse, CandidateObjectMessage,
+ * CandidateObjectPreProcMessage, and RequestSystemTrackData are deliberately
+ * not implemented here.
+ *
+ * Open attaches the upstream channel with ChannelType::IRSTTrack, requires the
+ * concrete TrackChannel type, and requires that the reported ChannelCapability
+ * channel types contain IRSTTrack. A rollback detach that succeeds reports
+ * AMS_MEL_INITIALIZATION_FAILED; when detach ownership cannot be proven the
+ * complete provider graph is retained permanently and AMS_MEL_PROVIDER_FAILED
+ * is reported instead. No provider object is destructed while detach ownership
+ * remains uncertain. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_open(
+    const ams_mel_session *session, const ams_mel_ir_track_config_v1 *config,
+    ams_mel_ir_track **out_track, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Attached -> Enabled. An already enabled channel returns AMS_MEL_OK. A failed
+ * or closed channel returns AMS_MEL_PROVIDER_FAILED. A non-Success provider
+ * enable marks the channel failed and returns AMS_MEL_PROVIDER_FAILED; a
+ * throwing enable marks it failed and returns AMS_MEL_PROVIDER_EXCEPTION. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_enable(
+    ams_mel_ir_track *track, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Capability snapshots are valid while attached or enabled. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_get_capabilities(
+    ams_mel_ir_track *track, ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Disables when enable was attempted, then detaches and destroys the provider
+ * channel. A failed disable does not prove ownership safety, so detach is still
+ * attempted; when that detach succeeds the caller owner is cleared and
+ * AMS_MEL_PROVIDER_FAILED is returned. A failed detach leaves the caller owner
+ * non-null, retains the complete graph, and permits a later close retry. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_close(
+    ams_mel_ir_track **track, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus
