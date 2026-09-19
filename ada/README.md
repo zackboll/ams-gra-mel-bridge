@@ -22,8 +22,16 @@ remains the source-compatible Mono8 compatibility subset.
 `AMS.MEL.IR.Image.Capabilities` reuses the complete internal ChannelCapability
 converter used by C2. `AMS.MEL.IR.Image.Metadata` owns BadPixelList,
 LineOfSightReport, LineOfSightEuler, and NavigationReportResp values from one bounded native
-DROP-INCOMING queue and releases the native event before returning. NavigationReport send,
-LineOfSightQuaternion, and other optional Image metadata are not
+DROP-INCOMING queue and releases the native event before returning.
+`AMS.MEL.IR.Image` also owns the complete published `Navigation_Report` (all 18
+`Position_Velocity_Covariance` terms), the limited `Navigation_Request` owner
+returned by `Submit_Navigation_Report`, and `Navigation_Result`. Submission is
+valid while the stream is logically Attached or Running; `Close` on the request
+is not cancellation, and a pending request keeps the underlying Image stream
+state (and provider channel) alive independently of the public `Image_Stream`
+and `Session` owners. The canonical `Navigation_Response` lives here too;
+`AMS.MEL.IR.Image.Metadata.Navigation_Response` is now a source-compatible
+subtype. LineOfSightQuaternion and other optional Image metadata are not
 implemented.
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.

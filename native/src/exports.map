@@ -18,6 +18,9 @@ AMS_MEL_0.1 {
         ams_mel_ir_image_metadata_close;
         ams_mel_ir_image_metadata_event_view;
         ams_mel_ir_image_metadata_event_close;
+        ams_mel_ir_stream_submit_navigation_report;
+        ams_mel_ir_navigation_request_wait;
+        ams_mel_ir_navigation_request_close;
         ams_mel_ir_stream_stop;
         ams_mel_ir_stream_close;
         ams_mel_ir_c2_open;

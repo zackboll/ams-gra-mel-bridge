@@ -96,6 +96,12 @@ AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST = 1
 AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT = 2
 AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER = 3
 AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE = 4
+AMS_MEL_POSITION_SOLUTION_NOT_SET = 0
+AMS_MEL_POSITION_SOLUTION_ALIGNING = 1
+AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL = 2
+AMS_MEL_POSITION_SOLUTION_GPS = 3
+AMS_MEL_POSITION_SOLUTION_BLENDED = 4
+AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE = 5
 AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN = 0
 AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS, AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS, AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS, AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS, AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT, AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED = range(1, 7)
 AMS_MEL_IR_COMMAND_NOT_SET, AMS_MEL_IR_COMMAND_RECEIVED, AMS_MEL_IR_COMMAND_ACCEPTED, AMS_MEL_IR_COMMAND_REJECTED, AMS_MEL_IR_COMMAND_CANCELLED = range(5)
@@ -273,6 +279,26 @@ class IrLineOfSightReportV1(ctypes.Structure): _fields_ = [("system_time_ns",cty
 class IrLineOfSightEulerV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("attitude",EulerV1),("attitude_rates",EulerV1)]
 class IrNavigationResponseV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("command_id",ctypes.c_uint32),("request_id",ctypes.c_uint32)]
 IrImageMetadataEventV1._fields_ = [("kind",ctypes.c_uint32),("bad_pixel_list",IrBadPixelListV1),("line_of_sight_report",IrLineOfSightReportV1),("line_of_sight_euler",IrLineOfSightEulerV1),("navigation_response",IrNavigationResponseV1)]
+class NorthEastDownV1(ctypes.Structure): _fields_ = [("north",ctypes.c_double),("east",ctypes.c_double),("down",ctypes.c_double)]
+class AttitudeRateV1(ctypes.Structure): _fields_ = [("attitude_rate",EulerV1),("attitude_rate_time_ns",ctypes.c_int64)]
+class PositionVelocityCovarianceV1(ctypes.Structure): _fields_ = [
+    ("position_position_pn_pn",ctypes.c_double),("position_position_pn_pe",ctypes.c_double),
+    ("position_position_pn_pd",ctypes.c_double),("position_position_pe_pe",ctypes.c_double),
+    ("position_position_pe_pd",ctypes.c_double),("position_position_pd_pd",ctypes.c_double),
+    ("position_velocity_pn_vn",ctypes.c_double),("position_velocity_pn_ve",ctypes.c_double),
+    ("position_velocity_pn_vd",ctypes.c_double),("position_velocity_pe_ve",ctypes.c_double),
+    ("position_velocity_pe_vd",ctypes.c_double),("position_velocity_pd_vd",ctypes.c_double),
+    ("velocity_velocity_vn_vn",ctypes.c_double),("velocity_velocity_vn_ve",ctypes.c_double),
+    ("velocity_velocity_vn_vd",ctypes.c_double),("velocity_velocity_ve_ve",ctypes.c_double),
+    ("velocity_velocity_ve_vd",ctypes.c_double),("velocity_velocity_vd_vd",ctypes.c_double)]
+class NavigationReportV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),("state",ctypes.c_uint32),
+    ("latitude_rad",ctypes.c_double),("longitude_rad",ctypes.c_double),("altitude_m",ctypes.c_double),
+    ("attitude",EulerV1),("attitude_rate",AttitudeRateV1),
+    ("speed",NorthEastDownV1),("acceleration",NorthEastDownV1),
+    ("wander_angle_rad",ctypes.c_double),("magnetic_heading",ctypes.c_double),("altitude_msl",ctypes.c_double),
+    ("position_velocity_covariance_uncertainty",PositionVelocityCovarianceV1)]
+class IrNavigationResultV1(ctypes.Structure): _fields_ = [("response",IrNavigationResponseV1),("error_code",ctypes.c_uint32)]
 class U8SpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(ctypes.c_uint8)),("size",ctypes.c_size_t)]
 class IrContributingSensorV1(ctypes.Structure): _fields_ = [("location",ComponentLocationV1),("sensor_id",ctypes.c_uint32)]
 class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]
@@ -373,6 +399,7 @@ IrC2MetadataEventHandle = ctypes.c_void_p
 IrHealthHandle = ctypes.c_void_p
 IrHealthMetadataHandle = ctypes.c_void_p
 IrHealthMetadataEventHandle = ctypes.c_void_p
+IrNavigationRequestHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -480,6 +507,18 @@ ams_mel_ir_image_metadata_event_view.restype = ctypes.c_int32
 ams_mel_ir_image_metadata_event_close = _LIBRARY.ams_mel_ir_image_metadata_event_close
 ams_mel_ir_image_metadata_event_close.argtypes = [ctypes.POINTER(IrImageMetadataEventHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_image_metadata_event_close.restype = ctypes.c_int32
+
+ams_mel_ir_stream_submit_navigation_report = _LIBRARY.ams_mel_ir_stream_submit_navigation_report
+ams_mel_ir_stream_submit_navigation_report.argtypes = [IrStreamHandle,ctypes.POINTER(NavigationReportV1),ctypes.POINTER(IrNavigationRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_stream_submit_navigation_report.restype = ctypes.c_int32
+
+ams_mel_ir_navigation_request_wait = _LIBRARY.ams_mel_ir_navigation_request_wait
+ams_mel_ir_navigation_request_wait.argtypes = [IrNavigationRequestHandle,ctypes.c_uint32,ctypes.POINTER(IrNavigationResultV1),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_navigation_request_wait.restype = ctypes.c_int32
+
+ams_mel_ir_navigation_request_close = _LIBRARY.ams_mel_ir_navigation_request_close
+ams_mel_ir_navigation_request_close.argtypes = [ctypes.POINTER(IrNavigationRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_navigation_request_close.restype = ctypes.c_int32
 ams_mel_ir_stream_receive_snapshot = _LIBRARY.ams_mel_ir_stream_receive_snapshot
 ams_mel_ir_stream_receive_snapshot.argtypes = [IrStreamHandle,ctypes.c_uint32,ctypes.POINTER(IrFrameSnapshotHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_stream_receive_snapshot.restype = ctypes.c_int32
@@ -713,6 +752,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_image_metadata_close",
     "ams_mel_ir_image_metadata_event_view",
     "ams_mel_ir_image_metadata_event_close",
+    "ams_mel_ir_stream_submit_navigation_report",
+    "ams_mel_ir_navigation_request_wait",
+    "ams_mel_ir_navigation_request_close",
     "ams_mel_ir_stream_receive_snapshot",
     "ams_mel_ir_frame_snapshot_view",
     "ams_mel_ir_frame_snapshot_close",

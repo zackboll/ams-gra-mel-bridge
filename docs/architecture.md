@@ -294,6 +294,27 @@ It changes neither ABI 0.1 nor application-visible behavior. No NavigationReport
 API exists yet; request submission, waiting, logical close with pending work, and
 deferred cleanup remain future work.
 
+Task 027B adds `ImageChannel::send(NavigationReport)` as an asynchronous
+request/future vertical slice built on that shared `ImageStreamState`: the
+complete published `NavigationReport` (including all 18
+`PositionVelocityCovariance` terms) crosses the C ABI as
+`ams_mel_navigation_report_v1`; submission is valid while the stream is
+logically Attached or Running and does not require a prior Start; provider
+`send()` executes with neither the frame callback mutex nor the Image metadata
+mutex held, because a pinned provider may invoke the registered
+`NavigationReportResp` metadata callback synchronously from within `send()`.
+`ImageStreamState` gains a request counter, `cleanup_started` guard, and
+`public_owner_closed` flag so that Stop/Close with an outstanding request
+defers physical provider teardown (disable/detach/destroy) to final request
+completion, mirroring the C2 `ChannelState`/`retain_failed` fail-safe pattern
+with its own allocation-free emergency retention root. ABI 0.1 grows from 56 to
+59 exports. Safe Ada exposes `Navigation_Report`, `Navigation_Request`, and
+`Navigation_Result` in `AMS.MEL.IR.Image`; the canonical safe
+`Navigation_Response` also moves there, with
+`AMS.MEL.IR.Image.Metadata.Navigation_Response` becoming a source-compatible
+subtype. Raw Rust and private Python ABI declarations track all 59 exports; no
+safe Rust or public Python Navigation API is added.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

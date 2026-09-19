@@ -44,6 +44,7 @@ procedure AMS_MEL_Squall_IR is
    use type Health_Metadata.Failure_Level;
    use type Image_Metadata.Metadata_Kind;
    use type Image_Metadata.Azimuth_Elevation;
+   use type AMS.MEL.IR.Image.Navigation_Outcome;
    use type Status.Euler;
    use type Status.MFA_State;
    use type Status.State_Transition_Status;
@@ -196,6 +197,92 @@ begin
          Ada.Text_IO.Put_Line
            ("Image BadPixelList: reported-size=0 reported-count=0 pixels=0");
       end;
+
+      --  NavigationReport submission is intentionally valid while the Image
+      --  stream is logically Attached, before Start.
+      declare
+         Submitted_Time : constant Long_Long_Integer := -123_456_789_012;
+         Report         : constant AMS.MEL.IR.Image.Navigation_Report :=
+           (System_Time_NS               => Submitted_Time,
+            State                        => AMS.MEL.IR.Image.Blended,
+            Latitude_Rad                 => 0.523598,
+            Longitude_Rad                => -1.308997,
+            Altitude_M                   => 987.5,
+            Attitude                     => (Roll => 0.1, Pitch => 0.2, Yaw => 0.3),
+            Attitude_Rate                =>
+              (Value          => (Roll => 0.11, Pitch => -0.22, Yaw => 0.33),
+               System_Time_NS => -424_242),
+            Speed                        => (North => 10.0, East => -20.0, Down => 30.0),
+            Acceleration                 => (North => -1.0, East => 2.0, Down => -3.0),
+            Wander_Angle_Rad             => 0.05,
+            Magnetic_Heading             => 12.5,
+            Altitude_MSL                 => 1000.25,
+            Position_Velocity_Covariance =>
+              (Position_Position_Pn_Pn => 1.5, Position_Position_Pn_Pe => 2.5,
+               Position_Position_Pn_Pd => 3.5, Position_Position_Pe_Pe => 4.5,
+               Position_Position_Pe_Pd => 5.5, Position_Position_Pd_Pd => 6.5,
+               Position_Velocity_Pn_Vn => 7.5, Position_Velocity_Pn_Ve => 8.5,
+               Position_Velocity_Pn_Vd => 9.5, Position_Velocity_Pe_Ve => 10.5,
+               Position_Velocity_Pe_Vd => 11.5, Position_Velocity_Pd_Vd => 12.5,
+               Velocity_Velocity_Vn_Vn => 13.5, Velocity_Velocity_Vn_Ve => 14.5,
+               Velocity_Velocity_Vn_Vd => 15.5, Velocity_Velocity_Ve_Ve => 16.5,
+               Velocity_Velocity_Ve_Vd => 17.5, Velocity_Velocity_Vd_Vd => 18.5));
+         Request : AMS.MEL.IR.Image.Navigation_Request :=
+           AMS.MEL.IR.Image.Submit_Navigation_Report (Stream, Report);
+         Callback_Response : Image_Metadata.Navigation_Response;
+         Have_Callback     : Boolean := False;
+      begin
+         for Index in 1 .. 32 loop
+            exit when Have_Callback;
+            declare
+               Event : constant Image_Metadata.Metadata_Event :=
+                 Image_Metadata.Receive (Image_Metadata_Stream, Timeout_MS);
+            begin
+               if Image_Metadata.Kind (Event) = Image_Metadata.Navigation_Response_Event then
+                  Callback_Response := Image_Metadata.Navigation_Response_Value (Event);
+                  Have_Callback := True;
+               end if;
+            end;
+         end loop;
+         if not Have_Callback
+           or else Callback_Response.System_Time_NS /= Submitted_Time
+           or else Callback_Response.Command_ID /= 0
+           or else Callback_Response.Request_ID /= 0
+         then
+            raise Program_Error with "invalid Squall NavigationReportResp callback";
+         end if;
+         Ada.Text_IO.Put_Line
+           ("Image NavigationReportResp callback: system_time="
+              & Callback_Response.System_Time_NS'Image & " command_id=0 request_id=0");
+         declare
+            Result : constant AMS.MEL.IR.Image.Navigation_Result :=
+              AMS.MEL.IR.Image.Wait (Request, Timeout_MS);
+            Response : constant AMS.MEL.IR.Image.Navigation_Response :=
+              AMS.MEL.IR.Image.Response (Result);
+         begin
+            if AMS.MEL.IR.Image.Status (Result) /= AMS.MEL.IR.Image.Success
+              or else Response.System_Time_NS /= Callback_Response.System_Time_NS
+              or else Response.Command_ID /= Callback_Response.Command_ID
+              or else Response.Request_ID /= Callback_Response.Request_ID
+            then
+               raise Program_Error with "Squall NavigationReport future mismatched callback";
+            end if;
+            Ada.Text_IO.Put_Line ("Image NavigationReport future: matches callback response");
+         end;
+         declare
+            Cached : constant AMS.MEL.IR.Image.Navigation_Result :=
+              AMS.MEL.IR.Image.Wait (Request, 0);
+         begin
+            if AMS.MEL.IR.Image.Status (Cached) /= AMS.MEL.IR.Image.Success
+              or else AMS.MEL.IR.Image.Response (Cached).System_Time_NS /= Submitted_Time
+            then
+               raise Program_Error with "Squall NavigationReport cached Wait(0) mismatched";
+            end if;
+            Ada.Text_IO.Put_Line ("Image NavigationReport cached Wait(0): matches");
+         end;
+         AMS.MEL.IR.Image.Close (Request);
+      end;
+
       --  Data destination and buffers are ready before Operate is submitted.
       AMS.MEL.IR.Start (Stream);
       declare
@@ -573,7 +660,10 @@ begin
                               Have_Euler := True;
                            end;
                         when Image_Metadata.Navigation_Response_Event =>
-                           raise Program_Error with "unexpected Squall NavigationReportResp before Task 027";
+                           --  The Task 027B NavigationReport request already
+                           --  drained its own response before Start; no
+                           --  further event of this kind is expected here.
+                           null;
                      end case;
                   end;
                end loop;

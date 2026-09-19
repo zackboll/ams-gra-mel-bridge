@@ -532,7 +532,7 @@ pub struct AmsMelIrLineOfSightEulerV1 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrNavigationResponseV1 {
     pub system_time_ns: i64,
     pub command_id: u32,
@@ -546,6 +546,72 @@ pub struct AmsMelIrImageMetadataEventV1 {
     pub line_of_sight_report: AmsMelIrLineOfSightReportV1,
     pub line_of_sight_euler: AmsMelIrLineOfSightEulerV1,
     pub navigation_response: AmsMelIrNavigationResponseV1,
+}
+
+pub const AMS_MEL_POSITION_SOLUTION_NOT_SET: u32 = 0;
+pub const AMS_MEL_POSITION_SOLUTION_ALIGNING: u32 = 1;
+pub const AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL: u32 = 2;
+pub const AMS_MEL_POSITION_SOLUTION_GPS: u32 = 3;
+pub const AMS_MEL_POSITION_SOLUTION_BLENDED: u32 = 4;
+pub const AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE: u32 = 5;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelNorthEastDownV1 {
+    pub north: f64,
+    pub east: f64,
+    pub down: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelAttitudeRateV1 {
+    pub attitude_rate: AmsMelEulerV1,
+    pub attitude_rate_time_ns: i64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelPositionVelocityCovarianceV1 {
+    pub position_position_pn_pn: f64,
+    pub position_position_pn_pe: f64,
+    pub position_position_pn_pd: f64,
+    pub position_position_pe_pe: f64,
+    pub position_position_pe_pd: f64,
+    pub position_position_pd_pd: f64,
+    pub position_velocity_pn_vn: f64,
+    pub position_velocity_pn_ve: f64,
+    pub position_velocity_pn_vd: f64,
+    pub position_velocity_pe_ve: f64,
+    pub position_velocity_pe_vd: f64,
+    pub position_velocity_pd_vd: f64,
+    pub velocity_velocity_vn_vn: f64,
+    pub velocity_velocity_vn_ve: f64,
+    pub velocity_velocity_vn_vd: f64,
+    pub velocity_velocity_ve_ve: f64,
+    pub velocity_velocity_ve_vd: f64,
+    pub velocity_velocity_vd_vd: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelNavigationReportV1 {
+    pub system_time_ns: i64,
+    pub state: u32,
+    pub latitude_rad: f64,
+    pub longitude_rad: f64,
+    pub altitude_m: f64,
+    pub attitude: AmsMelEulerV1,
+    pub attitude_rate: AmsMelAttitudeRateV1,
+    pub speed: AmsMelNorthEastDownV1,
+    pub acceleration: AmsMelNorthEastDownV1,
+    pub wander_angle_rad: f64,
+    pub magnetic_heading: f64,
+    pub altitude_msl: f64,
+    pub position_velocity_covariance_uncertainty: AmsMelPositionVelocityCovarianceV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrNavigationResultV1 {
+    pub response: AmsMelIrNavigationResponseV1,
+    pub error_code: u32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -750,7 +816,7 @@ pub struct AmsMelIrHealthConfigV1 {
     pub sensor_location: AmsMelComponentLocationV1,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelEulerV1 {
     pub roll: f64,
     pub pitch: f64,
@@ -1021,6 +1087,11 @@ pub struct AmsMelIrImageMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelIrNavigationRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 
 extern "C" {
     pub fn ams_mel_get_abi_version(out_version: *mut AmsMelAbiVersionV1) -> AmsMelStatus;
@@ -1119,6 +1190,29 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_image_metadata_event_close(
         event: *mut *mut AmsMelIrImageMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_stream_submit_navigation_report(
+        stream: *mut AmsMelIrStream,
+        report: *const AmsMelNavigationReportV1,
+        out_request: *mut *mut AmsMelIrNavigationRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_navigation_request_wait(
+        request: *const AmsMelIrNavigationRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrNavigationResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_navigation_request_close(
+        request: *mut *mut AmsMelIrNavigationRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

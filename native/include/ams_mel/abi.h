@@ -55,6 +55,7 @@ typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_frame_snapshot ams_mel_ir_frame_snapshot;
 typedef struct ams_mel_ir_image_metadata ams_mel_ir_image_metadata;
 typedef struct ams_mel_ir_image_metadata_event ams_mel_ir_image_metadata_event;
+typedef struct ams_mel_ir_navigation_request ams_mel_ir_navigation_request;
 typedef uint32_t ams_mel_ir_image_flag_t;
 #define AMS_MEL_IR_IMAGE_FLAG_SCAN_FIRST UINT32_C(0)
 #define AMS_MEL_IR_IMAGE_FLAG_SCAN_LAST UINT32_C(1)
@@ -537,6 +538,89 @@ typedef struct ams_mel_ir_navigation_response_v1 {
     uint32_t command_id;
     uint32_t request_id;
 } ams_mel_ir_navigation_response_v1;
+
+/* Complete published mel::PositionSolutionState. Only values >= MaxExclusive
+ * are rejected; every other value, including NotSet, is accepted as-is. */
+typedef uint32_t ams_mel_position_solution_state_t;
+#define AMS_MEL_POSITION_SOLUTION_NOT_SET       UINT32_C(0)
+#define AMS_MEL_POSITION_SOLUTION_ALIGNING      UINT32_C(1)
+#define AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL UINT32_C(2)
+#define AMS_MEL_POSITION_SOLUTION_GPS           UINT32_C(3)
+#define AMS_MEL_POSITION_SOLUTION_BLENDED       UINT32_C(4)
+#define AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE UINT32_C(5)
+
+typedef struct ams_mel_north_east_down_v1 {
+    double north;
+    double east;
+    double down;
+} ams_mel_north_east_down_v1;
+
+typedef struct ams_mel_attitude_rate_v1 {
+    ams_mel_euler_v1 attitude_rate;
+    int64_t attitude_rate_time_ns;
+} ams_mel_attitude_rate_v1;
+
+/* Complete published mel::PositionVelocityCovariance. All 18 terms are named
+ * explicitly to avoid matrix-order mistakes; none are represented as an
+ * anonymous array. */
+typedef struct ams_mel_position_velocity_covariance_v1 {
+    double position_position_pn_pn;
+    double position_position_pn_pe;
+    double position_position_pn_pd;
+    double position_position_pe_pe;
+    double position_position_pe_pd;
+    double position_position_pd_pd;
+    double position_velocity_pn_vn;
+    double position_velocity_pn_ve;
+    double position_velocity_pn_vd;
+    double position_velocity_pe_ve;
+    double position_velocity_pe_vd;
+    double position_velocity_pd_vd;
+    double velocity_velocity_vn_vn;
+    double velocity_velocity_vn_ve;
+    double velocity_velocity_vn_vd;
+    double velocity_velocity_ve_ve;
+    double velocity_velocity_ve_vd;
+    double velocity_velocity_vd_vd;
+} ams_mel_position_velocity_covariance_v1;
+
+/* Complete published mel::NavigationReport. No unit is invented for a field
+ * whose upstream declaration does not state one (wander_angle_rad and
+ * magnetic_heading/altitude_msl retain upstream naming exactly). Only
+ * state >= AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE is rejected; other
+ * floating-point values, including negative, NaN, or infinite, are copied
+ * as-is. */
+typedef struct ams_mel_navigation_report_v1 {
+    int64_t system_time_ns;
+    ams_mel_position_solution_state_t state;
+
+    double latitude_rad;
+    double longitude_rad;
+    double altitude_m;
+
+    ams_mel_euler_v1 attitude;
+    ams_mel_attitude_rate_v1 attitude_rate;
+
+    ams_mel_north_east_down_v1 speed;
+    ams_mel_north_east_down_v1 acceleration;
+
+    double wander_angle_rad;
+    double magnetic_heading;
+    double altitude_msl;
+
+    ams_mel_position_velocity_covariance_v1
+        position_velocity_covariance_uncertainty;
+} ams_mel_navigation_report_v1;
+
+/* Terminal NavigationReport request outcome. On AMS_MEL_OK, response is valid
+ * and error_code is AMS_MEL_ERROR_NONE. On AMS_MEL_COMMAND_REJECTED,
+ * error_code is valid, the per-call diagnostic contains the provider
+ * rejection description, and response must be ignored. */
+typedef struct ams_mel_ir_navigation_result_v1 {
+    ams_mel_ir_navigation_response_v1 response;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_navigation_result_v1;
+
 typedef struct ams_mel_ir_image_metadata_event_v1 {
     ams_mel_ir_image_metadata_kind_t kind;
     ams_mel_ir_bad_pixel_list_v1 bad_pixel_list;
@@ -1027,6 +1111,49 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_event_view(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_event_close(
     ams_mel_ir_image_metadata_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* NavigationReport input is synchronously copied before send. Submission is
+ * valid only while the stream is logically Attached or Running; it does not
+ * require a prior Start. Provider send() may synchronously invoke the
+ * registered NavigationReportResp metadata callback before returning the
+ * future, so the adapter calls send() with neither the frame callback mutex
+ * nor the Image metadata mutex held. The returned request remains valid
+ * independently of the public Image_Stream and Session owners; Image_Stream
+ * Close with a pending request performs logical close and defers provider
+ * teardown to final request completion. Provider unload is forbidden while
+ * any request/future/callback may still use provider code or provider-owned
+ * objects. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_submit_navigation_report(
+    ams_mel_ir_stream *stream,
+    const ams_mel_navigation_report_v1 *report,
+    ams_mel_ir_navigation_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits finitely for completion. A zero timeout polls. Timeout is not
+ * cancellation and never consumes the pending request; the adapter completion
+ * worker is the only future::get() caller. A terminal result is cached
+ * permanently, so Wait may be repeated, including Wait(0) after terminal
+ * completion, and returns the identical cached result even with a differently
+ * sized diagnostic buffer. Close must not race Wait using the same request
+ * handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_navigation_request_wait(
+    const ams_mel_ir_navigation_request *request,
+    uint32_t timeout_ms,
+    ams_mel_ir_navigation_result_v1 *out_result,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Drops only the public request owner. It is idempotent, nonblocking, and is
+ * not cancellation: a pending worker/future continues to own its completion
+ * state and the Image stream state until the future itself completes. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_navigation_request_close(
+    ams_mel_ir_navigation_request **request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Stops acceptance, calls disable, detaches, destroys the provider channel,
  * waits for adapter callbacks already in flight, then destroys buffers/storage.

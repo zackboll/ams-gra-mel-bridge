@@ -285,3 +285,43 @@ Euler values, normalized fixed-width Booleans, and validity flags without conver
 Registration is BadPixelList, Report, Euler, then NavigationReportResp; partial registration
 keeps all callback state stream-owned until ImageChannel destruction. NavigationReport send,
 quaternion LOS, and optional Image metadata remain outside this contract.
+
+## Task 027B NavigationReport request contract
+
+ABI 0.1 grows to exactly 59 exports. Three new exports implement
+`ImageChannel::send(NavigationReport)`:
+`ams_mel_ir_stream_submit_navigation_report`,
+`ams_mel_ir_navigation_request_wait`, and
+`ams_mel_ir_navigation_request_close`. `ams_mel_navigation_report_v1` copies
+the complete published `mel::NavigationReport`, including all 18 named
+`ams_mel_position_velocity_covariance_v1` terms; only
+`state >= AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE` is rejected, and no other
+floating-point value is clamped or rejected for being negative, NaN, or
+infinite. Submission requires the stream to be logically Attached or Running;
+it does not require a prior Start, and is rejected during Starting, Stopping,
+Stopped, or Failed.
+
+Provider `send()` may synchronously invoke the registered
+`NavigationReportResp` metadata callback before returning its future, so the
+adapter calls `send()` with neither the frame callback mutex nor the Image
+metadata mutex held; the request is accounted (incrementing a
+per-stream request counter) before the call and released if `send()` throws
+before a future exists. `ams_mel_ir_navigation_request_wait` follows the
+established C2 model: a zero timeout polls, timeout is not cancellation and
+never consumes the pending request, a detached worker calls `future.get()`
+exactly once and caches the terminal result permanently, and repeated Waits —
+including Wait(0) after completion — return the identical cached result even
+with a differently sized diagnostic buffer.
+`ams_mel_ir_navigation_request_close` is idempotent, nonblocking, and not
+cancellation; it drops only the public request owner while a pending
+worker/future continues to own its completion state and the Image stream
+state.
+
+When one or more Navigation requests are outstanding, logical Stop/Close stops
+accepting new frames and submissions immediately but defers physical provider
+teardown (disable/detach/channel destruction/buffer and host storage release)
+until the final request reaches terminal completion, mirroring the C2
+`ChannelState` deferred-cleanup pattern including its own allocation-free
+emergency retention path for a deferred detach failure. A synchronous
+detach failure with no pending request continues to retain the public stream
+owner for retry, unchanged from Task 027A.

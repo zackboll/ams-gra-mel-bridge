@@ -1,3 +1,19 @@
+# Task 027B review note
+
+Task 027B uses the already-vendored `NavigationReport.h`/`ImageChannel.h`
+closure from pinned IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`; no
+vendor file or checksum changed. Pinned Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` implements
+`send(NavigationReport)` by copying `report.systemTime` into the response
+`systemTime` and setting both `commandID` and `reqId` to zero; when a
+`NavigationReportResp` callback is registered it is invoked synchronously
+inside `send()` before the future completes. Real-provider validation
+therefore proves the provider send path, synchronous callback, future
+completion, timestamp propagation, and callback/future correlation; it does
+not exercise input fields Squall ignores (state, position, attitude, rates,
+speed, acceleration, wander angle, magnetic heading, altitude MSL, or the 18
+covariance terms), which remain mock-proven only.
+
 # Task 026 review note
 
 Task 026 uses already-vendored `NavigationReportResp` from pinned IR MEL

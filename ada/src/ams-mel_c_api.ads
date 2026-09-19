@@ -59,6 +59,9 @@ private package AMS.MEL_C_API is
    type Image_Metadata_Event_Handle is new System.Address;
    Null_Image_Metadata_Event : constant Image_Metadata_Event_Handle :=
      Image_Metadata_Event_Handle (System.Null_Address);
+   type Navigation_Request_Handle is new System.Address;
+   Null_Navigation_Request   : constant Navigation_Request_Handle :=
+     Navigation_Request_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -295,6 +298,57 @@ private package AMS.MEL_C_API is
    type IR_Navigation_Response_V1 is record
       System_Time_NS         : Interfaces.Integer_64;
       Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type North_East_Down_V1 is record
+      North, East, Down : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type Attitude_Rate_V1 is record
+      Attitude_Rate         : Euler_V1;
+      Attitude_Rate_Time_NS : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type Position_Velocity_Covariance_V1 is record
+      Position_Position_Pn_Pn : Interfaces.C.double;
+      Position_Position_Pn_Pe : Interfaces.C.double;
+      Position_Position_Pn_Pd : Interfaces.C.double;
+      Position_Position_Pe_Pe : Interfaces.C.double;
+      Position_Position_Pe_Pd : Interfaces.C.double;
+      Position_Position_Pd_Pd : Interfaces.C.double;
+      Position_Velocity_Pn_Vn : Interfaces.C.double;
+      Position_Velocity_Pn_Ve : Interfaces.C.double;
+      Position_Velocity_Pn_Vd : Interfaces.C.double;
+      Position_Velocity_Pe_Ve : Interfaces.C.double;
+      Position_Velocity_Pe_Vd : Interfaces.C.double;
+      Position_Velocity_Pd_Vd : Interfaces.C.double;
+      Velocity_Velocity_Vn_Vn : Interfaces.C.double;
+      Velocity_Velocity_Vn_Ve : Interfaces.C.double;
+      Velocity_Velocity_Vn_Vd : Interfaces.C.double;
+      Velocity_Velocity_Ve_Ve : Interfaces.C.double;
+      Velocity_Velocity_Ve_Vd : Interfaces.C.double;
+      Velocity_Velocity_Vd_Vd : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type Navigation_Report_V1 is record
+      System_Time_NS                           : Interfaces.Integer_64;
+      State                                    : Interfaces.Unsigned_32;
+      Latitude_Rad                             : Interfaces.C.double;
+      Longitude_Rad                            : Interfaces.C.double;
+      Altitude_M                               : Interfaces.C.double;
+      Attitude                                 : Euler_V1;
+      Attitude_Rate                            : Attitude_Rate_V1;
+      Speed                                    : North_East_Down_V1;
+      Acceleration                             : North_East_Down_V1;
+      Wander_Angle_Rad                         : Interfaces.C.double;
+      Magnetic_Heading                         : Interfaces.C.double;
+      Altitude_MSL                             : Interfaces.C.double;
+      Position_Velocity_Covariance_Uncertainty : Position_Velocity_Covariance_V1;
+   end record
+   with Convention => C;
+   type Navigation_Result_V1 is record
+      Response   : IR_Navigation_Response_V1;
+      Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
    type IR_Image_Metadata_Event_V1 is record
@@ -666,6 +720,28 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_event_close";
+   function IR_Stream_Submit_Navigation_Report
+     (Stream              : Stream_Handle;
+      Report              : access Navigation_Report_V1;
+      Output              : access Navigation_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stream_submit_navigation_report";
+   function IR_Navigation_Request_Wait
+     (Handle              : Navigation_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Navigation_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_navigation_request_wait";
+   function IR_Navigation_Request_Close
+     (Handle              : access Navigation_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_navigation_request_close";
    function IR_Stream_Get_Counters
      (Stream              : Stream_Handle;
       Output              : access IR_Counters_V1;

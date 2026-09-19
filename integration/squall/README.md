@@ -38,10 +38,18 @@ before start and require
 320x200, 8-bit, one-band Mono with all four required metadata types advertised. It opens Image metadata
 before image start and validates Squall's synchronous initial empty BadPixelList
 (reported size/count and actual pixel count all zero). Rich BadPixel fidelity and
-callback lifetime are mock-proven. NavigationReportResp registration is real-provider proven;
-positive response delivery awaits Task 027 because NavigationReport send is absent. Quaternion
-LOS, and optional Image metadata are not asserted. C, Rust, and Python safe integration
-behavior remains unchanged.
+callback lifetime are mock-proven. Task 027B has Ada submit a complete
+`Navigation_Report` while the Image stream is logically Attached, intentionally
+before `Start`; pinned Squall echoes the submitted `systemTime` with
+`commandID`/`reqId` both zero and invokes the registered
+`NavigationReportResp` callback synchronously inside `send()`. Ada requires the
+metadata-callback response and the completed future's response to match
+exactly, and requires a cached `Wait(request, 0)` after completion to return an
+identical response. Squall does not consume state/position/attitude/rates/
+speed/acceleration/wander-angle/magnetic-heading/altitude-MSL/covariance
+input fields; their complete fidelity is proven only by the mock provider.
+Quaternion LOS and other optional Image metadata are not asserted. C, Rust, and
+Python safe integration behavior remains unchanged.
 
 Provide an existing checkout with this exact source closure:
 

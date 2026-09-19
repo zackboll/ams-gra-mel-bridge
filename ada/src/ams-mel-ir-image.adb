@@ -10,6 +10,7 @@ package body AMS.MEL.IR.Image is
    use type Interfaces.Unsigned_32;
    use type Interfaces.C.size_t;
    use type Interfaces.C.char;
+   use type C.Navigation_Request_Handle;
    use System.Storage_Elements;
    type View_Access is access all C.IR_Frame_Snapshot_V1;
    type Capability_Access is access all C.IR_Channel_Capability_V1;
@@ -325,4 +326,189 @@ package body AMS.MEL.IR.Image is
       end loop;
       return Result;
    end Pixels;
+
+   type Diagnostic_Array is array (C.Size_T range <>) of aliased Interfaces.C.char
+   with Convention => C;
+   function Message (Value : Diagnostic_Array) return String is
+      Last : Natural := 0;
+   begin
+      while Last < Value'Length and then Value (C.Size_T (Last)) /= Interfaces.C.nul loop
+         Last := Last + 1;
+      end loop;
+      declare
+         Result : String (1 .. Last);
+      begin
+         for I in Result'Range loop
+            Result (I) := Character'Val (Interfaces.C.char'Pos (Value (C.Size_T (I - 1))));
+         end loop;
+         return
+           (if Result'Length = 0 then "native IR Image navigation operation failed" else Result);
+      end;
+   end Message;
+
+   function Raw_Euler (Value : AMS.MEL.Status.Euler) return C.Euler_V1
+   is ((Roll  => Interfaces.C.double (Value.Roll),
+        Pitch => Interfaces.C.double (Value.Pitch),
+        Yaw   => Interfaces.C.double (Value.Yaw)));
+   function Raw_NED (Value : North_East_Down) return C.North_East_Down_V1
+   is ((North => Interfaces.C.double (Value.North),
+        East  => Interfaces.C.double (Value.East),
+        Down  => Interfaces.C.double (Value.Down)));
+   function Raw_Attitude_Rate (Value : Attitude_Rate) return C.Attitude_Rate_V1
+   is ((Attitude_Rate         => Raw_Euler (Value.Value),
+        Attitude_Rate_Time_NS => Interfaces.Integer_64 (Value.System_Time_NS)));
+   function Raw_Covariance
+     (Value : Position_Velocity_Covariance) return C.Position_Velocity_Covariance_V1
+   is ((Position_Position_Pn_Pn => Interfaces.C.double (Value.Position_Position_Pn_Pn),
+        Position_Position_Pn_Pe => Interfaces.C.double (Value.Position_Position_Pn_Pe),
+        Position_Position_Pn_Pd => Interfaces.C.double (Value.Position_Position_Pn_Pd),
+        Position_Position_Pe_Pe => Interfaces.C.double (Value.Position_Position_Pe_Pe),
+        Position_Position_Pe_Pd => Interfaces.C.double (Value.Position_Position_Pe_Pd),
+        Position_Position_Pd_Pd => Interfaces.C.double (Value.Position_Position_Pd_Pd),
+        Position_Velocity_Pn_Vn => Interfaces.C.double (Value.Position_Velocity_Pn_Vn),
+        Position_Velocity_Pn_Ve => Interfaces.C.double (Value.Position_Velocity_Pn_Ve),
+        Position_Velocity_Pn_Vd => Interfaces.C.double (Value.Position_Velocity_Pn_Vd),
+        Position_Velocity_Pe_Ve => Interfaces.C.double (Value.Position_Velocity_Pe_Ve),
+        Position_Velocity_Pe_Vd => Interfaces.C.double (Value.Position_Velocity_Pe_Vd),
+        Position_Velocity_Pd_Vd => Interfaces.C.double (Value.Position_Velocity_Pd_Vd),
+        Velocity_Velocity_Vn_Vn => Interfaces.C.double (Value.Velocity_Velocity_Vn_Vn),
+        Velocity_Velocity_Vn_Ve => Interfaces.C.double (Value.Velocity_Velocity_Vn_Ve),
+        Velocity_Velocity_Vn_Vd => Interfaces.C.double (Value.Velocity_Velocity_Vn_Vd),
+        Velocity_Velocity_Ve_Ve => Interfaces.C.double (Value.Velocity_Velocity_Ve_Ve),
+        Velocity_Velocity_Ve_Vd => Interfaces.C.double (Value.Velocity_Velocity_Ve_Vd),
+        Velocity_Velocity_Vd_Vd => Interfaces.C.double (Value.Velocity_Velocity_Vd_Vd)));
+   function Raw_Report (Value : Navigation_Report) return C.Navigation_Report_V1
+   is ((System_Time_NS                           => Interfaces.Integer_64 (Value.System_Time_NS),
+        State                                    => Position_Solution_State'Enum_Rep (Value.State),
+        Latitude_Rad                             => Interfaces.C.double (Value.Latitude_Rad),
+        Longitude_Rad                            => Interfaces.C.double (Value.Longitude_Rad),
+        Altitude_M                               => Interfaces.C.double (Value.Altitude_M),
+        Attitude                                 => Raw_Euler (Value.Attitude),
+        Attitude_Rate                            => Raw_Attitude_Rate (Value.Attitude_Rate),
+        Speed                                    => Raw_NED (Value.Speed),
+        Acceleration                             => Raw_NED (Value.Acceleration),
+        Wander_Angle_Rad                         => Interfaces.C.double (Value.Wander_Angle_Rad),
+        Magnetic_Heading                         => Interfaces.C.double (Value.Magnetic_Heading),
+        Altitude_MSL                             => Interfaces.C.double (Value.Altitude_MSL),
+        Position_Velocity_Covariance_Uncertainty =>
+          Raw_Covariance (Value.Position_Velocity_Covariance)));
+
+   function Submit_Navigation_Report
+     (Object : AMS.MEL.IR.Image_Stream; Report : Navigation_Report) return Navigation_Request
+   is
+      Raw : aliased C.Navigation_Report_V1 := Raw_Report (Report);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      return Result : Navigation_Request do
+         Check
+           (C.IR_Stream_Submit_Navigation_Report
+              (Object.Handle,
+               Raw'Access,
+               Result.Owner.Handle'Access,
+               D'Address,
+               D'Length,
+               R'Access),
+            D);
+      end return;
+   end Submit_Navigation_Report;
+
+   function Is_Open (Request : Navigation_Request) return Boolean
+   is (Request.Owner.Handle /= C.Null_Navigation_Request);
+
+   function Status (Result : Navigation_Result) return Navigation_Outcome
+   is (Result.Result_Status);
+   function Response (Result : Navigation_Result) return Navigation_Response
+   is (Result.Result_Response);
+   function Rejection_Code (Result : Navigation_Result) return Navigation_Error_Code
+   is (Result.Result_Code);
+   function Description (Result : Navigation_Result) return String
+   is (US.To_String (Result.Result_Text));
+
+   function Wait
+     (Request : Navigation_Request; Timeout_Milliseconds : Natural) return Navigation_Result
+   is
+      Raw  : aliased C.Navigation_Result_V1 := ((0, 0, 0), 0);
+      D    : aliased Diagnostic_Array (0 .. 511) := [others => Interfaces.C.nul];
+      R    : aliased C.Size_T := 0;
+      Code : constant Interfaces.Integer_32 :=
+        C.IR_Navigation_Request_Wait
+          (Request.Owner.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Raw'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+   begin
+      if Code = C.Timeout then
+         raise Timeout_Error with "IR Image navigation request timed out";
+      elsif Code = C.Success then
+         return
+           (Result_Status   => Success,
+            Result_Response =>
+              (System_Time_NS => Long_Long_Integer (Raw.Response.System_Time_NS),
+               Command_ID     => Raw.Response.Command_ID,
+               Request_ID     => Raw.Response.Request_ID),
+            Result_Code     => None,
+            Result_Text     => US.Null_Unbounded_String);
+      elsif Code = C.Command_Rejected then
+         if Raw.Error_Code > 8 then
+            raise Provider_Error with "native IR Image returned unknown MEL error code";
+         end if;
+         declare
+            Text : US.Unbounded_String := US.To_Unbounded_String (Message (D));
+         begin
+            if R > D'Length then
+               declare
+                  Complete       : aliased Diagnostic_Array (0 .. R - 1) :=
+                    [others => Interfaces.C.nul];
+                  Retry_Raw      : aliased C.Navigation_Result_V1 := ((0, 0, 0), 0);
+                  Retry_Required : aliased C.Size_T := 0;
+                  Retry_Code     : constant Interfaces.Integer_32 :=
+                    C.IR_Navigation_Request_Wait
+                      (Request.Owner.Handle,
+                       0,
+                       Retry_Raw'Access,
+                       Complete'Address,
+                       Complete'Length,
+                       Retry_Required'Access);
+               begin
+                  if Retry_Code /= C.Command_Rejected
+                    or else Retry_Raw.Error_Code /= Raw.Error_Code
+                    or else Retry_Required /= R
+                  then
+                     raise Provider_Error
+                       with "native IR Image rejection changed during diagnostic retry";
+                  end if;
+                  Text := US.To_Unbounded_String (Message (Complete));
+               end;
+            end if;
+            return
+              (Result_Status   => Rejected,
+               Result_Response => (0, 0, 0),
+               Result_Code     => Navigation_Error_Code'Val (Raw.Error_Code),
+               Result_Text     => Text);
+         end;
+      else
+         raise Provider_Error with Message (D);
+      end if;
+   end Wait;
+
+   procedure Close (Request : in out Navigation_Request) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Navigation_Request_Close (Request.Owner.Handle'Access, System.Null_Address, 0, null);
+   end Close;
+
+   overriding
+   procedure Finalize (Request : in out Navigation_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Navigation_Request_Close (Request.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Request.Handle := C.Null_Navigation_Request;
+   end Finalize;
 end AMS.MEL.IR.Image;
