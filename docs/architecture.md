@@ -255,6 +255,13 @@ Reusable Common-MEL status values live in `AMS.MEL.Status`; Health does not depe
 on C2 metadata types. Rust sys and private Python declarations track the 46-export
 raw ABI, but no safe Rust or public Python Health API is introduced.
 
+Task 021 preserves the legacy Mono8 frame record and receive operation, adding an
+opaque immutable full-FrameHeader snapshot owner instead. Callback-time copying
+builds one complete adapter-owned queued frame and one bounded FIFO is consumed by
+both legacy and snapshot receive. Snapshot views retain complete contributing sensor,
+ordered flags, inertial/nav data, and independently discriminated orientation variants
+until close; safe Ada copies the graph before releasing the native owner.
+
 ChannelCapability is validated and deep-copied completely into an opaque native
 snapshot, then copied again into reusable Ada-native `AMS.MEL.IR.Channel` values.
 Neither snapshot references provider STL storage. `Channel::registerBuffer` and

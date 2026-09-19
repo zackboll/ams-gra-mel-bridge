@@ -26,6 +26,12 @@ int main(void)
     ams_mel_status_t (*stream_receive)(ams_mel_ir_stream *, uint32_t,
         ams_mel_ir_frame_v1 *, char *, size_t, size_t *) =
         ams_mel_ir_stream_receive;
+    ams_mel_status_t (*snapshot_receive)(ams_mel_ir_stream *, uint32_t,
+        ams_mel_ir_frame_snapshot **, char *, size_t, size_t *) = ams_mel_ir_stream_receive_snapshot;
+    ams_mel_status_t (*snapshot_view)(const ams_mel_ir_frame_snapshot *,
+        const ams_mel_ir_frame_snapshot_v1 **, char *, size_t, size_t *) = ams_mel_ir_frame_snapshot_view;
+    ams_mel_status_t (*snapshot_close)(ams_mel_ir_frame_snapshot **, char *, size_t, size_t *) = ams_mel_ir_frame_snapshot_close;
+    (void)snapshot_receive; (void)snapshot_view; (void)snapshot_close;
     ams_mel_status_t (*stream_get_counters)(const ams_mel_ir_stream *,
         ams_mel_ir_stream_counters_v1 *, char *, size_t, size_t *) =
         ams_mel_ir_stream_get_counters;
@@ -225,6 +231,20 @@ int main(void)
     FIELD(ams_mel_ir_stream_counters_v1, frames_received);
     FIELD(ams_mel_ir_stream_counters_v1, frames_dropped_queue_full);
     FIELD(ams_mel_ir_stream_counters_v1, malformed_or_unsupported_frames);
+#define RECORD(type, ...) LAYOUT(type); __VA_ARGS__
+    RECORD(ams_mel_u8_span_v1, FIELD(ams_mel_u8_span_v1,data); FIELD(ams_mel_u8_span_v1,size));
+    RECORD(ams_mel_ir_contributing_sensor_v1, FIELD(ams_mel_ir_contributing_sensor_v1,location); FIELD(ams_mel_ir_contributing_sensor_v1,sensor_id));
+    RECORD(ams_mel_ir_directional_v1, FIELD(ams_mel_ir_directional_v1,x); FIELD(ams_mel_ir_directional_v1,y); FIELD(ams_mel_ir_directional_v1,z));
+    RECORD(ams_mel_ir_quaternion_v1, FIELD(ams_mel_ir_quaternion_v1,x); FIELD(ams_mel_ir_quaternion_v1,y); FIELD(ams_mel_ir_quaternion_v1,z); FIELD(ams_mel_ir_quaternion_v1,w));
+    RECORD(ams_mel_ir_nav_error_v1, FIELD(ams_mel_ir_nav_error_v1,x); FIELD(ams_mel_ir_nav_error_v1,y); FIELD(ams_mel_ir_nav_error_v1,z); FIELD(ams_mel_ir_nav_error_v1,w));
+    RECORD(ams_mel_ir_uncertainty_v1, FIELD(ams_mel_ir_uncertainty_v1,sensor_uncertainties); FIELD(ams_mel_ir_uncertainty_v1,platform_uncertainties));
+    RECORD(ams_mel_ir_orientation_v1, FIELD(ams_mel_ir_orientation_v1,kind); FIELD(ams_mel_ir_orientation_v1,euler); FIELD(ams_mel_ir_orientation_v1,quaternion));
+    RECORD(ams_mel_ir_sensor_inertial_state_v1, FIELD(ams_mel_ir_sensor_inertial_state_v1,system_time_ns); FIELD(ams_mel_ir_sensor_inertial_state_v1,q_xyzw); FIELD(ams_mel_ir_sensor_inertial_state_v1,q_ecef_xyzw); FIELD(ams_mel_ir_sensor_inertial_state_v1,sensor_position); FIELD(ams_mel_ir_sensor_inertial_state_v1,sensor_velocity); FIELD(ams_mel_ir_sensor_inertial_state_v1,uncertainties));
+    RECORD(ams_mel_ir_sensor_inertial_state_span_v1, FIELD(ams_mel_ir_sensor_inertial_state_span_v1,data); FIELD(ams_mel_ir_sensor_inertial_state_span_v1,size));
+    RECORD(ams_mel_ir_sensor_nav_state_v1, FIELD(ams_mel_ir_sensor_nav_state_v1,position); FIELD(ams_mel_ir_sensor_nav_state_v1,position_error); FIELD(ams_mel_ir_sensor_nav_state_v1,velocity); FIELD(ams_mel_ir_sensor_nav_state_v1,velocity_error); FIELD(ams_mel_ir_sensor_nav_state_v1,acceleration); FIELD(ams_mel_ir_sensor_nav_state_v1,acceleration_error); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation_error); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation_velocity); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation_velocity_error); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation_acceleration); FIELD(ams_mel_ir_sensor_nav_state_v1,orientation_acceleration_error); FIELD(ams_mel_ir_sensor_nav_state_v1,coordinate_system));
+    RECORD(ams_mel_ir_sensor_nav_state_span_v1, FIELD(ams_mel_ir_sensor_nav_state_span_v1,data); FIELD(ams_mel_ir_sensor_nav_state_span_v1,size));
+    RECORD(ams_mel_ir_frame_snapshot_v1, FIELD(ams_mel_ir_frame_snapshot_v1,system_time_ns); FIELD(ams_mel_ir_frame_snapshot_v1,integration_time_ns); FIELD(ams_mel_ir_frame_snapshot_v1,width); FIELD(ams_mel_ir_frame_snapshot_v1,height); FIELD(ams_mel_ir_frame_snapshot_v1,bits_per_pixel); FIELD(ams_mel_ir_frame_snapshot_v1,number_of_bands); FIELD(ams_mel_ir_frame_snapshot_v1,horizontal_fov_rad); FIELD(ams_mel_ir_frame_snapshot_v1,vertical_fov_rad); FIELD(ams_mel_ir_frame_snapshot_v1,contributing_sensor); FIELD(ams_mel_ir_frame_snapshot_v1,pixel_format); FIELD(ams_mel_ir_frame_snapshot_v1,frame_id); FIELD(ams_mel_ir_frame_snapshot_v1,subframe_id); FIELD(ams_mel_ir_frame_snapshot_v1,subframe_total); FIELD(ams_mel_ir_frame_snapshot_v1,image_type); FIELD(ams_mel_ir_frame_snapshot_v1,image_flip); FIELD(ams_mel_ir_frame_snapshot_v1,image_flags); FIELD(ams_mel_ir_frame_snapshot_v1,dither_row); FIELD(ams_mel_ir_frame_snapshot_v1,dither_column); FIELD(ams_mel_ir_frame_snapshot_v1,row_offset); FIELD(ams_mel_ir_frame_snapshot_v1,column_offset); FIELD(ams_mel_ir_frame_snapshot_v1,sensor_inertial_states); FIELD(ams_mel_ir_frame_snapshot_v1,sensor_nav_states); FIELD(ams_mel_ir_frame_snapshot_v1,band_index); FIELD(ams_mel_ir_frame_snapshot_v1,pixels));
+    LAYOUT(ams_mel_ir_frame_snapshot *);
     VALUE(AMS_MEL_IR_C2_METADATA_COMMAND_STATUS); VALUE(AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION); VALUE(AMS_MEL_IR_C2_METADATA_BIT_STATUS);
     VALUE(AMS_MEL_IR_COMMAND_NOT_SET); VALUE(AMS_MEL_IR_COMMAND_RECEIVED); VALUE(AMS_MEL_IR_COMMAND_ACCEPTED); VALUE(AMS_MEL_IR_COMMAND_REJECTED); VALUE(AMS_MEL_IR_COMMAND_CANCELLED);
     VALUE(AMS_MEL_IR_CANNOT_COMPLY_NOT_SET);
@@ -278,7 +298,6 @@ int main(void)
     VALUE(AMS_MEL_BIT_RESULT_NOT_SET); VALUE(AMS_MEL_BIT_RESULT_PASS); VALUE(AMS_MEL_BIT_RESULT_FAIL); VALUE(AMS_MEL_BIT_RESULT_INTERRUPTED); VALUE(AMS_MEL_BIT_RESULT_NOT_TESTED);
     VALUE(AMS_MEL_FAULT_SEVERITY_NOT_SET); VALUE(AMS_MEL_FAULT_SEVERITY_NOMINAL); VALUE(AMS_MEL_FAULT_SEVERITY_CAUTION); VALUE(AMS_MEL_FAULT_SEVERITY_WARNING); VALUE(AMS_MEL_FAULT_SEVERITY_FAILED);
     VALUE(AMS_MEL_FAULT_STATE_NOT_SET); VALUE(AMS_MEL_FAULT_STATE_SET); VALUE(AMS_MEL_FAULT_STATE_CLEARED); VALUE(AMS_MEL_FAULT_STATE_UNKNOWN);
-#define RECORD(type, ...) LAYOUT(type); __VA_ARGS__
     RECORD(ams_mel_uci_id_span_v1, FIELD(ams_mel_uci_id_span_v1,data); FIELD(ams_mel_uci_id_span_v1,size));
     RECORD(ams_mel_ir_command_status_v1, FIELD(ams_mel_ir_command_status_v1,command_id); FIELD(ams_mel_ir_command_status_v1,state); FIELD(ams_mel_ir_command_status_v1,reason_id); FIELD(ams_mel_ir_command_status_v1,reason_description));
     RECORD(ams_mel_bit_type_v1, FIELD(ams_mel_bit_type_v1,bit_id); FIELD(ams_mel_bit_type_v1,accepted_interface); FIELD(ams_mel_bit_type_v1,bit_item_names); FIELD(ams_mel_bit_type_v1,subsystem_component_ids); FIELD(ams_mel_bit_type_v1,expected_duration_ns));

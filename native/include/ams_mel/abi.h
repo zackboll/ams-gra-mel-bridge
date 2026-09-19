@@ -52,6 +52,13 @@ typedef struct ams_mel_abi_version_v1 {
 
 typedef struct ams_mel_session ams_mel_session;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
+typedef struct ams_mel_ir_frame_snapshot ams_mel_ir_frame_snapshot;
+typedef uint32_t ams_mel_ir_image_flag_t;
+#define AMS_MEL_IR_IMAGE_FLAG_SCAN_FIRST UINT32_C(0)
+#define AMS_MEL_IR_IMAGE_FLAG_SCAN_LAST UINT32_C(1)
+#define AMS_MEL_IR_IMAGE_FLAG_STARE_SNAPSHOT UINT32_C(2)
+#define AMS_MEL_IR_IMAGE_FLAG_STARE_ROLLING UINT32_C(3)
+#define AMS_MEL_IR_IMAGE_RESERVED13 UINT32_C(2)
 typedef struct ams_mel_ir_c2 ams_mel_ir_c2;
 typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
@@ -344,6 +351,11 @@ typedef struct ams_mel_u32_span_v1 {
     const uint32_t *data;
     size_t size;
 } ams_mel_u32_span_v1;
+
+typedef struct ams_mel_u8_span_v1 {
+    const uint8_t *data;
+    size_t size;
+} ams_mel_u8_span_v1;
 
 typedef struct ams_mel_string_view_span_v1 {
     const ams_mel_string_view_v1 *data;
@@ -724,6 +736,71 @@ typedef struct ams_mel_ir_frame_v1 {
     size_t pixel_required;
 } ams_mel_ir_frame_v1;
 
+/* Complete immutable FrameHeader snapshot.  Unlike the legacy frame_v1 this
+ * record is borrowed from an opaque owner and may contain nested spans. */
+typedef struct ams_mel_ir_contributing_sensor_v1 {
+    ams_mel_component_location_v1 location;
+    uint32_t sensor_id;
+} ams_mel_ir_contributing_sensor_v1;
+typedef struct ams_mel_ir_directional_v1 { double x, y, z; } ams_mel_ir_directional_v1;
+typedef struct ams_mel_ir_quaternion_v1 { double x, y, z, w; } ams_mel_ir_quaternion_v1;
+typedef struct ams_mel_ir_nav_error_v1 { double x, y, z, w; } ams_mel_ir_nav_error_v1;
+typedef struct ams_mel_ir_uncertainty_v1 {
+    uint32_t sensor_uncertainties;
+    uint32_t platform_uncertainties;
+} ams_mel_ir_uncertainty_v1;
+typedef uint32_t ams_mel_ir_orientation_kind_t;
+#define AMS_MEL_IR_ORIENTATION_EULER UINT32_C(0)
+#define AMS_MEL_IR_ORIENTATION_QUATERNION UINT32_C(1)
+typedef struct ams_mel_ir_orientation_v1 {
+    ams_mel_ir_orientation_kind_t kind;
+    ams_mel_euler_v1 euler;
+    ams_mel_ir_quaternion_v1 quaternion;
+} ams_mel_ir_orientation_v1;
+typedef struct ams_mel_ir_sensor_inertial_state_v1 {
+    int64_t system_time_ns;
+    ams_mel_ir_quaternion_v1 q_xyzw;
+    ams_mel_ir_quaternion_v1 q_ecef_xyzw;
+    ams_mel_ir_directional_v1 sensor_position;
+    ams_mel_ir_directional_v1 sensor_velocity;
+    ams_mel_ir_uncertainty_v1 uncertainties;
+} ams_mel_ir_sensor_inertial_state_v1;
+typedef struct ams_mel_ir_sensor_nav_state_v1 {
+    ams_mel_ir_directional_v1 position;
+    ams_mel_ir_nav_error_v1 position_error;
+    ams_mel_ir_directional_v1 velocity;
+    ams_mel_ir_nav_error_v1 velocity_error;
+    ams_mel_ir_directional_v1 acceleration;
+    ams_mel_ir_nav_error_v1 acceleration_error;
+    ams_mel_ir_orientation_v1 orientation;
+    ams_mel_ir_nav_error_v1 orientation_error;
+    ams_mel_ir_orientation_v1 orientation_velocity;
+    ams_mel_ir_nav_error_v1 orientation_velocity_error;
+    ams_mel_ir_orientation_v1 orientation_acceleration;
+    ams_mel_ir_nav_error_v1 orientation_acceleration_error;
+    uint32_t coordinate_system;
+} ams_mel_ir_sensor_nav_state_v1;
+typedef struct ams_mel_ir_sensor_inertial_state_span_v1 {
+    const ams_mel_ir_sensor_inertial_state_v1 *data; size_t size;
+} ams_mel_ir_sensor_inertial_state_span_v1;
+typedef struct ams_mel_ir_sensor_nav_state_span_v1 {
+    const ams_mel_ir_sensor_nav_state_v1 *data; size_t size;
+} ams_mel_ir_sensor_nav_state_span_v1;
+typedef struct ams_mel_ir_frame_snapshot_v1 {
+    int64_t system_time_ns, integration_time_ns;
+    uint32_t width, height, bits_per_pixel, number_of_bands;
+    double horizontal_fov_rad, vertical_fov_rad;
+    ams_mel_ir_contributing_sensor_v1 contributing_sensor;
+    uint32_t pixel_format, frame_id, subframe_id, subframe_total, image_type, image_flip;
+    ams_mel_u32_span_v1 image_flags;
+    double dither_row, dither_column;
+    uint32_t row_offset, column_offset;
+    ams_mel_ir_sensor_inertial_state_span_v1 sensor_inertial_states;
+    ams_mel_ir_sensor_nav_state_span_v1 sensor_nav_states;
+    uint8_t band_index;
+    ams_mel_u8_span_v1 pixels;
+} ams_mel_ir_frame_snapshot_v1;
+
 typedef struct ams_mel_ir_stream_counters_v1 {
     uint64_t frames_received;
     uint64_t frames_dropped_queue_full;
@@ -837,6 +914,21 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_receive(
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Both receive operations consume the same FIFO; externally serialize all
+ * receive calls for a stream. The returned immutable owner is independent of
+ * stream, Session, and provider lifetime until snapshot_close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
+    ams_mel_ir_stream *stream, uint32_t timeout_ms,
+    ams_mel_ir_frame_snapshot **out_snapshot, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_frame_snapshot_view(
+    const ams_mel_ir_frame_snapshot *snapshot,
+    const ams_mel_ir_frame_snapshot_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_frame_snapshot_close(
+    ams_mel_ir_frame_snapshot **snapshot, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_counters(
     const ams_mel_ir_stream *stream,

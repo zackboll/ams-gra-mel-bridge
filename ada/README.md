@@ -15,6 +15,10 @@ and wholly Ada-owned complete ChannelCapability snapshots. Provider callback thr
 code, and returned events contain only Ada-owned values. C imports and borrowed
 spans remain private. Explicit generic buffer ownership, optional C2 operations,
 Scheduling, and all other MEL families remain future work.
+`AMS.MEL.IR.Image` is the separate full-FrameHeader receive path.  It receives an
+owned native snapshot, deep-copies every nested value and pixel, closes the native
+owner, and returns an Ada-owned `Full_Frame`; the existing `AMS.MEL.IR.Receive`
+remains the source-compatible Mono8 compatibility subset.
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
 

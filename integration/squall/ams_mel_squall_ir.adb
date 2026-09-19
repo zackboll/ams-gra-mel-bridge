@@ -3,6 +3,7 @@ with Ada.Exceptions;
 with Ada.Text_IO;
 with AMS.MEL;
 with AMS.MEL.IR;
+with AMS.MEL.IR.Image;
 with AMS.MEL.IR.C2;
 with AMS.MEL.IR.C2.Metadata;
 with AMS.MEL.IR.C2.Common;
@@ -30,6 +31,10 @@ procedure AMS_MEL_Squall_IR is
    use type Metadata.Command_State;
    use type Metadata.Cannot_Comply;
    use type Channel_Value.Channel_Type;
+   use type Channel_Value.Pixel_Format;
+   use type AMS.MEL.IR.Image.Full_Image_Type;
+   use type AMS.MEL.IR.Image_Flip;
+   use type AMS.MEL.IR.Byte;
    use type Channel_Value.Metadata_Capability;
    use type Channel_Value.Comms_Request_ID;
    use type Channel_Value.Comms_Test_Report;
@@ -453,6 +458,35 @@ begin
                         Interfaces.Unsigned_64'Image (Checksum (Frame.Pixels)));
                   end;
                end loop;
+            end;
+
+            declare
+               Full : constant AMS.MEL.IR.Image.Full_Frame :=
+                 AMS.MEL.IR.Image.Receive (Stream, Timeout_MS);
+               Sensor : constant AMS.MEL.IR.Image.Contributing_Sensor :=
+                 AMS.MEL.IR.Image.Contributing_Sensor_Value (Full);
+            begin
+               if AMS.MEL.IR.Image.Width (Full) /= 320
+                 or else AMS.MEL.IR.Image.Height (Full) /= 200
+                 or else AMS.MEL.IR.Image.Bits_Per_Pixel (Full) /= 8
+                 or else AMS.MEL.IR.Image.Number_Of_Bands (Full) /= 1
+                 or else AMS.MEL.IR.Image.Pixel_Format (Full) /= Channel_Value.Mono
+                 or else AMS.MEL.IR.Image.Image_Type (Full) /= AMS.MEL.IR.Image.Staring
+                 or else AMS.MEL.IR.Image.Image_Flip (Full) /= AMS.MEL.IR.No_Flip
+                 or else AMS.MEL.IR.Image.Integration_Time_NS (Full) /= 0
+                 or else Sensor.Sensor_ID /= 0
+                 or else AMS.MEL.IR.Offset_X_M (Sensor.Location) /= 0.0
+                 or else AMS.MEL.IR.Offset_Y_M (Sensor.Location) /= 0.0
+                 or else AMS.MEL.IR.Offset_Z_M (Sensor.Location) /= 0.0
+                 or else AMS.MEL.IR.Key (Sensor.Location) /= "task-004-station"
+                 or else AMS.MEL.IR.System_Name (Sensor.Location) /= "ams-mel-squall-integration"
+                 or else AMS.MEL.IR.Image.Image_Flag_Count (Full) /= 0
+                 or else AMS.MEL.IR.Image.Sensor_Inertial_State_Count (Full) /= 0
+                 or else AMS.MEL.IR.Image.Sensor_Nav_State_Count (Full) /= 0
+                 or else AMS.MEL.IR.Image.Band_Index (Full) /= 0
+                 or else AMS.MEL.IR.Image.Pixel_Count (Full) /= 64_000
+               then raise Program_Error with "invalid Squall full FrameHeader"; end if;
+               Ada.Text_IO.Put_Line ("full FrameHeader: 320x200 Mono8 sparse metadata");
             end;
 
             declare

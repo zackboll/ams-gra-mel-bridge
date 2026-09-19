@@ -12,7 +12,7 @@
 | Separately loadable mock C++ MEL provider | Implemented, test-only | Native C and Ada contract tests |
 | Real MEL factory/resource adaptation | Control foundation implemented | load/factory/init/version/close only |
 | Buffer and callback lifetimes | Hardened with non-quiescing mock | Channel destruction before in-flight drain/storage; release checked exactly once |
-| IR image receive | Mono8 receive implemented | Host memory, `IRSTImage`, C polling and `AMS.MEL.IR` |
+| IR image receive | Mono8 receive implemented | Host-memory Mono8 only; legacy subset plus complete owned snapshot in C/Ada |
 | IR C2 required sends | Complete in native C and safe Ada | General ModeCmd/complete ScanParam, intended BIT choices, and ConfigSet; existing request owners reused |
 | IR C2 safe Rust/Python subset | Constrained existing subset | Operate/TaskSched and BIT no-op only; no safe Task-017 expansion |
 | Pending C2 lifetime | Hardened and lifecycle-tested | Pre-send allocation; allocation-free emergency roots; launch/allocation failure injection; deferred disable/detach/unload |
@@ -23,14 +23,17 @@
 | Explicit generic buffer management | Not application-exposed | IRSTImage registration remains adapter-managed; future resource task |
 | Optional/conditional C2 commands | Not implemented | No calibration, camera, erase, or system-track-response commands |
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
-| Full FrameHeader metadata | Partial by design | Omits contributing sensor and inertial/navigation vectors |
+| Legacy FrameHeader interface | Compatibility subset retained | `ams_mel_ir_frame_v1` and `AMS.MEL.IR.Receive` unchanged |
+| Full FrameHeader snapshot | Complete in native C and safe Ada | Owned snapshot, contributing sensor, ordered flags, inertial/nav vectors and independent orientations |
+| ImageChannel metadata callbacks | Not implemented | FrameHeader receive is not ImageChannel callback metadata API |
+| Image commands | Not implemented | Later image command slice |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 46 C functions; raw Health declarations synchronized; no safe Health API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 49 C functions; raw FrameHeader snapshot declarations synchronized; no safe snapshot API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 46-function private ctypes binding; no public Health methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 49-function private ctypes binding; no public snapshot methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |

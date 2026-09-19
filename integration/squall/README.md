@@ -16,6 +16,10 @@ safe APIs. It requires Standby/Unused and Operate/TaskSched success, provider
 rejection of Operate/ScanVolumeSched, empty ConfigSet Success, nonempty ConfigSet
 Fail, and payload-bearing BIT Fail. Complete ScanParam fidelity is mock-proven;
 pinned Squall rejects scan scheduling before meaningfully consuming ScanParam.
+Task 021 additionally has Ada consume one further complete FrameHeader snapshot after
+the legacy frames. Pinned Squall currently reports sparse values: 320x200 Mono8,
+Staring/None, zero integration time, configured contributing-sensor location with ID
+zero, and empty flag/inertial/nav vectors. Rich nested fidelity is mock-proven.
 C, Rust, and Python retain the earlier integration subset.
 Ada also opens Task 018's metadata stream before command activity. It validates
 pinned Squall's current empty default BIT_Configuration/BIT_Status, correlates

@@ -92,9 +92,113 @@ void increment(std::uint64_t& value) noexcept
 }
 
 struct QueuedFrame {
-    ams_mel_ir_frame_v1 metadata{};
+    ams_mel_ir_frame_snapshot_v1 view{};
+    std::string location_key;
+    std::string location_system_name;
+    std::vector<std::uint32_t> flags;
+    std::vector<ams_mel_ir_sensor_inertial_state_v1> inertial;
+    std::vector<ams_mel_ir_sensor_nav_state_v1> nav;
     std::vector<std::uint8_t> pixels;
+
+    void bind() noexcept
+    {
+        view.contributing_sensor.location.key = {location_key.data(), location_key.size()};
+        view.contributing_sensor.location.system_name =
+            {location_system_name.data(), location_system_name.size()};
+        view.image_flags = {flags.data(), flags.size()};
+        view.sensor_inertial_states = {inertial.data(), inertial.size()};
+        view.sensor_nav_states = {nav.data(), nav.size()};
+        view.pixels = {pixels.data(), pixels.size()};
+    }
 };
+
+ams_mel_ir_directional_v1 directional(const irmel::IR_Directional& value) noexcept
+{ return {value.getX(), value.getY(), value.getZ()}; }
+ams_mel_ir_quaternion_v1 quaternion(const irmel::Quaternion& value) noexcept
+{ return {value.getQuaternionX(), value.getQuaternionY(), value.getQuaternionZ(), value.getQuaternionW()}; }
+ams_mel_ir_nav_error_v1 nav_error(const irmel::NavError& value) noexcept
+{ return {value.getX(), value.getY(), value.getZ(), value.getW()}; }
+ams_mel_euler_v1 euler(const mel::Euler& value) noexcept
+{ return {value.getRoll(), value.getPitch(), value.getYaw()}; }
+
+template<typename EulerGetter, typename QuaternionGetter>
+ams_mel_ir_orientation_v1 orientation(EulerGetter get_euler,
+                                      QuaternionGetter get_quaternion)
+{
+    try {
+        return {AMS_MEL_IR_ORIENTATION_EULER, euler(get_euler()), {}};
+    } catch (const std::bad_variant_access&) {
+        return {AMS_MEL_IR_ORIENTATION_QUATERNION, {}, quaternion(get_quaternion())};
+    }
+}
+
+QueuedFrame copy_frame(const irmel::FrameHeader& header, const std::uint8_t *pixels,
+                       std::size_t pixel_count)
+{
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+    if (const char *failure = std::getenv("AMS_MEL_TEST_FRAME_COPY_FAILURE");
+        failure != nullptr && std::strcmp(failure, "allocation") == 0) {
+        (void)unsetenv("AMS_MEL_TEST_FRAME_COPY_FAILURE");
+        throw std::bad_alloc{};
+    }
+#endif
+    QueuedFrame frame;
+    const auto image_type = static_cast<std::uint32_t>(header.getImageType());
+    const auto image_flip = static_cast<std::uint32_t>(header.getImageFlip());
+    if (image_type > 2U || image_flip > 3U) throw std::runtime_error("invalid image enum");
+    frame.view.system_time_ns = header.getSystemTime().count();
+    frame.view.integration_time_ns = header.getIntegrationTime().count();
+    frame.view.width = header.getWidth(); frame.view.height = header.getHeight();
+    frame.view.bits_per_pixel = header.getBitsPerPixel(); frame.view.number_of_bands = header.getNumBands();
+    frame.view.horizontal_fov_rad = header.getHorizontalFieldOfView();
+    frame.view.vertical_fov_rad = header.getVerticalFieldOfView();
+    const auto& sensor = header.getFace(); const auto& location = sensor.first;
+    frame.view.contributing_sensor.location.offset_x_m = location.getOffsetX();
+    frame.view.contributing_sensor.location.offset_y_m = location.getOffsetY();
+    frame.view.contributing_sensor.location.offset_z_m = location.getOffsetZ();
+    frame.location_key = location.getLocationId().getKey();
+    frame.location_system_name = location.getLocationId().getSystemName();
+    if (!valid_utf8(frame.location_key) || !valid_utf8(frame.location_system_name))
+        throw std::runtime_error("invalid contributing sensor string");
+    frame.view.contributing_sensor.sensor_id = sensor.second;
+    frame.view.pixel_format = static_cast<std::uint32_t>(header.getFormat());
+    frame.view.frame_id = header.getFrameID(); frame.view.subframe_id = header.getSubframeID();
+    frame.view.subframe_total = header.getSubframeTotal(); frame.view.image_type = image_type;
+    frame.view.image_flip = image_flip;
+    for (const auto flag : header.getFlags()) {
+        const auto value = static_cast<std::uint32_t>(flag);
+        if (value > 3U) throw std::runtime_error("invalid image flag");
+        frame.flags.push_back(value);
+    }
+    frame.view.dither_row = header.getDitherRow(); frame.view.dither_column = header.getDitherCol();
+    frame.view.row_offset = header.getRowOffset(); frame.view.column_offset = header.getColumnOffset();
+    for (const auto& state : header.getSensorInertialState()) {
+        frame.inertial.push_back({state.getSystemTime().count(), quaternion(state.getQ_xyzw()),
+            quaternion(state.getQECEF_xyzw()), directional(state.getSensorPosition()),
+            directional(state.getSensorVelocity()), {state.getUncertainties().getSensorUncertainties(),
+            state.getUncertainties().getPlatformUncertainties()}});
+    }
+    for (const auto& state : header.getSensorNavState()) {
+        const auto coordinate = static_cast<std::uint32_t>(state.getCoordinateSystem());
+        if (coordinate > 3U) throw std::runtime_error("invalid coordinate system");
+        frame.nav.push_back({directional(state.getPosition()), nav_error(state.getPositionError()),
+            directional(state.getVelocity()), nav_error(state.getVelocityError()),
+            directional(state.getAccel()), nav_error(state.getAccelError()),
+            orientation([&state]() -> const mel::Euler& { return state.getEulerOrientation(); },
+                        [&state]() -> const irmel::Quaternion& { return state.getQuaternionOrientation(); }),
+            nav_error(state.getOrientationError()),
+            orientation([&state]() -> const mel::Euler& { return state.getEulerOrientationVel(); },
+                        [&state]() -> const irmel::Quaternion& { return state.getQuaternionOrientationVel(); }),
+            nav_error(state.getOrientationVelError()),
+            orientation([&state]() -> const mel::Euler& { return state.getEulerOrientationAccel(); },
+                        [&state]() -> const irmel::Quaternion& { return state.getQuaternionOrientationAccel(); }),
+            nav_error(state.getOrientationAccelError()), coordinate});
+    }
+    frame.view.band_index = header.getBandIndex();
+    frame.pixels.assign(pixels, pixels + pixel_count);
+    frame.bind();
+    return frame;
+}
 
 enum class Lifecycle {
     Attached,
@@ -158,18 +262,11 @@ struct CallbackState {
             if (!buffer || header.getWidth() == 0U || header.getHeight() == 0U ||
                 header.getBitsPerPixel() != 8U || header.getNumBands() != 1U ||
                 header.getFormat() != irmel::PixelFormat::Mono ||
-                static_cast<std::uint32_t>(header.getImageType()) > 1U ||
+                static_cast<std::uint32_t>(header.getImageType()) > 2U ||
                 static_cast<std::uint32_t>(header.getImageFlip()) > 3U) {
                 std::lock_guard lock{mutex};
                 increment(counters.malformed_or_unsupported_frames);
                 return;
-            }
-            for (const auto flag : header.getFlags()) {
-                if (static_cast<std::uint32_t>(flag) > 3U) {
-                    std::lock_guard lock{mutex};
-                    increment(counters.malformed_or_unsupported_frames);
-                    return;
-                }
             }
             const std::size_t width = header.getWidth();
             const std::size_t height = header.getHeight();
@@ -208,32 +305,8 @@ struct CallbackState {
                 return;
             }
 
-            QueuedFrame frame;
-            frame.pixels.resize(bytes);
-            std::memcpy(frame.pixels.data(), image_pointer, bytes);
-            frame.metadata.system_time_ns = header.getSystemTime().count();
-            frame.metadata.integration_time_ns = header.getIntegrationTime().count();
-            frame.metadata.width = header.getWidth();
-            frame.metadata.height = header.getHeight();
-            frame.metadata.bits_per_pixel = header.getBitsPerPixel();
-            frame.metadata.number_of_bands = header.getNumBands();
-            frame.metadata.horizontal_fov_rad = header.getHorizontalFieldOfView();
-            frame.metadata.vertical_fov_rad = header.getVerticalFieldOfView();
-            frame.metadata.pixel_format = AMS_MEL_IR_PIXEL_MONO;
-            frame.metadata.frame_id = header.getFrameID();
-            frame.metadata.subframe_id = header.getSubframeID();
-            frame.metadata.subframe_total = header.getSubframeTotal();
-            frame.metadata.image_type = static_cast<std::uint32_t>(header.getImageType());
-            frame.metadata.image_flip = static_cast<std::uint32_t>(header.getImageFlip());
-            for (const auto flag : header.getFlags()) {
-                const auto bit = static_cast<std::uint32_t>(flag);
-                if (bit < 32U) frame.metadata.image_flags |= UINT32_C(1) << bit;
-            }
-            frame.metadata.dither_row = header.getDitherRow();
-            frame.metadata.dither_column = header.getDitherCol();
-            frame.metadata.row_offset = header.getRowOffset();
-            frame.metadata.column_offset = header.getColumnOffset();
-            frame.metadata.band_index = header.getBandIndex();
+            QueuedFrame frame = copy_frame(header,
+                static_cast<const std::uint8_t *>(image_pointer), bytes);
 
             std::lock_guard lock{mutex};
             if (!accepting) return;
@@ -286,6 +359,10 @@ struct ams_mel_ir_stream {
     std::vector<std::vector<std::uint8_t>> storage;
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> buffers;
     bool enable_attempted{false};
+};
+
+struct ams_mel_ir_frame_snapshot {
+    QueuedFrame frame;
 };
 
 namespace {
@@ -577,7 +654,22 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         }
         std::uint8_t *pixels = frame->pixels;
         const std::size_t pixel_capacity = frame->pixel_capacity;
-        *frame = queued.metadata;
+        const auto& metadata = queued.view;
+        frame->system_time_ns = metadata.system_time_ns;
+        frame->integration_time_ns = metadata.integration_time_ns;
+        frame->width = metadata.width; frame->height = metadata.height;
+        frame->bits_per_pixel = metadata.bits_per_pixel;
+        frame->number_of_bands = metadata.number_of_bands;
+        frame->horizontal_fov_rad = metadata.horizontal_fov_rad;
+        frame->vertical_fov_rad = metadata.vertical_fov_rad;
+        frame->pixel_format = metadata.pixel_format;
+        frame->frame_id = metadata.frame_id; frame->subframe_id = metadata.subframe_id;
+        frame->subframe_total = metadata.subframe_total; frame->image_type = metadata.image_type;
+        frame->image_flip = metadata.image_flip; frame->image_flags = 0U;
+        for (const auto flag : queued.flags) frame->image_flags |= UINT32_C(1) << flag;
+        frame->dither_row = metadata.dither_row; frame->dither_column = metadata.dither_column;
+        frame->row_offset = metadata.row_offset; frame->column_offset = metadata.column_offset;
+        frame->band_index = metadata.band_index;
         frame->pixels = pixels;
         frame->pixel_capacity = pixel_capacity;
         frame->pixel_required = queued.pixels.size();
@@ -588,6 +680,58 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         diagnostic("receive failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
+    ams_mel_ir_stream *stream, std::uint32_t timeout_ms,
+    ams_mel_ir_frame_snapshot **snapshot, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!stream || !snapshot || *snapshot || (!out && capacity != 0U))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{stream->callback->mutex};
+        const auto terminal = [&stream] { return stream->callback->lifecycle == Lifecycle::Stopped ||
+            stream->callback->lifecycle == Lifecycle::Failed; };
+        if (stream->callback->queue.empty() && !terminal()) {
+            (void)stream->callback->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms}, [&] {
+                return !stream->callback->queue.empty() || terminal(); });
+        }
+        if (stream->callback->queue.empty()) {
+            if (stream->callback->lifecycle == Lifecycle::Failed) return AMS_MEL_PROVIDER_FAILED;
+            return stream->callback->lifecycle == Lifecycle::Stopped ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
+        }
+        auto owner = std::make_unique<ams_mel_ir_frame_snapshot>();
+        owner->frame = std::move(stream->callback->queue.front());
+        stream->callback->queue.pop_front();
+        owner->frame.bind();
+        *snapshot = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        diagnostic("snapshot receive failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_frame_snapshot_view(
+    const ams_mel_ir_frame_snapshot *snapshot, const ams_mel_ir_frame_snapshot_v1 **view,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!snapshot || !view || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
+    *view = &snapshot->frame.view;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_frame_snapshot_close(
+    ams_mel_ir_frame_snapshot **snapshot, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!snapshot || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
+    delete *snapshot; *snapshot = nullptr;
+    return AMS_MEL_OK;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_stream_get_counters(
