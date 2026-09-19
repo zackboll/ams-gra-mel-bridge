@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add the `ImageChannel::send(NavigationReport)` request/future vertical slice
+  in native C, safe Ada, raw Rust, and private Python: the complete published
+  `NavigationReport` (all 18 covariance terms), asynchronous submit/wait/close,
+  deferred provider teardown while a request is outstanding, allocation-free
+  emergency retention for post-send facade failures, and a dedicated native
+  contract test. ABI 0.1 grows from 56 to 59 exports.
 - Refactor private Image stream ownership into shared `ImageStreamState`. The
   public stream remains an opaque thin owner; ABI 0.1, its 56 exports, and all
   application-visible behavior are unchanged. NavigationReport remains unimplemented.

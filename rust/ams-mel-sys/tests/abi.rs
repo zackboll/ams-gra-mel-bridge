@@ -100,6 +100,28 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_image_metadata_event_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrStream,
+        *const AmsMelNavigationReportV1,
+        *mut *mut AmsMelIrNavigationRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_stream_submit_navigation_report;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrNavigationRequest,
+        u32,
+        *mut AmsMelIrNavigationResultV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_navigation_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrNavigationRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_navigation_request_close;
 }
 
 #[test]
@@ -777,6 +799,65 @@ fn declarations_match_the_c_header() {
         size_of::<*mut AmsMelIrHealthMetadataEvent>(),
         align_of::<*mut AmsMelIrHealthMetadataEvent>(),
     ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrNavigationRequest>(),
+        align_of::<*mut AmsMelIrNavigationRequest>(),
+    ]);
+    expected.extend([
+        AMS_MEL_POSITION_SOLUTION_NOT_SET as usize,
+        AMS_MEL_POSITION_SOLUTION_ALIGNING as usize,
+        AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL as usize,
+        AMS_MEL_POSITION_SOLUTION_GPS as usize,
+        AMS_MEL_POSITION_SOLUTION_BLENDED as usize,
+        AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE as usize,
+    ]);
+    layout!(expected, AmsMelNorthEastDownV1, north, east, down);
+    layout!(
+        expected,
+        AmsMelAttitudeRateV1,
+        attitude_rate,
+        attitude_rate_time_ns
+    );
+    layout!(
+        expected,
+        AmsMelPositionVelocityCovarianceV1,
+        position_position_pn_pn,
+        position_position_pn_pe,
+        position_position_pn_pd,
+        position_position_pe_pe,
+        position_position_pe_pd,
+        position_position_pd_pd,
+        position_velocity_pn_vn,
+        position_velocity_pn_ve,
+        position_velocity_pn_vd,
+        position_velocity_pe_ve,
+        position_velocity_pe_vd,
+        position_velocity_pd_vd,
+        velocity_velocity_vn_vn,
+        velocity_velocity_vn_ve,
+        velocity_velocity_vn_vd,
+        velocity_velocity_ve_ve,
+        velocity_velocity_ve_vd,
+        velocity_velocity_vd_vd
+    );
+    layout!(
+        expected,
+        AmsMelNavigationReportV1,
+        system_time_ns,
+        state,
+        latitude_rad,
+        longitude_rad,
+        altitude_m,
+        attitude,
+        attitude_rate,
+        speed,
+        acceleration,
+        wander_angle_rad,
+        magnetic_heading,
+        altitude_msl,
+        position_velocity_covariance_uncertainty
+    );
+    layout!(expected, AmsMelIrNavigationResultV1, response, error_code);
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,

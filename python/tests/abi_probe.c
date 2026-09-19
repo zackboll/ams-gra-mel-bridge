@@ -33,6 +33,10 @@ int main(void)
     ams_mel_status_t (*image_close)(ams_mel_ir_image_metadata **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_close;
     ams_mel_status_t (*image_view)(const ams_mel_ir_image_metadata_event *, const ams_mel_ir_image_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_event_view;
     ams_mel_status_t (*image_event_close)(ams_mel_ir_image_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_image_metadata_event_close;
+    ams_mel_status_t (*navigation_submit)(ams_mel_ir_stream *, const ams_mel_navigation_report_v1 *, ams_mel_ir_navigation_request **, char *, size_t, size_t *) = ams_mel_ir_stream_submit_navigation_report;
+    ams_mel_status_t (*navigation_wait)(const ams_mel_ir_navigation_request *, uint32_t, ams_mel_ir_navigation_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_navigation_request_wait;
+    ams_mel_status_t (*navigation_close)(ams_mel_ir_navigation_request **, char *, size_t, size_t *) = ams_mel_ir_navigation_request_close;
+    (void)navigation_submit; (void)navigation_wait; (void)navigation_close;
     ams_mel_status_t (*snapshot_receive)(ams_mel_ir_stream *, uint32_t,
         ams_mel_ir_frame_snapshot **, char *, size_t, size_t *) = ams_mel_ir_stream_receive_snapshot;
     ams_mel_status_t (*snapshot_view)(const ams_mel_ir_frame_snapshot *,
@@ -341,6 +345,47 @@ int main(void)
     LAYOUT(ams_mel_ir_image_metadata *); LAYOUT(ams_mel_ir_image_metadata_event *);
     LAYOUT(ams_mel_ir_channel_comms_request *); LAYOUT(ams_mel_ir_channel_capability *);
     LAYOUT(ams_mel_ir_health *); LAYOUT(ams_mel_ir_health_metadata *); LAYOUT(ams_mel_ir_health_metadata_event *);
+    LAYOUT(ams_mel_ir_navigation_request *);
+
+    VALUE(AMS_MEL_POSITION_SOLUTION_NOT_SET); VALUE(AMS_MEL_POSITION_SOLUTION_ALIGNING);
+    VALUE(AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL); VALUE(AMS_MEL_POSITION_SOLUTION_GPS);
+    VALUE(AMS_MEL_POSITION_SOLUTION_BLENDED); VALUE(AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE);
+    RECORD(ams_mel_north_east_down_v1, FIELD(ams_mel_north_east_down_v1,north); FIELD(ams_mel_north_east_down_v1,east); FIELD(ams_mel_north_east_down_v1,down));
+    RECORD(ams_mel_attitude_rate_v1, FIELD(ams_mel_attitude_rate_v1,attitude_rate); FIELD(ams_mel_attitude_rate_v1,attitude_rate_time_ns));
+    RECORD(ams_mel_position_velocity_covariance_v1,
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pn_pn);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pn_pe);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pn_pd);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pe_pe);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pe_pd);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_position_pd_pd);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pn_vn);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pn_ve);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pn_vd);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pe_ve);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pe_vd);
+        FIELD(ams_mel_position_velocity_covariance_v1,position_velocity_pd_vd);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_vn_vn);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_vn_ve);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_vn_vd);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_ve_ve);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_ve_vd);
+        FIELD(ams_mel_position_velocity_covariance_v1,velocity_velocity_vd_vd));
+    RECORD(ams_mel_navigation_report_v1,
+        FIELD(ams_mel_navigation_report_v1,system_time_ns);
+        FIELD(ams_mel_navigation_report_v1,state);
+        FIELD(ams_mel_navigation_report_v1,latitude_rad);
+        FIELD(ams_mel_navigation_report_v1,longitude_rad);
+        FIELD(ams_mel_navigation_report_v1,altitude_m);
+        FIELD(ams_mel_navigation_report_v1,attitude);
+        FIELD(ams_mel_navigation_report_v1,attitude_rate);
+        FIELD(ams_mel_navigation_report_v1,speed);
+        FIELD(ams_mel_navigation_report_v1,acceleration);
+        FIELD(ams_mel_navigation_report_v1,wander_angle_rad);
+        FIELD(ams_mel_navigation_report_v1,magnetic_heading);
+        FIELD(ams_mel_navigation_report_v1,altitude_msl);
+        FIELD(ams_mel_navigation_report_v1,position_velocity_covariance_uncertainty));
+    RECORD(ams_mel_ir_navigation_result_v1, FIELD(ams_mel_ir_navigation_result_v1,response); FIELD(ams_mel_ir_navigation_result_v1,error_code));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);

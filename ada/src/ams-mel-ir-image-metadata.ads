@@ -35,11 +35,9 @@ package AMS.MEL.IR.Image.Metadata is
       Attitude       : AMS.MEL.Status.Euler;
       Attitude_Rates : AMS.MEL.Status.Euler;
    end record;
-   type Navigation_Response is record
-      System_Time_NS : Long_Long_Integer;
-      Command_ID     : Interfaces.Unsigned_32;
-      Request_ID     : Interfaces.Unsigned_32;
-   end record;
+   --  Canonical safe type moved to AMS.MEL.IR.Image; this subtype preserves
+   --  source compatibility for existing callers of this package.
+   subtype Navigation_Response is AMS.MEL.IR.Image.Navigation_Response;
    function Reported_Size (Value : Bad_Pixel_List) return Interfaces.Unsigned_32;
    function Reported_Count (Value : Bad_Pixel_List) return Interfaces.Unsigned_32;
    function Pixel_Count (Value : Bad_Pixel_List) return Natural;

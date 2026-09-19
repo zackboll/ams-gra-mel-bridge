@@ -194,6 +194,46 @@ irmel::NavigationReportResp rich_navigation_response()
     return value;
 }
 
+bool navigation_report_matches(const mel::NavigationReport& value)
+{
+    const auto& rate = value.getAttitudeRate();
+    const auto& attitude = value.getAttitude();
+    const auto& speed = value.getSpeed();
+    const auto& acceleration = value.getAcceleration();
+    const auto& covariance = value.getPositionVelocityCovarianceUncertainty();
+    return value.getSystemTime().count() == -123456789012LL &&
+           value.getState() == mel::PositionSolutionState::Blended &&
+           value.getLatitude() == 0.523598 && value.getLongitude() == -1.308997 &&
+           value.getAltitude() == 987.5 &&
+           attitude.getRoll() == 0.1 && attitude.getPitch() == 0.2 && attitude.getYaw() == 0.3 &&
+           rate.getAttitudeRate().getRoll() == 0.11 && rate.getAttitudeRate().getPitch() == -0.22 &&
+           rate.getAttitudeRate().getYaw() == 0.33 &&
+           rate.getAttitudeRateTime().count() == -424242 &&
+           speed.getNorth() == 10.0 && speed.getEast() == -20.0 && speed.getDown() == 30.0 &&
+           acceleration.getNorth() == -1.0 && acceleration.getEast() == 2.0 &&
+           acceleration.getDown() == -3.0 &&
+           value.getWanderAngle() == 0.05 && value.getMagneticHeading() == 12.5 &&
+           value.getAltitudeMSL() == 1000.25 &&
+           covariance.getPositionPositionPnPn() == 1.5 &&
+           covariance.getPositionPositionPnPe() == 2.5 &&
+           covariance.getPositionPositionPnPd() == 3.5 &&
+           covariance.getPositionPositionPePe() == 4.5 &&
+           covariance.getPositionPositionPePd() == 5.5 &&
+           covariance.getPositionPositionPdPd() == 6.5 &&
+           covariance.getPositionVelocityPnVn() == 7.5 &&
+           covariance.getPositionVelocityPnVe() == 8.5 &&
+           covariance.getPositionVelocityPnVd() == 9.5 &&
+           covariance.getPositionVelocityPeVe() == 10.5 &&
+           covariance.getPositionVelocityPeVd() == 11.5 &&
+           covariance.getPositionVelocityPdVd() == 12.5 &&
+           covariance.getVelocityVelocityVnVn() == 13.5 &&
+           covariance.getVelocityVelocityVnVe() == 14.5 &&
+           covariance.getVelocityVelocityVnVd() == 15.5 &&
+           covariance.getVelocityVelocityVeVe() == 16.5 &&
+           covariance.getVelocityVelocityVeVd() == 17.5 &&
+           covariance.getVelocityVelocityVdVd() == 18.5;
+}
+
 struct CallbackBarrier {
     std::mutex mutex;
     std::condition_variable ready;
@@ -347,8 +387,14 @@ public:
             barrier_->disable_called = true;
             barrier_->ready.notify_all();
         }
+        {
+            std::lock_guard lock{mutex_};
+            release_ = true;
+        }
+        ready_.notify_all();
         if (producer_.joinable()) producer_.join();
         if (metadata_producer_.joinable()) metadata_producer_.join();
+        if (navigation_producer_.joinable()) navigation_producer_.join();
         record("callbacks_quiesced_by_channel_destruction");
         buffers_.clear();
         record("channel_destroyed");
@@ -356,7 +402,50 @@ public:
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override { return {}; }
     mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override { return {}; }
-    mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport) override { return {}; }
+    mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport report) override
+    {
+        record("navigation_sent");
+        if (scenario_ == "navigation-fidelity" && !navigation_report_matches(report))
+            throw std::runtime_error("NavigationReport conversion mismatch");
+        if (scenario_ == "navigation-send-throw") throw std::runtime_error("mock navigation send exception");
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "navigation-reject") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, "invalid navigation report"}});
+        } else if (scenario_ == "navigation-reject-long") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                mel::Error{mel::ErrorCode::InvalidParameters, long_rejection_description()}});
+        } else if (scenario_ == "navigation-null-result") {
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                std::shared_ptr<irmel::NavigationReportResp>{}});
+        } else if (scenario_ == "navigation-future-throw") {
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock navigation future exception"}));
+        } else if (scenario_ == "navigation-sync" || scenario_ == "navigation-sync-two") {
+            auto value = rich_navigation_response();
+            if (navigation_response_callback_) navigation_response_callback_(*this, &value);
+            record("navigation_completed");
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                std::make_shared<irmel::NavigationReportResp>(value)});
+        } else if ((scenario_ == "navigation-delayed" || scenario_ == "navigation-lifetime" ||
+                    scenario_ == "navigation-pending-close") && !navigation_producer_.joinable()) {
+            navigation_producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
+                std::unique_lock lock{mutex_};
+                (void)ready_.wait_for(lock, std::chrono::milliseconds{40},
+                                      [this] { return release_; });
+                lock.unlock();
+                record("navigation_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                    std::make_shared<irmel::NavigationReportResp>(rich_navigation_response())});
+            }};
+        } else {
+            record("navigation_completed");
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                std::make_shared<irmel::NavigationReportResp>(rich_navigation_response())});
+        }
+        return future;
+    }
     Return registerBuffer(std::shared_ptr<irmel::Buffer> buffer) override
     {
         record("buffer_registered");
@@ -637,6 +726,10 @@ private:
     std::atomic<bool> stopping_{false};
     std::thread producer_;
     std::thread metadata_producer_;
+    std::thread navigation_producer_;
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    bool release_{};
     std::shared_ptr<CallbackBarrier> barrier_;
     mutable unsigned capability_calls_{};
     unsigned bad_pixel_registration_count_{};

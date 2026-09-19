@@ -33,6 +33,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_image_metadata_close",
                 "ams_mel_ir_image_metadata_event_view",
                 "ams_mel_ir_image_metadata_event_close",
+                "ams_mel_ir_stream_submit_navigation_report",
+                "ams_mel_ir_navigation_request_wait",
+                "ams_mel_ir_navigation_request_close",
                 "ams_mel_ir_stream_receive_snapshot",
                 "ams_mel_ir_frame_snapshot_view",
                 "ams_mel_ir_frame_snapshot_close",
@@ -77,7 +80,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_health_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 56)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 59)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -405,6 +408,61 @@ class AbiTests(unittest.TestCase):
         expected.extend([ctypes.sizeof(_native.IrHealthHandle), ctypes.alignment(_native.IrHealthHandle)])
         expected.extend([ctypes.sizeof(_native.IrHealthMetadataHandle), ctypes.alignment(_native.IrHealthMetadataHandle)])
         expected.extend([ctypes.sizeof(_native.IrHealthMetadataEventHandle), ctypes.alignment(_native.IrHealthMetadataEventHandle)])
+        expected.extend([ctypes.sizeof(_native.IrNavigationRequestHandle), ctypes.alignment(_native.IrNavigationRequestHandle)])
+        expected.extend(
+            [
+                _native.AMS_MEL_POSITION_SOLUTION_NOT_SET,
+                _native.AMS_MEL_POSITION_SOLUTION_ALIGNING,
+                _native.AMS_MEL_POSITION_SOLUTION_FREE_INERTIAL,
+                _native.AMS_MEL_POSITION_SOLUTION_GPS,
+                _native.AMS_MEL_POSITION_SOLUTION_BLENDED,
+                _native.AMS_MEL_POSITION_SOLUTION_MAX_EXCLUSIVE,
+            ]
+        )
+        expected.extend(self._layout(_native.NorthEastDownV1, 'north', 'east', 'down'))
+        expected.extend(self._layout(_native.AttitudeRateV1, 'attitude_rate', 'attitude_rate_time_ns'))
+        expected.extend(
+            self._layout(
+                _native.PositionVelocityCovarianceV1,
+                'position_position_pn_pn',
+                'position_position_pn_pe',
+                'position_position_pn_pd',
+                'position_position_pe_pe',
+                'position_position_pe_pd',
+                'position_position_pd_pd',
+                'position_velocity_pn_vn',
+                'position_velocity_pn_ve',
+                'position_velocity_pn_vd',
+                'position_velocity_pe_ve',
+                'position_velocity_pe_vd',
+                'position_velocity_pd_vd',
+                'velocity_velocity_vn_vn',
+                'velocity_velocity_vn_ve',
+                'velocity_velocity_vn_vd',
+                'velocity_velocity_ve_ve',
+                'velocity_velocity_ve_vd',
+                'velocity_velocity_vd_vd',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.NavigationReportV1,
+                'system_time_ns',
+                'state',
+                'latitude_rad',
+                'longitude_rad',
+                'altitude_m',
+                'attitude',
+                'attitude_rate',
+                'speed',
+                'acceleration',
+                'wander_angle_rad',
+                'magnetic_heading',
+                'altitude_msl',
+                'position_velocity_covariance_uncertainty',
+            )
+        )
+        expected.extend(self._layout(_native.IrNavigationResultV1, 'response', 'error_code'))
         expected.extend(
             [
                 _native.AMS_MEL_OK,

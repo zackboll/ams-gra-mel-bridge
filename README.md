@@ -28,9 +28,13 @@ themselves.
 > FrameHeader snapshot; legacy `AMS.MEL.IR.Receive` remains the Mono8 compatibility
 > subset. Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
 > BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp events through one bounded
-> DROP-INCOMING queue. NavigationReport send, LineOfSightQuaternion,
+> DROP-INCOMING queue. `AMS.MEL.IR.Image` additionally exposes
+> `Submit_Navigation_Report`/`Wait`/`Close` for `ImageChannel::send(NavigationReport)`:
+> the complete published NavigationReport (all 18 covariance terms), asynchronous
+> completion independent of the public Image_Stream/Session owners, and deferred
+> provider teardown while a request is outstanding. LineOfSightQuaternion
 > and other optional Image metadata remain unimplemented. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 56-function C ABI. Safe Rust and
+> Python ctypes layer track the complete current 59-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
