@@ -78,9 +78,22 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_health_metadata_close",
                 "ams_mel_ir_health_metadata_event_view",
                 "ams_mel_ir_health_metadata_event_close",
+                "ams_mel_ir_instrumentation_open",
+                "ams_mel_ir_instrumentation_enable",
+                "ams_mel_ir_instrumentation_get_capabilities",
+                "ams_mel_ir_instrumentation_submit_level",
+                "ams_mel_ir_instrumentation_request_wait",
+                "ams_mel_ir_instrumentation_request_close",
+                "ams_mel_ir_instrumentation_metadata_open",
+                "ams_mel_ir_instrumentation_metadata_receive",
+                "ams_mel_ir_instrumentation_metadata_get_counters",
+                "ams_mel_ir_instrumentation_metadata_close",
+                "ams_mel_ir_instrumentation_metadata_event_view",
+                "ams_mel_ir_instrumentation_metadata_event_close",
+                "ams_mel_ir_instrumentation_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 59)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 72)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -463,6 +476,39 @@ class AbiTests(unittest.TestCase):
             )
         )
         expected.extend(self._layout(_native.IrNavigationResultV1, 'response', 'error_code'))
+        expected.extend([ctypes.sizeof(_native.IrInstrumentationHandle), ctypes.alignment(_native.IrInstrumentationHandle)])
+        expected.extend([ctypes.sizeof(_native.IrInstrumentationRequestHandle), ctypes.alignment(_native.IrInstrumentationRequestHandle)])
+        expected.extend([ctypes.sizeof(_native.IrInstrumentationMetadataHandle), ctypes.alignment(_native.IrInstrumentationMetadataHandle)])
+        expected.extend([ctypes.sizeof(_native.IrInstrumentationMetadataEventHandle), ctypes.alignment(_native.IrInstrumentationMetadataEventHandle)])
+        expected.extend(
+            [
+                _native.AMS_MEL_IR_PRIORITY_NORMAL,
+                _native.AMS_MEL_IR_PRIORITY_DEBUG,
+                _native.AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT,
+                _native.AMS_MEL_IR_CHANNEL_INSTRUMENTATION,
+            ]
+        )
+        expected.extend(
+            self._layout(
+                _native.IrInstrumentationConfigV1,
+                'channel_id',
+                'channel_type',
+                'platform_id',
+                'sensor_location',
+            )
+        )
+        expected.extend(self._layout(_native.IrInstrumentationLevelCommandV1, 'command_id', 'priority'))
+        expected.extend(
+            self._layout(
+                _native.IrInstrumentationReportV1,
+                'command_id',
+                'size',
+                'timestamp_ns',
+                'priority',
+            )
+        )
+        expected.extend(self._layout(_native.IrInstrumentationResultV1, 'report', 'error_code'))
+        expected.extend(self._layout(_native.IrInstrumentationMetadataEventV1, 'kind', 'report'))
         expected.extend(
             [
                 _native.AMS_MEL_OK,

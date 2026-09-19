@@ -315,6 +315,43 @@ with its own allocation-free emergency retention root. ABI 0.1 grows from 56 to
 subtype. Raw Rust and private Python ABI declarations track all 59 exports; no
 safe Rust or public Python Navigation API is added.
 
+Task 028 adds the conditionally required Instrumentation family
+(`@RequiredIfInstrumentation`) in `native/src/ir_instrumentation.cpp` and the
+new `AMS.MEL.IR.Instrumentation` Ada package with its `Metadata` child. The
+slice is deliberately scoped to the Instrumentation-specific conditional
+surface -- `InstrumentationChannel::send(InstrumentationLevelCmd)` and
+`registerMetadataCallback(InstrumentationReport)` -- plus `Enable` and
+`ChannelCapability`. Instrumentation-specific copies of the inherited generic
+`Channel` services (KeepAlive, CommsTest, the ChannelCommsTest callback, and
+`registerBuffer`/`unregisterBuffer`) are intentionally not cloned; those should
+be generalized across non-C2 channel families in a later task.
+
+The private `ChannelState` follows the proven Health/C2 shape: SessionState,
+generic `Channel`, `InstrumentationChannel`, metadata callback state, request
+count, an explicit Attached/Enabled/Failed/Closed lifecycle, a
+`cleanup_started` serialization guard, and an allocation-free emergency
+retention root. Asynchronous work never retains the public
+`ams_mel_ir_instrumentation *`. Provider `send()` runs with the lifecycle mutex
+released, because a provider is permitted to invoke the InstrumentationReport
+callback synchronously from inside both `send()` and
+`registerMetadataCallback`; `metadata_open` publishes and retains the callback
+state before releasing the lifecycle lock and calling provider registration, so
+neither synchronous path can deadlock. Close with pending requests prevents new
+submissions, deactivates public metadata consumption, releases the public
+owner, and defers disable/detach/provider-channel destruction and callback
+quiescence to final request completion. One canonical
+`ams_mel_ir_instrumentation_report_v1` serves both the
+`RequestFor<InstrumentationReport>` completion and the metadata event; upstream
+`Priority` is exposed as exactly Normal=0/Debug=1 with no invented
+MaxExclusive. Capability snapshots reuse the existing native
+`snapshot_capability` and the existing Ada `Capability_Conversion`. ABI 0.1
+grows from 59 to 72 exports and native CTest from 9 to 10 targets. Raw Rust and
+private Python declarations track all 72 exports; no safe Rust or public Python
+Instrumentation API is added. Positive Instrumentation behavior is mock-proven
+only: pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` returns
+`nullptr` from `attachChannel` for Instrumentation, so real-provider validation
+covers clean unsupported-provider failure and continued Session health only.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

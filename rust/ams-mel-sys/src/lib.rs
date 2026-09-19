@@ -101,6 +101,10 @@ pub const AMS_MEL_SECURITY_SEVERITY_INFORMATIONAL: u32 = 3;
 pub const AMS_MEL_SECURITY_SEVERITY_WARNING: u32 = 4;
 pub const AMS_MEL_IR_COORD_FRAME_INERTIAL: u32 = 0;
 pub const AMS_MEL_IR_COORD_FRAME_AIRCRAFT: u32 = 1;
+/* Upstream Priority defines exactly Normal and Debug; no MaxExclusive. */
+pub const AMS_MEL_IR_PRIORITY_NORMAL: u32 = 0;
+pub const AMS_MEL_IR_PRIORITY_DEBUG: u32 = 1;
+pub const AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT: u32 = 1;
 pub const AMS_MEL_IR_DEGRADATION_CAPACITY: u32 = 0;
 pub const AMS_MEL_IR_DEGRADATION_VOLUME: u32 = 1;
 pub const AMS_MEL_IR_DEGRADATION_RANGE: u32 = 2;
@@ -816,6 +820,40 @@ pub struct AmsMelIrHealthConfigV1 {
     pub sensor_location: AmsMelComponentLocationV1,
 }
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrInstrumentationConfigV1 {
+    pub channel_id: AmsMelUciIdV1,
+    pub channel_type: u32,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrInstrumentationLevelCommandV1 {
+    pub command_id: u32,
+    pub priority: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrInstrumentationReportV1 {
+    pub command_id: u32,
+    pub size: u32,
+    pub timestamp_ns: i64,
+    pub priority: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrInstrumentationResultV1 {
+    pub report: AmsMelIrInstrumentationReportV1,
+    pub error_code: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrInstrumentationMetadataEventV1 {
+    pub kind: u32,
+    pub report: AmsMelIrInstrumentationReportV1,
+}
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelEulerV1 {
     pub roll: f64,
@@ -1089,6 +1127,26 @@ pub struct AmsMelIrImageMetadataEvent {
 }
 #[repr(C)]
 pub struct AmsMelIrNavigationRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrInstrumentation {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrInstrumentationRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrInstrumentationMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrInstrumentationMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -1522,6 +1580,97 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_health_metadata_event_close(
         event: *mut *mut AmsMelIrHealthMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrInstrumentationConfigV1,
+        out_instrumentation: *mut *mut AmsMelIrInstrumentation,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_enable(
+        instrumentation: *mut AmsMelIrInstrumentation,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_get_capabilities(
+        instrumentation: *mut AmsMelIrInstrumentation,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_submit_level(
+        instrumentation: *mut AmsMelIrInstrumentation,
+        command: *const AmsMelIrInstrumentationLevelCommandV1,
+        out_request: *mut *mut AmsMelIrInstrumentationRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_request_wait(
+        request: *const AmsMelIrInstrumentationRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrInstrumentationResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_request_close(
+        request: *mut *mut AmsMelIrInstrumentationRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_open(
+        instrumentation: *mut AmsMelIrInstrumentation,
+        queue_capacity: usize,
+        out_metadata: *mut *mut AmsMelIrInstrumentationMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_receive(
+        metadata: *mut AmsMelIrInstrumentationMetadata,
+        timeout_ms: u32,
+        out_event: *mut *mut AmsMelIrInstrumentationMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_get_counters(
+        metadata: *const AmsMelIrInstrumentationMetadata,
+        out_counters: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_close(
+        metadata: *mut *mut AmsMelIrInstrumentationMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_event_view(
+        event: *const AmsMelIrInstrumentationMetadataEvent,
+        out_view: *mut *const AmsMelIrInstrumentationMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_metadata_event_close(
+        event: *mut *mut AmsMelIrInstrumentationMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_instrumentation_close(
+        instrumentation: *mut *mut AmsMelIrInstrumentation,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

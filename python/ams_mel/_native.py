@@ -25,6 +25,9 @@ AMS_MEL_IR_CHANNEL_IRST_TRACK = 0
 AMS_MEL_IR_CHANNEL_IRST_IMAGE = 1
 AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL = 2
 AMS_MEL_IR_CHANNEL_SCHEDULING, AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS, AMS_MEL_IR_CHANNEL_INSTRUMENTATION, AMS_MEL_IR_CHANNEL_STACKED_IMAGE, AMS_MEL_IR_CHANNEL_RESERVED_1, AMS_MEL_IR_CHANNEL_RESERVED_2 = range(3, 9)
+# Upstream Priority defines exactly Normal and Debug; no MaxExclusive value.
+AMS_MEL_IR_PRIORITY_NORMAL, AMS_MEL_IR_PRIORITY_DEBUG = 0, 1
+AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT = 1
 AMS_MEL_IR_MFA_MODE_UNUSED = 0
 AMS_MEL_IR_MFA_MODE_TASK_SCHED = 1
 AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED = 2
@@ -299,6 +302,12 @@ class NavigationReportV1(ctypes.Structure): _fields_ = [
     ("wander_angle_rad",ctypes.c_double),("magnetic_heading",ctypes.c_double),("altitude_msl",ctypes.c_double),
     ("position_velocity_covariance_uncertainty",PositionVelocityCovarianceV1)]
 class IrNavigationResultV1(ctypes.Structure): _fields_ = [("response",IrNavigationResponseV1),("error_code",ctypes.c_uint32)]
+class IrInstrumentationConfigV1(ctypes.Structure):
+    _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
+class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
+class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
+class IrInstrumentationMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("report",IrInstrumentationReportV1)]
 class U8SpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(ctypes.c_uint8)),("size",ctypes.c_size_t)]
 class IrContributingSensorV1(ctypes.Structure): _fields_ = [("location",ComponentLocationV1),("sensor_id",ctypes.c_uint32)]
 class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]
@@ -400,6 +409,10 @@ IrHealthHandle = ctypes.c_void_p
 IrHealthMetadataHandle = ctypes.c_void_p
 IrHealthMetadataEventHandle = ctypes.c_void_p
 IrNavigationRequestHandle = ctypes.c_void_p
+IrInstrumentationHandle = ctypes.c_void_p
+IrInstrumentationRequestHandle = ctypes.c_void_p
+IrInstrumentationMetadataHandle = ctypes.c_void_p
+IrInstrumentationMetadataEventHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -737,6 +750,46 @@ ams_mel_ir_health_metadata_event_close = _LIBRARY.ams_mel_ir_health_metadata_eve
 ams_mel_ir_health_metadata_event_close.argtypes = [ctypes.POINTER(IrHealthMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_health_metadata_event_close.restype = ctypes.c_int32
 
+ams_mel_ir_instrumentation_open = _LIBRARY.ams_mel_ir_instrumentation_open
+ams_mel_ir_instrumentation_open.argtypes = [SessionHandle, ctypes.POINTER(IrInstrumentationConfigV1), ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_open.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_enable = _LIBRARY.ams_mel_ir_instrumentation_enable
+ams_mel_ir_instrumentation_enable.argtypes = [IrInstrumentationHandle, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_enable.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_get_capabilities = _LIBRARY.ams_mel_ir_instrumentation_get_capabilities
+ams_mel_ir_instrumentation_get_capabilities.argtypes = [IrInstrumentationHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_submit_level = _LIBRARY.ams_mel_ir_instrumentation_submit_level
+ams_mel_ir_instrumentation_submit_level.argtypes = [IrInstrumentationHandle, ctypes.POINTER(IrInstrumentationLevelCommandV1), ctypes.POINTER(IrInstrumentationRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_submit_level.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_request_wait = _LIBRARY.ams_mel_ir_instrumentation_request_wait
+ams_mel_ir_instrumentation_request_wait.argtypes = [IrInstrumentationRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrInstrumentationResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_request_wait.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_request_close = _LIBRARY.ams_mel_ir_instrumentation_request_close
+ams_mel_ir_instrumentation_request_close.argtypes = [ctypes.POINTER(IrInstrumentationRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_request_close.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_open = _LIBRARY.ams_mel_ir_instrumentation_metadata_open
+ams_mel_ir_instrumentation_metadata_open.argtypes = [IrInstrumentationHandle, ctypes.c_size_t, ctypes.POINTER(IrInstrumentationMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_receive = _LIBRARY.ams_mel_ir_instrumentation_metadata_receive
+ams_mel_ir_instrumentation_metadata_receive.argtypes = [IrInstrumentationMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrInstrumentationMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_get_counters = _LIBRARY.ams_mel_ir_instrumentation_metadata_get_counters
+ams_mel_ir_instrumentation_metadata_get_counters.argtypes = [IrInstrumentationMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_close = _LIBRARY.ams_mel_ir_instrumentation_metadata_close
+ams_mel_ir_instrumentation_metadata_close.argtypes = [ctypes.POINTER(IrInstrumentationMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_close.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_event_view = _LIBRARY.ams_mel_ir_instrumentation_metadata_event_view
+ams_mel_ir_instrumentation_metadata_event_view.argtypes = [IrInstrumentationMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrInstrumentationMetadataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_metadata_event_close = _LIBRARY.ams_mel_ir_instrumentation_metadata_event_close
+ams_mel_ir_instrumentation_metadata_event_close.argtypes = [ctypes.POINTER(IrInstrumentationMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_metadata_event_close.restype = ctypes.c_int32
+ams_mel_ir_instrumentation_close = _LIBRARY.ams_mel_ir_instrumentation_close
+ams_mel_ir_instrumentation_close.argtypes = [ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_instrumentation_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -797,4 +850,17 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_health_metadata_close",
     "ams_mel_ir_health_metadata_event_view",
     "ams_mel_ir_health_metadata_event_close",
+    "ams_mel_ir_instrumentation_open",
+    "ams_mel_ir_instrumentation_enable",
+    "ams_mel_ir_instrumentation_get_capabilities",
+    "ams_mel_ir_instrumentation_submit_level",
+    "ams_mel_ir_instrumentation_request_wait",
+    "ams_mel_ir_instrumentation_request_close",
+    "ams_mel_ir_instrumentation_metadata_open",
+    "ams_mel_ir_instrumentation_metadata_receive",
+    "ams_mel_ir_instrumentation_metadata_get_counters",
+    "ams_mel_ir_instrumentation_metadata_close",
+    "ams_mel_ir_instrumentation_metadata_event_view",
+    "ams_mel_ir_instrumentation_metadata_event_close",
+    "ams_mel_ir_instrumentation_close",
 )

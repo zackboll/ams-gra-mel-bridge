@@ -8,7 +8,7 @@
 | Native CMake package installation | Implemented | Exported target and config files |
 | Local Alire dependency manifests | Development only | Relative pins; validate on installed Alire |
 | Upstream version inventory | Verified through task 003 | `upstream-provenance.md` exact commits/trees |
-| Verified upstream dependency closure | Implemented for IR receive/C2 slices | 85 unmodified headers; no upstream compiled source |
+| Verified upstream dependency closure | Implemented for IR receive/C2/Health/Instrumentation slices | 94 unmodified headers; no upstream compiled source |
 | Separately loadable mock C++ MEL provider | Implemented, test-only | Native C and Ada contract tests |
 | Real MEL factory/resource adaptation | Control foundation implemented | load/factory/init/version/close only |
 | Buffer and callback lifetimes | Hardened with non-quiescing mock | Channel destruction before in-flight drain/storage; release checked exactly once |
@@ -28,12 +28,14 @@
 | ImageChannel metadata callbacks | All required callbacks implemented in native C and safe Ada | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp share one bounded DROP-INCOMING queue; owned events, counters, malformed/allocation recovery |
 | NavigationReport send | Implemented in native C and safe Ada | Complete published NavigationReport/all 18 covariance terms; async request/future, deferred teardown while pending, allocation-free emergency retention; ABI 0.1 now 59 exports |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
+| IR Instrumentation conditional surface | Complete in native C and safe Ada | send(InstrumentationLevelCmd) and InstrumentationReport callback plus Enable and ChannelCapability; positive behavior mock-validated; pinned Squall explicitly unsupported |
+| Instrumentation inherited generic Channel services | Not implemented | KeepAlive/CommsTest/buffers intentionally not cloned per family; generalize later |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 59 C functions; raw Image capability/BadPixel/Navigation declarations synchronized; no safe Navigation API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 72 C functions; raw Instrumentation declarations/constants synchronized; no safe Instrumentation API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 59-function private ctypes binding; no public Image metadata/Navigation methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 72-function private ctypes binding; no public Image metadata/Navigation/Instrumentation methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
@@ -53,7 +55,7 @@
 | Scheduling | Not implemented |
 | Track | Not implemented |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
-| Instrumentation | Not implemented |
+| Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited generic Channel services not implemented |
 | StackedImage | Not implemented |
 | RF | Not implemented |
 

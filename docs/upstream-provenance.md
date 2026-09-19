@@ -1,3 +1,36 @@
+# Task 028 review note
+
+Task 028 expands the reviewed vendored closure by exactly three files from
+pinned IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`:
+`instrumentation/InstrumentationChannel.h`,
+`instrumentation/InstrumentationLevelCmd.h`, and
+`instrumentation/InstrumentationReport.h`. A GCC 14.2 dependency probe of
+`InstrumentationChannel.h` observes 47 headers, 44 of which were already
+vendored, so the closure grows from 91 to 94 unmodified headers. Each new file
+is byte-identical to that revision; no vendored content was modified and no
+build-time network access was introduced.
+
+The used upstream operations are
+`InstrumentationChannel::send(InstrumentationLevelCmd)`, whose published return
+is `RequestFor<InstrumentationReport>`, and
+`InstrumentationChannel::registerMetadataCallback(std::function<void(Channel&,
+const InstrumentationReport* const)>)`. Both members, both data classes, and the
+class itself are annotated `@RequiredIfInstrumentation`, that is, conditionally
+required only of implementations that support instrumentation. Upstream
+`Priority` in `CommonIR_MEL.h` is exactly `Normal` and `Debug` and defines no
+MaxExclusive sentinel; the facade therefore invents none.
+
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` does NOT support this
+channel through the path this bridge uses. Its `SquallControl::attachChannel`
+handles only IRSTImage, CommandAndControl, and HealthAndStatus and returns
+`nullptr` for Instrumentation, and its exported `createInstrumentationChannel`
+also returns `nullptr`. Squall was not modified. Consequently:
+
+- The mock provider validates positive Instrumentation behavior and full
+  payload fidelity.
+- Pinned Squall validates clean unsupported-provider behavior only.
+- Pinned Squall does NOT provide positive Instrumentation execution evidence.
+
 # Task 027B review note
 
 Task 027B uses the already-vendored `NavigationReport.h`/`ImageChannel.h`
@@ -95,7 +128,8 @@ published include graph expands the complete closure to 71 headers. Task 003's
 GCC 14.2 `C2Channel.h` dependency probe observes 61 headers, 47 already present,
 and adds the exact 14-file C2 closure, expanding the union to 85 headers. Exact file
 checksums are recorded in
-`upstream-files.sha256.md`.
+`upstream-files.sha256.md`. Task 028 adds the exact three-file
+Instrumentation closure, expanding the union to 94 headers.
 
 The required published boundary is:
 

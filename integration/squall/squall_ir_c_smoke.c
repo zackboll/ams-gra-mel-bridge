@@ -135,6 +135,33 @@ int main(int argc, char **argv)
                version.library_version, vendor, description);
     }
 
+    /* Pinned Squall b1015728f904c799fa0c07489fce48e78f67845f does NOT support
+       the conditionally required Instrumentation channel: its
+       SquallControl::attachChannel handles only IRSTImage, CommandAndControl,
+       and HealthAndStatus and returns nullptr for Instrumentation. Prove the
+       binding fails cleanly and leaves the Session usable. This is NOT
+       positive Instrumentation execution evidence. */
+    {
+        ams_mel_ir_instrumentation_config_v1 config;
+        ams_mel_ir_instrumentation *rejected = NULL;
+        memset(&config, 0, sizeof config);
+        config.channel_type = AMS_MEL_IR_CHANNEL_INSTRUMENTATION;
+        fill_ids(&config.channel_id, &config.platform_id, "Task 028 Instrumentation");
+        fill_location(&config.sensor_location);
+        diagnostic[0] = '\0';
+        status = ams_mel_ir_instrumentation_open(session, &config, &rejected,
+                                                 diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_FACTORY_FAILED || rejected != NULL) {
+            fprintf(stderr, "FAIL: expected Instrumentation FACTORY_FAILED, got %d: %s\n",
+                    (int)status, diagnostic);
+            if (rejected != NULL)
+                (void)ams_mel_ir_instrumentation_close(&rejected, NULL, 0, NULL);
+            goto cleanup;
+        }
+        printf("Instrumentation: pinned Squall unsupported as expected "
+               "(AMS_MEL_FACTORY_FAILED: %s)\n", diagnostic);
+    }
+
     {
         ams_mel_ir_stream_config_v1 config;
         memset(&config, 0, sizeof config);

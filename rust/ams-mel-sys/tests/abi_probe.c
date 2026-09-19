@@ -234,6 +234,23 @@ int main(void)
     VALUE(AMS_MEL_BIT_RESULT_NOT_SET); VALUE(AMS_MEL_BIT_RESULT_PASS); VALUE(AMS_MEL_BIT_RESULT_FAIL); VALUE(AMS_MEL_BIT_RESULT_INTERRUPTED); VALUE(AMS_MEL_BIT_RESULT_NOT_TESTED);
     VALUE(AMS_MEL_FAULT_SEVERITY_NOT_SET); VALUE(AMS_MEL_FAULT_SEVERITY_NOMINAL); VALUE(AMS_MEL_FAULT_SEVERITY_CAUTION); VALUE(AMS_MEL_FAULT_SEVERITY_WARNING); VALUE(AMS_MEL_FAULT_SEVERITY_FAILED);
     VALUE(AMS_MEL_FAULT_STATE_NOT_SET); VALUE(AMS_MEL_FAULT_STATE_SET); VALUE(AMS_MEL_FAULT_STATE_CLEARED); VALUE(AMS_MEL_FAULT_STATE_UNKNOWN);
+    ams_mel_status_t (*instr_open)(const ams_mel_session *, const ams_mel_ir_instrumentation_config_v1 *, ams_mel_ir_instrumentation **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_open;
+    ams_mel_status_t (*instr_enable)(ams_mel_ir_instrumentation *, char *, size_t, size_t *) = ams_mel_ir_instrumentation_enable;
+    ams_mel_status_t (*instr_cap)(ams_mel_ir_instrumentation *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_get_capabilities;
+    ams_mel_status_t (*instr_submit)(ams_mel_ir_instrumentation *, const ams_mel_ir_instrumentation_level_command_v1 *, ams_mel_ir_instrumentation_request **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_submit_level;
+    ams_mel_status_t (*instr_wait)(const ams_mel_ir_instrumentation_request *, uint32_t, ams_mel_ir_instrumentation_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_instrumentation_request_wait;
+    ams_mel_status_t (*instr_req_close)(ams_mel_ir_instrumentation_request **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_request_close;
+    ams_mel_status_t (*instr_meta_open)(ams_mel_ir_instrumentation *, size_t, ams_mel_ir_instrumentation_metadata **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_open;
+    ams_mel_status_t (*instr_meta_recv)(ams_mel_ir_instrumentation_metadata *, uint32_t, ams_mel_ir_instrumentation_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_receive;
+    ams_mel_status_t (*instr_meta_counters)(const ams_mel_ir_instrumentation_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_get_counters;
+    ams_mel_status_t (*instr_meta_close)(ams_mel_ir_instrumentation_metadata **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_close;
+    ams_mel_status_t (*instr_ev_view)(const ams_mel_ir_instrumentation_metadata_event *, const ams_mel_ir_instrumentation_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_event_view;
+    ams_mel_status_t (*instr_ev_close)(ams_mel_ir_instrumentation_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_metadata_event_close;
+    ams_mel_status_t (*instr_close)(ams_mel_ir_instrumentation **, char *, size_t, size_t *) = ams_mel_ir_instrumentation_close;
+    (void)instr_open; (void)instr_enable; (void)instr_cap; (void)instr_submit;
+    (void)instr_wait; (void)instr_req_close; (void)instr_meta_open; (void)instr_meta_recv;
+    (void)instr_meta_counters; (void)instr_meta_close; (void)instr_ev_view;
+    (void)instr_ev_close; (void)instr_close;
 #define RECORD(type, ...) LAYOUT(type); __VA_ARGS__
     RECORD(ams_mel_uci_id_span_v1, FIELD(ams_mel_uci_id_span_v1,data); FIELD(ams_mel_uci_id_span_v1,size));
     RECORD(ams_mel_ir_command_status_v1, FIELD(ams_mel_ir_command_status_v1,command_id); FIELD(ams_mel_ir_command_status_v1,state); FIELD(ams_mel_ir_command_status_v1,reason_id); FIELD(ams_mel_ir_command_status_v1,reason_description));
@@ -336,6 +353,31 @@ int main(void)
         FIELD(ams_mel_navigation_report_v1,altitude_msl);
         FIELD(ams_mel_navigation_report_v1,position_velocity_covariance_uncertainty));
     RECORD(ams_mel_ir_navigation_result_v1, FIELD(ams_mel_ir_navigation_result_v1,response); FIELD(ams_mel_ir_navigation_result_v1,error_code));
+    LAYOUT(ams_mel_ir_instrumentation *); LAYOUT(ams_mel_ir_instrumentation_request *);
+    LAYOUT(ams_mel_ir_instrumentation_metadata *);
+    LAYOUT(ams_mel_ir_instrumentation_metadata_event *);
+    VALUE(AMS_MEL_IR_PRIORITY_NORMAL); VALUE(AMS_MEL_IR_PRIORITY_DEBUG);
+    VALUE(AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT);
+    VALUE(AMS_MEL_IR_CHANNEL_INSTRUMENTATION);
+    RECORD(ams_mel_ir_instrumentation_config_v1,
+        FIELD(ams_mel_ir_instrumentation_config_v1,channel_id);
+        FIELD(ams_mel_ir_instrumentation_config_v1,channel_type);
+        FIELD(ams_mel_ir_instrumentation_config_v1,platform_id);
+        FIELD(ams_mel_ir_instrumentation_config_v1,sensor_location));
+    RECORD(ams_mel_ir_instrumentation_level_command_v1,
+        FIELD(ams_mel_ir_instrumentation_level_command_v1,command_id);
+        FIELD(ams_mel_ir_instrumentation_level_command_v1,priority));
+    RECORD(ams_mel_ir_instrumentation_report_v1,
+        FIELD(ams_mel_ir_instrumentation_report_v1,command_id);
+        FIELD(ams_mel_ir_instrumentation_report_v1,size);
+        FIELD(ams_mel_ir_instrumentation_report_v1,timestamp_ns);
+        FIELD(ams_mel_ir_instrumentation_report_v1,priority));
+    RECORD(ams_mel_ir_instrumentation_result_v1,
+        FIELD(ams_mel_ir_instrumentation_result_v1,report);
+        FIELD(ams_mel_ir_instrumentation_result_v1,error_code));
+    RECORD(ams_mel_ir_instrumentation_metadata_event_v1,
+        FIELD(ams_mel_ir_instrumentation_metadata_event_v1,kind);
+        FIELD(ams_mel_ir_instrumentation_metadata_event_v1,report));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);
