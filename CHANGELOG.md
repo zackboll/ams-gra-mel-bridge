@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Refactor private Image stream ownership into shared `ImageStreamState`. The
+  public stream remains an opaque thin owner; ABI 0.1, its 56 exports, and all
+  application-visible behavior are unchanged. NavigationReport remains unimplemented.
 - Add owned Image `NavigationReportResp` metadata (kind 4) in C and safe Ada.
   ABI 0.1 remains exactly 56 exports; NavigationReport send is not implemented.
 - Extend the existing Image metadata FIFO with complete owned LineOfSightReport and

@@ -188,14 +188,14 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_open(
     std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);
-    if (!stream || !queue_capacity || !output || *output || (!out && capacity))
+    if (!stream || !stream->state || !queue_capacity || !output || *output || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
     std::shared_ptr<ImageMetadataState> state;
     try {
         std::shared_ptr<irmel::ImageChannel> channel;
         state = std::make_shared<ImageMetadataState>();
         state->capacity = queue_capacity;
-        if (!claim_image_metadata(*stream, state, channel))
+        if (!claim_image_metadata(*stream->state, state, channel))
             return AMS_MEL_INVALID_ARGUMENT;
         const auto bad_pixels = channel->registerMetadataCallback(
             [state](irmel::Channel&, const irmel::BadPixelList *const value) { state->bad_pixels(value); });
