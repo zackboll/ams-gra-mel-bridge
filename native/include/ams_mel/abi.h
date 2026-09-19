@@ -53,6 +53,8 @@ typedef struct ams_mel_abi_version_v1 {
 typedef struct ams_mel_session ams_mel_session;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_frame_snapshot ams_mel_ir_frame_snapshot;
+typedef struct ams_mel_ir_image_metadata ams_mel_ir_image_metadata;
+typedef struct ams_mel_ir_image_metadata_event ams_mel_ir_image_metadata_event;
 typedef uint32_t ams_mel_ir_image_flag_t;
 #define AMS_MEL_IR_IMAGE_FLAG_SCAN_FIRST UINT32_C(0)
 #define AMS_MEL_IR_IMAGE_FLAG_SCAN_LAST UINT32_C(1)
@@ -265,6 +267,11 @@ typedef uint32_t ams_mel_ir_c2_metadata_kind_t;
 #define AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION UINT32_C(2)
 #define AMS_MEL_IR_C2_METADATA_BIT_STATUS UINT32_C(3)
 #define AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST UINT32_C(4)
+typedef uint32_t ams_mel_ir_image_metadata_kind_t;
+/* Append future Image metadata kinds without changing BadPixelList. */
+#define AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST UINT32_C(1)
+typedef uint32_t ams_mel_ir_bad_pixel_reason_t;
+#define AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN UINT32_C(0)
 typedef uint32_t ams_mel_ir_command_state_t;
 #define AMS_MEL_IR_COMMAND_NOT_SET UINT32_C(0)
 #define AMS_MEL_IR_COMMAND_RECEIVED UINT32_C(1)
@@ -491,6 +498,21 @@ typedef struct ams_mel_ir_c2_metadata_event_v1 {
     ams_mel_bit_status_v1 bit_status;
     ams_mel_ir_channel_comms_test_report_v1 channel_comms_test;
 } ams_mel_ir_c2_metadata_event_v1;
+typedef struct ams_mel_ir_bad_pixel_v1 {
+    uint32_t row;
+    uint32_t column;
+    ams_mel_ir_bad_pixel_reason_t reason;
+} ams_mel_ir_bad_pixel_v1;
+AMS_MEL_DECLARE_SPAN(ams_mel_ir_bad_pixel_span_v1, ams_mel_ir_bad_pixel_v1);
+typedef struct ams_mel_ir_bad_pixel_list_v1 {
+    uint32_t reported_size;
+    uint32_t reported_count;
+    ams_mel_ir_bad_pixel_span_v1 pixels;
+} ams_mel_ir_bad_pixel_list_v1;
+typedef struct ams_mel_ir_image_metadata_event_v1 {
+    ams_mel_ir_image_metadata_kind_t kind;
+    ams_mel_ir_bad_pixel_list_v1 bad_pixel_list;
+} ams_mel_ir_image_metadata_event_v1;
 typedef struct ams_mel_ir_c2_metadata_counters_v1 {
     uint64_t events_received;
     uint64_t events_dropped_queue_full;
@@ -922,6 +944,12 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
     ams_mel_ir_stream *stream, uint32_t timeout_ms,
     ams_mel_ir_frame_snapshot **out_snapshot, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Deep-copy ImageChannel capability snapshot. The returned owner remains valid
+ * after Image_Stream, Session, and provider-library teardown. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_capabilities(
+    ams_mel_ir_stream *stream, ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_frame_snapshot_view(
     const ams_mel_ir_frame_snapshot *snapshot,
     const ams_mel_ir_frame_snapshot_v1 **out_view, char *diagnostic,
@@ -936,6 +964,32 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_get_counters(
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* BadPixelList is the sole Image metadata event in Task 024. The FIFO is
+ * bounded DROP-INCOMING; at most one receive may execute per owner. Public
+ * close is idempotent/nonblocking and does not unregister the provider callback. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_open(
+    ams_mel_ir_stream *stream, size_t queue_capacity,
+    ams_mel_ir_image_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_receive(
+    ams_mel_ir_image_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_image_metadata_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_get_counters(
+    const ams_mel_ir_image_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_close(
+    ams_mel_ir_image_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_event_view(
+    const ams_mel_ir_image_metadata_event *event,
+    const ams_mel_ir_image_metadata_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_metadata_event_close(
+    ams_mel_ir_image_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Stops acceptance, calls disable, detaches, destroys the provider channel,
  * waits for adapter callbacks already in flight, then destroys buffers/storage.

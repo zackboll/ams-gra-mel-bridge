@@ -1,4 +1,5 @@
 with Ada.Unchecked_Conversion;
+with AMS.MEL.IR.Capability_Conversion;
 with Interfaces.C;
 with System;
 with System.Storage_Elements;
@@ -11,11 +12,13 @@ package body AMS.MEL.IR.Image is
    use type Interfaces.C.char;
    use System.Storage_Elements;
    type View_Access is access all C.IR_Frame_Snapshot_V1;
+   type Capability_Access is access all C.IR_Channel_Capability_V1;
    type U32_Access is access all Interfaces.Unsigned_32;
    type Byte_Access is access all AMS.MEL.IR.Byte;
    type Inertial_Access is access all C.IR_Sensor_Inertial_State_V1;
    type Nav_Access is access all C.IR_Sensor_Nav_State_V1;
    function To_View is new Ada.Unchecked_Conversion (System.Address, View_Access);
+   function To_Capability is new Ada.Unchecked_Conversion (System.Address, Capability_Access);
    function To_U32 is new Ada.Unchecked_Conversion (System.Address, U32_Access);
    function To_Byte is new Ada.Unchecked_Conversion (System.Address, Byte_Access);
    function To_Inertial is new Ada.Unchecked_Conversion (System.Address, Inertial_Access);
@@ -49,6 +52,37 @@ package body AMS.MEL.IR.Image is
          raise Provider_Error with Message (Buffer);
       end if;
    end Check;
+   function Capabilities
+     (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.Channel_Capability
+   is
+      Owner   : aliased C.Capability_Handle := C.Null_Capability;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.IR_Capability_Close (Owner'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      Check
+        (C.IR_Stream_Get_Capabilities (Object.Handle, Owner'Access, D'Address, D'Length, R'Access),
+         D);
+      begin
+         Check (C.IR_Capability_View (Owner, Address'Access, D'Address, D'Length, R'Access), D);
+         declare
+            Result : constant AMS.MEL.IR.Channel.Channel_Capability :=
+              Capability_Conversion.To_Channel_Capability (To_Capability (Address).all);
+         begin
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Capabilities;
    function Direction (Value : C.IR_Directional_V1) return Directional
    is ((Long_Float (Value.X), Long_Float (Value.Y), Long_Float (Value.Z)));
    function Quaternion_Value (Value : C.IR_Quaternion_V1) return Quaternion

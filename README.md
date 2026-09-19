@@ -24,11 +24,13 @@ themselves.
 > `AMS.MEL.IR.C2.Metadata` values for CommandStatus, BIT_Configuration, and
 > BIT_Status (including complete nested faults). Provider callbacks are copied
 > into a bounded native queue; provider callback threads never invoke Ada
-> application code.
-> Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
+> application code. Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
 > FrameHeader snapshot; legacy `AMS.MEL.IR.Receive` remains the Mono8 compatibility
-> subset. The raw Rust sys crate and private Python ctypes layer track the complete
-> current 49-function C ABI. Safe Rust and Python remain intentionally constrained to
+> subset. Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
+> BadPixelList events through a bounded DROP-INCOMING queue. Line-of-sight and
+> NavigationReport metadata remain unimplemented. The raw Rust sys crate and private
+> Python ctypes layer track the complete current 56-function C ABI. Safe Rust and
+> Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
 > rejection descriptions, and independent parent/channel/request lifetime. An

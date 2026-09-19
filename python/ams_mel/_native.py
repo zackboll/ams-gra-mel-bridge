@@ -92,6 +92,8 @@ AMS_MEL_IR_C2_METADATA_COMMAND_STATUS = 1
 AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION = 2
 AMS_MEL_IR_C2_METADATA_BIT_STATUS = 3
 AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST = 4
+AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST = 1
+AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN = 0
 AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS, AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS, AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS, AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS, AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT, AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED = range(1, 7)
 AMS_MEL_IR_COMMAND_NOT_SET, AMS_MEL_IR_COMMAND_RECEIVED, AMS_MEL_IR_COMMAND_ACCEPTED, AMS_MEL_IR_COMMAND_REJECTED, AMS_MEL_IR_COMMAND_CANCELLED = range(5)
 (
@@ -214,6 +216,10 @@ class BitStatusV1(ctypes.Structure): _fields_ = [("active_bits",ActiveBitSpanV1)
 class IrChannelCommsTestReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("request_id",ctypes.c_uint32)]
 class IrC2MetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("command_status",IrCommandStatusV1),("bit_configuration",BitConfigurationV1),("bit_status",BitStatusV1),("channel_comms_test",IrChannelCommsTestReportV1)]
 class IrC2MetadataCountersV1(ctypes.Structure): _fields_ = [("events_received",ctypes.c_uint64),("events_dropped_queue_full",ctypes.c_uint64),("malformed_or_unsupported",ctypes.c_uint64)]
+class IrBadPixelV1(ctypes.Structure): _fields_ = [("row",ctypes.c_uint32),("column",ctypes.c_uint32),("reason",ctypes.c_uint32)]
+class IrBadPixelSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrBadPixelV1)),("size",ctypes.c_size_t)]
+class IrBadPixelListV1(ctypes.Structure): _fields_ = [("reported_size",ctypes.c_uint32),("reported_count",ctypes.c_uint32),("pixels",IrBadPixelSpanV1)]
+class IrImageMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("bad_pixel_list",IrBadPixelListV1)]
 
 
 class ComponentLocationV1(ctypes.Structure):
@@ -347,6 +353,8 @@ class IrStreamCountersV1(ctypes.Structure):
 SessionHandle = ctypes.c_void_p
 IrStreamHandle = ctypes.c_void_p
 IrFrameSnapshotHandle = ctypes.c_void_p
+IrImageMetadataHandle = ctypes.c_void_p
+IrImageMetadataEventHandle = ctypes.c_void_p
 IrC2Handle = ctypes.c_void_p
 IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
@@ -443,6 +451,27 @@ ams_mel_ir_stream_receive.argtypes = [
     SizePointer,
 ]
 ams_mel_ir_stream_receive.restype = ctypes.c_int32
+ams_mel_ir_stream_get_capabilities = _LIBRARY.ams_mel_ir_stream_get_capabilities
+ams_mel_ir_stream_get_capabilities.argtypes = [IrStreamHandle,ctypes.POINTER(IrChannelCapabilityHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_stream_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_open = _LIBRARY.ams_mel_ir_image_metadata_open
+ams_mel_ir_image_metadata_open.argtypes = [IrStreamHandle,ctypes.c_size_t,ctypes.POINTER(IrImageMetadataHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_receive = _LIBRARY.ams_mel_ir_image_metadata_receive
+ams_mel_ir_image_metadata_receive.argtypes = [IrImageMetadataHandle,ctypes.c_uint32,ctypes.POINTER(IrImageMetadataEventHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_get_counters = _LIBRARY.ams_mel_ir_image_metadata_get_counters
+ams_mel_ir_image_metadata_get_counters.argtypes = [IrImageMetadataHandle,ctypes.POINTER(IrC2MetadataCountersV1),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_close = _LIBRARY.ams_mel_ir_image_metadata_close
+ams_mel_ir_image_metadata_close.argtypes = [ctypes.POINTER(IrImageMetadataHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_close.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_event_view = _LIBRARY.ams_mel_ir_image_metadata_event_view
+ams_mel_ir_image_metadata_event_view.argtypes = [IrImageMetadataEventHandle,ctypes.POINTER(ctypes.POINTER(IrImageMetadataEventV1)),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_image_metadata_event_close = _LIBRARY.ams_mel_ir_image_metadata_event_close
+ams_mel_ir_image_metadata_event_close.argtypes = [ctypes.POINTER(IrImageMetadataEventHandle),CharPointer,ctypes.c_size_t,SizePointer]
+ams_mel_ir_image_metadata_event_close.restype = ctypes.c_int32
 ams_mel_ir_stream_receive_snapshot = _LIBRARY.ams_mel_ir_stream_receive_snapshot
 ams_mel_ir_stream_receive_snapshot.argtypes = [IrStreamHandle,ctypes.c_uint32,ctypes.POINTER(IrFrameSnapshotHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_stream_receive_snapshot.restype = ctypes.c_int32
@@ -669,6 +698,13 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_stream_open",
     "ams_mel_ir_stream_start",
     "ams_mel_ir_stream_receive",
+    "ams_mel_ir_stream_get_capabilities",
+    "ams_mel_ir_image_metadata_open",
+    "ams_mel_ir_image_metadata_receive",
+    "ams_mel_ir_image_metadata_get_counters",
+    "ams_mel_ir_image_metadata_close",
+    "ams_mel_ir_image_metadata_event_view",
+    "ams_mel_ir_image_metadata_event_close",
     "ams_mel_ir_stream_receive_snapshot",
     "ams_mel_ir_frame_snapshot_view",
     "ams_mel_ir_frame_snapshot_close",

@@ -10,7 +10,7 @@ option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
@@ -114,6 +114,16 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_ir_stream mock_ir_provider)
     ams_mel_warnings(test_ir_stream)
     add_test(NAME ir_stream_contract COMMAND test_ir_stream)
+
+    add_executable(test_ir_image_metadata tests/test_ir_image_metadata.c)
+    target_compile_features(test_ir_image_metadata PRIVATE c_std_11)
+    set_target_properties(test_ir_image_metadata PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_image_metadata PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_image_metadata PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_image_metadata mock_ir_provider)
+    ams_mel_warnings(test_ir_image_metadata)
+    add_test(NAME ir_image_metadata_contract COMMAND test_ir_image_metadata)
 
     add_executable(test_ir_c2 tests/test_ir_c2.c)
     target_compile_features(test_ir_c2 PRIVATE c_std_11)

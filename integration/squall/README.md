@@ -28,6 +28,12 @@ for Mode, BIT, and ConfigSet command IDs, observes the no-op BIT status event,
 and requires zero malformed/dropped metadata counters. Rich nonempty metadata
 fidelity is established by the separate mock-provider tests, not by Squall's
 current empty defaults. Safe C/Rust/Python integration behavior is unchanged.
+Task 024 additionally has Ada query the Image capability before start and require
+320x200, 8-bit, one-band Mono with BadPixelList advertised. It opens Image metadata
+before image start and validates Squall's synchronous initial empty BadPixelList
+(reported size/count and actual pixel count all zero). Rich BadPixel fidelity and
+callback lifetime are mock-proven. C, Rust, and Python safe integration behavior remains
+unchanged; LOS and NavigationReport are not asserted.
 
 Provide an existing checkout with this exact source closure:
 
@@ -182,7 +188,8 @@ close their child resources. For `all`, C, Ada, Rust, and Python validate the
 shared integration subset: BIT no-op, TaskSched, and Mono8. Ada additionally
 validates Task 017's general Mode, payload-bearing BIT, and ConfigSet; Task 018's
 required C2-specific metadata; and Task 019's pre-enable KeepAlive, CommsTest
-request/reply and callback, and ChannelCapability. Explicit generic buffer
+request/reply and callback, and ChannelCapability; plus Task 024 Image capability and
+initial BadPixelList. Explicit generic buffer
 management, optional/conditional C2 commands, Scheduling, RF, other unbound MEL
 families, and safe Rust/Python common-channel APIs remain unsupported. The Python
 client uses only the public safe API,

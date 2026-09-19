@@ -1,4 +1,10 @@
-# Task 020 review note
+# Task 024 review note
+
+Task 024 uses the already-vendored ImageChannel, BadPixelList, BadPixel, and complete
+ChannelCapability include closure. No vendor file or checksum changed. Pinned Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` reports 320x200 Mono8, one band, and
+BadPixelList capability, and invokes the registered BadPixelList callback synchronously
+with reported size/count zero and no pixels. No vendor-closure expansion was required.
 
 # Task 021 review note
 
@@ -6,6 +12,8 @@ Task 021 uses the already-vendored `FrameHeader.h` include closure, including
 `SensorInertialState.h`, `SensorNavState.h`, `NavError.h`, `Uncertainty.h`, and
 `IR_Directional.h`.  A test-enabled compiler build required no additional vendor
 files; `native/vendor` remains byte-identical to the pinned declaration closure.
+
+# Task 020 review note
 
 Task 020's GCC dependency probe for `HealthStatusChannel.h` observes 52 vendored
 headers and adds exactly six IR MEL headers to the existing closure:

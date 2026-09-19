@@ -51,6 +51,55 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_frame_snapshot_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrStream,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_stream_get_capabilities;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrStream,
+        usize,
+        *mut *mut AmsMelIrImageMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrImageMetadata,
+        u32,
+        *mut *mut AmsMelIrImageMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrImageMetadata,
+        *mut AmsMelIrC2MetadataCountersV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrImageMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrImageMetadataEvent,
+        *mut *const AmsMelIrImageMetadataEventV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_event_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrImageMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_metadata_event_close;
 }
 
 #[test]
@@ -298,6 +347,8 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_C2_METADATA_COMMAND_STATUS as usize,
         AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION as usize,
         AMS_MEL_IR_C2_METADATA_BIT_STATUS as usize,
+        AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST as usize,
+        AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN as usize,
         AMS_MEL_IR_COMMAND_NOT_SET as usize,
         AMS_MEL_IR_COMMAND_RECEIVED as usize,
         AMS_MEL_IR_COMMAND_ACCEPTED as usize,
@@ -460,6 +511,21 @@ fn declarations_match_the_c_header() {
         events_received,
         events_dropped_queue_full,
         malformed_or_unsupported
+    );
+    layout!(expected, AmsMelIrBadPixelV1, row, column, reason);
+    layout!(expected, AmsMelIrBadPixelSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrBadPixelListV1,
+        reported_size,
+        reported_count,
+        pixels
+    );
+    layout!(
+        expected,
+        AmsMelIrImageMetadataEventV1,
+        kind,
+        bad_pixel_list
     );
     layout!(
         expected,
@@ -649,6 +715,14 @@ fn declarations_match_the_c_header() {
     expected.extend([
         size_of::<*mut AmsMelIrC2MetadataEvent>(),
         align_of::<*mut AmsMelIrC2MetadataEvent>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrImageMetadata>(),
+        align_of::<*mut AmsMelIrImageMetadata>(),
+    ]);
+    expected.extend([
+        size_of::<*mut AmsMelIrImageMetadataEvent>(),
+        align_of::<*mut AmsMelIrImageMetadataEvent>(),
     ]);
     expected.extend([
         size_of::<*mut AmsMelIrChannelCommsRequest>(),

@@ -119,6 +119,26 @@ static int test_success(void)
     return EXIT_SUCCESS;
 }
 
+static int test_capability_snapshot_lifetime(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_channel_capability *owner = NULL;
+    const ams_mel_ir_channel_capability_v1 *value = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("image-capability-rich", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_get_capabilities(stream, &owner, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_view(owner, &value, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(value->height == 200U && value->width == 320U &&
+          value->metadata_capabilities.size == 1U &&
+          value->metadata_capabilities.data[0] == AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(value->height == 200U && value->metadata_capabilities.data[0] ==
+          AMS_MEL_IR_METADATA_BAD_PIXEL_LIST);
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
 static int test_snapshot_fifo_and_lifetime(void)
 {
     ams_mel_session *session = NULL;
@@ -513,6 +533,7 @@ int main(void)
         "unsupported-bpp", "unsupported-bands", "unsupported-format"};
     CHECK(test_arguments() == EXIT_SUCCESS);
     CHECK(test_success() == EXIT_SUCCESS);
+    CHECK(test_capability_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
     CHECK(test_full_snapshot_rich() == EXIT_SUCCESS);
     CHECK(test_rich_snapshot_lifetime() == EXIT_SUCCESS);

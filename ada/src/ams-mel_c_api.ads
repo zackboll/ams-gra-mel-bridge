@@ -20,36 +20,45 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
-   Null_Session         : constant Session_Handle := Session_Handle (System.Null_Address);
+   Null_Session              : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream          : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   Null_Stream               : constant Stream_Handle := Stream_Handle (System.Null_Address);
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot  : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot       : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2              : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2                   : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request    : constant Mode_Request_Handle := Mode_Request_Handle (System.Null_Address);
+   Null_Mode_Request         : constant Mode_Request_Handle :=
+     Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request  : constant Return_Request_Handle :=
+   Null_Return_Request       : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request   : constant Comms_Request_Handle :=
+   Null_Comms_Request        : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
-   Null_Capability      : constant Capability_Handle := Capability_Handle (System.Null_Address);
+   Null_Capability           : constant Capability_Handle :=
+     Capability_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
-   Null_Metadata        : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
+   Null_Metadata             : constant Metadata_Handle := Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
-   Null_Metadata_Event  : constant Metadata_Event_Handle :=
+   Null_Metadata_Event       : constant Metadata_Event_Handle :=
      Metadata_Event_Handle (System.Null_Address);
    type Health_Handle is new System.Address;
-   Null_Health          : constant Health_Handle := Health_Handle (System.Null_Address);
+   Null_Health               : constant Health_Handle := Health_Handle (System.Null_Address);
    type Health_Metadata_Handle is new System.Address;
-   Null_Health_Metadata : constant Health_Metadata_Handle :=
+   Null_Health_Metadata      : constant Health_Metadata_Handle :=
      Health_Metadata_Handle (System.Null_Address);
    type Health_Event_Handle is new System.Address;
-   Null_Health_Event    : constant Health_Event_Handle := Health_Event_Handle (System.Null_Address);
+   Null_Health_Event         : constant Health_Event_Handle :=
+     Health_Event_Handle (System.Null_Address);
+   type Image_Metadata_Handle is new System.Address;
+   Null_Image_Metadata       : constant Image_Metadata_Handle :=
+     Image_Metadata_Handle (System.Null_Address);
+   type Image_Metadata_Event_Handle is new System.Address;
+   Null_Image_Metadata_Event : constant Image_Metadata_Event_Handle :=
+     Image_Metadata_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -249,6 +258,25 @@ private package AMS.MEL_C_API is
    with Convention => C;
    type Metadata_Counters_V1 is record
       Events_Received, Events_Dropped_Queue_Full, Malformed_Or_Unsupported : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   type IR_Bad_Pixel_V1 is record
+      Row, Column, Reason : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Bad_Pixel_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type IR_Bad_Pixel_List_V1 is record
+      Reported_Size, Reported_Count : Interfaces.Unsigned_32;
+      Pixels                        : IR_Bad_Pixel_Span_V1;
+   end record
+   with Convention => C;
+   type IR_Image_Metadata_Event_V1 is record
+      Kind           : Interfaces.Unsigned_32;
+      Bad_Pixel_List : IR_Bad_Pixel_List_V1;
    end record
    with Convention => C;
    type IR_Stream_Config_V1 is record
@@ -563,6 +591,55 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_stream_receive";
+   function IR_Stream_Get_Capabilities
+     (Stream              : Stream_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stream_get_capabilities";
+   function IR_Image_Metadata_Open
+     (Stream              : Stream_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Image_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_open";
+   function IR_Image_Metadata_Receive
+     (Handle              : Image_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Image_Metadata_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_receive";
+   function IR_Image_Metadata_Get_Counters
+     (Handle              : Image_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_get_counters";
+   function IR_Image_Metadata_Close
+     (Handle              : access Image_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_close";
+   function IR_Image_Metadata_Event_View
+     (Handle              : Image_Metadata_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_event_view";
+   function IR_Image_Metadata_Event_Close
+     (Handle              : access Image_Metadata_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_metadata_event_close";
    function IR_Stream_Get_Counters
      (Stream              : Stream_Handle;
       Output              : access IR_Counters_V1;

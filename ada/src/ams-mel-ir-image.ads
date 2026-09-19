@@ -53,6 +53,8 @@ package AMS.MEL.IR.Image is
    end record;
 
    type Full_Frame is private;
+   function Capabilities
+     (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.Channel_Capability;
    function Receive
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Full_Frame;
    function System_Time_NS (Value : Full_Frame) return Long_Long_Integer;

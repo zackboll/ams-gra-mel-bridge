@@ -25,15 +25,15 @@
 | Bounded receive queue | Implemented | Caller capacity; DROP-INCOMING; saturating counters |
 | Legacy FrameHeader interface | Compatibility subset retained | `ams_mel_ir_frame_v1` and `AMS.MEL.IR.Receive` unchanged |
 | Full FrameHeader snapshot | Complete in native C and safe Ada | Owned snapshot, contributing sensor, ordered flags, inertial/nav vectors and independent orientations |
-| ImageChannel metadata callbacks | Not implemented | FrameHeader receive is not ImageChannel callback metadata API |
+| ImageChannel metadata callbacks | BadPixelList implemented in native C and safe Ada | Bounded DROP-INCOMING queue, complete owned event, counters, malformed/allocation recovery; LOS/Nav not implemented |
 | Image commands | Not implemented | Later image command slice |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 49 C functions; raw FrameHeader snapshot declarations synchronized; no safe snapshot API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 56 C functions; raw Image capability/BadPixel declarations synchronized; no safe metadata API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 49-function private ctypes binding; no public snapshot methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 56-function private ctypes binding; no public Image metadata methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
@@ -49,7 +49,7 @@
 | Common inherited Channel services | Complete: KeepAlive, CommsTest send/reply/callback, complete ChannelCapability |
 | Explicit generic buffer management | Not application-exposed |
 | Image receive | Partial: host-memory Mono8 |
-| Image metadata | Not implemented beyond current frame subset |
+| Image metadata | BadPixelList complete; LOS/Nav not implemented |
 | Scheduling | Not implemented |
 | Track | Not implemented |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |

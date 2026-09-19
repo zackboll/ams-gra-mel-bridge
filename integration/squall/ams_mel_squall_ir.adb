@@ -4,6 +4,7 @@ with Ada.Text_IO;
 with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.IR.Image;
+with AMS.MEL.IR.Image.Metadata;
 with AMS.MEL.IR.C2;
 with AMS.MEL.IR.C2.Metadata;
 with AMS.MEL.IR.C2.Common;
@@ -18,6 +19,7 @@ procedure AMS_MEL_Squall_IR is
    package Metadata renames AMS.MEL.IR.C2.Metadata;
    package Common renames AMS.MEL.IR.C2.Common;
    package Channel_Value renames AMS.MEL.IR.Channel;
+   package Image_Metadata renames AMS.MEL.IR.Image.Metadata;
    package Health renames AMS.MEL.IR.Health_Status;
    package Health_Metadata renames AMS.MEL.IR.Health_Status.Metadata;
    package Status renames AMS.MEL.Status;
@@ -138,6 +140,8 @@ begin
         AMS.MEL.Query_Provider_Version (Parent);
       Stream : AMS.MEL.IR.Image_Stream :=
         AMS.MEL.IR.Open_Image_Stream (Parent, Image_Config);
+      Image_Metadata_Stream : Image_Metadata.Metadata_Stream :=
+        Image_Metadata.Open (Stream, 8);
    begin
       if Frame_Count < 3 then
          raise Constraint_Error with "frame count must be at least three";
@@ -148,6 +152,42 @@ begin
          AMS.MEL.Provider_Version_Number'Image (AMS.MEL.Library_Version (Version)) &
          " vendor=" & AMS.MEL.Vendor (Version) &
          " description=" & AMS.MEL.Description (Version));
+
+      declare
+         Capability : constant Channel_Value.Channel_Capability :=
+           AMS.MEL.IR.Image.Capabilities (Stream);
+      begin
+         if Channel_Value.Width (Capability) /= 320
+           or else Channel_Value.Height (Capability) /= 200
+           or else Channel_Value.Bit_Depth (Capability) /= 8
+           or else Channel_Value.Number_Of_Bands (Capability) /= 1
+           or else Channel_Value.Format (Capability) /= Channel_Value.Mono
+           or else not Channel_Value.Has_Metadata_Capability
+             (Capability, Channel_Value.Bad_Pixel_List)
+         then
+            raise Program_Error with "unexpected Squall Image capability";
+         end if;
+         Ada.Text_IO.Put_Line
+           ("Image capability: geometry=320x200 bit-depth=8 bands=1 format=MONO "
+            & "metadata=BAD_PIXEL_LIST");
+      end;
+
+      declare
+         Event : constant Image_Metadata.Metadata_Event :=
+           Image_Metadata.Receive (Image_Metadata_Stream, 5_000);
+         Value : constant Image_Metadata.Bad_Pixel_List :=
+           Image_Metadata.Bad_Pixel_List_Value (Event);
+      begin
+         if Image_Metadata.Reported_Size (Value) /= 0
+           or else Image_Metadata.Reported_Count (Value) /= 0
+           or else Image_Metadata.Pixel_Count (Value) /= 0
+         then
+            raise Program_Error with "unexpected Squall initial BadPixelList";
+         end if;
+         Ada.Text_IO.Put_Line
+           ("Image BadPixelList: reported-size=0 reported-count=0 pixels=0");
+      end;
+      Image_Metadata.Close (Image_Metadata_Stream);
 
       --  Data destination and buffers are ready before Operate is submitted.
       AMS.MEL.IR.Start (Stream);
