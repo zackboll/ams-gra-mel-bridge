@@ -138,6 +138,99 @@ static int test_rich_and_lifetime(void)
     CHECK(ams_mel_ir_image_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
     return EXIT_SUCCESS;
 }
+static int check_report(const ams_mel_ir_image_metadata_event_v1 *view)
+{
+    const ams_mel_ir_line_of_sight_report_v1 *value = &view->line_of_sight_report;
+    CHECK(view->kind == AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT);
+    CHECK(value->system_time_ns == INT64_C(-123456789));
+    CHECK(value->pointing_angle.azimuth_rad == 1.25 && value->pointing_angle.elevation_rad == -2.5);
+    CHECK(value->pointing_angle_rates.azimuth_rad == 0.125 && value->pointing_angle_rates.elevation_rad == -0.25);
+    CHECK(value->at_speed == 1U && value->in_tolerance == 0U);
+    CHECK(value->platform_attitude.roll == 0.5 && value->platform_attitude.pitch == -0.75 && value->platform_attitude.yaw == 1.0);
+    CHECK(value->validity_flag_bitfield == UINT32_C(0xa5a50003) && value->image_rotation_rad == -1.5);
+    return EXIT_SUCCESS;
+}
+static int check_euler(const ams_mel_ir_image_metadata_event_v1 *view)
+{
+    const ams_mel_ir_line_of_sight_euler_v1 *value = &view->line_of_sight_euler;
+    CHECK(view->kind == AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER);
+    CHECK(value->system_time_ns == INT64_C(987654321));
+    CHECK(value->attitude.roll == -0.5 && value->attitude.pitch == 1.25 && value->attitude.yaw == -2.0);
+    CHECK(value->attitude_rates.roll == 0.25 && value->attitude_rates.pitch == -0.125 && value->attitude_rates.yaw == 0.0625);
+    return EXIT_SUCCESS;
+}
+static int test_los_rich_and_lifetime(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
+    ams_mel_ir_image_metadata_event *report = NULL; ams_mel_ir_image_metadata_event *euler = NULL;
+    const ams_mel_ir_image_metadata_event_v1 *report_view = NULL, *euler_view = NULL;
+    CHECK(open_all("image-metadata-los-rich", &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 4, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(receive(metadata, &report, &report_view) == EXIT_SUCCESS);
+    CHECK(receive(metadata, &euler, &euler_view) == EXIT_SUCCESS);
+    CHECK(check_report(report_view) == EXIT_SUCCESS); CHECK(check_euler(euler_view) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(check_report(report_view) == EXIT_SUCCESS); CHECK(check_euler(euler_view) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_event_close(&report, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_event_close(&euler, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+static int test_mixed_los_fifo(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
+    ams_mel_ir_image_metadata_event *first = NULL, *second = NULL;
+    const ams_mel_ir_image_metadata_event_v1 *first_view = NULL, *second_view = NULL;
+    ams_mel_ir_metadata_counters_v1 counters = {0};
+    CHECK(open_all("image-metadata-los-mixed", &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_get_counters(metadata, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.events_received == 5U && counters.events_dropped_queue_full == 3U && counters.malformed_or_unsupported == 0U);
+    CHECK(receive(metadata, &first, &first_view) == EXIT_SUCCESS); CHECK(receive(metadata, &second, &second_view) == EXIT_SUCCESS);
+    CHECK(first_view->kind == AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST);
+    CHECK(first_view->bad_pixel_list.pixels.data[0].row == 1U);
+    CHECK(check_report(second_view) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_event_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_event_close(&second, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+static int test_los_recovery(const char *scenario, int report)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
+    ams_mel_ir_image_metadata_event *event = NULL;
+    const ams_mel_ir_image_metadata_event_v1 *view = NULL;
+    ams_mel_ir_metadata_counters_v1 counters = {0};
+    CHECK(open_all(scenario, &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_get_counters(metadata, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.events_received == 2U && counters.malformed_or_unsupported == 1U);
+    CHECK(receive(metadata, &event, &view) == EXIT_SUCCESS);
+    CHECK((report ? check_report(view) : check_euler(view)) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+static int test_los_allocation_recovery(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
+    ams_mel_ir_image_metadata_event *event = NULL;
+    const ams_mel_ir_image_metadata_event_v1 *view = NULL;
+    ams_mel_ir_metadata_counters_v1 counters = {0};
+    CHECK(setenv("AMS_MEL_TEST_IMAGE_CALLBACK_FAILURE", "allocation", 1) == 0);
+    CHECK(open_all("image-metadata-los-report-allocation", &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_CALLBACK_FAILURE") == 0);
+    CHECK(ams_mel_ir_image_metadata_get_counters(metadata, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.events_received == 2U && counters.malformed_or_unsupported == 1U);
+    CHECK(receive(metadata, &event, &view) == EXIT_SUCCESS); CHECK(check_report(view) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
 static int test_counters(const char *scenario, uint64_t received, uint64_t dropped, uint64_t malformed)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL; ams_mel_ir_image_metadata *metadata = NULL;
@@ -211,20 +304,29 @@ static int test_registration_failure(const char *scenario, ams_mel_status_t expe
     CHECK(open_all(scenario, &session, &stream) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == expected);
     CHECK(metadata == NULL);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 2, &metadata, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
 int main(void)
 {
     CHECK(test_rich_and_lifetime() == EXIT_SUCCESS);
+    CHECK(test_los_rich_and_lifetime() == EXIT_SUCCESS);
+    CHECK(test_mixed_los_fifo() == EXIT_SUCCESS);
+    CHECK(test_los_recovery("image-metadata-los-report-null", 1) == EXIT_SUCCESS);
+    CHECK(test_los_recovery("image-metadata-los-euler-null", 0) == EXIT_SUCCESS);
+    CHECK(test_los_allocation_recovery() == EXIT_SUCCESS);
     CHECK(test_counters("image-metadata-malformed", 2, 0, 1) == EXIT_SUCCESS);
     CHECK(test_counters("image-metadata-overflow", 5, 3, 0) == EXIT_SUCCESS);
     CHECK(test_counters("image-metadata-allocation", 2, 0, 1) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-register-not-supported", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
     CHECK(test_registration_failure("image-metadata-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
+    CHECK(test_registration_failure("image-metadata-report-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
+    CHECK(test_registration_failure("image-metadata-euler-register-fail", AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
+    CHECK(test_registration_failure("image-metadata-euler-register-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_concurrent_open_one_shot() == EXIT_SUCCESS);
     CHECK(test_metadata_close_before_callback() == EXIT_SUCCESS);
-    puts("PASS: C IR Image BadPixel metadata contract");
+    puts("PASS: C IR Image metadata contract");
     return EXIT_SUCCESS;
 }

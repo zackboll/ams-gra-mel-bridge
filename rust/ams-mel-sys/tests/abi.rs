@@ -348,6 +348,8 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION as usize,
         AMS_MEL_IR_C2_METADATA_BIT_STATUS as usize,
         AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST as usize,
+        AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT as usize,
+        AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER as usize,
         AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN as usize,
         AMS_MEL_IR_COMMAND_NOT_SET as usize,
         AMS_MEL_IR_COMMAND_RECEIVED as usize,
@@ -521,7 +523,34 @@ fn declarations_match_the_c_header() {
         reported_count,
         pixels
     );
-    layout!(expected, AmsMelIrImageMetadataEventV1, kind, bad_pixel_list);
+    layout!(expected, AmsMelIrAzElV1, azimuth_rad, elevation_rad);
+    layout!(
+        expected,
+        AmsMelIrLineOfSightReportV1,
+        system_time_ns,
+        pointing_angle,
+        pointing_angle_rates,
+        at_speed,
+        in_tolerance,
+        platform_attitude,
+        validity_flag_bitfield,
+        image_rotation_rad
+    );
+    layout!(
+        expected,
+        AmsMelIrLineOfSightEulerV1,
+        system_time_ns,
+        attitude,
+        attitude_rates
+    );
+    layout!(
+        expected,
+        AmsMelIrImageMetadataEventV1,
+        kind,
+        bad_pixel_list,
+        line_of_sight_report,
+        line_of_sight_euler
+    );
     layout!(
         expected,
         AmsMelIrChannelCommsTestReportV1,

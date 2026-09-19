@@ -27,8 +27,9 @@ themselves.
 > application code. Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
 > FrameHeader snapshot; legacy `AMS.MEL.IR.Receive` remains the Mono8 compatibility
 > subset. Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
-> BadPixelList events through a bounded DROP-INCOMING queue. Line-of-sight and
-> NavigationReport metadata remain unimplemented. The raw Rust sys crate and private
+> BadPixelList, LineOfSightReport, and LineOfSightEuler events through one bounded
+> DROP-INCOMING queue. NavigationReportResp, NavigationReport send, LineOfSightQuaternion,
+> and other optional Image metadata remain unimplemented. The raw Rust sys crate and private
 > Python ctypes layer track the complete current 56-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return

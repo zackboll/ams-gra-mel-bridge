@@ -93,6 +93,8 @@ AMS_MEL_IR_C2_METADATA_BIT_CONFIGURATION = 2
 AMS_MEL_IR_C2_METADATA_BIT_STATUS = 3
 AMS_MEL_IR_C2_METADATA_CHANNEL_COMMS_TEST = 4
 AMS_MEL_IR_IMAGE_METADATA_BAD_PIXEL_LIST = 1
+AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_REPORT = 2
+AMS_MEL_IR_IMAGE_METADATA_LINE_OF_SIGHT_EULER = 3
 AMS_MEL_IR_BAD_PIXEL_REASON_UNKNOWN = 0
 AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS, AMS_MEL_IR_HEALTH_METADATA_BIT_STATUS, AMS_MEL_IR_HEALTH_METADATA_SUBSYSTEM_STATUS, AMS_MEL_IR_HEALTH_METADATA_DISCRETE_STATUS, AMS_MEL_IR_HEALTH_METADATA_SECURITY_AUDIT, AMS_MEL_IR_HEALTH_METADATA_MFA_STATUS_DETAILED = range(1, 7)
 AMS_MEL_IR_COMMAND_NOT_SET, AMS_MEL_IR_COMMAND_RECEIVED, AMS_MEL_IR_COMMAND_ACCEPTED, AMS_MEL_IR_COMMAND_REJECTED, AMS_MEL_IR_COMMAND_CANCELLED = range(5)
@@ -219,7 +221,7 @@ class IrC2MetadataCountersV1(ctypes.Structure): _fields_ = [("events_received",c
 class IrBadPixelV1(ctypes.Structure): _fields_ = [("row",ctypes.c_uint32),("column",ctypes.c_uint32),("reason",ctypes.c_uint32)]
 class IrBadPixelSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrBadPixelV1)),("size",ctypes.c_size_t)]
 class IrBadPixelListV1(ctypes.Structure): _fields_ = [("reported_size",ctypes.c_uint32),("reported_count",ctypes.c_uint32),("pixels",IrBadPixelSpanV1)]
-class IrImageMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("bad_pixel_list",IrBadPixelListV1)]
+class IrImageMetadataEventV1(ctypes.Structure): pass
 
 
 class ComponentLocationV1(ctypes.Structure):
@@ -265,6 +267,10 @@ class IrC2ConfigV1(ctypes.Structure):
 class IrHealthConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
 class EulerV1(ctypes.Structure): _fields_ = [("roll", ctypes.c_double), ("pitch", ctypes.c_double), ("yaw", ctypes.c_double)]
+class IrAzElV1(ctypes.Structure): _fields_ = [("azimuth_rad",ctypes.c_double),("elevation_rad",ctypes.c_double)]
+class IrLineOfSightReportV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("pointing_angle",IrAzElV1),("pointing_angle_rates",IrAzElV1),("at_speed",ctypes.c_uint8),("in_tolerance",ctypes.c_uint8),("platform_attitude",EulerV1),("validity_flag_bitfield",ctypes.c_uint32),("image_rotation_rad",ctypes.c_double)]
+class IrLineOfSightEulerV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("attitude",EulerV1),("attitude_rates",EulerV1)]
+IrImageMetadataEventV1._fields_ = [("kind",ctypes.c_uint32),("bad_pixel_list",IrBadPixelListV1),("line_of_sight_report",IrLineOfSightReportV1),("line_of_sight_euler",IrLineOfSightEulerV1)]
 class U8SpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(ctypes.c_uint8)),("size",ctypes.c_size_t)]
 class IrContributingSensorV1(ctypes.Structure): _fields_ = [("location",ComponentLocationV1),("sensor_id",ctypes.c_uint32)]
 class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]

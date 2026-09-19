@@ -1,3 +1,11 @@
+# Task 025 review note
+
+Task 025 uses the already-vendored ImageChannel closure, including LineOfSightReport and
+LineOfSightEuler. No vendor file or checksum changed. Pinned Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` may emit duplicate Reports while registering
+the two LOS callbacks; integration drains until both kinds are observed. No vendor-closure
+expansion was required.
+
 # Task 024 review note
 
 Task 024 uses the already-vendored ImageChannel, BadPixelList, BadPixel, and complete

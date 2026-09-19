@@ -42,6 +42,9 @@ procedure AMS_MEL_Squall_IR is
    use type Channel_Value.Comms_Test_Report;
    use type Health_Metadata.Metadata_Kind;
    use type Health_Metadata.Failure_Level;
+   use type Image_Metadata.Metadata_Kind;
+   use type Image_Metadata.Azimuth_Elevation;
+   use type Status.Euler;
    use type Status.MFA_State;
    use type Status.State_Transition_Status;
    use type Interfaces.Unsigned_32;
@@ -141,7 +144,7 @@ begin
       Stream : AMS.MEL.IR.Image_Stream :=
         AMS.MEL.IR.Open_Image_Stream (Parent, Image_Config);
       Image_Metadata_Stream : Image_Metadata.Metadata_Stream :=
-        Image_Metadata.Open (Stream, 8);
+        Image_Metadata.Open (Stream, 32);
    begin
       if Frame_Count < 3 then
          raise Constraint_Error with "frame count must be at least three";
@@ -187,8 +190,6 @@ begin
          Ada.Text_IO.Put_Line
            ("Image BadPixelList: reported-size=0 reported-count=0 pixels=0");
       end;
-      Image_Metadata.Close (Image_Metadata_Stream);
-
       --  Data destination and buffers are ready before Operate is submitted.
       AMS.MEL.IR.Start (Stream);
       declare
@@ -528,6 +529,52 @@ begin
                then raise Program_Error with "invalid Squall full FrameHeader"; end if;
                Ada.Text_IO.Put_Line ("full FrameHeader: 320x200 Mono8 sparse metadata");
             end;
+
+            declare
+               Have_Report : Boolean := False;
+               Have_Euler  : Boolean := False;
+               Report      : Image_Metadata.Line_Of_Sight_Report;
+            begin
+               for Index in 1 .. 32 loop
+                  exit when Have_Euler;
+                  declare
+                     Event : constant Image_Metadata.Metadata_Event :=
+                       Image_Metadata.Receive (Image_Metadata_Stream, Timeout_MS);
+                  begin
+                     case Image_Metadata.Kind (Event) is
+                        when Image_Metadata.Bad_Pixel_List_Event => null;
+                        when Image_Metadata.Line_Of_Sight_Report_Event =>
+                           Report := Image_Metadata.Line_Of_Sight_Report_Value (Event);
+                           Have_Report := True;
+                        when Image_Metadata.Line_Of_Sight_Euler_Event =>
+                           declare
+                              Euler : constant Image_Metadata.Line_Of_Sight_Euler :=
+                                Image_Metadata.Line_Of_Sight_Euler_Value (Event);
+                           begin
+                              if not Have_Report
+                                or else Report.Pointing_Angle.Azimuth_Rad /= Euler.Attitude.Yaw
+                                or else Report.Pointing_Angle.Elevation_Rad /= Euler.Attitude.Pitch
+                                or else Euler.Attitude.Roll /= 0.0
+                                or else Report.Pointing_Angle_Rates /= (0.0, 0.0)
+                                or else Euler.Attitude_Rates /= (0.0, 0.0, 0.0)
+                                or else Report.At_Speed or else Report.In_Tolerance
+                                or else Report.Platform_Attitude /= (0.0, 0.0, 0.0)
+                                or else Report.Validity_Flag_Bitfield /= 0
+                                or else Report.Image_Rotation_Rad /= 0.0
+                              then
+                                 raise Program_Error with "invalid Squall LOS consistency";
+                              end if;
+                              Have_Euler := True;
+                           end;
+                     end case;
+                  end;
+               end loop;
+               if not Have_Report or else not Have_Euler then
+                  raise Program_Error with "Squall did not provide valid LOS metadata";
+               end if;
+               Ada.Text_IO.Put_Line ("Image LOS: Report/Euler consistency validated");
+            end;
+            Image_Metadata.Close (Image_Metadata_Stream);
 
             declare
                Counts : constant AMS.MEL.IR.Stream_Counters :=

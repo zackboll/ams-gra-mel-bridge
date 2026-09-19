@@ -274,9 +274,29 @@ private package AMS.MEL_C_API is
       Pixels                        : IR_Bad_Pixel_Span_V1;
    end record
    with Convention => C;
+   type Az_El_V1 is record
+      Azimuth_Rad, Elevation_Rad : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Line_Of_Sight_Report_V1 is record
+      System_Time_NS                       : Interfaces.Integer_64;
+      Pointing_Angle, Pointing_Angle_Rates : Az_El_V1;
+      At_Speed, In_Tolerance               : Interfaces.Unsigned_8;
+      Platform_Attitude                    : Euler_V1;
+      Validity_Flag_Bitfield               : Interfaces.Unsigned_32;
+      Image_Rotation_Rad                   : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Line_Of_Sight_Euler_V1 is record
+      System_Time_NS           : Interfaces.Integer_64;
+      Attitude, Attitude_Rates : Euler_V1;
+   end record
+   with Convention => C;
    type IR_Image_Metadata_Event_V1 is record
-      Kind           : Interfaces.Unsigned_32;
-      Bad_Pixel_List : IR_Bad_Pixel_List_V1;
+      Kind                 : Interfaces.Unsigned_32;
+      Bad_Pixel_List       : IR_Bad_Pixel_List_V1;
+      Line_Of_Sight_Report : IR_Line_Of_Sight_Report_V1;
+      Line_Of_Sight_Euler  : IR_Line_Of_Sight_Euler_V1;
    end record
    with Convention => C;
    type IR_Stream_Config_V1 is record
