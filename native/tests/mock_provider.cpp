@@ -428,6 +428,31 @@ public:
             record("navigation_completed");
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
                 std::make_shared<irmel::NavigationReportResp>(value)});
+        } else if (scenario_ == "navigation-hold" && !navigation_producer_.joinable()) {
+            /* Deterministic barrier-driven request. The request stays pending
+               until the test explicitly releases it, so logical-stop behavior
+               is observable while physical teardown is still deferred. If a
+               NavigationReportResp metadata callback is registered it is
+               invoked after the release barrier, i.e. after the test has
+               performed a logical Stop, proving post-Stop provider callbacks
+               remain safe but cannot enqueue. */
+            navigation_producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
+                const char *base = std::getenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER");
+                if (!base) std::abort();
+                const std::string prefix{base};
+                wait_for_file(prefix + ".release");
+                if (navigation_response_callback_) {
+                    record("post_stop_metadata_callback_entered");
+                    auto value = rich_navigation_response();
+                    navigation_response_callback_(*this, &value);
+                    record("post_stop_metadata_callback_returned");
+                }
+                create_file(prefix + ".callback-done");
+                wait_for_file(prefix + ".complete");
+                record("navigation_completed");
+                promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                    std::make_shared<irmel::NavigationReportResp>(rich_navigation_response())});
+            }};
         } else if ((scenario_ == "navigation-delayed" || scenario_ == "navigation-lifetime" ||
                     scenario_ == "navigation-pending-close") && !navigation_producer_.joinable()) {
             navigation_producer_ = std::thread{[this, promise = std::move(promise)]() mutable {
@@ -635,6 +660,13 @@ public:
         }
         if (scenario_ == "image-metadata-navigation-sync" || scenario_ == "image-metadata-navigation-rich") {
             auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);
+        } else if (scenario_ == "navigation-hold") {
+            /* Two registration-time events: the deferred-stop test drains one
+               before submitting and keeps the other queued across a logical
+               Stop to prove already-queued events still drain. */
+            auto value = rich_navigation_response();
+            navigation_response_callback_(*this, &value);
+            navigation_response_callback_(*this, &value);
         } else if (scenario_ == "image-metadata-navigation-null") {
             navigation_response_callback_(*this, nullptr);
             auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);

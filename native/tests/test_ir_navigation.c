@@ -493,6 +493,194 @@ static int test_completion_without_stop_keeps_stream_usable(void)
     return EXIT_SUCCESS;
 }
 
+static int create_marker(const char *path)
+{
+    FILE *file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs("release\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    return EXIT_SUCCESS;
+}
+
+static int wait_for_marker(const char *path)
+{
+    const struct timespec delay = {0, 1000000L};
+    unsigned attempt;
+    for (attempt = 0; attempt < 5000U; ++attempt) {
+        if (access(path, F_OK) == 0) return EXIT_SUCCESS;
+        (void)nanosleep(&delay, NULL);
+    }
+    return EXIT_FAILURE;
+}
+
+struct hold_barrier {
+    char base[64];
+    char release[96];
+    char callback_done[96];
+    char complete[96];
+};
+
+static int make_hold_barrier(struct hold_barrier *barrier)
+{
+    int descriptor;
+    CHECK(snprintf(barrier->base, sizeof barrier->base,
+                   "/tmp/ams-mel-nav-hold-XXXXXX") > 0);
+    descriptor = mkstemp(barrier->base);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(unlink(barrier->base) == 0);
+    CHECK(snprintf(barrier->release, sizeof barrier->release, "%s.release", barrier->base) > 0);
+    CHECK(snprintf(barrier->callback_done, sizeof barrier->callback_done,
+                   "%s.callback-done", barrier->base) > 0);
+    CHECK(snprintf(barrier->complete, sizeof barrier->complete, "%s.complete", barrier->base) > 0);
+    CHECK(setenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER", barrier->base, 1) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* Regression: a logical Stop must be terminal for frame Receive even while a
+   Navigation request keeps physical teardown deferred. Before this was fixed,
+   Lifecycle::Stopping was not terminal and both Receive entry points returned
+   TIMEOUT instead of STREAM_STOPPED until physical cleanup ran. */
+static int test_logical_stop_frame_receive_terminal(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_navigation_request *request = NULL;
+    ams_mel_ir_navigation_result_v1 result;
+    ams_mel_navigation_report_v1 report = rich_report();
+    ams_mel_ir_frame_v1 frame;
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    struct hold_barrier barrier;
+    unsigned char pixels[64];
+    char path[] = "/tmp/ams-mel-nav-logical-stop-XXXXXX";
+    char log[4096];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(make_hold_barrier(&barrier) == EXIT_SUCCESS);
+    CHECK(open_stream("navigation-hold", &session, &stream) == EXIT_SUCCESS);
+    /* Never started: no frame is queued, so Receive can only report the
+       lifecycle state. */
+    CHECK(ams_mel_ir_stream_submit_navigation_report(stream, &report, &request,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 0, &result, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Physical teardown is still deferred behind the pending request. */
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_detached") == NULL);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+    memset(&frame, 0, sizeof frame);
+    frame.pixels = pixels;
+    frame.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 0, &frame, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 0, &snapshot, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
+    CHECK(snapshot == NULL);
+    /* The request is still outstanding, so this was logical-stop behavior and
+       not post-cleanup behavior. */
+    CHECK(ams_mel_ir_navigation_request_wait(request, 0, &result, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+    CHECK(create_marker(barrier.release) == EXIT_SUCCESS);
+    CHECK(wait_for_marker(barrier.callback_done) == EXIT_SUCCESS);
+    CHECK(create_marker(barrier.complete) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 1000, &result, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_destroyed") != NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(barrier.release) == 0);
+    CHECK(unlink(barrier.callback_done) == 0);
+    CHECK(unlink(barrier.complete) == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* Regression: Image metadata must stop logically with the stream. Already
+   queued events still drain, but a provider metadata callback delivered after
+   the logical Stop (while the provider channel is still attached because a
+   Navigation request is pending) must remain safe and must not enqueue. */
+static int test_logical_stop_metadata_no_enqueue(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_image_metadata *metadata = NULL;
+    ams_mel_ir_image_metadata_event *event = NULL;
+    const ams_mel_ir_image_metadata_event_v1 *view = NULL;
+    ams_mel_ir_navigation_request *request = NULL;
+    ams_mel_ir_navigation_result_v1 result;
+    ams_mel_ir_metadata_counters_v1 before, after;
+    ams_mel_navigation_report_v1 report = rich_report();
+    struct hold_barrier barrier;
+    char path[] = "/tmp/ams-mel-nav-metadata-stop-XXXXXX";
+    char log[4096];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(make_hold_barrier(&barrier) == EXIT_SUCCESS);
+    CHECK(open_stream("navigation-hold", &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_open(stream, 8, &metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Two registration-time events were delivered; drain one now and keep the
+       other queued across the logical Stop. */
+    CHECK(ams_mel_ir_image_metadata_receive(metadata, 1000, &event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_event_view(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE);
+    CHECK(ams_mel_ir_image_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_submit_navigation_report(stream, &report, &request,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 0, &result, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_detached") == NULL);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+    /* Already queued metadata still drains after the logical Stop. */
+    CHECK(ams_mel_ir_image_metadata_receive(metadata, 0, &event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_event_view(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_IMAGE_METADATA_NAVIGATION_RESPONSE);
+    CHECK(ams_mel_ir_image_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_receive(metadata, 0, &event, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
+    CHECK(event == NULL);
+    CHECK(ams_mel_ir_image_metadata_get_counters(metadata, &before, NULL, 0, NULL) == AMS_MEL_OK);
+    /* The provider now invokes a registered metadata callback after Stop. */
+    CHECK(create_marker(barrier.release) == EXIT_SUCCESS);
+    CHECK(wait_for_marker(barrier.callback_done) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_image_metadata_get_counters(metadata, &after, NULL, 0, NULL) == AMS_MEL_OK);
+    /* The callback entered and returned (counter policy unchanged) but nothing
+       was enqueued. */
+    CHECK(after.events_received == before.events_received + 1U);
+    CHECK(ams_mel_ir_image_metadata_receive(metadata, 0, &event, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
+    CHECK(event == NULL);
+    CHECK(create_marker(barrier.complete) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 1000, &result, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_image_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "post_stop_metadata_callback_entered") != NULL);
+    CHECK(strstr(log, "post_stop_metadata_callback_returned") != NULL);
+    CHECK(check_order(log, "post_stop_metadata_callback_entered",
+                      "post_stop_metadata_callback_returned") == EXIT_SUCCESS);
+    CHECK(check_order(log, "post_stop_metadata_callback_returned",
+                      "channel_destroyed") == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    CHECK(unlink(barrier.release) == 0);
+    CHECK(unlink(barrier.callback_done) == 0);
+    CHECK(unlink(barrier.complete) == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
 static int test_two_simultaneous_requests(void)
 {
     /* The mock provider supports only one delayed thread per channel
@@ -552,6 +740,8 @@ int main(void)
     CHECK(test_request_close_while_pending() == EXIT_SUCCESS);
     CHECK(test_synchronous_metadata_callback() == EXIT_SUCCESS);
     CHECK(test_completion_without_stop_keeps_stream_usable() == EXIT_SUCCESS);
+    CHECK(test_logical_stop_frame_receive_terminal() == EXIT_SUCCESS);
+    CHECK(test_logical_stop_metadata_no_enqueue() == EXIT_SUCCESS);
     CHECK(test_two_simultaneous_requests() == EXIT_SUCCESS);
     /* These intentionally leak a permanently-retained SessionState/provider
        library reference (Task 027B fail-safe retention). Run them last so

@@ -397,18 +397,30 @@ bool supported(const irmel::ChannelCapability& capability) noexcept
            capability.getBitDepth() == 8U && capability.getNumberOfBands() == 1U;
 }
 
-/* Stops acceptance and transitions frame lifecycle to Stopping/Failed. This
- * runs unconditionally and immediately, independent of pending Navigation
- * requests: queued frames still drain, and Receive reports STREAM_STOPPED
- * once the queue empties even while physical teardown remains deferred. */
+/* Stops acceptance and transitions frame lifecycle to Stopping/Failed, and
+ * logically stops Image metadata. This runs unconditionally and immediately,
+ * independent of pending Navigation requests: already queued frames and
+ * metadata events still drain, and Receive reports STREAM_STOPPED once the
+ * respective queue empties even while physical teardown remains deferred.
+ * Later provider callbacks stay memory-safe but can no longer enqueue.
+ *
+ * Lock separation is mandatory: image_metadata_stream_stopped acquires the
+ * metadata mutex and must never be called while CallbackState::mutex is
+ * held. The metadata owner is therefore copied out under the frame mutex and
+ * stopped after it is released. */
 void logical_stop(ImageStreamState& stream, bool failed) noexcept
 {
+    std::shared_ptr<ImageMetadataState> metadata;
     try {
-        std::lock_guard lock{stream.callback->mutex};
-        stream.callback->accepting = false;
-        if (stream.callback->lifecycle != Lifecycle::Failed)
-            stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
-        stream.callback->ready.notify_all();
+        {
+            std::lock_guard lock{stream.callback->mutex};
+            stream.callback->accepting = false;
+            if (stream.callback->lifecycle != Lifecycle::Failed)
+                stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
+            stream.callback->ready.notify_all();
+            metadata = stream.image_metadata;
+        }
+        image_metadata_stream_stopped(metadata);
     } catch (...) {
         /* Logical stop must remain noexcept. */
     }
@@ -746,8 +758,12 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
     try {
         const auto& state = *stream->state;
         std::unique_lock lock{state.callback->mutex};
+        /* Stopping is terminal for waiting: a logical Stop/Close has already
+         * happened, so no further frame can be queued even though physical
+         * teardown may remain deferred behind a pending Navigation request. */
         const auto terminal = [&state] {
-            return state.callback->lifecycle == Lifecycle::Stopped ||
+            return state.callback->lifecycle == Lifecycle::Stopping ||
+                   state.callback->lifecycle == Lifecycle::Stopped ||
                    state.callback->lifecycle == Lifecycle::Failed;
         };
         if (state.callback->queue.empty() && !terminal()) {
@@ -759,8 +775,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         if (state.callback->queue.empty()) {
             if (state.callback->lifecycle == Lifecycle::Failed)
                 return AMS_MEL_PROVIDER_FAILED;
-            return state.callback->lifecycle == Lifecycle::Stopped ?
-                   AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
+            return terminal() ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
         const QueuedFrame& queued = state.callback->queue.front();
         frame->pixel_required = queued.pixels.size();
@@ -808,7 +823,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
     try {
         const auto& state = *stream->state;
         std::unique_lock lock{state.callback->mutex};
-        const auto terminal = [&state] { return state.callback->lifecycle == Lifecycle::Stopped ||
+        /* Identical terminal semantics to the legacy Receive: Stopping is a
+         * logical stop and must not wait for deferred physical teardown. */
+        const auto terminal = [&state] { return state.callback->lifecycle == Lifecycle::Stopping ||
+            state.callback->lifecycle == Lifecycle::Stopped ||
             state.callback->lifecycle == Lifecycle::Failed; };
         if (state.callback->queue.empty() && !terminal()) {
             (void)state.callback->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms}, [&] {
@@ -816,7 +834,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
         }
         if (state.callback->queue.empty()) {
             if (state.callback->lifecycle == Lifecycle::Failed) return AMS_MEL_PROVIDER_FAILED;
-            return state.callback->lifecycle == Lifecycle::Stopped ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
+            return terminal() ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
         auto owner = std::make_unique<ams_mel_ir_frame_snapshot>();
         owner->frame = std::move(state.callback->queue.front());

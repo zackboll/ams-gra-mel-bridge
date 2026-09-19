@@ -477,7 +477,14 @@ static int test_blocked_receive_provider_failure(void)
     (void)nanosleep(&delay, NULL);
     CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(thrd_join(receiver, NULL) == thrd_success);
-    CHECK(args.status == AMS_MEL_PROVIDER_FAILED);
+    /* Stop logically stops the stream before the in-flight callback's release
+       failure poisons it, and a logical stop is terminal for Receive. The
+       blocked receiver therefore unblocks immediately with STREAM_STOPPED,
+       or with PROVIDER_FAILED if it is only scheduled after the failure is
+       recorded. It must never return TIMEOUT or a frame; the provider failure
+       itself is still reported by Stop and Close below. */
+    CHECK(args.status == AMS_MEL_STREAM_STOPPED ||
+          args.status == AMS_MEL_PROVIDER_FAILED);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(stream == NULL);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
