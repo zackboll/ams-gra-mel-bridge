@@ -1049,15 +1049,9 @@ pub struct AmsMelIrTrackMetadataEventV2 {
 /// patch. The mapping is row-major: `samples[row * 3 + column]` is
 /// `upstream[row][column]`. The element width stays upstream `i16`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrCandidateBackgroundV1 {
     pub samples: [i16; 9],
-}
-
-impl Default for AmsMelIrCandidateBackgroundV1 {
-    fn default() -> Self {
-        Self { samples: [0; 9] }
-    }
 }
 
 /// Complete `CandidateObjectPreProc`. Reuses the canonical row/column, XYZ, and
