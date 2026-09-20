@@ -12,6 +12,7 @@ with AMS.MEL.IR.Channel;
 with AMS.MEL.IR.Health_Status;
 with AMS.MEL.IR.Health_Status.Metadata;
 with AMS.MEL.IR.Instrumentation;
+with AMS.MEL.IR.Track;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -24,6 +25,7 @@ procedure AMS_MEL_Squall_IR is
    package Health renames AMS.MEL.IR.Health_Status;
    package Health_Metadata renames AMS.MEL.IR.Health_Status.Metadata;
    package Instrumentation renames AMS.MEL.IR.Instrumentation;
+   package Track renames AMS.MEL.IR.Track;
    package Status renames AMS.MEL.Status;
    use type AMS.MEL.IR.Counter;
    use type C2.MFA_Mode;
@@ -80,6 +82,8 @@ procedure AMS_MEL_Squall_IR is
       Health.Create_Config (Channel_ID, Platform_ID, Location);
    Instrumentation_Config : constant Instrumentation.Instrumentation_Config :=
       Instrumentation.Create_Config (Channel_ID, Platform_ID, Location);
+   Track_Config : constant Track.Track_Config :=
+      Track.Create_Config (Channel_ID, Platform_ID, Location);
 
    function Checksum (Pixels : AMS.MEL.IR.Pixel_Array) return Interfaces.Unsigned_64 is
       Value : Interfaces.Unsigned_64 := 16#1465_0FB0_739D_0383#;
@@ -212,6 +216,33 @@ begin
             end if;
             Ada.Text_IO.Put_Line
               ("Instrumentation: pinned Squall unsupported as expected "
+               & "(Provider_Error: attachChannel returned null)");
+      end;
+
+      --  Task 029B3: pinned Squall likewise does NOT support the
+      --  conditionally required Track channel through this bridge's
+      --  Control::attachChannel path; the default branch returns nullptr and
+      --  the exported createTrackChannel also returns nullptr. This proves the
+      --  Track binding fails cleanly against that unsupported provider profile
+      --  on the already-open Session. It is NOT positive Track execution or
+      --  IRSTTrackReport evidence.
+      begin
+         declare
+            Rejected : Track.Track_Channel := Track.Open (Parent, Track_Config);
+         begin
+            Track.Close (Rejected);
+            raise Program_Error with
+              "pinned Squall unexpectedly attached a Track channel";
+         end;
+      exception
+         when Error : AMS.MEL.Provider_Error =>
+            if Ada.Exceptions.Exception_Message (Error) /= "attachChannel returned null" then
+               raise Program_Error with
+                 "unexpected Squall Track failure: "
+                 & Ada.Exceptions.Exception_Message (Error);
+            end if;
+            Ada.Text_IO.Put_Line
+              ("Track: pinned Squall unsupported as expected "
                & "(Provider_Error: attachChannel returned null)");
       end;
 

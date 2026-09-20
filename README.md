@@ -52,9 +52,11 @@ themselves.
 > `IRST_Track_Report`. Upstream `IrstTrackState` is exactly
 > Idle/Detected/Coast/Dropped and `IrstTrackMode` exactly Idle/Scan/Stare, with
 > no invented MaxExclusive value; registration is one-shot because upstream has
-> no unregister. Positive Track report behavior is mock-validated, including a
-> report emitted synchronously from inside registration; no real Squall Track
-> validation exists yet. `TrackDataUpdate`, `SystemTrackDataResponse`,
+> no unregister. Positive Track behavior and complete `IRSTTrackReport` payload
+> fidelity are mock-validated, including a report emitted synchronously from
+> inside registration. Pinned Squall does not attach this channel at all, so it
+> validates clean unsupported-provider behavior only and provides no positive
+> Track execution or Track-report evidence. `TrackDataUpdate`, `SystemTrackDataResponse`,
 > `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
 > `RequestSystemTrackData` are not implemented. The raw Rust sys crate and private
 > Python ctypes layer track the complete current 82-function C ABI. Safe Rust and
