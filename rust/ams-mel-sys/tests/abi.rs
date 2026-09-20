@@ -1121,12 +1121,7 @@ fn declarations_match_the_c_header() {
         state,
         mode
     );
-    layout!(
-        expected,
-        AmsMelIrTrackMetadataEventV1,
-        kind,
-        track_report
-    );
+    layout!(expected, AmsMelIrTrackMetadataEventV1, kind, track_report);
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,
