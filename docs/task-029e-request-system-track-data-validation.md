@@ -141,12 +141,35 @@ drops.
 
 The adapter registers the required `IRSTTrackReport` callback first. If that
 fails, the metadata open fails as before. It then registers the `@Optional`
-`RequestSystemTrackData` callback. Because upstream documents
-`Return::NotSupported` as the answer from a provider that does not implement an
-optional callback -- and pinned Squall is exactly such a provider -- a
-non-`Success` result here is deliberately **not** fatal: the open still
-succeeds, the required report callback keeps working, and only reception of the
-optional kind is lost. Both registrations happen without `TrackState::mutex`
+`RequestSystemTrackData` callback. Upstream documents three distinct answers to
+that registration, and they are deliberately **not** treated as equivalent:
+
+| `Return` | Upstream meaning | Adapter behavior |
+| --- | --- | --- |
+| `Success` | Registration succeeded | Optional kind is active |
+| `NotSupported` | Optional callback is not implemented | **Non-fatal**; open succeeds |
+| `Fail` | A callback is already registered for this datatype on this channel | **Fails closed**, `AMS_MEL_PROVIDER_FAILED` |
+| anything else | Undocumented for this call | **Fails closed** |
+
+`NotSupported` is non-fatal because the callback is `@Optional` and pinned
+Squall is exactly such a provider: the open still succeeds, the required report
+callback keeps working, and only reception of the optional kind is lost.
+
+`Fail` is **not** an optional refusal. Upstream defines it as "a callback is
+already registered for this datatype on this channel", meaning another
+subscriber owns the datatype and the bridge's closure may never be invoked.
+Returning `AMS_MEL_OK` there would promise deliveries the bridge cannot make, so
+the open fails closed, no public metadata owner escapes, and the one-shot
+registration rule stays established. The already-registered `@RequiredIfTrack`
+callback and its retained state remain live until Track teardown because
+upstream provides no unregister operation. Any other value -- `BadPointer`,
+`NotImplemented`, or one added by a future upstream revision -- fails closed for
+the same reason rather than silently claiming success.
+
+A registration that throws preserves the existing provider-exception behavior
+and reports `AMS_MEL_PROVIDER_EXCEPTION`.
+
+Both registrations happen without `TrackState::mutex`
 held, because the provider may deliver synchronously from inside
 `registerMetadataCallback`.
 

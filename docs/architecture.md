@@ -578,13 +578,17 @@ in signed nanoseconds, copies every range, rate, error, and angle verbatim, and
 accepts only 0 or 1 for each of the two published bool values. The provider send
 again occurs outside the Track mutex, and a mock scenario emits a reentrant
 `IRSTTrackReport` from inside `send(SystemTrackDataResponse)` to prove it.
-`AMS.MEL.IR.Track.System_Data` is the safe Ada home and the natural future home
-for the `RequestSystemTrackData` callback, which is deliberately not implemented
-now. ABI 0.1 grows from 85 to 88 exports and native CTest from 13 to 14 targets.
+`AMS.MEL.IR.Track.System_Data` is the safe Ada home for the outbound response.
+Task 029D predicted it would also host `RequestSystemTrackData`; Task 029E
+superseded that prediction by inspecting the pinned `TrackChannel`, which
+declares `RequestSystemTrackData` only as a `registerMetadataCallback` overload,
+so its implemented Ada home is `AMS.MEL.IR.Track.Metadata`. ABI 0.1 grows from
+85 to 88 exports and native CTest from 13 to 14 targets.
 Raw Rust and private Python track all 88 exports; no safe Rust or public Python
-Track API is added. The `RequestSystemTrackData`, `CandidateObjectMessage`, and
-`CandidateObjectPreProcMessage` callbacks remain unimplemented and the Track API
-as a whole is not complete. Pinned Squall still cannot attach Track, so positive
+Track API is added. As of Task 029D the `RequestSystemTrackData`,
+`CandidateObjectMessage`, and `CandidateObjectPreProcMessage` callbacks remained
+unimplemented and the Track API as a whole is not complete. Pinned Squall still
+cannot attach Track, so positive
 `SystemTrackDataResponse` behavior and payload fidelity are mock-provider
 evidence only.
 
@@ -603,9 +607,15 @@ published fields are copied verbatim, with the signed
 `std::chrono::nanoseconds` time carried as `int64_t` nanoseconds and no unit
 conversion. Upstream declares no enum and no constrained field for this type, so
 an all-zero request is well formed and only a null payload is malformed. Because
-the callback is `@Optional`, a `NotSupported` or `Fail` answer to this
-registration does not fail the metadata open and leaves the `@RequiredIfTrack`
-report callback fully working. The export count is unchanged at exactly 88
+the callback is `@Optional`, a `NotSupported` answer to this registration does
+not fail the metadata open and leaves the `@RequiredIfTrack` report callback
+fully working. `Fail` is treated differently, because upstream defines it as "a
+callback is already registered for this datatype on this channel": that is a
+genuine conflict in which another subscriber owns the datatype and the bridge's
+closure may never be invoked, so returning success would promise deliveries the
+bridge cannot make. `Fail`, and any other unrecognized non-`Success` value,
+therefore fails the open closed with `AMS_MEL_PROVIDER_FAILED`, releases no
+public owner, and leaves the one-shot rule established. The export count is unchanged at exactly 88
 because no new C function was required; native CTest grows from 14 to 15.
 `AMS.MEL.IR.Track.Metadata.Receive_Event` is the safe Ada home; the existing
 report-only `Receive` is retained for current callers. `CandidateObjectMessage`

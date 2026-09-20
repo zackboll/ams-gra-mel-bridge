@@ -864,7 +864,8 @@ typedef struct ams_mel_ir_track_report_v1 {
 } ams_mel_ir_track_report_v1;
 
 /* Upstream RequestSystemTrackData (@Optional) is an inbound request the MFA
- * sends to the MFA through onMetadata: the published TrackChannel declares it
+ * sends to request track information from the MFP through onMetadata: the
+ * published TrackChannel declares it
  * only as a registerMetadataCallback overload and declares no
  * send(RequestSystemTrackData) overload, so it is delivered here rather than
  * through a request/wait handle. Every field is copied verbatim from the
@@ -1844,11 +1845,13 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_close(
 
 /* Conditionally required Track channel (@RequiredIfTrack). This release
  * implements the ownership/lifecycle foundation (Open, Enable,
- * ChannelCapability, Close) plus exactly the @RequiredIfTrack IRSTTrackReport
- * metadata callback plus the @RequiredIfTrackUpdate TrackDataUpdate send.
- * SystemTrackDataResponse, CandidateObjectMessage,
- * CandidateObjectPreProcMessage, and RequestSystemTrackData are deliberately
- * not implemented here.
+ * ChannelCapability, Close) plus the @RequiredIfTrack IRSTTrackReport metadata
+ * callback, the @RequiredIfTrackUpdate TrackDataUpdate send, the @Optional
+ * SystemTrackDataResponse send, and the @Optional inbound
+ * RequestSystemTrackData metadata callback, which shares the one bounded Track
+ * metadata queue with IRSTTrackReport. CandidateObjectMessage and
+ * CandidateObjectPreProcMessage are deliberately not implemented here, so the
+ * Track API as a whole is not complete.
  *
  * Open attaches the upstream channel with ChannelType::IRSTTrack, requires the
  * concrete TrackChannel type, and requires that the reported ChannelCapability

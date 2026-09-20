@@ -963,20 +963,50 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
             return AMS_MEL_PROVIDER_FAILED;
         }
         /* The @Optional RequestSystemTrackData request shares the same queue.
-         * Upstream defines Return::NotSupported as the documented answer from a
-         * provider that does not implement this optional callback, and pinned
-         * Squall is exactly such a provider, so a non-Success result here is
-         * never fatal: the @RequiredIfTrack report callback is already live and
-         * must keep working. Only the reception of this optional kind is lost.
          * The registration again happens without TrackState::mutex held because
-         * the provider may deliver synchronously from inside it. */
-        channel->registerMetadataCallback(
+         * the provider may deliver synchronously from inside it.
+         *
+         * Upstream documents three distinct answers, and they are NOT
+         * interchangeable:
+         *
+         *   Success      registration took; the optional kind is active.
+         *   NotSupported the provider does not implement this @Optional
+         *                callback. Non-fatal: pinned Squall is exactly such a
+         *                provider, the @RequiredIfTrack report callback is
+         *                already live and must keep working, and only the
+         *                reception of this optional kind is lost.
+         *   Fail         a callback is ALREADY REGISTERED for this datatype on
+         *                this channel. That is a genuine conflict, not an
+         *                optional refusal: some other subscriber owns this
+         *                datatype and our closure may never be invoked, so
+         *                silently returning OK would promise deliveries the
+         *                bridge cannot make.
+         *
+         * Anything else -- BadPointer, NotImplemented, or a value added by a
+         * future upstream revision -- is likewise not a documented refusal, so
+         * it fails closed rather than silently claiming success. */
+        const auto request_result = channel->registerMetadataCallback(
             std::function<void(irmel::Channel&,
                                const irmel::RequestSystemTrackData *const)>{
                 [state](irmel::Channel&,
                         const irmel::RequestSystemTrackData *value) noexcept {
                     metadata_callback(state, value);
                 }});
+        if (request_result != irmel::Return::Success &&
+            request_result != irmel::Return::NotSupported) {
+            /* Fail closed. No public owner escapes; `owner` is still the
+             * unique_ptr and is destroyed on this path. The already-registered
+             * @RequiredIfTrack callback and its retained state stay live until
+             * Track teardown because upstream provides no unregister
+             * operation, and the one-shot rule stays established so a retry
+             * cannot double-register. */
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            state->ready.notify_all();
+            diagnostic("RequestSystemTrackData callback registration failed",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
         *output = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {

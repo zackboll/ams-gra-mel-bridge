@@ -770,13 +770,26 @@ Both implemented kinds share one queue, one capacity, and one counter set, and
 preserve strict FIFO order across kinds. The DROP-INCOMING policy is unchanged
 and applies identically to the optional kind.
 
-Because the callback is `@Optional`, a non-`Success` result from this
-registration is **not** fatal. Upstream documents `Return::NotSupported` as the
-answer from a provider that does not implement it, and pinned Squall is exactly
-such a provider. The adapter registers the required `IRSTTrackReport` callback
-first; if that succeeds the metadata open succeeds, and a refusal of the
-optional registration only means this kind is never delivered. The required
-callback keeps working. As with the report callback, the optional registration
+Upstream documents three distinct answers to this registration and the adapter
+does **not** treat them identically:
+
+| `Return` | Meaning | Adapter behavior |
+| --- | --- | --- |
+| `Success` | Registration took | Optional kind is active |
+| `NotSupported` | Provider does not implement this `@Optional` callback | **Non-fatal.** Open succeeds; only this kind is never delivered |
+| `Fail` | A callback is **already registered** for this datatype on this channel | **Fails closed** with `AMS_MEL_PROVIDER_FAILED` |
+| anything else | `BadPointer`, `NotImplemented`, or a future value | **Fails closed** rather than silently claiming success |
+
+Because the callback is `@Optional`, a `NotSupported` refusal is not fatal:
+pinned Squall is exactly such a provider, the required `IRSTTrackReport`
+callback is registered first and is already live, and losing this kind is the
+documented consequence. `Fail` is different in kind -- it means another
+subscriber already owns this datatype, so the bridge's closure may never be
+invoked and reporting `AMS_MEL_OK` would promise deliveries the bridge cannot
+make. On that path no public metadata owner escapes, the already-registered
+required callback and its retained state remain live until Track teardown
+because upstream provides no unregister operation, and the one-shot
+registration rule stays established so a retry cannot double-register. As with the report callback, the optional registration
 is performed without `TrackState::mutex` held, because the provider may deliver
 synchronously from inside `registerMetadataCallback`.
 

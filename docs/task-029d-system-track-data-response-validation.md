@@ -214,6 +214,15 @@ into Ada-owned storage during `Wait`, so no C pointer escapes that call.
 This package is the natural future home for the `RequestSystemTrackData`
 callback, but that callback is deliberately NOT implemented here.
 
+> **Superseded by Task 029E:** inspection of the pinned `TrackChannel` showed
+> `RequestSystemTrackData` is an inbound metadata callback -- it is declared
+> only as a `registerMetadataCallback` overload, with no `send()` overload --
+> so its implemented Ada home is `AMS.MEL.IR.Track.Metadata` rather than
+> `System_Data`. The prediction above records what Task 029D believed at the
+> time and is left unmodified; see
+> `docs/task-029e-request-system-track-data-validation.md` for the
+> authoritative explanation.
+
 The private FFI uses `Interfaces.Integer_64`, `Interfaces.Unsigned_32`,
 `Interfaces.Unsigned_8`, and `Interfaces.C.double`, and reuses `C.Az_El_V1` and
 `C.IR_Command_Status_V1`. No C `double` is modeled directly as `Long_Float`

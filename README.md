@@ -37,8 +37,9 @@ themselves.
 > C and Ada also implement the conditionally required Instrumentation channel
 > (`AMS.MEL.IR.Instrumentation` and its `Metadata` child): `Open`, `Enable`,
 > `Capabilities`, `Submit`/`Wait`/`Close` for
-> `send(InstrumentationLevelCmd)`, and bounded DROP-INCOMING polling of the
-> `InstrumentationReport` callback. Upstream `Priority` is exactly
+> `send(InstrumentationLevelCmd)`, and a bounded DROP-INCOMING queue for the
+> `InstrumentationReport` callback with a blocking receive/wait, where timeout
+> zero is the nonblocking poll case. Upstream `Priority` is exactly
 > Normal/Debug, and one canonical report type carries both the future result
 > and metadata events. Positive Instrumentation behavior is mock-validated;
 > pinned Squall does not support this channel and is validated only for clean
@@ -47,8 +48,9 @@ themselves.
 > deliberately not cloned.
 > C and Ada further implement the conditionally required Track channel's
 > `@RequiredIfTrack` core (`AMS.MEL.IR.Track` and its `Metadata` child):
-> `Open`, `Enable`, `Capabilities`, `Close`, and bounded DROP-INCOMING polling
-> of the `IRSTTrackReport` callback returning a complete owned
+> `Open`, `Enable`, `Capabilities`, `Close`, and a bounded DROP-INCOMING queue
+> for the `IRSTTrackReport` callback with a blocking receive/wait (timeout zero
+> is the nonblocking poll case), returning a complete owned
 > `IRST_Track_Report`. Upstream `IrstTrackState` is exactly
 > Idle/Detected/Coast/Dropped and `IrstTrackMode` exactly Idle/Scan/Stare, with
 > no invented MaxExclusive value; registration is one-shot because upstream has
@@ -74,9 +76,26 @@ themselves.
 > domain, so a pending update and a pending response together keep the provider
 > graph alive until both complete. Positive `SystemTrackDataResponse` behavior and
 > payload fidelity are likewise mock-validated only; pinned Squall provides no
-> positive `SystemTrackDataResponse` evidence. The `RequestSystemTrackData`,
-> `CandidateObjectMessage`, and `CandidateObjectPreProcMessage` callbacks are not
-> implemented, and the entire Track API is not complete. The raw Rust sys crate
+> positive `SystemTrackDataResponse` evidence. The optional
+> `RequestSystemTrackData` is complete as an inbound metadata callback: upstream
+> declares no `send()` overload for it, so it is delivered through
+> `registerMetadataCallback` and shares the one bounded Track metadata queue
+> with `IRSTTrackReport` rather than being a `RequestFor<T>` operation. A
+> `Return::NotSupported` refusal of that optional registration is non-fatal,
+> whereas `Return::Fail` means the datatype is already registered on the channel
+> and fails the open closed. The current Track status is therefore:
+>
+> ```text
+> @RequiredIfTrack core                     complete
+> @RequiredIfTrackUpdate TrackDataUpdate    complete
+> SystemTrackDataResponse                   complete
+> RequestSystemTrackData                    complete
+> CandidateObjectMessage                    unimplemented
+> CandidateObjectPreProcMessage             unimplemented
+> Track API overall                         incomplete
+> ```
+>
+> The raw Rust sys crate
 > and private Python ctypes layer track the complete current 88-function C ABI.
 > Safe Rust and
 > Python remain intentionally constrained to

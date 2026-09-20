@@ -244,12 +244,12 @@ static int test_mixed_kinds(void)
     return EXIT_SUCCESS;
 }
 
-/* The @Optional request callback is allowed to be refused. Upstream documents
- * Return::NotSupported as the answer from a provider that does not implement
- * it, and pinned Squall is exactly such a provider. A refusal must NOT fail the
- * metadata open and must NOT disturb the @RequiredIfTrack report callback,
- * which stays fully functional. Fail and NotSupported are checked separately. */
-static int optional_refusal_scenario(const char *scenario)
+/* Return::NotSupported is the documented answer from a provider that does not
+ * implement this @Optional callback, and pinned Squall is exactly such a
+ * provider. It must NOT fail the metadata open and must NOT disturb the
+ * @RequiredIfTrack report callback, which stays fully functional. Only the
+ * reception of the optional request kind is lost. */
+static int optional_not_supported_scenario(const char *scenario)
 {
     ams_mel_session *session = NULL;
     ams_mel_ir_track *track = NULL;
@@ -276,13 +276,37 @@ static int optional_refusal_scenario(const char *scenario)
     return EXIT_SUCCESS;
 }
 
-static int test_optional_refusals(void)
+static int test_optional_not_supported(void)
 {
-    /* The documented unsupported-provider answer. */
-    CHECK(optional_refusal_scenario("track-request-register-not-supported") ==
+    /* The documented unsupported-provider answer is non-fatal. */
+    CHECK(optional_not_supported_scenario("track-request-register-not-supported") ==
           EXIT_SUCCESS);
-    /* An outright failure is equally non-fatal for the optional kind. */
-    CHECK(optional_refusal_scenario("track-request-register-fail") == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* Return::Fail is NOT an optional refusal. Upstream defines it as "a callback
+ * is already registered for this datatype on this channel", which means some
+ * other subscriber owns the datatype and our closure may never be invoked.
+ * Returning OK there would promise deliveries the bridge cannot make, so the
+ * open fails closed and no public owner escapes. */
+static int test_optional_registration_fail_is_fatal(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    CHECK(open_track("track-request-register-fail", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_PROVIDER_FAILED);
+    /* No public metadata owner escapes on the failing path. */
+    CHECK(metadata == NULL);
+    /* Registration remains one-shot: upstream has no unregister, so the
+     * already-registered required callback cannot be re-registered. */
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_INVALID_ARGUMENT);
+    CHECK(metadata == NULL);
+    /* Track and session teardown stays safe after the failed open. */
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
     return EXIT_SUCCESS;
 }
 
@@ -442,7 +466,8 @@ int main(void)
     CHECK(test_null_request() == EXIT_SUCCESS);
     CHECK(test_overflow_fifo() == EXIT_SUCCESS);
     CHECK(test_mixed_kinds() == EXIT_SUCCESS);
-    CHECK(test_optional_refusals() == EXIT_SUCCESS);
+    CHECK(test_optional_not_supported() == EXIT_SUCCESS);
+    CHECK(test_optional_registration_fail_is_fatal() == EXIT_SUCCESS);
     CHECK(test_optional_registration_throw() == EXIT_SUCCESS);
     CHECK(test_close_drains_then_stops() == EXIT_SUCCESS);
     CHECK(test_invalid_arguments() == EXIT_SUCCESS);

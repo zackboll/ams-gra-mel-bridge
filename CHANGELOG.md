@@ -15,9 +15,14 @@
   `systemTime` is `std::chrono::nanoseconds`, whose representation is signed, so
   it is carried as `int64_t` with no unit conversion. Upstream declares no enum
   and no constrained field, so only a null payload is malformed. Because the
-  callback is `@Optional`, a provider that answers `Return::NotSupported` or
-  `Return::Fail` to this registration does not fail the metadata open and does
-  not disturb the `@RequiredIfTrack` `IRSTTrackReport` callback. The export count
+  callback is `@Optional`, a provider that answers `Return::NotSupported` to this
+  registration does not fail the metadata open and does not disturb the
+  `@RequiredIfTrack` `IRSTTrackReport` callback. `Return::NotSupported` and
+  `Return::Fail` are **not** treated as equivalent: upstream defines `Fail` as
+  "a callback is already registered for this datatype on this channel", which is
+  a genuine conflict rather than an optional refusal, so it -- and any other
+  unrecognized non-`Success` value -- fails the open closed with
+  `AMS_MEL_PROVIDER_FAILED` and lets no public metadata owner escape. The export count
   is unchanged at exactly 88 because no new C function was required; the
   `ams_mel_ir_track_metadata_event_v1` layout gains a discriminated
   `request_system_track_data` member and a second kind constant. Native CTest
@@ -89,9 +94,10 @@
   `Response_Request`/`Response_Result`. Its package-local `Command_State` and
   `Cannot_Comply` carry explicit representation clauses with `Size => 32`, and
   the Ada test proves `'Enum_Rep = 'Pos` for every literal of both types from
-  the first commit. The package is the natural future home for the
-  `RequestSystemTrackData` callback, which is deliberately not implemented.
-  Positive `SystemTrackDataResponse` behavior and payload fidelity are
+  the first commit. `RequestSystemTrackData` is deliberately not implemented in
+  this entry; Task 029E later established that it is an inbound metadata
+  callback whose implemented Ada home is `AMS.MEL.IR.Track.Metadata`, not this
+  package. Positive `SystemTrackDataResponse` behavior and payload fidelity are
   mock-validated only; pinned Squall still cannot attach a Track channel and
   therefore provides no positive `SystemTrackDataResponse` evidence.
 - Implement exactly the conditionally required IR Track
