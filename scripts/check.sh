@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+sh "$root/native/scripts/test-build-tree-isolation.sh"
 sh "$root/native/scripts/test.sh"
 sh "$root/scripts/format_ada.sh" check
 sh "$root/scripts/test_ada.sh"

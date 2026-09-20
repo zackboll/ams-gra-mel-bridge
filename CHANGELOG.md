@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+- Isolate the native production and contract-test CMake build trees. Every
+  native script previously shared `native/build`, and
+  `native/scripts/configure-build.sh` silently reconfigured that one tree
+  between `AMS_MEL_BUILD_TESTS=ON` and `OFF`. Those modes are not
+  interchangeable: the test configuration compiles
+  `AMS_MEL_ENABLE_TEST_FAILPOINTS` into `ams_mel_c` and adds the mock providers
+  and CTest targets. Running `native/scripts/build.sh` during or after test work
+  therefore rebuilt the facade underneath CTest and stress runs and removed the
+  deterministic test barriers, which is how an infrastructure change was
+  mistaken for a product failure during the Image navigation teardown
+  corrective task. The inverse was also possible: a production build could
+  silently become a failpoint-enabled facade.
+
+  The production facade now builds in `native/build` and the contract-test
+  facade, providers, and tests build in `native/build-tests`.
+  `configure-build.sh` takes `production` or `tests` instead of `ON`/`OFF`,
+  derives the directory from the mode through the new shared
+  `native/scripts/build-tree.sh` helper, and resets only the selected tree, so
+  neither workflow can delete or reconfigure the other's tree. The Task 023
+  `LD_RUN_PATH`, compiler-change, and pre-hardening-cache hardening is unchanged
+  and now applies independently to both trees.
+
+  The Ada binding keeps linking the production facade, and an ordinary Ada build
+  both links and runs it. The Ada contract suite, however, exercises the
+  test-only failpoints, so it links the production facade but runs against the
+  contract-test facade: `ada/tests/ams_mel_tests.gpr` now links with
+  `-Wl,--enable-new-dtags` so the smoke executable carries `DT_RUNPATH`, which
+  `LD_LIBRARY_PATH` overrides, and `scripts/test_ada.sh` and
+  `ada/tests/alire.toml` point it at `native/build-tests/lib`. Mock providers
+  resolve from `AMS_MEL_TEST_PROVIDER_DIR` with a repository-relative fallback
+  to `native/build-tests/test-providers`. `make test-rust`, `make test-python`,
+  and the matching CI jobs point explicitly at the test tree, while the Rust
+  build-script native-library default stays on the production facade so
+  downstream builds never implicitly depend on a test-enabled library.
+  Real-Squall integration deliberately remains a production-tree build.
+
+  `native/scripts/test-build-tree-isolation.sh` (`make test-build-isolation`,
+  also run by `make check` and a dedicated CI job) is a new regression guard
+  proving the test tree survives `build.sh` byte-identically and still passes
+  15/15 without rebuilding, the production tree survives `test.sh`, the
+  failpoint definition is present only in the test tree, and both trees coexist
+  in opposite modes. No C ABI, export set, ABI version, provider behavior, or
+  vendored file changed.
+
 - Correct an Image `NavigationReport` completion-vs-`Close` teardown race
   introduced with Task 027B. The asynchronous Navigation completion worker
   could perform deferred physical teardown — reading and resetting the
