@@ -97,8 +97,11 @@ package AMS.MEL.IR.Track.Updates is
    type Command_State is (Not_Set, Received, Accepted, Rejected, Cancelled);
    for Command_State use
      (Not_Set => 0, Received => 1, Accepted => 2, Rejected => 3, Cancelled => 4);
+   for Command_State'Size use 32;
 
    --  Upstream CannotComply, with the published numeric representations.
+   --  Every literal is pinned explicitly rather than left to declaration
+   --  order, so the mapping matches AMS.MEL.IR.C2.Metadata exactly.
    type Cannot_Comply is
      (Not_Set,
       Constraint_Attempts,
@@ -147,6 +150,55 @@ package AMS.MEL.IR.Track.Updates is
       Unknown,
       Aborted,
       Alignment_Maneuver);
+   for Cannot_Comply use
+     (Not_Set                   => 0,
+      Constraint_Attempts       => 1,
+      Constraint_Endurance      => 2,
+      Constraint_Classification => 3,
+      Constraint_For_FOV_Limit  => 4,
+      Constraint_Gating         => 5,
+      Constraint_Maneuver_Limit => 6,
+      Constraint_Op             => 7,
+      Constraint_Occlusion      => 8,
+      Capability_Range          => 9,
+      Capability_Performance    => 10,
+      Constraint_RF             => 11,
+      Constraint_Route          => 12,
+      Constraint_Safety         => 13,
+      Constraint_Target_Angle   => 14,
+      Constraint_Time           => 15,
+      Constraint_System         => 16,
+      Infeasible_Route          => 17,
+      Mission_Event             => 18,
+      State_Or_Settings         => 19,
+      State_Or_Settings_Change  => 20,
+      System_Unavailable        => 21,
+      System_Fault              => 22,
+      System_Conflict           => 23,
+      Subsystem_Unavailable     => 24,
+      Subsystem_Fault           => 25,
+      Capability_Fault          => 26,
+      Capability_Precedence     => 27,
+      Capability_Unavailable    => 28,
+      Insufficient_Resources    => 29,
+      Ranking                   => 30,
+      Weather                   => 31,
+      Ineligible_Control_Source => 32,
+      Dependency_Predecessor    => 33,
+      Dependency_All_Or_Nothing => 34,
+      Dependency_Either_Or      => 35,
+      Init_Criteria_Not_Met     => 36,
+      Unknown_ID                => 37,
+      Invalid_Input_Parameter   => 38,
+      Input_Other               => 39,
+      MDF_Activation_Error      => 40,
+      Multiple                  => 41,
+      Cancelled                 => 42,
+      Other                     => 43,
+      Unknown                   => 44,
+      Aborted                   => 45,
+      Alignment_Maneuver        => 46);
+   for Cannot_Comply'Size use 32;
 
    --  Ada-owned CommandStatus. Reason_Description is copied into Ada-owned
    --  storage during Wait, so no C pointer escapes that call.

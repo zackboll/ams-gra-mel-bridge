@@ -356,8 +356,36 @@ package body AMS_MEL_IR_Track_Update_Tests is
       end;
    end Test_Parent_First_Close;
 
+   --  Both published mappings are contiguous from zero, so proving
+   --  'Enum_Rep = 'Pos for every literal locks the whole representation, not
+   --  merely the one reason value the provider scenarios happen to use. The
+   --  explicit 32-bit size is checked alongside it.
+   procedure Test_Enum_Representations is
+   begin
+      for State in Upd.Command_State loop
+         if Upd.Command_State'Enum_Rep (State) /= Upd.Command_State'Pos (State) then
+            raise Program_Error
+              with
+                "Ada Track update Command_State representation mismatch for "
+                & Upd.Command_State'Image (State);
+         end if;
+      end loop;
+      for Reason in Upd.Cannot_Comply loop
+         if Upd.Cannot_Comply'Enum_Rep (Reason) /= Upd.Cannot_Comply'Pos (Reason) then
+            raise Program_Error
+              with
+                "Ada Track update Cannot_Comply representation mismatch for "
+                & Upd.Cannot_Comply'Image (Reason);
+         end if;
+      end loop;
+      if Upd.Command_State'Size /= 32 or else Upd.Cannot_Comply'Size /= 32 then
+         raise Program_Error with "Ada Track update enum size is not 32 bits";
+      end if;
+   end Test_Enum_Representations;
+
    procedure Run (Provider_Path : String) is
    begin
+      Test_Enum_Representations;
       Test_Rich_Submit (Provider_Path);
       Test_Submit_Before_Enable (Provider_Path);
       Test_Status_Rejected_Is_Success (Provider_Path);
