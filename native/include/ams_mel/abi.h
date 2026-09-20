@@ -79,15 +79,20 @@ typedef struct ams_mel_ir_instrumentation_metadata_event
     ams_mel_ir_instrumentation_metadata_event;
 /* Conditionally required Track channel (@RequiredIfTrack) owner. This release
  * implements channel ownership/lifecycle (Open, Enable, ChannelCapability,
- * Close) plus exactly the @RequiredIfTrack IRSTTrackReport metadata callback.
- * No Track request owner exists: TrackDataUpdate and SystemTrackDataResponse
- * sends are not implemented. */
+ * Close) plus exactly the @RequiredIfTrack IRSTTrackReport metadata callback
+ * and the @RequiredIfTrackUpdate TrackDataUpdate send. SystemTrackDataResponse
+ * is not implemented. */
 typedef struct ams_mel_ir_track ams_mel_ir_track;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
 typedef struct ams_mel_ir_track_metadata ams_mel_ir_track_metadata;
 typedef struct ams_mel_ir_track_metadata_event ams_mel_ir_track_metadata_event;
+/* Owns one asynchronous TrackChannel::send(TrackDataUpdate)
+ * (@RequiredIfTrackUpdate) outcome. It owns a shared terminal completion state
+ * and never a raw ams_mel_ir_track pointer, so it remains valid independently
+ * of the public Track and Session owners. */
+typedef struct ams_mel_ir_track_update_request ams_mel_ir_track_update_request;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -862,6 +867,110 @@ typedef struct ams_mel_ir_track_metadata_event_v1 {
     ams_mel_ir_track_report_v1 track_report;
 } ams_mel_ir_track_metadata_event_v1;
 
+/* The one canonical IR XYZ representation, shared by FrameHeader sensor/nav
+ * state and by the TrackDataUpdate ECEF position/velocity. No second XYZ
+ * representation exists in this ABI. */
+typedef struct ams_mel_ir_directional_v1 { double x, y, z; } ams_mel_ir_directional_v1;
+
+/* Upstream TrackStatus (@RequiredIfTrackUpdate) defines exactly Create = 0,
+ * Update = 1, Predict = 2, and Delete = 3 and declares no MaxExclusive value.
+ * Input values greater than Delete are AMS_MEL_INVALID_ARGUMENT. */
+typedef uint32_t ams_mel_ir_track_status_t;
+#define AMS_MEL_IR_TRACK_STATUS_CREATE  UINT32_C(0)
+#define AMS_MEL_IR_TRACK_STATUS_UPDATE  UINT32_C(1)
+#define AMS_MEL_IR_TRACK_STATUS_PREDICT UINT32_C(2)
+#define AMS_MEL_IR_TRACK_STATUS_DELETE  UINT32_C(3)
+
+/* Every published TrackDataUpdate covariance term, exactly 21 doubles. Each
+ * upstream setter maps to exactly one field here; no value is clamped,
+ * normalized, or reordered. */
+typedef struct ams_mel_ir_track_covariance_v1 {
+    double xx;
+    double xy;
+    double xz;
+    double x_vx;
+    double x_vy;
+    double x_vz;
+
+    double yy;
+    double yz;
+    double y_vx;
+    double y_vy;
+    double y_vz;
+
+    double zz;
+    double z_vx;
+    double z_vy;
+    double z_vz;
+
+    double vx_vx;
+    double vx_vy;
+    double vx_vz;
+
+    double vy_vy;
+    double vy_vz;
+
+    double vz_vz;
+} ams_mel_ir_track_covariance_v1;
+
+/* Complete TrackDataUpdate input. Every upstream setter is represented exactly
+ * once: setPlatformId, setCapabilityUUID, setActivityUUID, setTrackId,
+ * setEntityUUID, setTrackStatus, setTimeOfValidity, setTimeOfLastUpdate,
+ * setTrackPosition, setTrackVelocity, the 21 covariance setters,
+ * setManeuverProbability, and setTrackQuality.
+ *
+ * The two times stay in upstream epoch seconds; they are deliberately NOT
+ * converted to nanoseconds. maneuver_probability, track_quality, the covariance
+ * terms, and the position/velocity components are copied verbatim, because the
+ * upstream setters perform no validation, clamping, or normalization.
+ *
+ * The canonical ams_mel_ir_directional_v1 is reused for both ECEF vectors; no
+ * second XYZ representation exists. Every UCI_ID descriptive label is validated
+ * as UTF-8 without an embedded NUL and copied before Submit returns, so no
+ * borrowed application string outlives the submit call. */
+typedef struct ams_mel_ir_track_data_update_v1 {
+    uint32_t platform_id;
+
+    ams_mel_uci_id_v1 capability_uuid;
+    ams_mel_uci_id_v1 activity_uuid;
+
+    uint32_t track_id;
+
+    ams_mel_uci_id_v1 entity_uuid;
+
+    ams_mel_ir_track_status_t track_status;
+
+    double time_of_validity_seconds;
+    double time_of_last_update_seconds;
+
+    ams_mel_ir_directional_v1 track_position_ecef;
+    ams_mel_ir_directional_v1 track_velocity_ecef;
+
+    ams_mel_ir_track_covariance_v1 covariance;
+
+    double maneuver_probability;
+    double track_quality;
+} ams_mel_ir_track_data_update_v1;
+
+/* Terminal TrackDataUpdate outcome. Reuses the one generic
+ * ams_mel_ir_command_status_v1 layout.
+ *
+ * AMS_MEL_OK: status is valid and error_code is AMS_MEL_ERROR_NONE. A
+ * successful CommandStatus whose own state is AMS_MEL_IR_COMMAND_REJECTED is
+ * still AMS_MEL_OK: CommandStatus::Rejected is not an ErrorOr rejection.
+ * status.reason_description points into immutable request-owned cached storage
+ * that stays valid across repeated Wait calls until request_close, never into
+ * provider-owned memory.
+ *
+ * AMS_MEL_COMMAND_REJECTED: error_code is valid, status must be ignored, and
+ * the diagnostic carries the provider Error description.
+ *
+ * AMS_MEL_TIMEOUT: the request is still pending and this record is untouched. */
+typedef struct ams_mel_ir_track_update_result_v1 {
+    ams_mel_ir_command_status_v1 status;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_track_update_result_v1;
+
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
 } ams_mel_foreign_key_v1;
@@ -1021,7 +1130,6 @@ typedef struct ams_mel_ir_contributing_sensor_v1 {
     ams_mel_component_location_v1 location;
     uint32_t sensor_id;
 } ams_mel_ir_contributing_sensor_v1;
-typedef struct ams_mel_ir_directional_v1 { double x, y, z; } ams_mel_ir_directional_v1;
 typedef struct ams_mel_ir_quaternion_v1 { double x, y, z, w; } ams_mel_ir_quaternion_v1;
 typedef struct ams_mel_ir_nav_error_v1 { double x, y, z, w; } ams_mel_ir_nav_error_v1;
 typedef struct ams_mel_ir_uncertainty_v1 {
@@ -1655,9 +1763,10 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_close(
 /* Conditionally required Track channel (@RequiredIfTrack). This release
  * implements the ownership/lifecycle foundation (Open, Enable,
  * ChannelCapability, Close) plus exactly the @RequiredIfTrack IRSTTrackReport
- * metadata callback. TrackDataUpdate, SystemTrackDataResponse,
- * CandidateObjectMessage, CandidateObjectPreProcMessage, and
- * RequestSystemTrackData are deliberately not implemented here.
+ * metadata callback plus the @RequiredIfTrackUpdate TrackDataUpdate send.
+ * SystemTrackDataResponse, CandidateObjectMessage,
+ * CandidateObjectPreProcMessage, and RequestSystemTrackData are deliberately
+ * not implemented here.
  *
  * Open attaches the upstream channel with ChannelType::IRSTTrack, requires the
  * concrete TrackChannel type, and requires that the reported ChannelCapability
@@ -1682,15 +1791,22 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_get_capabilities(
     ams_mel_ir_track *track, ams_mel_ir_channel_capability **out_capability,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
-/* Marks any Track metadata inactive and wakes its receivers, disables when
- * enable was attempted, then detaches and destroys the provider channel. A
- * failed disable does not prove ownership safety, so detach is still attempted;
- * when that detach succeeds the caller owner is cleared and
- * AMS_MEL_PROVIDER_FAILED is returned. A failed detach leaves the caller owner
- * non-null, retains the complete callback/provider graph, marks the metadata
- * failed, and permits a later close retry. After a successful detach the
- * provider channel is destroyed first, then callback quiescence is awaited, and
- * only then does the metadata lifecycle become stopped. */
+/* Marks any Track metadata inactive and wakes its receivers immediately, then,
+ * with no pending update requests, disables when enable was attempted, detaches
+ * and destroys the provider channel. A failed disable does not prove ownership
+ * safety, so detach is still attempted; when that detach succeeds the caller
+ * owner is cleared and AMS_MEL_PROVIDER_FAILED is returned. A failed
+ * synchronous detach leaves the caller owner non-null, retains the complete
+ * callback/provider graph, marks the metadata failed, and permits a later close
+ * retry. After a successful detach the provider channel is destroyed first,
+ * then callback quiescence is awaited, and only then does the metadata
+ * lifecycle become stopped.
+ *
+ * With pending TrackDataUpdate requests, Close clears the public Track owner,
+ * returns AMS_MEL_OK, and defers physical provider teardown to final request
+ * completion; the request owns the Track state graph meanwhile. A deferred
+ * detach failure after the public owner is gone retains the complete graph
+ * permanently and makes that request's terminal result AMS_MEL_PROVIDER_FAILED. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_close(
     ams_mel_ir_track **track, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
@@ -1750,6 +1866,47 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_close(
     ams_mel_ir_track_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Conditionally required TrackChannel::send(TrackDataUpdate)
+ * (@RequiredIfTrackUpdate). This is a distinct upstream condition from
+ * @RequiredIfTrack itself.
+ *
+ * The complete update, including every borrowed UCI_ID descriptive label, is
+ * validated and copied before the provider send, so nothing borrowed from the
+ * application outlives this call. A track_status greater than
+ * AMS_MEL_IR_TRACK_STATUS_DELETE, an invalid label, or any null required
+ * pointer is AMS_MEL_INVALID_ARGUMENT.
+ *
+ * Submission requires the Track lifecycle to be Enabled; an attached, failed,
+ * or closed Track reports AMS_MEL_PROVIDER_FAILED.
+ *
+ * The Track lifecycle mutex is released before the provider send, because a
+ * provider is permitted to invoke the registered IRSTTrackReport metadata
+ * callback synchronously from inside send(). Everything needed to own the
+ * returned future is allocated before the send. The returned request remains
+ * valid independently of the public Track and Session owners. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_submit_update(
+    ams_mel_ir_track *track, const ams_mel_ir_track_data_update_v1 *update,
+    ams_mel_ir_track_update_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits finitely. A zero timeout polls. Timeout means only "not ready yet": it
+ * is never cancellation, request consumption, or provider interruption, and it
+ * leaves *out_result untouched. Exactly one adapter completion worker calls
+ * future::get(). A terminal result is cached permanently, so repeated Wait
+ * calls return the identical terminal result and may use a differently sized
+ * diagnostic buffer. Close must not race Wait on the same request handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_update_request_wait(
+    const ams_mel_ir_track_update_request *request, uint32_t timeout_ms,
+    ams_mel_ir_track_update_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Drops only the public request owner. Idempotent, nonblocking, and not
+ * cancellation: pending provider work, the future, the Track state, the
+ * provider channel, and the provider library all survive. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_update_request_close(
+    ams_mel_ir_track_update_request **request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus

@@ -4,6 +4,8 @@
 
 #include <irmel/library/track/IRSTTrackReport.h>
 #include <irmel/library/track/TrackChannel.h>
+#include <irmel/library/track/TrackDataUpdate.h>
+#include <irmel/library/track/TrackStatus.h>
 
 #include <algorithm>
 #include <array>
@@ -21,6 +23,8 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -79,6 +83,91 @@ mel::UCI_ID convert_id(const ams_mel_uci_id_v1& value)
 }
 
 void increment(std::uint64_t& value) noexcept { if (value != UINT64_MAX) ++value; }
+
+/* The nine published MEL ErrorCode values, mapped through the existing shared
+ * AMS_MEL_ERROR_* representation. Anything else is a malformed provider
+ * outcome. */
+ams_mel_error_code_t map_error(mel::ErrorCode code, bool& known) noexcept
+{
+    known = true;
+    switch (code) {
+    case mel::ErrorCode::None: return AMS_MEL_ERROR_NONE;
+    case mel::ErrorCode::InvalidId: return AMS_MEL_ERROR_INVALID_ID;
+    case mel::ErrorCode::InvalidState: return AMS_MEL_ERROR_INVALID_STATE;
+    case mel::ErrorCode::InvalidParameters: return AMS_MEL_ERROR_INVALID_PARAMETERS;
+    case mel::ErrorCode::InsufficientPermissions:
+        return AMS_MEL_ERROR_INSUFFICIENT_PERMISSIONS;
+    case mel::ErrorCode::InsufficientResources:
+        return AMS_MEL_ERROR_INSUFFICIENT_RESOURCES;
+    case mel::ErrorCode::InsufficientLocalResources:
+        return AMS_MEL_ERROR_INSUFFICIENT_LOCAL_RESOURCES;
+    case mel::ErrorCode::InsufficientRemoteResources:
+        return AMS_MEL_ERROR_INSUFFICIENT_REMOTE_RESOURCES;
+    case mel::ErrorCode::Unsupported: return AMS_MEL_ERROR_UNSUPPORTED;
+    }
+    known = false;
+    return AMS_MEL_ERROR_NONE;
+}
+
+/* Upstream TrackStatus is exactly Create=0, Update=1, Predict=2, Delete=3 and
+ * declares no MaxExclusive value, so anything above Delete is rejected. */
+bool convert_track_status(ams_mel_ir_track_status_t value,
+                          irmel::TrackStatus& status) noexcept
+{
+    if (value > AMS_MEL_IR_TRACK_STATUS_DELETE) return false;
+    status = static_cast<irmel::TrackStatus>(value);
+    return true;
+}
+
+mel::Directional convert_directional(const ams_mel_ir_directional_v1& value) noexcept
+{ return {value.x, value.y, value.z}; }
+
+/* Builds the complete upstream TrackDataUpdate through the published setters
+ * only; no provider object layout is assumed. Every required setter is called
+ * exactly once with the corresponding C field, including all 21 covariance
+ * terms. Times stay in epoch seconds and no value is clamped or normalized. */
+irmel::TrackDataUpdate build_update(const ams_mel_ir_track_data_update_v1& input,
+                                    irmel::TrackStatus status)
+{
+    irmel::TrackDataUpdate value;
+    value.setPlatformId(input.platform_id);
+    value.setCapabilityUUID(convert_id(input.capability_uuid));
+    value.setActivityUUID(convert_id(input.activity_uuid));
+    value.setTrackId(input.track_id);
+    value.setEntityUUID(convert_id(input.entity_uuid));
+    value.setTrackStatus(status);
+    value.setTimeOfValidity(input.time_of_validity_seconds);
+    value.setTimeOfLastUpdate(input.time_of_last_update_seconds);
+    value.setTrackPosition(convert_directional(input.track_position_ecef));
+    value.setTrackVelocity(convert_directional(input.track_velocity_ecef));
+
+    const ams_mel_ir_track_covariance_v1& c = input.covariance;
+    value.setTrackCovarianceXX(c.xx);
+    value.setTrackCovarianceXY(c.xy);
+    value.setTrackCovarianceXZ(c.xz);
+    value.setTrackCovarianceXVx(c.x_vx);
+    value.setTrackCovarianceXVy(c.x_vy);
+    value.setTrackCovarianceXVz(c.x_vz);
+    value.setTrackCovarianceYY(c.yy);
+    value.setTrackCovarianceYZ(c.yz);
+    value.setTrackCovarianceYVx(c.y_vx);
+    value.setTrackCovarianceYVy(c.y_vy);
+    value.setTrackCovarianceYVz(c.y_vz);
+    value.setTrackCovarianceZZ(c.zz);
+    value.setTrackCovarianceZVx(c.z_vx);
+    value.setTrackCovarianceZVy(c.z_vy);
+    value.setTrackCovarianceZVz(c.z_vz);
+    value.setTrackCovarianceVxVx(c.vx_vx);
+    value.setTrackCovarianceVxVy(c.vx_vy);
+    value.setTrackCovarianceVxVz(c.vx_vz);
+    value.setTrackCovarianceVyVy(c.vy_vy);
+    value.setTrackCovarianceVyVz(c.vy_vz);
+    value.setTrackCovarianceVzVz(c.vz_vz);
+
+    value.setManeuverProbability(input.maneuver_probability);
+    value.setTrackQuality(input.track_quality);
+    return value;
+}
 
 /* Complete IRSTTrackReport copy. Every upstream getter is read exactly once and
  * every floating-point value is copied verbatim: no clamping, no normalization,
@@ -205,8 +294,9 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 enum class Lifecycle { Attached, Enabled, Failed, Closed };
 
 /* Track channel ownership foundation, extended only as far as the
- * @RequiredIfTrack IRSTTrackReport callback requires. There is still no request
- * count: no Track send is implemented. */
+ * @RequiredIfTrack IRSTTrackReport callback and the @RequiredIfTrackUpdate
+ * TrackDataUpdate send require. The existing metadata ownership is unchanged;
+ * only the pending-request count is added. */
 struct TrackState {
     std::mutex mutex;
     std::shared_ptr<SessionState> session;
@@ -216,6 +306,9 @@ struct TrackState {
      * metadata wrapper: upstream declares no unregister operation. */
     std::shared_ptr<MetadataState> metadata;
     Lifecycle lifecycle{Lifecycle::Attached};
+    /* Pending TrackDataUpdate requests. While non-zero, physical provider
+     * teardown is deferred to the final request completion. */
+    std::size_t requests{};
     bool enable_attempted{};
     bool metadata_attempted{};
     bool cleanup_started{};
@@ -256,6 +349,9 @@ bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
     {
         std::lock_guard lock{state->mutex};
         if (state->cleanup_started) return !state->channel;
+        /* Physical teardown never runs while an update request still owns the
+         * provider graph; the final completion performs it instead. */
+        if (state->requests != 0U) return true;
         state->cleanup_started = true;
         channel = state->channel;
         metadata = state->metadata;
@@ -322,9 +418,194 @@ bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
     }
     return ok;
 }
+
+enum class CompletionKind {
+    Pending, Success, Rejected, ProviderException, ProviderFailure, InternalError
+};
+
+/* Terminal TrackDataUpdate outcome. It never retains a raw ams_mel_ir_track *:
+ * the TrackState graph keeps this request alive independently of the public
+ * owners. reason_text is the request-owned immutable cache that
+ * result.status.reason_description points into, so no provider-owned memory is
+ * ever exposed and repeated Wait calls return identical storage. */
+struct Completion {
+    std::mutex mutex;
+    std::condition_variable ready;
+    CompletionKind kind{CompletionKind::Pending};
+    ams_mel_ir_track_update_result_v1 result{};
+    std::string reason_text;
+    std::string message;
+    std::shared_ptr<TrackState> channel;
+};
+
+struct WorkerInput {
+    std::shared_ptr<Completion> completion;
+    mel::RequestFor<irmel::CommandStatus> future;
+    std::shared_ptr<WorkerInput> emergency_self;
+    WorkerInput *emergency_next{};
+    std::atomic<bool> emergency_retained{};
+    std::atomic<unsigned> launch_state{};
+};
+
+void arm_worker(const std::shared_ptr<WorkerInput>& input) noexcept
+{ input->emergency_self = input; }
+
+/* Allocation-free permanent retention of a worker whose future/provider graph
+ * could not be handed to a running worker safely. */
+void retain_worker(const std::shared_ptr<WorkerInput>& input) noexcept
+{
+    static std::atomic<WorkerInput *> retained{};
+    bool expected = false;
+    if (!input->emergency_retained.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) return;
+    WorkerInput *head = retained.load(std::memory_order_relaxed);
+    do { input->emergency_next = head; }
+    while (!retained.compare_exchange_weak(
+        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
+}
+
+/* Decrements the pending request count; if this was the final request of an
+ * already logically closed Track, performs the deferred physical cleanup.
+ * Never called with the TrackState mutex held. */
+bool finish_request(const std::shared_ptr<TrackState>& state)
+{
+    bool close = false;
+    {
+        std::lock_guard lock{state->mutex};
+        if (state->requests) --state->requests;
+        close = state->requests == 0U && state->lifecycle == Lifecycle::Closed;
+    }
+    return !close || cleanup(state, true);
+}
+
+/* Validates a provider CommandStatus completely. Upstream CommandState tops out
+ * at Cancelled and CannotComply at Alignment_Maneuver; neither declares a
+ * MaxExclusive value, so anything above is malformed. The description is copied
+ * into request-owned storage only after it is proven valid UTF-8 without an
+ * embedded NUL. */
+bool copy_command_status(const irmel::CommandStatus& source,
+                         ams_mel_ir_command_status_v1& destination,
+                         std::string& owned_text)
+{
+    const auto state = static_cast<std::uint32_t>(source.getState());
+    const auto reason = static_cast<std::uint32_t>(source.getReasonID());
+    if (state > AMS_MEL_IR_COMMAND_CANCELLED) return false;
+    if (reason > AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER) return false;
+    const std::string& description = source.getReasonDescription();
+    if (!valid_utf8(description)) return false;
+    owned_text = description;
+    destination.command_id = source.getCommandID();
+    destination.state = state;
+    destination.reason_id = reason;
+    return true;
+}
+
+/* The single future::get() caller. No other thread may call it. */
+void complete(const std::shared_ptr<Completion>& state,
+              mel::RequestFor<irmel::CommandStatus>& future)
+{
+    CompletionKind kind = CompletionKind::ProviderException;
+    ams_mel_ir_track_update_result_v1 result{};
+    std::string reason_text;
+    std::string message;
+    try {
+        auto outcome = future.get();
+        if (outcome) {
+            const auto& value = outcome.get();
+            if (!value) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned null successful CommandStatus";
+            } else if (!copy_command_status(*value, result.status, reason_text)) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned malformed Track CommandStatus";
+            } else {
+                /* A CommandStatus whose own state is Rejected is still a
+                 * successful future outcome and stays AMS_MEL_OK. */
+                kind = CompletionKind::Success;
+            }
+        } else {
+            const mel::Error& error = outcome.getError();
+            bool known = false;
+            result.error_code = map_error(error.getCode(), known);
+            if (!known) {
+                kind = CompletionKind::ProviderFailure;
+                message = "provider returned unknown MEL error code";
+            } else {
+                kind = CompletionKind::Rejected;
+                const std::string& description = error.getDescription();
+                message = valid_utf8(description) ? description :
+                    "provider rejection description was invalid UTF-8 or contained NUL";
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        kind = CompletionKind::InternalError;
+        message.clear();
+        reason_text.clear();
+    } catch (const std::exception& error) {
+        kind = CompletionKind::ProviderException;
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
+        catch (...) { message.clear(); }
+    } catch (...) {
+        kind = CompletionKind::ProviderException;
+        try { message = "unknown provider future exception"; } catch (...) {}
+    }
+    auto channel = state->channel;
+    if (!finish_request(channel)) {
+        /* Deferred detach could not be proven: the complete graph stays
+         * retained permanently and the terminal result fails closed. */
+        kind = CompletionKind::ProviderFailure;
+        result = {};
+        try { message = "deferred Track cleanup failed"; }
+        catch (...) { message.clear(); }
+        reason_text.clear();
+    }
+    {
+        std::lock_guard lock{state->mutex};
+        state->kind = kind;
+        state->result = result;
+        state->reason_text = std::move(reason_text);
+        /* The public view always points into request-owned cached storage. */
+        state->result.status.reason_description.data =
+            state->reason_text.empty() ? nullptr : state->reason_text.data();
+        state->result.status.reason_description.size = state->reason_text.size();
+        state->message = std::move(message);
+        state->channel.reset();
+    }
+    channel.reset();
+    state->ready.notify_all();
+}
+
+void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
+{
+    while (input->launch_state.load(std::memory_order_acquire) == 0U)
+        std::this_thread::yield();
+    try {
+        complete(input->completion, input->future);
+    } catch (...) {
+        /* A mutex/system failure must neither escape the detached thread nor
+         * destroy an unaccounted future/provider graph. */
+        arm_worker(input);
+        retain_worker(input);
+    }
+}
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+enum class SubmitFailpoint { None, Allocation, WorkerLaunch };
+
+SubmitFailpoint submit_failpoint() noexcept
+{
+    const char *value = std::getenv("AMS_MEL_TEST_TRACK_UPDATE_POST_SEND_FAILURE");
+    if (value && std::strcmp(value, "allocation") == 0) return SubmitFailpoint::Allocation;
+    if (value && std::strcmp(value, "worker-launch") == 0) return SubmitFailpoint::WorkerLaunch;
+    return SubmitFailpoint::None;
+}
+#endif
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
+struct ams_mel_ir_track_update_request { std::shared_ptr<Completion> state; };
 /* Public consumption wrapper only. It owns the adapter-owned MetadataState and
  * nothing else: no Track, session, or provider-library ownership. Deleting it
  * never unregisters the provider callback and never destroys the
@@ -649,6 +930,160 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_close(
 }
 
 
+extern "C" ams_mel_status_t ams_mel_ir_track_submit_update(
+    ams_mel_ir_track *track, const ams_mel_ir_track_data_update_v1 *update,
+    ams_mel_ir_track_update_request **out_request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    irmel::TrackStatus status{};
+    if (!track || !track->state || !update || !out_request || *out_request ||
+        (!out && capacity) ||
+        !convert_track_status(update->track_status, status) ||
+        !valid_view(update->capability_uuid.descriptive_label) ||
+        !valid_view(update->activity_uuid.descriptive_label) ||
+        !valid_view(update->entity_uuid.descriptive_label)) {
+        diagnostic("invalid TrackDataUpdate input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+
+    /* Everything the request needs to own the returned future is allocated
+     * before the provider send. */
+    std::shared_ptr<Completion> completion;
+    std::shared_ptr<WorkerInput> input;
+    std::unique_ptr<ams_mel_ir_track_update_request> owner;
+    std::unique_ptr<std::thread> worker;
+    try {
+        completion = std::make_shared<Completion>();
+        completion->channel = track->state;
+        input = std::make_shared<WorkerInput>();
+        input->completion = completion;
+        owner = std::make_unique<ams_mel_ir_track_update_request>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
+    } catch (...) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    /* Every borrowed C input, including all three UCI_ID labels, is converted
+     * and copied here; nothing borrowed outlives this call. */
+    irmel::TrackDataUpdate upstream;
+    try {
+        upstream = build_update(*update, status);
+    } catch (...) {
+        diagnostic("TrackDataUpdate preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    /* Validate Enabled, copy the shared TrackChannel locally, and account the
+     * request under the lifecycle mutex, then release it: provider send() may
+     * synchronously invoke the IRSTTrackReport metadata callback, which
+     * independently locks the metadata mutex. */
+    std::shared_ptr<irmel::TrackChannel> channel;
+    try {
+        std::lock_guard lock{track->state->mutex};
+        if (track->state->lifecycle != Lifecycle::Enabled) {
+            diagnostic("Track channel is not enabled", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        channel = track->state->track;
+        ++track->state->requests;
+    } catch (...) {
+        diagnostic("Track submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    auto state = track->state;
+    try {
+        try {
+            input->future = channel->send(std::move(upstream));
+            arm_worker(input);
+        } catch (const std::exception& error) {
+            (void)finish_request(state);
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            (void)finish_request(state);
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        const SubmitFailpoint failpoint = submit_failpoint();
+        if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
+        if (failpoint == SubmitFailpoint::WorkerLaunch)
+            throw std::system_error{
+                std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        *worker = std::thread{[input] { run_worker(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
+        *out_request = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        /* The provider send already returned a future. It is retained
+         * permanently rather than destroyed with uncertain ownership. */
+        retain_worker(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        retain_worker(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_update_request_wait(
+    const ams_mel_ir_track_update_request *request, std::uint32_t timeout_ms,
+    ams_mel_ir_track_update_result_v1 *result, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || !request->state || !result || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{request->state->mutex};
+        /* A finite timeout means only "not ready yet"; the pending request and
+         * the caller's result record are left untouched. */
+        if (request->state->kind == CompletionKind::Pending &&
+            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                [&] { return request->state->kind != CompletionKind::Pending; }))
+            return AMS_MEL_TIMEOUT;
+        *result = request->state->result;
+        diagnostic(request->state->message, out, capacity, required);
+        switch (request->state->kind) {
+        case CompletionKind::Success: return AMS_MEL_OK;
+        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
+        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
+        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
+        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
+        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
+        }
+    } catch (...) {
+        diagnostic("Track update request wait failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return AMS_MEL_INTERNAL_ERROR;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_update_request_close(
+    ams_mel_ir_track_update_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    /* Drops the public owner only. Pending provider work, the future, the
+     * TrackState graph, and the provider library all survive. */
+    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
 extern "C" ams_mel_status_t ams_mel_ir_track_close(
     ams_mel_ir_track **track, char *out, std::size_t capacity,
     std::size_t *required) noexcept
@@ -660,21 +1095,25 @@ extern "C" ams_mel_status_t ams_mel_ir_track_close(
     try {
         auto state = owner->state;
         std::shared_ptr<MetadataState> metadata;
+        bool now = false;
         {
             std::lock_guard lock{state->mutex};
             state->lifecycle = Lifecycle::Closed;
             metadata = state->metadata;
+            /* With update requests still pending, the request owns the graph
+             * and performs the physical teardown at final completion. */
+            now = state->requests == 0U;
         }
         /* Deactivate public metadata consumption and wake receivers before any
-         * provider teardown begins. */
+         * provider teardown begins, including when teardown is deferred. */
         if (metadata) {
             std::lock_guard lock{metadata->mutex};
             if (metadata->lifecycle == MetadataLifecycle::Active)
                 metadata->lifecycle = MetadataLifecycle::Inactive;
             metadata->ready.notify_all();
         }
-        const bool ok = cleanup(state, false);
-        if (state->channel) {
+        const bool ok = !now || cleanup(state, false);
+        if (now && state->channel) {
             /* Detach could not be proven: the complete graph and the caller's
              * owner are retained so a later Close can retry. */
             diagnostic("Track detach failed; provider state retained",

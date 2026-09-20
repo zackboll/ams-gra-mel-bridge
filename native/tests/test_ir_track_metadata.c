@@ -69,7 +69,10 @@ static int ordered(const char *data, const char *first, const char *second)
 }
 
 /* Every Track surface other than the @RequiredIfTrack IRSTTrackReport callback
- * remains deferred. The mock records each one, so their absence is provable. */
+ * and the @RequiredIfTrackUpdate TrackDataUpdate send remains deferred; the
+ * mock records each one, so their absence is provable. These metadata-only
+ * scenarios additionally never submit an update, so no send is expected here
+ * either, but TrackDataUpdate is no longer counted as a deferred violation. */
 static int no_deferred_track_operations(const char *data)
 {
     CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);

@@ -282,6 +282,28 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrack,
+        *const AmsMelIrTrackDataUpdateV1,
+        *mut *mut AmsMelIrTrackUpdateRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_submit_update;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackUpdateRequest,
+        u32,
+        *mut AmsMelIrTrackUpdateResultV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_update_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrTrackUpdateRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_update_request_close;
 }
 
 #[test]
@@ -1122,6 +1144,57 @@ fn declarations_match_the_c_header() {
         mode
     );
     layout!(expected, AmsMelIrTrackMetadataEventV1, kind, track_report);
+    expected.extend([
+        size_of::<*mut AmsMelIrTrackUpdateRequest>(),
+        align_of::<*mut AmsMelIrTrackUpdateRequest>(),
+        AMS_MEL_IR_TRACK_STATUS_CREATE as usize,
+        AMS_MEL_IR_TRACK_STATUS_UPDATE as usize,
+        AMS_MEL_IR_TRACK_STATUS_PREDICT as usize,
+        AMS_MEL_IR_TRACK_STATUS_DELETE as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelIrTrackCovarianceV1,
+        xx,
+        xy,
+        xz,
+        x_vx,
+        x_vy,
+        x_vz,
+        yy,
+        yz,
+        y_vx,
+        y_vy,
+        y_vz,
+        zz,
+        z_vx,
+        z_vy,
+        z_vz,
+        vx_vx,
+        vx_vy,
+        vx_vz,
+        vy_vy,
+        vy_vz,
+        vz_vz
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackDataUpdateV1,
+        platform_id,
+        capability_uuid,
+        activity_uuid,
+        track_id,
+        entity_uuid,
+        track_status,
+        time_of_validity_seconds,
+        time_of_last_update_seconds,
+        track_position_ecef,
+        track_velocity_ecef,
+        covariance,
+        maneuver_probability,
+        track_quality
+    );
+    layout!(expected, AmsMelIrTrackUpdateResultV1, status, error_code);
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,

@@ -338,6 +338,34 @@ class IrUncertaintyV1(ctypes.Structure): _fields_ = [("sensor_uncertainties",cty
 class IrOrientationV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("euler",EulerV1),("quaternion",IrQuaternionV1)]
 class IrSensorInertialStateV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("q_xyzw",IrQuaternionV1),("q_ecef_xyzw",IrQuaternionV1),("sensor_position",IrDirectionalV1),("sensor_velocity",IrDirectionalV1),("uncertainties",IrUncertaintyV1)]
 class IrSensorNavStateV1(ctypes.Structure): _fields_ = [("position",IrDirectionalV1),("position_error",IrNavErrorV1),("velocity",IrDirectionalV1),("velocity_error",IrNavErrorV1),("acceleration",IrDirectionalV1),("acceleration_error",IrNavErrorV1),("orientation",IrOrientationV1),("orientation_error",IrNavErrorV1),("orientation_velocity",IrOrientationV1),("orientation_velocity_error",IrNavErrorV1),("orientation_acceleration",IrOrientationV1),("orientation_acceleration_error",IrNavErrorV1),("coordinate_system",ctypes.c_uint32)]
+# Conditionally required TrackDataUpdate (@RequiredIfTrackUpdate). Upstream
+# TrackStatus declares no MaxExclusive value, so any input above Delete is
+# INVALID_ARGUMENT. The two times stay in upstream epoch seconds and the one
+# canonical IrDirectionalV1 is reused for both ECEF vectors.
+AMS_MEL_IR_TRACK_STATUS_CREATE = 0
+AMS_MEL_IR_TRACK_STATUS_UPDATE = 1
+AMS_MEL_IR_TRACK_STATUS_PREDICT = 2
+AMS_MEL_IR_TRACK_STATUS_DELETE = 3
+class IrTrackCovarianceV1(ctypes.Structure): _fields_ = [
+    ("xx",ctypes.c_double),("xy",ctypes.c_double),("xz",ctypes.c_double),
+    ("x_vx",ctypes.c_double),("x_vy",ctypes.c_double),("x_vz",ctypes.c_double),
+    ("yy",ctypes.c_double),("yz",ctypes.c_double),
+    ("y_vx",ctypes.c_double),("y_vy",ctypes.c_double),("y_vz",ctypes.c_double),
+    ("zz",ctypes.c_double),
+    ("z_vx",ctypes.c_double),("z_vy",ctypes.c_double),("z_vz",ctypes.c_double),
+    ("vx_vx",ctypes.c_double),("vx_vy",ctypes.c_double),("vx_vz",ctypes.c_double),
+    ("vy_vy",ctypes.c_double),("vy_vz",ctypes.c_double),
+    ("vz_vz",ctypes.c_double)]
+class IrTrackDataUpdateV1(ctypes.Structure): _fields_ = [
+    ("platform_id",ctypes.c_uint32),("capability_uuid",UciIdV1),("activity_uuid",UciIdV1),
+    ("track_id",ctypes.c_uint32),("entity_uuid",UciIdV1),("track_status",ctypes.c_uint32),
+    ("time_of_validity_seconds",ctypes.c_double),("time_of_last_update_seconds",ctypes.c_double),
+    ("track_position_ecef",IrDirectionalV1),("track_velocity_ecef",IrDirectionalV1),
+    ("covariance",IrTrackCovarianceV1),
+    ("maneuver_probability",ctypes.c_double),("track_quality",ctypes.c_double)]
+# Reuses the one generic IrCommandStatusV1 layout. A successful CommandStatus
+# whose own state is Rejected is still AMS_MEL_OK.
+class IrTrackUpdateResultV1(ctypes.Structure): _fields_ = [("status",IrCommandStatusV1),("error_code",ctypes.c_uint32)]
 class IrSensorInertialStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorInertialStateV1)),("size",ctypes.c_size_t)]
 class IrSensorNavStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorNavStateV1)),("size",ctypes.c_size_t)]
 class IrFrameSnapshotV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("integration_time_ns",ctypes.c_int64),("width",ctypes.c_uint32),("height",ctypes.c_uint32),("bits_per_pixel",ctypes.c_uint32),("number_of_bands",ctypes.c_uint32),("horizontal_fov_rad",ctypes.c_double),("vertical_fov_rad",ctypes.c_double),("contributing_sensor",IrContributingSensorV1),("pixel_format",ctypes.c_uint32),("frame_id",ctypes.c_uint32),("subframe_id",ctypes.c_uint32),("subframe_total",ctypes.c_uint32),("image_type",ctypes.c_uint32),("image_flip",ctypes.c_uint32),("image_flags",U32SpanV1),("dither_row",ctypes.c_double),("dither_column",ctypes.c_double),("row_offset",ctypes.c_uint32),("column_offset",ctypes.c_uint32),("sensor_inertial_states",IrSensorInertialStateSpanV1),("sensor_nav_states",IrSensorNavStateSpanV1),("band_index",ctypes.c_uint8),("pixels",U8SpanV1)]
@@ -434,10 +462,12 @@ IrInstrumentationHandle = ctypes.c_void_p
 IrInstrumentationRequestHandle = ctypes.c_void_p
 IrInstrumentationMetadataHandle = ctypes.c_void_p
 IrInstrumentationMetadataEventHandle = ctypes.c_void_p
-# Task 029B1 declares only the Track channel ownership/lifecycle foundation.
+# Track channel ownership/lifecycle foundation, the @RequiredIfTrack
+# IRSTTrackReport callback, and the @RequiredIfTrackUpdate TrackDataUpdate send.
 IrTrackHandle = ctypes.c_void_p
 IrTrackMetadataHandle = ctypes.c_void_p
 IrTrackMetadataEventHandle = ctypes.c_void_p
+IrTrackUpdateRequestHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -844,6 +874,15 @@ ams_mel_ir_track_metadata_event_view.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_close = _LIBRARY.ams_mel_ir_track_metadata_event_close
 ams_mel_ir_track_metadata_event_close.argtypes = [ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_close.restype = ctypes.c_int32
+ams_mel_ir_track_submit_update = _LIBRARY.ams_mel_ir_track_submit_update
+ams_mel_ir_track_submit_update.argtypes = [IrTrackHandle, ctypes.POINTER(IrTrackDataUpdateV1), ctypes.POINTER(IrTrackUpdateRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_submit_update.restype = ctypes.c_int32
+ams_mel_ir_track_update_request_wait = _LIBRARY.ams_mel_ir_track_update_request_wait
+ams_mel_ir_track_update_request_wait.argtypes = [IrTrackUpdateRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrTrackUpdateResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_update_request_wait.restype = ctypes.c_int32
+ams_mel_ir_track_update_request_close = _LIBRARY.ams_mel_ir_track_update_request_close
+ams_mel_ir_track_update_request_close.argtypes = [ctypes.POINTER(IrTrackUpdateRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_update_request_close.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
@@ -928,4 +967,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_metadata_close",
     "ams_mel_ir_track_metadata_event_view",
     "ams_mel_ir_track_metadata_event_close",
+    "ams_mel_ir_track_submit_update",
+    "ams_mel_ir_track_update_request_wait",
+    "ams_mel_ir_track_update_request_close",
 )

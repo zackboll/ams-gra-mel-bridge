@@ -14,6 +14,7 @@ with AMS_MEL_IR_Health_Status_Tests;
 with AMS_MEL_IR_Instrumentation_Tests;
 with AMS_MEL_IR_Track_Tests;
 with AMS_MEL_IR_Track_Metadata_Tests;
+with AMS_MEL_IR_Track_Update_Tests;
 with GNAT.OS_Lib;
 
 procedure AMS_MEL_Smoke is
@@ -226,6 +227,7 @@ begin
    AMS_MEL_IR_Instrumentation_Tests.Run (Provider_Path);
    AMS_MEL_IR_Track_Tests.Run (Provider_Path);
    AMS_MEL_IR_Track_Metadata_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Track_Update_Tests.Run (Provider_Path);
    Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line ("PASS: Ada provider load/init/version/close/finalization contract");
 exception
