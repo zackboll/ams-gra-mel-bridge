@@ -10,9 +10,15 @@ with Interfaces;
 --  @RequiredIfTrack IRSTTrackReport callback. The bounded owned polling API
 --  for that callback lives in the child package AMS.MEL.IR.Track.Metadata.
 --
---  Deliberately absent in this release: TrackDataUpdate,
---  SystemTrackDataResponse, CandidateObjectMessage,
---  CandidateObjectPreProcMessage, and RequestSystemTrackData.
+--  Current status: the @RequiredIfTrackUpdate TrackDataUpdate send, the
+--  @Optional SystemTrackDataResponse send, the @Optional
+--  RequestSystemTrackData inbound request, and the
+--  @RequiredIfDetectCandidateObjects CandidateObjectMessage inbound metadata
+--  are all implemented in the child packages.
+--
+--  Deliberately absent in this release: the @Optional
+--  CandidateObjectPreProcMessage callback. The Track API as a whole is
+--  therefore NOT complete.
 --
 --  Facade lifecycle policy: Open attaches the upstream channel. Capabilities
 --  is valid while attached or enabled. Enable explicitly calls upstream

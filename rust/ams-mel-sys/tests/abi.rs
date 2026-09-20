@@ -1145,7 +1145,55 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_TRACK_MODE_STARE as usize,
         AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT as usize,
         AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA as usize,
+        AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE as usize,
+        AMS_MEL_IR_MAX_CANDIDATE_OBJECTS as usize,
+        AMS_MEL_IR_HOT_REGION_INVALID as usize,
+        AMS_MEL_IR_HOT_REGION_FLARE as usize,
+        AMS_MEL_IR_HOT_REGION_SOLAR as usize,
+        AMS_MEL_IR_HOT_REGION_MASK as usize,
     ]);
+    layout!(expected, AmsMelIrRowColV1, row, column);
+    layout!(
+        expected,
+        AmsMelIrHotRegionV1,
+        kind,
+        size,
+        top,
+        left,
+        right,
+        bottom
+    );
+    layout!(expected, AmsMelIrHotRegionSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCandidateObjectHeaderV1,
+        number_of_cos,
+        stack_frame_index,
+        cfar,
+        validity_flag_bitfield,
+        tov_utc_ns
+    );
+    layout!(
+        expected,
+        AmsMelIrCandidateObjectV1,
+        system_time_ns,
+        detection_category,
+        sensor_index,
+        subpixel,
+        intensity,
+        sensor_relative_unit,
+        signal_to_interference_ratio,
+        signal_to_noise_ratio
+    );
+    layout!(expected, AmsMelIrCandidateObjectSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCandidateObjectMessageV1,
+        header,
+        inertial_state,
+        hot_regions,
+        candidate_objects
+    );
     layout!(
         expected,
         AmsMelIrTrackReportV1,
@@ -1179,7 +1227,8 @@ fn declarations_match_the_c_header() {
         AmsMelIrTrackMetadataEventV1,
         kind,
         track_report,
-        request_system_track_data
+        request_system_track_data,
+        candidate_object_message
     );
     expected.extend([
         size_of::<*mut AmsMelIrTrackUpdateRequest>(),

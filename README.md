@@ -83,16 +83,25 @@ themselves.
 > with `IRSTTrackReport` rather than being a `RequestFor<T>` operation. A
 > `Return::NotSupported` refusal of that optional registration is non-fatal,
 > whereas `Return::Fail` means the datatype is already registered on the channel
-> and fails the open closed. The current Track status is therefore:
+> and fails the open closed. The `@RequiredIfDetectCandidateObjects`
+> `CandidateObjectMessage` is likewise complete as an inbound metadata callback:
+> upstream declares no `send()` overload and no `RequestFor<T>` for it either,
+> so it shares that same bounded queue and counter set. It is registered only
+> when the channel advertises
+> `ChannelMetadataCapabilityType::CandidateObjectMessage`; when it is advertised,
+> any non-`Success` registration -- including `Return::NotSupported` -- fails the
+> open closed, because refusing a callback the channel itself advertised would
+> promise an event path the adapter cannot receive. The current Track status is
+> therefore:
 >
 > ```text
-> @RequiredIfTrack core                     complete
-> @RequiredIfTrackUpdate TrackDataUpdate    complete
-> SystemTrackDataResponse                   complete
-> RequestSystemTrackData                    complete
-> CandidateObjectMessage                    unimplemented
-> CandidateObjectPreProcMessage             unimplemented
-> Track API overall                         incomplete
+> @RequiredIfTrack core                                   complete
+> @RequiredIfTrackUpdate TrackDataUpdate                  complete
+> SystemTrackDataResponse                                 complete
+> RequestSystemTrackData                                  complete
+> @RequiredIfDetectCandidateObjects CandidateObjectMessage complete
+> CandidateObjectPreProcMessage                           unimplemented
+> Track API overall                                       incomplete
 > ```
 >
 > The raw Rust sys crate

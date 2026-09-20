@@ -802,6 +802,32 @@ typedef struct ams_mel_ir_instrumentation_config_v1 {
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_instrumentation_config_v1;
 
+/* The one canonical IR XYZ representation, shared by FrameHeader sensor/nav
+ * state, by the TrackDataUpdate ECEF position/velocity, and by the
+ * CandidateObject sensor-relative unit vector. No second XYZ representation
+ * exists in this ABI. Declared here so the Track metadata event can reuse it;
+ * the layout is unchanged. */
+typedef struct ams_mel_ir_directional_v1 { double x, y, z; } ams_mel_ir_directional_v1;
+
+/* The one canonical IR quaternion, uncertainty pair, and SensorInertialState.
+ * These are shared verbatim between the FrameHeader snapshot and the
+ * CandidateObjectMessage inertial state; no duplicate representation exists.
+ * The declarations were relocated ahead of the Track metadata event so that
+ * reuse is possible. No layout changed. */
+typedef struct ams_mel_ir_quaternion_v1 { double x, y, z, w; } ams_mel_ir_quaternion_v1;
+typedef struct ams_mel_ir_uncertainty_v1 {
+    uint32_t sensor_uncertainties;
+    uint32_t platform_uncertainties;
+} ams_mel_ir_uncertainty_v1;
+typedef struct ams_mel_ir_sensor_inertial_state_v1 {
+    int64_t system_time_ns;
+    ams_mel_ir_quaternion_v1 q_xyzw;
+    ams_mel_ir_quaternion_v1 q_ecef_xyzw;
+    ams_mel_ir_directional_v1 sensor_position;
+    ams_mel_ir_directional_v1 sensor_velocity;
+    ams_mel_ir_uncertainty_v1 uncertainties;
+} ams_mel_ir_sensor_inertial_state_v1;
+
 /* Track channel configuration; follows the Health/Instrumentation pattern.
  * channel_type must be AMS_MEL_IR_CHANNEL_IRST_TRACK. String views are UTF-8
  * byte views, need not be NUL-terminated, and are copied during open. No image
@@ -879,25 +905,136 @@ typedef struct ams_mel_ir_request_system_track_data_v1 {
     uint32_t track_id;
 } ams_mel_ir_request_system_track_data_v1;
 
+/* Upstream MAX_CANDIDATE_OBJECTS: the fixed storage length of the published
+ * std::array<CandidateObject, 900> inside CandidateObjectMessage. The header's
+ * numberOfCOs selects the MEANINGFUL PREFIX of that array; a numberOfCOs above
+ * this bound is malformed and is never queued. */
+#define AMS_MEL_IR_MAX_CANDIDATE_OBJECTS UINT32_C(900)
+
+/* Upstream HotRegionTypeEnum defines exactly INVALID = 0, FLARE = 1,
+ * SOLAR = 2, and MASK = 3 and declares no MaxExclusive value. A provider enum
+ * representation outside 0..3 is malformed and the whole message is dropped. */
+typedef uint32_t ams_mel_ir_hot_region_type_t;
+#define AMS_MEL_IR_HOT_REGION_INVALID UINT32_C(0)
+#define AMS_MEL_IR_HOT_REGION_FLARE   UINT32_C(1)
+#define AMS_MEL_IR_HOT_REGION_SOLAR   UINT32_C(2)
+#define AMS_MEL_IR_HOT_REGION_MASK    UINT32_C(3)
+
+/* The one canonical IR row/column pair, matching upstream RowCol. RowCol is
+ * deliberately NOT represented as an XYZ triple with a meaningless third
+ * component: upstream publishes only getRow and getCol. */
+typedef struct ams_mel_ir_row_col_v1 {
+    double row;
+    double column;
+} ams_mel_ir_row_col_v1;
+
+/* Complete HotRegion. Every published getter is represented exactly once:
+ * getType, getSize, getTop, getLeft, getRight, and getBottom. The geometry and
+ * pixel count stay uint16_t exactly as upstream declares them, and no
+ * additional geometric semantics are invented. */
+typedef struct ams_mel_ir_hot_region_v1 {
+    ams_mel_ir_hot_region_type_t type;
+    uint16_t size;
+    uint16_t top;
+    uint16_t left;
+    uint16_t right;
+    uint16_t bottom;
+} ams_mel_ir_hot_region_v1;
+
+/* Borrowed view of the event-owned HotRegion storage. The upstream vector has
+ * no published fixed maximum, so the complete vector is deep-copied in its
+ * published order. data stays valid until the event owner is closed. */
+typedef struct ams_mel_ir_hot_region_span_v1 {
+    const ams_mel_ir_hot_region_v1 *data;
+    size_t size;
+} ams_mel_ir_hot_region_span_v1;
+
+/* Complete CandidateObjectHeader. Every published getter is represented
+ * exactly once: getNumberOfCOs, getStackFrameIndex, getCFAR,
+ * getValidityFlagBitField, getTOVutcNanoseconds, and getHotRegions (carried by
+ * the message-level span).
+ *
+ * cfar is upstream `float` and is preserved as C binary32; it is deliberately
+ * NOT widened to double. tov_utc_ns preserves the signed
+ * std::chrono::nanoseconds count. validity_flag_bitfield is carried verbatim
+ * and is deliberately NOT decoded. */
+typedef struct ams_mel_ir_candidate_object_header_v1 {
+    uint16_t number_of_cos;
+    uint16_t stack_frame_index;
+    float cfar;
+    uint16_t validity_flag_bitfield;
+    int64_t tov_utc_ns;
+} ams_mel_ir_candidate_object_header_v1;
+
+/* Complete CandidateObject. Every published getter is represented exactly
+ * once: getSystemTime, getDetectionCategory, getSensorIndex, getSubpixel,
+ * getIntensity, getSenRelUnit, getSignalToInterferenceRatio, and
+ * getSignalToNoiseRatio.
+ *
+ * system_time_ns preserves the signed nanosecond count. The canonical
+ * ams_mel_ir_row_col_v1 and ams_mel_ir_directional_v1 are reused; no second
+ * representation exists. No floating-point value is clamped or normalized and
+ * the sensor-relative unit vector is NOT renormalized, because the upstream
+ * setters perform no such validation. */
+typedef struct ams_mel_ir_candidate_object_v1 {
+    int64_t system_time_ns;
+    uint32_t detection_category;
+    uint32_t sensor_index;
+    ams_mel_ir_row_col_v1 subpixel;
+    double intensity;
+    ams_mel_ir_directional_v1 sensor_relative_unit;
+    double signal_to_interference_ratio;
+    double signal_to_noise_ratio;
+} ams_mel_ir_candidate_object_v1;
+
+/* Borrowed view of the event-owned CandidateObject storage. size is exactly
+ * header.number_of_cos: only the meaningful prefix of the fixed 900-entry
+ * upstream array is exposed, and trailing storage slots are neither read nor
+ * converted. data stays valid until the event owner is closed. */
+typedef struct ams_mel_ir_candidate_object_span_v1 {
+    const ams_mel_ir_candidate_object_v1 *data;
+    size_t size;
+} ams_mel_ir_candidate_object_span_v1;
+
+/* Complete CandidateObjectMessage. The message class itself is annotated
+ * @RequiredIfBuiltInTracker, the TrackChannel callback that delivers it is
+ * @RequiredIfDetectCandidateObjects, and the contained CandidateObject class is
+ * @RequiredIfTrack; these are three DISTINCT upstream conditions. The callback
+ * annotation is the contract that governs registration here.
+ *
+ * Upstream declares NO send(CandidateObjectMessage) and NO
+ * RequestFor<CandidateObjectMessage>, so this is inbound callback metadata and
+ * never an asynchronous request.
+ *
+ * The canonical ams_mel_ir_sensor_inertial_state_v1 is reused verbatim for
+ * getInertialState. Both spans point into storage owned by the native event
+ * owner and stay valid until event close, including after the provider channel
+ * is destroyed and the provider library is unloaded. */
+typedef struct ams_mel_ir_candidate_object_message_v1 {
+    ams_mel_ir_candidate_object_header_v1 header;
+    ams_mel_ir_sensor_inertial_state_v1 inertial_state;
+    ams_mel_ir_hot_region_span_v1 hot_regions;
+    ams_mel_ir_candidate_object_span_v1 candidate_objects;
+} ams_mel_ir_candidate_object_message_v1;
+
 /* Extensible Track metadata event format. The @RequiredIfTrack IRSTTrackReport
- * family and the @Optional RequestSystemTrackData request are implemented;
- * CandidateObjectMessage and CandidateObjectPreProcMessage deliberately have no
- * storage here. A consumer must fail closed on an unrecognized kind. Only the
- * member selected by kind is populated; the others stay zeroed. */
+ * family, the @Optional RequestSystemTrackData request, and the
+ * @RequiredIfDetectCandidateObjects CandidateObjectMessage are implemented;
+ * CandidateObjectPreProcMessage deliberately has no storage here. A consumer
+ * must fail closed on an unrecognized kind. Only the member selected by kind is
+ * populated; the others stay zeroed, and every unselected span keeps a NULL
+ * data pointer and a zero size. */
 typedef uint32_t ams_mel_ir_track_metadata_kind_t;
 #define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT UINT32_C(1)
 #define AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(2)
+#define AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE UINT32_C(3)
 
 typedef struct ams_mel_ir_track_metadata_event_v1 {
     ams_mel_ir_track_metadata_kind_t kind;
     ams_mel_ir_track_report_v1 track_report;
     ams_mel_ir_request_system_track_data_v1 request_system_track_data;
+    ams_mel_ir_candidate_object_message_v1 candidate_object_message;
 } ams_mel_ir_track_metadata_event_v1;
-
-/* The one canonical IR XYZ representation, shared by FrameHeader sensor/nav
- * state and by the TrackDataUpdate ECEF position/velocity. No second XYZ
- * representation exists in this ABI. */
-typedef struct ams_mel_ir_directional_v1 { double x, y, z; } ams_mel_ir_directional_v1;
 
 /* Upstream TrackStatus (@RequiredIfTrackUpdate) defines exactly Create = 0,
  * Update = 1, Predict = 2, and Delete = 3 and declares no MaxExclusive value.
@@ -1213,12 +1350,7 @@ typedef struct ams_mel_ir_contributing_sensor_v1 {
     ams_mel_component_location_v1 location;
     uint32_t sensor_id;
 } ams_mel_ir_contributing_sensor_v1;
-typedef struct ams_mel_ir_quaternion_v1 { double x, y, z, w; } ams_mel_ir_quaternion_v1;
 typedef struct ams_mel_ir_nav_error_v1 { double x, y, z, w; } ams_mel_ir_nav_error_v1;
-typedef struct ams_mel_ir_uncertainty_v1 {
-    uint32_t sensor_uncertainties;
-    uint32_t platform_uncertainties;
-} ams_mel_ir_uncertainty_v1;
 typedef uint32_t ams_mel_ir_orientation_kind_t;
 #define AMS_MEL_IR_ORIENTATION_EULER UINT32_C(0)
 #define AMS_MEL_IR_ORIENTATION_QUATERNION UINT32_C(1)
@@ -1227,14 +1359,6 @@ typedef struct ams_mel_ir_orientation_v1 {
     ams_mel_euler_v1 euler;
     ams_mel_ir_quaternion_v1 quaternion;
 } ams_mel_ir_orientation_v1;
-typedef struct ams_mel_ir_sensor_inertial_state_v1 {
-    int64_t system_time_ns;
-    ams_mel_ir_quaternion_v1 q_xyzw;
-    ams_mel_ir_quaternion_v1 q_ecef_xyzw;
-    ams_mel_ir_directional_v1 sensor_position;
-    ams_mel_ir_directional_v1 sensor_velocity;
-    ams_mel_ir_uncertainty_v1 uncertainties;
-} ams_mel_ir_sensor_inertial_state_v1;
 typedef struct ams_mel_ir_sensor_nav_state_v1 {
     ams_mel_ir_directional_v1 position;
     ams_mel_ir_nav_error_v1 position_error;

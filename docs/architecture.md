@@ -643,11 +643,31 @@ therefore fails the open closed with `AMS_MEL_PROVIDER_FAILED`, releases no
 public owner, and leaves the one-shot rule established. The export count is unchanged at exactly 88
 because no new C function was required; native CTest grows from 14 to 15.
 `AMS.MEL.IR.Track.Metadata.Receive_Event` is the safe Ada home; the existing
-report-only `Receive` is retained for current callers. `CandidateObjectMessage`
-and `CandidateObjectPreProcMessage` remain unimplemented and the Track API as a
-whole is not complete. Pinned Squall still cannot attach Track, so positive
-`RequestSystemTrackData` behavior and payload fidelity are mock-provider evidence
-only.
+report-only `Receive` is retained for current callers. Pinned Squall still
+cannot attach Track, so positive `RequestSystemTrackData` behavior and payload
+fidelity are mock-provider evidence only.
+
+Task 029F adds the `@RequiredIfDetectCandidateObjects` `CandidateObjectMessage`
+on that same inbound path. The pinned `TrackChannel` declares no
+`send(CandidateObjectMessage)` and no `RequestFor<CandidateObjectMessage>`, so
+this creates no request handle, completion, or worker thread. The complete
+payload is deep-copied into event-owned storage: the fixed header, the canonical
+`SensorInertialState`, the complete `HotRegion` vector, and exactly
+`numberOfCOs` candidate objects from the upstream fixed 900-entry array. A
+`numberOfCOs` above 900 and a `HotRegion` enum outside the upstream `0..3` range
+are malformed. `EventData` now carries two `std::vector` members so the native
+event owns every byte its spans reference, and those spans stay valid after
+provider channel destruction and provider library unload.
+
+Registration is conditional on
+`ChannelMetadataCapabilityType::CandidateObjectMessage` being advertised, and it
+is ordered `IRSTTrackReport`, `CandidateObjectMessage`,
+`RequestSystemTrackData`. When the capability is advertised, any non-`Success`
+return -- including `NotSupported` -- fails the open closed, which deliberately
+differs from the `@Optional` `RequestSystemTrackData` refusal. Only
+`CandidateObjectPreProcMessage` now remains unimplemented, so the Track API as a
+whole is still not complete, and the CandidateObject evidence is likewise
+mock-provider only.
 
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the

@@ -1503,14 +1503,16 @@ private:
 
 /* Task 029B2 positively implements the @RequiredIfTrack IRSTTrackReport
  * registration, Task 029C adds the @RequiredIfTrackUpdate
- * send(TrackDataUpdate), and Task 029D adds the @Optional
- * send(SystemTrackDataResponse), and Task 029E adds the @Optional
- * RequestSystemTrackData callback. Every remaining Track surface -- the
- * CandidateObjectMessage and CandidateObjectPreProcMessage callbacks -- stays
- * deferred, is instrumented, and reports unsupported, so the tests can prove
- * neither was exercised. Legitimate IRSTTrackReport and RequestSystemTrackData
- * registration and legitimate TrackDataUpdate and SystemTrackDataResponse sends
- * are NOT counted here. */
+ * send(TrackDataUpdate), Task 029D adds the @Optional
+ * send(SystemTrackDataResponse), Task 029E adds the @Optional
+ * RequestSystemTrackData callback, and Task 029F adds the
+ * @RequiredIfDetectCandidateObjects CandidateObjectMessage callback.
+ *
+ * The ONLY remaining deferred Track surface is the @Optional
+ * CandidateObjectPreProcMessage callback, which stays instrumented and reports
+ * unsupported so the tests can prove it was never exercised. Every positively
+ * implemented registration and send above -- including legitimate
+ * CandidateObjectMessage registration -- is NOT counted here. */
 std::atomic<std::uint64_t> track_deferred_calls{};
 
 /* The exact distinctive TrackDataUpdate the Track update tests submit. Every
@@ -1681,6 +1683,73 @@ irmel::RequestSystemTrackData rich_request_system_track_data()
     return request;
 }
 
+/* Distinctive rich CandidateObjectMessage, built through published setters
+ * only. Every scalar is unique so a swapped field, a narrowed width, a lost
+ * sign, or a float/double confusion cannot pass.
+ *
+ * numberOfCOs is 3 while the upstream array has 900 slots. Slot 3 carries a
+ * recognizable sentinel that the tests assert is NEVER exposed, proving only
+ * the meaningful prefix is copied. */
+irmel::CandidateObjectMessage rich_candidate_object_message()
+{
+    irmel::CandidateObjectHeader header;
+    header.setNumberOfCOs(3U);
+    header.setStackFrameIndex(0xBEEFU);
+    /* Exactly representable in binary32, and distinguishable from any double
+     * rounding of the same decimal. */
+    header.setCFAR(1.5309e-7F);
+    header.setValidityFlagBitField(0xA5C3U);
+    header.setTOVutcNanoseconds(std::chrono::nanoseconds{-4433221100998877LL});
+    header.addHotRegion(irmel::HotRegion{irmel::HOTREGIONTYPE_FLARE,
+                                         1111U, 2222U, 3333U, 4444U, 5555U});
+    header.addHotRegion(irmel::HotRegion{irmel::HOTREGIONTYPE_SOLAR,
+                                         6666U, 7777U, 8888U, 9999U, 10111U});
+    header.addHotRegion(irmel::HotRegion{irmel::HOTREGIONTYPE_MASK,
+                                         12222U, 13333U, 14444U, 15555U, 16666U});
+
+    irmel::SensorInertialState inertial;
+    inertial.setSystemTime(std::chrono::nanoseconds{-1122334455667788LL});
+    inertial.setQ_xyzw(irmel::Quaternion{0.125, -0.25, 0.375, -0.5});
+    inertial.setQECEF_xyzw(irmel::Quaternion{-0.625, 0.75, -0.875, 1.125});
+    inertial.setSensorPosition(irmel::IR_Directional{1234567.25, -2345678.5, 3456789.75});
+    inertial.setSensorVelocity(irmel::IR_Directional{-11.125, 22.25, -33.375});
+    inertial.setUncertainties(irmel::Uncertainty{0xC0FFEE01U, 0xDEADBE02U});
+
+    std::array<irmel::CandidateObject, irmel::MAX_CANDIDATE_OBJECTS> objects{};
+    for (std::uint32_t index = 0; index < 3U; ++index) {
+        irmel::CandidateObject object;
+        object.setSystemTime(std::chrono::nanoseconds{
+            -1000000000000LL - static_cast<std::int64_t>(index) * 7LL});
+        object.setDetectionCategory(0x11110000U + index);
+        object.setSensorIndex(0x22220000U + index);
+        object.setSubpixel(irmel::RowCol{100.5 + index, 200.25 + index});
+        object.setIntensity(3000.125 + index);
+        object.setSenRelUnit(irmel::IR_Directional{
+            0.1 + index, -0.2 - index, 0.3 + index});
+        object.setSignalToInterferenceRatio(40.5 + index);
+        object.setSignalToNoiseRatio(-50.75 - index);
+        objects[index] = object;
+    }
+    /* Sentinel beyond the meaningful prefix: never exposed when numberOfCOs
+     * is 3. Its values are unmistakable. */
+    irmel::CandidateObject sentinel;
+    sentinel.setSystemTime(std::chrono::nanoseconds{0x7FFFFFFFFFFFFFFFLL});
+    sentinel.setDetectionCategory(0xFFFFFFFFU);
+    sentinel.setSensorIndex(0xFFFFFFFFU);
+    sentinel.setSubpixel(irmel::RowCol{-99999.5, -88888.5});
+    sentinel.setIntensity(-77777.5);
+    sentinel.setSenRelUnit(irmel::IR_Directional{-66666.5, -55555.5, -44444.5});
+    sentinel.setSignalToInterferenceRatio(-33333.5);
+    sentinel.setSignalToNoiseRatio(-22222.5);
+    objects[3] = sentinel;
+
+    irmel::CandidateObjectMessage message;
+    message.setHeader(header);
+    message.setInertialState(inertial);
+    message.setCandidateObjects(objects);
+    return message;
+}
+
 class MockTrackChannel final : public irmel::TrackChannel {
 public:
     explicit MockTrackChannel(std::string scenario) : scenario_{std::move(scenario)} {}
@@ -1699,6 +1768,10 @@ public:
          * channel dies: it is the callback-quiescence boundary for the
          * @Optional RequestSystemTrackData exactly as for the report. */
         if (request_producer_.joinable()) request_producer_.join();
+        /* The candidate producer is likewise joined before destruction, so
+         * this destructor remains the callback-quiescence boundary for the
+         * @RequiredIfDetectCandidateObjects kind too. */
+        if (candidate_producer_.joinable()) candidate_producer_.join();
         record("track_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -1731,6 +1804,17 @@ public:
             report_callback_(*this, &report);
             record("track_late_callback_returned");
         }
+        /* The same deterministic late-callback proof for the
+         * @RequiredIfDetectCandidateObjects kind: the retained candidate
+         * callback is invoked during teardown, after the public metadata owner
+         * was closed. The ordered log proves the callback entered and returned
+         * strictly before this channel was destroyed. */
+        if (scenario_ == "track-candidate-late" && candidate_callback_) {
+            const auto message = rich_candidate_object_message();
+            record("track_candidate_late_callback_entered");
+            candidate_callback_(*this, &message);
+            record("track_candidate_late_callback_returned");
+        }
         return scenario_ == "track-disable-fail" ? Return::Fail : Return::Success;
     }
     irmel::ChannelCapability getCapabilities() const override
@@ -1741,9 +1825,21 @@ public:
         value.setChannelTypes(scenario_ == "track-capability-wrong" ?
             std::vector<irmel::ChannelType>{irmel::ChannelType::HealthAndStatus} :
             std::vector<irmel::ChannelType>{irmel::ChannelType::IRSTTrack});
-        value.setChannelMetadataCapabilities(
-            {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
-             irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+        /* Only the explicit 029F candidate scenarios advertise
+         * CandidateObjectMessage. Every pre-existing scenario keeps its exact
+         * previous advertised set, so its registration behavior is unchanged
+         * and the candidate callback is never registered for it. The mock
+         * never advertises CandidateObjectPreProcMessage, which it does not
+         * implement. */
+        if (advertises_candidate_objects())
+            value.setChannelMetadataCapabilities(
+                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
+                 irmel::ChannelMetadataCapabilityType::CandidateObjectMessage,
+                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+        else
+            value.setChannelMetadataCapabilities(
+                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
+                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
         return value;
     }
     Return registerMetadataCallback(
@@ -1917,10 +2013,30 @@ public:
                 rich_track_command_status()});
         return future;
     }
+    /* The @RequiredIfDetectCandidateObjects CandidateObjectMessage callback is
+     * now POSITIVELY implemented, so it is deliberately NOT counted as a
+     * deferred-operation violation. The adapter only reaches this override when
+     * the scenario advertised the capability. */
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
-                           const irmel::CandidateObjectMessage *const)>) override
-    { return deferred_registration("track_candidate_object_registered"); }
+                           const irmel::CandidateObjectMessage *const)> callback)
+        override
+    {
+        record("track_candidate_object_registered");
+        if (scenario_ == "track-candidate-register-throw")
+            throw std::runtime_error("mock CandidateObjectMessage registration exception");
+        /* Advertised-but-refusing providers: the adapter must fail closed on
+         * each of these, because the advertisement promised the type. */
+        if (scenario_ == "track-candidate-register-not-supported")
+            return Return::NotSupported;
+        if (scenario_ == "track-candidate-register-fail") return Return::Fail;
+        if (scenario_ == "track-candidate-register-unknown")
+            return static_cast<Return>(99U);
+        if (!callback) return Return::Fail;
+        candidate_callback_ = std::move(callback);
+        emit_synchronous_candidates();
+        return Return::Success;
+    }
     /* The @RequiredIfTrack Track report callback. The report is emitted
      * synchronously from inside registration, which is the hardest ordering the
      * facade must survive. */
@@ -2015,6 +2131,10 @@ private:
             scenario_ == "track-request-async" ||
             scenario_ == "track-mixed-requests" ||
             scenario_ == "track-metadata-mixed") return;
+        /* Every 029F candidate scenario drives its own emission ordering from
+         * the candidate/request callbacks, which the adapter registers after
+         * the report callback, so no report is emitted from here. */
+        if (advertises_candidate_objects()) return;
         const auto report = rich_track_report();
         record("track_report_emitted_rich");
         report_callback_(*this, &report);
@@ -2070,6 +2190,16 @@ private:
             request_callback_(*this, &request);
             return;
         }
+        /* Third and last kind of the deterministic three-kind FIFO scenario.
+         * The report and candidate were already emitted from the earlier
+         * registrations, so the resulting queue order is exactly
+         * report, candidate, request. */
+        if (scenario_ == "track-candidate-mixed") {
+            const auto request = rich_request_system_track_data();
+            request_callback_(*this, &request);
+            record("track_candidate_mixed_request_emitted");
+            return;
+        }
         /* The cross-mechanism scenario delivers BOTH metadata kinds while two
          * RequestFor futures are outstanding, so a test can prove that inbound
          * metadata never perturbs async request accounting. */
@@ -2106,10 +2236,113 @@ private:
          * appears when a test explicitly selects it. */
     }
 
-    /* Both published TrackChannel sends and the @Optional
-     * RequestSystemTrackData callback are now positively implemented, so the
-     * only remaining deferred Track surfaces are the two CandidateObject
-     * callbacks. */
+    /* Every scenario that positively exercises the
+     * @RequiredIfDetectCandidateObjects callback, including the
+     * advertised-but-refusing ones. Anything else keeps its historical
+     * advertised set exactly. */
+    bool advertises_candidate_objects() const
+    { return scenario_.rfind("track-candidate", 0U) == 0U; }
+
+    /* Deterministic scenario-selected synchronous emission of
+     * CandidateObjectMessage from inside registerMetadataCallback. */
+    void emit_synchronous_candidates()
+    {
+        if (scenario_ == "track-candidate-null") {
+            record("track_candidate_emitted_null");
+            candidate_callback_(*this, nullptr);
+            return;
+        }
+        if (scenario_ == "track-candidate-too-many") {
+            /* One past MAX_CANDIDATE_OBJECTS: the count cannot describe a
+             * prefix of the published 900-entry array. */
+            auto message = rich_candidate_object_message();
+            auto header = message.getHeader();
+            header.setNumberOfCOs(901U);
+            message.setHeader(header);
+            record("track_candidate_emitted_too_many");
+            candidate_callback_(*this, &message);
+            return;
+        }
+        if (scenario_ == "track-candidate-bad-region") {
+            /* One past MASK: upstream declares no MaxExclusive value. */
+            auto message = rich_candidate_object_message();
+            auto header = message.getHeader();
+            std::vector<irmel::HotRegion> regions = header.getHotRegions();
+            regions[1].setType(static_cast<irmel::HotRegionTypeEnum>(4U));
+            header.setHotRegions(regions);
+            message.setHeader(header);
+            record("track_candidate_emitted_bad_region");
+            candidate_callback_(*this, &message);
+            return;
+        }
+        if (scenario_ == "track-candidate-overflow") {
+            /* Six messages into a capacity-2 queue proves this kind obeys the
+             * same DROP-INCOMING policy on the same shared queue.
+             * stackFrameIndex counts arrival order. */
+            for (std::uint16_t index = 0; index < 6U; ++index) {
+                auto message = rich_candidate_object_message();
+                auto header = message.getHeader();
+                header.setStackFrameIndex(index);
+                message.setHeader(header);
+                candidate_callback_(*this, &message);
+            }
+            record("track_candidate_emitted_six");
+            return;
+        }
+        if (scenario_ == "track-candidate-mixed") {
+            /* Deterministic three-kind FIFO: report, candidate, request. The
+             * report callback is registered first and the request callback
+             * last, so this ordering is driven from here and from
+             * emit_synchronous_requests. */
+            if (report_callback_) {
+                const auto report = rich_track_report();
+                report_callback_(*this, &report);
+            }
+            const auto message = rich_candidate_object_message();
+            candidate_callback_(*this, &message);
+            record("track_candidate_emitted_mixed");
+            return;
+        }
+        /* Asynchronous delivery strictly AFTER registerMetadataCallback has
+         * returned, on a separate provider thread, which is the ordering a real
+         * provider uses. The test releases a barrier file, so no sleep is
+         * involved and the ordering stays deterministic. */
+        if (scenario_ == "track-candidate-async") {
+            const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_CANDIDATE_BARRIER");
+            const std::string path = barrier ? barrier : std::string{};
+            auto callback = candidate_callback_;
+            candidate_producer_ = std::thread{[this, path, callback]() {
+                if (!path.empty()) wait_for_file(path);
+                const auto message = rich_candidate_object_message();
+                record("track_candidate_emitted_async");
+                callback(*this, &message);
+                record("track_candidate_async_returned");
+            }};
+            return;
+        }
+        /* The late-callback and event-lifetime scenarios emit from disable(),
+         * after the public metadata owner has been closed. */
+        if (scenario_ == "track-candidate-late") return;
+        if (scenario_ == "track-candidate-lifetime") {
+            const auto message = rich_candidate_object_message();
+            record("track_candidate_emitted_lifetime");
+            candidate_callback_(*this, &message);
+            return;
+        }
+        if (scenario_ == "track-candidate-rich") {
+            const auto message = rich_candidate_object_message();
+            record("track_candidate_emitted_rich");
+            candidate_callback_(*this, &message);
+            return;
+        }
+    }
+
+    /* Both published TrackChannel sends, the @Optional RequestSystemTrackData
+     * callback, and the @RequiredIfDetectCandidateObjects
+     * CandidateObjectMessage callback are now positively implemented, so the
+     * ONLY remaining deferred Track surface is the @Optional
+     * CandidateObjectPreProcMessage callback. Legitimate
+     * CandidateObjectMessage registration is never counted here. */
     static Return deferred_registration(const char *event)
     {
         track_deferred_calls.fetch_add(1U);
@@ -2125,6 +2358,9 @@ private:
         report_callback_;
     std::function<void(irmel::Channel&, const irmel::RequestSystemTrackData *const)>
         request_callback_;
+    std::thread candidate_producer_;
+    std::function<void(irmel::Channel&, const irmel::CandidateObjectMessage *const)>
+        candidate_callback_;
 };
 
 class MockControl final : public irmel::Control {

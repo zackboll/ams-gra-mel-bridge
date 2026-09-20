@@ -798,6 +798,38 @@ This task adds no asynchronous request machinery and does not touch
 `TrackState::requests`; the 029C/029D lifetime behavior is unchanged.
 
 The `@RequiredIfTrack` core, `@RequiredIfTrackUpdate` `TrackDataUpdate`, and
-`@Optional` `SystemTrackDataResponse` all stay complete. `CandidateObjectMessage`
-and `CandidateObjectPreProcMessage` remain unimplemented, so the Track API as a
-whole is still not complete.
+`@Optional` `SystemTrackDataResponse` all stay complete.
+
+## Task 029F: Track CandidateObjectMessage
+
+Task 029F adds Track metadata kind 3,
+`AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE`, on the same inbound
+callback path. The pinned `TrackChannel` declares no
+`send(CandidateObjectMessage)` and no `RequestFor<CandidateObjectMessage>`, so
+no request handle, completion, or worker thread was added.
+
+New value types: `ams_mel_ir_row_col_v1`, `ams_mel_ir_hot_region_v1` and its
+span, `ams_mel_ir_candidate_object_header_v1`, `ams_mel_ir_candidate_object_v1`
+and its span, and `ams_mel_ir_candidate_object_message_v1`, plus
+`AMS_MEL_IR_MAX_CANDIDATE_OBJECTS` (900) and the four
+`AMS_MEL_IR_HOT_REGION_*` constants. `cfar` is preserved as C `float`, not
+widened to `double`; `RowCol` is a genuine row/column pair rather than an XYZ
+triple with a meaningless third component; and the `HotRegion` geometry keeps
+its upstream `uint16_t` width.
+
+The canonical `ams_mel_ir_sensor_inertial_state_v1`, `ams_mel_ir_quaternion_v1`,
+`ams_mel_ir_directional_v1`, and `ams_mel_ir_uncertainty_v1` declarations were
+relocated earlier in `abi.h` so the Track metadata event can reuse them; their
+layouts are unchanged and no duplicate representation was created, which the
+Rust and Python ABI probes verify.
+
+`ams_mel_ir_track_metadata_event_v1` gains one `candidate_object_message`
+member. Only the member selected by `kind` is populated; unselected fixed
+members stay zero and every unselected span keeps a NULL pointer and a zero
+size. The event owner now holds the variable-size hot-region and candidate
+storage, so every span the view exposes stays valid until `event_close`,
+including after provider channel destruction and provider library unload.
+
+No new C function was required, so the export count is unchanged at exactly 88
+and native CTest stays at 15. Only `CandidateObjectPreProcMessage` remains
+unimplemented, so the Track API as a whole is still not complete.

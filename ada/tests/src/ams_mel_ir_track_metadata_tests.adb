@@ -5,16 +5,20 @@ with AMS.MEL.IR.Track;
 with AMS.MEL.IR.Track.Metadata;
 with Interfaces;
 
---  Task 029B2 covers the @RequiredIfTrack IRSTTrackReport callback and Task
---  029E adds the @Optional RequestSystemTrackData request, which shares the
---  same bounded queue. CandidateObjectMessage and CandidateObjectPreProcMessage
---  remain unimplemented and are therefore not exercised here.
+--  Task 029B2 covers the @RequiredIfTrack IRSTTrackReport callback, Task 029E
+--  adds the @Optional RequestSystemTrackData request, and Task 029F adds the
+--  @RequiredIfDetectCandidateObjects CandidateObjectMessage. All three share
+--  the same bounded queue, capacity, and counter set.
+--  CandidateObjectPreProcMessage remains unimplemented and is therefore not
+--  exercised here.
 
 package body AMS_MEL_IR_Track_Metadata_Tests is
    package Trk renames AMS.MEL.IR.Track;
    package Meta renames AMS.MEL.IR.Track.Metadata;
    use type Interfaces.Unsigned_32;
+   use type Interfaces.Unsigned_16;
    use type Meta.Metadata_Kind;
+   use type Meta.Hot_Region_Type;
    use type Trk.IRST_Track_State;
    use type Trk.IRST_Track_Mode;
    use type AMS.MEL.IR.Counter;
@@ -388,6 +392,198 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       AMS.MEL.Close (Parent);
    end Test_Optional_Refusal;
 
+   --  Exact all-field fidelity of the distinctive rich CandidateObjectMessage,
+   --  wholly Ada owned. Every header field, every hot region, the complete
+   --  inertial state, and every exposed candidate object is checked, and the
+   --  exposed prefix length is checked to be exactly numberOfCOs.
+   procedure Check_Rich_Candidate (Message : Meta.Candidate_Object_Message; Context : String) is
+      H : constant Meta.Candidate_Object_Header := Meta.Header (Message);
+      S : constant Meta.Sensor_Inertial_State := Meta.Inertial_State (Message);
+   begin
+      if H.Number_Of_COs /= 3
+        or else H.Stack_Frame_Index /= 16#BEEF#
+        or else H.CFAR /= 1.5309e-7
+        or else H.Validity_Flag_Bitfield /= 16#A5C3#
+        or else H.TOV_UTC_NS /= -4_433_221_100_998_877
+      then
+         raise Program_Error with "Ada candidate header mismatch in " & Context;
+      end if;
+
+      if Meta.Hot_Region_Count (Message) /= 3 then
+         raise Program_Error with "Ada hot region count mismatch in " & Context;
+      end if;
+      declare
+         R1 : constant Meta.Hot_Region := Meta.Hot_Region_At (Message, 1);
+         R2 : constant Meta.Hot_Region := Meta.Hot_Region_At (Message, 2);
+         R3 : constant Meta.Hot_Region := Meta.Hot_Region_At (Message, 3);
+      begin
+         if R1.Kind /= Meta.Flare
+           or else R1.Size /= 1111
+           or else R1.Top /= 2222
+           or else R1.Left /= 3333
+           or else R1.Right /= 4444
+           or else R1.Bottom /= 5555
+         then
+            raise Program_Error with "Ada hot region 1 mismatch in " & Context;
+         end if;
+         if R2.Kind /= Meta.Solar
+           or else R2.Size /= 6666
+           or else R2.Top /= 7777
+           or else R2.Left /= 8888
+           or else R2.Right /= 9999
+           or else R2.Bottom /= 10111
+         then
+            raise Program_Error with "Ada hot region 2 mismatch in " & Context;
+         end if;
+         if R3.Kind /= Meta.Mask
+           or else R3.Size /= 12222
+           or else R3.Top /= 13333
+           or else R3.Left /= 14444
+           or else R3.Right /= 15555
+           or else R3.Bottom /= 16666
+         then
+            raise Program_Error with "Ada hot region 3 mismatch in " & Context;
+         end if;
+      end;
+
+      if S.System_Time_NS /= -1_122_334_455_667_788
+        or else S.Q_XYZW.X /= 0.125
+        or else S.Q_XYZW.Y /= -0.25
+        or else S.Q_XYZW.Z /= 0.375
+        or else S.Q_XYZW.W /= -0.5
+        or else S.Q_ECEF_XYZW.X /= -0.625
+        or else S.Q_ECEF_XYZW.Y /= 0.75
+        or else S.Q_ECEF_XYZW.Z /= -0.875
+        or else S.Q_ECEF_XYZW.W /= 1.125
+        or else S.Sensor_Position.X /= 1_234_567.25
+        or else S.Sensor_Position.Y /= -2_345_678.5
+        or else S.Sensor_Position.Z /= 3_456_789.75
+        or else S.Sensor_Velocity.X /= -11.125
+        or else S.Sensor_Velocity.Y /= 22.25
+        or else S.Sensor_Velocity.Z /= -33.375
+        or else S.Uncertainties.Sensor_Uncertainties /= 16#C0FFEE01#
+        or else S.Uncertainties.Platform_Uncertainties /= 16#DEADBE02#
+      then
+         raise Program_Error with "Ada inertial state mismatch in " & Context;
+      end if;
+
+      --  Exactly the meaningful prefix is present: the sentinel in upstream
+      --  slot 3 is never exposed.
+      if Meta.Candidate_Object_Count (Message) /= 3 then
+         raise Program_Error with "Ada candidate count mismatch in " & Context;
+      end if;
+      for Index in 1 .. 3 loop
+         declare
+            O      : constant Meta.Candidate_Object := Meta.Candidate_Object_At (Message, Index);
+            Offset : constant Long_Float := Long_Float (Index - 1);
+         begin
+            if O.System_Time_NS /= -1_000_000_000_000 - Long_Long_Integer (Index - 1) * 7
+              or else O.Detection_Category /= 16#11110000# + Interfaces.Unsigned_32 (Index - 1)
+              or else O.Sensor_Index /= 16#22220000# + Interfaces.Unsigned_32 (Index - 1)
+              or else O.Subpixel.Row /= 100.5 + Offset
+              or else O.Subpixel.Column /= 200.25 + Offset
+              or else O.Intensity /= 3000.125 + Offset
+              or else O.Sensor_Relative_Unit.X /= 0.1 + Offset
+              or else O.Sensor_Relative_Unit.Y /= -0.2 - Offset
+              or else O.Sensor_Relative_Unit.Z /= 0.3 + Offset
+              or else O.Signal_To_Interference_Ratio /= 40.5 + Offset
+              or else O.Signal_To_Noise_Ratio /= -50.75 - Offset
+            then
+               raise Program_Error with "Ada candidate object mismatch in " & Context;
+            end if;
+         end;
+      end loop;
+   end Check_Rich_Candidate;
+
+   --  Positive CandidateObjectMessage delivery, complete and wholly Ada owned
+   --  after Receive_Event returns.
+   procedure Test_Candidate_Message (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-candidate-rich");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      Check_Counters (Meta.Counters (Stream), 1, 0, 0, "candidate message");
+      declare
+         Event : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if Event.Kind /= Meta.Candidate_Object_Message_Event then
+            raise Program_Error with "Ada Track metadata kind is not candidate";
+         end if;
+         Check_Rich_Candidate (Event.Candidates, "candidate message");
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Candidate_Message;
+
+   --  Each malformed candidate payload is counted and enqueues nothing.
+   procedure Test_Candidate_Malformed (Provider_Path : String; Scenario : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, Scenario);
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      Check_Counters (Meta.Counters (Stream), 1, 0, 1, Scenario);
+      begin
+         declare
+            Ignored : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         begin
+            raise Program_Error with "Ada candidate malformed unexpectedly queued";
+         end;
+      exception
+         when AMS.MEL.IR.Timeout_Error =>
+            null;
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Candidate_Malformed;
+
+   --  An advertised capability whose registration is refused must fail Open
+   --  closed, and no metadata owner may escape.
+   procedure Test_Candidate_Registration_Failure (Provider_Path : String; Scenario : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, Scenario);
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+   begin
+      declare
+         Ignored : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+      begin
+         raise Program_Error with "Ada candidate registration unexpectedly succeeded";
+      end;
+   exception
+      when AMS.MEL.Provider_Error =>
+         Trk.Close (Channel);
+         AMS.MEL.Close (Parent);
+   end Test_Candidate_Registration_Failure;
+
+   --  Deterministic three-kind FIFO across the one shared queue.
+   procedure Test_Candidate_Mixed_FIFO (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-candidate-mixed");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 8);
+   begin
+      Check_Counters (Meta.Counters (Stream), 3, 0, 0, "candidate mixed FIFO");
+      declare
+         First  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Second : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Third  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if First.Kind /= Meta.IRST_Track_Report_Event
+           or else Second.Kind /= Meta.Candidate_Object_Message_Event
+           or else Third.Kind /= Meta.Request_System_Track_Data_Event
+         then
+            raise Program_Error with "Ada Track mixed FIFO order mismatch";
+         end if;
+         Check_Rich (First.Report, "candidate mixed FIFO");
+         Check_Rich_Candidate (Second.Candidates, "candidate mixed FIFO");
+         if Third.Request.Command_ID /= 16#C1234567# then
+            raise Program_Error with "Ada Track mixed FIFO request mismatch";
+         end if;
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Candidate_Mixed_FIFO;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Attached_Registration (Provider_Path);
@@ -405,6 +601,15 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       Test_Mixed_Kinds (Provider_Path);
       Test_Request_Null (Provider_Path);
       Test_Optional_Refusal (Provider_Path);
+      --  @RequiredIfDetectCandidateObjects CandidateObjectMessage.
+      Test_Candidate_Message (Provider_Path);
+      Test_Candidate_Malformed (Provider_Path, "track-candidate-null");
+      Test_Candidate_Malformed (Provider_Path, "track-candidate-too-many");
+      Test_Candidate_Malformed (Provider_Path, "track-candidate-bad-region");
+      Test_Candidate_Registration_Failure (Provider_Path, "track-candidate-register-not-supported");
+      Test_Candidate_Registration_Failure (Provider_Path, "track-candidate-register-fail");
+      Test_Candidate_Registration_Failure (Provider_Path, "track-candidate-register-throw");
+      Test_Candidate_Mixed_FIFO (Provider_Path);
       Ada.Text_IO.Put_Line
         ("PASS: Ada IR Track IRSTTrackReport and RequestSystemTrackData metadata contract");
    end Run;

@@ -404,10 +404,94 @@ private package AMS.MEL_C_API is
       Track_ID       : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   --  The canonical IR XYZ, quaternion, uncertainty, and SensorInertialState
+   --  imports. They are declared here, ahead of the Track metadata event, so
+   --  the CandidateObjectMessage import can reuse them exactly as the C header
+   --  does. No layout changed and no duplicate exists.
+   type IR_Directional_V1 is record
+      X, Y, Z : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Quaternion_V1 is record
+      X, Y, Z, W : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Uncertainty_V1 is record
+      Sensor_Uncertainties, Platform_Uncertainties : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Sensor_Inertial_State_V1 is record
+      System_Time_NS                   : Interfaces.Integer_64;
+      Q_XYZW, Q_ECEF_XYZW              : IR_Quaternion_V1;
+      Sensor_Position, Sensor_Velocity : IR_Directional_V1;
+      Uncertainties                    : IR_Uncertainty_V1;
+   end record
+   with Convention => C;
+
+   --  Complete HotRegion. The enum representation and the uint16_t geometry
+   --  are imported at their exact C widths.
+   type IR_Hot_Region_V1 is record
+      Kind                           : Interfaces.Unsigned_32;
+      Size, Top, Left, Right, Bottom : Interfaces.Unsigned_16;
+   end record
+   with Convention => C;
+   type IR_Hot_Region_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+
+   --  Complete CandidateObjectHeader. CFAR is upstream float and is imported
+   --  as Interfaces.C.C_float; it is deliberately NOT widened to double.
+   type IR_Candidate_Object_Header_V1 is record
+      Number_Of_COs          : Interfaces.Unsigned_16;
+      Stack_Frame_Index      : Interfaces.Unsigned_16;
+      CFAR                   : Interfaces.C.C_float;
+      Validity_Flag_Bitfield : Interfaces.Unsigned_16;
+      TOV_UTC_NS             : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+
+   --  The one canonical row/column import, matching upstream RowCol.
+   type IR_Row_Col_V1 is record
+      Row, Column : Interfaces.C.double;
+   end record
+   with Convention => C;
+
+   --  Complete CandidateObject; reuses the canonical row/column and XYZ
+   --  imports.
+   type IR_Candidate_Object_V1 is record
+      System_Time_NS               : Interfaces.Integer_64;
+      Detection_Category           : Interfaces.Unsigned_32;
+      Sensor_Index                 : Interfaces.Unsigned_32;
+      Subpixel                     : IR_Row_Col_V1;
+      Intensity                    : Interfaces.C.double;
+      Sensor_Relative_Unit         : IR_Directional_V1;
+      Signal_To_Interference_Ratio : Interfaces.C.double;
+      Signal_To_Noise_Ratio        : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Candidate_Object_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+
+   --  Complete CandidateObjectMessage. Both spans borrow storage owned by the
+   --  native event owner; the safe layer copies everything before close.
+   type IR_Candidate_Object_Message_V1 is record
+      Header            : IR_Candidate_Object_Header_V1;
+      Inertial_State    : IR_Sensor_Inertial_State_V1;
+      Hot_Regions       : IR_Hot_Region_Span_V1;
+      Candidate_Objects : IR_Candidate_Object_Span_V1;
+   end record
+   with Convention => C;
+
    type IR_Track_Event_V1 is record
       Kind                      : Interfaces.Unsigned_32;
       Track_Report              : IR_Track_Report_V1;
       Request_System_Track_Data : IR_Request_System_Track_Data_V1;
+      Candidate_Object_Message  : IR_Candidate_Object_Message_V1;
    end record
    with Convention => C;
    type Attitude_Rate_V1 is record
@@ -627,14 +711,6 @@ private package AMS.MEL_C_API is
       Sensor_ID : Interfaces.Unsigned_32;
    end record
    with Convention => C;
-   type IR_Directional_V1 is record
-      X, Y, Z : Interfaces.C.double;
-   end record
-   with Convention => C;
-   type IR_Quaternion_V1 is record
-      X, Y, Z, W : Interfaces.C.double;
-   end record
-   with Convention => C;
    --  Every published TrackDataUpdate covariance term, exactly 21 doubles.
    type IR_Track_Covariance_V1 is record
       XX, XY, XZ, X_VX, X_VY, X_VZ : Interfaces.C.double;
@@ -701,21 +777,10 @@ private package AMS.MEL_C_API is
       X, Y, Z, W : Interfaces.C.double;
    end record
    with Convention => C;
-   type IR_Uncertainty_V1 is record
-      Sensor_Uncertainties, Platform_Uncertainties : Interfaces.Unsigned_32;
-   end record
-   with Convention => C;
    type IR_Orientation_V1 is record
       Kind       : Interfaces.Unsigned_32;
       Euler      : Euler_V1;
       Quaternion : IR_Quaternion_V1;
-   end record
-   with Convention => C;
-   type IR_Sensor_Inertial_State_V1 is record
-      System_Time_NS                   : Interfaces.Integer_64;
-      Q_XYZW, Q_ECEF_XYZW              : IR_Quaternion_V1;
-      Sensor_Position, Sensor_Velocity : IR_Directional_V1;
-      Uncertainties                    : IR_Uncertainty_V1;
    end record
    with Convention => C;
    type IR_Sensor_Nav_State_V1 is record

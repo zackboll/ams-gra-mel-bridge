@@ -416,6 +416,46 @@ int main(void)
     VALUE(AMS_MEL_IR_TRACK_MODE_STARE);
     VALUE(AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
     VALUE(AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
+    VALUE(AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+    VALUE(AMS_MEL_IR_MAX_CANDIDATE_OBJECTS);
+    VALUE(AMS_MEL_IR_HOT_REGION_INVALID); VALUE(AMS_MEL_IR_HOT_REGION_FLARE);
+    VALUE(AMS_MEL_IR_HOT_REGION_SOLAR); VALUE(AMS_MEL_IR_HOT_REGION_MASK);
+    RECORD(ams_mel_ir_row_col_v1,
+        FIELD(ams_mel_ir_row_col_v1,row);
+        FIELD(ams_mel_ir_row_col_v1,column));
+    RECORD(ams_mel_ir_hot_region_v1,
+        FIELD(ams_mel_ir_hot_region_v1,type);
+        FIELD(ams_mel_ir_hot_region_v1,size);
+        FIELD(ams_mel_ir_hot_region_v1,top);
+        FIELD(ams_mel_ir_hot_region_v1,left);
+        FIELD(ams_mel_ir_hot_region_v1,right);
+        FIELD(ams_mel_ir_hot_region_v1,bottom));
+    RECORD(ams_mel_ir_hot_region_span_v1,
+        FIELD(ams_mel_ir_hot_region_span_v1,data);
+        FIELD(ams_mel_ir_hot_region_span_v1,size));
+    RECORD(ams_mel_ir_candidate_object_header_v1,
+        FIELD(ams_mel_ir_candidate_object_header_v1,number_of_cos);
+        FIELD(ams_mel_ir_candidate_object_header_v1,stack_frame_index);
+        FIELD(ams_mel_ir_candidate_object_header_v1,cfar);
+        FIELD(ams_mel_ir_candidate_object_header_v1,validity_flag_bitfield);
+        FIELD(ams_mel_ir_candidate_object_header_v1,tov_utc_ns));
+    RECORD(ams_mel_ir_candidate_object_v1,
+        FIELD(ams_mel_ir_candidate_object_v1,system_time_ns);
+        FIELD(ams_mel_ir_candidate_object_v1,detection_category);
+        FIELD(ams_mel_ir_candidate_object_v1,sensor_index);
+        FIELD(ams_mel_ir_candidate_object_v1,subpixel);
+        FIELD(ams_mel_ir_candidate_object_v1,intensity);
+        FIELD(ams_mel_ir_candidate_object_v1,sensor_relative_unit);
+        FIELD(ams_mel_ir_candidate_object_v1,signal_to_interference_ratio);
+        FIELD(ams_mel_ir_candidate_object_v1,signal_to_noise_ratio));
+    RECORD(ams_mel_ir_candidate_object_span_v1,
+        FIELD(ams_mel_ir_candidate_object_span_v1,data);
+        FIELD(ams_mel_ir_candidate_object_span_v1,size));
+    RECORD(ams_mel_ir_candidate_object_message_v1,
+        FIELD(ams_mel_ir_candidate_object_message_v1,header);
+        FIELD(ams_mel_ir_candidate_object_message_v1,inertial_state);
+        FIELD(ams_mel_ir_candidate_object_message_v1,hot_regions);
+        FIELD(ams_mel_ir_candidate_object_message_v1,candidate_objects));
     RECORD(ams_mel_ir_track_report_v1,
         FIELD(ams_mel_ir_track_report_v1,system_time_ns);
         FIELD(ams_mel_ir_track_report_v1,activity_id);
@@ -441,7 +481,8 @@ int main(void)
     RECORD(ams_mel_ir_track_metadata_event_v1,
         FIELD(ams_mel_ir_track_metadata_event_v1,kind);
         FIELD(ams_mel_ir_track_metadata_event_v1,track_report);
-        FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data));
+        FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data);
+        FIELD(ams_mel_ir_track_metadata_event_v1,candidate_object_message));
 
     LAYOUT(ams_mel_ir_track_update_request *);
     VALUE(AMS_MEL_IR_TRACK_STATUS_CREATE); VALUE(AMS_MEL_IR_TRACK_STATUS_UPDATE);

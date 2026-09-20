@@ -551,7 +551,61 @@ class AbiTests(unittest.TestCase):
                 _native.AMS_MEL_IR_TRACK_MODE_STARE,
                 _native.AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT,
                 _native.AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA,
+                _native.AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE,
+                _native.AMS_MEL_IR_MAX_CANDIDATE_OBJECTS,
+                _native.AMS_MEL_IR_HOT_REGION_INVALID,
+                _native.AMS_MEL_IR_HOT_REGION_FLARE,
+                _native.AMS_MEL_IR_HOT_REGION_SOLAR,
+                _native.AMS_MEL_IR_HOT_REGION_MASK,
             ]
+        )
+        expected.extend(self._layout(_native.IrRowColV1, 'row', 'column'))
+        expected.extend(
+            self._layout(
+                _native.IrHotRegionV1,
+                'kind',
+                'size',
+                'top',
+                'left',
+                'right',
+                'bottom',
+            )
+        )
+        expected.extend(self._layout(_native.IrHotRegionSpanV1, 'data', 'size'))
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectHeaderV1,
+                'number_of_cos',
+                'stack_frame_index',
+                'cfar',
+                'validity_flag_bitfield',
+                'tov_utc_ns',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectV1,
+                'system_time_ns',
+                'detection_category',
+                'sensor_index',
+                'subpixel',
+                'intensity',
+                'sensor_relative_unit',
+                'signal_to_interference_ratio',
+                'signal_to_noise_ratio',
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrCandidateObjectSpanV1, 'data', 'size')
+        )
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectMessageV1,
+                'header',
+                'inertial_state',
+                'hot_regions',
+                'candidate_objects',
+            )
         )
         expected.extend(
             self._layout(
@@ -589,6 +643,7 @@ class AbiTests(unittest.TestCase):
                 'kind',
                 'track_report',
                 'request_system_track_data',
+                'candidate_object_message',
             )
         )
         expected.extend(

@@ -139,11 +139,12 @@ not-cancellation close semantics. Requests of this family share one
 pending-request accounting domain with `Update_Request`, so physical Track
 teardown is deferred until every pending request of both families completes.
 
-This package is the natural future home for the `RequestSystemTrackData`
-callback, but that callback is deliberately not implemented yet. The
-`RequestSystemTrackData`, `CandidateObjectMessage`, and
-`CandidateObjectPreProcMessage` callbacks are not implemented, and the Track API
-as a whole is not complete.
+The inbound `RequestSystemTrackData` and `CandidateObjectMessage` callbacks are
+implemented in `AMS.MEL.IR.Track.Metadata` and are reached through
+`Receive_Event`; upstream declares no `send()` overload for either, so both are
+delivered on the one bounded Track metadata queue alongside `IRSTTrackReport`.
+The `CandidateObjectPreProcMessage` callback is not implemented, so the Track
+API as a whole is not complete.
 
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.
