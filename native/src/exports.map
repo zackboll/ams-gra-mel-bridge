@@ -81,6 +81,7 @@ AMS_MEL_0.1 {
         ams_mel_ir_track_metadata_get_counters;
         ams_mel_ir_track_metadata_close;
         ams_mel_ir_track_metadata_event_view;
+        ams_mel_ir_track_metadata_event_view_v2;
         ams_mel_ir_track_metadata_event_close;
         ams_mel_ir_track_submit_update;
         ams_mel_ir_track_update_request_wait;

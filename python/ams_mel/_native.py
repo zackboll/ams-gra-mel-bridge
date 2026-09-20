@@ -376,7 +376,12 @@ class IrTrackReportV1(ctypes.Structure): _fields_ = [
     ("range_m",ctypes.c_double),("range_error_m",ctypes.c_double),("spatial_extent_rad",ctypes.c_double),
     ("track_quality",ctypes.c_double),("clutter",ctypes.c_double),("age_ns",ctypes.c_int64),
     ("state",ctypes.c_uint32),("mode",ctypes.c_uint32)]
-class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1),("request_system_track_data",IrRequestSystemTrackDataV1),("candidate_object_message",IrCandidateObjectMessageV1)]
+# FROZEN Track metadata event v1: exactly these three members. Nothing may be
+# appended again; later Track metadata payloads use a new version record.
+class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1),("request_system_track_data",IrRequestSystemTrackDataV1)]
+# Track metadata event v2: the complete frozen v1 record first, then the
+# additive CandidateObjectMessage payload. base.kind stays the discriminator.
+class IrTrackMetadataEventV2(ctypes.Structure): _fields_ = [("base",IrTrackMetadataEventV1),("candidate_object_message",IrCandidateObjectMessageV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
@@ -937,6 +942,9 @@ ams_mel_ir_track_metadata_close.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_view = _LIBRARY.ams_mel_ir_track_metadata_event_view
 ams_mel_ir_track_metadata_event_view.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_event_view_v2 = _LIBRARY.ams_mel_ir_track_metadata_event_view_v2
+ams_mel_ir_track_metadata_event_view_v2.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV2)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_event_view_v2.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_close = _LIBRARY.ams_mel_ir_track_metadata_event_close
 ams_mel_ir_track_metadata_event_close.argtypes = [ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_close.restype = ctypes.c_int32
@@ -1041,6 +1049,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_metadata_get_counters",
     "ams_mel_ir_track_metadata_close",
     "ams_mel_ir_track_metadata_event_view",
+    "ams_mel_ir_track_metadata_event_view_v2",
     "ams_mel_ir_track_metadata_event_close",
     "ams_mel_ir_track_submit_update",
     "ams_mel_ir_track_update_request_wait",

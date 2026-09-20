@@ -100,6 +100,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_metadata_get_counters",
                 "ams_mel_ir_track_metadata_close",
                 "ams_mel_ir_track_metadata_event_view",
+                "ams_mel_ir_track_metadata_event_view_v2",
                 "ams_mel_ir_track_metadata_event_close",
                 "ams_mel_ir_track_submit_update",
                 "ams_mel_ir_track_update_request_wait",
@@ -109,7 +110,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_system_response_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 88)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 89)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -637,12 +638,20 @@ class AbiTests(unittest.TestCase):
                 'track_id',
             )
         )
+        # Frozen v1 has exactly these three members; the authoritative C probe
+        # comparison is what would detect a future accidental v1 growth.
         expected.extend(
             self._layout(
                 _native.IrTrackMetadataEventV1,
                 'kind',
                 'track_report',
                 'request_system_track_data',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackMetadataEventV2,
+                'base',
                 'candidate_object_message',
             )
         )

@@ -52,9 +52,48 @@
   constants and Track metadata kind 3. The canonical `SensorInertialState`,
   quaternion, directional, and uncertainty declarations were relocated earlier
   in `abi.h` so they could be reused; their layouts are unchanged and the ABI
-  probes verify that. The export count is unchanged at exactly 88 because no new
-  C function was required, and native CTest stays at 15. The vendor delta is
-  zero.
+  probes verify that. Native CTest stays at 15 and the vendor delta is zero.
+
+  **Track metadata event ABI versioning.** `docs/c-abi-policy.md` prohibits
+  appending fields to an existing fixed-layout record without a compatible
+  size/version scheme or a new type and operation. Task 029E had historically
+  appended `request_system_track_data` to
+  `ams_mel_ir_track_metadata_event_v1`, which was itself inconsistent with that
+  rule. Rather than break the record a second time, the layout currently on
+  `main` is **grandfathered and permanently frozen** at exactly `kind`,
+  `track_report`, and `request_system_track_data`, and `CandidateObjectMessage`
+  is **not** appended to it.
+
+  A new versioned record is added instead:
+
+  ```c
+  typedef struct ams_mel_ir_track_metadata_event_v2 {
+      ams_mel_ir_track_metadata_event_v1 base;
+      ams_mel_ir_candidate_object_message_v1 candidate_object_message;
+  } ams_mel_ir_track_metadata_event_v2;
+  ```
+
+  The complete frozen v1 is the first member, so `offsetof(v2, base) == 0`, no
+  report or `RequestSystemTrackData` layout is duplicated, `base.kind` remains
+  the one discriminator, and candidate storage remains event-owned.
+
+  `ams_mel_ir_track_metadata_event_view` is unchanged in signature and
+  semantics and still returns `const ams_mel_ir_track_metadata_event_v1 *`, so
+  existing consumers need no recompilation merely because
+  `CandidateObjectMessage` was added; it does not gain a larger output
+  contract. A Candidate event seen through it reports `kind == 3` with no
+  candidate payload present. One new export,
+  `ams_mel_ir_track_metadata_event_view_v2`, returns the v2 record and is the
+  only way to reach the candidate payload. Exports therefore go **88 -> 89**
+  across `exports.map`, the production and test dynamic symbol tables, the raw
+  Rust declarations, and the private Python `BOUND_FUNCTION_NAMES`. The facade
+  ABI version remains **0.1**.
+
+  Future Track metadata additions must not append fields to v1 or v2; they must
+  introduce a further version record with the earlier version as its first
+  member plus a matching view operation. The C, Rust, and Python ABI probes
+  assert the exact v1 member set so an accidental v1 append fails those
+  compatibility tests.
 
   `CandidateObjectPreProcMessage` remains the only unimplemented Track metadata
   callback and the only remaining deferred mock surface, so the Track API as a

@@ -13,7 +13,10 @@ package body AMS.MEL.IR.Track.Metadata is
 
    type Diagnostic is array (C.Size_T range <>) of aliased Interfaces.C.char with Convention => C;
    subtype Fixed_Diagnostic is Diagnostic (0 .. 511);
-   type Event_Access is access all C.IR_Track_Event_V1;
+   --  The safe layer reads the v2 view for every kind: v2 begins with the
+   --  complete frozen v1 record, so Base carries the report and request
+   --  payloads and the additive candidate payload sits beside it.
+   type Event_Access is access all C.IR_Track_Event_V2;
    function To_Event is new Ada.Unchecked_Conversion (System.Address, Event_Access);
 
    --  The native Track metadata event kinds defined by this release.
@@ -202,15 +205,15 @@ package body AMS.MEL.IR.Track.Metadata is
 
    --  Fails closed on any kind this release does not implement, which is now
    --  only the unimplemented CandidateObjectPreProcMessage callback.
-   function Copy_Any_Event (Raw : C.IR_Track_Event_V1) return Metadata_Event is
+   function Copy_Any_Event (Raw : C.IR_Track_Event_V2) return Metadata_Event is
    begin
-      if Raw.Kind = Irst_Track_Report_Kind then
-         return (Kind => IRST_Track_Report_Event, Report => Copy_Event (Raw));
-      elsif Raw.Kind = Request_System_Track_Data_Kind then
+      if Raw.Base.Kind = Irst_Track_Report_Kind then
+         return (Kind => IRST_Track_Report_Event, Report => Copy_Event (Raw.Base));
+      elsif Raw.Base.Kind = Request_System_Track_Data_Kind then
          return
            (Kind    => Request_System_Track_Data_Event,
-            Request => Copy_Request (Raw.Request_System_Track_Data));
-      elsif Raw.Kind = Candidate_Object_Message_Kind then
+            Request => Copy_Request (Raw.Base.Request_System_Track_Data));
+      elsif Raw.Base.Kind = Candidate_Object_Message_Kind then
          return
            (Kind       => Candidate_Object_Message_Event,
             Candidates => Copy_Candidate_Message (Raw.Candidate_Object_Message));
@@ -286,7 +289,7 @@ package body AMS.MEL.IR.Track.Metadata is
       elsif Code /= C.Success then
          raise Provider_Error with Message (D);
       end if;
-      if C.IR_Track_Event_View (Owner, Address'Access, D'Address, D'Length, Required'Access)
+      if C.IR_Track_Event_View_V2 (Owner, Address'Access, D'Address, D'Length, Required'Access)
         /= C.Success
       then
          Release;

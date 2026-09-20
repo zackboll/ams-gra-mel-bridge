@@ -669,6 +669,27 @@ differs from the `@Optional` `RequestSystemTrackData` refusal. Only
 whole is still not complete, and the CandidateObject evidence is likewise
 mock-provider only.
 
+The candidate payload is **not** appended to
+`ams_mel_ir_track_metadata_event_v1`. `docs/c-abi-policy.md` prohibits appending
+fields to an existing fixed-layout record, and task 029E had historically
+appended `request_system_track_data` to that same record. That current-`main`
+layout is grandfathered and permanently frozen rather than broken again, and
+029F introduces `ams_mel_ir_track_metadata_event_v2`, whose first member is the
+complete frozen v1 record and whose second member is the
+`CandidateObjectMessage` payload. `offsetof(v2, base)` is 0, no report or
+`RequestSystemTrackData` layout is duplicated, and `base.kind` stays the single
+discriminator.
+
+`ams_mel_ir_track_metadata_event_view` keeps its exact signature and semantics
+and still yields the frozen v1 record, so an existing consumer needs no
+recompilation; the new `ams_mel_ir_track_metadata_event_view_v2` export is the
+only way to reach the candidate payload. Exports move from 88 to **89** in
+`exports.map`, in both dynamic symbol tables, in the raw Rust declarations, and
+in the private Python bound names. The facade ABI version remains 0.1. The safe
+Ada `Receive_Event` reads the v2 view for every kind and still copies every
+value into Ada storage before closing the native event. Future Track metadata
+additions must use a further version record rather than appending to v1 or v2.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

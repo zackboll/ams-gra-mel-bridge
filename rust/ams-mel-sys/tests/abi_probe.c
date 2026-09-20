@@ -261,9 +261,11 @@ int main(void)
     ams_mel_status_t (*track_meta_counters)(const ams_mel_ir_track_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_metadata_get_counters;
     ams_mel_status_t (*track_meta_close)(ams_mel_ir_track_metadata **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_close;
     ams_mel_status_t (*track_ev_view)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view;
+    ams_mel_status_t (*track_ev_view2)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v2 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view_v2;
     ams_mel_status_t (*track_ev_close)(ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_close;
     (void)track_meta_open; (void)track_meta_recv; (void)track_meta_counters;
-    (void)track_meta_close; (void)track_ev_view; (void)track_ev_close;
+    (void)track_meta_close; (void)track_ev_view; (void)track_ev_view2;
+    (void)track_ev_close;
     ams_mel_status_t (*track_submit)(ams_mel_ir_track *, const ams_mel_ir_track_data_update_v1 *, ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_submit_update;
     ams_mel_status_t (*track_upd_wait)(const ams_mel_ir_track_update_request *, uint32_t, ams_mel_ir_track_update_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_update_request_wait;
     ams_mel_status_t (*track_upd_close)(ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_update_request_close;
@@ -478,11 +480,14 @@ int main(void)
         FIELD(ams_mel_ir_request_system_track_data_v1,command_id);
         FIELD(ams_mel_ir_request_system_track_data_v1,request_id);
         FIELD(ams_mel_ir_request_system_track_data_v1,track_id));
+    /* Frozen v1: exactly kind, track_report, request_system_track_data. */
     RECORD(ams_mel_ir_track_metadata_event_v1,
         FIELD(ams_mel_ir_track_metadata_event_v1,kind);
         FIELD(ams_mel_ir_track_metadata_event_v1,track_report);
-        FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data);
-        FIELD(ams_mel_ir_track_metadata_event_v1,candidate_object_message));
+        FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data));
+    RECORD(ams_mel_ir_track_metadata_event_v2,
+        FIELD(ams_mel_ir_track_metadata_event_v2,base);
+        FIELD(ams_mel_ir_track_metadata_event_v2,candidate_object_message));
 
     LAYOUT(ams_mel_ir_track_update_request *);
     VALUE(AMS_MEL_IR_TRACK_STATUS_CREATE); VALUE(AMS_MEL_IR_TRACK_STATUS_UPDATE);

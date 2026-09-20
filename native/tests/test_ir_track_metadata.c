@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -459,6 +460,9 @@ static int test_invalid_arguments(void)
           AMS_MEL_INVALID_ARGUMENT);
     CHECK(ams_mel_ir_track_metadata_event_view(NULL, NULL, NULL, 0, NULL) ==
           AMS_MEL_INVALID_ARGUMENT);
+    /* The v2 view shares the v1 view's exact argument-validation contract. */
+    CHECK(ams_mel_ir_track_metadata_event_view_v2(NULL, NULL, NULL, 0, NULL) ==
+          AMS_MEL_INVALID_ARGUMENT);
     CHECK(ams_mel_ir_track_metadata_event_close(NULL, NULL, 0, NULL) ==
           AMS_MEL_INVALID_ARGUMENT);
 
@@ -653,23 +657,76 @@ static int test_metadata_does_not_retain_provider(void)
     return EXIT_SUCCESS;
 }
 
-/* Receives one CandidateObjectMessage and asserts complete fidelity. */
+/* Receives one CandidateObjectMessage and asserts complete fidelity through
+ * the v2 view, which is the only view that declares the candidate payload.
+ * The same event is also viewed through the unchanged frozen v1 record: v1
+ * reports kind 3 and keeps its own members zeroed, and it deliberately has no
+ * candidate payload at all. */
 static int receive_rich_candidate(ams_mel_ir_track_metadata *metadata)
 {
     ams_mel_ir_track_metadata_event *event = NULL;
     const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+    const ams_mel_ir_track_metadata_event_v2 *view2 = NULL;
     CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
           AMS_MEL_OK);
     CHECK(event != NULL);
+    CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view2, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view2->base.kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+    CHECK(check_rich_candidate(&view2->candidate_object_message) == EXIT_SUCCESS);
+    /* The unselected members stay zeroed, including every unselected span. */
+    CHECK(view2->base.track_report.activity_id == 0U);
+    CHECK(view2->base.request_system_track_data.command_id == 0U);
+    /* The unchanged v1 view still works and still returns the same storage. */
     CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
           AMS_MEL_OK);
+    CHECK(view == &view2->base);
     CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
-    CHECK(check_rich_candidate(&view->candidate_object_message) == EXIT_SUCCESS);
-    /* The unselected members stay zeroed, including every unselected span. */
     CHECK(view->track_report.activity_id == 0U);
     CHECK(view->request_system_track_data.command_id == 0U);
     CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(event == NULL);
+    return EXIT_SUCCESS;
+}
+
+/* Frozen-v1 compatibility proof, independent of any provider interaction.
+ *
+ * ABI policy prohibits appending fields to an existing fixed-layout record.
+ * Task 029E had already appended request_system_track_data to v1; that layout
+ * is grandfathered and frozen here, and the candidate payload went into v2
+ * instead. These assertions fail if v1 ever grows again. */
+static int test_v1_layout_is_frozen(void)
+{
+    ams_mel_ir_track_metadata_event_v1 v1;
+    ams_mel_ir_track_metadata_event_v2 v2;
+    memset(&v1, 0, sizeof v1);
+    memset(&v2, 0, sizeof v2);
+    /* v1 contains exactly kind, track_report, and request_system_track_data:
+     * its size is the padded end of exactly those three members. Appending a
+     * fourth member necessarily grows sizeof v1 past that bound. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v1, kind) == 0U);
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v1, track_report) >=
+          sizeof v1.kind);
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v1, request_system_track_data) >=
+          offsetof(ams_mel_ir_track_metadata_event_v1, track_report) +
+              sizeof v1.track_report);
+    CHECK(sizeof v1 ==
+          offsetof(ams_mel_ir_track_metadata_event_v1, request_system_track_data) +
+              sizeof v1.request_system_track_data);
+    CHECK(sizeof(ams_mel_ir_track_metadata_event_v1) <
+          sizeof(ams_mel_ir_track_metadata_event_v2));
+
+    /* v2 is additive over the frozen v1 and reuses it verbatim. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v2, base) == 0U);
+    CHECK(sizeof v2.base == sizeof v1);
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v2, candidate_object_message) >=
+          sizeof v1);
+    CHECK(sizeof v2 ==
+          offsetof(ams_mel_ir_track_metadata_event_v2, candidate_object_message) +
+              sizeof v2.candidate_object_message);
+    /* base.kind is the one discriminator and sits at offset 0 of both. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v2, base) +
+              offsetof(ams_mel_ir_track_metadata_event_v1, kind) == 0U);
     return EXIT_SUCCESS;
 }
 
@@ -768,12 +825,12 @@ static int test_candidate_async(void)
     /* Blocking receive: the adapter waits on a condition variable. */
     {
         ams_mel_ir_track_metadata_event *event = NULL;
-        const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+        const ams_mel_ir_track_metadata_event_v2 *view = NULL;
         CHECK(ams_mel_ir_track_metadata_receive(metadata, 10000U, &event, NULL, 0,
               NULL) == AMS_MEL_OK);
-        CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+        CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view, NULL, 0, NULL) ==
               AMS_MEL_OK);
-        CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+        CHECK(view->base.kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
         CHECK(check_rich_candidate(&view->candidate_object_message) == EXIT_SUCCESS);
         CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) ==
               AMS_MEL_OK);
@@ -800,12 +857,12 @@ static int test_candidate_overflow(void)
           AMS_MEL_OK);
     CHECK(counters_are(metadata, 6U, 4U, 0U) == EXIT_SUCCESS);
     for (index = 0; index < 2U; ++index) {
-        const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+        const ams_mel_ir_track_metadata_event_v2 *view = NULL;
         CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0,
               NULL) == AMS_MEL_OK);
-        CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+        CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view, NULL, 0, NULL) ==
               AMS_MEL_OK);
-        CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+        CHECK(view->base.kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
         /* Arrival order is carried in stackFrameIndex. */
         CHECK(view->candidate_object_message.header.stack_frame_index == index);
         /* Each retained event still owns its own complete storage. */
@@ -817,6 +874,66 @@ static int test_candidate_overflow(void)
     CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
           AMS_MEL_TIMEOUT);
     CHECK(event == NULL);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* The three implemented kinds through the two views side by side:
+ * - the v1 view still works for IRSTTrackReport and RequestSystemTrackData
+ * - a candidate event through v1 exposes kind 3 with no candidate payload
+ * - the v2 view exposes the complete CandidateObjectMessage
+ * - v2.base.kind equals the CandidateObjectMessage kind
+ * The v1 view's output contract does not grow. */
+static int test_v1_view_compatibility(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+    const ams_mel_ir_track_metadata_event_v2 *view2 = NULL;
+    CHECK(open_track("track-candidate-mixed", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 8U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+
+    /* IRSTTrackReport through the unchanged v1 view. */
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
+    CHECK(check_rich_report(&view->track_report) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* CandidateObjectMessage through BOTH views. */
+    view = NULL;
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* v1 sees the discriminator but carries no candidate payload. */
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+    CHECK(view->track_report.activity_id == 0U);
+    CHECK(view->request_system_track_data.system_time_ns == 0);
+    CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view2, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view2->base.kind == AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+    CHECK(&view2->base == view);
+    CHECK(check_rich_candidate(&view2->candidate_object_message) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* RequestSystemTrackData through the unchanged v1 view. */
+    view = NULL;
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
+    CHECK(view->request_system_track_data.command_id == 0xC1234567U);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+
     CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
@@ -868,7 +985,7 @@ static int run_candidate_lifetime_child(const char *log)
     ams_mel_ir_track *track = NULL;
     ams_mel_ir_track_metadata *metadata = NULL;
     ams_mel_ir_track_metadata_event *event = NULL;
-    const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+    const ams_mel_ir_track_metadata_event_v2 *view = NULL;
     CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
     CHECK(open_track("track-candidate-lifetime", &session, &track) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
@@ -876,7 +993,7 @@ static int run_candidate_lifetime_child(const char *log)
     /* Acquire the event owner, then tear everything else down. */
     CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
           AMS_MEL_OK);
-    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+    CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view, NULL, 0, NULL) ==
           AMS_MEL_OK);
     CHECK(check_rich_candidate(&view->candidate_object_message) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
@@ -1006,6 +1123,9 @@ int main(void)
     CHECK(test_candidate_malformed() == EXIT_SUCCESS);
     CHECK(test_candidate_overflow() == EXIT_SUCCESS);
     CHECK(test_candidate_mixed_fifo() == EXIT_SUCCESS);
+    /* Task 029F ABI versioning: v1 is frozen, v2 is additive. */
+    CHECK(test_v1_layout_is_frozen() == EXIT_SUCCESS);
+    CHECK(test_v1_view_compatibility() == EXIT_SUCCESS);
     puts("PASS: native IR Track metadata contract");
     return EXIT_SUCCESS;
 }

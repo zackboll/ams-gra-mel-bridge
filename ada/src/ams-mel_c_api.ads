@@ -487,11 +487,23 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
 
+   --  FROZEN. This imports the permanently frozen C
+   --  ams_mel_ir_track_metadata_event_v1 record, which has exactly these three
+   --  members. Nothing may be appended to it again; later Track metadata
+   --  payloads get a new version record.
    type IR_Track_Event_V1 is record
       Kind                      : Interfaces.Unsigned_32;
       Track_Report              : IR_Track_Report_V1;
       Request_System_Track_Data : IR_Request_System_Track_Data_V1;
-      Candidate_Object_Message  : IR_Candidate_Object_Message_V1;
+   end record
+   with Convention => C;
+
+   --  Track metadata event v2: the complete frozen v1 record first, then the
+   --  additive CandidateObjectMessage payload. Base.Kind stays the one
+   --  discriminator for every kind.
+   type IR_Track_Event_V2 is record
+      Base                     : IR_Track_Event_V1;
+      Candidate_Object_Message : IR_Candidate_Object_Message_V1;
    end record
    with Convention => C;
    type Attitude_Rate_V1 is record
@@ -1426,6 +1438,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_view";
+   function IR_Track_Event_View_V2
+     (Handle              : Track_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_view_v2";
    function IR_Track_Event_Close
      (Handle              : access Track_Event_Handle;
       Diagnostic          : System.Address;

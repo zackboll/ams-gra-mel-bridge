@@ -281,7 +281,10 @@ void copy_request_system_track_data(
  * invalidates those pointers. No provider-owned pointer, provider STL storage,
  * or callback-stack address is ever referenced by the view. */
 struct EventData {
-    ams_mel_ir_track_metadata_event_v1 view{};
+    /* v2 is stored, never v1: v1 is a frozen ABI record and the whole of it is
+     * the first member of v2, so one allocation serves both views. The v1 view
+     * returns &view.base and the v2 view returns &view. */
+    ams_mel_ir_track_metadata_event_v2 view{};
     std::vector<ams_mel_ir_hot_region_v1> hot_regions;
     std::vector<ams_mel_ir_candidate_object_v1> candidate_objects;
 };
@@ -488,8 +491,8 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::IRSTTrackReport& report, EventData& event) noexcept {
-            event.view.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
-            return copy_track_report(report, event.view.track_report);
+            event.view.base.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
+            return copy_track_report(report, event.view.base.track_report);
         });
 }
 
@@ -505,7 +508,8 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::CandidateObjectMessage& message, EventData& event) {
-            event.view.kind = AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE;
+            event.view.base.kind =
+                AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE;
             return copy_candidate_object_message(message, event);
         });
 }
@@ -518,9 +522,10 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::RequestSystemTrackData& request, EventData& event) noexcept {
-            event.view.kind = AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
+            event.view.base.kind =
+                AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
             copy_request_system_track_data(
-                request, event.view.request_system_track_data);
+                request, event.view.base.request_system_track_data);
             return true;
         });
 }
@@ -1314,9 +1319,30 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_close(
     } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
 }
 
+/* Unchanged v1 contract. This operation's output type stays the frozen v1
+ * record, so a consumer compiled before CandidateObjectMessage existed keeps
+ * working without recompilation. It deliberately does NOT gain a larger output
+ * contract: a CandidateObjectMessage event is still delivered here, and
+ * base.kind still reports kind 3, but the candidate payload is reachable only
+ * through ams_mel_ir_track_metadata_event_view_v2. */
 extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view(
     const ams_mel_ir_track_metadata_event *event,
     const ams_mel_ir_track_metadata_event_v1 **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!event || !event->data || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    *output = &event->data->view.base;
+    return AMS_MEL_OK;
+}
+
+/* v2 view over the same adapter-owned event storage, with identical ownership,
+ * validity, and diagnostic rules. No provider-owned pointer escapes: both spans
+ * inside candidate_object_message address the event's own vectors. */
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v2 **output, char *out,
     std::size_t capacity, std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);

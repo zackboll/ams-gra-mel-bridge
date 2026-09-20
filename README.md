@@ -105,7 +105,7 @@ themselves.
 > ```
 >
 > The raw Rust sys crate
-> and private Python ctypes layer track the complete current 88-function C ABI.
+> and private Python ctypes layer track the complete current 89-function C ABI.
 > Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return

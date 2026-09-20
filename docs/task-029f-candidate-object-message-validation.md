@@ -9,9 +9,10 @@
 
 - Starting `main` SHA: `0809cbfa9f948bae19b45d119c563506ce68f2e2`
 - Branch: `task/029f-candidate-object-message`
-- Pinned IR MEL revision: unchanged vendored tree under `native/vendor/ir-mel`;
-  the vendor delta and `docs/upstream-files.sha256.md` are both unchanged by
-  this task.
+- Pinned IR MEL revision: `8d9224519f12b44e0b28815755c56a32a28d24a0`, as
+  recorded in `docs/upstream-provenance.md`. The vendored tree under
+  `native/vendor/ir-mel` is unchanged; the vendor delta and
+  `docs/upstream-files.sha256.md` are both unchanged by this task.
 
 ### Headers inspected
 
@@ -249,10 +250,112 @@ Reused without duplication: `ams_mel_ir_sensor_inertial_state_v1`,
 `ams_mel_ir_quaternion_v1`, `ams_mel_ir_directional_v1`,
 `ams_mel_ir_uncertainty_v1`. Those four declarations were relocated earlier in
 `abi.h` purely for declaration order; their layouts are unchanged, which the
-ABI probes verify. `ams_mel_ir_track_metadata_event_v1` gains one
-`candidate_object_message` member.
+ABI probes verify.
 
-No new C function was required. The exported function count remains **88**.
+### Corrective ABI versioning (supersedes the first 029F draft)
+
+The first 029F implementation appended `candidate_object_message` to
+`ams_mel_ir_track_metadata_event_v1`. Peer review identified that as a merge
+blocker: `docs/c-abi-policy.md` prohibits appending fields to an existing
+fixed-layout record without a compatible version scheme or a new type and
+operation. That append has been removed.
+
+Historically, task **029E** had already appended `request_system_track_data` to
+this same v1 record, which was itself inconsistent with the stated policy. The
+029E documentation is not rewritten as though that append never happened; this
+is a corrective/supersession note. The layout currently on `main` is
+**grandfathered and permanently frozen** rather than broken a second time,
+because reverting it would be another ABI break relative to current `main`:
+
+```c
+/* FROZEN */
+typedef struct ams_mel_ir_track_metadata_event_v1 {
+    ams_mel_ir_track_metadata_kind_t kind;
+    ams_mel_ir_track_report_v1 track_report;
+    ams_mel_ir_request_system_track_data_v1 request_system_track_data;
+} ams_mel_ir_track_metadata_event_v1;
+```
+
+029F adds a new version record instead:
+
+```c
+typedef struct ams_mel_ir_track_metadata_event_v2 {
+    ams_mel_ir_track_metadata_event_v1 base;
+    ams_mel_ir_candidate_object_message_v1 candidate_object_message;
+} ams_mel_ir_track_metadata_event_v2;
+```
+
+- v1 remains frozen; its size, alignment, and three member offsets are
+  unchanged from the base `main` SHA.
+- `offsetof(ams_mel_ir_track_metadata_event_v2, base) == 0`.
+- Neither the report nor the `RequestSystemTrackData` layout is duplicated: the
+  complete v1 record is reused as the first member.
+- `base.kind` remains the single discriminator.
+- Candidate variable-size storage remains event-owned.
+
+`ams_mel_ir_track_metadata_event_view` is unchanged in signature and semantics
+and still returns `const ams_mel_ir_track_metadata_event_v1 *`, so an existing
+consumer needs no recompilation merely because CandidateObjectMessage was
+added. It deliberately does **not** gain a larger output contract.
+
+One new C function was required:
+
+    ams_mel_ir_track_metadata_event_view_v2
+
+The exported function count becomes **89** (88 -> 89). Raw Rust declarations
+and Python `BOUND_FUNCTION_NAMES` are 89 as well. The facade ABI version
+remains **0.1**.
+
+**Future rule:** Track metadata additions must not append fields to v1 or v2.
+A further version record with the earlier version as its first member, plus a
+matching view operation, is required.
+
+### v1 compatibility tests
+
+`native/tests/test_ir_track_metadata.c` adds `test_v1_layout_is_frozen`, which
+asserts purely from the header that v1 ends immediately after
+`request_system_track_data` (so a fourth member would grow it), that
+`offsetof(v2, base) == 0`, that `sizeof(v2.base) == sizeof(v1)`, and that v2
+ends immediately after `candidate_object_message`.
+
+`test_v1_view_compatibility` drives the mixed 3-kind FIFO and proves:
+
+- the v1 view still works for `IRSTTrackReport`
+- the v1 view still works for `RequestSystemTrackData`
+- a Candidate event through v1 reports `kind == 3` while v1 carries no
+  candidate payload at all and keeps its own members zeroed
+- the v2 view exposes the complete CandidateObjectMessage
+- `v2.base.kind` is the CandidateObjectMessage kind
+- both views address the same storage (`&view2->base == view`)
+
+Every Candidate-specific fidelity, FIFO, malformed, lifetime, and quiescence
+test now reads the payload through the v2 view. The C, Rust, and Python ABI
+probes assert the exact v1 member set alongside the v2 record.
+
+#### Mutation proof
+
+The compatibility check was verified to be capable of detecting future
+accidental v1 growth. `candidate_object_message` was temporarily re-appended to
+`ams_mel_ir_track_metadata_event_v1` in `abi.h` and the affected suites were
+rerun. All three authoritative layers failed, exactly as intended:
+
+- Native CTest: `93% tests passed, 1 tests failed out of 15`, the failure being
+  `11 - ir_track_metadata_contract`, at
+  `test_ir_track_metadata.c:713`:
+
+      FAIL sizeof v1 == offsetof(ams_mel_ir_track_metadata_event_v1,
+                                 request_system_track_data) +
+                        sizeof v1.request_system_track_data
+      FAIL test_v1_layout_is_frozen() == EXIT_SUCCESS
+
+- Rust `ams-mel-sys --test abi`: `declarations_match_the_c_header` panicked;
+  the authoritative C probe reported v1 size `368` where the frozen Rust
+  `AmsMelIrTrackMetadataEventV1` is `184`.
+- Python `tests.test_abi`: the ctypes/C comparison failed at the same element,
+  `368 != 184`.
+
+The v2 implementation was then restored and all suites pass again. A future
+accidental v1 append therefore cannot ship silently.
 
 ## Event ownership and storage
 

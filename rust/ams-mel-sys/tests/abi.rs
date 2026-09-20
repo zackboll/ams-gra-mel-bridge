@@ -277,6 +277,13 @@ fn session_input_function_signatures_match_the_c_header() {
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_view;
     let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackMetadataEvent,
+        *mut *const AmsMelIrTrackMetadataEventV2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_view_v2;
+    let _: unsafe extern "C" fn(
         *mut *mut AmsMelIrTrackMetadataEvent,
         *mut std::ffi::c_char,
         usize,
@@ -1222,12 +1229,21 @@ fn declarations_match_the_c_header() {
         request_id,
         track_id
     );
+    /* The frozen v1 record has exactly these three members. An appended field
+     * would change the probed size and shift nothing else's offsets here, so
+     * this comparison against the authoritative C probe is what detects a
+     * future accidental v1 growth. */
     layout!(
         expected,
         AmsMelIrTrackMetadataEventV1,
         kind,
         track_report,
-        request_system_track_data,
+        request_system_track_data
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackMetadataEventV2,
+        base,
         candidate_object_message
     );
     expected.extend([

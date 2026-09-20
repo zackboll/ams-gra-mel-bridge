@@ -1018,12 +1018,24 @@ pub struct AmsMelIrTrackReportV1 {
     pub state: u32,
     pub mode: u32,
 }
+/// FROZEN Track metadata event v1. Exactly these three members; the layout is
+/// permanently fixed and nothing may be appended to it again. Later Track
+/// metadata payloads use a new version record.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrTrackMetadataEventV1 {
     pub kind: u32,
     pub track_report: AmsMelIrTrackReportV1,
     pub request_system_track_data: AmsMelIrRequestSystemTrackDataV1,
+}
+
+/// Track metadata event v2: the complete frozen v1 record first, then the
+/// additive `CandidateObjectMessage` payload. `base.kind` stays the one
+/// discriminator and `offsetof(v2, base)` is 0.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackMetadataEventV2 {
+    pub base: AmsMelIrTrackMetadataEventV1,
     pub candidate_object_message: AmsMelIrCandidateObjectMessageV1,
 }
 
@@ -2044,6 +2056,13 @@ extern "C" {
     pub fn ams_mel_ir_track_metadata_event_view(
         event: *const AmsMelIrTrackMetadataEvent,
         out_view: *mut *const AmsMelIrTrackMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_event_view_v2(
+        event: *const AmsMelIrTrackMetadataEvent,
+        out_view: *mut *const AmsMelIrTrackMetadataEventV2,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

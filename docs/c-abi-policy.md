@@ -823,13 +823,64 @@ relocated earlier in `abi.h` so the Track metadata event can reuse them; their
 layouts are unchanged and no duplicate representation was created, which the
 Rust and Python ABI probes verify.
 
-`ams_mel_ir_track_metadata_event_v1` gains one `candidate_object_message`
-member. Only the member selected by `kind` is populated; unselected fixed
-members stay zero and every unselected span keeps a NULL pointer and a zero
-size. The event owner now holds the variable-size hot-region and candidate
-storage, so every span the view exposes stays valid until `event_close`,
-including after provider channel destruction and provider library unload.
+Only the member selected by `kind` is populated; unselected fixed members stay
+zero and every unselected span keeps a NULL pointer and a zero size. The event
+owner now holds the variable-size hot-region and candidate storage, so every
+span the view exposes stays valid until `event_close`, including after provider
+channel destruction and provider library unload.
 
-No new C function was required, so the export count is unchanged at exactly 88
-and native CTest stays at 15. Only `CandidateObjectPreProcMessage` remains
-unimplemented, so the Track API as a whole is still not complete.
+The export count becomes exactly 89 and native CTest stays at 15. Only
+`CandidateObjectPreProcMessage` remains unimplemented, so the Track API as a
+whole is still not complete.
+
+### Track metadata event versioning and the frozen v1 record
+
+This policy states: *do not append fields to an existing fixed-layout record
+without a compatible size/version scheme or a new type and operation.*
+
+Task 029E did append `request_system_track_data` to
+`ams_mel_ir_track_metadata_event_v1`. That was inconsistent with this rule.
+Rather than break the record a second time by reverting it, the layout that
+029E published is **grandfathered and permanently frozen**:
+
+```c
+typedef struct ams_mel_ir_track_metadata_event_v1 {
+    ams_mel_ir_track_metadata_kind_t kind;
+    ams_mel_ir_track_report_v1 track_report;
+    ams_mel_ir_request_system_track_data_v1 request_system_track_data;
+} ams_mel_ir_track_metadata_event_v1;
+```
+
+Task 029F therefore does **not** append `candidate_object_message` to v1. It
+introduces a new version record and a new operation:
+
+```c
+typedef struct ams_mel_ir_track_metadata_event_v2 {
+    ams_mel_ir_track_metadata_event_v1 base;
+    ams_mel_ir_candidate_object_message_v1 candidate_object_message;
+} ams_mel_ir_track_metadata_event_v2;
+```
+
+Properties this shape guarantees:
+
+- v1 is frozen and its size, alignment, and three member offsets are unchanged.
+- `offsetof(ams_mel_ir_track_metadata_event_v2, base) == 0`.
+- No report or `RequestSystemTrackData` layout is duplicated; v2 reuses the
+  whole v1 record.
+- `base.kind` remains the one discriminator across versions.
+- Candidate variable-size storage remains event-owned.
+
+`ams_mel_ir_track_metadata_event_view` keeps its exact signature and semantics
+and keeps returning `const ams_mel_ir_track_metadata_event_v1 *`. An existing
+consumer does not need recompilation merely because CandidateObjectMessage was
+added. `ams_mel_ir_track_metadata_event_view_v2` is the new export that returns
+`const ams_mel_ir_track_metadata_event_v2 *`; it is the only way to reach the
+candidate payload. A CandidateObjectMessage event is still delivered through
+the v1 view with `kind == 3` and with no candidate payload present there, so a
+v1 consumer fails closed on a kind it cannot decode without any layout change.
+
+**Rule for future Track metadata growth:** do not append fields to v1 or to v2.
+Introduce a further version record with the earlier version as its first member
+and a matching view operation. The native, Rust, and Python ABI probes assert
+the exact v1 member set, so an accidental v1 append fails those compatibility
+tests rather than silently shipping.

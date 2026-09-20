@@ -1017,24 +1017,56 @@ typedef struct ams_mel_ir_candidate_object_message_v1 {
     ams_mel_ir_candidate_object_span_v1 candidate_objects;
 } ams_mel_ir_candidate_object_message_v1;
 
-/* Extensible Track metadata event format. The @RequiredIfTrack IRSTTrackReport
+/* Versioned Track metadata event format. The @RequiredIfTrack IRSTTrackReport
  * family, the @Optional RequestSystemTrackData request, and the
  * @RequiredIfDetectCandidateObjects CandidateObjectMessage are implemented;
  * CandidateObjectPreProcMessage deliberately has no storage here. A consumer
  * must fail closed on an unrecognized kind. Only the member selected by kind is
  * populated; the others stay zeroed, and every unselected span keeps a NULL
- * data pointer and a zero size. */
+ * data pointer and a zero size.
+ *
+ * kind is the ONE discriminator for every version of this event. A kind may be
+ * introduced whose payload has no storage in an older version record: such an
+ * event is still delivered through the older view, with the older view's
+ * members zeroed, and the payload is reachable only through the version that
+ * declares it. AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE is exactly
+ * that case for v1. */
 typedef uint32_t ams_mel_ir_track_metadata_kind_t;
 #define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT UINT32_C(1)
 #define AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(2)
 #define AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE UINT32_C(3)
 
+/* FROZEN. This record has exactly three members and its layout is permanently
+ * fixed at the layout published by task 029E. Nothing may ever be appended to
+ * it again: docs/c-abi-policy.md prohibits appending fields to an existing
+ * fixed-layout record, and the ABI probes assert this exact member set so an
+ * accidental future append fails the build's compatibility tests.
+ *
+ * Historical note: task 029E did append request_system_track_data to this
+ * record, which was itself inconsistent with the stated policy. That layout is
+ * grandfathered as-is rather than broken a second time. Every later Track
+ * metadata addition uses a new version record instead. */
 typedef struct ams_mel_ir_track_metadata_event_v1 {
     ams_mel_ir_track_metadata_kind_t kind;
     ams_mel_ir_track_report_v1 track_report;
     ams_mel_ir_request_system_track_data_v1 request_system_track_data;
-    ams_mel_ir_candidate_object_message_v1 candidate_object_message;
 } ams_mel_ir_track_metadata_event_v1;
+
+/* Track metadata event v2. The complete frozen v1 record is the first member,
+ * so offsetof(v2, base) is 0, every v1 payload layout is reused rather than
+ * duplicated, and base.kind remains the one discriminator. v2 adds only the
+ * @RequiredIfDetectCandidateObjects CandidateObjectMessage payload, whose
+ * variable-size storage stays owned by the native event owner exactly as the
+ * rest of the event does.
+ *
+ * A v1 consumer needs no recompilation because CandidateObjectMessage exists:
+ * it keeps calling ams_mel_ir_track_metadata_event_view and keeps receiving the
+ * unchanged v1 record. Future Track metadata payloads must introduce a v3 or
+ * another compatible scheme; they must not be appended to v1 or to v2. */
+typedef struct ams_mel_ir_track_metadata_event_v2 {
+    ams_mel_ir_track_metadata_event_v1 base;
+    ams_mel_ir_candidate_object_message_v1 candidate_object_message;
+} ams_mel_ir_track_metadata_event_v2;
 
 /* Upstream TrackStatus (@RequiredIfTrackUpdate) defines exactly Create = 0,
  * Update = 1, Predict = 2, and Delete = 3 and declares no MaxExclusive value.
@@ -2072,6 +2104,15 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_close(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view(
     const ams_mel_ir_track_metadata_event *event,
     const ams_mel_ir_track_metadata_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same borrowed event, viewed through the v2 record. Identical ownership,
+ * validity, and diagnostic rules as the v1 view; the returned pointer is the
+ * same storage, because offsetof(v2, base) is 0 and the v1 view returns
+ * &view->base. Every event kind is viewable through v2. Only v2 exposes the
+ * CandidateObjectMessage payload and its two event-owned spans. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v2 **out_view, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_close(
     ams_mel_ir_track_metadata_event **event, char *diagnostic,
