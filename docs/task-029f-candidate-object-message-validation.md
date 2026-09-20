@@ -363,11 +363,21 @@ accidental v1 append therefore cannot ship silently.
 
 ```cpp
 struct EventData {
-    ams_mel_ir_track_metadata_event_v1 view{};
+    ams_mel_ir_track_metadata_event_v2 view{};
     std::vector<ams_mel_ir_hot_region_v1> hot_regions;
     std::vector<ams_mel_ir_candidate_object_v1> candidate_objects;
 };
 ```
+
+The stored record is v2, never v1:
+
+- the v1 view returns `&view.base`
+- the v2 view returns `&view`
+- one `EventData` allocation therefore backs both views; nothing is duplicated,
+  copied, or re-projected per call
+- the CandidateObjectMessage payload exists only in v2, so a Candidate event
+  seen through the v1 view reports `base.kind == 3` with no candidate payload
+  reachable
 
 Both vectors are built completely first; only then are the span pointers and
 sizes bound into `view`, and the vectors are never grown afterwards. Because
