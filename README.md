@@ -65,10 +65,20 @@ themselves.
 > CommandStatus rejection is deliberately distinguished from an ErrorOr rejection.
 > Positive `TrackDataUpdate` behavior and payload fidelity are mock-validated
 > only; pinned Squall cannot attach Track and so provides no positive
-> `TrackDataUpdate` evidence. `SystemTrackDataResponse`,
-> `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
-> `RequestSystemTrackData` are not implemented. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 85-function C ABI. Safe Rust and
+> `TrackDataUpdate` evidence. C and Ada also implement the separately optional
+> (`@Optional`) `TrackChannel::send(SystemTrackDataResponse)`
+> (`AMS.MEL.IR.Track.System_Data`): the complete response including signed
+> nanosecond system time, verbatim range/rate/error values, and both
+> azimuth/elevation pairs through the one canonical AzEl representation, with the
+> same asynchronous request semantics and the same single Track request-accounting
+> domain, so a pending update and a pending response together keep the provider
+> graph alive until both complete. Positive `SystemTrackDataResponse` behavior and
+> payload fidelity are likewise mock-validated only; pinned Squall provides no
+> positive `SystemTrackDataResponse` evidence. The `RequestSystemTrackData`,
+> `CandidateObjectMessage`, and `CandidateObjectPreProcMessage` callbacks are not
+> implemented, and the entire Track API is not complete. The raw Rust sys crate
+> and private Python ctypes layer track the complete current 88-function C ABI.
+> Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured

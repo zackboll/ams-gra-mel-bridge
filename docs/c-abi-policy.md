@@ -632,3 +632,85 @@ future, either failure returns `AMS_MEL_INTERNAL_ERROR`, exposes no public
 request owner, and retains the future and provider graph safely. That retention
 is deliberately permanent under the fail-safe policy; no recovery or cleanup is
 claimed.
+
+## Task 029D Track SystemTrackDataResponse contract
+
+Task 029D adds exactly three exports for the `@Optional`
+`TrackChannel::send(SystemTrackDataResponse)` surface --
+`ams_mel_ir_track_submit_system_track_data_response`,
+`ams_mel_ir_track_system_response_request_wait`, and
+`ams_mel_ir_track_system_response_request_close` -- taking ABI 0.1 from 85 to 88
+exports. The ABI version itself stays `0.1`.
+
+This is `@Optional`, a distinct upstream condition from both `@RequiredIfTrack`
+and `@RequiredIfTrackUpdate`. The `@RequiredIfTrack` core stays complete, the
+`@RequiredIfTrackUpdate` `TrackDataUpdate` send stays complete, and this task
+completes the optional operation only. The `RequestSystemTrackData`,
+`CandidateObjectMessage`, and `CandidateObjectPreProcMessage` callbacks remain
+unimplemented and the Track API as a whole is not complete.
+
+One new opaque owner, `ams_mel_ir_track_system_response_request`, joins the
+Track family. It is a deliberately distinct public type: the TrackDataUpdate
+request is never exposed under a System-response name, even though internally
+both hold the same `shared_ptr<Completion>`. Likewise
+`ams_mel_ir_track_system_response_result_v1` intentionally matches the Track
+update result shape, because both upstream operations return
+`RequestFor<CommandStatus>`, while remaining a semantically distinct public type
+rather than an alias.
+
+`ams_mel_ir_system_track_data_response_v1` is the complete
+`SystemTrackDataResponse`. Every published setter -- `setCommandID`,
+`setSystemTime`, `setRequestId`, `setTrackId`, `setRange`, `setRangeRate`,
+`setRangeError`, `setRangeRateError`, `setAzElValid`, `setInertialAzEl`,
+`setAzElError`, and `setRangeValid` -- is called exactly once with the
+corresponding C field through the published setters only; no provider object
+layout is assumed. `system_time_ns` stays a signed nanosecond count and is
+deliberately not converted to seconds. The range, range rate, and both error
+terms stay in upstream meters and meters per second, and every azimuth and
+elevation stays in radians; all are copied verbatim, because the upstream
+setters perform no validation, clamping, or normalization.
+
+Both angle pairs reuse the one canonical `ams_mel_ir_az_el_v1`
+(`azimuth_rad`, `elevation_rad`); no second azimuth/elevation representation
+exists in this ABI. `az_el_valid` and `range_valid` use the repository's
+established `uint8_t` representation for published bool values and accept only
+`0` or `1`; any other value, including `255`, is `AMS_MEL_INVALID_ARGUMENT`, and
+each is validated independently.
+
+Submission requires the Track lifecycle to be Enabled exactly as
+`TrackDataUpdate` does; attached, failed, and closed all report
+`AMS_MEL_PROVIDER_FAILED`. The adapter validates Enabled, copies the shared
+`TrackChannel`, and increments `requests` under the `TrackState` mutex, then
+releases that mutex before calling `TrackChannel::send`, because a provider is
+permitted to invoke the registered `IRSTTrackReport` metadata callback
+synchronously from inside `send()`. Everything the request needs to own the
+returned future is allocated before the provider send.
+
+The asynchronous result semantics are the Task 029C semantics reused without a
+second lifecycle model: one worker calls `future::get()` exactly once,
+`AMS_MEL_TIMEOUT` means only "not ready yet" and leaves `*out_result` untouched
+without cancelling, a terminal value is cached permanently so repeated waits
+return an identical result, `reason_description` points into request-owned
+storage valid until request close, a successful `CommandStatus` whose own state
+is `AMS_MEL_IR_COMMAND_REJECTED` is still `AMS_MEL_OK`, only an `ErrorOr`
+failure becomes `AMS_MEL_COMMAND_REJECTED`, all nine published MEL `ErrorCode`
+values map through the existing mapping, and an unknown code is
+`AMS_MEL_PROVIDER_FAILED`. Request close drops only the public owner: it is
+idempotent, nonblocking, not cancellation, and retains no raw Track pointer.
+
+Requests of this family participate in the SAME `TrackState::requests` count as
+`TrackDataUpdate` requests. There is deliberately no second request counter, so
+Track Close with either family pending moves the lifecycle to Closed, makes
+public metadata inactive, releases the public Track owner, and defers physical
+teardown until the total shared request count reaches zero. The deferred
+detach-failure behavior, including the `deferred Track cleanup failed`
+diagnostic and permanent emergency retention, is the existing shared behavior
+and is unchanged; synchronous detach-retry behavior is likewise unmodified.
+
+The `AMS_MEL_TEST_TRACK_RESPONSE_POST_SEND_FAILURE=allocation` and
+`=worker-launch` failpoints use the same shared internal failpoint mechanism
+under a System-response-specific variable, so the existing `TrackDataUpdate`
+post-send coverage is untouched. Either failure returns
+`AMS_MEL_INTERNAL_ERROR`, exposes no public request owner, and retains the
+future and provider graph safely; that retention is deliberately permanent under
+the fail-safe policy.

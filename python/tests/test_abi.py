@@ -104,9 +104,12 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_submit_update",
                 "ams_mel_ir_track_update_request_wait",
                 "ams_mel_ir_track_update_request_close",
+                "ams_mel_ir_track_submit_system_track_data_response",
+                "ams_mel_ir_track_system_response_request_wait",
+                "ams_mel_ir_track_system_response_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 85)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 88)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -629,6 +632,34 @@ class AbiTests(unittest.TestCase):
         )
         expected.extend(
             self._layout(_native.IrTrackUpdateResultV1, 'status', 'error_code')
+        )
+        expected.extend(
+            [
+                ctypes.sizeof(_native.IrTrackSystemResponseRequestHandle),
+                ctypes.alignment(_native.IrTrackSystemResponseRequestHandle),
+            ]
+        )
+        expected.extend(
+            self._layout(
+                _native.IrSystemTrackDataResponseV1,
+                'system_time_ns',
+                'command_id',
+                'request_id',
+                'track_id',
+                'range_m',
+                'range_rate_mps',
+                'range_error_m',
+                'range_rate_error_mps',
+                'az_el_valid',
+                'range_valid',
+                'inertial_az_el',
+                'az_el_error',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackSystemResponseResultV1, 'status', 'error_code'
+            )
         )
         expected.extend(
             [

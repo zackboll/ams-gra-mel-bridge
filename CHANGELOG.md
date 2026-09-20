@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+- Implement exactly the optional IR Track
+  `TrackChannel::send(SystemTrackDataResponse)` (`@Optional`) over the existing
+  Track channel/report/update foundation, in native C, safe Ada, raw Rust ABI,
+  and private Python ABI. This is `@Optional`, a distinct upstream condition
+  from both `@RequiredIfTrack` and `@RequiredIfTrackUpdate`: the
+  `@RequiredIfTrack` core remains complete, `@RequiredIfTrackUpdate`
+  `TrackDataUpdate` remains complete, and the optional `SystemTrackDataResponse`
+  send is now complete. The `RequestSystemTrackData`, `CandidateObjectMessage`,
+  and `CandidateObjectPreProcMessage` callbacks remain unimplemented, no safe
+  Rust or public Python Track API was added, and the entire Track API is NOT
+  marked complete. ABI 0.1 grows from 85 to exactly 88 exports
+  (`ams_mel_ir_track_submit_system_track_data_response`,
+  `ams_mel_ir_track_system_response_request_wait`,
+  `ams_mel_ir_track_system_response_request_close`) and native CTest grows from
+  13 to 14. The vendor delta is zero: `SystemTrackDataResponse` and `RangeAzEl`
+  were already present in the reviewed Task 029A closure (IR MEL
+  `8d9224519f12b44e0b28815755c56a32a28d24a0`, AMS Math
+  `00be45190f0e47d268cece8b8c2f8fb58b5418d2`).
+- The complete response carries systemTime as signed nanoseconds, commandID,
+  requestId, trackId, range/rangeRate/rangeError/rangeRateError verbatim in
+  upstream meters and meters per second, AzElValid, inertialAzEl, AzElError, and
+  rangeValid. Both angle pairs reuse the one canonical `ams_mel_ir_az_el_v1`
+  (radians); no second azimuth/elevation representation was created. Nothing is
+  clamped or normalized, because the upstream setters perform no such
+  validation, and every published setter is called exactly once without assuming
+  any C++ object layout. `az_el_valid` and `range_valid` use the established
+  `uint8_t` bool representation and accept only 0 or 1; each is rejected
+  independently with `AMS_MEL_INVALID_ARGUMENT`.
+- `ams_mel_ir_track_system_response_request` and
+  `ams_mel_ir_track_system_response_result_v1` are deliberately distinct public
+  types rather than the `TrackDataUpdate` request/result reused under a
+  misleading semantic name, while internally both families share exactly one
+  async lifecycle model and one `TrackState::requests` accounting domain. A
+  deterministic mixed-request regression proves that one pending
+  `TrackDataUpdate` plus one pending `SystemTrackDataResponse` keep the provider
+  graph alive until BOTH complete, so a second request counter would fail. Also
+  covered: `Wait` timeout leaving the caller's record untouched and never
+  cancelling, permanently cached terminal results, a successful `CommandStatus`
+  whose state is Rejected remaining `AMS_MEL_OK` while only `ErrorOr` failure
+  becomes `AMS_MEL_COMMAND_REJECTED`, request close not being cancellation, a
+  synchronous `IRSTTrackReport` callback from inside the provider send,
+  deferred-detach failure retention, and a System-response-specific post-send
+  failpoint that leaves the existing `TrackDataUpdate` post-send tests
+  unweakened.
+- Safe Ada adds `AMS.MEL.IR.Track.System_Data` with `Azimuth_Elevation`,
+  `System_Track_Data_Response`, an Ada-owned `Command_Status`, and a controlled
+  `Response_Request`/`Response_Result`. Its package-local `Command_State` and
+  `Cannot_Comply` carry explicit representation clauses with `Size => 32`, and
+  the Ada test proves `'Enum_Rep = 'Pos` for every literal of both types from
+  the first commit. The package is the natural future home for the
+  `RequestSystemTrackData` callback, which is deliberately not implemented.
+  Positive `SystemTrackDataResponse` behavior and payload fidelity are
+  mock-validated only; pinned Squall still cannot attach a Track channel and
+  therefore provides no positive `SystemTrackDataResponse` evidence.
 - Implement exactly the conditionally required IR Track
   `TrackChannel::send(TrackDataUpdate)` (`@RequiredIfTrackUpdate`) over the
   existing Track channel/report foundation, in native C, safe Ada, raw Rust ABI,

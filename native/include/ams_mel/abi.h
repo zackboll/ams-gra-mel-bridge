@@ -93,6 +93,14 @@ typedef struct ams_mel_ir_track_metadata_event ams_mel_ir_track_metadata_event;
  * and never a raw ams_mel_ir_track pointer, so it remains valid independently
  * of the public Track and Session owners. */
 typedef struct ams_mel_ir_track_update_request ams_mel_ir_track_update_request;
+/* Opaque owner of one asynchronous send(SystemTrackDataResponse) outcome
+ * (@Optional). It is a deliberately distinct public type from the
+ * TrackDataUpdate request, because the two carry different upstream semantics;
+ * the TrackDataUpdate request type is never reused under a System-response
+ * name. Like that request it owns a shared terminal completion state and never
+ * a raw ams_mel_ir_track pointer. */
+typedef struct ams_mel_ir_track_system_response_request
+    ams_mel_ir_track_system_response_request;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -970,6 +978,62 @@ typedef struct ams_mel_ir_track_update_result_v1 {
     ams_mel_ir_command_status_v1 status;
     ams_mel_error_code_t error_code;
 } ams_mel_ir_track_update_result_v1;
+
+/* Complete SystemTrackDataResponse input (@Optional). This is neither
+ * @RequiredIfTrack nor @RequiredIfTrackUpdate: it is an optional upstream
+ * TrackChannel operation.
+ *
+ * Every upstream setter is represented exactly once: setSystemTime,
+ * setCommandID, setRequestId, setTrackId, setRange, setRangeRate,
+ * setRangeError, setRangeRateError, setAzElValid, setInertialAzEl,
+ * setAzElError, and setRangeValid.
+ *
+ * system_time_ns stays signed nanoseconds, matching the upstream
+ * chrono::nanoseconds field. The range, range-rate, and error values are
+ * copied verbatim in upstream meters and meters/second, and the azimuth and
+ * elevation values are copied verbatim in radians: the upstream setters
+ * perform no validation, clamping, or normalization, so neither does this
+ * ABI.
+ *
+ * The canonical ams_mel_ir_az_el_v1 is reused for both angle pairs; no second
+ * azimuth/elevation representation exists in this ABI.
+ *
+ * az_el_valid and range_valid use the established uint8_t representation for
+ * published bool values and accept only 0 or 1. Any other value is
+ * AMS_MEL_INVALID_ARGUMENT. */
+typedef struct ams_mel_ir_system_track_data_response_v1 {
+    int64_t system_time_ns;
+
+    uint32_t command_id;
+    uint32_t request_id;
+    uint32_t track_id;
+
+    double range_m;
+    double range_rate_mps;
+    double range_error_m;
+    double range_rate_error_mps;
+
+    uint8_t az_el_valid;
+    uint8_t range_valid;
+
+    ams_mel_ir_az_el_v1 inertial_az_el;
+    ams_mel_ir_az_el_v1 az_el_error;
+} ams_mel_ir_system_track_data_response_v1;
+
+/* Terminal SystemTrackDataResponse outcome. It intentionally matches the
+ * TrackDataUpdate result shape, because both upstream operations return
+ * RequestFor<CommandStatus>, but it remains a semantically distinct public
+ * type rather than an alias.
+ *
+ * The AMS_MEL_OK / AMS_MEL_COMMAND_REJECTED / AMS_MEL_TIMEOUT semantics are
+ * exactly those of ams_mel_ir_track_update_result_v1: a successful
+ * CommandStatus whose own state is AMS_MEL_IR_COMMAND_REJECTED is still
+ * AMS_MEL_OK, status.reason_description points into immutable request-owned
+ * cached storage, and a timeout leaves this record untouched. */
+typedef struct ams_mel_ir_track_system_response_result_v1 {
+    ams_mel_ir_command_status_v1 status;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_track_system_response_result_v1;
 
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
@@ -1907,6 +1971,49 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_update_request_wait(
  * provider channel, and the provider library all survive. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_update_request_close(
     ams_mel_ir_track_update_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Optional TrackChannel::send(SystemTrackDataResponse) (@Optional). This is
+ * neither @RequiredIfTrack nor @RequiredIfTrackUpdate.
+ *
+ * The complete response is validated and copied before the provider send. An
+ * az_el_valid or range_valid value other than 0 or 1, or any null required
+ * pointer, is AMS_MEL_INVALID_ARGUMENT. No numeric value is clamped or
+ * normalized.
+ *
+ * Submission requires the Track lifecycle to be Enabled; an attached, failed,
+ * or closed Track reports AMS_MEL_PROVIDER_FAILED.
+ *
+ * The Track lifecycle mutex is released before the provider send, because a
+ * provider is permitted to invoke the registered IRSTTrackReport metadata
+ * callback synchronously from inside send(). Everything needed to own the
+ * returned future is allocated before the send. The returned request remains
+ * valid independently of the public Track and Session owners, and it shares
+ * the single Track pending-request accounting domain with TrackDataUpdate
+ * requests: physical Track teardown is deferred until the total pending count
+ * of both request families reaches zero. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_submit_system_track_data_response(
+    ams_mel_ir_track *track,
+    const ams_mel_ir_system_track_data_response_v1 *response,
+    ams_mel_ir_track_system_response_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits finitely. A zero timeout polls. Timeout means only "not ready yet": it
+ * is never cancellation, request consumption, or provider interruption, and it
+ * leaves *out_result untouched. Exactly one adapter completion worker calls
+ * future::get(). A terminal result is cached permanently, so repeated Wait
+ * calls return the identical terminal result and may use a differently sized
+ * diagnostic buffer. Close must not race Wait on the same request handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_system_response_request_wait(
+    const ams_mel_ir_track_system_response_request *request, uint32_t timeout_ms,
+    ams_mel_ir_track_system_response_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Drops only the public request owner. Idempotent, nonblocking, and not
+ * cancellation: pending provider work, the future, the Track state, the
+ * provider channel, and the provider library all survive. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_system_response_request_close(
+    ams_mel_ir_track_system_response_request **request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus

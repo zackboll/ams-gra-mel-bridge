@@ -435,6 +435,43 @@ expected-negative integration probe is unchanged and this task introduces no new
 positive real-Squall Track claim: positive `TrackDataUpdate` behavior and payload
 fidelity are mock-provider evidence only.
 
+Task 029D adds exactly `TrackChannel::send(SystemTrackDataResponse)` over that
+same foundation, under its own upstream condition `@Optional`. All three Track
+conditions stay distinct: the `@RequiredIfTrack` core and the
+`@RequiredIfTrackUpdate` `TrackDataUpdate` send both remain complete and
+unchanged, and this task extends neither. No second async lifecycle model is
+created: the Task 029C `CompletionKind`, `Completion`, `WorkerInput`,
+`complete(...)`, `finish_request(...)`, `retain_worker(...)`, and
+`TrackState::requests` are reused exactly, with `Completion` now storing the
+terminal value as the neutral `ams_mel_ir_command_status_v1`/
+`ams_mel_error_code_t` pair so neither public result layout is assumed to equal
+the other. Critically, `SystemTrackDataResponse` requests share the SAME
+`TrackState::requests` accounting domain as `TrackDataUpdate` requests; no
+second counter exists, and a deterministic mixed-request regression proves that
+one pending request of each family keeps the provider graph alive until both
+complete.
+
+The public surface stays semantically honest:
+`ams_mel_ir_track_system_response_request` and
+`ams_mel_ir_track_system_response_result_v1` are distinct public types rather
+than the TrackDataUpdate request/result reused under a misleading name, even
+though the result intentionally matches that shape because both upstream
+operations return `RequestFor<CommandStatus>`. The complete response reuses the
+one canonical `ams_mel_ir_az_el_v1` for both angle pairs, keeps the system time
+in signed nanoseconds, copies every range, rate, error, and angle verbatim, and
+accepts only 0 or 1 for each of the two published bool values. The provider send
+again occurs outside the Track mutex, and a mock scenario emits a reentrant
+`IRSTTrackReport` from inside `send(SystemTrackDataResponse)` to prove it.
+`AMS.MEL.IR.Track.System_Data` is the safe Ada home and the natural future home
+for the `RequestSystemTrackData` callback, which is deliberately not implemented
+now. ABI 0.1 grows from 85 to 88 exports and native CTest from 13 to 14 targets.
+Raw Rust and private Python track all 88 exports; no safe Rust or public Python
+Track API is added. The `RequestSystemTrackData`, `CandidateObjectMessage`, and
+`CandidateObjectPreProcMessage` callbacks remain unimplemented and the Track API
+as a whole is not complete. Pinned Squall still cannot attach Track, so positive
+`SystemTrackDataResponse` behavior and payload fidelity are mock-provider
+evidence only.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

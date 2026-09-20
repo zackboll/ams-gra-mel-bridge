@@ -1500,13 +1500,14 @@ private:
 };
 
 /* Task 029B2 positively implements the @RequiredIfTrack IRSTTrackReport
- * registration and Task 029C adds exactly the @RequiredIfTrackUpdate
- * send(TrackDataUpdate). Every remaining Track surface --
- * send(SystemTrackDataResponse), CandidateObjectMessage,
- * RequestSystemTrackData, and CandidateObjectPreProcMessage -- stays deferred,
- * is instrumented, and reports unsupported, so the tests can prove none of them
- * were exercised. Legitimate IRSTTrackReport registration and legitimate
- * TrackDataUpdate sends are NOT counted here. */
+ * registration, Task 029C adds the @RequiredIfTrackUpdate
+ * send(TrackDataUpdate), and Task 029D adds the @Optional
+ * send(SystemTrackDataResponse). Every remaining Track surface -- the
+ * CandidateObjectMessage, RequestSystemTrackData, and
+ * CandidateObjectPreProcMessage callbacks -- stays deferred, is instrumented,
+ * and reports unsupported, so the tests can prove none of them were exercised.
+ * Legitimate IRSTTrackReport registration and legitimate TrackDataUpdate and
+ * SystemTrackDataResponse sends are NOT counted here. */
 std::atomic<std::uint64_t> track_deferred_calls{};
 
 /* The exact distinctive TrackDataUpdate the Track update tests submit. Every
@@ -1573,6 +1574,61 @@ void verify_rich_track_update(const irmel::TrackDataUpdate& value)
     if (value.getTrackQuality() != 12.75) fail("TrackDataUpdate trackQuality mismatch");
 }
 
+/* The exact distinctive SystemTrackDataResponse the Track response tests
+ * submit. Every field, including both AzEl pairs and both published bool
+ * values, carries a value that cannot be confused with a default, an adjacent
+ * field, or a sign/scale mistake. Every published getter is read exactly once.
+ * The az_el_valid/range_valid pair is supplied by the scenario so the
+ * false/false combination can be verified with the same distinctive numbers. */
+void verify_rich_track_response(const irmel::SystemTrackDataResponse& value,
+                                bool az_el_valid, bool range_valid)
+{
+    const auto fail = [](const char *what) { throw std::runtime_error(what); };
+    if (value.getSystemTime() != std::chrono::nanoseconds{-8765432109876LL})
+        fail("SystemTrackDataResponse systemTime mismatch");
+    if (value.getCommandID() != 0xf1234567U)
+        fail("SystemTrackDataResponse commandID mismatch");
+    if (value.getRequestId() != 0xe2345678U)
+        fail("SystemTrackDataResponse requestId mismatch");
+    if (value.getTrackId() != 0xd3456789U)
+        fail("SystemTrackDataResponse trackId mismatch");
+
+    if (value.getRange() != 123456.75) fail("SystemTrackDataResponse range mismatch");
+    if (value.getRangeRate() != -456.125)
+        fail("SystemTrackDataResponse rangeRate mismatch");
+    if (value.getRangeError() != 12.5)
+        fail("SystemTrackDataResponse rangeError mismatch");
+    if (value.getRangeRateError() != -0.875)
+        fail("SystemTrackDataResponse rangeRateError mismatch");
+
+    if (value.getAzElValid() != az_el_valid)
+        fail("SystemTrackDataResponse AzElValid mismatch");
+    if (value.getRangeValid() != range_valid)
+        fail("SystemTrackDataResponse rangeValid mismatch");
+
+    /* Both angle pairs individually, so a swapped az/el or a swapped pair is
+     * caught. All four values are radians. */
+    const AzEl inertial = value.getInertialAzEl();
+    if (inertial.az != -1.25 || inertial.el != 0.625)
+        fail("SystemTrackDataResponse inertialAzEl mismatch");
+    const AzEl error = value.getAzElError();
+    if (error.az != 0.03125 || error.el != -0.015625)
+        fail("SystemTrackDataResponse AzElError mismatch");
+}
+
+/* Distinctive successful provider CommandStatus for SystemTrackDataResponse.
+ * It is deliberately different from the TrackDataUpdate status so the two
+ * request families can never be confused in a test. */
+std::shared_ptr<irmel::CommandStatus> rich_track_response_command_status()
+{
+    auto status = std::make_shared<irmel::CommandStatus>();
+    status->setCommandID(0xa1b2c3d4U);
+    status->setState(irmel::CommandState::Accepted);
+    status->setReasonID(irmel::CannotComply::NotSet);
+    status->setReasonDescription("Track system response accepted \xC2\xB5");
+    return status;
+}
+
 /* Distinctive successful provider CommandStatus for TrackDataUpdate. */
 std::shared_ptr<irmel::CommandStatus> rich_track_command_status()
 {
@@ -1621,6 +1677,7 @@ public:
          * the adapter guarantees this destructor runs only after the request
          * that owns the future has completed. */
         if (update_producer_.joinable()) update_producer_.join();
+        if (response_producer_.joinable()) response_producer_.join();
         record("track_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -1672,16 +1729,101 @@ public:
         std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
     { return Return::NotSupported; }
 
-    /* Deferred and never positively implemented here. */
-    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
-    { return deferred_send("track_system_track_data_response_sent"); }
+    /* The one positively implemented @Optional Track send. */
+    mel::RequestFor<irmel::CommandStatus> send(
+        irmel::SystemTrackDataResponse response) override
+    {
+        record("track_system_track_data_response_sent");
+        if (!enabled_)
+            throw std::logic_error("SystemTrackDataResponse sent before enable");
+        /* Boolean coverage: the false/false scenario carries exactly the same
+           distinctive numbers, so only the two bool values differ. */
+        if (scenario_ == "track-response-flags-false")
+            verify_rich_track_response(response, false, false);
+        else if (scenario_ != "track-response-any")
+            verify_rich_track_response(response, true, true);
+        if (scenario_ == "track-response-send-throw")
+            throw std::runtime_error("mock Track response send exception");
+
+        /* A provider may invoke a registered metadata callback synchronously
+         * from inside send(); prove the adapter does not deadlock. */
+        if (report_callback_ && scenario_ == "track-response-reentrant") {
+            const auto report = rich_track_report();
+            record("track_response_send_callback_entered");
+            report_callback_(*this, &report);
+            record("track_response_send_callback_returned");
+        }
+
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "track-response-reject")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                mel::Error{mel::ErrorCode::InvalidParameters,
+                           std::string(510U, 'x') + "\xE2\x82\xAC" +
+                           " Track system response rejected \xC2\xB5"}});
+        else if (scenario_ == "track-response-unknown-error")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                mel::Error{static_cast<mel::ErrorCode>(99U), "unknown"}});
+        else if (scenario_ == "track-response-null-status")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                std::shared_ptr<irmel::CommandStatus>{}});
+        else if (scenario_ == "track-response-bad-state") {
+            auto bad = rich_track_response_command_status();
+            /* One past Cancelled: upstream declares no MaxExclusive value. */
+            bad->setState(static_cast<irmel::CommandState>(5U));
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-response-bad-reason") {
+            auto bad = rich_track_response_command_status();
+            /* One past Alignment_Maneuver. */
+            bad->setReasonID(static_cast<irmel::CannotComply>(47U));
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-response-bad-description") {
+            auto bad = rich_track_response_command_status();
+            bad->setReasonDescription(std::string{"bad\xC3\x28 utf8"});
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-response-status-rejected") {
+            /* A successful future whose CommandStatus state is Rejected. This
+             * is NOT an ErrorOr rejection and must stay AMS_MEL_OK. */
+            auto rejected = std::make_shared<irmel::CommandStatus>();
+            rejected->setCommandID(0xa1b2c3d4U);
+            rejected->setState(irmel::CommandState::Rejected);
+            rejected->setReasonID(irmel::CannotComply::InvalidInputParameter);
+            rejected->setReasonDescription("Track system response rejected \xC2\xB5");
+            promise.set_value(
+                mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{rejected});
+        } else if (scenario_ == "track-response-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock Track response future exception"}));
+        else if (scenario_ == "track-response-pending" ||
+                 scenario_ == "track-response-detach-fail" ||
+                 scenario_ == "track-mixed-requests") {
+            /* Deterministic pending completion: the background thread waits on
+             * its own test-controlled barrier file rather than on a sleep. The
+             * mixed-request scenario uses a separate barrier from the
+             * TrackDataUpdate one so each future is released independently. */
+            const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_RESPONSE_BARRIER");
+            const std::string path = barrier ? barrier : std::string{};
+            auto status = rich_track_response_command_status();
+            response_producer_ = std::thread{
+                [path, promise = std::move(promise), status]() mutable {
+                    if (!path.empty()) wait_for_file(path);
+                    record("track_response_completed");
+                    promise.set_value(
+                        mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{status});
+                }};
+        } else promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                rich_track_response_command_status()});
+        return future;
+    }
 
     /* The one positively implemented @RequiredIfTrackUpdate Track send. */
     mel::RequestFor<irmel::CommandStatus> send(irmel::TrackDataUpdate update) override
     {
         record("track_data_update_sent");
         if (!enabled_) throw std::logic_error("TrackDataUpdate sent before enable");
-        if (scenario_ != "track-update-any") verify_rich_track_update(update);
+        if (scenario_ != "track-update-any" && scenario_ != "track-mixed-requests")
+            verify_rich_track_update(update);
         if (scenario_ == "track-update-send-throw")
             throw std::runtime_error("mock Track update send exception");
 
@@ -1735,7 +1877,8 @@ public:
             promise.set_exception(std::make_exception_ptr(
                 std::runtime_error{"mock Track update future exception"}));
         else if (scenario_ == "track-update-pending" ||
-                 scenario_ == "track-update-detach-fail") {
+                 scenario_ == "track-update-detach-fail" ||
+                 scenario_ == "track-mixed-requests") {
             /* Deterministic pending completion: the background thread waits on
              * a test-controlled barrier file rather than on a sleep. */
             const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_UPDATE_BARRIER");
@@ -1826,17 +1969,8 @@ private:
         report_callback_(*this, &report);
     }
 
-    static mel::RequestFor<irmel::CommandStatus> deferred_send(const char *event)
-    {
-        track_deferred_calls.fetch_add(1U);
-        record(event);
-        std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
-        auto future = promise.get_future();
-        promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
-            mel::Error{mel::ErrorCode::Unsupported,
-                       "Track send is not implemented in task 029B2"}});
-        return future;
-    }
+    /* Both published TrackChannel sends are now positively implemented, so the
+     * only remaining deferred Track surfaces are the three callbacks. */
     static Return deferred_registration(const char *event)
     {
         track_deferred_calls.fetch_add(1U);
@@ -1846,6 +1980,7 @@ private:
     std::string scenario_;
     bool enabled_{};
     std::thread update_producer_;
+    std::thread response_producer_;
     std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>
         report_callback_;
 };
@@ -2006,6 +2141,7 @@ public:
              instance_ == "instr-detach-fail" ||
              instance_ == "track-detach-fail" ||
              instance_ == "track-update-detach-fail" ||
+             instance_ == "track-response-detach-fail" ||
              instance_ == "track-open-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");

@@ -366,6 +366,21 @@ class IrTrackDataUpdateV1(ctypes.Structure): _fields_ = [
 # Reuses the one generic IrCommandStatusV1 layout. A successful CommandStatus
 # whose own state is Rejected is still AMS_MEL_OK.
 class IrTrackUpdateResultV1(ctypes.Structure): _fields_ = [("status",IrCommandStatusV1),("error_code",ctypes.c_uint32)]
+# Complete @Optional SystemTrackDataResponse input. system_time_ns stays signed
+# nanoseconds, the ranges/rates stay in upstream meters and meters/second, and
+# the angles stay in radians; nothing is clamped or normalized. az_el_valid and
+# range_valid use the established uint8 bool representation and accept only 0
+# or 1. The canonical IrAzElV1 is reused for both angle pairs.
+class IrSystemTrackDataResponseV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),
+    ("command_id",ctypes.c_uint32),("request_id",ctypes.c_uint32),("track_id",ctypes.c_uint32),
+    ("range_m",ctypes.c_double),("range_rate_mps",ctypes.c_double),
+    ("range_error_m",ctypes.c_double),("range_rate_error_mps",ctypes.c_double),
+    ("az_el_valid",ctypes.c_uint8),("range_valid",ctypes.c_uint8),
+    ("inertial_az_el",IrAzElV1),("az_el_error",IrAzElV1)]
+# Semantically distinct from IrTrackUpdateResultV1 while reusing the one
+# generic IrCommandStatusV1 layout.
+class IrTrackSystemResponseResultV1(ctypes.Structure): _fields_ = [("status",IrCommandStatusV1),("error_code",ctypes.c_uint32)]
 class IrSensorInertialStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorInertialStateV1)),("size",ctypes.c_size_t)]
 class IrSensorNavStateSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrSensorNavStateV1)),("size",ctypes.c_size_t)]
 class IrFrameSnapshotV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("integration_time_ns",ctypes.c_int64),("width",ctypes.c_uint32),("height",ctypes.c_uint32),("bits_per_pixel",ctypes.c_uint32),("number_of_bands",ctypes.c_uint32),("horizontal_fov_rad",ctypes.c_double),("vertical_fov_rad",ctypes.c_double),("contributing_sensor",IrContributingSensorV1),("pixel_format",ctypes.c_uint32),("frame_id",ctypes.c_uint32),("subframe_id",ctypes.c_uint32),("subframe_total",ctypes.c_uint32),("image_type",ctypes.c_uint32),("image_flip",ctypes.c_uint32),("image_flags",U32SpanV1),("dither_row",ctypes.c_double),("dither_column",ctypes.c_double),("row_offset",ctypes.c_uint32),("column_offset",ctypes.c_uint32),("sensor_inertial_states",IrSensorInertialStateSpanV1),("sensor_nav_states",IrSensorNavStateSpanV1),("band_index",ctypes.c_uint8),("pixels",U8SpanV1)]
@@ -468,6 +483,9 @@ IrTrackHandle = ctypes.c_void_p
 IrTrackMetadataHandle = ctypes.c_void_p
 IrTrackMetadataEventHandle = ctypes.c_void_p
 IrTrackUpdateRequestHandle = ctypes.c_void_p
+# A deliberately distinct handle for the @Optional SystemTrackDataResponse
+# request family.
+IrTrackSystemResponseRequestHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -883,6 +901,15 @@ ams_mel_ir_track_update_request_wait.restype = ctypes.c_int32
 ams_mel_ir_track_update_request_close = _LIBRARY.ams_mel_ir_track_update_request_close
 ams_mel_ir_track_update_request_close.argtypes = [ctypes.POINTER(IrTrackUpdateRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_update_request_close.restype = ctypes.c_int32
+ams_mel_ir_track_submit_system_track_data_response = _LIBRARY.ams_mel_ir_track_submit_system_track_data_response
+ams_mel_ir_track_submit_system_track_data_response.argtypes = [IrTrackHandle, ctypes.POINTER(IrSystemTrackDataResponseV1), ctypes.POINTER(IrTrackSystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_submit_system_track_data_response.restype = ctypes.c_int32
+ams_mel_ir_track_system_response_request_wait = _LIBRARY.ams_mel_ir_track_system_response_request_wait
+ams_mel_ir_track_system_response_request_wait.argtypes = [IrTrackSystemResponseRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrTrackSystemResponseResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_system_response_request_wait.restype = ctypes.c_int32
+ams_mel_ir_track_system_response_request_close = _LIBRARY.ams_mel_ir_track_system_response_request_close
+ams_mel_ir_track_system_response_request_close.argtypes = [ctypes.POINTER(IrTrackSystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_system_response_request_close.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
@@ -970,4 +997,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_submit_update",
     "ams_mel_ir_track_update_request_wait",
     "ams_mel_ir_track_update_request_close",
+    "ams_mel_ir_track_submit_system_track_data_response",
+    "ams_mel_ir_track_system_response_request_wait",
+    "ams_mel_ir_track_system_response_request_close",
 )
