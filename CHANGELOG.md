@@ -24,13 +24,19 @@
   `LD_RUN_PATH`, compiler-change, and pre-hardening-cache hardening is unchanged
   and now applies independently to both trees.
 
-  Ada keeps linking the production facade and resolves mock providers from
-  `AMS_MEL_TEST_PROVIDER_DIR` with a repository-relative fallback to
-  `native/build-tests/test-providers`. `make test-rust` and `make test-python`
-  and the matching CI jobs point explicitly at the test tree, while the default
-  Rust native-library discovery stays on the production facade so downstream
-  builds never implicitly depend on a test-enabled library. Real-Squall
-  integration deliberately remains a production-tree build.
+  The Ada binding keeps linking the production facade, and an ordinary Ada build
+  both links and runs it. The Ada contract suite, however, exercises the
+  test-only failpoints, so it links the production facade but runs against the
+  contract-test facade: `ada/tests/ams_mel_tests.gpr` now links with
+  `-Wl,--enable-new-dtags` so the smoke executable carries `DT_RUNPATH`, which
+  `LD_LIBRARY_PATH` overrides, and `scripts/test_ada.sh` and
+  `ada/tests/alire.toml` point it at `native/build-tests/lib`. Mock providers
+  resolve from `AMS_MEL_TEST_PROVIDER_DIR` with a repository-relative fallback
+  to `native/build-tests/test-providers`. `make test-rust`, `make test-python`,
+  and the matching CI jobs point explicitly at the test tree, while the Rust
+  build-script native-library default stays on the production facade so
+  downstream builds never implicitly depend on a test-enabled library.
+  Real-Squall integration deliberately remains a production-tree build.
 
   `native/scripts/test-build-tree-isolation.sh` (`make test-build-isolation`,
   also run by `make check` and a dedicated CI job) is a new regression guard

@@ -833,6 +833,13 @@ To test with GNAT/GPRbuild directly:
 make test-ada
 ```
 
+The Ada binding links the production facade in `native/build/lib`, and an
+ordinary Ada build both links and runs it. The contract tests exercise the
+test-only failpoints, so they link the production facade but run against the
+contract-test facade in `native/build-tests/lib`: the test project emits
+`DT_RUNPATH`, which `LD_LIBRARY_PATH` overrides, and both `make test-ada` and
+`alr -C ada/tests run` set it along with `AMS_MEL_TEST_PROVIDER_DIR`.
+
 Format and verify Ada sources with:
 
 ```sh
@@ -866,14 +873,16 @@ cargo clippy --manifest-path rust/Cargo.toml \
   --workspace --all-targets -- -D warnings
 ```
 
-The default linker search path is the production facade in `native/build/lib`,
-so ordinary Rust builds never depend on a test-enabled native library. Set
-`AMS_MEL_NATIVE_LIB_DIR` to select another existing CMake build's library
-directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
-directory. `make test-rust` points both at the contract-test tree
-(`native/build-tests`), which is also what the repository Rust tests fall back
-to when those variables are unset. Cargo never invokes CMake or compiles the
-native adapter. The safe
+An ordinary or direct `cargo` build uses the build script default, which is the
+production facade in `native/build/lib`, so downstream Rust builds never link a
+test-enabled native library. Set `AMS_MEL_NATIVE_LIB_DIR` to select another
+existing CMake build's library directory and `AMS_MEL_TEST_PROVIDER_DIR` to
+select its `test-providers` directory. `make test-rust` and the Rust CI job set
+both explicitly to the contract-test tree (`native/build-tests`). Separately,
+the repository's provider-path helpers and the ABI probe fall back to that test
+tree when those variables are unset; that fallback applies only to the
+repository's own contract tests, not to the build script's library default.
+Cargo never invokes CMake or compiles the native adapter. The safe
 layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
 Rust `Frame` values own copied `Vec<u8>` pixels; this is not a zero-copy API.
 Safe Rust BIT support is intentionally limited to `submit_bit_noop`; no

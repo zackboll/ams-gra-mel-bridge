@@ -9,9 +9,14 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Derive both directories from the shared selector rather than repeating the
+# paths here, so this regression always exercises the directories the
+# production and test scripts actually use.
 . "$root/scripts/build-tree.sh"
-production="$root/build"
-tests="$root/build-tests"
+ams_mel_select_tree production
+production="$ams_mel_build_dir"
+ams_mel_select_tree tests
+tests="$ams_mel_build_dir"
 failures=0
 
 note() { printf '%s\n' "$*"; }

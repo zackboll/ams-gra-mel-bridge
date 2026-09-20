@@ -96,23 +96,54 @@ selects the tree matching its mode.
 
 ## Which facade each consumer uses
 
-| Consumer | Facade | Providers |
-| --- | --- | --- |
-| Ada binding (`ams_mel_c.gpr`, `alr -C ada build`) | production `native/build/lib` | n/a |
-| Ada contract tests | production `native/build/lib` | `native/build-tests/test-providers` |
-| Rust default build (`rust/*/build.rs`) | production `native/build/lib` | n/a |
-| Rust contract tests (`make test-rust`, CI) | `native/build-tests/lib` | `native/build-tests/test-providers` |
-| Python contract tests (`make test-python`, CI) | `native/build-tests/lib/libams_mel_c.so.0` | `native/build-tests/test-providers` |
-| Real Squall integration | production `native/build/lib` | real provider image |
+| Consumer | Link-time facade | Runtime facade | Providers |
+| --- | --- | --- | --- |
+| Ada binding / ordinary Ada build (`ams_mel_c.gpr`, `alr -C ada build`) | production `native/build/lib` | production `native/build/lib` | n/a |
+| Ada contract tests | production `native/build/lib` | contract-test `native/build-tests/lib` via `LD_LIBRARY_PATH` | `native/build-tests/test-providers` |
+| Rust ordinary/direct build (`rust/*/build.rs` default) | production `native/build/lib` | production `native/build/lib` | n/a |
+| Rust contract tests (`make test-rust`, CI) | `native/build-tests/lib` | `native/build-tests/lib` | `native/build-tests/test-providers` |
+| Python contract tests (`make test-python`, CI) | n/a (`ctypes`) | `native/build-tests/lib/libams_mel_c.so.0` | `native/build-tests/test-providers` |
+| Real Squall integration | production `native/build/lib` | production `native/build/lib` | real provider image |
 
-The Ada smoke test honours `AMS_MEL_TEST_PROVIDER_DIR` and otherwise falls back
-deterministically to the repository-relative
+### Ada link-time versus runtime
+
+The Ada contract suite exercises `AMS_MEL_ENABLE_TEST_FAILPOINTS` directly, for
+example by setting `AMS_MEL_TEST_IMAGE_CALLBACK_FAILURE` and asserting the
+resulting recovery counters. Those failpoints exist only in the contract-test
+facade, so the smoke executable must run against `native/build-tests/lib` even
+though the binding itself is linked against the production facade named by
+`ams_mel_c.gpr`.
+
+`ada/tests/ams_mel_tests.gpr` therefore links with `-Wl,--enable-new-dtags`, so
+the executable carries `DT_RUNPATH` rather than `DT_RPATH`. `DT_RUNPATH` is
+searched *after* `LD_LIBRARY_PATH`, which lets `scripts/test_ada.sh` and the
+`[environment]` section of `ada/tests/alire.toml` select the contract-test
+facade at run time. `DT_RPATH` would take precedence over `LD_LIBRARY_PATH` and
+would silently pin the tests to the production facade.
+
+To be explicit: the Ada contract tests do **not** execute the production facade.
+They link against it and then run against the contract-test facade. The ordinary
+Ada build and any downstream Ada consumer both link and run the production
+facade.
+
+Mock providers are resolved from `AMS_MEL_TEST_PROVIDER_DIR`, with a
+deterministic repository-relative fallback to
 `native/build-tests/test-providers`, so both `make test-ada` and
-`alr -C ada/tests run` resolve the mock provider while the binding itself keeps
-linking the production facade.
+`alr -C ada/tests run` find them.
 
-Rust and Python contract tests point at the test tree explicitly through
-environment variables. Downstream Rust and Python builds keep the production
+### Rust and Python
+
+`rust/ams-mel-sys/build.rs` and `rust/ams-mel/build.rs` keep defaulting to the
+production facade in `native/build/lib`, so an ordinary or direct `cargo build`
+never links a test-enabled native library. `make test-rust` and the Rust CI job
+override that by setting `AMS_MEL_NATIVE_LIB_DIR` to `native/build-tests/lib`
+explicitly. Separately, the repository's provider-path helpers and the ABI probe
+in `rust/ams-mel-sys/tests/abi.rs` fall back to the test tree when
+`AMS_MEL_TEST_PROVIDER_DIR`/`AMS_MEL_NATIVE_LIB_DIR` are unset, because those
+fallbacks only ever apply to repository contract tests.
+
+Python contract tests bind the test facade explicitly through
+`AMS_MEL_NATIVE_LIB`. Downstream Rust and Python builds keep the production
 defaults and therefore never implicitly depend on a test-enabled native library.
 
 ## Why production must not contain test failpoints
