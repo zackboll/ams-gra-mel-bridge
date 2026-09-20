@@ -85,6 +85,9 @@ AMS_MEL_0.1 {
         ams_mel_ir_track_submit_update;
         ams_mel_ir_track_update_request_wait;
         ams_mel_ir_track_update_request_close;
+        ams_mel_ir_track_submit_system_track_data_response;
+        ams_mel_ir_track_system_response_request_wait;
+        ams_mel_ir_track_system_response_request_close;
     local:
         *;
 };

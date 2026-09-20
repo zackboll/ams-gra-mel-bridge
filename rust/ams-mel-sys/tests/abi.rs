@@ -304,6 +304,28 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_track_update_request_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrack,
+        *const AmsMelIrSystemTrackDataResponseV1,
+        *mut *mut AmsMelIrTrackSystemResponseRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_submit_system_track_data_response;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackSystemResponseRequest,
+        u32,
+        *mut AmsMelIrTrackSystemResponseResultV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_system_response_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrTrackSystemResponseRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_system_response_request_close;
 }
 
 #[test]
@@ -1195,6 +1217,32 @@ fn declarations_match_the_c_header() {
         track_quality
     );
     layout!(expected, AmsMelIrTrackUpdateResultV1, status, error_code);
+    expected.extend([
+        size_of::<*mut AmsMelIrTrackSystemResponseRequest>(),
+        align_of::<*mut AmsMelIrTrackSystemResponseRequest>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelIrSystemTrackDataResponseV1,
+        system_time_ns,
+        command_id,
+        request_id,
+        track_id,
+        range_m,
+        range_rate_mps,
+        range_error_m,
+        range_rate_error_mps,
+        az_el_valid,
+        range_valid,
+        inertial_az_el,
+        az_el_error
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackSystemResponseResultV1,
+        status,
+        error_code
+    );
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,

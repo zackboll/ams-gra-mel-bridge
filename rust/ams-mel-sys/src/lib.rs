@@ -970,6 +970,43 @@ pub struct AmsMelIrTrackUpdateResultV1 {
     pub status: AmsMelIrCommandStatusV1,
     pub error_code: u32,
 }
+
+/// Complete `SystemTrackDataResponse` input (@Optional). This is neither
+/// `@RequiredIfTrack` nor `@RequiredIfTrackUpdate`.
+///
+/// `system_time_ns` stays signed nanoseconds, the ranges and rates stay in
+/// upstream meters and meters/second, and the angles stay in radians; no value
+/// is clamped or normalized. `az_el_valid` and `range_valid` use the
+/// established `u8` representation for published bool values and accept only 0
+/// or 1. The canonical `AmsMelIrAzElV1` is reused for both angle pairs.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrSystemTrackDataResponseV1 {
+    pub system_time_ns: i64,
+    pub command_id: u32,
+    pub request_id: u32,
+    pub track_id: u32,
+    pub range_m: f64,
+    pub range_rate_mps: f64,
+    pub range_error_m: f64,
+    pub range_rate_error_mps: f64,
+    pub az_el_valid: u8,
+    pub range_valid: u8,
+    pub inertial_az_el: AmsMelIrAzElV1,
+    pub az_el_error: AmsMelIrAzElV1,
+}
+
+/// Terminal `SystemTrackDataResponse` outcome. It intentionally matches the
+/// `TrackDataUpdate` result shape, because both upstream operations return
+/// `RequestFor<CommandStatus>`, but it remains a semantically distinct public
+/// type. A successful `CommandStatus` whose own state is `REJECTED` is still
+/// `AMS_MEL_OK`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackSystemResponseResultV1 {
+    pub status: AmsMelIrCommandStatusV1,
+    pub error_code: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelEulerV1 {
@@ -1290,6 +1327,15 @@ pub struct AmsMelIrTrackMetadataEvent {
 /// shared terminal completion state and never a raw `AmsMelIrTrack` pointer.
 #[repr(C)]
 pub struct AmsMelIrTrackUpdateRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Opaque owner of one asynchronous `send(SystemTrackDataResponse)` outcome
+/// (@Optional). It is a deliberately distinct public type from
+/// `AmsMelIrTrackUpdateRequest`, and like it owns a shared terminal completion
+/// state and never a raw `AmsMelIrTrack` pointer.
+#[repr(C)]
+pub struct AmsMelIrTrackSystemResponseRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -1905,6 +1951,28 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_track_update_request_close(
         request: *mut *mut AmsMelIrTrackUpdateRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_submit_system_track_data_response(
+        track: *mut AmsMelIrTrack,
+        response: *const AmsMelIrSystemTrackDataResponseV1,
+        out_request: *mut *mut AmsMelIrTrackSystemResponseRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_system_response_request_wait(
+        request: *const AmsMelIrTrackSystemResponseRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrTrackSystemResponseResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_system_response_request_close(
+        request: *mut *mut AmsMelIrTrackSystemResponseRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

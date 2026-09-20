@@ -114,9 +114,36 @@ request owner only; they are not cancellation, and a pending request keeps the
 provider future and Track channel alive independently of the public
 `Track_Channel` and `Session` owners.
 
-`TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`,
-`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
-implemented.
+`AMS.MEL.IR.Track.System_Data` implements the separately optional (`@Optional`)
+`TrackChannel::send (SystemTrackDataResponse)`. It exposes the one canonical
+Track-facing `Azimuth_Elevation` record (both components radians) and the
+complete `System_Track_Data_Response` with every upstream field: a
+`Long_Long_Integer` signed nanosecond `System_Time_NS`, the three unsigned
+identifiers, the four `Long_Float` range and rate values in upstream meters and
+meters per second, both `Boolean` validity flags, and both angle pairs. No value
+is clamped or normalized, because the upstream setters perform no such
+validation. Its private FFI uses `Interfaces.Integer_64`,
+`Interfaces.Unsigned_32`, `Interfaces.Unsigned_8`, and `Interfaces.C.double`
+and reuses the canonical C `Az_El_V1` and `IR_Command_Status_V1`; no C `double`
+is modeled directly as `Long_Float` inside an imported record.
+
+Like `AMS.MEL.IR.Track.Updates`, it defines `Command_State` and `Cannot_Comply`
+locally with explicit published representations and a 32-bit size, provides an
+Ada-owned `Command_Status`, and follows the same safe result model:
+`Response_Outcome` is `Success` or `Rejected`, a successful provider
+`CommandStatus` whose own `State` is `Rejected` is still a `Success` outcome,
+`Wait` raises the inherited `Timeout_Error` on `AMS_MEL_TIMEOUT` without
+cancelling, and any other native status raises `Provider_Error`.
+`Response_Request` is limited private with controlled finalization and the same
+not-cancellation close semantics. Requests of this family share one
+pending-request accounting domain with `Update_Request`, so physical Track
+teardown is deferred until every pending request of both families completes.
+
+This package is the natural future home for the `RequestSystemTrackData`
+callback, but that callback is deliberately not implemented yet. The
+`RequestSystemTrackData`, `CandidateObjectMessage`, and
+`CandidateObjectPreProcMessage` callbacks are not implemented, and the Track API
+as a whole is not complete.
 
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.

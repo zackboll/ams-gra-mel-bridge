@@ -33,8 +33,33 @@ Evidence boundary for Track, stated exactly:
   behavior only — C `AMS_MEL_FACTORY_FAILED` and Ada `Provider_Error`, both
   with the exact diagnostic `attachChannel returned null`, on a Session that
   keeps working afterwards.
-- Pinned Squall does NOT provide positive Track execution, Track-report, or
-  `TrackDataUpdate` evidence.
+- Pinned Squall does NOT provide positive Track execution, Track-report,
+  `TrackDataUpdate`, or `SystemTrackDataResponse` evidence.
+
+# Task 029D provenance note
+
+Task 029D implements the `@Optional` `TrackChannel::send(SystemTrackDataResponse)`
+without changing any vendored content. `SystemTrackDataResponse` was already
+present in the reviewed Task 029A vendored closure under the same pins — IR MEL
+`8d9224519f12b44e0b28815755c56a32a28d24a0` and AMS Math
+`00be45190f0e47d268cece8b8c2f8fb58b5418d2` — because `TrackChannel.h` already
+included `irmel-types/SystemTrackDataResponse.h`, which in turn includes
+`math/geometry/RangeAzEl.h` and therefore the pinned `AzEl` declaration. The
+vendor delta for this task is exactly zero, nothing under `native/vendor/` or
+`docs/upstream-files.sha256.md` changed, and the pinned Boost closure probe
+(`track_header_compile_probe` / `check_track_header_boost_closure`) is preserved
+unchanged at 481 headers with no system Boost.
+
+Pinned upstream `AzEl` is exactly `double az; double el;`, both radians, and
+pinned `SystemTrackDataResponse` stores `systemTime` as
+`std::chrono::nanoseconds`. Both facts are mirrored exactly by the C ABI: the
+existing canonical `ams_mel_ir_az_el_v1` is reused for both angle pairs and the
+system time stays a signed nanosecond count.
+
+Task 029D adds no positive real-Squall Track claim. Pinned Squall still cannot
+attach a Track channel at all, so it provides NO positive
+`SystemTrackDataResponse` evidence; that operation's positive behavior and
+payload fidelity are mock-provider evidence only.
 
 # Task 029C provenance note
 

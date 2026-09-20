@@ -273,6 +273,10 @@ int main(void)
     ams_mel_status_t (*track_upd_wait)(const ams_mel_ir_track_update_request *, uint32_t, ams_mel_ir_track_update_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_update_request_wait;
     ams_mel_status_t (*track_upd_close)(ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_update_request_close;
     (void)track_submit; (void)track_upd_wait; (void)track_upd_close;
+    ams_mel_status_t (*track_rsp_submit)(ams_mel_ir_track *, const ams_mel_ir_system_track_data_response_v1 *, ams_mel_ir_track_system_response_request **, char *, size_t, size_t *) = ams_mel_ir_track_submit_system_track_data_response;
+    ams_mel_status_t (*track_rsp_wait)(const ams_mel_ir_track_system_response_request *, uint32_t, ams_mel_ir_track_system_response_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_system_response_request_wait;
+    ams_mel_status_t (*track_rsp_close)(ams_mel_ir_track_system_response_request **, char *, size_t, size_t *) = ams_mel_ir_track_system_response_request_close;
+    (void)track_rsp_submit; (void)track_rsp_wait; (void)track_rsp_close;
     (void)instr_open; (void)instr_enable; (void)instr_cap; (void)instr_submit;
     (void)instr_wait; (void)instr_req_close; (void)instr_meta_open; (void)instr_meta_recv;
     (void)instr_meta_counters; (void)instr_meta_close; (void)instr_ev_view;
@@ -524,6 +528,24 @@ int main(void)
     RECORD(ams_mel_ir_track_update_result_v1,
         FIELD(ams_mel_ir_track_update_result_v1,status);
         FIELD(ams_mel_ir_track_update_result_v1,error_code));
+
+    LAYOUT(ams_mel_ir_track_system_response_request *);
+    RECORD(ams_mel_ir_system_track_data_response_v1,
+        FIELD(ams_mel_ir_system_track_data_response_v1,system_time_ns);
+        FIELD(ams_mel_ir_system_track_data_response_v1,command_id);
+        FIELD(ams_mel_ir_system_track_data_response_v1,request_id);
+        FIELD(ams_mel_ir_system_track_data_response_v1,track_id);
+        FIELD(ams_mel_ir_system_track_data_response_v1,range_m);
+        FIELD(ams_mel_ir_system_track_data_response_v1,range_rate_mps);
+        FIELD(ams_mel_ir_system_track_data_response_v1,range_error_m);
+        FIELD(ams_mel_ir_system_track_data_response_v1,range_rate_error_mps);
+        FIELD(ams_mel_ir_system_track_data_response_v1,az_el_valid);
+        FIELD(ams_mel_ir_system_track_data_response_v1,range_valid);
+        FIELD(ams_mel_ir_system_track_data_response_v1,inertial_az_el);
+        FIELD(ams_mel_ir_system_track_data_response_v1,az_el_error));
+    RECORD(ams_mel_ir_track_system_response_result_v1,
+        FIELD(ams_mel_ir_track_system_response_result_v1,status);
+        FIELD(ams_mel_ir_track_system_response_result_v1,error_code));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);

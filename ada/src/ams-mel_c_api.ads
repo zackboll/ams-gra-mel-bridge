@@ -20,72 +20,80 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
-   Null_Session                  : constant Session_Handle := Session_Handle (System.Null_Address);
+   Null_Session                       : constant Session_Handle :=
+     Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream                   : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   Null_Stream                        : constant Stream_Handle :=
+     Stream_Handle (System.Null_Address);
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot           : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot                : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2                       : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2                            : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request             : constant Mode_Request_Handle :=
+   Null_Mode_Request                  : constant Mode_Request_Handle :=
      Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request           : constant Return_Request_Handle :=
+   Null_Return_Request                : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request            : constant Comms_Request_Handle :=
+   Null_Comms_Request                 : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
-   Null_Capability               : constant Capability_Handle :=
+   Null_Capability                    : constant Capability_Handle :=
      Capability_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
-   Null_Metadata                 : constant Metadata_Handle :=
+   Null_Metadata                      : constant Metadata_Handle :=
      Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
-   Null_Metadata_Event           : constant Metadata_Event_Handle :=
+   Null_Metadata_Event                : constant Metadata_Event_Handle :=
      Metadata_Event_Handle (System.Null_Address);
    type Health_Handle is new System.Address;
-   Null_Health                   : constant Health_Handle := Health_Handle (System.Null_Address);
+   Null_Health                        : constant Health_Handle :=
+     Health_Handle (System.Null_Address);
    type Health_Metadata_Handle is new System.Address;
-   Null_Health_Metadata          : constant Health_Metadata_Handle :=
+   Null_Health_Metadata               : constant Health_Metadata_Handle :=
      Health_Metadata_Handle (System.Null_Address);
    type Health_Event_Handle is new System.Address;
-   Null_Health_Event             : constant Health_Event_Handle :=
+   Null_Health_Event                  : constant Health_Event_Handle :=
      Health_Event_Handle (System.Null_Address);
    type Image_Metadata_Handle is new System.Address;
-   Null_Image_Metadata           : constant Image_Metadata_Handle :=
+   Null_Image_Metadata                : constant Image_Metadata_Handle :=
      Image_Metadata_Handle (System.Null_Address);
    type Image_Metadata_Event_Handle is new System.Address;
-   Null_Image_Metadata_Event     : constant Image_Metadata_Event_Handle :=
+   Null_Image_Metadata_Event          : constant Image_Metadata_Event_Handle :=
      Image_Metadata_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
-   Null_Navigation_Request       : constant Navigation_Request_Handle :=
+   Null_Navigation_Request            : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
    type Instrumentation_Handle is new System.Address;
-   Null_Instrumentation          : constant Instrumentation_Handle :=
+   Null_Instrumentation               : constant Instrumentation_Handle :=
      Instrumentation_Handle (System.Null_Address);
    type Instrumentation_Request_Handle is new System.Address;
-   Null_Instrumentation_Request  : constant Instrumentation_Request_Handle :=
+   Null_Instrumentation_Request       : constant Instrumentation_Request_Handle :=
      Instrumentation_Request_Handle (System.Null_Address);
    type Instrumentation_Metadata_Handle is new System.Address;
-   Null_Instrumentation_Metadata : constant Instrumentation_Metadata_Handle :=
+   Null_Instrumentation_Metadata      : constant Instrumentation_Metadata_Handle :=
      Instrumentation_Metadata_Handle (System.Null_Address);
    type Instrumentation_Event_Handle is new System.Address;
-   Null_Instrumentation_Event    : constant Instrumentation_Event_Handle :=
+   Null_Instrumentation_Event         : constant Instrumentation_Event_Handle :=
      Instrumentation_Event_Handle (System.Null_Address);
    type Track_Handle is new System.Address;
-   Null_Track                    : constant Track_Handle := Track_Handle (System.Null_Address);
+   Null_Track                         : constant Track_Handle := Track_Handle (System.Null_Address);
    type Track_Metadata_Handle is new System.Address;
-   Null_Track_Metadata           : constant Track_Metadata_Handle :=
+   Null_Track_Metadata                : constant Track_Metadata_Handle :=
      Track_Metadata_Handle (System.Null_Address);
    type Track_Event_Handle is new System.Address;
-   Null_Track_Event              : constant Track_Event_Handle :=
+   Null_Track_Event                   : constant Track_Event_Handle :=
      Track_Event_Handle (System.Null_Address);
    type Track_Update_Request_Handle is new System.Address;
-   Null_Track_Update_Request     : constant Track_Update_Request_Handle :=
+   Null_Track_Update_Request          : constant Track_Update_Request_Handle :=
      Track_Update_Request_Handle (System.Null_Address);
+   --  A deliberately distinct handle type for the @Optional
+   --  SystemTrackDataResponse request family.
+   type Track_System_Response_Request_Handle is new System.Address;
+   Null_Track_System_Response_Request : constant Track_System_Response_Request_Handle :=
+     Track_System_Response_Request_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -647,6 +655,33 @@ private package AMS.MEL_C_API is
    with Convention => C;
    --  Reuses the one generic IR_Command_Status_V1 layout.
    type IR_Track_Update_Result_V1 is record
+      Status     : IR_Command_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   --  Complete SystemTrackDataResponse input (@Optional). The system time is a
+   --  signed 64-bit nanosecond count, the published bool values use the
+   --  established Unsigned_8 representation, and the canonical Az_El_V1 is
+   --  reused for both angle pairs. Every C double is imported as
+   --  Interfaces.C.double rather than modeled directly as Long_Float.
+   type IR_System_Track_Data_Response_V1 is record
+      System_Time_NS       : Interfaces.Integer_64;
+      Command_ID           : Interfaces.Unsigned_32;
+      Request_ID           : Interfaces.Unsigned_32;
+      Track_ID             : Interfaces.Unsigned_32;
+      Range_M              : Interfaces.C.double;
+      Range_Rate_MPS       : Interfaces.C.double;
+      Range_Error_M        : Interfaces.C.double;
+      Range_Rate_Error_MPS : Interfaces.C.double;
+      Az_El_Valid          : Interfaces.Unsigned_8;
+      Range_Valid          : Interfaces.Unsigned_8;
+      Inertial_Az_El       : Az_El_V1;
+      Az_El_Error          : Az_El_V1;
+   end record
+   with Convention => C;
+   --  Semantically distinct from IR_Track_Update_Result_V1 while reusing the
+   --  one generic IR_Command_Status_V1 layout.
+   type IR_Track_System_Response_Result_V1 is record
       Status     : IR_Command_Status_V1;
       Error_Code : Interfaces.Unsigned_32;
    end record
@@ -1343,4 +1378,29 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_update_request_close";
+   function IR_Track_Submit_System_Track_Data_Response
+     (Handle              : Track_Handle;
+      Response            : access constant IR_System_Track_Data_Response_V1;
+      Output              : access Track_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_track_submit_system_track_data_response";
+   function IR_Track_System_Response_Request_Wait
+     (Handle              : Track_System_Response_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Track_System_Response_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_system_response_request_wait";
+   function IR_Track_System_Response_Request_Close
+     (Handle              : access Track_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_system_response_request_close";
 end AMS.MEL_C_API;
