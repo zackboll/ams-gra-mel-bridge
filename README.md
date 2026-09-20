@@ -100,12 +100,21 @@ themselves.
 > SystemTrackDataResponse                                 complete
 > RequestSystemTrackData                                  complete
 > @RequiredIfDetectCandidateObjects CandidateObjectMessage complete
-> CandidateObjectPreProcMessage                           unimplemented
-> Track API overall                                       incomplete
+> CandidateObjectPreProcMessage                           complete
+> Track API overall                                       complete
 > ```
 >
+> The `@Optional` `CandidateObjectPreProcMessage` callback is also inbound
+> metadata on that same bounded queue. Because its own annotation is
+> `@Optional`, a `Return::NotSupported` refusal is non-fatal and the metadata
+> open still succeeds; `Return::Fail` and any undocumented value fail closed.
+> Native C and safe Ada Track coverage is complete for the published
+> TrackChannel-specific surfaces; safe Rust and public Python Track APIs remain
+> intentionally absent, and positive Track behavior remains mock-only because
+> pinned Squall cannot attach Track through `Control::attachChannel`.
+>
 > The raw Rust sys crate
-> and private Python ctypes layer track the complete current 89-function C ABI.
+> and private Python ctypes layer track the complete current 90-function C ABI.
 > Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return

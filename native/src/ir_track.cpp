@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 
 #include <irmel/library/irmel-types/CandidateObjectMessage.h>
+#include <irmel/library/irmel-types/CandidateObjectPreProcMessage.h>
 #include <irmel/library/irmel-types/ChannelMetadataCapabilityType.h>
 #include <irmel/library/irmel-types/RequestSystemTrackData.h>
 #include <irmel/library/irmel-types/SystemTrackDataResponse.h>
@@ -281,12 +282,17 @@ void copy_request_system_track_data(
  * invalidates those pointers. No provider-owned pointer, provider STL storage,
  * or callback-stack address is ever referenced by the view. */
 struct EventData {
-    /* v2 is stored, never v1: v1 is a frozen ABI record and the whole of it is
-     * the first member of v2, so one allocation serves both views. The v1 view
-     * returns &view.base and the v2 view returns &view. */
-    ams_mel_ir_track_metadata_event_v2 view{};
+    /* v3 is stored, never v1 or v2: both are frozen ABI records and each is
+     * nested at offset 0 of the next, so one allocation serves all three
+     * views. The v1 view returns &view.base.base, the v2 view returns
+     * &view.base, and the v3 view returns &view. */
+    ams_mel_ir_track_metadata_event_v3 view{};
     std::vector<ams_mel_ir_hot_region_v1> hot_regions;
     std::vector<ams_mel_ir_candidate_object_v1> candidate_objects;
+    /* Task 029G PreProc storage. It is a separate vector from
+     * candidate_objects because the two kinds are never both populated and
+     * their element types differ. */
+    std::vector<ams_mel_ir_candidate_object_preproc_v1> candidate_preprocs;
 };
 
 /* Complete verbatim copy of the published HotRegion getters. Upstream declares
@@ -365,6 +371,43 @@ void copy_candidate_object(const irmel::CandidateObject& source,
  * The HotRegion vector has no published fixed maximum, so the complete vector
  * is copied in its published order. An invalid HotRegion enum makes the whole
  * message malformed. */
+/* The one CandidateObjectHeader scalar copy, shared by both candidate message
+ * kinds. numberOfCOs is copied verbatim; no consistency rule against any
+ * container length is applied here. */
+void copy_candidate_header(const irmel::CandidateObjectHeader& source,
+                           ams_mel_ir_candidate_object_header_v1& destination) noexcept
+{
+    destination.number_of_cos = source.getNumberOfCOs();
+    destination.stack_frame_index = source.getStackFrameIndex();
+    destination.cfar = source.getCFAR();
+    destination.validity_flag_bitfield = source.getValidityFlagBitField();
+    destination.tov_utc_ns = source.getTOVutcNanoseconds().count();
+}
+
+/* The one HotRegion vector copy, shared by both candidate message kinds. The
+ * upstream vector has no published fixed maximum, so the COMPLETE vector is
+ * copied in its published order; an invalid enum makes the whole message
+ * malformed. The destination span is bound by the caller, only after the
+ * vector is final. */
+bool copy_hot_regions(const std::vector<irmel::HotRegion>& regions,
+                      std::vector<ams_mel_ir_hot_region_v1>& destination)
+{
+    destination.resize(regions.size());
+    for (std::size_t index = 0; index < regions.size(); ++index)
+        if (!copy_hot_region(regions[index], destination[index])) return false;
+    return true;
+}
+
+/* Binds a span to event-owned vector storage. The storage is heap owned, so a
+ * later move of the owning EventData keeps the pointer valid; an empty vector
+ * keeps a NULL data pointer and a zero size. */
+template <typename Span, typename Vector>
+void bind_span(Span& span, const Vector& storage) noexcept
+{
+    span.data = storage.empty() ? nullptr : storage.data();
+    span.size = storage.size();
+}
+
 bool copy_candidate_object_message(const irmel::CandidateObjectMessage& source,
                                    EventData& event)
 {
@@ -373,32 +416,113 @@ bool copy_candidate_object_message(const irmel::CandidateObjectMessage& source,
     if (static_cast<std::uint32_t>(count) > AMS_MEL_IR_MAX_CANDIDATE_OBJECTS)
         return false;
 
-    const auto& regions = header.getHotRegions();
-    event.hot_regions.resize(regions.size());
-    for (std::size_t index = 0; index < regions.size(); ++index)
-        if (!copy_hot_region(regions[index], event.hot_regions[index])) return false;
+    if (!copy_hot_regions(header.getHotRegions(), event.hot_regions)) return false;
 
     const auto& objects = source.getCandidateObjects();
     event.candidate_objects.resize(count);
     for (std::size_t index = 0; index < static_cast<std::size_t>(count); ++index)
         copy_candidate_object(objects[index], event.candidate_objects[index]);
 
-    auto& view = event.view.candidate_object_message;
-    view.header.number_of_cos = count;
-    view.header.stack_frame_index = header.getStackFrameIndex();
-    view.header.cfar = header.getCFAR();
-    view.header.validity_flag_bitfield = header.getValidityFlagBitField();
-    view.header.tov_utc_ns = header.getTOVutcNanoseconds().count();
+    auto& view = event.view.base.candidate_object_message;
+    copy_candidate_header(header, view.header);
     copy_inertial_state(source.getInertialState(), view.inertial_state);
 
     /* Bound only after both vectors are final; the storage is heap owned, so a
      * later move of this EventData keeps these pointers valid. */
-    view.hot_regions.data =
-        event.hot_regions.empty() ? nullptr : event.hot_regions.data();
-    view.hot_regions.size = event.hot_regions.size();
-    view.candidate_objects.data =
-        event.candidate_objects.empty() ? nullptr : event.candidate_objects.data();
-    view.candidate_objects.size = event.candidate_objects.size();
+    bind_span(view.hot_regions, event.hot_regions);
+    bind_span(view.candidate_objects, event.candidate_objects);
+    return true;
+}
+
+/* Complete verbatim copy of the published CandidateObjectPreProc getters.
+ * Every one of the seventeen getters is read exactly once.
+ *
+ * Nothing is validated here because upstream constrains nothing: no enum is
+ * published, candidateObjectQuality is documented as "0 to 1" but its setter
+ * enforces no such range, the sensor-relative unit vector is not renormalized,
+ * the nested quaternions are not normalized, detectionCategory is not decoded,
+ * and the two sigma values are not reinterpreted.
+ *
+ * The 3 by 3 background patch is copied ROW-MAJOR, one element at a time: the
+ * upstream std::array object itself is never memcpy'd into C storage. */
+void copy_candidate_preproc(
+    const irmel::CandidateObjectPreProc& source,
+    ams_mel_ir_candidate_object_preproc_v1& destination) noexcept
+{
+    destination.system_time_ns = source.getSystemTime().count();
+    destination.detection_category = source.getDetectionCategory();
+    destination.sensor_index = source.getSensorIndex();
+    const auto& subpixel = source.getSubpixel();
+    destination.subpixel.row = subpixel.getRow();
+    destination.subpixel.column = subpixel.getCol();
+    destination.intensity = source.getIntensity();
+    destination.sensor_relative_unit = copy_directional(source.getSenRelUnit());
+    destination.signal_to_interference_ratio = source.getSignalToInterferenceRatio();
+    destination.signal_to_noise_ratio = source.getSignalToNoiseRatio();
+
+    const auto& background = source.getCandidateObjectWithBackground();
+    for (std::size_t row = 0; row < AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE; ++row)
+        for (std::size_t column = 0;
+             column < AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE; ++column)
+            destination.candidate_object_with_background
+                .samples[row * AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE + column] =
+                background[row][column];
+
+    destination.clutter = source.getClutter();
+    destination.candidate_object_quality = source.getCandidateObjectQuality();
+    destination.sir_delta = source.getSirDelta();
+    /* The PreProc's OWN nested inertial state, distinct from the message-level
+     * one; the same canonical copy is reused. */
+    copy_inertial_state(source.getInertialState(), destination.inertial_state);
+    /* Upstream bool, normalized to exactly 0 or 1. */
+    destination.edge = source.getEdge() ? UINT8_C(1) : UINT8_C(0);
+    destination.az_sigma = source.getAzSigma();
+    destination.el_sigma = source.getElSigma();
+    destination.background_normalizer = source.getBackgroundNormalizer();
+}
+
+/* Complete deep copy of CandidateObjectPreProcMessage into event-owned
+ * storage.
+ *
+ * Unlike CandidateObjectMessage, the PreProc container is a
+ * std::vector<CandidateObjectPreProc>, which already carries its own explicit
+ * size. The pinned headers publish NO invariant requiring
+ * numberOfCOs == candidateObjectPreProcs.size(): CandidateObjectHeader is a
+ * standalone class shared by both message types, its numberOfCOs has no
+ * documented relationship to this vector, and CandidateObjectPreProcMessage
+ * validates nothing in setCandidateObjectPreProcs. So numberOfCOs is copied
+ * verbatim into the header, the COMPLETE vector is copied using its actual
+ * size, no truncation to numberOfCOs happens, and a mismatch is NOT treated as
+ * malformed. Both values are preserved and the consumer decides.
+ *
+ * The message getters return BY VALUE, including the vector, so each is called
+ * exactly once and its local result is retained for the whole copy.
+ *
+ * The HotRegion vector has no published fixed maximum, so the complete vector
+ * is copied in its published order. An invalid HotRegion enum makes the whole
+ * message malformed, exactly as for CandidateObjectMessage. */
+bool copy_candidate_preproc_message(
+    const irmel::CandidateObjectPreProcMessage& source, EventData& event)
+{
+    /* Retained locals: these getters return values, not references. */
+    const irmel::CandidateObjectHeader header = source.getCandidateObjectHeader();
+    const irmel::SensorInertialState inertial = source.getSensorInertialState();
+    const std::vector<irmel::CandidateObjectPreProc> preprocs =
+        source.getCandidateObjectPreProcs();
+
+    if (!copy_hot_regions(header.getHotRegions(), event.hot_regions)) return false;
+
+    event.candidate_preprocs.resize(preprocs.size());
+    for (std::size_t index = 0; index < preprocs.size(); ++index)
+        copy_candidate_preproc(preprocs[index], event.candidate_preprocs[index]);
+
+    auto& view = event.view.candidate_object_preproc_message;
+    copy_candidate_header(header, view.header);
+    copy_inertial_state(inertial, view.inertial_state);
+
+    /* Bound only after both vectors are final and will never grow again. */
+    bind_span(view.hot_regions, event.hot_regions);
+    bind_span(view.candidate_object_preprocs, event.candidate_preprocs);
     return true;
 }
 
@@ -491,8 +615,8 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::IRSTTrackReport& report, EventData& event) noexcept {
-            event.view.base.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
-            return copy_track_report(report, event.view.base.track_report);
+            event.view.base.base.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
+            return copy_track_report(report, event.view.base.base.track_report);
         });
 }
 
@@ -508,9 +632,29 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::CandidateObjectMessage& message, EventData& event) {
-            event.view.base.kind =
+            event.view.base.base.kind =
                 AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE;
             return copy_candidate_object_message(message, event);
+        });
+}
+
+/* Provider callback boundary for the @Optional CandidateObjectPreProcMessage.
+ * This is inbound metadata: upstream declares no
+ * send(CandidateObjectPreProcMessage) and no
+ * RequestFor<CandidateObjectPreProcMessage>, so no request handle, completion,
+ * or worker is ever created here. A null payload and an invalid HotRegion enum
+ * are each malformed and enqueue nothing; a header count that differs from the
+ * PreProc vector size is NOT malformed, because no such invariant is
+ * published. An allocation failure inside the builder is caught by the shared
+ * boundary and never crosses back into provider code. */
+void metadata_callback(const std::shared_ptr<MetadataState>& state,
+                       const irmel::CandidateObjectPreProcMessage *value) noexcept
+{
+    metadata_callback_impl(state, value,
+        [](const irmel::CandidateObjectPreProcMessage& message, EventData& event) {
+            event.view.base.base.kind =
+                AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE;
+            return copy_candidate_preproc_message(message, event);
         });
 }
 
@@ -522,10 +666,10 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 {
     metadata_callback_impl(state, value,
         [](const irmel::RequestSystemTrackData& request, EventData& event) noexcept {
-            event.view.base.kind =
+            event.view.base.base.kind =
                 AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
             copy_request_system_track_data(
-                request, event.view.base.request_system_track_data);
+                request, event.view.base.base.request_system_track_data);
             return true;
         });
 }
@@ -1224,6 +1368,54 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
                        out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
+        /* The @Optional CandidateObjectPreProcMessage shares the same queue and
+         * is registered last. TrackState::mutex is again not held: the provider
+         * may deliver a PreProc message synchronously from inside this call.
+         *
+         * This follows the established @Optional policy used for
+         * RequestSystemTrackData, NOT the advertised-capability policy used for
+         * CandidateObjectMessage. The callback itself is annotated @Optional
+         * and is documented as intended for IR MFAs that use
+         * CandidateObjectPreProc, so:
+         *
+         *   Success      registration took; the optional kind is active.
+         *   NotSupported the provider does not implement this @Optional
+         *                callback. NON-FATAL: metadata open continues, the
+         *                already-live required report callback keeps working,
+         *                and only the reception of this optional kind is lost.
+         *                It is deliberately NOT made fatal merely because
+         *                ChannelMetadataCapabilityType happens to name this
+         *                type; the callback's own annotation governs.
+         *   Fail         a callback is ALREADY REGISTERED for this datatype on
+         *                this channel. That is a genuine conflict, not an
+         *                optional refusal: another subscriber owns the
+         *                datatype and our closure may never be invoked, so
+         *                silently claiming success would be incorrect.
+         *
+         * BadPointer, NotImplemented, and any value added by a future upstream
+         * revision are likewise not documented refusals and fail closed. */
+        const auto preproc_result = channel->registerMetadataCallback(
+            std::function<void(irmel::Channel&,
+                               const irmel::CandidateObjectPreProcMessage *const)>{
+                [state](irmel::Channel&,
+                        const irmel::CandidateObjectPreProcMessage *value) noexcept {
+                    metadata_callback(state, value);
+                }});
+        if (preproc_result != irmel::Return::Success &&
+            preproc_result != irmel::Return::NotSupported) {
+            /* Fail closed. No public owner escapes; `owner` is still the
+             * unique_ptr and is destroyed on this path. Every already
+             * registered callback and its retained state stay live until Track
+             * teardown because upstream provides no unregister operation, no
+             * unregister is attempted, and the one-shot rule stays established
+             * so a retry cannot double-register. */
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            state->ready.notify_all();
+            diagnostic("CandidateObjectPreProcMessage callback registration failed",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
         *output = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
@@ -1333,16 +1525,37 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view(
     diagnostic("", out, capacity, required);
     if (!event || !event->data || !output || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
+    *output = &event->data->view.base.base;
+    return AMS_MEL_OK;
+}
+
+/* Unchanged v2 contract. This operation's output type stays the now-frozen v2
+ * record, so a consumer compiled before CandidateObjectPreProcMessage existed
+ * keeps working without recompilation. A PreProc event is still delivered
+ * here, and base.kind still reports kind 4, but the PreProc payload is
+ * reachable only through ams_mel_ir_track_metadata_event_view_v3. No
+ * provider-owned pointer escapes: both spans inside candidate_object_message
+ * address the event's own vectors. */
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v2 **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!event || !event->data || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
     *output = &event->data->view.base;
     return AMS_MEL_OK;
 }
 
-/* v2 view over the same adapter-owned event storage, with identical ownership,
- * validity, and diagnostic rules. No provider-owned pointer escapes: both spans
- * inside candidate_object_message address the event's own vectors. */
-extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
+/* v3 view over the same adapter-owned event storage, with identical ownership,
+ * validity, and diagnostic rules as the v1 and v2 views. No provider-owned
+ * pointer escapes: both spans inside candidate_object_preproc_message address
+ * the event's own vectors, which stay valid until event close, including after
+ * the provider library is unloaded. */
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view_v3(
     const ams_mel_ir_track_metadata_event *event,
-    const ams_mel_ir_track_metadata_event_v2 **output, char *out,
+    const ams_mel_ir_track_metadata_event_v3 **output, char *out,
     std::size_t capacity, std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);

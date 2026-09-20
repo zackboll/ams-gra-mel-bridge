@@ -696,8 +696,9 @@ static int test_synchronous_metadata_during_send(void)
     CHECK(strstr(log, "track_response_send_callback_entered") != NULL);
     CHECK(strstr(log, "track_response_send_callback_returned") != NULL);
     CHECK(strstr(log, "track_channel_destroyed") != NULL);
-    /* None of the three still-deferred Track callbacks was exercised. */
-    CHECK(strstr(log, "track_deferred_operation_invoked") == NULL);
+    /* This scenario advertises no CandidateObjectMessage capability, so that
+     * one registration must be skipped entirely. */
+    CHECK(strstr(log, "track_candidate_object_registered") == NULL);
     CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
     CHECK(unlink(path) == 0);
     return EXIT_SUCCESS;

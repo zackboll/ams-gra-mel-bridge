@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+- Add the `@Optional` IR Track `CandidateObjectPreProcMessage` as inbound
+  metadata in native C, safe Ada, raw Rust ABI, and private Python ABI,
+  completing every published `TrackChannel`-specific surface. The pinned
+  `TrackChannel` declares it **only** as a `registerMetadataCallback` overload
+  and declares no `send(CandidateObjectPreProcMessage)` and no
+  `RequestFor<CandidateObjectPreProcMessage>`, so it is implemented on the
+  existing bounded DROP-INCOMING Track metadata queue as metadata kind `4`
+  rather than as an asynchronous request. No request handle, completion, worker
+  thread, or `CommandStatus` mapping was added, and `TrackState::requests` is
+  untouched.
+
+  Registration order becomes `IRSTTrackReport`, `CandidateObjectMessage` (only
+  when advertised), `RequestSystemTrackData`, `CandidateObjectPreProcMessage`,
+  which makes the four-kind FIFO deterministic. It runs with the Track
+  lifecycle lock released, so a provider may deliver synchronously from inside
+  `registerMetadataCallback`. Because the callback's own annotation is
+  `@Optional`, `Return::NotSupported` is **non-fatal** and Metadata Open still
+  succeeds, exactly as for `RequestSystemTrackData`; `Return::Fail` --
+  documented upstream as a conflicting existing registration -- plus
+  `BadPointer`, `NotImplemented`, and any future value fail closed with
+  `AMS_MEL_PROVIDER_FAILED`, and a throwing registration maps to
+  `AMS_MEL_PROVIDER_EXCEPTION`.
+
+  All 17 published `CandidateObjectPreProc` getters and all 3 message getters
+  are mapped exactly once. The message getters return by value, including the
+  vector, so each is called once and its result retained. The upstream
+  `std::array<std::array<std::int16_t, 3>, 3>` background patch becomes one
+  explicit fixed `int16_t samples[9]` record with published side/sample
+  constants and an exact row-major mapping; the `std::array` object is never
+  `memcpy`'d and all nine values are copied individually. Both the
+  message-level and each entry's own `SensorInertialState` are copied, `edge`
+  is normalized to exactly 0 or 1, and nothing is clamped, renormalized, or
+  decoded -- `candidateObjectQuality` is documented "0 to 1" upstream but its
+  setter enforces nothing, so it is deliberately NOT clamped.
+
+  Unlike `CandidateObjectMessage`, whose fixed 900-entry array needs
+  `numberOfCOs` to select a prefix, the PreProc container is a `std::vector`
+  with its own size, and the pinned headers publish no invariant requiring
+  `numberOfCOs == candidateObjectPreProcs.size()`. The adapter therefore copies
+  `numberOfCOs` verbatim, copies the COMPLETE vector at its actual size, and
+  neither truncates nor rejects a mismatch; a mock fixture with
+  `numberOfCOs = 3` and a 2-element vector asserts both values survive.
+
+  `ams_mel_ir_track_metadata_event_v1` and `ams_mel_ir_track_metadata_event_v2`
+  are both frozen and their view operations are unchanged. The payload lives in
+  the new `ams_mel_ir_track_metadata_event_v3`, whose first member is the
+  complete v2 record, reachable only through the one new export
+  `ams_mel_ir_track_metadata_event_view_v3`. Export count 89 -> 90; ABI version
+  stays `0.1`. The v2 freeze was mutation-checked: appending the PreProc
+  payload to v2 was observed to fail the native contract and both the Rust and
+  Python authoritative ABI probes, and was then reverted.
+
+  The mock provider's deferred-Track-surface instrumentation
+  (`track_deferred_calls`, `deferred_registration`) is removed; after this
+  change there is no deferred `TrackChannel` surface. Positive Track behavior
+  remains mock-only because pinned Squall cannot attach a Track channel through
+  `Control::attachChannel`, and the safe Rust and public Python Track APIs
+  remain intentionally absent.
+
 - Add the `@RequiredIfDetectCandidateObjects` IR Track `CandidateObjectMessage`
   as inbound metadata in native C, safe Ada, raw Rust ABI, and private Python
   ABI. The pinned `TrackChannel` declares `CandidateObjectMessage` **only** as a

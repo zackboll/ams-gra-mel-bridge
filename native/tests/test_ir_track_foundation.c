@@ -66,11 +66,12 @@ static int read_log(const char *path, char *buffer, size_t capacity)
     return EXIT_SUCCESS;
 }
 
-/* Task 029B1 implements no Track metadata or Track command surface; the mock
- * records every deferred Track operation, so their absence is provable. */
+/* The Track channel foundation itself opens no metadata subscription and
+ * submits no send, so none of the published TrackChannel-specific operations
+ * may be reached from these scenarios. The mock records every one of them, so
+ * their absence is provable. */
 static int no_deferred_track_operations(const char *data)
 {
-    CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);
     CHECK(strstr(data, "track_report_registered") == NULL);
     CHECK(strstr(data, "track_candidate_object_registered") == NULL);
     CHECK(strstr(data, "track_candidate_object_preproc_registered") == NULL);

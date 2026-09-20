@@ -831,7 +831,9 @@ channel destruction and provider library unload.
 
 The export count becomes exactly 89 and native CTest stays at 15. Only
 `CandidateObjectPreProcMessage` remains unimplemented, so the Track API as a
-whole is still not complete.
+whole is still not complete. *(Superseded by task 029G, which implements
+`CandidateObjectPreProcMessage`, takes the export count to 90, and completes
+the Track API; see below.)*
 
 ### Track metadata event versioning and the frozen v1 record
 
@@ -884,3 +886,71 @@ Introduce a further version record with the earlier version as its first member
 and a matching view operation. The native, Rust, and Python ABI probes assert
 the exact v1 member set, so an accidental v1 append fails those compatibility
 tests rather than silently shipping.
+
+### Task 029G: CandidateObjectPreProcMessage, the frozen v2 record, and v3
+
+Task 029G implements the `@Optional` `CandidateObjectPreProcMessage`
+`TrackChannel` callback. Upstream declares no
+`send(CandidateObjectPreProcMessage)` and no
+`RequestFor<CandidateObjectPreProcMessage>`, so it is inbound callback metadata
+delivered on the one existing bounded DROP-INCOMING Track metadata queue, as
+kind `4`. No request/completion machinery is created.
+
+Following the rule stated immediately above, the PreProc payload was **not**
+appended to v1 or to v2. v2 is frozen as published by 029F -- exactly `base`
+plus `candidate_object_message`, ending exactly after that member -- and
+029G introduces:
+
+```c
+typedef struct ams_mel_ir_track_metadata_event_v3 {
+    ams_mel_ir_track_metadata_event_v2 base;
+    ams_mel_ir_candidate_object_preproc_message_v1
+        candidate_object_preproc_message;
+} ams_mel_ir_track_metadata_event_v3;
+```
+
+with `offsetof(v3, base) == 0`, `sizeof(v3.base) == sizeof(v2)`, one
+discriminator nested at `v3.base.base.kind` at byte offset 0 of all three
+records, and no earlier payload record duplicated.
+
+`ams_mel_ir_track_metadata_event_view` and
+`ams_mel_ir_track_metadata_event_view_v2` keep their exact signatures and
+output contracts; a PreProc event is still delivered through both with
+`kind == 4` and with no PreProc payload reachable there.
+`ams_mel_ir_track_metadata_event_view_v3` is the one new export and the only
+way to reach the PreProc payload. The export count becomes exactly **90** and
+native CTest stays at 15; the ABI version remains `0.1`.
+
+New ABI types, all reusing existing canonical records rather than duplicating
+them: `ams_mel_ir_candidate_background_v1`,
+`ams_mel_ir_candidate_object_preproc_v1`,
+`ams_mel_ir_candidate_object_preproc_span_v1`, and
+`ams_mel_ir_candidate_object_preproc_message_v1`, which reuses
+`ams_mel_ir_candidate_object_header_v1`,
+`ams_mel_ir_sensor_inertial_state_v1`, and `ams_mel_ir_hot_region_span_v1`.
+
+The upstream `std::array<std::array<std::int16_t, 3>, 3>` background patch gets
+one explicit fixed representation, `int16_t samples[9]`, with the published
+constants `AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE` (3) and
+`AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES` (9). The mapping is row-major:
+`samples[row * 3 + column]` is `upstream[row][column]`. The C++ `std::array`
+object is never `memcpy`'d into C storage; all nine values are copied
+individually, and the element width is not widened.
+
+Unlike `CandidateObjectMessage`, whose fixed 900-entry array requires
+`numberOfCOs` to select a meaningful prefix, the PreProc container is a
+`std::vector` that already carries its own size. The pinned headers publish no
+invariant requiring `numberOfCOs == candidateObjectPreProcs.size()`, so the
+adapter copies `numberOfCOs` verbatim, copies the complete vector at its actual
+size, and neither truncates nor rejects on a mismatch. Both values are
+preserved and the consumer decides. See
+`docs/task-029g-candidate-object-preproc-message-validation.md` for the
+evidence.
+
+**Rule for future Track metadata growth (restated):** do not append fields to
+v1, v2, or v3. Introduce a further version record with the previous version as
+its first member and a matching view operation. The native, Rust, and Python
+ABI probes assert the exact v1 and v2 member sets, so an accidental append to
+either fails those compatibility tests; this was verified by a temporary
+mutation that appended the PreProc payload to v2 and was observed to fail all
+three, then reverted.

@@ -874,12 +874,17 @@ pub const AMS_MEL_IR_TRACK_STATE_DROPPED: u32 = 3;
 pub const AMS_MEL_IR_TRACK_MODE_IDLE: u32 = 0;
 pub const AMS_MEL_IR_TRACK_MODE_SCAN: u32 = 1;
 pub const AMS_MEL_IR_TRACK_MODE_STARE: u32 = 2;
-/// The Track metadata event kinds defined by this release. The
-/// `CandidateObjectPreProcMessage` callback remains unimplemented and has no
-/// kind.
+/// The Track metadata event kinds defined by this release. Every published
+/// `TrackChannel`-specific metadata callback has a kind.
 pub const AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT: u32 = 1;
 pub const AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA: u32 = 2;
 pub const AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE: u32 = 3;
+pub const AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE: u32 = 4;
+
+/// Upstream `CandidateObjectPreProc::candidateObjectWithBackground` is exactly
+/// `std::array<std::array<std::int16_t, 3>, 3>`.
+pub const AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE: u32 = 3;
+pub const AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES: u32 = 9;
 
 /// Upstream `MAX_CANDIDATE_OBJECTS`: the fixed storage length of the published
 /// `std::array<CandidateObject, 900>`. `numberOfCOs` selects the meaningful
@@ -1029,14 +1034,112 @@ pub struct AmsMelIrTrackMetadataEventV1 {
     pub request_system_track_data: AmsMelIrRequestSystemTrackDataV1,
 }
 
-/// Track metadata event v2: the complete frozen v1 record first, then the
-/// additive `CandidateObjectMessage` payload. `base.kind` stays the one
-/// discriminator and `offsetof(v2, base)` is 0.
+/// FROZEN Track metadata event v2: the complete frozen v1 record first, then
+/// the additive `CandidateObjectMessage` payload. `base.kind` stays the one
+/// discriminator and `offsetof(v2, base)` is 0. Exactly these two members; the
+/// `CandidateObjectPreProcMessage` payload went into v3 instead.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrTrackMetadataEventV2 {
     pub base: AmsMelIrTrackMetadataEventV1,
     pub candidate_object_message: AmsMelIrCandidateObjectMessageV1,
+}
+
+/// The one explicit fixed representation of the upstream 3 by 3 background
+/// patch. The mapping is row-major: `samples[row * 3 + column]` is
+/// `upstream[row][column]`. The element width stays upstream `i16`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCandidateBackgroundV1 {
+    pub samples: [i16; 9],
+}
+
+impl Default for AmsMelIrCandidateBackgroundV1 {
+    fn default() -> Self {
+        Self { samples: [0; 9] }
+    }
+}
+
+/// Complete `CandidateObjectPreProc`. Reuses the canonical row/column, XYZ, and
+/// `SensorInertialState` records; each entry carries its OWN nested inertial
+/// state. No value is clamped, normalized, or renormalized:
+/// `candidate_object_quality` is documented upstream as "0 to 1" but its setter
+/// enforces nothing. `edge` is upstream `bool`, normalized to exactly 0 or 1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCandidateObjectPreProcV1 {
+    pub system_time_ns: i64,
+    pub detection_category: u32,
+    pub sensor_index: u32,
+    pub subpixel: AmsMelIrRowColV1,
+    pub intensity: f64,
+    pub sensor_relative_unit: AmsMelIrDirectionalV1,
+    pub signal_to_interference_ratio: f64,
+    pub signal_to_noise_ratio: f64,
+    pub candidate_object_with_background: AmsMelIrCandidateBackgroundV1,
+    pub clutter: f64,
+    pub candidate_object_quality: f64,
+    pub sir_delta: f64,
+    pub inertial_state: AmsMelIrSensorInertialStateV1,
+    pub edge: u8,
+    pub az_sigma: f64,
+    pub el_sigma: f64,
+    pub background_normalizer: f64,
+}
+span!(
+    AmsMelIrCandidateObjectPreProcSpanV1,
+    AmsMelIrCandidateObjectPreProcV1
+);
+
+/// Complete `CandidateObjectPreProcMessage`. The `TrackChannel` callback that
+/// delivers it is annotated @Optional and is documented as intended for IR
+/// MFAs that use `CandidateObjectPreProc`.
+///
+/// Upstream declares no `send(CandidateObjectPreProcMessage)` and no
+/// `RequestFor<CandidateObjectPreProcMessage>`, so this is inbound callback
+/// metadata. Unlike `CandidateObjectMessage`, the container is a
+/// `std::vector`, so `candidate_object_preprocs.size` is the vector's own size
+/// and `header.number_of_cos` is deliberately not used to truncate it: no such
+/// invariant is published upstream. Both spans borrow event-owned storage
+/// valid until event close.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCandidateObjectPreProcMessageV1 {
+    pub header: AmsMelIrCandidateObjectHeaderV1,
+    pub inertial_state: AmsMelIrSensorInertialStateV1,
+    pub hot_regions: AmsMelIrHotRegionSpanV1,
+    pub candidate_object_preprocs: AmsMelIrCandidateObjectPreProcSpanV1,
+}
+
+impl Default for AmsMelIrCandidateObjectPreProcMessageV1 {
+    /// Matches the zeroed native event: every unselected span keeps a null
+    /// data pointer and a zero size. A raw pointer has no `Default`, so this
+    /// impl is written out rather than derived.
+    fn default() -> Self {
+        Self {
+            header: AmsMelIrCandidateObjectHeaderV1::default(),
+            inertial_state: AmsMelIrSensorInertialStateV1::default(),
+            hot_regions: AmsMelIrHotRegionSpanV1 {
+                data: core::ptr::null(),
+                size: 0,
+            },
+            candidate_object_preprocs: AmsMelIrCandidateObjectPreProcSpanV1 {
+                data: core::ptr::null(),
+                size: 0,
+            },
+        }
+    }
+}
+
+/// Track metadata event v3: the complete frozen v2 record first, then the
+/// additive `CandidateObjectPreProcMessage` payload. `base.base.kind` stays
+/// the one discriminator, `offsetof(v3, base)` is 0, and
+/// `size_of(v3.base) == size_of(v2)`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackMetadataEventV3 {
+    pub base: AmsMelIrTrackMetadataEventV2,
+    pub candidate_object_preproc_message: AmsMelIrCandidateObjectPreProcMessageV1,
 }
 
 /// Upstream `TrackStatus` (@RequiredIfTrackUpdate). No `MaxExclusive` value
@@ -2056,6 +2159,13 @@ extern "C" {
     pub fn ams_mel_ir_track_metadata_event_view(
         event: *const AmsMelIrTrackMetadataEvent,
         out_view: *mut *const AmsMelIrTrackMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_event_view_v3(
+        event: *const AmsMelIrTrackMetadataEvent,
+        out_view: *mut *const AmsMelIrTrackMetadataEventV3,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

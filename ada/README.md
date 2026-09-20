@@ -139,12 +139,16 @@ not-cancellation close semantics. Requests of this family share one
 pending-request accounting domain with `Update_Request`, so physical Track
 teardown is deferred until every pending request of both families completes.
 
-The inbound `RequestSystemTrackData` and `CandidateObjectMessage` callbacks are
-implemented in `AMS.MEL.IR.Track.Metadata` and are reached through
-`Receive_Event`; upstream declares no `send()` overload for either, so both are
-delivered on the one bounded Track metadata queue alongside `IRSTTrackReport`.
-The `CandidateObjectPreProcMessage` callback is not implemented, so the Track
-API as a whole is not complete.
+The inbound `RequestSystemTrackData`, `CandidateObjectMessage`, and
+`CandidateObjectPreProcMessage` callbacks are implemented in
+`AMS.MEL.IR.Track.Metadata` and are reached through `Receive_Event`; upstream
+declares no `send()` overload for any of them, so all three are delivered on
+the one bounded Track metadata queue alongside `IRSTTrackReport`, in strict
+FIFO order across all four kinds.
+
+Every published TrackChannel-specific surface is now represented, so safe Ada
+Track coverage is complete. Positive Track behavior remains mock-only: pinned
+Squall cannot attach a Track channel through `Control::attachChannel`.
 
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.

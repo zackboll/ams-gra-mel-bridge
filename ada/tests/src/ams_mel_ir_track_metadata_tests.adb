@@ -7,16 +7,17 @@ with Interfaces;
 
 --  Task 029B2 covers the @RequiredIfTrack IRSTTrackReport callback, Task 029E
 --  adds the @Optional RequestSystemTrackData request, and Task 029F adds the
---  @RequiredIfDetectCandidateObjects CandidateObjectMessage. All three share
---  the same bounded queue, capacity, and counter set.
---  CandidateObjectPreProcMessage remains unimplemented and is therefore not
---  exercised here.
+--  @RequiredIfDetectCandidateObjects CandidateObjectMessage, and Task 029G
+--  adds the @Optional CandidateObjectPreProcMessage. All four share the same
+--  bounded queue, capacity, and counter set, and every published
+--  TrackChannel-specific inbound metadata kind is exercised here.
 
 package body AMS_MEL_IR_Track_Metadata_Tests is
    package Trk renames AMS.MEL.IR.Track;
    package Meta renames AMS.MEL.IR.Track.Metadata;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_16;
+   use type Interfaces.Integer_16;
    use type Meta.Metadata_Kind;
    use type Meta.Hot_Region_Type;
    use type Trk.IRST_Track_State;
@@ -584,6 +585,250 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       AMS.MEL.Close (Parent);
    end Test_Candidate_Mixed_FIFO;
 
+   --  Exact all-field fidelity of one distinctive rich CandidateObjectPreProc,
+   --  wholly Ada owned. Every field, all nine background samples at their exact
+   --  row/column positions, and the entry's OWN nested inertial state are
+   --  checked. Index is zero-based to match the fixture's construction.
+   procedure Check_Rich_PreProc_Entry
+     (P : Meta.Candidate_Object_PreProc; Index : Natural; Context : String)
+   is
+      Step : constant Long_Float := Long_Float (Index);
+   begin
+      if P.System_Time_NS /= -2_000_000_000_000 - Long_Long_Integer (Index) * 13
+        or else P.Detection_Category /= 16#3333_0000# + Interfaces.Unsigned_32 (Index)
+        or else P.Sensor_Index /= 16#4444_0000# + Interfaces.Unsigned_32 (Index)
+        or else P.Subpixel.Row /= 400.5 + Step
+        or else P.Subpixel.Column /= 900.25 + Step
+        or else P.Intensity /= 5000.125 + Step
+        or else P.Sensor_Relative_Unit.X /= 0.4 + Step
+        or else P.Sensor_Relative_Unit.Y /= -0.5 - Step
+        or else P.Sensor_Relative_Unit.Z /= 0.6 + Step
+        or else P.Signal_To_Interference_Ratio /= 60.5 + Step
+        or else P.Signal_To_Noise_Ratio /= -70.75 - Step
+      then
+         raise Program_Error with "Ada PreProc scalar mismatch in " & Context;
+      end if;
+
+      --  All nine samples at their exact row-major positions, so a transposed
+      --  or reordered patch cannot pass.
+      for Row in Meta.Background_Index loop
+         for Column in Meta.Background_Index loop
+            declare
+               Ordinal   : constant Integer := (Row - 1) * 3 + (Column - 1);
+               Magnitude : constant Interfaces.Integer_16 :=
+                 Interfaces.Integer_16 (1000 + Ordinal + Index * 100);
+               Expected  : constant Interfaces.Integer_16 :=
+                 (if Ordinal mod 2 = 0 then Magnitude else -Magnitude);
+            begin
+               if P.Candidate_Object_With_Background (Row, Column) /= Expected then
+                  raise Program_Error with "Ada PreProc background sample mismatch in " & Context;
+               end if;
+            end;
+         end loop;
+      end loop;
+
+      if P.Clutter /= -80.375 - Step
+        or else P.Candidate_Object_Quality /= 1.5 + Step  --  deliberately > 1, not clamped
+        or else P.Sir_Delta /= -90.625 - Step
+        or else P.Edge /= (Index = 1)
+        or else P.Az_Sigma /= 0.03125 + Step
+        or else P.El_Sigma /= -0.015625 - Step
+        or else P.Background_Normalizer /= 123.4375 + Step
+      then
+         raise Program_Error with "Ada PreProc tail mismatch in " & Context;
+      end if;
+
+      --  The entry's OWN nested inertial state, distinct from the
+      --  message-level one and from the other entry's.
+      if P.Inertial_State.System_Time_NS /= -3_344_556_677_889_900 - Long_Long_Integer (Index)
+        or else P.Inertial_State.Q_XYZW.X /= 0.75 + Step
+        or else P.Inertial_State.Q_XYZW.Y /= -0.8125 - Step
+        or else P.Inertial_State.Q_XYZW.Z /= 0.875 + Step
+        or else P.Inertial_State.Q_XYZW.W /= -0.9375 - Step
+        or else P.Inertial_State.Q_ECEF_XYZW.X /= -1.0625 - Step
+        or else P.Inertial_State.Q_ECEF_XYZW.Y /= 1.125 + Step
+        or else P.Inertial_State.Q_ECEF_XYZW.Z /= -1.1875 - Step
+        or else P.Inertial_State.Q_ECEF_XYZW.W /= 1.25 + Step
+        or else P.Inertial_State.Sensor_Position.X /= 111_111.5 + Step
+        or else P.Inertial_State.Sensor_Position.Y /= -222_222.25 - Step
+        or else P.Inertial_State.Sensor_Position.Z /= 333_333.125 + Step
+        or else P.Inertial_State.Sensor_Velocity.X /= -77.125 - Step
+        or else P.Inertial_State.Sensor_Velocity.Y /= 88.25 + Step
+        or else P.Inertial_State.Sensor_Velocity.Z /= -99.375 - Step
+        or else P.Inertial_State.Uncertainties.Sensor_Uncertainties
+                /= 16#A1B2_C300# + Interfaces.Unsigned_32 (Index)
+        or else P.Inertial_State.Uncertainties.Platform_Uncertainties
+                /= 16#D4E5_F600# + Interfaces.Unsigned_32 (Index)
+      then
+         raise Program_Error with "Ada PreProc nested inertial mismatch in " & Context;
+      end if;
+   end Check_Rich_PreProc_Entry;
+
+   --  Exact all-field fidelity of the distinctive rich
+   --  CandidateObjectPreProcMessage, wholly Ada owned.
+   --
+   --  The header reports Number_Of_COs = 3 while the PreProc vector holds
+   --  exactly 2: the adapter preserves both verbatim rather than truncating
+   --  to, or rejecting on, an undocumented consistency rule.
+   procedure Check_Rich_PreProc (Message : Meta.Candidate_Object_PreProc_Message; Context : String)
+   is
+      H : constant Meta.Candidate_Object_Header := Meta.Header (Message);
+      S : constant Meta.Sensor_Inertial_State := Meta.Inertial_State (Message);
+   begin
+      if H.Number_Of_COs /= 3
+        or else Meta.Candidate_Object_PreProc_Count (Message) /= 2
+        or else H.Stack_Frame_Index /= 16#C0DE#
+        or else H.CFAR /= 2.7183e-6
+        or else H.Validity_Flag_Bitfield /= 16#5A3C#
+        or else H.TOV_UTC_NS /= -9_988_776_655_443_322
+      then
+         raise Program_Error with "Ada PreProc header mismatch in " & Context;
+      end if;
+
+      if Meta.Hot_Region_Count (Message) /= 2 then
+         raise Program_Error with "Ada PreProc hot region count mismatch in " & Context;
+      end if;
+      declare
+         R1 : constant Meta.Hot_Region := Meta.Hot_Region_At (Message, 1);
+         R2 : constant Meta.Hot_Region := Meta.Hot_Region_At (Message, 2);
+      begin
+         if R1.Kind /= Meta.Solar
+           or else R1.Size /= 2001
+           or else R1.Top /= 2002
+           or else R1.Left /= 2003
+           or else R1.Right /= 2004
+           or else R1.Bottom /= 2005
+           or else R2.Kind /= Meta.Mask
+           or else R2.Size /= 3001
+           or else R2.Top /= 3002
+           or else R2.Left /= 3003
+           or else R2.Right /= 3004
+           or else R2.Bottom /= 3005
+         then
+            raise Program_Error with "Ada PreProc hot region mismatch in " & Context;
+         end if;
+      end;
+
+      --  The MESSAGE-level inertial state, distinct from every nested one.
+      if S.System_Time_NS /= -5_544_332_211_009_988
+        or else S.Q_XYZW.X /= 0.0625
+        or else S.Q_XYZW.Y /= -0.125
+        or else S.Q_XYZW.Z /= 0.1875
+        or else S.Q_XYZW.W /= -0.25
+        or else S.Q_ECEF_XYZW.X /= -0.3125
+        or else S.Q_ECEF_XYZW.Y /= 0.375
+        or else S.Q_ECEF_XYZW.Z /= -0.4375
+        or else S.Q_ECEF_XYZW.W /= 0.5
+        or else S.Sensor_Position.X /= 7_654_321.5
+        or else S.Sensor_Position.Y /= -8_765_432.25
+        or else S.Sensor_Position.Z /= 9_876_543.125
+        or else S.Sensor_Velocity.X /= -44.625
+        or else S.Sensor_Velocity.Y /= 55.75
+        or else S.Sensor_Velocity.Z /= -66.875
+        or else S.Uncertainties.Sensor_Uncertainties /= 16#BADF_00D1#
+        or else S.Uncertainties.Platform_Uncertainties /= 16#FEED_BEE2#
+      then
+         raise Program_Error with "Ada PreProc message inertial mismatch in " & Context;
+      end if;
+
+      for Index in 1 .. Meta.Candidate_Object_PreProc_Count (Message) loop
+         Check_Rich_PreProc_Entry
+           (Meta.Candidate_Object_PreProc_At (Message, Index), Index - 1, Context);
+      end loop;
+   end Check_Rich_PreProc;
+
+   --  Positive CandidateObjectPreProcMessage delivery, complete and wholly Ada
+   --  owned after Receive_Event returns.
+   procedure Test_PreProc_Message (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-preproc-rich");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      Check_Counters (Meta.Counters (Stream), 1, 0, 0, "preproc message");
+      declare
+         Event : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if Event.Kind /= Meta.Candidate_Object_PreProc_Message_Event then
+            raise Program_Error with "Ada Track metadata kind is not preproc";
+         end if;
+         Check_Rich_PreProc (Event.Candidate_PreProcs, "preproc message");
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_PreProc_Message;
+
+   --  Each malformed PreProc payload is counted and enqueues nothing.
+   procedure Test_PreProc_Malformed (Provider_Path : String; Scenario : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, Scenario);
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      Check_Counters (Meta.Counters (Stream), 1, 0, 1, Scenario);
+      begin
+         declare
+            Ignored : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         begin
+            raise Program_Error with "Ada preproc malformed unexpectedly queued";
+         end;
+      exception
+         when AMS.MEL.IR.Timeout_Error =>
+            null;
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_PreProc_Malformed;
+
+   --  A non-refusal failure of this @Optional registration must fail Open
+   --  closed, and no metadata owner may escape.
+   procedure Test_PreProc_Registration_Failure (Provider_Path : String; Scenario : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, Scenario);
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+   begin
+      declare
+         Ignored : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+      begin
+         raise Program_Error with "Ada preproc registration unexpectedly succeeded";
+      end;
+   exception
+      when AMS.MEL.Provider_Error =>
+         Trk.Close (Channel);
+         AMS.MEL.Close (Parent);
+   end Test_PreProc_Registration_Failure;
+
+   --  Deterministic FOUR-kind FIFO across the one shared queue.
+   procedure Test_PreProc_Mixed_FIFO (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-preproc-mixed");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 8);
+   begin
+      Check_Counters (Meta.Counters (Stream), 4, 0, 0, "preproc mixed FIFO");
+      declare
+         First  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Second : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Third  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Fourth : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if First.Kind /= Meta.IRST_Track_Report_Event
+           or else Second.Kind /= Meta.Candidate_Object_Message_Event
+           or else Third.Kind /= Meta.Request_System_Track_Data_Event
+           or else Fourth.Kind /= Meta.Candidate_Object_PreProc_Message_Event
+         then
+            raise Program_Error with "Ada Track four-kind FIFO order mismatch";
+         end if;
+         Check_Rich (First.Report, "preproc mixed FIFO");
+         Check_Rich_Candidate (Second.Candidates, "preproc mixed FIFO");
+         if Third.Request.Command_ID /= 16#C1234567# then
+            raise Program_Error with "Ada Track four-kind FIFO request mismatch";
+         end if;
+         Check_Rich_PreProc (Fourth.Candidate_PreProcs, "preproc mixed FIFO");
+      end;
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_PreProc_Mixed_FIFO;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Attached_Registration (Provider_Path);
@@ -610,7 +855,14 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       Test_Candidate_Registration_Failure (Provider_Path, "track-candidate-register-fail");
       Test_Candidate_Registration_Failure (Provider_Path, "track-candidate-register-throw");
       Test_Candidate_Mixed_FIFO (Provider_Path);
-      Ada.Text_IO.Put_Line
-        ("PASS: Ada IR Track IRSTTrackReport and RequestSystemTrackData metadata contract");
+      --  @Optional CandidateObjectPreProcMessage.
+      Test_PreProc_Message (Provider_Path);
+      Test_PreProc_Malformed (Provider_Path, "track-preproc-null");
+      Test_PreProc_Malformed (Provider_Path, "track-preproc-bad-region");
+      Test_PreProc_Registration_Failure (Provider_Path, "track-preproc-register-fail");
+      Test_PreProc_Registration_Failure (Provider_Path, "track-preproc-register-unknown");
+      Test_PreProc_Registration_Failure (Provider_Path, "track-preproc-register-throw");
+      Test_PreProc_Mixed_FIFO (Provider_Path);
+      Ada.Text_IO.Put_Line ("PASS: Ada IR Track metadata contract for all four inbound kinds");
    end Run;
 end AMS_MEL_IR_Track_Metadata_Tests;

@@ -667,7 +667,8 @@ return -- including `NotSupported` -- fails the open closed, which deliberately
 differs from the `@Optional` `RequestSystemTrackData` refusal. Only
 `CandidateObjectPreProcMessage` now remains unimplemented, so the Track API as a
 whole is still not complete, and the CandidateObject evidence is likewise
-mock-provider only.
+mock-provider only. *(Superseded by task 029G, which implements
+`CandidateObjectPreProcMessage` and completes the Track API; see below.)*
 
 The candidate payload is **not** appended to
 `ams_mel_ir_track_metadata_event_v1`. `docs/c-abi-policy.md` prohibits appending
@@ -727,3 +728,59 @@ is not exported through the C ABI. A compiler dependency check rejects system
 Boost leakage. The presence of TrackDataUpdate declarations and Boost headers
 does not implement TrackDataUpdate; Task 029B is the earliest possible Track
 adapter task.
+
+## Task 029G CandidateObjectPreProcMessage and Track completion
+
+Task 029G implements the `@Optional` `CandidateObjectPreProcMessage`
+`TrackChannel` callback, the last previously unimplemented TrackChannel
+metadata surface.
+
+Upstream declares no `send(CandidateObjectPreProcMessage)` and no
+`RequestFor<CandidateObjectPreProcMessage>`, so this is inbound callback
+metadata, not asynchronous request work. It flows through the existing path:
+provider callback, complete native deep copy, the one bounded DROP-INCOMING
+Track metadata FIFO, the event owner, the v1/v2/v3 event views, and safe Ada
+`Receive_Event`. No Submit, Wait, request handle, Completion, WorkerInput,
+completion thread, `CommandStatus` mapping, or `TrackState::requests`
+participation is involved; the callback creates zero `RequestFor` workers.
+
+Registration order becomes `IRSTTrackReport`, `CandidateObjectMessage` (only
+when advertised), `RequestSystemTrackData`, `CandidateObjectPreProcMessage`,
+and that order makes the four-kind FIFO deterministic. Every registration runs
+with `TrackState::mutex` released, so a provider may deliver synchronously from
+inside `registerMetadataCallback`.
+
+The `@Optional` annotation on this callback governs its refusal policy, which
+follows the 029E `RequestSystemTrackData` precedent rather than the 029F
+advertised-capability precedent: `Return::NotSupported` is **non-fatal** and
+metadata open continues, while `Return::Fail` (documented upstream as a
+conflicting existing registration), `BadPointer`, `NotImplemented`, and any
+future value fail closed with `AMS_MEL_PROVIDER_FAILED`. A throwing
+registration maps to `AMS_MEL_PROVIDER_EXCEPTION`. Naming the type in
+`ChannelMetadataCapabilityType` does not upgrade an `@Optional` callback into a
+required one.
+
+The PreProc payload is **not** appended to v1 or v2. v2 is frozen as 029F
+published it, and 029G adds `ams_mel_ir_track_metadata_event_v3` with the
+complete v2 record as its first member plus one new export,
+`ams_mel_ir_track_metadata_event_view_v3`. The export count becomes 90 and the
+ABI version stays `0.1`. The event owner additionally holds the PreProc vector,
+so every span stays valid until `event_close`, including after provider channel
+destruction and provider library unload.
+
+All published TrackChannel-specific surfaces are now represented:
+
+```text
+@RequiredIfTrack core                                      complete
+@RequiredIfTrackUpdate TrackDataUpdate                     complete
+SystemTrackDataResponse                                    complete
+RequestSystemTrackData                                     complete
+@RequiredIfDetectCandidateObjects CandidateObjectMessage   complete
+CandidateObjectPreProcMessage                              complete
+Track API overall                                          complete
+```
+
+Native C and safe Ada Track coverage is complete for those surfaces. The safe
+Rust Track API and the public Python Track API remain intentionally absent, and
+positive Track behavior remains mock-only because pinned Squall cannot attach a
+Track channel through `Control::attachChannel`.

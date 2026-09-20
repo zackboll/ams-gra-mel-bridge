@@ -267,8 +267,9 @@ int main(void)
     ams_mel_status_t (*track_meta_close)(ams_mel_ir_track_metadata **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_close;
     ams_mel_status_t (*track_ev_view)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view;
     ams_mel_status_t (*track_ev_view2)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v2 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view_v2;
+    ams_mel_status_t (*track_ev_view3)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v3 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view_v3;
     ams_mel_status_t (*track_ev_close)(ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_close;
-    (void)track_ev_view2;
+    (void)track_ev_view2; (void)track_ev_view3;
     (void)track_meta_open; (void)track_meta_recv; (void)track_meta_counters;
     (void)track_meta_close; (void)track_ev_view; (void)track_ev_close;
     ams_mel_status_t (*track_submit)(ams_mel_ir_track *, const ams_mel_ir_track_data_update_v1 *, ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_submit_update;
@@ -469,7 +470,10 @@ int main(void)
     VALUE(AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
     VALUE(AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
     VALUE(AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE);
+    VALUE(AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
     VALUE(AMS_MEL_IR_MAX_CANDIDATE_OBJECTS);
+    VALUE(AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE);
+    VALUE(AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES);
     VALUE(AMS_MEL_IR_HOT_REGION_INVALID); VALUE(AMS_MEL_IR_HOT_REGION_FLARE);
     VALUE(AMS_MEL_IR_HOT_REGION_SOLAR); VALUE(AMS_MEL_IR_HOT_REGION_MASK);
     RECORD(ams_mel_ir_row_col_v1, FIELD(ams_mel_ir_row_col_v1,row); FIELD(ams_mel_ir_row_col_v1,column));
@@ -506,9 +510,17 @@ int main(void)
         FIELD(ams_mel_ir_track_metadata_event_v1,kind);
         FIELD(ams_mel_ir_track_metadata_event_v1,track_report);
         FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data));
+    /* Frozen v2: exactly base and candidate_object_message. */
     RECORD(ams_mel_ir_track_metadata_event_v2,
         FIELD(ams_mel_ir_track_metadata_event_v2,base);
         FIELD(ams_mel_ir_track_metadata_event_v2,candidate_object_message));
+    RECORD(ams_mel_ir_candidate_background_v1, FIELD(ams_mel_ir_candidate_background_v1,samples));
+    RECORD(ams_mel_ir_candidate_object_preproc_v1, FIELD(ams_mel_ir_candidate_object_preproc_v1,system_time_ns); FIELD(ams_mel_ir_candidate_object_preproc_v1,detection_category); FIELD(ams_mel_ir_candidate_object_preproc_v1,sensor_index); FIELD(ams_mel_ir_candidate_object_preproc_v1,subpixel); FIELD(ams_mel_ir_candidate_object_preproc_v1,intensity); FIELD(ams_mel_ir_candidate_object_preproc_v1,sensor_relative_unit); FIELD(ams_mel_ir_candidate_object_preproc_v1,signal_to_interference_ratio); FIELD(ams_mel_ir_candidate_object_preproc_v1,signal_to_noise_ratio); FIELD(ams_mel_ir_candidate_object_preproc_v1,candidate_object_with_background); FIELD(ams_mel_ir_candidate_object_preproc_v1,clutter); FIELD(ams_mel_ir_candidate_object_preproc_v1,candidate_object_quality); FIELD(ams_mel_ir_candidate_object_preproc_v1,sir_delta); FIELD(ams_mel_ir_candidate_object_preproc_v1,inertial_state); FIELD(ams_mel_ir_candidate_object_preproc_v1,edge); FIELD(ams_mel_ir_candidate_object_preproc_v1,az_sigma); FIELD(ams_mel_ir_candidate_object_preproc_v1,el_sigma); FIELD(ams_mel_ir_candidate_object_preproc_v1,background_normalizer));
+    RECORD(ams_mel_ir_candidate_object_preproc_span_v1, FIELD(ams_mel_ir_candidate_object_preproc_span_v1,data); FIELD(ams_mel_ir_candidate_object_preproc_span_v1,size));
+    RECORD(ams_mel_ir_candidate_object_preproc_message_v1, FIELD(ams_mel_ir_candidate_object_preproc_message_v1,header); FIELD(ams_mel_ir_candidate_object_preproc_message_v1,inertial_state); FIELD(ams_mel_ir_candidate_object_preproc_message_v1,hot_regions); FIELD(ams_mel_ir_candidate_object_preproc_message_v1,candidate_object_preprocs));
+    RECORD(ams_mel_ir_track_metadata_event_v3,
+        FIELD(ams_mel_ir_track_metadata_event_v3,base);
+        FIELD(ams_mel_ir_track_metadata_event_v3,candidate_object_preproc_message));
 
     LAYOUT(ams_mel_ir_track_update_request *);
     VALUE(AMS_MEL_IR_TRACK_STATUS_CREATE); VALUE(AMS_MEL_IR_TRACK_STATUS_UPDATE);
