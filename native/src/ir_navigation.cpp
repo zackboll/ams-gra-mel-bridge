@@ -168,12 +168,18 @@ void retain_worker(const std::shared_ptr<WorkerInput>& input) noexcept
         head, input.get(), std::memory_order_release, std::memory_order_relaxed));
 }
 /* Decrements the request count; if this was the final request, attempts
- * deferred physical cleanup (a no-op unless the stream has already begun
- * logical Stop/Close). Never called with the frame callback mutex held. */
+ * deferred physical cleanup (NotRequired unless the stream has already begun
+ * logical Stop/Close). Never called with the frame callback mutex held.
+ *
+ * The cleanup call itself is what synchronizes this completion thread against
+ * a concurrent public Stop/Close: ownership of physical teardown is claimed
+ * under ImageStreamState's teardown lock, and this thread never touches
+ * channel/image_channel outside it. Only an attempted-and-failed teardown is
+ * reported as a request failure; NotRequired is not a failure. */
 bool finish_stream(const std::shared_ptr<ImageStreamState>& stream)
 {
     release_navigation_submission(*stream);
-    return image_stream_cleanup(stream, true);
+    return image_stream_cleanup(stream, true) != ImageCleanupOutcome::Failed;
 }
 
 void complete(const std::shared_ptr<Completion>& state,
