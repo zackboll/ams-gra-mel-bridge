@@ -306,6 +306,25 @@ class IrInstrumentationConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
 class IrTrackConfigV1(ctypes.Structure):
     _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+# Complete IRSTTrackReport. Reuses the one canonical NorthEastDownV1 for both
+# NED vectors. Upstream IrstTrackState/IrstTrackMode declare no MaxExclusive
+# value, so anything above Dropped/Stare is malformed.
+AMS_MEL_IR_TRACK_STATE_IDLE = 0
+AMS_MEL_IR_TRACK_STATE_DETECTED = 1
+AMS_MEL_IR_TRACK_STATE_COAST = 2
+AMS_MEL_IR_TRACK_STATE_DROPPED = 3
+AMS_MEL_IR_TRACK_MODE_IDLE = 0
+AMS_MEL_IR_TRACK_MODE_SCAN = 1
+AMS_MEL_IR_TRACK_MODE_STARE = 2
+AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT = 1
+class IrTrackReportV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),("activity_id",ctypes.c_uint32),
+    ("measured_ned",NorthEastDownV1),("measured_intensity",ctypes.c_double),("measured_snr",ctypes.c_double),
+    ("filtered_ned",NorthEastDownV1),("filtered_intensity",ctypes.c_double),("filtered_snr",ctypes.c_double),
+    ("range_m",ctypes.c_double),("range_error_m",ctypes.c_double),("spatial_extent_rad",ctypes.c_double),
+    ("track_quality",ctypes.c_double),("clutter",ctypes.c_double),("age_ns",ctypes.c_int64),
+    ("state",ctypes.c_uint32),("mode",ctypes.c_uint32)]
+class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
@@ -417,6 +436,8 @@ IrInstrumentationMetadataHandle = ctypes.c_void_p
 IrInstrumentationMetadataEventHandle = ctypes.c_void_p
 # Task 029B1 declares only the Track channel ownership/lifecycle foundation.
 IrTrackHandle = ctypes.c_void_p
+IrTrackMetadataHandle = ctypes.c_void_p
+IrTrackMetadataEventHandle = ctypes.c_void_p
 CharPointer = ctypes.POINTER(ctypes.c_char)
 SizePointer = ctypes.POINTER(ctypes.c_size_t)
 
@@ -805,6 +826,24 @@ ams_mel_ir_track_get_capabilities.restype = ctypes.c_int32
 ams_mel_ir_track_close = _LIBRARY.ams_mel_ir_track_close
 ams_mel_ir_track_close.argtypes = [ctypes.POINTER(IrTrackHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_close.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
+ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_receive = _LIBRARY.ams_mel_ir_track_metadata_receive
+ams_mel_ir_track_metadata_receive.argtypes = [IrTrackMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_get_counters = _LIBRARY.ams_mel_ir_track_metadata_get_counters
+ams_mel_ir_track_metadata_get_counters.argtypes = [IrTrackMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_close = _LIBRARY.ams_mel_ir_track_metadata_close
+ams_mel_ir_track_metadata_close.argtypes = [ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_close.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_event_view = _LIBRARY.ams_mel_ir_track_metadata_event_view
+ams_mel_ir_track_metadata_event_view.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_event_close = _LIBRARY.ams_mel_ir_track_metadata_event_close
+ams_mel_ir_track_metadata_event_close.argtypes = [ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_event_close.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
@@ -883,4 +922,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_enable",
     "ams_mel_ir_track_get_capabilities",
     "ams_mel_ir_track_close",
+    "ams_mel_ir_track_metadata_open",
+    "ams_mel_ir_track_metadata_receive",
+    "ams_mel_ir_track_metadata_get_counters",
+    "ams_mel_ir_track_metadata_close",
+    "ams_mel_ir_track_metadata_event_view",
+    "ams_mel_ir_track_metadata_event_close",
 )

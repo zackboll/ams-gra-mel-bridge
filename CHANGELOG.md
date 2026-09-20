@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- Add the conditionally required IR Track `IRSTTrackReport` metadata callback
+  (`@RequiredIfTrack`) in native C, safe Ada, raw Rust, and private Python. The
+  slice is exactly `TrackChannel::registerMetadataCallback(IRSTTrackReport)`
+  over the merged Track channel foundation; Track ownership is not redesigned.
+  `ams_mel_ir_track_report_v1` copies every upstream getter exactly once --
+  `getSystemTime`, `getActivityId`, both `NorthEastDown` vectors through the one
+  canonical `ams_mel_north_east_down_v1`, both intensity/SNR pairs, range, range
+  error, spatial extent, track quality, clutter, age, state, and mode -- with no
+  clamping, normalization, or narrowing. Upstream `IrstTrackState` and
+  `IrstTrackMode` are exposed as exactly Idle/Detected/Coast/Dropped and
+  Idle/Scan/Stare with no invented MaxExclusive value; anything above Dropped or
+  Stare, and a null payload, are malformed, counted, and never queued. The
+  callback state belongs to the Track channel rather than to the public metadata
+  owner because upstream declares no unregister, so registration is one-shot and
+  every later attempt returns `AMS_MEL_INVALID_ARGUMENT` even after a failed
+  attempt. Registration publishes callback state and releases the Track
+  lifecycle lock before calling the provider, so a provider that emits an
+  `IRSTTrackReport` synchronously from inside `registerMetadataCallback` neither
+  deadlocks nor loses that report; the mock does exactly that. The bounded queue
+  is FIFO with DROP-INCOMING (six reports into a capacity-2 queue retain the
+  first two and drop four) and counters saturate. Track cleanup marks metadata
+  inactive before provider teardown, destroys the provider channel as the
+  callback-quiescence boundary, waits for in-flight callbacks only afterwards,
+  and then reports stopped; a failed detach instead marks the metadata failed
+  and keeps the complete callback graph alive for a Close retry. ABI 0.1 grows
+  from 76 to 82 exports; native CTest grows from 11 to 12. No safe Rust or
+  public Python Track API is added, and no real Squall Track validation is added
+  (deferred to task 029B3). `TrackDataUpdate`, `SystemTrackDataResponse`,
+  `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
+  `RequestSystemTrackData` remain unimplemented; Track is not complete.
+
 - Add the IR Track channel ownership/lifecycle foundation
   (`@RequiredIfTrack`) in native C, safe Ada, raw Rust, and private Python.
   The slice is exactly `Open`, `Enable`, `ChannelCapability`, and `Close` over

@@ -78,10 +78,16 @@ typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_me
 typedef struct ams_mel_ir_instrumentation_metadata_event
     ams_mel_ir_instrumentation_metadata_event;
 /* Conditionally required Track channel (@RequiredIfTrack) owner. This release
- * implements only channel ownership/lifecycle: Open, Enable, ChannelCapability,
- * and Close. No Track metadata owner, Track metadata event, or Track request
- * owner exists yet. */
+ * implements channel ownership/lifecycle (Open, Enable, ChannelCapability,
+ * Close) plus exactly the @RequiredIfTrack IRSTTrackReport metadata callback.
+ * No Track request owner exists: TrackDataUpdate and SystemTrackDataResponse
+ * sends are not implemented. */
 typedef struct ams_mel_ir_track ams_mel_ir_track;
+/* Owns public consumption of the retained IRSTTrackReport callback queue. The
+ * callback-accessible state itself belongs to the Track channel, not to this
+ * wrapper, because upstream provides no unregister operation. */
+typedef struct ams_mel_ir_track_metadata ams_mel_ir_track_metadata;
+typedef struct ams_mel_ir_track_metadata_event ams_mel_ir_track_metadata_event;
 
 typedef uint32_t ams_mel_ir_channel_type_t;
 #define AMS_MEL_IR_CHANNEL_IRST_TRACK UINT32_C(0)
@@ -793,6 +799,68 @@ typedef struct ams_mel_ir_track_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_track_config_v1;
+
+/* Upstream IrstTrackState defines exactly Idle=0, Detected=1, Coast=2, and
+ * Dropped=3 and declares no MaxExclusive value. Provider values greater than
+ * Dropped are malformed and are never queued. */
+typedef uint32_t ams_mel_ir_track_state_t;
+#define AMS_MEL_IR_TRACK_STATE_IDLE     UINT32_C(0)
+#define AMS_MEL_IR_TRACK_STATE_DETECTED UINT32_C(1)
+#define AMS_MEL_IR_TRACK_STATE_COAST    UINT32_C(2)
+#define AMS_MEL_IR_TRACK_STATE_DROPPED  UINT32_C(3)
+
+/* Upstream IrstTrackMode defines exactly Idle=0, Scan=1, and Stare=2 and
+ * declares no MaxExclusive value. Provider values greater than Stare are
+ * malformed and are never queued. */
+typedef uint32_t ams_mel_ir_track_mode_t;
+#define AMS_MEL_IR_TRACK_MODE_IDLE  UINT32_C(0)
+#define AMS_MEL_IR_TRACK_MODE_SCAN  UINT32_C(1)
+#define AMS_MEL_IR_TRACK_MODE_STARE UINT32_C(2)
+
+/* Complete IRSTTrackReport. Every upstream getter is represented exactly once:
+ * getSystemTime, getActivityId, getMeasuredNed (north/east/down),
+ * getMeasuredIntensity, getMeasuredSnr, getFilteredNed (north/east/down),
+ * getFilteredIntensity, getFilteredSnr, getRange, getRangeError,
+ * getSpatialExtent, getTrackQuality, getClutter, getAge, getState, and getMode.
+ * system_time_ns and age_ns preserve signed std::chrono::nanoseconds counts.
+ * Floating-point values are copied verbatim: no clamping and no normalization.
+ * The canonical ams_mel_north_east_down_v1 record is reused for both NED
+ * vectors; no second C NED representation exists. */
+typedef struct ams_mel_ir_track_report_v1 {
+    int64_t system_time_ns;
+    uint32_t activity_id;
+
+    ams_mel_north_east_down_v1 measured_ned;
+    double measured_intensity;
+    double measured_snr;
+
+    ams_mel_north_east_down_v1 filtered_ned;
+    double filtered_intensity;
+    double filtered_snr;
+
+    double range_m;
+    double range_error_m;
+    double spatial_extent_rad;
+    double track_quality;
+    double clutter;
+
+    int64_t age_ns;
+
+    ams_mel_ir_track_state_t state;
+    ams_mel_ir_track_mode_t mode;
+} ams_mel_ir_track_report_v1;
+
+/* Extensible Track metadata event format. Only the @RequiredIfTrack
+ * IRSTTrackReport family is implemented; CandidateObjectMessage,
+ * CandidateObjectPreProcMessage, and RequestSystemTrackData deliberately have
+ * no storage here. A consumer must fail closed on an unrecognized kind. */
+typedef uint32_t ams_mel_ir_track_metadata_kind_t;
+#define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT UINT32_C(1)
+
+typedef struct ams_mel_ir_track_metadata_event_v1 {
+    ams_mel_ir_track_metadata_kind_t kind;
+    ams_mel_ir_track_report_v1 track_report;
+} ams_mel_ir_track_metadata_event_v1;
 
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
@@ -1584,12 +1652,12 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_instrumentation_close(
     ams_mel_ir_instrumentation **instrumentation, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
-/* Conditionally required Track channel (@RequiredIfTrack) ownership/lifecycle
- * foundation. This release implements exactly Open, Enable, ChannelCapability,
- * and Close. The IRSTTrackReport callback, TrackDataUpdate,
- * SystemTrackDataResponse, CandidateObjectMessage,
- * CandidateObjectPreProcMessage, and RequestSystemTrackData are deliberately
- * not implemented here.
+/* Conditionally required Track channel (@RequiredIfTrack). This release
+ * implements the ownership/lifecycle foundation (Open, Enable,
+ * ChannelCapability, Close) plus exactly the @RequiredIfTrack IRSTTrackReport
+ * metadata callback. TrackDataUpdate, SystemTrackDataResponse,
+ * CandidateObjectMessage, CandidateObjectPreProcMessage, and
+ * RequestSystemTrackData are deliberately not implemented here.
  *
  * Open attaches the upstream channel with ChannelType::IRSTTrack, requires the
  * concrete TrackChannel type, and requires that the reported ChannelCapability
@@ -1614,13 +1682,74 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_get_capabilities(
     ams_mel_ir_track *track, ams_mel_ir_channel_capability **out_capability,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
-/* Disables when enable was attempted, then detaches and destroys the provider
- * channel. A failed disable does not prove ownership safety, so detach is still
- * attempted; when that detach succeeds the caller owner is cleared and
+/* Marks any Track metadata inactive and wakes its receivers, disables when
+ * enable was attempted, then detaches and destroys the provider channel. A
+ * failed disable does not prove ownership safety, so detach is still attempted;
+ * when that detach succeeds the caller owner is cleared and
  * AMS_MEL_PROVIDER_FAILED is returned. A failed detach leaves the caller owner
- * non-null, retains the complete graph, and permits a later close retry. */
+ * non-null, retains the complete callback/provider graph, marks the metadata
+ * failed, and permits a later close retry. After a successful detach the
+ * provider channel is destroyed first, then callback quiescence is awaited, and
+ * only then does the metadata lifecycle become stopped. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_close(
     ams_mel_ir_track **track, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded
+ * owned polling of it. Valid while the Track channel is attached or enabled;
+ * registration may occur before Enable.
+ *
+ * Registration is one-shot: upstream declares no unregister operation, so only
+ * one attempt per Track owner is permitted. Every later call returns
+ * AMS_MEL_INVALID_ARGUMENT, including after a failed attempt.
+ *
+ * The callback state is published and the Track lifecycle lock released before
+ * the provider registration call, so a provider that invokes the callback
+ * synchronously from inside registerMetadataCallback cannot deadlock and cannot
+ * lose that first report.
+ *
+ * A non-Success provider registration returns AMS_MEL_PROVIDER_FAILED and a
+ * throwing registration returns AMS_MEL_PROVIDER_EXCEPTION; in both cases no
+ * metadata owner escapes while the callback-accessible state stays retained by
+ * the Track channel.
+ *
+ * The queue is bounded FIFO with DROP-INCOMING: once full, the incoming report
+ * is dropped and the already queued reports are preserved in arrival order.
+ * Counters saturate rather than wrap. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_open(
+    ams_mel_ir_track *track, size_t queue_capacity,
+    ams_mel_ir_track_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Returns a queued event first, whatever the lifecycle. Otherwise an empty
+ * active queue reports AMS_MEL_TIMEOUT, an empty inactive or stopped queue
+ * reports AMS_MEL_STREAM_STOPPED, and an empty failed queue reports
+ * AMS_MEL_PROVIDER_FAILED. A zero timeout is a non-blocking poll. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_receive(
+    ams_mel_ir_track_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_track_metadata_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Reuses the one shared saturating metadata counter record. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_get_counters(
+    const ams_mel_ir_track_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking. Close marks public consumption inactive, prevents
+ * future public enqueueing, wakes receivers, and deletes the wrapper. It does
+ * NOT unregister the provider callback, which has no upstream unregister: the
+ * retained callback may still be invoked safely afterwards and simply queues
+ * nothing. Provider channel destruction remains the quiescence boundary. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_close(
+    ams_mel_ir_track_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrows immutable adapter-owned event storage valid only until event_close.
+ * Values copied out of the view remain valid independently of the Track
+ * channel, the Session, and the provider library. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_close(
+    ams_mel_ir_track_metadata_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus

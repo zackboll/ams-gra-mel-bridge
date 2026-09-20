@@ -240,6 +240,48 @@ fn session_input_function_signatures_match_the_c_header() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_track_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrack,
+        usize,
+        *mut *mut AmsMelIrTrackMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrTrackMetadata,
+        u32,
+        *mut *mut AmsMelIrTrackMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackMetadata,
+        *mut AmsMelIrC2MetadataCountersV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrTrackMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackMetadataEvent,
+        *mut *const AmsMelIrTrackMetadataEventV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrTrackMetadataEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_close;
 }
 
 #[test]
@@ -1044,6 +1086,46 @@ fn declarations_match_the_c_header() {
         channel_type,
         platform_id,
         sensor_location
+    );
+    expected.extend([
+        size_of::<*mut AmsMelIrTrackMetadata>(),
+        align_of::<*mut AmsMelIrTrackMetadata>(),
+        size_of::<*mut AmsMelIrTrackMetadataEvent>(),
+        align_of::<*mut AmsMelIrTrackMetadataEvent>(),
+        AMS_MEL_IR_TRACK_STATE_IDLE as usize,
+        AMS_MEL_IR_TRACK_STATE_DETECTED as usize,
+        AMS_MEL_IR_TRACK_STATE_COAST as usize,
+        AMS_MEL_IR_TRACK_STATE_DROPPED as usize,
+        AMS_MEL_IR_TRACK_MODE_IDLE as usize,
+        AMS_MEL_IR_TRACK_MODE_SCAN as usize,
+        AMS_MEL_IR_TRACK_MODE_STARE as usize,
+        AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelIrTrackReportV1,
+        system_time_ns,
+        activity_id,
+        measured_ned,
+        measured_intensity,
+        measured_snr,
+        filtered_ned,
+        filtered_intensity,
+        filtered_snr,
+        range_m,
+        range_error_m,
+        spatial_extent_rad,
+        track_quality,
+        clutter,
+        age_ns,
+        state,
+        mode
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackMetadataEventV1,
+        kind,
+        track_report
     );
     expected.extend([
         AMS_MEL_OK as usize,

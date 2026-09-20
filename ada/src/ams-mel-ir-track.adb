@@ -1,6 +1,5 @@
 with Ada.Unchecked_Conversion;
 with AMS.MEL.IR.Capability_Conversion;
-with Interfaces;
 with Interfaces.C;
 with System;
 

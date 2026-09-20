@@ -60,10 +60,28 @@ un-closed channel through the same non-raising fallback used by the other
 families, and a native detach failure deliberately leaves the underlying owner
 intact so the retained provider graph is never destroyed. A `Track_Channel`
 keeps the provider/session graph alive independently of its parent `Session`.
-No `IRST_Track_Report`, Track metadata package, Track enumerations, or NED type
-is declared: `IRSTTrackReport`, `TrackDataUpdate`, `SystemTrackDataResponse`,
-`CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
-`RequestSystemTrackData` are not implemented.
+It also declares the safe value types for the `@RequiredIfTrack`
+`IRSTTrackReport` callback: `IRST_Track_State` (`State_Idle`/`Detected`/`Coast`/
+`Dropped`), `IRST_Track_Mode` (`Mode_Idle`/`Scan`/`Stare`), a Track-owned
+`North_East_Down` record that deliberately creates no dependency on
+`AMS.MEL.IR.Image`, and the complete `IRST_Track_Report`. The `State_`/`Mode_`
+prefixes exist only because both upstream enumerations declare an `Idle`.
+
+`AMS.MEL.IR.Track.Metadata` polls that callback with the same limited-private
+`Metadata_Channel` shape used by the other families:
+`Open`/`Is_Open`/`Receive`/`Counters`/`Close` with a caller-chosen
+`Queue_Capacity`. `Receive` obtains a native event owner, views it, validates
+the event kind and both raw enumeration values explicitly rather than through
+unchecked enumeration conversion, copies every field into Ada-owned storage,
+closes the native owner -- including on a conversion exception -- and returns an
+Ada value; no native pointer escapes. Registration is one-shot because upstream
+declares no unregister, so the callback state belongs to the `Track_Channel`;
+`Close` deactivates public consumption only and provider channel destruction
+remains the callback-quiescence boundary.
+
+`TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`,
+`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
+implemented.
 
 The `AMS` root package is owned here; future companion Ada crates must depend
 on its owning crate rather than duplicate `ams.ads`.

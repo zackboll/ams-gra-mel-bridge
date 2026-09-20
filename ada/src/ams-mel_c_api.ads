@@ -77,6 +77,12 @@ private package AMS.MEL_C_API is
      Instrumentation_Event_Handle (System.Null_Address);
    type Track_Handle is new System.Address;
    Null_Track                    : constant Track_Handle := Track_Handle (System.Null_Address);
+   type Track_Metadata_Handle is new System.Address;
+   Null_Track_Metadata           : constant Track_Metadata_Handle :=
+     Track_Metadata_Handle (System.Null_Address);
+   type Track_Event_Handle is new System.Address;
+   Null_Track_Event              : constant Track_Event_Handle :=
+     Track_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -353,6 +359,33 @@ private package AMS.MEL_C_API is
    with Convention => C;
    type North_East_Down_V1 is record
       North, East, Down : Interfaces.C.double;
+   end record
+   with Convention => C;
+   --  Complete IRSTTrackReport. Reuses the one canonical North_East_Down_V1
+   --  import; every C double stays Interfaces.C.double here and is converted
+   --  only in the safe layer.
+   type IR_Track_Report_V1 is record
+      System_Time_NS     : Interfaces.Integer_64;
+      Activity_ID        : Interfaces.Unsigned_32;
+      Measured_NED       : North_East_Down_V1;
+      Measured_Intensity : Interfaces.C.double;
+      Measured_SNR       : Interfaces.C.double;
+      Filtered_NED       : North_East_Down_V1;
+      Filtered_Intensity : Interfaces.C.double;
+      Filtered_SNR       : Interfaces.C.double;
+      Range_M            : Interfaces.C.double;
+      Range_Error_M      : Interfaces.C.double;
+      Spatial_Extent_Rad : Interfaces.C.double;
+      Track_Quality      : Interfaces.C.double;
+      Clutter            : Interfaces.C.double;
+      Age_NS             : Interfaces.Integer_64;
+      State              : Interfaces.Unsigned_32;
+      Mode               : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Track_Event_V1 is record
+      Kind         : Interfaces.Unsigned_32;
+      Track_Report : IR_Track_Report_V1;
    end record
    with Convention => C;
    type Attitude_Rate_V1 is record
@@ -1208,4 +1241,46 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_close";
+   function IR_Track_Metadata_Open
+     (Handle              : Track_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Track_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_open";
+   function IR_Track_Metadata_Receive
+     (Handle              : Track_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Track_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_receive";
+   function IR_Track_Metadata_Get_Counters
+     (Handle              : Track_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_get_counters";
+   function IR_Track_Metadata_Close
+     (Handle              : access Track_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_close";
+   function IR_Track_Event_View
+     (Handle              : Track_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_view";
+   function IR_Track_Event_Close
+     (Handle              : access Track_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_close";
 end AMS.MEL_C_API;

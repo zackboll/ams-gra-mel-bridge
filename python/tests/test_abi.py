@@ -95,9 +95,15 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_enable",
                 "ams_mel_ir_track_get_capabilities",
                 "ams_mel_ir_track_close",
+                "ams_mel_ir_track_metadata_open",
+                "ams_mel_ir_track_metadata_receive",
+                "ams_mel_ir_track_metadata_get_counters",
+                "ams_mel_ir_track_metadata_close",
+                "ams_mel_ir_track_metadata_event_view",
+                "ams_mel_ir_track_metadata_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 76)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 82)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -523,6 +529,46 @@ class AbiTests(unittest.TestCase):
                 'platform_id',
                 'sensor_location',
             )
+        )
+        expected.extend(
+            [
+                ctypes.sizeof(_native.IrTrackMetadataHandle),
+                ctypes.alignment(_native.IrTrackMetadataHandle),
+                ctypes.sizeof(_native.IrTrackMetadataEventHandle),
+                ctypes.alignment(_native.IrTrackMetadataEventHandle),
+                _native.AMS_MEL_IR_TRACK_STATE_IDLE,
+                _native.AMS_MEL_IR_TRACK_STATE_DETECTED,
+                _native.AMS_MEL_IR_TRACK_STATE_COAST,
+                _native.AMS_MEL_IR_TRACK_STATE_DROPPED,
+                _native.AMS_MEL_IR_TRACK_MODE_IDLE,
+                _native.AMS_MEL_IR_TRACK_MODE_SCAN,
+                _native.AMS_MEL_IR_TRACK_MODE_STARE,
+                _native.AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT,
+            ]
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackReportV1,
+                'system_time_ns',
+                'activity_id',
+                'measured_ned',
+                'measured_intensity',
+                'measured_snr',
+                'filtered_ned',
+                'filtered_intensity',
+                'filtered_snr',
+                'range_m',
+                'range_error_m',
+                'spatial_extent_rad',
+                'track_quality',
+                'clutter',
+                'age_ns',
+                'state',
+                'mode',
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrTrackMetadataEventV1, 'kind', 'track_report')
         )
         expected.extend(
             [
