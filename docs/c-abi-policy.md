@@ -714,3 +714,90 @@ post-send coverage is untouched. Either failure returns
 `AMS_MEL_INTERNAL_ERROR`, exposes no public request owner, and retains the
 future and provider graph safely; that retention is deliberately permanent under
 the fail-safe policy.
+
+## Task 029E Track RequestSystemTrackData contract
+
+Task 029E adds the `@Optional` `RequestSystemTrackData` surface and adds **no
+new exports**: ABI 0.1 stays at exactly 88. This is deliberate and follows from
+the pinned upstream API. `TrackChannel` declares `RequestSystemTrackData` only
+as a `registerMetadataCallback` overload:
+
+```cpp
+virtual Return registerMetadataCallback(
+    std::function<void(Channel&, const RequestSystemTrackData* const)>) = 0;
+```
+
+There is no `send(RequestSystemTrackData)` and no `RequestFor<...>` anywhere in
+the pinned snapshot, so this operation has no request handle, no wait, no
+timeout, no `CommandStatus`, and no rejection state. It is an inbound request
+delivered to the application, and it therefore reuses the existing Track
+metadata queue rather than the 029C/029D request machinery. Reusing the existing
+IR structures instead of introducing a parallel representation is the rule
+stated at the top of this document.
+
+`ams_mel_ir_track_metadata_event_v1` gains a second discriminated member and a
+second kind constant:
+
+```c
+#define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT         UINT32_C(1)
+#define AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(2)
+```
+
+Only the member selected by `kind` is populated; the others stay zeroed, and the
+tests assert that explicitly so a consumer cannot read a stale sibling payload.
+A consumer must still fail closed on an unrecognized kind.
+
+`ams_mel_ir_request_system_track_data_v1` carries all four published fields with
+no convenience fields added:
+
+| Upstream field | Upstream type | ABI field | ABI type |
+|---|---|---|---|
+| `getSystemTime()` | `std::chrono::nanoseconds` | `system_time_ns` | `int64_t` |
+| `getCommandID()` | `std::uint32_t` | `command_id` | `uint32_t` |
+| `getRequestId()` | `std::uint32_t` | `request_id` | `uint32_t` |
+| `getTrackId()` | `std::uint32_t` | `track_id` | `uint32_t` |
+
+`std::chrono::nanoseconds` has a signed representation, so the time is carried
+as `int64_t` and `count()` is preserved verbatim; the units are nanoseconds and
+no conversion is performed. Signedness and width are preserved for every field.
+Upstream declares no enum, no optional field, and no constrained range for this
+type, so there is nothing to validate and nothing to reject: a
+default-constructed all-zero request is well formed and is delivered rather than
+counted as malformed. Only a null payload pointer is malformed, and it is
+counted in `malformed_or_unsupported` exactly like a null report.
+
+Both implemented kinds share one queue, one capacity, and one counter set, and
+preserve strict FIFO order across kinds. The DROP-INCOMING policy is unchanged
+and applies identically to the optional kind.
+
+Upstream documents three distinct answers to this registration and the adapter
+does **not** treat them identically:
+
+| `Return` | Meaning | Adapter behavior |
+| --- | --- | --- |
+| `Success` | Registration took | Optional kind is active |
+| `NotSupported` | Provider does not implement this `@Optional` callback | **Non-fatal.** Open succeeds; only this kind is never delivered |
+| `Fail` | A callback is **already registered** for this datatype on this channel | **Fails closed** with `AMS_MEL_PROVIDER_FAILED` |
+| anything else | `BadPointer`, `NotImplemented`, or a future value | **Fails closed** rather than silently claiming success |
+
+Because the callback is `@Optional`, a `NotSupported` refusal is not fatal:
+pinned Squall is exactly such a provider, the required `IRSTTrackReport`
+callback is registered first and is already live, and losing this kind is the
+documented consequence. `Fail` is different in kind -- it means another
+subscriber already owns this datatype, so the bridge's closure may never be
+invoked and reporting `AMS_MEL_OK` would promise deliveries the bridge cannot
+make. On that path no public metadata owner escapes, the already-registered
+required callback and its retained state remain live until Track teardown
+because upstream provides no unregister operation, and the one-shot
+registration rule stays established so a retry cannot double-register. As with the report callback, the optional registration
+is performed without `TrackState::mutex` held, because the provider may deliver
+synchronously from inside `registerMetadataCallback`.
+
+This task adds no asynchronous request machinery and does not touch
+`Completion`, `WorkerInput`, `finish_request`, `retain_worker`, or
+`TrackState::requests`; the 029C/029D lifetime behavior is unchanged.
+
+The `@RequiredIfTrack` core, `@RequiredIfTrackUpdate` `TrackDataUpdate`, and
+`@Optional` `SystemTrackDataResponse` all stay complete. `CandidateObjectMessage`
+and `CandidateObjectPreProcMessage` remain unimplemented, so the Track API as a
+whole is still not complete.

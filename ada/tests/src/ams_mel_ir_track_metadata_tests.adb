@@ -5,15 +5,16 @@ with AMS.MEL.IR.Track;
 with AMS.MEL.IR.Track.Metadata;
 with Interfaces;
 
---  Task 029B2 covers exactly the @RequiredIfTrack IRSTTrackReport callback.
---  TrackDataUpdate, SystemTrackDataResponse, CandidateObjectMessage,
---  CandidateObjectPreProcMessage, and RequestSystemTrackData remain
---  unimplemented and are therefore not exercised here.
+--  Task 029B2 covers the @RequiredIfTrack IRSTTrackReport callback and Task
+--  029E adds the @Optional RequestSystemTrackData request, which shares the
+--  same bounded queue. CandidateObjectMessage and CandidateObjectPreProcMessage
+--  remain unimplemented and are therefore not exercised here.
 
 package body AMS_MEL_IR_Track_Metadata_Tests is
    package Trk renames AMS.MEL.IR.Track;
    package Meta renames AMS.MEL.IR.Track.Metadata;
    use type Interfaces.Unsigned_32;
+   use type Meta.Metadata_Kind;
    use type Trk.IRST_Track_State;
    use type Trk.IRST_Track_Mode;
    use type AMS.MEL.IR.Counter;
@@ -277,6 +278,116 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       AMS.MEL.Close (Parent);
    end Test_Registration_Failure;
 
+   --  The @Optional RequestSystemTrackData arrives through the same bounded
+   --  queue. Every field is checked against the distinctive rich request; the
+   --  negative system time proves the signed nanosecond carrier survives.
+   procedure Check_Rich_Request (Request : Meta.Request_System_Track_Data; Context : String) is
+   begin
+      if Request.System_Time_NS /= -8_765_432_109_876
+        or else Request.Command_ID /= 16#C1234567#
+        or else Request.Request_ID /= 16#D2345678#
+        or else Request.Track_ID /= 16#E3456789#
+      then
+         raise Program_Error with "Ada Track request value mismatch in " & Context;
+      end if;
+   end Check_Rich_Request;
+
+   procedure Test_Request_System_Track_Data (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-request-rich");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      declare
+         Event : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if Event.Kind /= Meta.Request_System_Track_Data_Event then
+            raise Program_Error with "Ada Track returned the wrong metadata kind";
+         end if;
+         Check_Rich_Request (Event.Request, "request reception");
+      end;
+      --  A zero timeout on a drained active queue is a nonblocking poll.
+      begin
+         declare
+            Ignored : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         begin
+            raise Program_Error with "Ada Track metadata returned an unexpected event";
+         end;
+      exception
+         when AMS.MEL.IR.Timeout_Error =>
+            null;
+      end;
+      Check_Counters (Meta.Counters (Stream), 1, 0, 0, "request reception");
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Request_System_Track_Data;
+
+   --  Both kinds share the one queue and must arrive in strict FIFO order,
+   --  each carrying only its own payload.
+   procedure Test_Mixed_Kinds (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-metadata-mixed");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 8);
+   begin
+      declare
+         First  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Second : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         Third  : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+      begin
+         if First.Kind /= Meta.Request_System_Track_Data_Event
+           or else Second.Kind /= Meta.IRST_Track_Report_Event
+           or else Third.Kind /= Meta.Request_System_Track_Data_Event
+         then
+            raise Program_Error with "Ada Track mixed metadata order mismatch";
+         end if;
+         Check_Rich_Request (First.Request, "mixed first");
+         Check_Rich (Second.Report, "mixed second");
+         Check_Rich_Request (Third.Request, "mixed third");
+      end;
+      Check_Counters (Meta.Counters (Stream), 3, 0, 0, "mixed kinds");
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Mixed_Kinds;
+
+   --  A null RequestSystemTrackData is malformed: it is counted and nothing is
+   --  queued, exactly as for the required report kind.
+   procedure Test_Request_Null (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "track-request-null");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      begin
+         declare
+            Ignored : constant Meta.Metadata_Event := Meta.Receive_Event (Stream);
+         begin
+            raise Program_Error with "Ada Track queued a null request";
+         end;
+      exception
+         when AMS.MEL.IR.Timeout_Error =>
+            null;
+      end;
+      Check_Counters (Meta.Counters (Stream), 1, 0, 1, "null request");
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Request_Null;
+
+   --  An @Optional callback the provider refuses must leave the
+   --  @RequiredIfTrack report callback fully working.
+   procedure Test_Optional_Refusal (Provider_Path : String) is
+      Parent  : AMS.MEL.Session :=
+        AMS.MEL.Open (Provider_Path, "track-request-register-not-supported");
+      Channel : Trk.Track_Channel := Trk.Open (Parent, Config);
+      Stream  : Meta.Metadata_Channel := Meta.Open (Channel, 4);
+   begin
+      Check_Rich (Meta.Receive (Stream), "optional refusal");
+      Check_Counters (Meta.Counters (Stream), 1, 0, 0, "optional refusal");
+      Meta.Close (Stream);
+      Trk.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Test_Optional_Refusal;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Attached_Registration (Provider_Path);
@@ -290,6 +401,11 @@ package body AMS_MEL_IR_Track_Metadata_Tests is
       Test_Finalization (Provider_Path);
       Test_Registration_Failure (Provider_Path, "track-report-register-fail");
       Test_Registration_Failure (Provider_Path, "track-report-register-throw");
-      Ada.Text_IO.Put_Line ("PASS: Ada IR Track IRSTTrackReport metadata contract");
+      Test_Request_System_Track_Data (Provider_Path);
+      Test_Mixed_Kinds (Provider_Path);
+      Test_Request_Null (Provider_Path);
+      Test_Optional_Refusal (Provider_Path);
+      Ada.Text_IO.Put_Line
+        ("PASS: Ada IR Track IRSTTrackReport and RequestSystemTrackData metadata contract");
    end Run;
 end AMS_MEL_IR_Track_Metadata_Tests;

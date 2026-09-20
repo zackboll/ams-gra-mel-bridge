@@ -2,6 +2,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 
+#include <irmel/library/irmel-types/RequestSystemTrackData.h>
 #include <irmel/library/irmel-types/SystemTrackDataResponse.h>
 #include <irmel/library/track/IRSTTrackReport.h>
 #include <irmel/library/track/TrackChannel.h>
@@ -254,6 +255,21 @@ bool copy_track_report(const irmel::IRSTTrackReport& source,
     return true;
 }
 
+/* Verbatim copy of the four published RequestSystemTrackData getters. Upstream
+ * declares no enum, no optional field, and no range, so there is nothing to
+ * validate and nothing to reject: any value the provider supplies is a
+ * well-formed request. getSystemTime() is std::chrono::nanoseconds, whose rep
+ * is signed, and count() is preserved without any unit conversion. */
+void copy_request_system_track_data(
+    const irmel::RequestSystemTrackData& source,
+    ams_mel_ir_request_system_track_data_v1& destination) noexcept
+{
+    destination.system_time_ns = source.getSystemTime().count();
+    destination.command_id = source.getCommandID();
+    destination.request_id = source.getRequestId();
+    destination.track_id = source.getTrackId();
+}
+
 struct EventData { ams_mel_ir_track_metadata_event_v1 view{}; };
 
 enum class MetadataLifecycle { Active, Inactive, Stopped, Failed };
@@ -296,12 +312,15 @@ struct CallbackGuard {
     }
 };
 
-/* Provider callback boundary for the @RequiredIfTrack IRSTTrackReport. It never
- * calls into Ada, never lets an exception escape into provider code, and always
- * accounts for the event. A null payload is malformed. The queue drops the
- * INCOMING report when full so the earliest reports survive. */
-void metadata_callback(const std::shared_ptr<MetadataState>& state,
-                       const irmel::IRSTTrackReport *value) noexcept
+/* Shared provider callback boundary for every implemented Track metadata kind.
+ * It never calls into Ada, never lets an exception escape into provider code,
+ * and always accounts for the event. A null payload is malformed. The queue
+ * drops the INCOMING event when full so the earliest events survive. The
+ * builder returns false for a malformed payload; both implemented kinds share
+ * one queue, one capacity, and one counter set. */
+template <typename Payload, typename Builder>
+void metadata_callback_impl(const std::shared_ptr<MetadataState>& state,
+                            const Payload *value, Builder build) noexcept
 {
     try {
         CallbackGuard guard{state};
@@ -318,9 +337,7 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
         std::unique_ptr<EventData> event;
         if (value) {
             auto owned = std::make_unique<EventData>();
-            owned->view.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
-            if (copy_track_report(*value, owned->view.track_report))
-                event = std::move(owned);
+            if (build(*value, owned->view)) event = std::move(owned);
         }
         std::lock_guard lock{state->mutex};
         if (state->lifecycle != MetadataLifecycle::Active) return;
@@ -332,6 +349,33 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
         state->queue.push_back(std::move(event));
         state->ready.notify_one();
     } catch (...) { state->fail(); }
+}
+
+/* Provider callback boundary for the @RequiredIfTrack IRSTTrackReport. */
+void metadata_callback(const std::shared_ptr<MetadataState>& state,
+                       const irmel::IRSTTrackReport *value) noexcept
+{
+    metadata_callback_impl(state, value,
+        [](const irmel::IRSTTrackReport& report,
+           ams_mel_ir_track_metadata_event_v1& view) noexcept {
+            view.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
+            return copy_track_report(report, view.track_report);
+        });
+}
+
+/* Provider callback boundary for the @Optional RequestSystemTrackData. The
+ * copy cannot fail because upstream declares no enum or constrained field, so
+ * only a null payload is malformed. */
+void metadata_callback(const std::shared_ptr<MetadataState>& state,
+                       const irmel::RequestSystemTrackData *value) noexcept
+{
+    metadata_callback_impl(state, value,
+        [](const irmel::RequestSystemTrackData& request,
+           ams_mel_ir_track_metadata_event_v1& view) noexcept {
+            view.kind = AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
+            copy_request_system_track_data(request, view.request_system_track_data);
+            return true;
+        });
 }
 
 enum class Lifecycle { Attached, Enabled, Failed, Closed };
@@ -915,6 +959,51 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
             state->lifecycle = MetadataLifecycle::Inactive;
             state->ready.notify_all();
             diagnostic("IRSTTrackReport callback registration failed",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        /* The @Optional RequestSystemTrackData request shares the same queue.
+         * The registration again happens without TrackState::mutex held because
+         * the provider may deliver synchronously from inside it.
+         *
+         * Upstream documents three distinct answers, and they are NOT
+         * interchangeable:
+         *
+         *   Success      registration took; the optional kind is active.
+         *   NotSupported the provider does not implement this @Optional
+         *                callback. Non-fatal: pinned Squall is exactly such a
+         *                provider, the @RequiredIfTrack report callback is
+         *                already live and must keep working, and only the
+         *                reception of this optional kind is lost.
+         *   Fail         a callback is ALREADY REGISTERED for this datatype on
+         *                this channel. That is a genuine conflict, not an
+         *                optional refusal: some other subscriber owns this
+         *                datatype and our closure may never be invoked, so
+         *                silently returning OK would promise deliveries the
+         *                bridge cannot make.
+         *
+         * Anything else -- BadPointer, NotImplemented, or a value added by a
+         * future upstream revision -- is likewise not a documented refusal, so
+         * it fails closed rather than silently claiming success. */
+        const auto request_result = channel->registerMetadataCallback(
+            std::function<void(irmel::Channel&,
+                               const irmel::RequestSystemTrackData *const)>{
+                [state](irmel::Channel&,
+                        const irmel::RequestSystemTrackData *value) noexcept {
+                    metadata_callback(state, value);
+                }});
+        if (request_result != irmel::Return::Success &&
+            request_result != irmel::Return::NotSupported) {
+            /* Fail closed. No public owner escapes; `owner` is still the
+             * unique_ptr and is destroyed on this path. The already-registered
+             * @RequiredIfTrack callback and its retained state stay live until
+             * Track teardown because upstream provides no unregister
+             * operation, and the one-shot rule stays established so a retry
+             * cannot double-register. */
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            state->ready.notify_all();
+            diagnostic("RequestSystemTrackData callback registration failed",
                        out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }

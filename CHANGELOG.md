@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- Implement exactly the optional IR Track `RequestSystemTrackData` (`@Optional`)
+  surface in native C, safe Ada, raw Rust ABI, and private Python ABI. The
+  pinned upstream `TrackChannel` declares `RequestSystemTrackData` **only** as a
+  `registerMetadataCallback` overload and declares no
+  `send(RequestSystemTrackData)`; it is an inbound request the provider delivers
+  to the application, so it is implemented on the existing bounded
+  DROP-INCOMING Track metadata queue rather than as a request/wait handle. Both
+  implemented Track metadata kinds share one queue, capacity, and counter set
+  and preserve FIFO order across kinds. All four published fields
+  (`systemTime`, `commandID`, `requestId`, `trackId`) are copied verbatim;
+  `systemTime` is `std::chrono::nanoseconds`, whose representation is signed, so
+  it is carried as `int64_t` with no unit conversion. Upstream declares no enum
+  and no constrained field, so only a null payload is malformed. Because the
+  callback is `@Optional`, a provider that answers `Return::NotSupported` to this
+  registration does not fail the metadata open and does not disturb the
+  `@RequiredIfTrack` `IRSTTrackReport` callback. `Return::NotSupported` and
+  `Return::Fail` are **not** treated as equivalent: upstream defines `Fail` as
+  "a callback is already registered for this datatype on this channel", which is
+  a genuine conflict rather than an optional refusal, so it -- and any other
+  unrecognized non-`Success` value -- fails the open closed with
+  `AMS_MEL_PROVIDER_FAILED` and lets no public metadata owner escape. The export count
+  is unchanged at exactly 88 because no new C function was required; the
+  `ams_mel_ir_track_metadata_event_v1` layout gains a discriminated
+  `request_system_track_data` member and a second kind constant. Native CTest
+  grows from 14 to 15. The vendor delta is zero: `RequestSystemTrackData.h` was
+  already present in the reviewed Task 029A closure and no vendored file or
+  `docs/upstream-files.sha256.md` entry changed. `CandidateObjectMessage` and
+  `CandidateObjectPreProcMessage` remain unimplemented, no safe Rust or public
+  Python Track API was added, and the entire Track API is NOT marked complete.
+- Correct asynchronous/threading documentation so it distinguishes
+  application-visible blocking waits, zero-timeout nonblocking polls, provider
+  callback queueing, and the current native one-completion-thread-per-request
+  implementation. Ada does not busy-poll: a positive timeout is a
+  condition-variable-backed blocking wait and only a zero timeout is a
+  nonblocking poll. Bounded-queue DROP-INCOMING overflow policy is documented as
+  independent of any application polling strategy.
+- Add an explicitly unnumbered future roadmap item for asynchronous
+  completion-thread scalability, so 029F/029G sequencing is not disturbed. The
+  current design is documented as correct but potentially inefficient at high
+  concurrency, and the roadmap requires measuring the existing implementation
+  before optimizing. No async worker-pool or thread-performance redesign is
+  implemented.
+
 - Implement exactly the optional IR Track
   `TrackChannel::send(SystemTrackDataResponse)` (`@Optional`) over the existing
   Track channel/report/update foundation, in native C, safe Ada, raw Rust ABI,
@@ -51,9 +94,10 @@
   `Response_Request`/`Response_Result`. Its package-local `Command_State` and
   `Cannot_Comply` carry explicit representation clauses with `Size => 32`, and
   the Ada test proves `'Enum_Rep = 'Pos` for every literal of both types from
-  the first commit. The package is the natural future home for the
-  `RequestSystemTrackData` callback, which is deliberately not implemented.
-  Positive `SystemTrackDataResponse` behavior and payload fidelity are
+  the first commit. `RequestSystemTrackData` is deliberately not implemented in
+  this entry; Task 029E later established that it is an inbound metadata
+  callback whose implemented Ada home is `AMS.MEL.IR.Track.Metadata`, not this
+  package. Positive `SystemTrackDataResponse` behavior and payload fidelity are
   mock-validated only; pinned Squall still cannot attach a Track channel and
   therefore provides no positive `SystemTrackDataResponse` evidence.
 - Implement exactly the conditionally required IR Track

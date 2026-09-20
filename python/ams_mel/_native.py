@@ -317,6 +317,12 @@ AMS_MEL_IR_TRACK_MODE_IDLE = 0
 AMS_MEL_IR_TRACK_MODE_SCAN = 1
 AMS_MEL_IR_TRACK_MODE_STARE = 2
 AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT = 1
+AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA = 2
+# Upstream RequestSystemTrackData is an inbound @Optional request delivered
+# through the Track metadata callback; TrackChannel declares no matching send.
+class IrRequestSystemTrackDataV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),("command_id",ctypes.c_uint32),
+    ("request_id",ctypes.c_uint32),("track_id",ctypes.c_uint32)]
 class IrTrackReportV1(ctypes.Structure): _fields_ = [
     ("system_time_ns",ctypes.c_int64),("activity_id",ctypes.c_uint32),
     ("measured_ned",NorthEastDownV1),("measured_intensity",ctypes.c_double),("measured_snr",ctypes.c_double),
@@ -324,7 +330,7 @@ class IrTrackReportV1(ctypes.Structure): _fields_ = [
     ("range_m",ctypes.c_double),("range_error_m",ctypes.c_double),("spatial_extent_rad",ctypes.c_double),
     ("track_quality",ctypes.c_double),("clutter",ctypes.c_double),("age_ns",ctypes.c_int64),
     ("state",ctypes.c_uint32),("mode",ctypes.c_uint32)]
-class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1)]
+class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1),("request_system_track_data",IrRequestSystemTrackDataV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]

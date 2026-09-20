@@ -874,8 +874,25 @@ pub const AMS_MEL_IR_TRACK_STATE_DROPPED: u32 = 3;
 pub const AMS_MEL_IR_TRACK_MODE_IDLE: u32 = 0;
 pub const AMS_MEL_IR_TRACK_MODE_SCAN: u32 = 1;
 pub const AMS_MEL_IR_TRACK_MODE_STARE: u32 = 2;
-/// The one Track metadata event kind defined by this release.
+/// The Track metadata event kinds defined by this release. The
+/// `CandidateObjectMessage` and `CandidateObjectPreProcMessage` callbacks
+/// remain unimplemented and have no kind.
 pub const AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT: u32 = 1;
+pub const AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA: u32 = 2;
+
+/// Complete `RequestSystemTrackData`. Upstream declares this @Optional type
+/// only as an inbound `registerMetadataCallback` overload on `TrackChannel`
+/// and declares no matching `send`, so it arrives through the Track metadata
+/// queue rather than through a request handle. `systemTime` is
+/// `std::chrono::nanoseconds`, whose representation is signed.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrRequestSystemTrackDataV1 {
+    pub system_time_ns: i64,
+    pub command_id: u32,
+    pub request_id: u32,
+    pub track_id: u32,
+}
 
 /// Complete `IRSTTrackReport`. Reuses the canonical `AmsMelNorthEastDownV1`
 /// for both NED vectors; no value is clamped or normalized.
@@ -904,6 +921,7 @@ pub struct AmsMelIrTrackReportV1 {
 pub struct AmsMelIrTrackMetadataEventV1 {
     pub kind: u32,
     pub track_report: AmsMelIrTrackReportV1,
+    pub request_system_track_data: AmsMelIrRequestSystemTrackDataV1,
 }
 
 /// Upstream `TrackStatus` (@RequiredIfTrackUpdate). No `MaxExclusive` value

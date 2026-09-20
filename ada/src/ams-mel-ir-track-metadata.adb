@@ -1,5 +1,4 @@
 with Ada.Unchecked_Conversion;
-with Interfaces;
 with Interfaces.C;
 with System;
 
@@ -17,8 +16,9 @@ package body AMS.MEL.IR.Track.Metadata is
    type Event_Access is access all C.IR_Track_Event_V1;
    function To_Event is new Ada.Unchecked_Conversion (System.Address, Event_Access);
 
-   --  The one native Track metadata event kind defined by this release.
-   Irst_Track_Report_Kind : constant Interfaces.Unsigned_32 := 1;
+   --  The native Track metadata event kinds defined by this release.
+   Irst_Track_Report_Kind         : constant Interfaces.Unsigned_32 := 1;
+   Request_System_Track_Data_Kind : constant Interfaces.Unsigned_32 := 2;
 
    function Message (Value : Diagnostic) return String is
       Last : Natural := 0;
@@ -44,6 +44,15 @@ package body AMS.MEL.IR.Track.Metadata is
    --  Fails closed on an unrecognized event kind and on any provider enum
    --  value outside the upstream range. Unchecked enumeration conversion is
    --  deliberately not used for either enumeration.
+   --  Complete verbatim copy of the @Optional RequestSystemTrackData. Upstream
+   --  declares no enum and no constrained field, so there is nothing to
+   --  validate: every provider value is well formed.
+   function Copy_Request (Raw : C.IR_Request_System_Track_Data_V1) return Request_System_Track_Data
+   is (System_Time_NS => Long_Long_Integer (Raw.System_Time_NS),
+       Command_ID     => Raw.Command_ID,
+       Request_ID     => Raw.Request_ID,
+       Track_ID       => Raw.Track_ID);
+
    function Copy_Event (Raw : C.IR_Track_Event_V1) return IRST_Track_Report is
    begin
       if Raw.Kind /= Irst_Track_Report_Kind then
@@ -74,6 +83,21 @@ package body AMS.MEL.IR.Track.Metadata is
          Mode               => IRST_Track_Mode'Enum_Val (Raw.Track_Report.Mode));
    end Copy_Event;
 
+   --  Fails closed on any kind this release does not implement, including the
+   --  two unimplemented CandidateObject callbacks.
+   function Copy_Any_Event (Raw : C.IR_Track_Event_V1) return Metadata_Event is
+   begin
+      if Raw.Kind = Irst_Track_Report_Kind then
+         return (Kind => IRST_Track_Report_Event, Report => Copy_Event (Raw));
+      elsif Raw.Kind = Request_System_Track_Data_Kind then
+         return
+           (Kind    => Request_System_Track_Data_Event,
+            Request => Copy_Request (Raw.Request_System_Track_Data));
+      else
+         raise Provider_Error with "invalid native IR Track metadata kind";
+      end if;
+   end Copy_Any_Event;
+
    function Open (Channel : Track_Channel; Queue_Capacity : Positive := 16) return Metadata_Channel
    is
       D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
@@ -102,6 +126,18 @@ package body AMS.MEL.IR.Track.Metadata is
 
    function Receive
      (Stream : Metadata_Channel; Timeout_Milliseconds : Natural := 0) return IRST_Track_Report
+   is
+      Event : constant Metadata_Event := Receive_Event (Stream, Timeout_Milliseconds);
+   begin
+      if Event.Kind /= IRST_Track_Report_Event then
+         raise Provider_Error
+           with "native IR Track returned a RequestSystemTrackData; use Receive_Event";
+      end if;
+      return Event.Report;
+   end Receive;
+
+   function Receive_Event
+     (Stream : Metadata_Channel; Timeout_Milliseconds : Natural := 0) return Metadata_Event
    is
       Owner    : aliased C.Track_Event_Handle := C.Null_Track_Event;
       Address  : aliased System.Address := System.Null_Address;
@@ -138,7 +174,7 @@ package body AMS.MEL.IR.Track.Metadata is
       declare
          --  Every field is copied into Ada-owned storage before the native
          --  event owner is closed; no native pointer escapes.
-         Result : constant IRST_Track_Report := Copy_Event (To_Event (Address).all);
+         Result : constant Metadata_Event := Copy_Any_Event (To_Event (Address).all);
       begin
          Release;
          return Result;
@@ -150,7 +186,7 @@ package body AMS.MEL.IR.Track.Metadata is
             Release;
          end if;
          raise;
-   end Receive;
+   end Receive_Event;
 
    function Counters (Stream : Metadata_Channel) return Metadata_Counters is
       Raw      : aliased C.Metadata_Counters_V1 := (others => 0);

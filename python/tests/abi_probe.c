@@ -465,6 +465,7 @@ int main(void)
     VALUE(AMS_MEL_IR_TRACK_MODE_IDLE); VALUE(AMS_MEL_IR_TRACK_MODE_SCAN);
     VALUE(AMS_MEL_IR_TRACK_MODE_STARE);
     VALUE(AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
+    VALUE(AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
     RECORD(ams_mel_ir_track_report_v1,
         FIELD(ams_mel_ir_track_report_v1,system_time_ns);
         FIELD(ams_mel_ir_track_report_v1,activity_id);
@@ -482,9 +483,15 @@ int main(void)
         FIELD(ams_mel_ir_track_report_v1,age_ns);
         FIELD(ams_mel_ir_track_report_v1,state);
         FIELD(ams_mel_ir_track_report_v1,mode));
+    RECORD(ams_mel_ir_request_system_track_data_v1,
+        FIELD(ams_mel_ir_request_system_track_data_v1,system_time_ns);
+        FIELD(ams_mel_ir_request_system_track_data_v1,command_id);
+        FIELD(ams_mel_ir_request_system_track_data_v1,request_id);
+        FIELD(ams_mel_ir_request_system_track_data_v1,track_id));
     RECORD(ams_mel_ir_track_metadata_event_v1,
         FIELD(ams_mel_ir_track_metadata_event_v1,kind);
-        FIELD(ams_mel_ir_track_metadata_event_v1,track_report));
+        FIELD(ams_mel_ir_track_metadata_event_v1,track_report);
+        FIELD(ams_mel_ir_track_metadata_event_v1,request_system_track_data));
 
     LAYOUT(ams_mel_ir_track_update_request *);
     VALUE(AMS_MEL_IR_TRACK_STATUS_CREATE); VALUE(AMS_MEL_IR_TRACK_STATUS_UPDATE);
