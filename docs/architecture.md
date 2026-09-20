@@ -417,12 +417,37 @@ logically Attached or Running and does not require a prior Start; provider
 `send()` executes with neither the frame callback mutex nor the Image metadata
 mutex held, because a pinned provider may invoke the registered
 `NavigationReportResp` metadata callback synchronously from within `send()`.
-`ImageStreamState` gains a request counter, `cleanup_started` guard, and
+`ImageStreamState` gains a request counter, cleanup-ownership state, and a
 `public_owner_closed` flag so that Stop/Close with an outstanding request
 defers physical provider teardown (disable/detach/destroy) to final request
 completion, mirroring the C2 `ChannelState`/`retain_failed` fail-safe pattern
-with its own allocation-free emergency retention root. ABI 0.1 grows from 56 to
-59 exports. Safe Ada exposes `Navigation_Report`, `Navigation_Request`, and
+with its own allocation-free emergency retention root.
+
+That deferred teardown is synchronized against the adapter's own Navigation
+completion thread by a single teardown lock, `CallbackState::mutex`. Every
+access to `requests`, `channel`, `image_channel`, `enable_attempted`,
+`public_owner_closed`, and the `cleanup_in_progress`/`cleanup_complete`/
+`cleanup_ok`/`cleanup_failed` fields happens under it. A cleanup owner claims
+ownership under the lock, moves the provider `shared_ptr`s into local owners,
+runs `disable()`/`detachChannel()`/channel destruction **unlocked** (a pinned
+provider may call back synchronously, and `disable()` is not a quiescence
+boundary), then republishes the outcome under the lock and signals the
+`cleanup_done` condition variable. Stop/Close block on `cleanup_done` rather
+than inspecting `channel` concurrently, and Close adopts the published cleanup
+outcome instead of a stale status from its own earlier logical Stop; a failed
+detach restores the graph and retains the public owner for a retry.
+
+That synchronization also covers the window between the final request-count
+decrement and the cleanup ownership claim, during which a racing Close can
+observe `requests == 0`, `cleanup_in_progress == false`, and a still-attached
+`channel` even though the completion thread is already committed to cleaning
+up. Close treats that state as *cleanup owed*: it runs or joins the cleanup
+outside the lock and re-decides from the published result, so it can never
+return `AMS_MEL_OK` while retaining the public owner. See
+`docs/corrective-image-navigation-close-race.md`, which supersedes the Task
+027B description of this synchronization.
+
+ABI 0.1 grows from 56 to 59 exports. Safe Ada exposes `Navigation_Report`, `Navigation_Request`, and
 `Navigation_Result` in `AMS.MEL.IR.Image`; the canonical safe
 `Navigation_Response` also moves there, with
 `AMS.MEL.IR.Image.Metadata.Navigation_Response` becoming a source-compatible

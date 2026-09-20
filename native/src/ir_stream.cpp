@@ -13,14 +13,17 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -427,6 +430,60 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
 }
 } // namespace
 
+namespace {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* Test-only deterministic interleaving support for the Image teardown race.
+ * Production behavior never depends on this: without the environment variable
+ * the function returns immediately, and the whole body is compiled out of a
+ * non-test build.
+ *
+ * A stage blocks only when the test has armed it by creating
+ * "<base>.<stage>.arm" beforehand, so a regression controls exactly the
+ * interleaving it needs and every other stage stays free-running. An armed
+ * stage publishes "<base>.<stage>.reached" and then waits for
+ * "<base>.<stage>.release". */
+void image_cleanup_barrier(const char *stage) noexcept
+{
+    const char *base = std::getenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (!base) return;
+    try {
+        const std::string prefix = std::string{base} + "." + stage;
+        if (!std::ifstream{prefix + ".arm"}.good()) return;
+        { std::ofstream marker{prefix + ".reached"}; marker << "reached\n"; }
+        const std::string release = prefix + ".release";
+        for (unsigned attempt = 0; attempt < 15000U; ++attempt) {
+            if (std::ifstream{release}.good()) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+    } catch (...) {
+        /* A barrier failure must never change teardown behavior. */
+    }
+}
+/* Test-only, strictly nonblocking observation point. Called with
+ * CallbackState::mutex held, so it must never wait: it only records that a
+ * public Stop/Close is about to block because a cleanup is already in
+ * progress. This lets a regression prove real contention instead of assuming
+ * it from elapsed time. */
+void close_cleanup_wait_barrier(bool cleanup_in_progress) noexcept
+{
+    if (!cleanup_in_progress) return;
+    const char *base = std::getenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (!base) return;
+    try {
+        const std::string prefix = std::string{base} + ".close-waiting";
+        if (!std::ifstream{prefix + ".arm"}.good()) return;
+        std::ofstream marker{prefix + ".reached"};
+        marker << "reached\n";
+    } catch (...) {
+        /* An observation failure must never change teardown behavior. */
+    }
+}
+#else
+void image_cleanup_barrier(const char *) noexcept {}
+void close_cleanup_wait_barrier(bool) noexcept {}
+#endif
+} // namespace
+
 /* A failed deferred detach cannot safely destroy its graph. Keep it for
  * process lifetime rather than unload provider code that may still own the
  * channel. Mirrors ChannelState::retain_failed in ir_c2.cpp exactly. */
@@ -443,19 +500,47 @@ void image_stream_retain_failed(const std::shared_ptr<ImageStreamState>& state) 
         head, state.get(), std::memory_order_release, std::memory_order_relaxed));
 }
 
-/* Physical provider teardown. No-op (returns true) while requests remain
+/* Physical provider teardown. Reports NotRequired while requests remain
  * outstanding; the final Navigation request completion performs it instead.
- * Never called with the frame callback mutex held. Serialized against
- * concurrent Stop/Close/final-completion callers via cleanup_started. */
-bool image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state_ptr,
-                          bool deferred) noexcept
+ * Never called with the frame callback mutex held.
+ *
+ * Synchronization (see the invariant in internal/ir_stream.hpp):
+ *
+ *   lock:   validate lifecycle, claim cleanup ownership, move the provider
+ *           shared_ptrs into local owners so no other thread can observe or
+ *           modify them mid-teardown.
+ *   unlock: disable(), detachChannel(), provider channel destruction. These
+ *           may call back synchronously or need callback progress, so they
+ *           must never run under the frame callback mutex.
+ *   lock:   publish cleanup_ok/cleanup_complete, release ownership, wake any
+ *           Stop/Close waiting on cleanup_done.
+ *
+ * A caller that finds cleanup already owned by another thread blocks on
+ * cleanup_done and adopts the published result; it never inspects channel
+ * concurrently and never spins. */
+ImageCleanupOutcome image_stream_cleanup(
+    const std::shared_ptr<ImageStreamState>& state_ptr, bool deferred) noexcept
 {
     auto& stream = *state_ptr;
     bool failed = false;
+    /* Local owners. The provider graph stays alive here across the unlocked
+     * provider phase while the shared state members are already cleared. */
+    std::shared_ptr<irmel::Channel> channel;
+    std::shared_ptr<irmel::ImageChannel> image_channel;
+    std::shared_ptr<ImageMetadataState> metadata;
+    bool disable_needed = false;
+    bool owner_closed = false;
     try {
         {
-            std::lock_guard lock{stream.callback->mutex};
-            if (stream.cleanup_started || stream.requests != 0U) return true;
+            std::unique_lock lock{stream.callback->mutex};
+            /* Synchronize with a cleanup already owned by another thread
+             * rather than racing it on channel. */
+            stream.cleanup_done.wait(lock,
+                [&stream] { return !stream.cleanup_in_progress; });
+            if (stream.requests != 0U) return ImageCleanupOutcome::NotRequired;
+            if (stream.cleanup_complete)
+                return stream.cleanup_ok ? ImageCleanupOutcome::Succeeded
+                                         : ImageCleanupOutcome::Failed;
             /* A final Navigation request completion performs teardown only if
              * a logical Stop/Close already began. A completed request on a
              * still-Attached or Running stream must never detach the provider
@@ -465,51 +550,71 @@ bool image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state_ptr,
                     stream.callback->lifecycle == Lifecycle::Stopping ||
                     stream.callback->lifecycle == Lifecycle::Stopped ||
                     stream.callback->lifecycle == Lifecycle::Failed;
-                if (!stopping && !stream.public_owner_closed) return true;
+                if (!stopping && !stream.public_owner_closed)
+                    return ImageCleanupOutcome::NotRequired;
             }
-            stream.cleanup_started = true;
+            if (!stream.channel) return ImageCleanupOutcome::NotRequired;
+            stream.cleanup_in_progress = true;
             failed = stream.callback->lifecycle == Lifecycle::Failed;
-        }
-
-        if (stream.enable_attempted && stream.channel) {
-            try {
-                if (stream.channel->disable() != irmel::Return::Success) failed = true;
-            } catch (...) {
-                failed = true;
-            }
-        }
-
-        if (stream.channel) {
-            bool detached = false;
-            try {
-                detached = stream.session->control->detachChannel(stream.channel) ==
-                           irmel::Return::Success;
-            } catch (...) {
-                failed = true;
-            }
-            if (!detached) {
-                {
-                    std::lock_guard lock{stream.callback->mutex};
-                    stream.callback->lifecycle = Lifecycle::Failed;
-                    stream.callback->ready.notify_all();
-                    stream.cleanup_started = false;
-                }
-                /* Only a deferred (post-public-close) failure has no owner
-                 * left to retry; retain the whole graph rather than unload
-                 * provider code that may still own the channel. */
-                if (deferred && stream.public_owner_closed)
-                    image_stream_retain_failed(state_ptr);
-                return false;
-            }
-
-            /* disable() is not a quiescence boundary. Provider channel
-             * destruction occurs while every callback-accessible object and
-             * host byte remains retained by stream. */
-            stream.image_channel.reset();
+            owner_closed = stream.public_owner_closed;
+            disable_needed = stream.enable_attempted;
+            /* Move ownership out of the shared state under the lock so the
+             * unlocked provider phase touches only local owners. */
+            channel = std::move(stream.channel);
+            image_channel = std::move(stream.image_channel);
             stream.channel.reset();
+            stream.image_channel.reset();
+            metadata = stream.image_metadata;
         }
 
-        image_metadata_stream_stopped(stream.image_metadata);
+        image_cleanup_barrier("before-detach");
+
+        if (disable_needed) {
+            try {
+                if (channel->disable() != irmel::Return::Success) failed = true;
+            } catch (...) {
+                failed = true;
+            }
+        }
+
+        bool detached = false;
+        try {
+            detached = stream.session->control->detachChannel(channel) ==
+                       irmel::Return::Success;
+        } catch (...) {
+            failed = true;
+        }
+        image_cleanup_barrier(detached ? "detach-ok" : "detach-failed");
+        if (!detached) {
+            /* Detach ownership is uncertain: the provider may still own the
+             * channel. Restore the graph into the shared state under the lock
+             * so a retry (public Close) can attempt detach again, and make the
+             * failure visible to any waiter. cleanup_complete stays false
+             * precisely because this is not a terminal outcome. */
+            {
+                std::lock_guard lock{stream.callback->mutex};
+                stream.channel = std::move(channel);
+                stream.image_channel = std::move(image_channel);
+                stream.callback->lifecycle = Lifecycle::Failed;
+                stream.callback->ready.notify_all();
+                stream.cleanup_failed = true;
+                stream.cleanup_in_progress = false;
+                stream.cleanup_done.notify_all();
+            }
+            /* Only a failure with no public owner left has nobody to retry;
+             * retain the whole graph rather than unload provider code that may
+             * still own the channel. */
+            if (owner_closed) image_stream_retain_failed(state_ptr);
+            return ImageCleanupOutcome::Failed;
+        }
+
+        /* disable() is not a quiescence boundary. Provider channel
+         * destruction occurs while every callback-accessible object and
+         * host byte remains retained by stream. */
+        image_channel.reset();
+        channel.reset();
+
+        image_metadata_stream_stopped(metadata);
 
         std::size_t in_flight = stream.callback->callbacks_in_flight.load(
             std::memory_order_acquire);
@@ -526,39 +631,53 @@ bool image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state_ptr,
         }
         stream.buffers.clear();
         stream.storage.clear();
-        stream.enable_attempted = false;
         {
             std::lock_guard lock{stream.callback->mutex};
+            stream.enable_attempted = false;
             stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopped;
             stream.callback->ready.notify_all();
+            /* detachChannel succeeded, so ownership safety is proven and this
+             * is a terminal cleanup even when disable() failed. */
+            stream.cleanup_ok = !failed;
+            stream.cleanup_complete = true;
+            stream.cleanup_in_progress = false;
+            stream.cleanup_done.notify_all();
         }
-        return !failed;
+        return failed ? ImageCleanupOutcome::Failed : ImageCleanupOutcome::Succeeded;
     } catch (...) {
         try {
             std::lock_guard lock{stream.callback->mutex};
+            /* Ownership is uncertain: restore anything not yet released so a
+             * retry can run, and never leave cleanup ownership claimed. */
+            if (channel && !stream.channel) stream.channel = std::move(channel);
+            if (image_channel && !stream.image_channel)
+                stream.image_channel = std::move(image_channel);
             stream.callback->accepting = false;
             stream.callback->lifecycle = Lifecycle::Failed;
             stream.callback->ready.notify_all();
-            stream.cleanup_started = false;
+            stream.cleanup_in_progress = false;
+            stream.cleanup_done.notify_all();
         } catch (...) {}
-        return false;
+        return ImageCleanupOutcome::Failed;
     }
 }
 
 namespace {
+/* Performs logical Stop and, when no Navigation request is outstanding, the
+ * physical teardown. The returned status reflects the cleanup actually
+ * observed under the teardown lock, including a cleanup owned by the
+ * Navigation completion thread that this call synchronized with. */
 ams_mel_status_t teardown(const std::shared_ptr<ImageStreamState>& state_ptr, bool failed,
                           char *out, std::size_t capacity, std::size_t *required) noexcept
 {
     auto& stream = *state_ptr;
     logical_stop(stream, failed);
-    bool requests_pending;
     {
         std::lock_guard lock{stream.callback->mutex};
-        requests_pending = stream.requests != 0U;
+        if (stream.requests != 0U) return AMS_MEL_OK;
     }
-    if (requests_pending) return AMS_MEL_OK;
-    const bool ok = image_stream_cleanup(state_ptr, false);
-    if (!ok) {
+    const ImageCleanupOutcome outcome = image_stream_cleanup(state_ptr, false);
+    if (outcome == ImageCleanupOutcome::Failed) {
         diagnostic("channel detach failed; callback resources retained", out,
                    capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
@@ -699,6 +818,14 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
     }
     try {
         auto& state = *stream->state;
+        /* Copy the provider channel owner out under the teardown lock, then
+           call into the provider unlocked. */
+        std::shared_ptr<irmel::Channel> channel;
+        {
+            std::lock_guard lock{state.callback->mutex};
+            channel = state.channel;
+        }
+        if (!channel) throw std::runtime_error("stream has no provider channel");
         state.storage.reserve(state.buffer_count);
         state.buffers.reserve(state.buffer_count);
         for (std::size_t i = 0; i < state.buffer_count; ++i) {
@@ -707,7 +834,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             state.storage.emplace_back(state.buffer_size);
             if (buffer->init(state.storage.back().data(), state.buffer_size,
                              static_cast<std::int64_t>(i)) != irmel::Return::Success ||
-                state.channel->registerBuffer(buffer) != irmel::Return::Success) {
+                channel->registerBuffer(buffer) != irmel::Return::Success) {
                 throw std::runtime_error("buffer initialization or registration failed");
             }
             state.buffers.push_back(std::move(buffer));
@@ -721,9 +848,13 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
                     {reinterpret_cast<std::uintptr_t>(bytes.data()), bytes.size()});
             }
             state.callback->accepting = true;
+            /* Teardown-participating state: record under the teardown lock
+               that disable() is now owed to the provider. The lifecycle is
+               Starting here, so no deferred cleanup can be claiming ownership,
+               but the single-lock invariant is kept uniform. */
+            state.enable_attempted = true;
         }
-        state.enable_attempted = true;
-        if (state.channel->enable() != irmel::Return::Success) {
+        if (channel->enable() != irmel::Return::Success) {
             throw std::runtime_error("channel enable failed");
         }
         bool callback_failed = false;
@@ -920,11 +1051,17 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_stop(
         if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
         bool failed;
         {
-            std::lock_guard lock{stream->state->callback->mutex};
+            /* channel must be inspected under the teardown lock: the
+             * Navigation completion thread may be resetting it concurrently. */
+            std::unique_lock lock{stream->state->callback->mutex};
+            close_cleanup_wait_barrier(stream->state->cleanup_in_progress);
+            stream->state->cleanup_done.wait(lock,
+                [&stream] { return !stream->state->cleanup_in_progress; });
             if (stream->state->callback->lifecycle == Lifecycle::Stopped) return AMS_MEL_OK;
             failed = stream->state->callback->lifecycle == Lifecycle::Failed;
+            if (!stream->state->channel)
+                return failed ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK;
         }
-        if (!stream->state->channel) return failed ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK;
         return teardown(stream->state, failed, out, capacity, required);
     } catch (const std::bad_alloc&) {
         diagnostic("allocation failed during stream stop", out, capacity, required);
@@ -944,21 +1081,86 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
         if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
         ams_mel_ir_stream *owned = *stream;
         if (!owned) return AMS_MEL_OK;
-        const auto status = ams_mel_ir_stream_stop(owned, out, capacity, required);
-        bool requests_pending;
-        {
-            std::lock_guard lock{owned->state->callback->mutex};
-            requests_pending = owned->state->requests != 0U;
+        auto status = ams_mel_ir_stream_stop(owned, out, capacity, required);
+        auto& state = *owned->state;
+        /* Test-only: allows a regression to run the final Navigation
+         * completion and its deferred cleanup exactly here, after the logical
+         * Stop but before the owner-release decision is committed. */
+        image_cleanup_barrier("close-decision");
+        bool release_owner = false;
+        /* The final Navigation completion decrements requests and only then
+         * claims cleanup ownership, so there is a window in which
+         * requests == 0, cleanup_in_progress == false, and channel is still
+         * set while that completion is already committed to cleaning up.
+         * Close must not decide from that transient state: it runs/joins the
+         * cleanup itself and decides from the published result. Cleanup
+         * ownership is single-claim, so whichever thread wins performs the
+         * teardown exactly once and the other adopts its outcome. */
+        /* Bounded purely as a defensive guard: each iteration that runs
+         * cleanup either completes it (channel released) or records a failure,
+         * so at most one retry is ever needed. */
+        for (unsigned attempt = 0; attempt < 4U; ++attempt) {
+            bool run_cleanup = false;
+            {
+                /* Waiting on cleanup_done means a cleanup owned by another
+                 * thread has already published its outcome before this
+                 * decision is taken, so Close can neither inspect channel
+                 * concurrently nor act on a stale earlier Stop result. */
+                std::unique_lock lock{state.callback->mutex};
+                close_cleanup_wait_barrier(state.cleanup_in_progress);
+                state.cleanup_done.wait(lock,
+                    [&state] { return !state.cleanup_in_progress; });
+                if (state.requests != 0U) {
+                    /* A pending Navigation request keeps the provider channel
+                     * attached by design. Release the public owner so the
+                     * logical close is externally observable; the final
+                     * request completion performs deferred physical teardown
+                     * and, if that detach fails, permanent allocation-free
+                     * retention. Committing the owner release and
+                     * public_owner_closed inside this same critical section is
+                     * what makes the deferred-cleanup decision atomic with
+                     * respect to that completion. */
+                    release_owner = true;
+                } else if (state.channel) {
+                    if (state.cleanup_failed) {
+                        /* Detach ownership is not established: a synchronous
+                         * detach failure, or a deferred cleanup that failed
+                         * detach and restored the graph. Retain the public
+                         * owner for a later retry and never report success. */
+                        release_owner = false;
+                        status = AMS_MEL_PROVIDER_FAILED;
+                    } else {
+                        /* No cleanup has failed and none is in progress, yet
+                         * the channel is still attached with no request
+                         * outstanding: physical teardown is owed. Perform it
+                         * (or join the owner that wins the claim) before
+                         * deciding. */
+                        run_cleanup = true;
+                        release_owner = false;
+                    }
+                } else {
+                    /* Cleanup is finished. Adopt its published outcome rather
+                     * than the possibly stale status from the earlier logical
+                     * Stop. */
+                    release_owner = true;
+                    if (state.cleanup_complete && !state.cleanup_ok)
+                        status = AMS_MEL_PROVIDER_FAILED;
+                }
+                if (release_owner) state.public_owner_closed = true;
+            }
+            if (!run_cleanup) break;
+            /* Outside the lock: image_stream_cleanup performs its own claim
+             * and never runs provider code under CallbackState::mutex. */
+            if (image_stream_cleanup(owned->state, false) ==
+                ImageCleanupOutcome::Failed)
+                status = AMS_MEL_PROVIDER_FAILED;
+            /* Re-decide from the now-published cleanup result. */
         }
-        /* A pending Navigation request keeps the provider channel attached by
-         * design; the public owner must still be released so the logical
-         * close is externally observable, and final request completion later
-         * performs deferred physical teardown. Only a synchronous detach
-         * failure with no pending request retains the public owner for retry. */
-        if (!requests_pending && owned->state->channel) return status;
-        {
-            std::lock_guard lock{owned->state->callback->mutex};
-            owned->state->public_owner_closed = true;
+        if (!release_owner) {
+            if (status == AMS_MEL_PROVIDER_FAILED)
+                diagnostic("channel detach failed; callback resources retained",
+                           out, capacity, required);
+            return status;
         }
         *stream = nullptr;
         delete owned;

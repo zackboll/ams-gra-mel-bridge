@@ -5,6 +5,7 @@
 #include <irmel/library/image/ImageChannel.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -20,18 +21,35 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
 
 /* Shared private Image resource graph. The public stream is only an opaque
- * handle to this state so future private asynchronous work can retain it.
- * requests/cleanup_started/public_owner_closed support deferred physical
- * teardown while an asynchronous Navigation request future is outstanding;
- * see Task 027B. emergency_* fields provide an allocation-free fail-safe
- * retention path when a deferred detach cannot be established, mirroring
- * the C2 ChannelState::retain_failed pattern. */
+ * handle to this state so private asynchronous work can retain it.
+ * The requests, cleanup, and public_owner_closed fields support deferred
+ * physical teardown while an asynchronous Navigation request is outstanding;
+ * see
+ * Task 027B and docs/corrective-image-navigation-close-race.md. emergency_*
+ * fields provide an allocation-free fail-safe retention path when a deferred
+ * detach cannot be established, mirroring the C2 ChannelState::retain_failed
+ * pattern.
+ *
+ * Teardown synchronization invariant (corrective task):
+ *
+ *   CallbackState::mutex is the single teardown lock. Every read and every
+ *   write of requests, cleanup_in_progress, cleanup_complete, cleanup_ok,
+ *   public_owner_closed, enable_attempted, channel and image_channel that can
+ *   race between an application Stop/Close thread and the adapter's own
+ *   Navigation completion thread happens while that mutex is held.
+ *
+ *   Provider calls (disable/detachChannel/channel destruction) never run
+ *   under that mutex. A cleanup owner claims cleanup_in_progress under the
+ *   lock, copies the provider shared_ptrs into local owners, releases the
+ *   lock, performs the provider work on the local owners, then re-acquires
+ *   the lock to publish cleanup_complete/cleanup_ok and notify cleanup_done.
+ *   A concurrent Stop/Close waits on cleanup_done rather than inspecting the
+ *   channel members or spinning, and adopts the published cleanup result
+ *   instead of an earlier, now stale, Stop status. */
 struct ImageStreamState {
     std::shared_ptr<SessionState> session;
     std::shared_ptr<CallbackState> callback;
     std::shared_ptr<Listener> listener;
-    std::shared_ptr<ams::iface::irmel::Channel> channel;
-    std::shared_ptr<ams::iface::irmel::ImageChannel> image_channel;
     std::shared_ptr<ImageMetadataState> image_metadata;
     bool image_metadata_attempted{false};
     BufferFactory buffer_factory{};
@@ -40,12 +58,31 @@ struct ImageStreamState {
     std::size_t buffer_size{};
     std::vector<std::vector<std::uint8_t>> storage;
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> buffers;
-    bool enable_attempted{false};
 
-    /* Guarded by callback->mutex, matching ordinary Image lifecycle state. */
+    /* Teardown-participating state. All of the following is guarded by
+     * callback->mutex; see the invariant above. channel/image_channel are
+     * shared_ptr objects that the Navigation completion thread may reset
+     * concurrently with an application Stop/Close, so they must never be read
+     * or modified outside that lock. */
+    std::shared_ptr<ams::iface::irmel::Channel> channel;
+    std::shared_ptr<ams::iface::irmel::ImageChannel> image_channel;
+    bool enable_attempted{false};
     std::size_t requests{};
-    bool cleanup_started{false};
     bool public_owner_closed{false};
+    /* Exactly one caller may own physical teardown at a time. */
+    bool cleanup_in_progress{false};
+    /* A terminal cleanup attempt has published its outcome in cleanup_ok.
+     * Terminal means detachChannel succeeded, so provider ownership of the
+     * channel is proven released and no retry is possible or needed. */
+    bool cleanup_complete{false};
+    bool cleanup_ok{false};
+    /* A cleanup attempt failed. When channel is still set the failure was a
+     * detach failure with uncertain provider ownership and a later public
+     * Close must retry it. */
+    bool cleanup_failed{false};
+    /* Signalled whenever cleanup ownership is released, so Stop/Close can
+     * block on a concurrent cleanup instead of polling or racing. */
+    std::condition_variable cleanup_done;
 
     std::shared_ptr<ImageStreamState> emergency_self;
     ImageStreamState *emergency_next{};
@@ -62,14 +99,34 @@ bool claim_image_metadata(
     const std::shared_ptr<ImageMetadataState>& state,
     std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
 
+/* Outcome of an image_stream_cleanup attempt, so callers can distinguish
+ * "nothing to do" from "teardown ran and succeeded/failed". */
+enum class ImageCleanupOutcome {
+    /* No physical teardown was required or permitted at this point: requests
+     * are still outstanding, the channel is already gone, or a deferred call
+     * arrived while the stream is still logically usable. */
+    NotRequired,
+    /* Physical teardown ran to completion (channel detached and released). */
+    Succeeded,
+    /* Physical teardown was attempted and failed; the provider graph stays
+     * retained and the public owner, if any, must be kept for a retry. */
+    Failed
+};
+
 /* Shared physical-teardown machinery used by both ordinary Stop/Close and
  * final Navigation request completion. Pass deferred=false from public
  * Stop/Close and deferred=true from final request completion: a deferred call
  * performs teardown only when a logical Stop/Close already began, and only a
  * deferred failure after the public owner is gone uses allocation-free
- * emergency retention. Defined in ir_stream.cpp. */
-bool image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state,
-                          bool deferred) noexcept;
+ * emergency retention.
+ *
+ * The call synchronizes with any cleanup already owned by another thread: it
+ * blocks on ImageStreamState::cleanup_done and reports that cleanup's
+ * published outcome rather than inspecting channel concurrently or returning
+ * a stale success. Never called with the frame callback mutex held.
+ * Defined in ir_stream.cpp. */
+ImageCleanupOutcome image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state,
+                                         bool deferred) noexcept;
 void image_stream_retain_failed(const std::shared_ptr<ImageStreamState>& state) noexcept;
 
 /* Validates the stream is logically Attached or Running, retrieves a copy of

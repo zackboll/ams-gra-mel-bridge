@@ -2,6 +2,64 @@
 
 ## Unreleased
 
+- Correct an Image `NavigationReport` completion-vs-`Close` teardown race
+  introduced with Task 027B. The asynchronous Navigation completion worker
+  could perform deferred physical teardown — reading and resetting the
+  `std::shared_ptr` members `ImageStreamState::channel`/`image_channel` — while
+  application code was concurrently inside `ams_mel_ir_stream_stop` or
+  `ams_mel_ir_stream_close`, which inspected the same members outside the frame
+  callback mutex. That was a C++ data race and undefined behavior. A bad
+  interleaving could also make `Close` return the stale `AMS_MEL_OK` captured
+  from its own logical Stop even though the deferred `detachChannel` had just
+  failed and left the channel attached, potentially clearing the stream owner
+  while provider ownership was still uncertain.
+
+  `CallbackState::mutex` is now the single Image teardown lock: `requests`,
+  `channel`, `image_channel`, `enable_attempted`, `public_owner_closed`, and
+  the new `cleanup_in_progress`/`cleanup_complete`/`cleanup_ok`/`cleanup_failed`
+  fields are observed and modified only under it. `image_stream_cleanup` claims
+  cleanup ownership under the lock, moves the provider owners into locals, runs
+  `disable()`/`detachChannel()`/channel destruction unlocked (a pinned provider
+  may invoke the `NavigationReportResp` callback synchronously, and `disable()`
+  is not a quiescence boundary), then publishes the outcome and signals a new
+  `cleanup_done` condition variable. `Stop`/`Close` block on `cleanup_done`
+  instead of inspecting `channel` concurrently or polling, and `Close` adopts
+  the published cleanup outcome rather than a stale Stop status. `Close`
+  commits the public-owner release and `public_owner_closed` in the same
+  critical section as the deferred-cleanup decision.
+
+  That synchronization also covers the window between the final request-count
+  decrement and the cleanup ownership claim. `release_navigation_submission`
+  unlocks before `image_stream_cleanup` re-locks and claims ownership, so a
+  racing Close could observe `requests == 0`, `cleanup_in_progress == false`,
+  and a still-attached `channel` while the completion thread was already
+  committed to cleaning up. Deciding from that transient state could return the
+  stale `AMS_MEL_OK` with the public owner still non-null. Close now treats it
+  as cleanup owed: it runs or joins the cleanup outside the lock and re-decides
+  from the published result. Cleanup ownership is single-claim, so teardown
+  still happens exactly once and the losing thread adopts the published
+  outcome. No Close return can satisfy `AMS_MEL_OK` with a retained owner.
+
+  A failed deferred detach restores the graph under the lock and retains the
+  public owner so a later `Close` retries the detach; a successful retry
+  establishes ownership safety and clears the owner but still reports
+  `AMS_MEL_PROVIDER_FAILED`, because the lifecycle is already poisoned. Disable
+  failure with a successful detach remains distinct and still permits owner
+  release. Permanent allocation-free retention when no owner is left to retry,
+  provider callback quiescence at channel destruction, and the rule that
+  provider code is never unloaded while detach ownership is uncertain are all
+  preserved. Three deterministic barrier-driven regressions in
+  `native/tests/test_ir_navigation.c` force the raced detach failure, the
+  in-progress successful cleanup, and the decrement-to-claim window; the
+  success race proves contention through a nonblocking observation handshake
+  rather than a timing sleep, and each regression is mutation-checked. The
+  barriers
+  compile only under `AMS_MEL_ENABLE_TEST_FAILPOINTS` and production behavior
+  never depends on an environment variable or marker file. No public feature,
+  no ABI export, and no ABI version change; the 88-export inventory and all
+  vendored files are unchanged. See
+  `docs/corrective-image-navigation-close-race.md`.
+
 - Implement exactly the optional IR Track `RequestSystemTrackData` (`@Optional`)
   surface in native C, safe Ada, raw Rust ABI, and private Python ABI. The
   pinned upstream `TrackChannel` declares `RequestSystemTrackData` **only** as a

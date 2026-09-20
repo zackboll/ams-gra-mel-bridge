@@ -430,7 +430,9 @@ public:
             record("navigation_completed");
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
                 std::make_shared<irmel::NavigationReportResp>(value)});
-        } else if (scenario_ == "navigation-hold" && !navigation_producer_.joinable()) {
+        } else if ((scenario_ == "navigation-hold" ||
+                    scenario_ == "navigation-hold-detach-fail") &&
+                   !navigation_producer_.joinable()) {
             /* Deterministic barrier-driven request. The request stays pending
                until the test explicitly releases it, so logical-stop behavior
                is observable while physical teardown is still deferred. If a
@@ -2276,7 +2278,12 @@ public:
             !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
             !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel) &&
             !std::dynamic_pointer_cast<MockTrackChannel>(channel)) std::abort();
-        if ((instance_ == "detach-fail" || instance_ == "c2-detach-fail" ||
+        if ((instance_ == "detach-fail" ||
+             /* Deterministic Image Navigation completion-vs-Close corrective
+                regression: the first detach fails exactly once, a later Close
+                retry detaches successfully. */
+             instance_ == "navigation-hold-detach-fail" ||
+             instance_ == "c2-detach-fail" ||
              instance_ == "health-detach-fail" ||
              instance_ == "instr-detach-fail" ||
              instance_ == "track-detach-fail" ||

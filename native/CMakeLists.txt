@@ -173,7 +173,10 @@ if(AMS_MEL_BUILD_TESTS)
     set_target_properties(test_ir_navigation PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_ir_navigation PRIVATE
         AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
-    target_link_libraries(test_ir_navigation PRIVATE ams_mel::ams_mel_c)
+    # The deterministic completion-vs-Close teardown race regressions drive a
+    # concurrent public Close from a second thread.
+    find_package(Threads REQUIRED)
+    target_link_libraries(test_ir_navigation PRIVATE ams_mel::ams_mel_c Threads::Threads)
     add_dependencies(test_ir_navigation mock_ir_provider)
     ams_mel_warnings(test_ir_navigation)
     add_test(NAME ir_navigation_contract COMMAND test_ir_navigation)

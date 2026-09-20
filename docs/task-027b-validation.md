@@ -4,6 +4,17 @@ Task 027B implements `ImageChannel::send(NavigationReport)` as an asynchronous
 request/future vertical slice through the shared `ImageStreamState` graph
 established by Task 027A. ABI 0.1 grows from 56 to exactly 59 exports.
 
+> **Correction notice.** Retrospective peer review of the merged PR found a
+> defect in the deferred-teardown synchronization described below: the
+> asynchronous Navigation completion worker could read and reset
+> `ImageStreamState::channel` concurrently with a public Stop/Close (a
+> `std::shared_ptr` data race), and a bad interleaving could make `Close`
+> return a stale `AMS_MEL_OK` after a deferred `detachChannel` had actually
+> failed. The deferred-teardown *design* recorded here is retained; its
+> synchronization is corrected. See
+> `docs/corrective-image-navigation-close-race.md`, which supersedes the
+> teardown-synchronization statements in this document.
+
 ## Native C
 
 `ams_mel_navigation_report_v1` carries the complete published
