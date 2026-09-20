@@ -455,9 +455,10 @@ channel is destroyed, the caller's owner is cleared, and
 `AMS_MEL_PROVIDER_FAILED`, leaves the caller's Track owner non-null, resets
 `cleanup_started`, and retains the complete graph so a later Close retries.
 
-`TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`,
+`SystemTrackDataResponse`, `CandidateObjectMessage`,
 `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
-implemented in this ABI.
+implemented in this ABI. `TrackDataUpdate` is implemented separately by Task
+029C below under its own upstream condition, `@RequiredIfTrackUpdate`.
 
 ## Task 029B2 Track IRSTTrackReport metadata contract
 
@@ -527,3 +528,107 @@ final local provider channel owner is destroyed; that destruction is the
 callback-quiescence boundary, and only afterwards does the adapter wait for the
 in-flight callback count to reach zero and move the metadata to Stopped unless
 it was already Failed.
+
+## Task 029C Track TrackDataUpdate contract
+
+Task 029C adds exactly three exports for the `@RequiredIfTrackUpdate`
+`TrackChannel::send(TrackDataUpdate)` surface --
+`ams_mel_ir_track_submit_update`, `ams_mel_ir_track_update_request_wait`, and
+`ams_mel_ir_track_update_request_close` -- taking ABI 0.1 from 82 to 85 exports.
+This is a distinct upstream condition from `@RequiredIfTrack` itself: the
+`@RequiredIfTrack` core is complete and this task completes
+`@RequiredIfTrackUpdate` only. `SystemTrackDataResponse`,
+`CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
+`RequestSystemTrackData` remain unimplemented.
+
+One new opaque owner, `ams_mel_ir_track_update_request`, joins the Track family.
+It owns a shared terminal completion state and never a raw `ams_mel_ir_track`
+pointer, so it remains valid independently of the public Track and Session
+owners. The Track channel foundation is extended, not redesigned: `TrackState`
+gains only a `size_t requests` count, and the existing metadata ownership is
+unchanged.
+
+`ams_mel_ir_track_status_t` exposes exactly the upstream `TrackStatus` values
+Create = 0, Update = 1, Predict = 2, and Delete = 3. Upstream declares no
+MaxExclusive value, so any input above Delete is `AMS_MEL_INVALID_ARGUMENT`.
+
+`ams_mel_ir_track_covariance_v1` carries exactly the 21 published covariance
+terms and `ams_mel_ir_track_data_update_v1` is the complete `TrackDataUpdate`.
+Every upstream setter is called exactly once with the corresponding C field
+through the published setters only; no provider object layout is assumed. Both
+times stay in upstream epoch seconds and are deliberately not converted to
+nanoseconds. Both ECEF vectors reuse the one canonical
+`ams_mel_ir_directional_v1`; no second XYZ representation exists.
+`maneuver_probability`, `track_quality`, the covariance terms, the position and
+velocity components, and the time values are copied verbatim, because the
+upstream setters perform no validation, clamping, or normalization. Each of the
+three `ams_mel_uci_id_v1` descriptive labels is validated with the existing
+UTF-8/no-embedded-NUL rules and copied before Submit returns, so no borrowed
+application string outlives the submit call.
+
+Submission requires the Track lifecycle to be Enabled; attached, failed, and
+closed all report `AMS_MEL_PROVIDER_FAILED`. Under the `TrackState` mutex the
+adapter validates Enabled, copies the shared `TrackChannel` locally, and
+increments `requests`; it then releases the mutex and only afterwards calls
+`TrackChannel::send`. A provider is permitted to invoke the registered
+`IRSTTrackReport` metadata callback synchronously from inside `send()`, and that
+callback independently locks the metadata mutex, so the lifecycle mutex must not
+be held across the provider send. Everything the request needs to own the
+returned future -- the completion state, the worker input, the public request
+wrapper, and the thread wrapper -- is allocated before the provider send, so no
+ordinary allocation failure after the send can destroy the future or the
+provider graph unsafely.
+
+The terminal outcome reuses the existing generic `ams_mel_ir_command_status_v1`
+inside `ams_mel_ir_track_update_result_v1`. On `AMS_MEL_OK` the status is valid,
+`error_code` is `AMS_MEL_ERROR_NONE`, and `status.reason_description` points into
+immutable request-owned cached storage that stays valid across repeated Wait
+calls until `ams_mel_ir_track_update_request_close`; it never points into
+provider-owned memory. On `AMS_MEL_COMMAND_REJECTED` the `error_code` is valid,
+the status must be ignored, and the diagnostic carries the provider `Error`
+description. On `AMS_MEL_TIMEOUT` the request is still pending and the caller's
+result record is untouched.
+
+A successful `CommandStatus` whose own state is `AMS_MEL_IR_COMMAND_REJECTED` is
+still `AMS_MEL_OK`: `CommandStatus::Rejected` is not an `ErrorOr` rejection. On
+successful future completion the adapter requires a non-null
+`shared_ptr<CommandStatus>` and validates `CommandState <= Cancelled`,
+`CannotComply <= Alignment_Maneuver`, and a `reasonDescription` that is valid
+UTF-8 without an embedded NUL; unknown or malformed provider output is
+`AMS_MEL_PROVIDER_FAILED`. An `ErrorOr` rejection maps all nine published MEL
+`ErrorCode` values through the existing mapping, and an unknown provider error
+code is `AMS_MEL_PROVIDER_FAILED`.
+
+Exactly one completion worker calls `future.get()`; no other thread may. The
+terminal outcome is cached permanently, so repeated Wait calls return the
+identical terminal result and may use a differently sized diagnostic buffer. A
+finite Wait timeout means only that the result is not ready yet: it is never
+cancellation, request consumption, or provider interruption, and `Wait(0)` is a
+poll. `ams_mel_ir_track_update_request_close` is idempotent, nonblocking, and not
+cancellation; closing the public request owner while future work remains pending
+destroys neither the future, the Track state, the provider channel, nor the
+provider library.
+
+Track Close moves the lifecycle to Closed and immediately deactivates public
+Track metadata consumption and wakes metadata receivers. With `requests == 0` it
+performs the existing synchronous cleanup unchanged, including the Task
+029B1/029B2 synchronous detach-failure semantics: the caller's owner stays
+non-null, the graph is retained, and a later Close may retry. With
+`requests > 0` it clears and deletes the public Track owner, returns
+`AMS_MEL_OK`, and defers physical provider teardown until final request
+completion; the request owns the `TrackState` graph meanwhile. When a worker
+completes it decrements `requests`, and if the count reaches zero while the
+lifecycle is Closed it performs the physical cleanup: disable if attempted,
+detach, destroy the provider `TrackChannel`, establish callback quiescence, and
+release the provider/session graph. If the public Track owner is already gone and
+that deferred detach fails, the complete graph is retained through the existing
+allocation-free emergency root, the request's terminal result becomes
+`AMS_MEL_PROVIDER_FAILED` with the diagnostic `deferred Track cleanup failed`,
+and provider code is never unloaded with uncertain detach ownership.
+
+The `AMS_MEL_TEST_TRACK_UPDATE_POST_SEND_FAILURE=allocation` and
+`=worker-launch` failpoints prove that after the provider send has returned a
+future, either failure returns `AMS_MEL_INTERNAL_ERROR`, exposes no public
+request owner, and retains the future and provider graph safely. That retention
+is deliberately permanent under the fail-safe policy; no recovery or cleanup is
+claimed.

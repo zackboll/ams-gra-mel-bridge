@@ -26,13 +26,27 @@ remains `Control::attachChannel` based.
 Evidence boundary for Track, stated exactly:
 
 - Mock-positive: the mock provider validates positive `@RequiredIfTrack`
-  behavior and complete `IRSTTrackReport` payload fidelity.
+  behavior and complete `IRSTTrackReport` payload fidelity, and positive
+  `@RequiredIfTrackUpdate` `send(TrackDataUpdate)` behavior and complete
+  `TrackDataUpdate` payload fidelity including all 21 covariance terms.
 - Pinned-Squall-negative: pinned Squall validates clean unsupported-provider
   behavior only — C `AMS_MEL_FACTORY_FAILED` and Ada `Provider_Error`, both
   with the exact diagnostic `attachChannel returned null`, on a Session that
   keeps working afterwards.
-- Pinned Squall does NOT provide positive Track execution or Track-report
-  evidence.
+- Pinned Squall does NOT provide positive Track execution, Track-report, or
+  `TrackDataUpdate` evidence.
+
+# Task 029C provenance note
+
+Task 029C implements `TrackChannel::send(TrackDataUpdate)` without changing any
+vendored content. `TrackDataUpdate` was already present in the reviewed Task
+029A vendored closure under the same pins — IR MEL
+`8d9224519f12b44e0b28815755c56a32a28d24a0` and common MEL
+`f6908437d8fd2f7fb69896f9eb9cfd272d10c439` — because `TrackChannel.h` already
+included `TrackDataUpdate.h`. The vendor delta for this task is therefore
+exactly zero, and the pinned Boost closure probe
+(`track_header_compile_probe` / `check_track_header_boost_closure`) is preserved
+unchanged with no system Boost.
 
 # Task 029A review note
 

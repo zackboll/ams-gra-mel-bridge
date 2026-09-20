@@ -1499,11 +1499,90 @@ private:
         report_callback_;
 };
 
-/* Task 029B2 positively implements exactly the @RequiredIfTrack IRSTTrackReport
- * registration. Every other Track operation stays deferred, is instrumented,
- * and reports unsupported, so the tests can prove none of them were exercised.
- * Legitimate IRSTTrackReport registration is NOT counted here. */
+/* Task 029B2 positively implements the @RequiredIfTrack IRSTTrackReport
+ * registration and Task 029C adds exactly the @RequiredIfTrackUpdate
+ * send(TrackDataUpdate). Every remaining Track surface --
+ * send(SystemTrackDataResponse), CandidateObjectMessage,
+ * RequestSystemTrackData, and CandidateObjectPreProcMessage -- stays deferred,
+ * is instrumented, and reports unsupported, so the tests can prove none of them
+ * were exercised. Legitimate IRSTTrackReport registration and legitimate
+ * TrackDataUpdate sends are NOT counted here. */
 std::atomic<std::uint64_t> track_deferred_calls{};
+
+/* The exact distinctive TrackDataUpdate the Track update tests submit. Every
+ * field, including all 21 covariance terms, carries a value that cannot be
+ * confused with a default, an adjacent term, or a sign/scale mistake. */
+void verify_rich_track_update(const irmel::TrackDataUpdate& value)
+{
+    const auto fail = [](const char *what) { throw std::runtime_error(what); };
+    if (value.getPlatformId() != 0xf1234567U) fail("TrackDataUpdate platformId mismatch");
+    if (value.getTrackId() != 0xe2345678U) fail("TrackDataUpdate trackId mismatch");
+    if (value.getTrackStatus() != irmel::TrackStatus::Predict)
+        fail("TrackDataUpdate trackStatus mismatch");
+    if (value.getTimeOfValidity() != -12345.25)
+        fail("TrackDataUpdate timeOfValidity mismatch");
+    if (value.getTimeOfLastUpdate() != 1700000000.875)
+        fail("TrackDataUpdate timeOfLastUpdate mismatch");
+
+    const auto check_id = [&](const mel::UCI_ID& id, std::uint8_t seed,
+                              const char *label, const char *what) {
+        for (std::size_t index = 0; index < mel::UUID_SIZE; ++index)
+            if (id.getUUID()[index] !=
+                static_cast<std::uint8_t>(seed + index * 3U)) fail(what);
+        if (id.getDescriptiveLabel() != label) fail(what);
+    };
+    check_id(value.getCapabilityUUID(), 0x10U, "capability-\xCE\xB1",
+             "TrackDataUpdate capabilityUUID mismatch");
+    check_id(value.getActivityUUID(), 0x40U, "activity-\xCE\xB2",
+             "TrackDataUpdate activityUUID mismatch");
+    check_id(value.getEntityUUID(), 0x70U, "entity-\xE2\x82\xAC",
+             "TrackDataUpdate entityUUID mismatch");
+
+    const auto& position = value.getTrackPosition();
+    if (position.getxAxis() != -1.25 || position.getyAxis() != 2.5 ||
+        position.getzAxis() != -3.75) fail("TrackDataUpdate trackPosition mismatch");
+    const auto& velocity = value.getTrackVelocity();
+    if (velocity.getxAxis() != 4.125 || velocity.getyAxis() != -5.25 ||
+        velocity.getzAxis() != 6.5) fail("TrackDataUpdate trackVelocity mismatch");
+
+    /* All 21 covariance terms individually, so any swapped pair is caught. */
+    if (value.getTrackCovarianceXX() != 1.01) fail("covariance XX mismatch");
+    if (value.getTrackCovarianceXY() != 2.02) fail("covariance XY mismatch");
+    if (value.getTrackCovarianceXZ() != 3.03) fail("covariance XZ mismatch");
+    if (value.getTrackCovarianceXVx() != 4.04) fail("covariance XVx mismatch");
+    if (value.getTrackCovarianceXVy() != 5.05) fail("covariance XVy mismatch");
+    if (value.getTrackCovarianceXVz() != 6.06) fail("covariance XVz mismatch");
+    if (value.getTrackCovarianceYY() != 7.07) fail("covariance YY mismatch");
+    if (value.getTrackCovarianceYZ() != 8.08) fail("covariance YZ mismatch");
+    if (value.getTrackCovarianceYVx() != 9.09) fail("covariance YVx mismatch");
+    if (value.getTrackCovarianceYVy() != 10.10) fail("covariance YVy mismatch");
+    if (value.getTrackCovarianceYVz() != 11.11) fail("covariance YVz mismatch");
+    if (value.getTrackCovarianceZZ() != 12.12) fail("covariance ZZ mismatch");
+    if (value.getTrackCovarianceZVx() != 13.13) fail("covariance ZVx mismatch");
+    if (value.getTrackCovarianceZVy() != 14.14) fail("covariance ZVy mismatch");
+    if (value.getTrackCovarianceZVz() != 15.15) fail("covariance ZVz mismatch");
+    if (value.getTrackCovarianceVxVx() != 16.16) fail("covariance VxVx mismatch");
+    if (value.getTrackCovarianceVxVy() != 17.17) fail("covariance VxVy mismatch");
+    if (value.getTrackCovarianceVxVz() != 18.18) fail("covariance VxVz mismatch");
+    if (value.getTrackCovarianceVyVy() != 19.19) fail("covariance VyVy mismatch");
+    if (value.getTrackCovarianceVyVz() != 20.20) fail("covariance VyVz mismatch");
+    if (value.getTrackCovarianceVzVz() != 21.21) fail("covariance VzVz mismatch");
+
+    if (value.getManeuverProbability() != 0.625)
+        fail("TrackDataUpdate maneuverProbability mismatch");
+    if (value.getTrackQuality() != 12.75) fail("TrackDataUpdate trackQuality mismatch");
+}
+
+/* Distinctive successful provider CommandStatus for TrackDataUpdate. */
+std::shared_ptr<irmel::CommandStatus> rich_track_command_status()
+{
+    auto status = std::make_shared<irmel::CommandStatus>();
+    status->setCommandID(0xf0e1d2c3U);
+    status->setState(irmel::CommandState::Accepted);
+    status->setReasonID(irmel::CannotComply::NotSet);
+    status->setReasonDescription("Track update accepted \xC2\xB5");
+    return status;
+}
 
 /* Distinctive rich IRSTTrackReport. Every field carries a value that cannot be
  * confused with a default, an adjacent field, or a sign/scale mistake. */
@@ -1538,6 +1617,10 @@ public:
          * saturating counter is reported so a test can assert exactly zero. */
         if (track_deferred_calls.load() != 0U)
             record("track_deferred_operation_invoked");
+        /* The pending-update producer must be joined before this channel dies;
+         * the adapter guarantees this destructor runs only after the request
+         * that owns the future has completed. */
+        if (update_producer_.joinable()) update_producer_.join();
         record("track_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -1589,11 +1672,87 @@ public:
         std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
     { return Return::NotSupported; }
 
-    /* Deferred to Task 029B2 and beyond; never positively implemented here. */
+    /* Deferred and never positively implemented here. */
     mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
     { return deferred_send("track_system_track_data_response_sent"); }
-    mel::RequestFor<irmel::CommandStatus> send(irmel::TrackDataUpdate) override
-    { return deferred_send("track_data_update_sent"); }
+
+    /* The one positively implemented @RequiredIfTrackUpdate Track send. */
+    mel::RequestFor<irmel::CommandStatus> send(irmel::TrackDataUpdate update) override
+    {
+        record("track_data_update_sent");
+        if (!enabled_) throw std::logic_error("TrackDataUpdate sent before enable");
+        if (scenario_ != "track-update-any") verify_rich_track_update(update);
+        if (scenario_ == "track-update-send-throw")
+            throw std::runtime_error("mock Track update send exception");
+
+        /* A provider may invoke a registered metadata callback synchronously
+         * from inside send(); prove the adapter does not deadlock. */
+        if (report_callback_ && scenario_ == "track-update-reentrant") {
+            const auto report = rich_track_report();
+            record("track_update_send_callback_entered");
+            report_callback_(*this, &report);
+            record("track_update_send_callback_returned");
+        }
+
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "track-update-reject")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                mel::Error{mel::ErrorCode::InvalidParameters,
+                           std::string(510U, 'x') + "\xE2\x82\xAC" +
+                           " Track update rejected \xC2\xB5"}});
+        else if (scenario_ == "track-update-unknown-error")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                mel::Error{static_cast<mel::ErrorCode>(99U), "unknown"}});
+        else if (scenario_ == "track-update-null-status")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                std::shared_ptr<irmel::CommandStatus>{}});
+        else if (scenario_ == "track-update-bad-state") {
+            auto bad = rich_track_command_status();
+            /* One past Cancelled: upstream declares no MaxExclusive value. */
+            bad->setState(static_cast<irmel::CommandState>(5U));
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-update-bad-reason") {
+            auto bad = rich_track_command_status();
+            /* One past Alignment_Maneuver. */
+            bad->setReasonID(static_cast<irmel::CannotComply>(47U));
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-update-bad-description") {
+            auto bad = rich_track_command_status();
+            bad->setReasonDescription(std::string{"bad\xC3\x28 utf8"});
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{bad});
+        } else if (scenario_ == "track-update-status-rejected") {
+            /* A successful future whose CommandStatus state is Rejected. This
+             * is NOT an ErrorOr rejection and must stay AMS_MEL_OK. */
+            auto rejected = std::make_shared<irmel::CommandStatus>();
+            rejected->setCommandID(0xf0e1d2c3U);
+            rejected->setState(irmel::CommandState::Rejected);
+            rejected->setReasonID(irmel::CannotComply::InvalidInputParameter);
+            rejected->setReasonDescription("Track update parameters rejected \xC2\xB5");
+            promise.set_value(
+                mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{rejected});
+        } else if (scenario_ == "track-update-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock Track update future exception"}));
+        else if (scenario_ == "track-update-pending" ||
+                 scenario_ == "track-update-detach-fail") {
+            /* Deterministic pending completion: the background thread waits on
+             * a test-controlled barrier file rather than on a sleep. */
+            const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_UPDATE_BARRIER");
+            const std::string path = barrier ? barrier : std::string{};
+            auto status = rich_track_command_status();
+            update_producer_ = std::thread{
+                [path, promise = std::move(promise), status]() mutable {
+                    if (!path.empty()) wait_for_file(path);
+                    record("track_update_completed");
+                    promise.set_value(
+                        mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{status});
+                }};
+        } else promise.set_value(
+            mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
+                rich_track_command_status()});
+        return future;
+    }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
                            const irmel::CandidateObjectMessage *const)>) override
@@ -1686,6 +1845,7 @@ private:
     }
     std::string scenario_;
     bool enabled_{};
+    std::thread update_producer_;
     std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>
         report_callback_;
 };
@@ -1845,6 +2005,7 @@ public:
              instance_ == "health-detach-fail" ||
              instance_ == "instr-detach-fail" ||
              instance_ == "track-detach-fail" ||
+             instance_ == "track-update-detach-fail" ||
              instance_ == "track-open-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");

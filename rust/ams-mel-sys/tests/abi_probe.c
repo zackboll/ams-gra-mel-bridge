@@ -264,6 +264,10 @@ int main(void)
     ams_mel_status_t (*track_ev_close)(ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_close;
     (void)track_meta_open; (void)track_meta_recv; (void)track_meta_counters;
     (void)track_meta_close; (void)track_ev_view; (void)track_ev_close;
+    ams_mel_status_t (*track_submit)(ams_mel_ir_track *, const ams_mel_ir_track_data_update_v1 *, ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_submit_update;
+    ams_mel_status_t (*track_upd_wait)(const ams_mel_ir_track_update_request *, uint32_t, ams_mel_ir_track_update_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_update_request_wait;
+    ams_mel_status_t (*track_upd_close)(ams_mel_ir_track_update_request **, char *, size_t, size_t *) = ams_mel_ir_track_update_request_close;
+    (void)track_submit; (void)track_upd_wait; (void)track_upd_close;
 #define RECORD(type, ...) LAYOUT(type); __VA_ARGS__
     RECORD(ams_mel_uci_id_span_v1, FIELD(ams_mel_uci_id_span_v1,data); FIELD(ams_mel_uci_id_span_v1,size));
     RECORD(ams_mel_ir_command_status_v1, FIELD(ams_mel_ir_command_status_v1,command_id); FIELD(ams_mel_ir_command_status_v1,state); FIELD(ams_mel_ir_command_status_v1,reason_id); FIELD(ams_mel_ir_command_status_v1,reason_description));
@@ -427,6 +431,49 @@ int main(void)
     RECORD(ams_mel_ir_track_metadata_event_v1,
         FIELD(ams_mel_ir_track_metadata_event_v1,kind);
         FIELD(ams_mel_ir_track_metadata_event_v1,track_report));
+
+    LAYOUT(ams_mel_ir_track_update_request *);
+    VALUE(AMS_MEL_IR_TRACK_STATUS_CREATE); VALUE(AMS_MEL_IR_TRACK_STATUS_UPDATE);
+    VALUE(AMS_MEL_IR_TRACK_STATUS_PREDICT); VALUE(AMS_MEL_IR_TRACK_STATUS_DELETE);
+    RECORD(ams_mel_ir_track_covariance_v1,
+        FIELD(ams_mel_ir_track_covariance_v1,xx);
+        FIELD(ams_mel_ir_track_covariance_v1,xy);
+        FIELD(ams_mel_ir_track_covariance_v1,xz);
+        FIELD(ams_mel_ir_track_covariance_v1,x_vx);
+        FIELD(ams_mel_ir_track_covariance_v1,x_vy);
+        FIELD(ams_mel_ir_track_covariance_v1,x_vz);
+        FIELD(ams_mel_ir_track_covariance_v1,yy);
+        FIELD(ams_mel_ir_track_covariance_v1,yz);
+        FIELD(ams_mel_ir_track_covariance_v1,y_vx);
+        FIELD(ams_mel_ir_track_covariance_v1,y_vy);
+        FIELD(ams_mel_ir_track_covariance_v1,y_vz);
+        FIELD(ams_mel_ir_track_covariance_v1,zz);
+        FIELD(ams_mel_ir_track_covariance_v1,z_vx);
+        FIELD(ams_mel_ir_track_covariance_v1,z_vy);
+        FIELD(ams_mel_ir_track_covariance_v1,z_vz);
+        FIELD(ams_mel_ir_track_covariance_v1,vx_vx);
+        FIELD(ams_mel_ir_track_covariance_v1,vx_vy);
+        FIELD(ams_mel_ir_track_covariance_v1,vx_vz);
+        FIELD(ams_mel_ir_track_covariance_v1,vy_vy);
+        FIELD(ams_mel_ir_track_covariance_v1,vy_vz);
+        FIELD(ams_mel_ir_track_covariance_v1,vz_vz));
+    RECORD(ams_mel_ir_track_data_update_v1,
+        FIELD(ams_mel_ir_track_data_update_v1,platform_id);
+        FIELD(ams_mel_ir_track_data_update_v1,capability_uuid);
+        FIELD(ams_mel_ir_track_data_update_v1,activity_uuid);
+        FIELD(ams_mel_ir_track_data_update_v1,track_id);
+        FIELD(ams_mel_ir_track_data_update_v1,entity_uuid);
+        FIELD(ams_mel_ir_track_data_update_v1,track_status);
+        FIELD(ams_mel_ir_track_data_update_v1,time_of_validity_seconds);
+        FIELD(ams_mel_ir_track_data_update_v1,time_of_last_update_seconds);
+        FIELD(ams_mel_ir_track_data_update_v1,track_position_ecef);
+        FIELD(ams_mel_ir_track_data_update_v1,track_velocity_ecef);
+        FIELD(ams_mel_ir_track_data_update_v1,covariance);
+        FIELD(ams_mel_ir_track_data_update_v1,maneuver_probability);
+        FIELD(ams_mel_ir_track_data_update_v1,track_quality));
+    RECORD(ams_mel_ir_track_update_result_v1,
+        FIELD(ams_mel_ir_track_update_result_v1,status);
+        FIELD(ams_mel_ir_track_update_result_v1,error_code));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);

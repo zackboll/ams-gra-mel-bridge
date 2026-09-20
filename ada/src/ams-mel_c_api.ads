@@ -83,6 +83,9 @@ private package AMS.MEL_C_API is
    type Track_Event_Handle is new System.Address;
    Null_Track_Event              : constant Track_Event_Handle :=
      Track_Event_Handle (System.Null_Address);
+   type Track_Update_Request_Handle is new System.Address;
+   Null_Track_Update_Request     : constant Track_Update_Request_Handle :=
+     Track_Update_Request_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -611,6 +614,41 @@ private package AMS.MEL_C_API is
    with Convention => C;
    type IR_Quaternion_V1 is record
       X, Y, Z, W : Interfaces.C.double;
+   end record
+   with Convention => C;
+   --  Every published TrackDataUpdate covariance term, exactly 21 doubles.
+   type IR_Track_Covariance_V1 is record
+      XX, XY, XZ, X_VX, X_VY, X_VZ : Interfaces.C.double;
+      YY, YZ, Y_VX, Y_VY, Y_VZ     : Interfaces.C.double;
+      ZZ, Z_VX, Z_VY, Z_VZ         : Interfaces.C.double;
+      VX_VX, VX_VY, VX_VZ          : Interfaces.C.double;
+      VY_VY, VY_VZ                 : Interfaces.C.double;
+      VZ_VZ                        : Interfaces.C.double;
+   end record
+   with Convention => C;
+   --  Complete TrackDataUpdate input. The two times stay in upstream epoch
+   --  seconds and the canonical IR_Directional_V1 is reused for both ECEF
+   --  vectors.
+   type IR_Track_Data_Update_V1 is record
+      Platform_ID                 : Interfaces.Unsigned_32;
+      Capability_UUID             : UCI_ID_V1;
+      Activity_UUID               : UCI_ID_V1;
+      Track_ID                    : Interfaces.Unsigned_32;
+      Entity_UUID                 : UCI_ID_V1;
+      Track_Status                : Interfaces.Unsigned_32;
+      Time_Of_Validity_Seconds    : Interfaces.C.double;
+      Time_Of_Last_Update_Seconds : Interfaces.C.double;
+      Track_Position_ECEF         : IR_Directional_V1;
+      Track_Velocity_ECEF         : IR_Directional_V1;
+      Covariance                  : IR_Track_Covariance_V1;
+      Maneuver_Probability        : Interfaces.C.double;
+      Track_Quality               : Interfaces.C.double;
+   end record
+   with Convention => C;
+   --  Reuses the one generic IR_Command_Status_V1 layout.
+   type IR_Track_Update_Result_V1 is record
+      Status     : IR_Command_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
    type IR_Nav_Error_V1 is record
@@ -1283,4 +1321,26 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_close";
+   function IR_Track_Submit_Update
+     (Handle              : Track_Handle;
+      Update              : access constant IR_Track_Data_Update_V1;
+      Output              : access Track_Update_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_submit_update";
+   function IR_Track_Update_Request_Wait
+     (Handle              : Track_Update_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Track_Update_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_update_request_wait";
+   function IR_Track_Update_Request_Close
+     (Handle              : access Track_Update_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_update_request_close";
 end AMS.MEL_C_API;

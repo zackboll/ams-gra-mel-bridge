@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+- Implement exactly the conditionally required IR Track
+  `TrackChannel::send(TrackDataUpdate)` (`@RequiredIfTrackUpdate`) over the
+  existing Track channel/report foundation, in native C, safe Ada, raw Rust ABI,
+  and private Python ABI. This is a distinct upstream condition from
+  `@RequiredIfTrack` itself: the `@RequiredIfTrack` core remains complete and
+  `@RequiredIfTrackUpdate` `TrackDataUpdate` send is now complete.
+  `SystemTrackDataResponse`, `CandidateObjectMessage`,
+  `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` remain
+  unimplemented, and no safe Rust or public Python Track API was added.
+  ABI 0.1 grows from 82 to exactly 85 exports (`ams_mel_ir_track_submit_update`,
+  `ams_mel_ir_track_update_request_wait`, `ams_mel_ir_track_update_request_close`)
+  and native CTest grows from 12 to 13. The vendor delta is zero:
+  `TrackDataUpdate` was already present in the reviewed Task 029A closure
+  (IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`, common MEL
+  `f6908437d8fd2f7fb69896f9eb9cfd272d10c439`).
+- Upstream `TrackStatus` is exactly Create=0, Update=1, Predict=2, Delete=3 with
+  no MaxExclusive value, so any input above Delete is `AMS_MEL_INVALID_ARGUMENT`.
+  The complete update carries platformId, capabilityUUID, activityUUID, trackId,
+  entityUUID, trackStatus, both epoch-second times (deliberately not converted to
+  nanoseconds), ECEF position/velocity through the one canonical
+  `ams_mel_ir_directional_v1`, all 21 published covariance terms in a new
+  `ams_mel_ir_track_covariance_v1`, maneuverProbability, and trackQuality. No
+  value is clamped or normalized, because the upstream setters perform no such
+  validation, and every borrowed UCI label is validated as UTF-8 without an
+  embedded NUL and copied before Submit returns.
+- The asynchronous outcome reuses the proven Instrumentation request pattern and
+  the existing generic `ams_mel_ir_command_status_v1`. Submission requires the
+  Track lifecycle to be Enabled; the TrackState mutex is released before the
+  provider send so a provider may invoke the registered `IRSTTrackReport`
+  callback synchronously from inside `send()` without deadlocking. Exactly one
+  completion worker calls `future.get()`, a terminal result is cached
+  permanently, and `reason_description` points into immutable request-owned
+  storage rather than provider memory. A successful `CommandStatus` whose own
+  state is Rejected is still `AMS_MEL_OK`; only an `ErrorOr` rejection is
+  `AMS_MEL_COMMAND_REJECTED`. Timeout means only "not ready yet" and request
+  close is neither cancellation nor consumption. Track Close with pending
+  requests clears the public owner and defers physical provider teardown to
+  final request completion; a deferred detach failure retains the complete graph
+  through the existing allocation-free emergency root and fails the request
+  closed with `deferred Track cleanup failed`. Synchronous detach-failure
+  semantics from Tasks 029B1/B2 are unchanged.
+
 - Validate the IR Track `@RequiredIfTrack` core against pinned real Squall
   `b1015728f904c799fa0c07489fce48e78f67845f` as an expected unsupported
   provider. No Track functionality is implemented and no C ABI entry point is

@@ -405,6 +405,36 @@ no safe Rust or public Python Track API is added. `TrackDataUpdate`,
 unimplemented, and no real Squall Track validation was added: the pinned-Squall
 negative Track probe is deferred to task 029B3.
 
+Task 029C adds exactly `TrackChannel::send(TrackDataUpdate)` over that
+foundation, under its own upstream condition `@RequiredIfTrackUpdate`. The
+`@RequiredIfTrack` core stays complete and unchanged; this task does not extend
+`@RequiredIfTrack` itself. `TrackState` gains only a `size_t requests` count, so
+the existing metadata ownership is untouched. The asynchronous outcome reuses the
+proven Instrumentation request pattern: a shared terminal completion state that
+never holds a raw `ams_mel_ir_track *`, a single detached completion worker that
+is the only `future.get()` caller, a permanently cached terminal result, and an
+allocation-free emergency retention root for a future that could not be handed
+to a running worker. Because a provider may invoke the registered
+`IRSTTrackReport` callback synchronously from inside `send()`, the adapter
+validates Enabled, copies the `TrackChannel`, and increments `requests` under the
+Track mutex, then releases it before the provider send; a mock scenario emits
+exactly that reentrant report and proves no deadlock, a received report, and a
+completed request. Track Close with pending requests clears the public owner and
+defers physical teardown to final completion, while the no-pending-request path
+keeps the Task 029B1/B2 synchronous detach-failure semantics unchanged.
+`AMS.MEL.IR.Track.Updates` keeps the Track parent package focused and defines its
+own `Command_State`/`Cannot_Comply` with the published numeric representations
+rather than depending on `AMS.MEL.IR.C2.Metadata`; no cross-package
+neutralization refactor is attempted here. ABI 0.1 grows from 82 to 85 exports
+and native CTest from 12 to 13 targets. Raw Rust and private Python track all 85
+exports; no safe Rust or public Python Track API is added.
+`SystemTrackDataResponse`, `CandidateObjectMessage`,
+`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` remain
+unimplemented. Pinned Squall still cannot attach Track, so the Track
+expected-negative integration probe is unchanged and this task introduces no new
+positive real-Squall Track claim: positive `TrackDataUpdate` behavior and payload
+fidelity are mock-provider evidence only.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

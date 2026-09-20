@@ -101,9 +101,12 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_metadata_close",
                 "ams_mel_ir_track_metadata_event_view",
                 "ams_mel_ir_track_metadata_event_close",
+                "ams_mel_ir_track_submit_update",
+                "ams_mel_ir_track_update_request_wait",
+                "ams_mel_ir_track_update_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 82)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 85)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -569,6 +572,63 @@ class AbiTests(unittest.TestCase):
         )
         expected.extend(
             self._layout(_native.IrTrackMetadataEventV1, 'kind', 'track_report')
+        )
+        expected.extend(
+            [
+                ctypes.sizeof(_native.IrTrackUpdateRequestHandle),
+                ctypes.alignment(_native.IrTrackUpdateRequestHandle),
+                _native.AMS_MEL_IR_TRACK_STATUS_CREATE,
+                _native.AMS_MEL_IR_TRACK_STATUS_UPDATE,
+                _native.AMS_MEL_IR_TRACK_STATUS_PREDICT,
+                _native.AMS_MEL_IR_TRACK_STATUS_DELETE,
+            ]
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackCovarianceV1,
+                'xx',
+                'xy',
+                'xz',
+                'x_vx',
+                'x_vy',
+                'x_vz',
+                'yy',
+                'yz',
+                'y_vx',
+                'y_vy',
+                'y_vz',
+                'zz',
+                'z_vx',
+                'z_vy',
+                'z_vz',
+                'vx_vx',
+                'vx_vy',
+                'vx_vz',
+                'vy_vy',
+                'vy_vz',
+                'vz_vz',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackDataUpdateV1,
+                'platform_id',
+                'capability_uuid',
+                'activity_uuid',
+                'track_id',
+                'entity_uuid',
+                'track_status',
+                'time_of_validity_seconds',
+                'time_of_last_update_seconds',
+                'track_position_ecef',
+                'track_velocity_ecef',
+                'covariance',
+                'maneuver_probability',
+                'track_quality',
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrTrackUpdateResultV1, 'status', 'error_code')
         )
         expected.extend(
             [

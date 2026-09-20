@@ -56,10 +56,19 @@ themselves.
 > fidelity are mock-validated, including a report emitted synchronously from
 > inside registration. Pinned Squall does not attach this channel at all, so it
 > validates clean unsupported-provider behavior only and provides no positive
-> Track execution or Track-report evidence. `TrackDataUpdate`, `SystemTrackDataResponse`,
+> Track execution or Track-report evidence. C and Ada additionally implement the
+> separately conditional `@RequiredIfTrackUpdate`
+> `TrackChannel::send(TrackDataUpdate)` (`AMS.MEL.IR.Track.Updates`): the complete
+> update including all 21 covariance terms, both epoch-second times, and the
+> canonical Directional ECEF position/velocity, with an asynchronous request whose
+> timeout is not cancellation, whose terminal result is cached, and whose
+> CommandStatus rejection is deliberately distinguished from an ErrorOr rejection.
+> Positive `TrackDataUpdate` behavior and payload fidelity are mock-validated
+> only; pinned Squall cannot attach Track and so provides no positive
+> `TrackDataUpdate` evidence. `SystemTrackDataResponse`,
 > `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
 > `RequestSystemTrackData` are not implemented. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 82-function C ABI. Safe Rust and
+> Python ctypes layer track the complete current 85-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured

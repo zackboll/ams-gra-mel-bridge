@@ -79,6 +79,41 @@ declares no unregister, so the callback state belongs to the `Track_Channel`;
 `Close` deactivates public consumption only and provider channel destruction
 remains the callback-quiescence boundary.
 
+`AMS.MEL.IR.Track.Updates` implements the separately conditional
+(`@RequiredIfTrackUpdate`) `TrackChannel::send (TrackDataUpdate)` and keeps the
+`AMS.MEL.IR.Track` parent package focused. It exposes `Track_Status`
+(`Create`/`Update`/`Predict`/`Delete`, with the exact upstream 0..3
+representation and a 32-bit size), a Track-update-owned `Directional` record
+that adds no `AMS.MEL.IR.Image` dependency, a `Track_Covariance` record with all
+21 named terms corresponding exactly to the C record, and the complete
+`Track_Data_Update` with every upstream field. Both times stay in upstream epoch
+seconds and no value is clamped or normalized, because the upstream setters
+perform no such validation.
+
+Its `Command_State` and `Cannot_Comply` are defined locally with the same
+published numeric representations already used by the C ABI, deliberately
+without depending on `AMS.MEL.IR.C2.Metadata` merely to reuse enumerations; a
+cross-package neutralization refactor is out of scope. `Command_Status` is an
+Ada-owned private value with `Command_ID`/`State`/`Reason`/`Reason_Description`
+accessors whose description is copied into Ada-owned storage during `Wait`, so
+no C pointer escapes that call. `Update_Result` follows the Instrumentation safe
+result model: `Status` returns `Success` or `Rejected`, `Command` is valid only
+on `Success`, and `Rejection_Code`/`Description` only on `Rejected`. A successful
+provider `CommandStatus` whose own `State` is `Rejected` is still a `Success`
+outcome, because that is not an `ErrorOr` rejection.
+
+`Update_Request` is limited private with controlled finalization:
+`Submit`/`Is_Open`/`Wait`/`Close`. Submission requires an enabled
+`Track_Channel`. A native `AMS_MEL_TIMEOUT` raises the inherited `Timeout_Error`
+and never cancels or consumes the request; native `AMS_MEL_OK` yields a `Success`
+result, native `AMS_MEL_COMMAND_REJECTED` a `Rejected` result, and any other
+native status raises `Provider_Error`. A complete rejection diagnostic is
+recovered with a second cached `Wait (0)` using exact storage when the fixed
+diagnostic buffer was too small. `Close` and finalization release the public
+request owner only; they are not cancellation, and a pending request keeps the
+provider future and Track channel alive independently of the public
+`Track_Channel` and `Session` owners.
+
 `TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`,
 `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
 implemented.

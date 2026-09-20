@@ -905,6 +905,71 @@ pub struct AmsMelIrTrackMetadataEventV1 {
     pub kind: u32,
     pub track_report: AmsMelIrTrackReportV1,
 }
+
+/// Upstream `TrackStatus` (@RequiredIfTrackUpdate). No `MaxExclusive` value
+/// exists upstream, so any input above `DELETE` is `INVALID_ARGUMENT`.
+pub const AMS_MEL_IR_TRACK_STATUS_CREATE: u32 = 0;
+pub const AMS_MEL_IR_TRACK_STATUS_UPDATE: u32 = 1;
+pub const AMS_MEL_IR_TRACK_STATUS_PREDICT: u32 = 2;
+pub const AMS_MEL_IR_TRACK_STATUS_DELETE: u32 = 3;
+
+/// Every published `TrackDataUpdate` covariance term, exactly 21 doubles.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackCovarianceV1 {
+    pub xx: f64,
+    pub xy: f64,
+    pub xz: f64,
+    pub x_vx: f64,
+    pub x_vy: f64,
+    pub x_vz: f64,
+    pub yy: f64,
+    pub yz: f64,
+    pub y_vx: f64,
+    pub y_vy: f64,
+    pub y_vz: f64,
+    pub zz: f64,
+    pub z_vx: f64,
+    pub z_vy: f64,
+    pub z_vz: f64,
+    pub vx_vx: f64,
+    pub vx_vy: f64,
+    pub vx_vz: f64,
+    pub vy_vy: f64,
+    pub vy_vz: f64,
+    pub vz_vz: f64,
+}
+
+/// Complete `TrackDataUpdate` input. The two times stay in upstream epoch
+/// seconds and the canonical `AmsMelIrDirectionalV1` is reused for both ECEF
+/// vectors; no value is clamped or normalized.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackDataUpdateV1 {
+    pub platform_id: u32,
+    pub capability_uuid: AmsMelUciIdV1,
+    pub activity_uuid: AmsMelUciIdV1,
+    pub track_id: u32,
+    pub entity_uuid: AmsMelUciIdV1,
+    pub track_status: u32,
+    pub time_of_validity_seconds: f64,
+    pub time_of_last_update_seconds: f64,
+    pub track_position_ecef: AmsMelIrDirectionalV1,
+    pub track_velocity_ecef: AmsMelIrDirectionalV1,
+    pub covariance: AmsMelIrTrackCovarianceV1,
+    pub maneuver_probability: f64,
+    pub track_quality: f64,
+}
+
+/// Terminal `TrackDataUpdate` outcome. Reuses the one generic
+/// `AmsMelIrCommandStatusV1` layout. A successful `CommandStatus` whose own
+/// state is `REJECTED` is still `AMS_MEL_OK`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTrackUpdateResultV1 {
+    pub status: AmsMelIrCommandStatusV1,
+    pub error_code: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelEulerV1 {
@@ -1203,8 +1268,8 @@ pub struct AmsMelIrInstrumentationMetadataEvent {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 /// Opaque Track channel owner. This release provides the ownership/lifecycle
-/// foundation plus the @RequiredIfTrack IRSTTrackReport callback; no Track
-/// request owner exists because no Track send is implemented.
+/// foundation, the @RequiredIfTrack IRSTTrackReport callback, and the
+/// @RequiredIfTrackUpdate TrackDataUpdate send.
 #[repr(C)]
 pub struct AmsMelIrTrack {
     _private: [u8; 0],
@@ -1218,6 +1283,13 @@ pub struct AmsMelIrTrackMetadata {
 }
 #[repr(C)]
 pub struct AmsMelIrTrackMetadataEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Opaque owner of one asynchronous `send(TrackDataUpdate)` outcome. It owns a
+/// shared terminal completion state and never a raw `AmsMelIrTrack` pointer.
+#[repr(C)]
+pub struct AmsMelIrTrackUpdateRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -1811,6 +1883,28 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_track_metadata_event_close(
         event: *mut *mut AmsMelIrTrackMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_submit_update(
+        track: *mut AmsMelIrTrack,
+        update: *const AmsMelIrTrackDataUpdateV1,
+        out_request: *mut *mut AmsMelIrTrackUpdateRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_update_request_wait(
+        request: *const AmsMelIrTrackUpdateRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelIrTrackUpdateResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_update_request_close(
+        request: *mut *mut AmsMelIrTrackUpdateRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
