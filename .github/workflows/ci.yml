@@ -38,6 +38,13 @@ jobs:
       - name: Test native installation
         run: cmake --install build/native --prefix "$PWD/build/install"
 
+  build-tree-isolation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove production and test build trees stay isolated
+        run: make test-build-isolation
+
   ada:
     runs-on: ubuntu-24.04
     steps:
@@ -60,11 +67,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Build native facade and mock providers
+      - name: Build production facade
+        run: make native
+      - name: Build test facade and mock providers
         run: make test-native
+      # Contract tests use the test-enabled facade and providers explicitly.
+      # cargo check/clippy keep the production default in native/build.
       - name: Check Rust workspace
         run: cargo check --manifest-path rust/Cargo.toml --workspace
       - name: Test Rust workspace
+        env:
+          AMS_MEL_NATIVE_LIB_DIR: ${{ github.workspace }}/native/build-tests/lib
+          AMS_MEL_TEST_PROVIDER_DIR: ${{ github.workspace }}/native/build-tests/test-providers
         run: cargo test --manifest-path rust/Cargo.toml --workspace
       - name: Lint Rust workspace
         run: >-
@@ -77,18 +91,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build native facade and mock providers
+      - name: Build test facade and mock providers
         run: make test-native
+      # Contract tests bind the test-enabled facade from the isolated test tree.
       - name: Test Python binding
         env:
           PYTHONPATH: python
-          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build/lib/libams_mel_c.so.0
-          AMS_MEL_TEST_PROVIDER_DIR: ${{ github.workspace }}/native/build/test-providers
+          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build-tests/lib/libams_mel_c.so.0
+          AMS_MEL_TEST_PROVIDER_DIR: ${{ github.workspace }}/native/build-tests/test-providers
         run: python3 -W error -m unittest discover -s python/tests -v
       - name: Compile Python package
         env:
           PYTHONPATH: python
-          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build/lib/libams_mel_c.so.0
+          AMS_MEL_NATIVE_LIB: ${{ github.workspace }}/native/build-tests/lib/libams_mel_c.so.0
         run: python3 -W error -m compileall -q python/ams_mel
 
 # No remote run has occurred at bootstrap time.

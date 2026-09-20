@@ -405,7 +405,7 @@ fn mock_provider() -> PathBuf {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     env::var_os("AMS_MEL_TEST_PROVIDER_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repository.join("native/build/test-providers"))
+        .unwrap_or_else(|| repository.join("native/build-tests/test-providers"))
         .join("libmock_ir_provider.so")
 }
 

@@ -24,14 +24,20 @@ procedure AMS_MEL_Smoke is
    use type GNAT.OS_Lib.File_Descriptor;
    use type GNAT.OS_Lib.String_Access;
 
-   Workspace_Root     : constant String :=
+   Workspace_Root : constant String :=
      Ada.Directories.Full_Name
        (Ada.Directories.Containing_Directory
           (Ada.Directories.Containing_Directory
              (Ada.Directories.Containing_Directory
                 (Ada.Directories.Containing_Directory (Ada.Command_Line.Command_Name)))));
-   Provider_Path      : constant String :=
-     Workspace_Root & "/native/build/test-providers/libmock_ir_provider.so";
+   --  Mock providers come from the contract-test CMake tree.  The Ada binding
+   --  itself still links the production facade in native/build/lib.
+   function Test_Provider_Directory return String
+   is (if Ada.Environment_Variables.Exists ("AMS_MEL_TEST_PROVIDER_DIR")
+       then Ada.Environment_Variables.Value ("AMS_MEL_TEST_PROVIDER_DIR")
+       else Workspace_Root & "/native/build-tests/test-providers");
+
+   Provider_Path      : constant String := Test_Provider_Directory & "/libmock_ir_provider.so";
    Lifetime_Directory : GNAT.OS_Lib.String_Access;
    Lifetime_Log       : GNAT.OS_Lib.String_Access;
 

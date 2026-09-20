@@ -12,6 +12,15 @@ project AMS_MEL_Tests is
         ("-gnat2022", "-gnata", "-gnatVa", "-gnatwa", "-gnatwe");
    end Compiler;
 
+   --  The Ada binding links the production facade named by ams_mel_c.gpr.
+   --  These contract tests, however, drive the test-only failpoints that only
+   --  the contract-test facade in native/build-tests compiles in.  Emitting
+   --  DT_RUNPATH instead of DT_RPATH lets LD_LIBRARY_PATH select that facade
+   --  for this test executable without changing what the binding links.
+   package Linker is
+      for Default_Switches ("Ada") use ("-Wl,--enable-new-dtags");
+   end Linker;
+
    package Format is
       for Width ("Ada") use "100";
    end Format;

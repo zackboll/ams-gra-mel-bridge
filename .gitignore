@@ -1,5 +1,7 @@
 # Build products (both root and nested crates)
 build/
+# The contract-test CMake tree is separate from the production tree.
+build-tests/
 obj/
 lib/
 bin/

@@ -754,13 +754,27 @@ Run:
 make test-native
 ```
 
-This builds:
+This builds the contract-test facade and mock providers:
+
+```text
+native/build-tests/lib/libams_mel_c.so
+native/build-tests/test-providers/
+```
+
+and runs the native ABI/provider/IR-stream tests from that tree.
+
+The production facade built by `make native` stays in a separate tree:
 
 ```text
 native/build/lib/libams_mel_c.so
 ```
 
-and runs the native ABI/provider/IR-stream tests.
+Production and contract-test builds never share a CMake build directory: the
+test configuration compiles `AMS_MEL_ENABLE_TEST_FAILPOINTS` into the facade and
+the production configuration does not, so a shared tree would let one workflow
+silently rebuild the other's library. `make test-build-isolation` proves the two
+trees stay separate. See
+[`docs/corrective-native-build-tree-isolation.md`](docs/corrective-native-build-tree-isolation.md).
 
 Real Squall validation is deliberately separate from ordinary builds and CI.
 With an existing checkout at the pinned revision, run:
@@ -852,10 +866,14 @@ cargo clippy --manifest-path rust/Cargo.toml \
   --workspace --all-targets -- -D warnings
 ```
 
-The default linker search path is `native/build/lib`. Set
+The default linker search path is the production facade in `native/build/lib`,
+so ordinary Rust builds never depend on a test-enabled native library. Set
 `AMS_MEL_NATIVE_LIB_DIR` to select another existing CMake build's library
 directory and `AMS_MEL_TEST_PROVIDER_DIR` to select its `test-providers`
-directory. Cargo never invokes CMake or compiles the native adapter. The safe
+directory. `make test-rust` points both at the contract-test tree
+(`native/build-tests`), which is also what the repository Rust tests fall back
+to when those variables are unset. Cargo never invokes CMake or compiles the
+native adapter. The safe
 layer is `ams-mel -> ams-mel-sys -> ams_mel_c`; neither crate is published.
 Rust `Frame` values own copied `Vec<u8>` pixels; this is not a zero-copy API.
 Safe Rust BIT support is intentionally limited to `submit_bit_noop`; no
@@ -875,8 +893,8 @@ mock providers, set the explicit façade path, and place `python` on `PYTHONPATH
 make test-python
 
 PYTHONPATH=python \
-AMS_MEL_NATIVE_LIB="$PWD/native/build/lib/libams_mel_c.so.0" \
-AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build/test-providers" \
+AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0" \
+AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers" \
   python3 -W error -m unittest discover -s python/tests -v
 ```
 

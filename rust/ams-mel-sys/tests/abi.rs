@@ -335,7 +335,7 @@ fn declarations_match_the_c_header() {
     let output = env::temp_dir().join(format!("ams-mel-abi-probe-{}", std::process::id()));
     let library_dir = env::var_os("AMS_MEL_NATIVE_LIB_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repository.join("native/build/lib"));
+        .unwrap_or_else(|| repository.join("native/build-tests/lib"));
     let library_dir = absolute(&library_dir);
     let compile = Command::new(env::var_os("CC").unwrap_or_else(|| "cc".into()))
         .arg("-std=c11")

@@ -18,9 +18,19 @@ gnatformat_bin = "=26.0.0"
 ams_mel = { path = ".." }
 ams_mel_c = { path = "../../native" }
 
+# The ams_mel_c crate's pre-build action builds the production facade that this
+# executable links; this one builds the separate contract-test facade and mock
+# providers.
 [[actions]]
 type = "pre-build"
 command = ["sh", "../../native/scripts/build-test-providers.sh"]
+
+# These contract tests drive test-only failpoints that only the contract-test
+# facade compiles in, so resolve that facade at run time.  The test project
+# emits DT_RUNPATH, which LD_LIBRARY_PATH overrides.
+[environment]
+LD_LIBRARY_PATH.prepend = "${CRATE_ROOT}/../../native/build-tests/lib"
+AMS_MEL_TEST_PROVIDER_DIR.set = "${CRATE_ROOT}/../../native/build-tests/test-providers"
 
 [[actions]]
 type = "test"
