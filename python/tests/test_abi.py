@@ -550,6 +550,7 @@ class AbiTests(unittest.TestCase):
                 _native.AMS_MEL_IR_TRACK_MODE_SCAN,
                 _native.AMS_MEL_IR_TRACK_MODE_STARE,
                 _native.AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT,
+                _native.AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA,
             ]
         )
         expected.extend(
@@ -574,7 +575,21 @@ class AbiTests(unittest.TestCase):
             )
         )
         expected.extend(
-            self._layout(_native.IrTrackMetadataEventV1, 'kind', 'track_report')
+            self._layout(
+                _native.IrRequestSystemTrackDataV1,
+                'system_time_ns',
+                'command_id',
+                'request_id',
+                'track_id',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackMetadataEventV1,
+                'kind',
+                'track_report',
+                'request_system_track_data',
+            )
         )
         expected.extend(
             [

@@ -863,16 +863,34 @@ typedef struct ams_mel_ir_track_report_v1 {
     ams_mel_ir_track_mode_t mode;
 } ams_mel_ir_track_report_v1;
 
-/* Extensible Track metadata event format. Only the @RequiredIfTrack
- * IRSTTrackReport family is implemented; CandidateObjectMessage,
- * CandidateObjectPreProcMessage, and RequestSystemTrackData deliberately have
- * no storage here. A consumer must fail closed on an unrecognized kind. */
+/* Upstream RequestSystemTrackData (@Optional) is an inbound request the MFA
+ * sends to the MFA through onMetadata: the published TrackChannel declares it
+ * only as a registerMetadataCallback overload and declares no
+ * send(RequestSystemTrackData) overload, so it is delivered here rather than
+ * through a request/wait handle. Every field is copied verbatim from the
+ * published getters. systemTime is std::chrono::nanoseconds, whose
+ * representation is signed, so it is carried as int64_t nanoseconds; the three
+ * identifiers are uint32_t upstream and stay uint32_t here. */
+typedef struct ams_mel_ir_request_system_track_data_v1 {
+    int64_t system_time_ns;
+    uint32_t command_id;
+    uint32_t request_id;
+    uint32_t track_id;
+} ams_mel_ir_request_system_track_data_v1;
+
+/* Extensible Track metadata event format. The @RequiredIfTrack IRSTTrackReport
+ * family and the @Optional RequestSystemTrackData request are implemented;
+ * CandidateObjectMessage and CandidateObjectPreProcMessage deliberately have no
+ * storage here. A consumer must fail closed on an unrecognized kind. Only the
+ * member selected by kind is populated; the others stay zeroed. */
 typedef uint32_t ams_mel_ir_track_metadata_kind_t;
 #define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT UINT32_C(1)
+#define AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(2)
 
 typedef struct ams_mel_ir_track_metadata_event_v1 {
     ams_mel_ir_track_metadata_kind_t kind;
     ams_mel_ir_track_report_v1 track_report;
+    ams_mel_ir_request_system_track_data_v1 request_system_track_data;
 } ams_mel_ir_track_metadata_event_v1;
 
 /* The one canonical IR XYZ representation, shared by FrameHeader sensor/nav

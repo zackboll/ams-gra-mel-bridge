@@ -1144,6 +1144,7 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_TRACK_MODE_SCAN as usize,
         AMS_MEL_IR_TRACK_MODE_STARE as usize,
         AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT as usize,
+        AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA as usize,
     ]);
     layout!(
         expected,
@@ -1165,7 +1166,21 @@ fn declarations_match_the_c_header() {
         state,
         mode
     );
-    layout!(expected, AmsMelIrTrackMetadataEventV1, kind, track_report);
+    layout!(
+        expected,
+        AmsMelIrRequestSystemTrackDataV1,
+        system_time_ns,
+        command_id,
+        request_id,
+        track_id
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackMetadataEventV1,
+        kind,
+        track_report,
+        request_system_track_data
+    );
     expected.extend([
         size_of::<*mut AmsMelIrTrackUpdateRequest>(),
         align_of::<*mut AmsMelIrTrackUpdateRequest>(),

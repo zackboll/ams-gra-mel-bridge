@@ -242,6 +242,21 @@ if(AMS_MEL_BUILD_TESTS)
     add_test(NAME ir_track_system_response_contract
         COMMAND test_ir_track_system_response)
 
+    add_executable(test_ir_track_request_system_data
+        tests/test_ir_track_request_system_data.c)
+    target_compile_features(test_ir_track_request_system_data PRIVATE c_std_11)
+    set_target_properties(test_ir_track_request_system_data
+        PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_track_request_system_data PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_track_request_system_data
+        PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_track_request_system_data mock_ir_provider)
+    ams_mel_warnings(test_ir_track_request_system_data)
+    add_test(NAME ir_track_request_system_data_contract
+        COMMAND test_ir_track_request_system_data)
+
+
     add_executable(test_diagnostic_allocation
         tests/test_diagnostic_allocation.cpp)
     target_compile_features(test_diagnostic_allocation PRIVATE cxx_std_20)

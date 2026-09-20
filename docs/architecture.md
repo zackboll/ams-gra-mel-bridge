@@ -181,6 +181,118 @@ taking a mutex. That emergency graph is intentionally permanent because no safe
 completion path remains. A never-completing provider future likewise retains the
 graph indefinitely rather than risking unload of live code.
 
+## Asynchronous request execution path
+
+For an asynchronous request the conceptual path is:
+
+```text
+Ada application
+      |
+      | submit
+      v
+C ABI / native adapter
+      |
+      | provider send()
+      v
+provider future
+      |
+      | retained by a native completion worker
+      | the worker blocks in future.get()
+      v
+Completion state
+      |
+      | condition-variable notification
+      v
+Ada Wait(timeout)
+```
+
+The distinction that matters is:
+
+```text
+Ada Wait(timeout > 0)  = blocking wait
+Ada Wait(0)            = nonblocking poll
+```
+
+It is *not* the case that Ada continuously loops calling `Wait(0)`. Ada never
+repeatedly checks provider futures, and no Ada application thread spins while a
+request is outstanding: the native worker consumes the provider future and the
+waiting Ada call sleeps on a condition variable until the completion is
+published or the timeout expires. An application may write its own zero-timeout
+polling loop, but that is an application choice rather than the strategy of this
+binding. Provider callback threads never execute Ada application code; they only
+publish into adapter-owned state.
+
+The inbound metadata/event path is a different mechanism with the same wait
+semantics:
+
+```text
+provider callback thread
+      |
+      | validate and copy
+      v
+bounded native FIFO (DROP-INCOMING)
+      |
+      | condition-variable notification
+      v
+application Receive(timeout)
+```
+
+There is no provider future and no completion worker on this path. A
+positive-timeout `Receive` blocks on a condition variable; a zero-timeout
+`Receive` is a nonblocking poll. Normal usage is not a busy-poll loop. The
+separate DROP-INCOMING overflow policy governs only what happens when an event
+arrives at a full queue. Queue overflow policy and application polling are
+independent concerns: DROP-INCOMING does not imply that a consumer must poll.
+Provider callback threads never invoke Ada application code; they only validate,
+copy, and enqueue into adapter-owned storage before returning to provider code.
+
+### Future roadmap: asynchronous completion-thread scalability
+
+This concerns the `RequestFor<T>` request/future path only. The current
+implementation is deliberately correctness-first and uses approximately one
+native completion worker thread per outstanding asynchronous provider future.
+That worker blocks in `future::get()` until terminal completion. This is
+correct, not broken, and it is acceptable for current functional development and
+testing. It may, however, scale poorly when many requests are concurrently
+outstanding or are issued at a high rate; `TrackDataUpdate`,
+`SystemTrackDataResponse`, and other `RequestFor<T>` operations are the relevant
+cases when evaluating this.
+
+It does **not** apply to `RequestSystemTrackData`, which is inbound and
+callback/queue based: it has no provider future, no request handle, and no
+completion worker, so it contributes nothing to this thread count.
+
+A future, separately scheduled optimization task -- deliberately unnumbered so
+that 029F/029G sequencing is not disturbed -- should first *measure* the
+existing implementation, with benchmarks or instrumentation covering at least 1,
+10, and 100 outstanding requests, high-rate repeated requests, and mixed request
+types. Where practical it should measure native thread count, resident
+memory/stack impact, request completion latency, submission latency, CPU
+consumption both while futures are idle and during completion bursts, and
+teardown latency. The concern is scalability and performance -- OS thread
+creation/destruction, per-thread stack memory, scheduler and context-switch
+overhead, large numbers of blocked native threads, and resource growth
+proportional to outstanding provider futures -- not functional correctness.
+
+The preferred design space is an investigation rather than a decision already
+made. Candidate approaches include a bounded asynchronous completion executor, a
+shared worker pool, a shared waiter/completion service, or another bounded
+completion mechanism compatible with the upstream `std::future` API. A bounded
+or shared mechanism is preferred if the upstream future API permits one without
+introducing unsafe polling or unbounded latency. Thread scaling must **not** be
+solved by introducing a busy-poll loop.
+
+Any such change must preserve the current externally observable semantics, at
+minimum: exactly one `future.get()` per provider future; permanent terminal
+result caching; timeout is not cancellation; request-handle close does not
+cancel provider work; Session/Channel/Track/provider/library lifetime retention;
+synchronous completion safety; post-send failure safety; deferred cleanup
+semantics; deterministic error mapping; no callback into Ada application code
+from arbitrary provider threads; and ABI compatibility unless a deliberate ABI
+revision is separately approved. The eventual optimization should demonstrate
+improvement against the measured baseline while keeping all existing lifetime
+and status tests passing. None of this work is implemented today.
+
 ## First integration profile
 
 Start with IR host-memory, single-band Mono8 reception only after provider
@@ -243,7 +355,9 @@ Task 020 adds the required IR HealthAndStatus channel and exactly six callback
 overloads: MFA_Status, BIT_Status, SubsystemStatusResp, DiscreteStatus,
 MFA_SecurityAuditRecord, and MFA_StatusDetailed. LFStatus and NUC_TempData remain
 out of scope. One bounded DROP-INCOMING FIFO deep-copies callback values before
-returning to provider code; Ada polls that queue and copies each complete graph
+returning to provider code; Ada receives from that queue -- blocking on a
+condition variable for a positive timeout, and performing a nonblocking poll
+only when the timeout is zero -- and copies each complete graph
 again before releasing the native event. No provider thread invokes Ada code.
 
 The callback state belongs to the Health channel, not the public metadata owner.
@@ -387,7 +501,9 @@ callback count whose drain -- taken only after provider channel destruction --
 is the quiescence proof. `AMS.MEL.IR.Track` grows safe `IRST_Track_State`,
 `IRST_Track_Mode`, a Track-owned `North_East_Down` that adds no `AMS.MEL.IR.Image`
 dependency, and the complete `IRST_Track_Report`; the new
-`AMS.MEL.IR.Track.Metadata` child polls that queue and copies every field into
+`AMS.MEL.IR.Track.Metadata` child receives from that queue -- a blocking wait
+for a positive timeout, a nonblocking poll for a zero timeout -- and copies
+every field into
 Ada-owned storage before closing the native event owner. Because upstream
 declares no unregister, registration is one-shot and the callback state belongs
 to the Track channel rather than to the public metadata owner, so public Close
@@ -471,6 +587,32 @@ Track API is added. The `RequestSystemTrackData`, `CandidateObjectMessage`, and
 as a whole is not complete. Pinned Squall still cannot attach Track, so positive
 `SystemTrackDataResponse` behavior and payload fidelity are mock-provider
 evidence only.
+
+Task 029E adds exactly the `@Optional` `RequestSystemTrackData` surface. The
+pinned upstream `TrackChannel` declares this type **only** as a
+`registerMetadataCallback` overload and declares no `send(RequestSystemTrackData)`
+and no `RequestFor<...>` for it anywhere in the snapshot, so it is an inbound
+request the provider delivers to the application rather than an operation the
+application issues. It therefore reuses the existing bounded DROP-INCOMING Track
+metadata queue instead of the 029C/029D request/wait machinery, and adds no
+asynchronous infrastructure at all. Both implemented kinds share one queue, one
+capacity, and one counter set and preserve FIFO order across kinds; the event
+struct gains a discriminated `request_system_track_data` member and a second
+kind constant, and only the member selected by `kind` is populated. All four
+published fields are copied verbatim, with the signed
+`std::chrono::nanoseconds` time carried as `int64_t` nanoseconds and no unit
+conversion. Upstream declares no enum and no constrained field for this type, so
+an all-zero request is well formed and only a null payload is malformed. Because
+the callback is `@Optional`, a `NotSupported` or `Fail` answer to this
+registration does not fail the metadata open and leaves the `@RequiredIfTrack`
+report callback fully working. The export count is unchanged at exactly 88
+because no new C function was required; native CTest grows from 14 to 15.
+`AMS.MEL.IR.Track.Metadata.Receive_Event` is the safe Ada home; the existing
+report-only `Receive` is retained for current callers. `CandidateObjectMessage`
+and `CandidateObjectPreProcMessage` remain unimplemented and the Track API as a
+whole is not complete. Pinned Squall still cannot attach Track, so positive
+`RequestSystemTrackData` behavior and payload fidelity are mock-provider evidence
+only.
 
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the

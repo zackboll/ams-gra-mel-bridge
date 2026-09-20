@@ -394,9 +394,20 @@ private package AMS.MEL_C_API is
       Mode               : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   --  Upstream RequestSystemTrackData is an inbound @Optional request carried
+   --  by the Track metadata callback; TrackChannel declares no matching send.
+   --  systemTime is std::chrono::nanoseconds, whose representation is signed.
+   type IR_Request_System_Track_Data_V1 is record
+      System_Time_NS : Interfaces.Integer_64;
+      Command_ID     : Interfaces.Unsigned_32;
+      Request_ID     : Interfaces.Unsigned_32;
+      Track_ID       : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
    type IR_Track_Event_V1 is record
-      Kind         : Interfaces.Unsigned_32;
-      Track_Report : IR_Track_Report_V1;
+      Kind                      : Interfaces.Unsigned_32;
+      Track_Report              : IR_Track_Report_V1;
+      Request_System_Track_Data : IR_Request_System_Track_Data_V1;
    end record
    with Convention => C;
    type Attitude_Rate_V1 is record

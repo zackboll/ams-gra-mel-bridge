@@ -1502,12 +1502,13 @@ private:
 /* Task 029B2 positively implements the @RequiredIfTrack IRSTTrackReport
  * registration, Task 029C adds the @RequiredIfTrackUpdate
  * send(TrackDataUpdate), and Task 029D adds the @Optional
- * send(SystemTrackDataResponse). Every remaining Track surface -- the
- * CandidateObjectMessage, RequestSystemTrackData, and
- * CandidateObjectPreProcMessage callbacks -- stays deferred, is instrumented,
- * and reports unsupported, so the tests can prove none of them were exercised.
- * Legitimate IRSTTrackReport registration and legitimate TrackDataUpdate and
- * SystemTrackDataResponse sends are NOT counted here. */
+ * send(SystemTrackDataResponse), and Task 029E adds the @Optional
+ * RequestSystemTrackData callback. Every remaining Track surface -- the
+ * CandidateObjectMessage and CandidateObjectPreProcMessage callbacks -- stays
+ * deferred, is instrumented, and reports unsupported, so the tests can prove
+ * neither was exercised. Legitimate IRSTTrackReport and RequestSystemTrackData
+ * registration and legitimate TrackDataUpdate and SystemTrackDataResponse sends
+ * are NOT counted here. */
 std::atomic<std::uint64_t> track_deferred_calls{};
 
 /* The exact distinctive TrackDataUpdate the Track update tests submit. Every
@@ -1664,6 +1665,20 @@ irmel::IRSTTrackReport rich_track_report()
     return report;
 }
 
+/* Distinctive rich RequestSystemTrackData. The system time is deliberately
+ * negative so a signed/unsigned mistake in the nanosecond carrier cannot pass,
+ * and each identifier has its high bit set so a 32-bit narrowing or a
+ * field-order swap is detectable. */
+irmel::RequestSystemTrackData rich_request_system_track_data()
+{
+    irmel::RequestSystemTrackData request;
+    request.setSystemTime(std::chrono::nanoseconds{-8765432109876LL});
+    request.setCommandID(0xC1234567U);
+    request.setRequestId(0xD2345678U);
+    request.setTrackId(0xE3456789U);
+    return request;
+}
+
 class MockTrackChannel final : public irmel::TrackChannel {
 public:
     explicit MockTrackChannel(std::string scenario) : scenario_{std::move(scenario)} {}
@@ -1678,6 +1693,10 @@ public:
          * that owns the future has completed. */
         if (update_producer_.joinable()) update_producer_.join();
         if (response_producer_.joinable()) response_producer_.join();
+        /* The asynchronous metadata producer must also be quiescent before the
+         * channel dies: it is the callback-quiescence boundary for the
+         * @Optional RequestSystemTrackData exactly as for the report. */
+        if (request_producer_.joinable()) request_producer_.join();
         record("track_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -1900,9 +1919,9 @@ public:
         std::function<void(irmel::Channel&,
                            const irmel::CandidateObjectMessage *const)>) override
     { return deferred_registration("track_candidate_object_registered"); }
-    /* The one positively implemented @RequiredIfTrack Track callback. The
-     * report is emitted synchronously from inside registration, which is the
-     * hardest ordering the facade must survive. */
+    /* The @RequiredIfTrack Track report callback. The report is emitted
+     * synchronously from inside registration, which is the hardest ordering the
+     * facade must survive. */
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)> callback)
         override
@@ -1916,10 +1935,27 @@ public:
         emit_synchronous_reports();
         return Return::Success;
     }
+    /* The @Optional RequestSystemTrackData callback, positively implemented so
+     * the inbound request has real positive evidence even though pinned Squall
+     * cannot attach a Track channel at all. Like the report callback, the
+     * emission happens synchronously from inside registration. */
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
-                           const irmel::RequestSystemTrackData *const)>) override
-    { return deferred_registration("track_request_system_track_data_registered"); }
+                           const irmel::RequestSystemTrackData *const)> callback)
+        override
+    {
+        record("track_request_system_track_data_registered");
+        if (scenario_ == "track-request-register-throw")
+            throw std::runtime_error("mock RequestSystemTrackData registration exception");
+        /* Proves an optional-callback refusal never breaks the required one. */
+        if (scenario_ == "track-request-register-not-supported")
+            return Return::NotSupported;
+        if (scenario_ == "track-request-register-fail") return Return::Fail;
+        if (!callback) return Return::Fail;
+        request_callback_ = std::move(callback);
+        emit_synchronous_requests();
+        return Return::Success;
+    }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
                            const irmel::CandidateObjectPreProcMessage *const)>) override
@@ -1964,13 +2000,114 @@ private:
             return;
         }
         if (scenario_ == "track-report-none") return;
+        /* The 029E scenarios that exercise the @Optional RequestSystemTrackData
+         * payload emit no report, so the shared counters and the shared queue
+         * isolate the optional kind exactly. The register-refusal scenarios are
+         * deliberately NOT listed: they must still deliver the required report
+         * to prove an optional refusal leaves it working. The mixed scenario is
+         * listed because its interleave is driven from the request callback,
+         * which the adapter registers second. */
+        if (scenario_ == "track-request-rich" || scenario_ == "track-request-zero" ||
+            scenario_ == "track-request-null" ||
+            scenario_ == "track-request-overflow" ||
+            scenario_ == "track-request-async" ||
+            scenario_ == "track-mixed-requests" ||
+            scenario_ == "track-metadata-mixed") return;
         const auto report = rich_track_report();
         record("track_report_emitted_rich");
         report_callback_(*this, &report);
     }
 
-    /* Both published TrackChannel sends are now positively implemented, so the
-     * only remaining deferred Track surfaces are the three callbacks. */
+    /* Deterministic scenario-selected synchronous emission of the @Optional
+     * RequestSystemTrackData from inside registerMetadataCallback. */
+    void emit_synchronous_requests()
+    {
+        if (scenario_ == "track-request-null") {
+            record("track_request_emitted_null");
+            request_callback_(*this, nullptr);
+            return;
+        }
+        if (scenario_ == "track-request-overflow") {
+            /* Six requests into a capacity-2 queue proves the optional kind
+             * obeys the same DROP-INCOMING policy and shares the one queue.
+             * requestId counts the arrival order. */
+            for (std::uint32_t index = 0; index < 6U; ++index) {
+                auto request = rich_request_system_track_data();
+                request.setRequestId(index);
+                request_callback_(*this, &request);
+            }
+            record("track_request_emitted_six");
+            return;
+        }
+        if (scenario_ == "track-request-zero") {
+            /* A default-constructed request is well formed: upstream declares
+             * no field as optional and no value as invalid. */
+            const irmel::RequestSystemTrackData request;
+            record("track_request_emitted_zero");
+            request_callback_(*this, &request);
+            return;
+        }
+        /* The mixed scenario interleaves the required report kind and the
+         * optional request kind through the one shared queue, proving both the
+         * FIFO order across kinds and that each event carries only its own
+         * payload. The report callback is registered first by the adapter. */
+        if (scenario_ == "track-metadata-mixed") {
+            const auto request = rich_request_system_track_data();
+            request_callback_(*this, &request);
+            if (report_callback_) {
+                const auto report = rich_track_report();
+                report_callback_(*this, &report);
+            }
+            request_callback_(*this, &request);
+            record("track_request_emitted_mixed");
+            return;
+        }
+        if (scenario_ == "track-request-rich") {
+            const auto request = rich_request_system_track_data();
+            record("track_request_emitted_rich");
+            request_callback_(*this, &request);
+            return;
+        }
+        /* The cross-mechanism scenario delivers BOTH metadata kinds while two
+         * RequestFor futures are outstanding, so a test can prove that inbound
+         * metadata never perturbs async request accounting. */
+        if (scenario_ == "track-mixed-requests") {
+            const auto request = rich_request_system_track_data();
+            request_callback_(*this, &request);
+            if (report_callback_) {
+                const auto report = rich_track_report();
+                report_callback_(*this, &report);
+            }
+            record("track_mixed_metadata_emitted");
+            return;
+        }
+        /* Asynchronous delivery: the request arrives on a separate provider
+         * thread strictly AFTER registerMetadataCallback has returned, which is
+         * the ordering a real provider uses. The test releases the barrier, so
+         * no sleep is involved and the ordering is deterministic. */
+        if (scenario_ == "track-request-async") {
+            const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_REQUEST_BARRIER");
+            const std::string path = barrier ? barrier : std::string{};
+            auto callback = request_callback_;
+            request_producer_ = std::thread{[this, path, callback]() {
+                if (!path.empty()) wait_for_file(path);
+                const auto request = rich_request_system_track_data();
+                record("track_request_emitted_async");
+                callback(*this, &request);
+                record("track_request_async_returned");
+            }};
+            return;
+        }
+        /* Unlike the required report callback, the optional request emits
+         * nothing by default. Every pre-029E scenario must keep observing
+         * exactly the events it already expected, so this kind only ever
+         * appears when a test explicitly selects it. */
+    }
+
+    /* Both published TrackChannel sends and the @Optional
+     * RequestSystemTrackData callback are now positively implemented, so the
+     * only remaining deferred Track surfaces are the two CandidateObject
+     * callbacks. */
     static Return deferred_registration(const char *event)
     {
         track_deferred_calls.fetch_add(1U);
@@ -1981,8 +2118,11 @@ private:
     bool enabled_{};
     std::thread update_producer_;
     std::thread response_producer_;
+    std::thread request_producer_;
     std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>
         report_callback_;
+    std::function<void(irmel::Channel&, const irmel::RequestSystemTrackData *const)>
+        request_callback_;
 };
 
 class MockControl final : public irmel::Control {

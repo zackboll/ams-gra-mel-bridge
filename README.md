@@ -535,7 +535,7 @@ explicit create / destroy operations
 status codes
 caller-owned buffers
 bounded copies
-poll / wait operations
+blocking wait with timeout; nonblocking poll when the timeout is zero
 ```
 
 That gives the project one controlled native boundary:
@@ -580,7 +580,8 @@ Implemented:
 - single-band `Mono8` image reception;
 - validation and bounded copying of incoming frames;
 - finite DROP-INCOMING receive queue;
-- C poll/wait receive operations;
+- C receive operations that block until the timeout expires and degrade to a
+  nonblocking poll only when the timeout is zero;
 - idiomatic Ada receive interface usable as the boundary for Ada/SPARK applications;
 - native C ABI and safe Ada C2 general ModeCmd with complete ScanParam,
   intended one-choice payload-bearing BIT, BIT no-op, and ConfigSet interfaces;
@@ -643,11 +644,19 @@ native adapter
 bounded native queue
           |
           v
-Ada poll / wait
+Ada Receive (timeout > 0)
+  blocking wait; timeout 0 is a nonblocking poll
           |
           v
 Ada-owned frame
 ```
+
+`Receive` with a positive timeout blocks on a condition variable inside the
+native adapter until an event arrives, the stream stops, or the timeout
+expires. A zero timeout is a nonblocking poll. No Ada thread spins, and no Ada
+application code runs on a provider callback thread. An application may of
+course choose to write its own polling loop with a zero timeout, but that is an
+application decision, not the design of this binding.
 
 This isolates provider callback threads from Ada code and gives the binding an
 explicit place to enforce ownership, validation, queue capacity, shutdown, and

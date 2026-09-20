@@ -68,17 +68,18 @@ static int ordered(const char *data, const char *first, const char *second)
     return EXIT_SUCCESS;
 }
 
-/* Every Track surface other than the @RequiredIfTrack IRSTTrackReport callback
- * and the @RequiredIfTrackUpdate TrackDataUpdate send remains deferred; the
- * mock records each one, so their absence is provable. These metadata-only
- * scenarios additionally never submit an update, so no send is expected here
- * either, but TrackDataUpdate is no longer counted as a deferred violation. */
+/* Only the two CandidateObject callbacks remain deferred; the mock records each
+ * one, so their absence is provable. These metadata-only scenarios additionally
+ * never submit a send, so no send is expected here either. The
+ * @Optional RequestSystemTrackData registration is now a legitimate,
+ * positively implemented surface and is deliberately NOT a violation: the
+ * adapter registers it alongside the required report callback on every
+ * metadata open. Its delivery is asserted separately, per scenario. */
 static int no_deferred_track_operations(const char *data)
 {
     CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);
     CHECK(strstr(data, "track_candidate_object_registered") == NULL);
     CHECK(strstr(data, "track_candidate_object_preproc_registered") == NULL);
-    CHECK(strstr(data, "track_request_system_track_data_registered") == NULL);
     CHECK(strstr(data, "track_data_update_sent") == NULL);
     CHECK(strstr(data, "track_system_track_data_response_sent") == NULL);
     return EXIT_SUCCESS;

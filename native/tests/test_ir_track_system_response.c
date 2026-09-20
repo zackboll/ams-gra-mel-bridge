@@ -529,6 +529,9 @@ static int test_pending_response_lifetime(void)
 static int test_mixed_request_accounting(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_track *channel = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    const ams_mel_ir_track_metadata_event_v1 *view = NULL;
     ams_mel_ir_track_update_request *update_request = NULL;
     ams_mel_ir_track_system_response_request *response_request = NULL;
     ams_mel_ir_track_update_result_v1 update_result;
@@ -550,6 +553,14 @@ static int test_mixed_request_accounting(void)
     CHECK(setenv("AMS_MEL_TEST_TRACK_RESPONSE_BARRIER", response_barrier, 1) == 0);
 
     CHECK(open_enabled("track-mixed-requests", &session, &channel) == EXIT_SUCCESS);
+    /* Cross-mechanism: open the metadata subscription so BOTH inbound kinds --
+     * the @RequiredIfTrack IRSTTrackReport and the @Optional
+     * RequestSystemTrackData -- are delivered while two RequestFor futures are
+     * outstanding. Inbound metadata uses the callback/queue architecture and
+     * must never participate in async request accounting. */
+    CHECK(ams_mel_ir_track_metadata_open(channel, 8U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(metadata != NULL);
     /* One pending TrackDataUpdate and one pending SystemTrackDataResponse. */
     CHECK(ams_mel_ir_track_submit_update(channel, &update, &update_request,
           NULL, 0, NULL) == AMS_MEL_OK);
@@ -561,6 +572,30 @@ static int test_mixed_request_accounting(void)
           NULL, 0, NULL) == AMS_MEL_TIMEOUT);
     CHECK(ams_mel_ir_track_system_response_request_wait(response_request, 0,
           &response_result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+
+    /* Both inbound metadata events were delivered and queued while the two
+     * futures are still outstanding. Draining them must NOT change request
+     * accounting: metadata is callback/queue based and never contributes an
+     * outstanding request. */
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
+    CHECK(view->request_system_track_data.command_id == UINT32_C(0xC1234567));
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Closing the metadata subscription is likewise not a request release: the
+     * two pending futures alone still hold the entire provider graph. */
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "track_channel_destroyed") == NULL);
+    CHECK(strstr(log, "library_unloaded") == NULL);
 
     /* Close both public parents while BOTH requests are pending. */
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
