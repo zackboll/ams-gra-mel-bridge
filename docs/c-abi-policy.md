@@ -511,6 +511,12 @@ consumption inactive, prevents future public enqueueing, wakes receivers, and
 deletes the wrapper. It does not unregister the provider callback, which may
 still be invoked safely afterwards and simply queues nothing.
 
+The public Track metadata wrapper owns only its `MetadataState`; it holds no
+Track, session, or provider-library ownership. After a successful Track Close
+and provider-channel destruction, an existing metadata wrapper may drain
+already-owned queued events and read counters without retaining or invoking
+provider code.
+
 Track cleanup captures the metadata state, marks it Inactive, and notifies
 receivers before any provider teardown, then preserves the foundation ordering
 of conditional disable followed by detach. A failed detach leaves the caller's

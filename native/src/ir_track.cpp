@@ -325,11 +325,13 @@ bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
-/* Public consumption wrapper only. Deleting it never unregisters the provider
- * callback and never destroys the callback-accessible state. */
+/* Public consumption wrapper only. It owns the adapter-owned MetadataState and
+ * nothing else: no Track, session, or provider-library ownership. Deleting it
+ * never unregisters the provider callback and never destroys the
+ * callback-accessible state, and keeping it open never keeps provider code
+ * loaded. */
 struct ams_mel_ir_track_metadata {
     std::shared_ptr<MetadataState> state;
-    std::shared_ptr<TrackState> track;
 };
 struct ams_mel_ir_track_metadata_event { std::unique_ptr<EventData> data; };
 
@@ -510,8 +512,9 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
             channel = track->state->track;
         }
         auto owner = std::make_unique<ams_mel_ir_track_metadata>();
+        /* Only MetadataState is owned here. The provider graph stays owned by
+         * TrackState and by the retained callback closure. */
         owner->state = state;
-        owner->track = track->state;
         const auto result = channel->registerMetadataCallback(
             std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>{
                 [state](irmel::Channel&,

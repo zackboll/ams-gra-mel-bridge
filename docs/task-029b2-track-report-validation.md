@@ -116,6 +116,12 @@ age_ns = 9_876_543_210  state = Coast  mode = Stare
 - **Close.** `ams_mel_ir_track_metadata_close` is idempotent and nonblocking. It
   marks public consumption inactive, prevents future public enqueueing, wakes
   receivers, and deletes the wrapper. It does not unregister provider callbacks.
+- **Wrapper ownership.** The public Track metadata wrapper owns only
+  `MetadataState`. It holds no Track, session, or provider-library ownership.
+  The provider graph is owned by `TrackState` and by the retained callback
+  closure. After a successful Track Close and provider-channel destruction, an
+  existing metadata wrapper may drain already-owned queued events and read
+  counters without retaining or invoking provider code.
 
 ## Safe Ada ownership
 
@@ -149,6 +155,14 @@ after the public metadata owner has been closed, and the log proves
 `track_late_callback_entered` < `track_late_callback_returned` <
 `track_channel_destroyed` < `control_destroyed` < `manager_destroyed` <
 `library_unloaded`. The callback enters and returns safely and queues nothing.
+
+A second forked ordered-log test proves the metadata wrapper does not extend
+provider lifetime. With the public Session closed first and the metadata owner
+still open, Track Close alone yields `track_channel_destroyed` <
+`control_destroyed` < `manager_destroyed` < `library_unloaded`, all strictly
+before `metadata_close`. With the provider already unloaded, the wrapper still
+returns the queued rich `IRSTTrackReport`, then `AMS_MEL_STREAM_STOPPED`, then
+correct counters, and finally closes with `AMS_MEL_OK`.
 
 ## Mock provider scope
 

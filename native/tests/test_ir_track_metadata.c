@@ -481,12 +481,96 @@ static int test_callback_after_metadata_close(void)
     return EXIT_SUCCESS;
 }
 
+/* Writes a test-side marker into the same ordered lifetime log the mock uses,
+ * so parent-side ordering checks can place adapter actions relative to provider
+ * destruction events without any sleep. */
+static int mark(const char *log, const char *event)
+{
+    FILE *file = fopen(log, "ab");
+    CHECK(file != NULL);
+    CHECK(fprintf(file, "%s\n", event) > 0);
+    CHECK(fclose(file) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* An open public metadata wrapper must NOT extend provider lifetime. With the
+ * public Session already closed, Track Close alone must destroy the provider
+ * TrackChannel, the Control, the manager, and unload the provider library --
+ * all strictly before metadata_close -- while the still-open wrapper keeps
+ * draining its own already-owned events and counters. Runs in a child process
+ * so a provider already loaded by the parent cannot hide unload behavior. */
+static int run_metadata_does_not_retain_provider_child(const char *log)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
+    CHECK(open_track("track-report", &session, &track) == EXIT_SUCCESS);
+    /* Synchronous registration queues the rich report. */
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters_are(metadata, 1U, 0U, 0U) == EXIT_SUCCESS);
+    /* Session is closed first; the Track owner still holds the graph. */
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(session == NULL);
+    /* Track Close with the metadata owner still OPEN must release everything. */
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(track == NULL);
+    CHECK(mark(log, "track_close_returned_metadata_open") == EXIT_SUCCESS);
+    /* Provider code is already unloaded here; only adapter-owned storage is
+     * touched from this point on. */
+    CHECK(receive_rich(metadata, NULL) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_STREAM_STOPPED);
+    CHECK(event == NULL);
+    CHECK(counters_are(metadata, 1U, 0U, 0U) == EXIT_SUCCESS);
+    CHECK(mark(log, "metadata_close_begin") == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(metadata == NULL);
+    return EXIT_SUCCESS;
+}
+
+static int test_metadata_does_not_retain_provider(void)
+{
+    char path[] = "/tmp/ams-track-owner-XXXXXX";
+    char data[8192];
+    int fd = mkstemp(path);
+    pid_t child;
+    int status = 0;
+    CHECK(fd >= 0);
+    close(fd);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) _exit(run_metadata_does_not_retain_provider_child(path));
+    CHECK(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+          WEXITSTATUS(status) == 0);
+    CHECK(read_log(path, data, sizeof data) == EXIT_SUCCESS);
+    CHECK(ordered(data, "track_report_registered", "track_report_emitted_rich") ==
+          EXIT_SUCCESS);
+    /* Track Close alone tore the whole provider graph down, in order. */
+    CHECK(ordered(data, "track_channel_destroyed", "control_destroyed") ==
+          EXIT_SUCCESS);
+    CHECK(ordered(data, "control_destroyed", "manager_destroyed") == EXIT_SUCCESS);
+    CHECK(ordered(data, "manager_destroyed", "library_unloaded") == EXIT_SUCCESS);
+    /* Every one of those happened before Track Close returned, and therefore
+     * strictly before metadata_close, while the wrapper was still OPEN. */
+    CHECK(ordered(data, "library_unloaded", "track_close_returned_metadata_open") ==
+          EXIT_SUCCESS);
+    CHECK(ordered(data, "track_close_returned_metadata_open",
+                  "metadata_close_begin") == EXIT_SUCCESS);
+    CHECK(no_deferred_track_operations(data) == EXIT_SUCCESS);
+    unlink(path);
+    return EXIT_SUCCESS;
+}
+
 int main(void)
 {
-    /* The forking lifetime test runs before any test that can permanently
+    /* The forking lifetime tests run before any test that can permanently
      * retain a provider graph in this process: emergency retention keeps the
      * provider library loaded, and a forked child would inherit it. */
     CHECK(test_callback_after_metadata_close() == EXIT_SUCCESS);
+    CHECK(test_metadata_does_not_retain_provider() == EXIT_SUCCESS);
     CHECK(test_attached_registration_rich_report() == EXIT_SUCCESS);
     CHECK(test_enabled_registration_and_one_shot() == EXIT_SUCCESS);
     CHECK(test_registration_failures() == EXIT_SUCCESS);
