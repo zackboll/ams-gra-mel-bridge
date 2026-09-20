@@ -261,6 +261,14 @@ int main(void)
     ams_mel_status_t (*track_caps)(ams_mel_ir_track *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_track_get_capabilities;
     ams_mel_status_t (*track_close)(ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_close;
     (void)track_open; (void)track_enable; (void)track_caps; (void)track_close;
+    ams_mel_status_t (*track_meta_open)(ams_mel_ir_track *, size_t, ams_mel_ir_track_metadata **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_open;
+    ams_mel_status_t (*track_meta_recv)(ams_mel_ir_track_metadata *, uint32_t, ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_receive;
+    ams_mel_status_t (*track_meta_counters)(const ams_mel_ir_track_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_metadata_get_counters;
+    ams_mel_status_t (*track_meta_close)(ams_mel_ir_track_metadata **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_close;
+    ams_mel_status_t (*track_ev_view)(const ams_mel_ir_track_metadata_event *, const ams_mel_ir_track_metadata_event_v1 **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_view;
+    ams_mel_status_t (*track_ev_close)(ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_event_close;
+    (void)track_meta_open; (void)track_meta_recv; (void)track_meta_counters;
+    (void)track_meta_close; (void)track_ev_view; (void)track_ev_close;
     (void)instr_open; (void)instr_enable; (void)instr_cap; (void)instr_submit;
     (void)instr_wait; (void)instr_req_close; (void)instr_meta_open; (void)instr_meta_recv;
     (void)instr_meta_counters; (void)instr_meta_close; (void)instr_ev_view;
@@ -441,6 +449,34 @@ int main(void)
         FIELD(ams_mel_ir_track_config_v1,channel_type);
         FIELD(ams_mel_ir_track_config_v1,platform_id);
         FIELD(ams_mel_ir_track_config_v1,sensor_location));
+
+    LAYOUT(ams_mel_ir_track_metadata *);
+    LAYOUT(ams_mel_ir_track_metadata_event *);
+    VALUE(AMS_MEL_IR_TRACK_STATE_IDLE); VALUE(AMS_MEL_IR_TRACK_STATE_DETECTED);
+    VALUE(AMS_MEL_IR_TRACK_STATE_COAST); VALUE(AMS_MEL_IR_TRACK_STATE_DROPPED);
+    VALUE(AMS_MEL_IR_TRACK_MODE_IDLE); VALUE(AMS_MEL_IR_TRACK_MODE_SCAN);
+    VALUE(AMS_MEL_IR_TRACK_MODE_STARE);
+    VALUE(AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT);
+    RECORD(ams_mel_ir_track_report_v1,
+        FIELD(ams_mel_ir_track_report_v1,system_time_ns);
+        FIELD(ams_mel_ir_track_report_v1,activity_id);
+        FIELD(ams_mel_ir_track_report_v1,measured_ned);
+        FIELD(ams_mel_ir_track_report_v1,measured_intensity);
+        FIELD(ams_mel_ir_track_report_v1,measured_snr);
+        FIELD(ams_mel_ir_track_report_v1,filtered_ned);
+        FIELD(ams_mel_ir_track_report_v1,filtered_intensity);
+        FIELD(ams_mel_ir_track_report_v1,filtered_snr);
+        FIELD(ams_mel_ir_track_report_v1,range_m);
+        FIELD(ams_mel_ir_track_report_v1,range_error_m);
+        FIELD(ams_mel_ir_track_report_v1,spatial_extent_rad);
+        FIELD(ams_mel_ir_track_report_v1,track_quality);
+        FIELD(ams_mel_ir_track_report_v1,clutter);
+        FIELD(ams_mel_ir_track_report_v1,age_ns);
+        FIELD(ams_mel_ir_track_report_v1,state);
+        FIELD(ams_mel_ir_track_report_v1,mode));
+    RECORD(ams_mel_ir_track_metadata_event_v1,
+        FIELD(ams_mel_ir_track_metadata_event_v1,kind);
+        FIELD(ams_mel_ir_track_metadata_event_v1,track_report));
 
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);

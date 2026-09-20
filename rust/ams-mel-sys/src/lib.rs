@@ -863,6 +863,48 @@ pub struct AmsMelIrInstrumentationMetadataEventV1 {
     pub kind: u32,
     pub report: AmsMelIrInstrumentationReportV1,
 }
+/// Upstream `IrstTrackState`. No `MaxExclusive` value exists upstream, so any
+/// provider value above `DROPPED` is malformed.
+pub const AMS_MEL_IR_TRACK_STATE_IDLE: u32 = 0;
+pub const AMS_MEL_IR_TRACK_STATE_DETECTED: u32 = 1;
+pub const AMS_MEL_IR_TRACK_STATE_COAST: u32 = 2;
+pub const AMS_MEL_IR_TRACK_STATE_DROPPED: u32 = 3;
+/// Upstream `IrstTrackMode`. No `MaxExclusive` value exists upstream, so any
+/// provider value above `STARE` is malformed.
+pub const AMS_MEL_IR_TRACK_MODE_IDLE: u32 = 0;
+pub const AMS_MEL_IR_TRACK_MODE_SCAN: u32 = 1;
+pub const AMS_MEL_IR_TRACK_MODE_STARE: u32 = 2;
+/// The one Track metadata event kind defined by this release.
+pub const AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT: u32 = 1;
+
+/// Complete `IRSTTrackReport`. Reuses the canonical `AmsMelNorthEastDownV1`
+/// for both NED vectors; no value is clamped or normalized.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackReportV1 {
+    pub system_time_ns: i64,
+    pub activity_id: u32,
+    pub measured_ned: AmsMelNorthEastDownV1,
+    pub measured_intensity: f64,
+    pub measured_snr: f64,
+    pub filtered_ned: AmsMelNorthEastDownV1,
+    pub filtered_intensity: f64,
+    pub filtered_snr: f64,
+    pub range_m: f64,
+    pub range_error_m: f64,
+    pub spatial_extent_rad: f64,
+    pub track_quality: f64,
+    pub clutter: f64,
+    pub age_ns: i64,
+    pub state: u32,
+    pub mode: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackMetadataEventV1 {
+    pub kind: u32,
+    pub track_report: AmsMelIrTrackReportV1,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelEulerV1 {
@@ -1160,10 +1202,22 @@ pub struct AmsMelIrInstrumentationMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
-/// Opaque Track channel owner. Task 029B1 provides only the ownership and
-/// lifecycle foundation; no Track metadata or Track request owner exists.
+/// Opaque Track channel owner. This release provides the ownership/lifecycle
+/// foundation plus the @RequiredIfTrack IRSTTrackReport callback; no Track
+/// request owner exists because no Track send is implemented.
 #[repr(C)]
 pub struct AmsMelIrTrack {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Opaque public consumption owner for the retained IRSTTrackReport queue.
+#[repr(C)]
+pub struct AmsMelIrTrackMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelIrTrackMetadataEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -1715,6 +1769,48 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_track_close(
         track: *mut *mut AmsMelIrTrack,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_open(
+        track: *mut AmsMelIrTrack,
+        queue_capacity: usize,
+        out_metadata: *mut *mut AmsMelIrTrackMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_receive(
+        metadata: *mut AmsMelIrTrackMetadata,
+        timeout_ms: u32,
+        out_event: *mut *mut AmsMelIrTrackMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_get_counters(
+        metadata: *const AmsMelIrTrackMetadata,
+        out_counters: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_close(
+        metadata: *mut *mut AmsMelIrTrackMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_event_view(
+        event: *const AmsMelIrTrackMetadataEvent,
+        out_view: *mut *const AmsMelIrTrackMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_event_close(
+        event: *mut *mut AmsMelIrTrackMetadataEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

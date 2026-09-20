@@ -376,6 +376,35 @@ implements every pure virtual Track operation as unsupported/not-supported, and
 records any call so tests prove the deferred surface was never exercised; it
 sees only the vendored pinned Boost include root.
 
+Task 029B2 completes the `@RequiredIfTrack` core by adding exactly the
+`IRSTTrackReport` metadata callback on top of that foundation, without
+redesigning Track ownership. `TrackState` gains only a shared `MetadataState`
+and a one-shot `metadata_attempted` flag; it still has no request accounting
+because no Track send exists. The metadata machinery reuses the proven
+Instrumentation shape: a bounded DROP-INCOMING FIFO of owned events, saturating
+counters, an Active/Inactive/Stopped/Failed lifecycle, and an explicit in-flight
+callback count whose drain -- taken only after provider channel destruction --
+is the quiescence proof. `AMS.MEL.IR.Track` grows safe `IRST_Track_State`,
+`IRST_Track_Mode`, a Track-owned `North_East_Down` that adds no `AMS.MEL.IR.Image`
+dependency, and the complete `IRST_Track_Report`; the new
+`AMS.MEL.IR.Track.Metadata` child polls that queue and copies every field into
+Ada-owned storage before closing the native event owner. Because upstream
+declares no unregister, registration is one-shot and the callback state belongs
+to the Track channel rather than to the public metadata owner, so public Close
+is nonblocking and a retained callback invoked afterwards enters and returns
+safely while queueing nothing. The mock provider now implements
+`registerMetadataCallback(IRSTTrackReport)` positively and emits reports
+synchronously from inside registration, which is the hardest ordering the facade
+must survive; all other Track callbacks remain `Return::NotSupported` and both
+Track sends remain Unsupported, and legitimate report registration is no longer
+counted as a deferred operation. ABI 0.1 grows from 76 to 82 exports and native
+CTest from 11 to 12 targets. Raw Rust and private Python track all 82 exports;
+no safe Rust or public Python Track API is added. `TrackDataUpdate`,
+`SystemTrackDataResponse`, `CandidateObjectMessage`,
+`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` remain
+unimplemented, and no real Squall Track validation was added: the pinned-Squall
+negative Track probe is deferred to task 029B3.
+
 For each added operation: sketch Ada usage, define C ownership, implement the
 adapter, test from a C-compiled client, add Ada import/wrapper/tests, update the
 coverage matrix. Test failures must not be hidden by reducing assertions.

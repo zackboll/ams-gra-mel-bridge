@@ -30,16 +30,16 @@
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | IR Instrumentation conditional surface | Complete in native C and safe Ada | send(InstrumentationLevelCmd) and InstrumentationReport callback plus Enable and ChannelCapability; positive behavior mock-validated; pinned Squall explicitly unsupported |
 | Instrumentation inherited generic Channel services | Not implemented | KeepAlive/CommsTest/buffers intentionally not cloned per family; generalize later |
-| Track channel foundation | Complete in native C and safe Ada | Open/Enable/ChannelCapability/Close only; lifecycle, rollback, detach retry, and emergency retention mock-validated; no real Squall Track validation yet |
-| Track @RequiredIfTrack report callback | Not implemented | `IRSTTrackReport` registration and metadata queue deferred |
+| Track channel foundation | Complete in native C and safe Ada | Open/Enable/ChannelCapability/Close; lifecycle, rollback, detach retry, and emergency retention mock-validated; no real Squall Track validation yet |
+| Track @RequiredIfTrack core | Channel foundation complete; `IRSTTrackReport` callback complete | Native C + safe Ada; positive behavior mock-validated; real pinned-Squall validation deferred to 029B3 |
 | TrackDataUpdate | Not implemented | `@RequiredIfTrackUpdate` send deferred |
 | Other Track optional/conditional surfaces | Not implemented | `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` deferred |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 76 C functions; raw Instrumentation and Track-foundation declarations/constants synchronized; no safe Instrumentation or Track API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 82 C functions; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts; no safe Instrumentation or Track API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 76-function private ctypes binding; no public Image metadata/Navigation/Instrumentation/Track methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 82-function private ctypes binding; no public Image metadata/Navigation/Instrumentation/Track methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
@@ -57,7 +57,7 @@
 | Image receive | Partial: host-memory Mono8 |
 | Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
 | Scheduling | Not implemented |
-| Track | Channel foundation only: `Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`. `IRSTTrackReport`, `TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not implemented |
+| Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` polling of the `IRSTTrackReport` callback. `TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not implemented |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited generic Channel services not implemented |
 | StackedImage | Not implemented |

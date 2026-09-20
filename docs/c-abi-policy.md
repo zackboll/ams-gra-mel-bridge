@@ -455,6 +455,75 @@ channel is destroyed, the caller's owner is cleared, and
 `AMS_MEL_PROVIDER_FAILED`, leaves the caller's Track owner non-null, resets
 `cleanup_started`, and retains the complete graph so a later Close retries.
 
-The IRSTTrackReport callback, `TrackDataUpdate`, `SystemTrackDataResponse`,
-`CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
-`RequestSystemTrackData` are not implemented in this ABI.
+`TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`,
+`CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not
+implemented in this ABI.
+
+## Task 029B2 Track IRSTTrackReport metadata contract
+
+Task 029B2 adds exactly six exports for the `@RequiredIfTrack`
+`TrackChannel::registerMetadataCallback(IRSTTrackReport)` surface --
+`ams_mel_ir_track_metadata_open`, `_receive`, `_get_counters`, `_close`,
+`_event_view`, and `_event_close` -- taking ABI 0.1 from 76 to 82 exports. Two
+new opaque owners, `ams_mel_ir_track_metadata` and
+`ams_mel_ir_track_metadata_event`, join `ams_mel_ir_track`. The Track channel
+foundation is extended, not redesigned: `TrackState` gains only a shared
+metadata state pointer and a one-shot `metadata_attempted` flag, and still
+carries no request accounting because no Track send exists.
+
+`ams_mel_ir_track_report_v1` is the complete `IRSTTrackReport`. Every upstream
+getter appears exactly once, both NED vectors reuse the one canonical
+`ams_mel_north_east_down_v1`, `system_time_ns` and `age_ns` preserve signed
+`std::chrono::nanoseconds` counts, and no floating-point value is clamped,
+normalized, or narrowed. `ams_mel_ir_track_state_t` and
+`ams_mel_ir_track_mode_t` expose exactly the upstream `IrstTrackState`
+(Idle/Detected/Coast/Dropped) and `IrstTrackMode` (Idle/Scan/Stare) values; no
+MaxExclusive value is invented, so anything above Dropped or Stare is malformed.
+`ams_mel_ir_track_metadata_event_v1` carries a kind discriminator so future
+Track callback families can be added without breaking the event format;
+`AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT` is the only kind defined, and a
+consumer must fail closed on any other.
+
+Registration is one-shot because upstream declares no unregister operation. The
+first `ams_mel_ir_track_metadata_open` marks the attempt under the Track mutex,
+publishes the callback state into `TrackState`, copies the shared `TrackChannel`
+locally, releases the Track mutex, and only then calls the provider; a provider
+that invokes the callback synchronously from inside `registerMetadataCallback`
+therefore cannot deadlock and cannot lose that first report. A non-Success
+registration returns `AMS_MEL_PROVIDER_FAILED` and a throwing registration
+returns `AMS_MEL_PROVIDER_EXCEPTION`; in both cases no owner escapes while the
+callback-accessible state stays retained by the Track channel. Every later
+`ams_mel_ir_track_metadata_open` returns `AMS_MEL_INVALID_ARGUMENT`.
+
+The provider callback increments an explicit in-flight count before touching
+callback state and decrements it on return, lets no exception cross the provider
+boundary, and never calls Ada. It always increments `events_received`; a null
+`IRSTTrackReport` pointer and an out-of-range state or mode each increment
+`malformed_or_unsupported` and queue nothing without poisoning the subscription.
+A full queue increments `events_dropped_queue_full` and drops the INCOMING
+report, so the earliest reports survive in arrival order. Counters saturate. The
+`AMS_MEL_TEST_TRACK_CALLBACK_FAILURE=allocation` failpoint proves an adapter
+allocation failure moves the metadata to Failed, wakes receivers, and surfaces
+as `AMS_MEL_PROVIDER_FAILED` from Receive.
+
+`ams_mel_ir_track_metadata_close` is idempotent and nonblocking: it marks public
+consumption inactive, prevents future public enqueueing, wakes receivers, and
+deletes the wrapper. It does not unregister the provider callback, which may
+still be invoked safely afterwards and simply queues nothing.
+
+The public Track metadata wrapper owns only its `MetadataState`; it holds no
+Track, session, or provider-library ownership. After a successful Track Close
+and provider-channel destruction, an existing metadata wrapper may drain
+already-owned queued events and read counters without retaining or invoking
+provider code.
+
+Track cleanup captures the metadata state, marks it Inactive, and notifies
+receivers before any provider teardown, then preserves the foundation ordering
+of conditional disable followed by detach. A failed detach leaves the caller's
+Track owner non-null, resets `cleanup_started`, keeps the complete
+callback/provider graph alive, marks the metadata Failed, and permits a Close
+retry. After a successful detach the Track state releases the channel and the
+final local provider channel owner is destroyed; that destruction is the
+callback-quiescence boundary, and only afterwards does the adapter wait for the
+in-flight callback count to reach zero and move the metadata to Stopped unless
+it was already Failed.

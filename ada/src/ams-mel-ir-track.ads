@@ -2,16 +2,17 @@ private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
 with AMS.MEL.IR.Channel;
+with Interfaces;
 
 --  Conditionally required IR MEL Track channel family (@RequiredIfTrack).
---  This package implements only the Track channel ownership/lifecycle
---  foundation: Open, Enable, Capabilities, and Close.
+--  This package implements the Track channel ownership/lifecycle foundation
+--  (Open, Enable, Capabilities, Close) and the safe value types for the
+--  @RequiredIfTrack IRSTTrackReport callback. The bounded owned polling API
+--  for that callback lives in the child package AMS.MEL.IR.Track.Metadata.
 --
---  Deliberately absent in this release, and reserved for the Track report
---  slice: the IRSTTrackReport metadata callback, TrackDataUpdate,
+--  Deliberately absent in this release: TrackDataUpdate,
 --  SystemTrackDataResponse, CandidateObjectMessage,
---  CandidateObjectPreProcMessage, and RequestSystemTrackData. No Track
---  metadata package, Track enumerations, or NED type are declared here.
+--  CandidateObjectPreProcMessage, and RequestSystemTrackData.
 --
 --  Facade lifecycle policy: Open attaches the upstream channel. Capabilities
 --  is valid while attached or enabled. Enable explicitly calls upstream
@@ -31,6 +32,49 @@ package AMS.MEL.IR.Track is
    procedure Enable (Channel : in out Track_Channel);
    function Capabilities (Channel : Track_Channel) return IR.Channel.Channel_Capability;
    procedure Close (Channel : in out Track_Channel);
+
+   --  Upstream IrstTrackState. The Idle literal is prefixed because
+   --  IrstTrackMode declares an Idle of its own in the same scope.
+   type IRST_Track_State is (State_Idle, Detected, Coast, Dropped);
+   for IRST_Track_State use (State_Idle => 0, Detected => 1, Coast => 2, Dropped => 3);
+
+   --  Upstream IrstTrackMode.
+   type IRST_Track_Mode is (Mode_Idle, Scan, Stare);
+   for IRST_Track_Mode use (Mode_Idle => 0, Scan => 1, Stare => 2);
+
+   --  Owned Track-facing NED value. Deliberately independent of
+   --  AMS.MEL.IR.Image so this package adds no Image dependency.
+   type North_East_Down is record
+      North : Long_Float;
+      East  : Long_Float;
+      Down  : Long_Float;
+   end record;
+
+   --  Complete IRSTTrackReport. Every upstream getter is represented exactly
+   --  once and no floating-point value is clamped or normalized.
+   type IRST_Track_Report is record
+      System_Time_NS : Long_Long_Integer;
+      Activity_ID    : Interfaces.Unsigned_32;
+
+      Measured_NED       : North_East_Down;
+      Measured_Intensity : Long_Float;
+      Measured_SNR       : Long_Float;
+
+      Filtered_NED       : North_East_Down;
+      Filtered_Intensity : Long_Float;
+      Filtered_SNR       : Long_Float;
+
+      Range_M            : Long_Float;
+      Range_Error_M      : Long_Float;
+      Spatial_Extent_Rad : Long_Float;
+      Track_Quality      : Long_Float;
+      Clutter            : Long_Float;
+
+      Age_NS : Long_Long_Integer;
+
+      State : IRST_Track_State;
+      Mode  : IRST_Track_Mode;
+   end record;
 
 private
    package US renames Ada.Strings.Unbounded;

@@ -2,14 +2,20 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 
+#include <irmel/library/track/IRSTTrackReport.h>
 #include <irmel/library/track/TrackChannel.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -72,17 +78,146 @@ mel::UCI_ID convert_id(const ams_mel_uci_id_v1& value)
     return {uuid, copy_view(value.descriptive_label)};
 }
 
+void increment(std::uint64_t& value) noexcept { if (value != UINT64_MAX) ++value; }
+
+/* Complete IRSTTrackReport copy. Every upstream getter is read exactly once and
+ * every floating-point value is copied verbatim: no clamping, no normalization,
+ * and no narrowing. Upstream IrstTrackState and IrstTrackMode declare no
+ * MaxExclusive value, so anything above Dropped or Stare is malformed. */
+bool copy_track_report(const irmel::IRSTTrackReport& source,
+                       ams_mel_ir_track_report_v1& destination) noexcept
+{
+    const auto state = static_cast<std::uint32_t>(source.getState());
+    const auto mode = static_cast<std::uint32_t>(source.getMode());
+    if (state > AMS_MEL_IR_TRACK_STATE_DROPPED) return false;
+    if (mode > AMS_MEL_IR_TRACK_MODE_STARE) return false;
+
+    destination.system_time_ns = source.getSystemTime().count();
+    destination.activity_id = source.getActivityId();
+
+    const auto& measured = source.getMeasuredNed();
+    destination.measured_ned.north = measured.getNorth();
+    destination.measured_ned.east = measured.getEast();
+    destination.measured_ned.down = measured.getDown();
+    destination.measured_intensity = source.getMeasuredIntensity();
+    destination.measured_snr = source.getMeasuredSnr();
+
+    const auto& filtered = source.getFilteredNed();
+    destination.filtered_ned.north = filtered.getNorth();
+    destination.filtered_ned.east = filtered.getEast();
+    destination.filtered_ned.down = filtered.getDown();
+    destination.filtered_intensity = source.getFilteredIntensity();
+    destination.filtered_snr = source.getFilteredSnr();
+
+    destination.range_m = source.getRange();
+    destination.range_error_m = source.getRangeError();
+    destination.spatial_extent_rad = source.getSpatialExtent();
+    destination.track_quality = source.getTrackQuality();
+    destination.clutter = source.getClutter();
+
+    destination.age_ns = source.getAge().count();
+
+    destination.state = state;
+    destination.mode = mode;
+    return true;
+}
+
+struct EventData { ams_mel_ir_track_metadata_event_v1 view{}; };
+
+enum class MetadataLifecycle { Active, Inactive, Stopped, Failed };
+
+/* Follows the proven Instrumentation metadata shape: a bounded DROP-INCOMING
+ * FIFO of owned events, saturating counters, and an explicit in-flight callback
+ * count whose drain is the quiescence proof. */
+struct MetadataState {
+    std::mutex mutex;
+    std::condition_variable ready, callbacks_done;
+    std::deque<std::unique_ptr<EventData>> queue;
+    std::size_t capacity{};
+    ams_mel_ir_metadata_counters_v1 counters{};
+    MetadataLifecycle lifecycle{MetadataLifecycle::Active};
+    std::atomic<std::uint64_t> callbacks_in_flight{};
+
+    void fail() noexcept
+    {
+        try {
+            std::lock_guard lock{mutex};
+            lifecycle = MetadataLifecycle::Failed;
+            ready.notify_all();
+        } catch (...) {
+            /* No exception may cross the provider callback boundary. */
+        }
+    }
+};
+
+/* Every provider callback increments this count before touching callback state
+ * and decrements it on return, including on an exceptional path. */
+struct CallbackGuard {
+    std::shared_ptr<MetadataState> state;
+    explicit CallbackGuard(std::shared_ptr<MetadataState> value) noexcept
+        : state(std::move(value))
+    { state->callbacks_in_flight.fetch_add(1, std::memory_order_acq_rel); }
+    ~CallbackGuard() noexcept
+    {
+        if (state->callbacks_in_flight.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            state->callbacks_done.notify_all();
+    }
+};
+
+/* Provider callback boundary for the @RequiredIfTrack IRSTTrackReport. It never
+ * calls into Ada, never lets an exception escape into provider code, and always
+ * accounts for the event. A null payload is malformed. The queue drops the
+ * INCOMING report when full so the earliest reports survive. */
+void metadata_callback(const std::shared_ptr<MetadataState>& state,
+                       const irmel::IRSTTrackReport *value) noexcept
+{
+    try {
+        CallbackGuard guard{state};
+        {
+            std::lock_guard lock{state->mutex};
+            increment(state->counters.events_received);
+            if (state->lifecycle != MetadataLifecycle::Active) return;
+        }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *failure = std::getenv("AMS_MEL_TEST_TRACK_CALLBACK_FAILURE");
+            failure && std::strcmp(failure, "allocation") == 0)
+            throw std::bad_alloc{};
+#endif
+        std::unique_ptr<EventData> event;
+        if (value) {
+            auto owned = std::make_unique<EventData>();
+            owned->view.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
+            if (copy_track_report(*value, owned->view.track_report))
+                event = std::move(owned);
+        }
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle != MetadataLifecycle::Active) return;
+        if (!event) { increment(state->counters.malformed_or_unsupported); return; }
+        if (state->queue.size() >= state->capacity) {
+            increment(state->counters.events_dropped_queue_full);
+            return;
+        }
+        state->queue.push_back(std::move(event));
+        state->ready.notify_one();
+    } catch (...) { state->fail(); }
+}
+
 enum class Lifecycle { Attached, Enabled, Failed, Closed };
 
-/* Track channel ownership foundation. No metadata state and no request count
- * exist in this release; both belong to the deferred Track report slice. */
+/* Track channel ownership foundation, extended only as far as the
+ * @RequiredIfTrack IRSTTrackReport callback requires. There is still no request
+ * count: no Track send is implemented. */
 struct TrackState {
     std::mutex mutex;
     std::shared_ptr<SessionState> session;
     std::shared_ptr<irmel::Channel> channel;
     std::shared_ptr<irmel::TrackChannel> track;
+    /* Callback-accessible state belongs to the channel, not to the public
+     * metadata wrapper: upstream declares no unregister operation. */
+    std::shared_ptr<MetadataState> metadata;
     Lifecycle lifecycle{Lifecycle::Attached};
     bool enable_attempted{};
+    bool metadata_attempted{};
     bool cleanup_started{};
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
@@ -116,13 +251,23 @@ bool has_track(const irmel::ChannelCapability& capability)
 bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;
+    std::shared_ptr<MetadataState> metadata;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
         if (state->cleanup_started) return !state->channel;
         state->cleanup_started = true;
         channel = state->channel;
+        metadata = state->metadata;
         disable = state->enable_attempted;
+    }
+    /* Public consumption stops before provider teardown begins, and any waiting
+     * receiver is woken immediately. */
+    if (metadata) {
+        std::lock_guard lock{metadata->mutex};
+        if (metadata->lifecycle == MetadataLifecycle::Active)
+            metadata->lifecycle = MetadataLifecycle::Inactive;
+        metadata->ready.notify_all();
     }
     bool ok = true;
     if (disable && channel) {
@@ -139,6 +284,14 @@ bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
         } catch (...) { detached = false; }
     }
     if (!detached) {
+        /* The complete callback/provider graph stays alive so a later Close can
+         * retry; the metadata is failed rather than stopped because quiescence
+         * was never established. */
+        if (metadata) {
+            std::lock_guard lock{metadata->mutex};
+            metadata->lifecycle = MetadataLifecycle::Failed;
+            metadata->ready.notify_all();
+        }
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -154,13 +307,33 @@ bool cleanup(const std::shared_ptr<TrackState>& state, bool retain_orphan)
         state->lifecycle = Lifecycle::Closed;
     }
     /* Destroying the provider channel while this state still holds the session
-     * graph keeps provider code loaded until the whole graph is released. */
+     * graph keeps provider code loaded until the whole graph is released. This
+     * destruction is the provider callback-quiescence boundary. */
     channel.reset();
+    /* Only after provider channel destruction is waiting for the in-flight
+     * callback count to drain meaningful. */
+    if (metadata) {
+        std::unique_lock lock{metadata->mutex};
+        metadata->callbacks_done.wait(lock, [&] {
+            return metadata->callbacks_in_flight.load(std::memory_order_acquire) == 0U; });
+        if (metadata->lifecycle != MetadataLifecycle::Failed)
+            metadata->lifecycle = MetadataLifecycle::Stopped;
+        metadata->ready.notify_all();
+    }
     return ok;
 }
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
+/* Public consumption wrapper only. It owns the adapter-owned MetadataState and
+ * nothing else: no Track, session, or provider-library ownership. Deleting it
+ * never unregisters the provider callback and never destroys the
+ * callback-accessible state, and keeping it open never keeps provider code
+ * loaded. */
+struct ams_mel_ir_track_metadata {
+    std::shared_ptr<MetadataState> state;
+};
+struct ams_mel_ir_track_metadata_event { std::unique_ptr<EventData> data; };
 
 extern "C" ams_mel_status_t ams_mel_ir_track_open(
     const ams_mel_session *session, const ams_mel_ir_track_config_v1 *config,
@@ -309,6 +482,173 @@ extern "C" ams_mel_status_t ams_mel_ir_track_get_capabilities(
     }
 }
 
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
+    ams_mel_ir_track *track, std::size_t queue_capacity,
+    ams_mel_ir_track_metadata **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!track || !track->state || !queue_capacity || !output || *output ||
+        (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<MetadataState> state;
+    std::shared_ptr<irmel::TrackChannel> channel;
+    try {
+        /* Publish and retain the callback state first, then release the
+         * lifecycle lock, then register. The provider may invoke the
+         * IRSTTrackReport callback synchronously from inside
+         * registerMetadataCallback, so TrackState::mutex is never held across
+         * the registration call. */
+        {
+            std::lock_guard lock{track->state->mutex};
+            /* Registration is one-shot: upstream has no unregister. */
+            if (track->state->metadata_attempted ||
+                (track->state->lifecycle != Lifecycle::Attached &&
+                 track->state->lifecycle != Lifecycle::Enabled))
+                return AMS_MEL_INVALID_ARGUMENT;
+            track->state->metadata_attempted = true;
+            state = std::make_shared<MetadataState>();
+            state->capacity = queue_capacity;
+            track->state->metadata = state;
+            channel = track->state->track;
+        }
+        auto owner = std::make_unique<ams_mel_ir_track_metadata>();
+        /* Only MetadataState is owned here. The provider graph stays owned by
+         * TrackState and by the retained callback closure. */
+        owner->state = state;
+        const auto result = channel->registerMetadataCallback(
+            std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>{
+                [state](irmel::Channel&,
+                        const irmel::IRSTTrackReport *value) noexcept {
+                    metadata_callback(state, value);
+                }});
+        if (result != irmel::Return::Success) {
+            /* No owner escapes, but the callback state stays retained by the
+             * Track channel because registration may have partially taken. */
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            state->ready.notify_all();
+            diagnostic("IRSTTrackReport callback registration failed",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        if (state) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Failed;
+            state->ready.notify_all();
+        }
+        diagnostic("Track metadata allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        if (state) {
+            std::lock_guard lock{state->mutex};
+            state->lifecycle = MetadataLifecycle::Inactive;
+            state->ready.notify_all();
+        }
+        diagnostic("provider exception during Track metadata registration",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_receive(
+    ams_mel_ir_track_metadata *metadata, std::uint32_t timeout_ms,
+    ams_mel_ir_track_metadata_event **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!metadata || !metadata->state || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::unique_lock lock{metadata->state->mutex};
+        if (metadata->state->queue.empty() &&
+            metadata->state->lifecycle == MetadataLifecycle::Active && timeout_ms)
+            metadata->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                [&] { return !metadata->state->queue.empty() ||
+                             metadata->state->lifecycle != MetadataLifecycle::Active; });
+        /* A queued event is always delivered first, whatever the lifecycle. */
+        if (!metadata->state->queue.empty()) {
+            auto owner = std::make_unique<ams_mel_ir_track_metadata_event>();
+            owner->data = std::move(metadata->state->queue.front());
+            metadata->state->queue.pop_front();
+            *output = owner.release();
+            return AMS_MEL_OK;
+        }
+        if (metadata->state->lifecycle == MetadataLifecycle::Failed)
+            return AMS_MEL_PROVIDER_FAILED;
+        if (metadata->state->lifecycle != MetadataLifecycle::Active)
+            return AMS_MEL_STREAM_STOPPED;
+        return AMS_MEL_TIMEOUT;
+    } catch (...) {
+        diagnostic("Track metadata receive failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_get_counters(
+    const ams_mel_ir_track_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!metadata || !metadata->state || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        std::lock_guard lock{metadata->state->mutex};
+        *output = metadata->state->counters;
+        return AMS_MEL_OK;
+    } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_close(
+    ams_mel_ir_track_metadata **metadata, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!metadata || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        auto *owner = std::exchange(*metadata, nullptr);
+        if (owner) {
+            {
+                /* Deactivates public consumption only. The retained provider
+                 * callback keeps using channel-owned state until provider
+                 * channel destruction; this call never blocks on it. */
+                std::lock_guard lock{owner->state->mutex};
+                if (owner->state->lifecycle == MetadataLifecycle::Active)
+                    owner->state->lifecycle = MetadataLifecycle::Inactive;
+                owner->state->ready.notify_all();
+            }
+            delete owner;
+        }
+        return AMS_MEL_OK;
+    } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v1 **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!event || !event->data || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    *output = &event->data->view;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_close(
+    ams_mel_ir_track_metadata_event **event, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!event || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try { delete std::exchange(*event, nullptr); return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
+
 extern "C" ams_mel_status_t ams_mel_ir_track_close(
     ams_mel_ir_track **track, char *out, std::size_t capacity,
     std::size_t *required) noexcept
@@ -319,9 +659,19 @@ extern "C" ams_mel_status_t ams_mel_ir_track_close(
     if (!owner) return AMS_MEL_OK;
     try {
         auto state = owner->state;
+        std::shared_ptr<MetadataState> metadata;
         {
             std::lock_guard lock{state->mutex};
             state->lifecycle = Lifecycle::Closed;
+            metadata = state->metadata;
+        }
+        /* Deactivate public metadata consumption and wake receivers before any
+         * provider teardown begins. */
+        if (metadata) {
+            std::lock_guard lock{metadata->mutex};
+            if (metadata->lifecycle == MetadataLifecycle::Active)
+                metadata->lifecycle = MetadataLifecycle::Inactive;
+            metadata->ready.notify_all();
         }
         const bool ok = cleanup(state, false);
         if (state->channel) {

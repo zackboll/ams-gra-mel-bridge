@@ -1499,10 +1499,35 @@ private:
         report_callback_;
 };
 
-/* Task 029B1 implements only Track channel ownership/lifecycle. Every deferred
- * Track operation is instrumented and reports unsupported, so the foundation
- * tests can prove none of them were accidentally exercised. */
+/* Task 029B2 positively implements exactly the @RequiredIfTrack IRSTTrackReport
+ * registration. Every other Track operation stays deferred, is instrumented,
+ * and reports unsupported, so the tests can prove none of them were exercised.
+ * Legitimate IRSTTrackReport registration is NOT counted here. */
 std::atomic<std::uint64_t> track_deferred_calls{};
+
+/* Distinctive rich IRSTTrackReport. Every field carries a value that cannot be
+ * confused with a default, an adjacent field, or a sign/scale mistake. */
+irmel::IRSTTrackReport rich_track_report()
+{
+    irmel::IRSTTrackReport report;
+    report.setSystemTime(std::chrono::nanoseconds{-1234567890123LL});
+    report.setActivityId(0xF1234567U);
+    report.setMeasuredNed(mel::NorthEastDown{-1.25, 2.5, -3.75});
+    report.setMeasuredIntensity(4.125);
+    report.setMeasuredSnr(-5.25);
+    report.setFilteredNed(mel::NorthEastDown{6.5, -7.75, 8.875});
+    report.setFilteredIntensity(-9.125);
+    report.setFilteredSnr(10.25);
+    report.setRange(123456.75);
+    report.setRangeError(654.5);
+    report.setSpatialExtent(0.0125);
+    report.setTrackQuality(0.875);
+    report.setClutter(-0.5);
+    report.setAge(std::chrono::nanoseconds{9876543210LL});
+    report.setState(irmel::IrstTrackState::Coast);
+    report.setMode(irmel::IrstTrackMode::Stare);
+    return report;
+}
 
 class MockTrackChannel final : public irmel::TrackChannel {
 public:
@@ -1535,6 +1560,16 @@ public:
     {
         enabled_ = false;
         record("track_disabled");
+        /* Deterministic late-callback lifetime coverage: the retained
+         * IRSTTrackReport callback is invoked during teardown, after the public
+         * metadata owner was closed. The ordered log proves the callback
+         * returned before this channel was destroyed. */
+        if (scenario_ == "track-report-late" && report_callback_) {
+            const auto report = rich_track_report();
+            record("track_late_callback_entered");
+            report_callback_(*this, &report);
+            record("track_late_callback_returned");
+        }
         return scenario_ == "track-disable-fail" ? Return::Fail : Return::Success;
     }
     irmel::ChannelCapability getCapabilities() const override
@@ -1563,9 +1598,22 @@ public:
         std::function<void(irmel::Channel&,
                            const irmel::CandidateObjectMessage *const)>) override
     { return deferred_registration("track_candidate_object_registered"); }
+    /* The one positively implemented @RequiredIfTrack Track callback. The
+     * report is emitted synchronously from inside registration, which is the
+     * hardest ordering the facade must survive. */
     Return registerMetadataCallback(
-        std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>) override
-    { return deferred_registration("track_report_registered"); }
+        std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)> callback)
+        override
+    {
+        record("track_report_registered");
+        if (scenario_ == "track-report-register-throw")
+            throw std::runtime_error("mock Track report registration exception");
+        if (scenario_ == "track-report-register-fail") return Return::Fail;
+        if (!callback) return Return::Fail;
+        report_callback_ = std::move(callback);
+        emit_synchronous_reports();
+        return Return::Success;
+    }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
                            const irmel::RequestSystemTrackData *const)>) override
@@ -1576,6 +1624,49 @@ public:
     { return deferred_registration("track_candidate_object_preproc_registered"); }
 
 private:
+    /* Deterministic scenario-selected synchronous emission from inside
+     * registerMetadataCallback. No thread and no sleep is involved. */
+    void emit_synchronous_reports()
+    {
+        if (scenario_ == "track-report-null") {
+            record("track_report_emitted_null");
+            report_callback_(*this, nullptr);
+            return;
+        }
+        if (scenario_ == "track-report-bad-state") {
+            auto report = rich_track_report();
+            /* One past Dropped: upstream declares no MaxExclusive value. */
+            report.setState(static_cast<irmel::IrstTrackState>(4U));
+            record("track_report_emitted_bad_state");
+            report_callback_(*this, &report);
+            return;
+        }
+        if (scenario_ == "track-report-bad-mode") {
+            auto report = rich_track_report();
+            /* One past Stare. */
+            report.setMode(static_cast<irmel::IrstTrackMode>(3U));
+            record("track_report_emitted_bad_mode");
+            report_callback_(*this, &report);
+            return;
+        }
+        if (scenario_ == "track-report-overflow") {
+            /* Six reports into a capacity-2 queue proves DROP-INCOMING and
+             * FIFO retention of the first two. activity_id counts the arrival
+             * order so the retained pair is identifiable. */
+            for (std::uint32_t index = 0; index < 6U; ++index) {
+                auto report = rich_track_report();
+                report.setActivityId(index);
+                report_callback_(*this, &report);
+            }
+            record("track_report_emitted_six");
+            return;
+        }
+        if (scenario_ == "track-report-none") return;
+        const auto report = rich_track_report();
+        record("track_report_emitted_rich");
+        report_callback_(*this, &report);
+    }
+
     static mel::RequestFor<irmel::CommandStatus> deferred_send(const char *event)
     {
         track_deferred_calls.fetch_add(1U);
@@ -1584,7 +1675,7 @@ private:
         auto future = promise.get_future();
         promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
             mel::Error{mel::ErrorCode::Unsupported,
-                       "Track send is not implemented in task 029B1"}});
+                       "Track send is not implemented in task 029B2"}});
         return future;
     }
     static Return deferred_registration(const char *event)
@@ -1595,6 +1686,8 @@ private:
     }
     std::string scenario_;
     bool enabled_{};
+    std::function<void(irmel::Channel&, const irmel::IRSTTrackReport *const)>
+        report_callback_;
 };
 
 class MockControl final : public irmel::Control {

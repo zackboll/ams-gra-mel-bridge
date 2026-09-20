@@ -44,8 +44,20 @@ themselves.
 > pinned Squall does not support this channel and is validated only for clean
 > unsupported-provider failure. The Instrumentation-specific copies of the
 > inherited generic Channel services (KeepAlive, CommsTest, buffers) are
-> deliberately not cloned. The raw Rust sys crate and private
-> Python ctypes layer track the complete current 76-function C ABI. Safe Rust and
+> deliberately not cloned.
+> C and Ada further implement the conditionally required Track channel's
+> `@RequiredIfTrack` core (`AMS.MEL.IR.Track` and its `Metadata` child):
+> `Open`, `Enable`, `Capabilities`, `Close`, and bounded DROP-INCOMING polling
+> of the `IRSTTrackReport` callback returning a complete owned
+> `IRST_Track_Report`. Upstream `IrstTrackState` is exactly
+> Idle/Detected/Coast/Dropped and `IrstTrackMode` exactly Idle/Scan/Stare, with
+> no invented MaxExclusive value; registration is one-shot because upstream has
+> no unregister. Positive Track report behavior is mock-validated, including a
+> report emitted synchronously from inside registration; no real Squall Track
+> validation exists yet. `TrackDataUpdate`, `SystemTrackDataResponse`,
+> `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and
+> `RequestSystemTrackData` are not implemented. The raw Rust sys crate and private
+> Python ctypes layer track the complete current 82-function C ABI. Safe Rust and
 > Python remain intentionally constrained to
 > Session, Mono8, Operate/TaskSched, and the empty/no-op BIT profile. Their mode and Return
 > requests include timeout, cached repeated waits, structured
