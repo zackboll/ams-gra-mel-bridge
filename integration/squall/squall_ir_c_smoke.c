@@ -162,6 +162,35 @@ int main(int argc, char **argv)
                "(AMS_MEL_FACTORY_FAILED: %s)\n", diagnostic);
     }
 
+    /* Task 029B3: pinned Squall b1015728f904c799fa0c07489fce48e78f67845f also
+       does NOT support the conditionally required Track channel through this
+       bridge's Control::attachChannel path; the default branch returns
+       nullptr, and its exported createTrackChannel returns nullptr too. Prove
+       the binding fails cleanly and leaves the Session usable. This is NOT
+       positive Track execution or IRSTTrackReport evidence. */
+    {
+        ams_mel_ir_track_config_v1 config;
+        ams_mel_ir_track *rejected = NULL;
+        memset(&config, 0, sizeof config);
+        config.channel_type = AMS_MEL_IR_CHANNEL_IRST_TRACK;
+        fill_ids(&config.channel_id, &config.platform_id, "Task 029B3 IRSTTrack");
+        fill_location(&config.sensor_location);
+        diagnostic[0] = '\0';
+        status = ams_mel_ir_track_open(session, &config, &rejected,
+                                       diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_FACTORY_FAILED || rejected != NULL ||
+            strcmp(diagnostic, "attachChannel returned null") != 0) {
+            fprintf(stderr, "FAIL: expected Track FACTORY_FAILED with "
+                            "\"attachChannel returned null\", got %d: %s\n",
+                    (int)status, diagnostic);
+            if (rejected != NULL)
+                (void)ams_mel_ir_track_close(&rejected, NULL, 0, NULL);
+            goto cleanup;
+        }
+        printf("Track: pinned Squall unsupported as expected "
+               "(AMS_MEL_FACTORY_FAILED: %s)\n", diagnostic);
+    }
+
     {
         ams_mel_ir_stream_config_v1 config;
         memset(&config, 0, sizeof config);

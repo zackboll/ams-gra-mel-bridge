@@ -239,3 +239,42 @@ Pinned Squall validates clean unsupported-provider behavior only.
 
 Pinned Squall does NOT provide positive Instrumentation execution evidence.
 ```
+
+## Track is an expected unsupported-provider probe
+
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` does NOT support the
+conditionally required Track channel through the path this bridge uses. Its
+`SquallControl::attachChannel` handles only `IRSTImage`, `CommandAndControl`,
+and `HealthAndStatus`; `IRSTTrack` falls through to the `default:` branch and
+returns `nullptr`. Its exported `createTrackChannel` is likewise a hard
+`return nullptr;` and is not used as a fallback: the bridge remains
+`Control::attachChannel` based. Squall is not modified to make anything pass.
+
+The C and Ada integration clients therefore probe Track explicitly with
+`AMS_MEL_IR_CHANNEL_IRST_TRACK` and require a clean negative result:
+
+- C: `ams_mel_ir_track_open` returns exactly `AMS_MEL_FACTORY_FAILED`, leaves
+  the out-parameter `NULL`, and reports exactly the diagnostic
+  `attachChannel returned null`.
+- Ada: `AMS.MEL.IR.Track.Open` raises `AMS.MEL.Provider_Error` whose message is
+  exactly `attachChannel returned null`.
+
+The probe runs on the Session that is already open, and neither client closes
+or reopens the Session afterwards. The run then continues and still requires
+Image, Image capability/BadPixelList, NavigationReport, C2, and Health to pass
+on that same Session, proving the failed conditional-channel attempt does not
+poison the provider graph. Because the channel cannot be attached, no client
+attempts `Enable`, `Track.Metadata.Open`, or `IRSTTrackReport` reception against
+real Squall. Rust and Python remain regression-only and do not probe Track.
+
+To be exact about what this evidence is:
+
+```text
+Mock provider validates positive @RequiredIfTrack behavior and complete
+IRSTTrackReport payload fidelity.
+
+Pinned Squall validates clean unsupported-provider behavior only.
+
+Pinned Squall does NOT provide positive Track execution or Track-report
+evidence.
+```

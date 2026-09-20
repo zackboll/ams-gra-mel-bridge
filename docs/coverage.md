@@ -30,8 +30,8 @@
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | IR Instrumentation conditional surface | Complete in native C and safe Ada | send(InstrumentationLevelCmd) and InstrumentationReport callback plus Enable and ChannelCapability; positive behavior mock-validated; pinned Squall explicitly unsupported |
 | Instrumentation inherited generic Channel services | Not implemented | KeepAlive/CommsTest/buffers intentionally not cloned per family; generalize later |
-| Track channel foundation | Complete in native C and safe Ada | Open/Enable/ChannelCapability/Close; lifecycle, rollback, detach retry, and emergency retention mock-validated; no real Squall Track validation yet |
-| Track @RequiredIfTrack core | Channel foundation complete; `IRSTTrackReport` callback complete | Native C + safe Ada; positive behavior mock-validated; real pinned-Squall validation deferred to 029B3 |
+| Track channel foundation | Complete in native C and safe Ada | Open/Enable/ChannelCapability/Close; lifecycle, rollback, detach retry, and emergency retention mock-validated; pinned Squall validated only for clean unsupported-provider Open failure |
+| Track @RequiredIfTrack core | Channel lifecycle complete; `IRSTTrackReport` callback complete | Native C + safe Ada; positive behavior and complete report payload mock-validated; pinned Squall clean unsupported-provider behavior validated (C `AMS_MEL_FACTORY_FAILED`, Ada `Provider_Error`, both `attachChannel returned null`, same Session continues) — no positive Squall Track execution or Track-report evidence |
 | TrackDataUpdate | Not implemented | `@RequiredIfTrackUpdate` send deferred |
 | Other Track optional/conditional surfaces | Not implemented | `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` deferred |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
@@ -57,7 +57,7 @@
 | Image receive | Partial: host-memory Mono8 |
 | Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
 | Scheduling | Not implemented |
-| Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` polling of the `IRSTTrackReport` callback. `TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not implemented |
+| Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` polling of the `IRSTTrackReport` callback. Positive behavior/payload evidence is mock-only; pinned Squall is validated only as a clean unsupported provider (`Provider_Error: attachChannel returned null`). `TrackDataUpdate`, `SystemTrackDataResponse`, `CandidateObjectMessage`, `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` are not implemented |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited generic Channel services not implemented |
 | StackedImage | Not implemented |

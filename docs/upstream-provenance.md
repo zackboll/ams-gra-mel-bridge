@@ -1,3 +1,39 @@
+# Task 029B3 review note
+
+Task 029B3 adds no upstream files and changes no vendored content: the vendor
+delta is zero and `docs/upstream-files.sha256.md` is unchanged. It records the
+authoritative pinned-provider behavior for the conditionally required Track
+channel.
+
+Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f`,
+`interfaces/squall-ir-mel-impl/src/SquallIRLoaders.cc`:
+`SquallControl::attachChannel(const Config&)` switches on
+`config.getChannelType()` and supports exactly:
+
+- `ChannelType::IRSTImage` -> `SquallImageChannel`
+- `ChannelType::CommandAndControl` -> `SquallC2Channel`
+- `ChannelType::HealthAndStatus` -> `SquallHealthStatusChannel`
+
+`ChannelType::IRSTTrack` matches no case and reaches the `default:` branch,
+which returns `nullptr`. Track is therefore an unsupported-provider path, not a
+binding defect.
+
+Pinned Squall `interfaces/squall-ir-mel-impl/src/SquallIRFactory.cc` also
+exports `createTrackChannel(Config&)` as a hard `return nullptr;`. That factory
+is not a positive fallback and the bridge is not rewired to call it: the bridge
+remains `Control::attachChannel` based.
+
+Evidence boundary for Track, stated exactly:
+
+- Mock-positive: the mock provider validates positive `@RequiredIfTrack`
+  behavior and complete `IRSTTrackReport` payload fidelity.
+- Pinned-Squall-negative: pinned Squall validates clean unsupported-provider
+  behavior only — C `AMS_MEL_FACTORY_FAILED` and Ada `Provider_Error`, both
+  with the exact diagnostic `attachChannel returned null`, on a Session that
+  keeps working afterwards.
+- Pinned Squall does NOT provide positive Track execution or Track-report
+  evidence.
+
 # Task 029A review note
 
 Pinned IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`

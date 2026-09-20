@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Validate the IR Track `@RequiredIfTrack` core against pinned real Squall
+  `b1015728f904c799fa0c07489fce48e78f67845f` as an expected unsupported
+  provider. No Track functionality is implemented and no C ABI entry point is
+  added: ABI 0.1 stays at 82 exports, native CTest stays at 12, and the vendor
+  delta is zero. That provider's `SquallControl::attachChannel` supports only
+  `IRSTImage`, `CommandAndControl`, and `HealthAndStatus`; `IRSTTrack` reaches
+  the `default:` branch and returns `nullptr`, and its exported
+  `createTrackChannel` is a hard `return nullptr;` that the bridge deliberately
+  does not call — the bridge remains `Control::attachChannel` based. The C and
+  Ada real-Squall integration clients now probe Track explicitly alongside the
+  retained Instrumentation probe and require an exact clean negative:
+  `AMS_MEL_FACTORY_FAILED` with a `NULL` owner in C and `Provider_Error` in
+  Ada, both carrying exactly `attachChannel returned null`. Neither client
+  reopens the Session; each continues on the same Session and still requires
+  its established positive evidence (C Image/C2/BIT/frames/counters; Ada
+  Image capability and BadPixelList, NavigationReport callback/future/cached
+  wait, C2 and common-channel services, Health/Status, and all metadata
+  counters). Because the channel cannot be attached, `Enable`,
+  `Track.Metadata.Open`, and `IRSTTrackReport` reception are deliberately not
+  attempted against real Squall. Rust and Python remain unchanged
+  regression-only clients with no safe Track API. The evidence boundary is
+  exact: the mock provider validates positive `@RequiredIfTrack` behavior and
+  complete `IRSTTrackReport` payload fidelity, pinned Squall validates clean
+  unsupported-provider behavior only, and pinned Squall does NOT provide
+  positive Track execution or Track-report evidence. `TrackDataUpdate`,
+  `SystemTrackDataResponse`, `CandidateObjectMessage`,
+  `CandidateObjectPreProcMessage`, and `RequestSystemTrackData` remain
+  unimplemented.
+
 - Add the conditionally required IR Track `IRSTTrackReport` metadata callback
   (`@RequiredIfTrack`) in native C, safe Ada, raw Rust, and private Python. The
   slice is exactly `TrackChannel::registerMetadataCallback(IRSTTrackReport)`
