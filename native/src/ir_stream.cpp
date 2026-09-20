@@ -459,8 +459,28 @@ void image_cleanup_barrier(const char *stage) noexcept
         /* A barrier failure must never change teardown behavior. */
     }
 }
+/* Test-only, strictly nonblocking observation point. Called with
+ * CallbackState::mutex held, so it must never wait: it only records that a
+ * public Stop/Close is about to block because a cleanup is already in
+ * progress. This lets a regression prove real contention instead of assuming
+ * it from elapsed time. */
+void close_cleanup_wait_barrier(bool cleanup_in_progress) noexcept
+{
+    if (!cleanup_in_progress) return;
+    const char *base = std::getenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (!base) return;
+    try {
+        const std::string prefix = std::string{base} + ".close-waiting";
+        if (!std::ifstream{prefix + ".arm"}.good()) return;
+        std::ofstream marker{prefix + ".reached"};
+        marker << "reached\n";
+    } catch (...) {
+        /* An observation failure must never change teardown behavior. */
+    }
+}
 #else
 void image_cleanup_barrier(const char *) noexcept {}
+void close_cleanup_wait_barrier(bool) noexcept {}
 #endif
 } // namespace
 
@@ -1034,6 +1054,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_stop(
             /* channel must be inspected under the teardown lock: the
              * Navigation completion thread may be resetting it concurrently. */
             std::unique_lock lock{stream->state->callback->mutex};
+            close_cleanup_wait_barrier(stream->state->cleanup_in_progress);
             stream->state->cleanup_done.wait(lock,
                 [&stream] { return !stream->state->cleanup_in_progress; });
             if (stream->state->callback->lifecycle == Lifecycle::Stopped) return AMS_MEL_OK;
@@ -1066,41 +1087,74 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
          * completion and its deferred cleanup exactly here, after the logical
          * Stop but before the owner-release decision is committed. */
         image_cleanup_barrier("close-decision");
-        bool release_owner;
-        {
-            /* One synchronized decision. Waiting on cleanup_done means a
-             * cleanup owned by the Navigation completion thread has already
-             * published its outcome before this decision is taken, so Close
-             * can neither inspect channel concurrently nor act on a stale
-             * earlier Stop result. */
-            std::unique_lock lock{state.callback->mutex};
-            state.cleanup_done.wait(lock,
-                [&state] { return !state.cleanup_in_progress; });
-            if (state.requests != 0U) {
-                /* A pending Navigation request keeps the provider channel
-                 * attached by design. Release the public owner so the logical
-                 * close is externally observable; the final request completion
-                 * performs deferred physical teardown and, if that detach
-                 * fails, permanent allocation-free retention. Committing the
-                 * owner release and public_owner_closed inside this same
-                 * critical section is what makes the deferred-cleanup decision
-                 * atomic with respect to that completion. */
-                release_owner = true;
-            } else if (state.channel) {
-                /* Physical teardown has not established detach ownership: a
-                 * synchronous detach failure, or a deferred cleanup that
-                 * failed detach and restored the graph. Retain the public
-                 * owner for a later retry and never report success. */
-                release_owner = false;
-                if (state.cleanup_failed) status = AMS_MEL_PROVIDER_FAILED;
-            } else {
-                /* Cleanup is finished. Adopt its published outcome rather than
-                 * the possibly stale status from the earlier logical Stop. */
-                release_owner = true;
-                if (state.cleanup_complete && !state.cleanup_ok)
-                    status = AMS_MEL_PROVIDER_FAILED;
+        bool release_owner = false;
+        /* The final Navigation completion decrements requests and only then
+         * claims cleanup ownership, so there is a window in which
+         * requests == 0, cleanup_in_progress == false, and channel is still
+         * set while that completion is already committed to cleaning up.
+         * Close must not decide from that transient state: it runs/joins the
+         * cleanup itself and decides from the published result. Cleanup
+         * ownership is single-claim, so whichever thread wins performs the
+         * teardown exactly once and the other adopts its outcome. */
+        /* Bounded purely as a defensive guard: each iteration that runs
+         * cleanup either completes it (channel released) or records a failure,
+         * so at most one retry is ever needed. */
+        for (unsigned attempt = 0; attempt < 4U; ++attempt) {
+            bool run_cleanup = false;
+            {
+                /* Waiting on cleanup_done means a cleanup owned by another
+                 * thread has already published its outcome before this
+                 * decision is taken, so Close can neither inspect channel
+                 * concurrently nor act on a stale earlier Stop result. */
+                std::unique_lock lock{state.callback->mutex};
+                close_cleanup_wait_barrier(state.cleanup_in_progress);
+                state.cleanup_done.wait(lock,
+                    [&state] { return !state.cleanup_in_progress; });
+                if (state.requests != 0U) {
+                    /* A pending Navigation request keeps the provider channel
+                     * attached by design. Release the public owner so the
+                     * logical close is externally observable; the final
+                     * request completion performs deferred physical teardown
+                     * and, if that detach fails, permanent allocation-free
+                     * retention. Committing the owner release and
+                     * public_owner_closed inside this same critical section is
+                     * what makes the deferred-cleanup decision atomic with
+                     * respect to that completion. */
+                    release_owner = true;
+                } else if (state.channel) {
+                    if (state.cleanup_failed) {
+                        /* Detach ownership is not established: a synchronous
+                         * detach failure, or a deferred cleanup that failed
+                         * detach and restored the graph. Retain the public
+                         * owner for a later retry and never report success. */
+                        release_owner = false;
+                        status = AMS_MEL_PROVIDER_FAILED;
+                    } else {
+                        /* No cleanup has failed and none is in progress, yet
+                         * the channel is still attached with no request
+                         * outstanding: physical teardown is owed. Perform it
+                         * (or join the owner that wins the claim) before
+                         * deciding. */
+                        run_cleanup = true;
+                        release_owner = false;
+                    }
+                } else {
+                    /* Cleanup is finished. Adopt its published outcome rather
+                     * than the possibly stale status from the earlier logical
+                     * Stop. */
+                    release_owner = true;
+                    if (state.cleanup_complete && !state.cleanup_ok)
+                        status = AMS_MEL_PROVIDER_FAILED;
+                }
+                if (release_owner) state.public_owner_closed = true;
             }
-            if (release_owner) state.public_owner_closed = true;
+            if (!run_cleanup) break;
+            /* Outside the lock: image_stream_cleanup performs its own claim
+             * and never runs provider code under CallbackState::mutex. */
+            if (image_stream_cleanup(owned->state, false) ==
+                ImageCleanupOutcome::Failed)
+                status = AMS_MEL_PROVIDER_FAILED;
+            /* Re-decide from the now-published cleanup result. */
         }
         if (!release_owner) {
             if (status == AMS_MEL_PROVIDER_FAILED)

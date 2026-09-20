@@ -28,6 +28,18 @@
   commits the public-owner release and `public_owner_closed` in the same
   critical section as the deferred-cleanup decision.
 
+  That synchronization also covers the window between the final request-count
+  decrement and the cleanup ownership claim. `release_navigation_submission`
+  unlocks before `image_stream_cleanup` re-locks and claims ownership, so a
+  racing Close could observe `requests == 0`, `cleanup_in_progress == false`,
+  and a still-attached `channel` while the completion thread was already
+  committed to cleaning up. Deciding from that transient state could return the
+  stale `AMS_MEL_OK` with the public owner still non-null. Close now treats it
+  as cleanup owed: it runs or joins the cleanup outside the lock and re-decides
+  from the published result. Cleanup ownership is single-claim, so teardown
+  still happens exactly once and the losing thread adopts the published
+  outcome. No Close return can satisfy `AMS_MEL_OK` with a retained owner.
+
   A failed deferred detach restores the graph under the lock and retains the
   public owner so a later `Close` retries the detach; a successful retry
   establishes ownership safety and clears the owner but still reports
@@ -36,8 +48,12 @@
   release. Permanent allocation-free retention when no owner is left to retry,
   provider callback quiescence at channel destruction, and the rule that
   provider code is never unloaded while detach ownership is uncertain are all
-  preserved. Two deterministic barrier-driven regressions in
-  `native/tests/test_ir_navigation.c` force both interleavings; the barriers
+  preserved. Three deterministic barrier-driven regressions in
+  `native/tests/test_ir_navigation.c` force the raced detach failure, the
+  in-progress successful cleanup, and the decrement-to-claim window; the
+  success race proves contention through a nonblocking observation handshake
+  rather than a timing sleep, and each regression is mutation-checked. The
+  barriers
   compile only under `AMS_MEL_ENABLE_TEST_FAILPOINTS` and production behavior
   never depends on an environment variable or marker file. No public feature,
   no ABI export, and no ABI version change; the 88-export inventory and all

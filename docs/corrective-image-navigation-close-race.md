@@ -123,13 +123,46 @@ Under that single lock:
   which is what makes the owner release atomic with respect to the
   deferred-cleanup decision. Final request completion performs the physical
   teardown.
-- **`requests == 0` and `channel` still set** — detach ownership is not
-  established (a synchronous detach failure, or a deferred cleanup that failed
-  detach and restored the graph). The public owner is retained for a retry and
-  the status becomes `AMS_MEL_PROVIDER_FAILED`.
+- **`requests == 0`, `channel` set, `cleanup_failed`** — detach ownership is
+  not established (a synchronous detach failure, or a deferred cleanup that
+  failed detach and restored the graph). The public owner is retained for a
+  retry and the status becomes `AMS_MEL_PROVIDER_FAILED`.
+- **`requests == 0`, `channel` set, no failure recorded** — physical teardown
+  is *owed*. See the decrement/claim window below: Close runs or joins the
+  cleanup and then re-decides from the published result. It never decides
+  directly from this transient state.
 - **`requests == 0` and no `channel`** — cleanup finished. Close adopts the
   published `cleanup_ok` outcome rather than the possibly stale Stop status,
   and releases the owner.
+
+### The decrement-to-claim window
+
+Final Navigation completion runs:
+
+    release_navigation_submission(*stream);   // decrements requests, unlocks
+    image_stream_cleanup(stream, true);       // re-locks, claims ownership
+
+Between those two calls the mutex is *not* held, so a racing Close can observe:
+
+    requests            == 0
+    cleanup_in_progress == false
+    channel             != NULL
+
+even though the completion thread is already committed to cleaning up. An
+earlier revision of this correction decided directly from that state and could
+return the stale `AMS_MEL_OK` from its logical Stop while leaving the public
+owner non-null — the very contract violation this document exists to remove.
+
+Close therefore treats "no request, channel still attached, nothing failed" as
+*cleanup owed* rather than as a terminal state. It leaves the lock, calls
+`image_stream_cleanup(state, false)`, and re-decides. Cleanup ownership is
+single-claim, so whichever thread wins performs the teardown exactly once and
+the other blocks on `cleanup_done` and adopts the published outcome. The retry
+is bounded: an iteration that runs cleanup either releases the channel or
+records a failure, so at most one retry is ever needed.
+
+After this fix there is no reachable Close return satisfying
+`status == AMS_MEL_OK && *stream != NULL` across this transition.
 
 `ams_mel_ir_stream_stop` likewise waits on `cleanup_done` and inspects
 `channel` under the lock.
@@ -190,13 +223,34 @@ before library unload.
 
 `test_close_races_successful_deferred_cleanup` parks the deferred cleanup at
 the armed `before-detach` barrier so it provably holds cleanup ownership, then
-runs a public Close on a second thread. It proves Close blocks on that cleanup,
-adopts its successful outcome, returns `AMS_MEL_OK`, clears the owner exactly
-once, and that cleanup occurs exactly once.
+runs a public Close on a second thread. Contention is established by a
+deterministic handshake, not by elapsed time: `close_cleanup_wait_barrier` is a
+strictly nonblocking observation point that records `close-waiting.reached` at
+the moment a public Stop/Close is about to block because `cleanup_in_progress`
+is true. Because it is called with `CallbackState::mutex` held it must never
+wait, and it does not. The test waits for that marker before releasing the
+parked cleanup, which proves Close actually reached the cleanup wait. It then
+proves Close adopts the successful outcome, returns `AMS_MEL_OK`, clears the
+owner exactly once, and that cleanup occurs exactly once.
 
-Reverting only the Close outcome-adoption logic makes
-`test_close_races_failed_deferred_cleanup` fail on the stale-success
-assertion, confirming the regression detects the original defect.
+`test_close_races_decrement_before_cleanup_claim` covers the decrement-to-claim
+window. Close starts while the request is still pending, so its internal Stop
+defers teardown, and parks at `close-decision` before the owner-release
+decision. The final request then completes, decrementing `requests` to zero,
+and parks at the armed `post-decrement` stage before claiming cleanup
+ownership. Close is then released into exactly the transient state
+`requests == 0 && !cleanup_in_progress && channel != NULL`. The test asserts
+the forbidden combination `AMS_MEL_OK` with a retained owner never occurs,
+that cleanup is performed and the owner cleared, that the released completion
+replays the same outcome, that exactly one detach and one channel destruction
+occur, and that destruction precedes library unload.
+
+Both regressions are mutation-checked. Reverting only the Close
+outcome-adoption logic makes `test_close_races_failed_deferred_cleanup` fail on
+the stale-success assertion. Reverting Close to decide directly from the
+transient decrement-window state makes
+`test_close_races_decrement_before_cleanup_claim` fail on
+`!(status == AMS_MEL_OK && stream != NULL)`.
 
 ## Scope
 

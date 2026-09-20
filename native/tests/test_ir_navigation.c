@@ -704,6 +704,11 @@ struct cleanup_barrier {
     char detach_arm[112];
     char detach_reached[112];
     char detach_release[112];
+    char close_waiting_arm[112];
+    char close_waiting_reached[112];
+    char decrement_arm[112];
+    char decrement_reached[112];
+    char decrement_release[112];
 };
 
 static int make_cleanup_barrier(struct cleanup_barrier *barrier)
@@ -727,6 +732,16 @@ static int make_cleanup_barrier(struct cleanup_barrier *barrier)
                    "%s.before-detach.reached", barrier->base) > 0);
     CHECK(snprintf(barrier->detach_release, sizeof barrier->detach_release,
                    "%s.before-detach.release", barrier->base) > 0);
+    CHECK(snprintf(barrier->close_waiting_arm, sizeof barrier->close_waiting_arm,
+                   "%s.close-waiting.arm", barrier->base) > 0);
+    CHECK(snprintf(barrier->close_waiting_reached, sizeof barrier->close_waiting_reached,
+                   "%s.close-waiting.reached", barrier->base) > 0);
+    CHECK(snprintf(barrier->decrement_arm, sizeof barrier->decrement_arm,
+                   "%s.post-decrement.arm", barrier->base) > 0);
+    CHECK(snprintf(barrier->decrement_reached, sizeof barrier->decrement_reached,
+                   "%s.post-decrement.reached", barrier->base) > 0);
+    CHECK(snprintf(barrier->decrement_release, sizeof barrier->decrement_release,
+                   "%s.post-decrement.release", barrier->base) > 0);
     CHECK(setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", barrier->base, 1) == 0);
     return EXIT_SUCCESS;
 }
@@ -741,6 +756,11 @@ static void clear_cleanup_barrier(const struct cleanup_barrier *barrier)
     remove_marker(barrier->detach_arm);
     remove_marker(barrier->detach_reached);
     remove_marker(barrier->detach_release);
+    remove_marker(barrier->close_waiting_arm);
+    remove_marker(barrier->close_waiting_reached);
+    remove_marker(barrier->decrement_arm);
+    remove_marker(barrier->decrement_reached);
+    remove_marker(barrier->decrement_release);
     (void)unsetenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
 }
 
@@ -913,8 +933,10 @@ static int test_close_races_successful_deferred_cleanup(void)
     CHECK(strstr(log, "channel_detached") == NULL);
 
     /* Park the deferred cleanup just before detachChannel, so it provably
-       holds cleanup ownership while Close runs. */
+       holds cleanup ownership while Close runs, and arm the nonblocking
+       observation point that records when Close reaches the cleanup wait. */
     CHECK(create_marker(barrier.detach_arm) == EXIT_SUCCESS);
+    CHECK(create_marker(barrier.close_waiting_arm) == EXIT_SUCCESS);
     CHECK(create_marker(hold.release) == EXIT_SUCCESS);
     CHECK(wait_for_marker(hold.callback_done) == EXIT_SUCCESS);
     CHECK(create_marker(hold.complete) == EXIT_SUCCESS);
@@ -926,12 +948,13 @@ static int test_close_races_successful_deferred_cleanup(void)
     input.stream = &stream;
     input.status = AMS_MEL_INTERNAL_ERROR;
     CHECK(pthread_create(&closer, NULL, race_close_worker, &input) == 0);
-    {
-        /* Close is now contending with cleanup ownership. Release the parked
-           cleanup so it can finish detach and publish its result. */
-        const struct timespec delay = {0, 50000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
+    /* Deterministic contention handshake: the adapter records this marker at
+       the moment Close is about to block because cleanup_in_progress is true.
+       Waiting for it proves Close actually reached the cleanup wait, rather
+       than assuming contention from elapsed time. */
+    CHECK(wait_for_marker(barrier.close_waiting_reached) == EXIT_SUCCESS);
+    /* Close is now provably contending. Release the parked cleanup so it can
+       finish detach and publish its result. */
     CHECK(create_marker(barrier.detach_release) == EXIT_SUCCESS);
     CHECK(pthread_join(closer, NULL) == 0);
 
@@ -957,6 +980,118 @@ static int test_close_races_successful_deferred_cleanup(void)
     CHECK(count_occurrences(log, "channel_destroyed") == 1);
     CHECK(strstr(log, "channel_detach_failed") == NULL);
     CHECK(check_order(log, "navigation_completed", "channel_detached") == EXIT_SUCCESS);
+    CHECK(check_order(log, "channel_destroyed", "library_unloaded") == EXIT_SUCCESS);
+
+    clear_cleanup_barrier(&barrier);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    remove_marker(hold.release);
+    remove_marker(hold.callback_done);
+    remove_marker(hold.complete);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* Race C. The final Navigation completion has already decremented the request
+   count to zero but has NOT yet claimed cleanup ownership. In that transient
+   window the state reads:
+
+       requests            == 0
+       cleanup_in_progress == false
+       channel             != NULL
+
+   even though the completion thread is already committed to performing
+   physical cleanup. A public Close that decided from this state could return
+   the stale AMS_MEL_OK from its earlier logical Stop while leaving the stream
+   owner non-null, violating the Close contract.
+
+   Required: Close must run or join the cleanup before deciding, so it never
+   returns AMS_MEL_OK with a retained owner; cleanup must occur exactly once;
+   and the parked completion must replay the same published outcome. */
+static int test_close_races_decrement_before_cleanup_claim(void)
+{
+    ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_navigation_request *request = NULL;
+    ams_mel_ir_navigation_result_v1 result;
+    ams_mel_navigation_report_v1 report = rich_report();
+    struct hold_barrier hold;
+    struct cleanup_barrier barrier;
+    struct race_close_input input;
+    pthread_t closer;
+    char path[] = "/tmp/ams-mel-nav-decrement-race-XXXXXX";
+    char log[8192];
+    int descriptor = mkstemp(path);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    CHECK(make_hold_barrier(&hold) == EXIT_SUCCESS);
+    CHECK(make_cleanup_barrier(&barrier) == EXIT_SUCCESS);
+    CHECK(open_stream("navigation-hold", &session, &stream) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_submit_navigation_report(stream, &report, &request,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 0, &result, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    /* Logical Stop while the request is pending: physical teardown is deferred
+       to the final completion. */
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_detached") == NULL);
+
+    /* Arm both stages. The ordering below is what makes the window real:
+       Close's own internal Stop must observe a still-pending request and
+       defer, and only afterwards may the completion decrement to zero. */
+    CHECK(create_marker(barrier.close_arm) == EXIT_SUCCESS);
+    CHECK(create_marker(barrier.decrement_arm) == EXIT_SUCCESS);
+
+    /* Close starts while the request is still pending: its internal Stop
+       defers physical teardown, then it parks before the owner-release
+       decision. */
+    input.stream = &stream;
+    input.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(pthread_create(&closer, NULL, race_close_worker, &input) == 0);
+    CHECK(wait_for_marker(barrier.close_reached) == EXIT_SUCCESS);
+
+    /* Now the final request completes, decrementing requests to zero, and
+       parks before claiming cleanup ownership. */
+    CHECK(create_marker(hold.release) == EXIT_SUCCESS);
+    CHECK(wait_for_marker(hold.callback_done) == EXIT_SUCCESS);
+    CHECK(create_marker(hold.complete) == EXIT_SUCCESS);
+    CHECK(wait_for_marker(barrier.decrement_reached) == EXIT_SUCCESS);
+    /* Nothing has been detached: cleanup ownership was never claimed. */
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_detached") == NULL);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+
+    /* Release Close into its decision with requests == 0,
+       cleanup_in_progress == false, and channel still attached. */
+    CHECK(create_marker(barrier.close_release) == EXIT_SUCCESS);
+    CHECK(pthread_join(closer, NULL) == 0);
+
+    /* The defect: Close returning AMS_MEL_OK while the owner is retained. */
+    CHECK(!(input.status == AMS_MEL_OK && stream != NULL));
+    /* Cleanup is owed and succeeds, so Close reports success and releases. */
+    CHECK(input.status == AMS_MEL_OK);
+    CHECK(stream == NULL);
+    /* Close performed the physical teardown it was owed. */
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "channel_detached") != NULL);
+
+    /* Release the parked completion; it must observe/replay the same outcome
+       rather than tearing down a second time. */
+    CHECK(create_marker(barrier.decrement_release) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_navigation_request_wait(request, 2000, &result, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        const struct timespec delay = {0, 200000000L};
+        CHECK(nanosleep(&delay, NULL) == 0);
+    }
+    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    /* Cleanup occurred exactly once despite two threads racing for it. */
+    CHECK(count_occurrences(log, "channel_detached") == 1);
+    CHECK(count_occurrences(log, "channel_destroyed") == 1);
+    CHECK(strstr(log, "channel_detach_failed") == NULL);
     CHECK(check_order(log, "channel_destroyed", "library_unloaded") == EXIT_SUCCESS);
 
     clear_cleanup_barrier(&barrier);
@@ -1032,6 +1167,7 @@ int main(void)
     CHECK(test_logical_stop_metadata_no_enqueue() == EXIT_SUCCESS);
     CHECK(test_two_simultaneous_requests() == EXIT_SUCCESS);
     CHECK(test_close_races_successful_deferred_cleanup() == EXIT_SUCCESS);
+    CHECK(test_close_races_decrement_before_cleanup_claim() == EXIT_SUCCESS);
     CHECK(test_close_races_failed_deferred_cleanup() == EXIT_SUCCESS);
     /* These intentionally leak a permanently-retained SessionState/provider
        library reference (Task 027B fail-safe retention). Run them last so

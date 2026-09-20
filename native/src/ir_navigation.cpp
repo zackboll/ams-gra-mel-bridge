@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -176,9 +177,38 @@ void retain_worker(const std::shared_ptr<WorkerInput>& input) noexcept
  * under ImageStreamState's teardown lock, and this thread never touches
  * channel/image_channel outside it. Only an attempted-and-failed teardown is
  * reported as a request failure; NotRequired is not a failure. */
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* Test-only park between the final request-count decrement and the cleanup
+ * ownership claim. This is exactly the window in which requests == 0,
+ * cleanup_in_progress == false, and channel is still attached, so a regression
+ * can run a public Close against that transient state deterministically.
+ * Blocks only when the test arms the stage; production behavior never depends
+ * on it and the whole body is compiled out of a non-test build. */
+void finish_stream_test_barrier() noexcept
+{
+    const char *base = std::getenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (!base) return;
+    try {
+        const std::string prefix = std::string{base} + ".post-decrement";
+        if (!std::ifstream{prefix + ".arm"}.good()) return;
+        { std::ofstream marker{prefix + ".reached"}; marker << "reached\n"; }
+        const std::string release = prefix + ".release";
+        for (unsigned attempt = 0; attempt < 15000U; ++attempt) {
+            if (std::ifstream{release}.good()) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+    } catch (...) {
+        /* A barrier failure must never change teardown behavior. */
+    }
+}
+#endif
+
 bool finish_stream(const std::shared_ptr<ImageStreamState>& stream)
 {
     release_navigation_submission(*stream);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    finish_stream_test_barrier();
+#endif
     return image_stream_cleanup(stream, true) != ImageCleanupOutcome::Failed;
 }
 

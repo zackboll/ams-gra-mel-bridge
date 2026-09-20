@@ -435,7 +435,15 @@ boundary), then republishes the outcome under the lock and signals the
 `cleanup_done` condition variable. Stop/Close block on `cleanup_done` rather
 than inspecting `channel` concurrently, and Close adopts the published cleanup
 outcome instead of a stale status from its own earlier logical Stop; a failed
-detach restores the graph and retains the public owner for a retry. See
+detach restores the graph and retains the public owner for a retry.
+
+That synchronization also covers the window between the final request-count
+decrement and the cleanup ownership claim, during which a racing Close can
+observe `requests == 0`, `cleanup_in_progress == false`, and a still-attached
+`channel` even though the completion thread is already committed to cleaning
+up. Close treats that state as *cleanup owed*: it runs or joins the cleanup
+outside the lock and re-decides from the published result, so it can never
+return `AMS_MEL_OK` while retaining the public owner. See
 `docs/corrective-image-navigation-close-race.md`, which supersedes the Task
 027B description of this synchronization.
 
