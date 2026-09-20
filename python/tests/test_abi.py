@@ -100,6 +100,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_metadata_get_counters",
                 "ams_mel_ir_track_metadata_close",
                 "ams_mel_ir_track_metadata_event_view",
+                "ams_mel_ir_track_metadata_event_view_v2",
                 "ams_mel_ir_track_metadata_event_close",
                 "ams_mel_ir_track_submit_update",
                 "ams_mel_ir_track_update_request_wait",
@@ -109,7 +110,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_system_response_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 88)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 89)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -551,7 +552,61 @@ class AbiTests(unittest.TestCase):
                 _native.AMS_MEL_IR_TRACK_MODE_STARE,
                 _native.AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT,
                 _native.AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA,
+                _native.AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE,
+                _native.AMS_MEL_IR_MAX_CANDIDATE_OBJECTS,
+                _native.AMS_MEL_IR_HOT_REGION_INVALID,
+                _native.AMS_MEL_IR_HOT_REGION_FLARE,
+                _native.AMS_MEL_IR_HOT_REGION_SOLAR,
+                _native.AMS_MEL_IR_HOT_REGION_MASK,
             ]
+        )
+        expected.extend(self._layout(_native.IrRowColV1, 'row', 'column'))
+        expected.extend(
+            self._layout(
+                _native.IrHotRegionV1,
+                'kind',
+                'size',
+                'top',
+                'left',
+                'right',
+                'bottom',
+            )
+        )
+        expected.extend(self._layout(_native.IrHotRegionSpanV1, 'data', 'size'))
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectHeaderV1,
+                'number_of_cos',
+                'stack_frame_index',
+                'cfar',
+                'validity_flag_bitfield',
+                'tov_utc_ns',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectV1,
+                'system_time_ns',
+                'detection_category',
+                'sensor_index',
+                'subpixel',
+                'intensity',
+                'sensor_relative_unit',
+                'signal_to_interference_ratio',
+                'signal_to_noise_ratio',
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrCandidateObjectSpanV1, 'data', 'size')
+        )
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectMessageV1,
+                'header',
+                'inertial_state',
+                'hot_regions',
+                'candidate_objects',
+            )
         )
         expected.extend(
             self._layout(
@@ -583,12 +638,21 @@ class AbiTests(unittest.TestCase):
                 'track_id',
             )
         )
+        # Frozen v1 has exactly these three members; the authoritative C probe
+        # comparison is what would detect a future accidental v1 growth.
         expected.extend(
             self._layout(
                 _native.IrTrackMetadataEventV1,
                 'kind',
                 'track_report',
                 'request_system_track_data',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackMetadataEventV2,
+                'base',
+                'candidate_object_message',
             )
         )
         expected.extend(

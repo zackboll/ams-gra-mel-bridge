@@ -2,6 +2,8 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 
+#include <irmel/library/irmel-types/CandidateObjectMessage.h>
+#include <irmel/library/irmel-types/ChannelMetadataCapabilityType.h>
 #include <irmel/library/irmel-types/RequestSystemTrackData.h>
 #include <irmel/library/irmel-types/SystemTrackDataResponse.h>
 #include <irmel/library/track/IRSTTrackReport.h>
@@ -28,6 +30,7 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 using namespace ams::iface;
@@ -270,7 +273,134 @@ void copy_request_system_track_data(
     destination.track_id = source.getTrackId();
 }
 
-struct EventData { ams_mel_ir_track_metadata_event_v1 view{}; };
+/* The native event owns every byte its view references. The two vectors carry
+ * the variable-size CandidateObjectMessage storage; the view's span pointers
+ * are bound to them only after both vectors are fully built and will never be
+ * grown again. std::vector storage is heap allocated, so moving the owning
+ * unique_ptr through the queue and into the public event owner never
+ * invalidates those pointers. No provider-owned pointer, provider STL storage,
+ * or callback-stack address is ever referenced by the view. */
+struct EventData {
+    /* v2 is stored, never v1: v1 is a frozen ABI record and the whole of it is
+     * the first member of v2, so one allocation serves both views. The v1 view
+     * returns &view.base and the v2 view returns &view. */
+    ams_mel_ir_track_metadata_event_v2 view{};
+    std::vector<ams_mel_ir_hot_region_v1> hot_regions;
+    std::vector<ams_mel_ir_candidate_object_v1> candidate_objects;
+};
+
+/* Complete verbatim copy of the published HotRegion getters. Upstream declares
+ * exactly INVALID/FLARE/SOLAR/MASK and no MaxExclusive value, so a
+ * representation outside 0..3 is malformed. */
+bool copy_hot_region(const irmel::HotRegion& source,
+                     ams_mel_ir_hot_region_v1& destination) noexcept
+{
+    const auto type = static_cast<std::uint32_t>(source.getType());
+    if (type > AMS_MEL_IR_HOT_REGION_MASK) return false;
+    destination.type = type;
+    destination.size = source.getSize();
+    destination.top = source.getTop();
+    destination.left = source.getLeft();
+    destination.right = source.getRight();
+    destination.bottom = source.getBottom();
+    return true;
+}
+
+/* Reuses the one canonical XYZ shape; no value is clamped or normalized. */
+ams_mel_ir_directional_v1 copy_directional(const irmel::IR_Directional& value) noexcept
+{ return {value.getX(), value.getY(), value.getZ()}; }
+
+ams_mel_ir_quaternion_v1 copy_quaternion(const irmel::Quaternion& value) noexcept
+{
+    return {value.getQuaternionX(), value.getQuaternionY(),
+            value.getQuaternionZ(), value.getQuaternionW()};
+}
+
+/* Complete SensorInertialState copy through the canonical shared ABI record.
+ * Every published getter is read exactly once and no quaternion is
+ * renormalized: the upstream setters perform no such validation. */
+void copy_inertial_state(const irmel::SensorInertialState& source,
+                         ams_mel_ir_sensor_inertial_state_v1& destination) noexcept
+{
+    destination.system_time_ns = source.getSystemTime().count();
+    destination.q_xyzw = copy_quaternion(source.getQ_xyzw());
+    destination.q_ecef_xyzw = copy_quaternion(source.getQECEF_xyzw());
+    destination.sensor_position = copy_directional(source.getSensorPosition());
+    destination.sensor_velocity = copy_directional(source.getSensorVelocity());
+    const auto& uncertainties = source.getUncertainties();
+    destination.uncertainties.sensor_uncertainties =
+        uncertainties.getSensorUncertainties();
+    destination.uncertainties.platform_uncertainties =
+        uncertainties.getPlatformUncertainties();
+}
+
+/* Complete verbatim copy of the published CandidateObject getters. Upstream
+ * declares no enum and no constrained field here, so nothing can be malformed;
+ * every floating-point value is copied without clamping or normalization and
+ * the sensor-relative unit vector is not renormalized. */
+void copy_candidate_object(const irmel::CandidateObject& source,
+                           ams_mel_ir_candidate_object_v1& destination) noexcept
+{
+    destination.system_time_ns = source.getSystemTime().count();
+    destination.detection_category = source.getDetectionCategory();
+    destination.sensor_index = source.getSensorIndex();
+    const auto& subpixel = source.getSubpixel();
+    destination.subpixel.row = subpixel.getRow();
+    destination.subpixel.column = subpixel.getCol();
+    destination.intensity = source.getIntensity();
+    destination.sensor_relative_unit = copy_directional(source.getSenRelUnit());
+    destination.signal_to_interference_ratio = source.getSignalToInterferenceRatio();
+    destination.signal_to_noise_ratio = source.getSignalToNoiseRatio();
+}
+
+/* Complete deep copy of CandidateObjectMessage into event-owned storage.
+ *
+ * numberOfCOs is the MEANINGFUL PREFIX LENGTH of the fixed 900-entry upstream
+ * array. The pinned headers publish numberOfCOs as the only count and publish
+ * no separate array-length validity flag, so exactly
+ * candidateObjects[0 .. numberOfCOs-1] is exposed and trailing storage slots
+ * are neither read nor converted. A numberOfCOs above MAX_CANDIDATE_OBJECTS is
+ * malformed, because it cannot describe a prefix of the published array.
+ *
+ * The HotRegion vector has no published fixed maximum, so the complete vector
+ * is copied in its published order. An invalid HotRegion enum makes the whole
+ * message malformed. */
+bool copy_candidate_object_message(const irmel::CandidateObjectMessage& source,
+                                   EventData& event)
+{
+    const auto& header = source.getHeader();
+    const auto count = header.getNumberOfCOs();
+    if (static_cast<std::uint32_t>(count) > AMS_MEL_IR_MAX_CANDIDATE_OBJECTS)
+        return false;
+
+    const auto& regions = header.getHotRegions();
+    event.hot_regions.resize(regions.size());
+    for (std::size_t index = 0; index < regions.size(); ++index)
+        if (!copy_hot_region(regions[index], event.hot_regions[index])) return false;
+
+    const auto& objects = source.getCandidateObjects();
+    event.candidate_objects.resize(count);
+    for (std::size_t index = 0; index < static_cast<std::size_t>(count); ++index)
+        copy_candidate_object(objects[index], event.candidate_objects[index]);
+
+    auto& view = event.view.candidate_object_message;
+    view.header.number_of_cos = count;
+    view.header.stack_frame_index = header.getStackFrameIndex();
+    view.header.cfar = header.getCFAR();
+    view.header.validity_flag_bitfield = header.getValidityFlagBitField();
+    view.header.tov_utc_ns = header.getTOVutcNanoseconds().count();
+    copy_inertial_state(source.getInertialState(), view.inertial_state);
+
+    /* Bound only after both vectors are final; the storage is heap owned, so a
+     * later move of this EventData keeps these pointers valid. */
+    view.hot_regions.data =
+        event.hot_regions.empty() ? nullptr : event.hot_regions.data();
+    view.hot_regions.size = event.hot_regions.size();
+    view.candidate_objects.data =
+        event.candidate_objects.empty() ? nullptr : event.candidate_objects.data();
+    view.candidate_objects.size = event.candidate_objects.size();
+    return true;
+}
 
 enum class MetadataLifecycle { Active, Inactive, Stopped, Failed };
 
@@ -316,8 +446,12 @@ struct CallbackGuard {
  * It never calls into Ada, never lets an exception escape into provider code,
  * and always accounts for the event. A null payload is malformed. The queue
  * drops the INCOMING event when full so the earliest events survive. The
- * builder returns false for a malformed payload; both implemented kinds share
- * one queue, one capacity, and one counter set. */
+ * builder returns false for a malformed payload; every implemented kind shares
+ * one queue, one capacity, and one counter set.
+ *
+ * The builder receives the whole EventData rather than only the fixed view, so
+ * a kind with variable-size storage can populate the event-owned vectors and
+ * bind its spans before the event is ever published. */
 template <typename Payload, typename Builder>
 void metadata_callback_impl(const std::shared_ptr<MetadataState>& state,
                             const Payload *value, Builder build) noexcept
@@ -337,7 +471,7 @@ void metadata_callback_impl(const std::shared_ptr<MetadataState>& state,
         std::unique_ptr<EventData> event;
         if (value) {
             auto owned = std::make_unique<EventData>();
-            if (build(*value, owned->view)) event = std::move(owned);
+            if (build(*value, *owned)) event = std::move(owned);
         }
         std::lock_guard lock{state->mutex};
         if (state->lifecycle != MetadataLifecycle::Active) return;
@@ -356,10 +490,27 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
                        const irmel::IRSTTrackReport *value) noexcept
 {
     metadata_callback_impl(state, value,
-        [](const irmel::IRSTTrackReport& report,
-           ams_mel_ir_track_metadata_event_v1& view) noexcept {
-            view.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
-            return copy_track_report(report, view.track_report);
+        [](const irmel::IRSTTrackReport& report, EventData& event) noexcept {
+            event.view.base.kind = AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT;
+            return copy_track_report(report, event.view.base.track_report);
+        });
+}
+
+/* Provider callback boundary for the @RequiredIfDetectCandidateObjects
+ * CandidateObjectMessage. This is inbound metadata: upstream declares no
+ * send(CandidateObjectMessage) and no RequestFor<CandidateObjectMessage>, so no
+ * request handle, completion, or worker is ever created here. A null payload, a
+ * numberOfCOs above 900, and an invalid HotRegion enum are each malformed and
+ * enqueue nothing. An allocation failure inside the builder is caught by the
+ * shared boundary and never crosses back into provider code. */
+void metadata_callback(const std::shared_ptr<MetadataState>& state,
+                       const irmel::CandidateObjectMessage *value) noexcept
+{
+    metadata_callback_impl(state, value,
+        [](const irmel::CandidateObjectMessage& message, EventData& event) {
+            event.view.base.kind =
+                AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE;
+            return copy_candidate_object_message(message, event);
         });
 }
 
@@ -370,10 +521,11 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
                        const irmel::RequestSystemTrackData *value) noexcept
 {
     metadata_callback_impl(state, value,
-        [](const irmel::RequestSystemTrackData& request,
-           ams_mel_ir_track_metadata_event_v1& view) noexcept {
-            view.kind = AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
-            copy_request_system_track_data(request, view.request_system_track_data);
+        [](const irmel::RequestSystemTrackData& request, EventData& event) noexcept {
+            event.view.base.kind =
+                AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA;
+            copy_request_system_track_data(
+                request, event.view.base.request_system_track_data);
             return true;
         });
 }
@@ -401,6 +553,12 @@ struct TrackState {
     std::size_t requests{};
     bool enable_attempted{};
     bool metadata_attempted{};
+    /* Whether the channel advertised ChannelMetadataCapabilityType::
+     * CandidateObjectMessage at Open. Private state only: no new public API
+     * exposes it. When false, the @RequiredIfDetectCandidateObjects callback is
+     * not registered at all, exactly as upstream documents for a metadata type
+     * absent from the advertised set. */
+    bool candidate_objects_advertised{};
     bool cleanup_started{};
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
@@ -426,6 +584,17 @@ bool has_track(const irmel::ChannelCapability& capability)
 {
     const auto& types = capability.getChannelTypes();
     return std::find(types.begin(), types.end(), irmel::ChannelType::IRSTTrack) !=
+           types.end();
+}
+
+/* Upstream documents that registerMetadataCallback for a type absent from the
+ * advertised channelMetadataCapabilities set is expected to return
+ * Return::NotSupported, so the advertised set -- not a guess -- decides whether
+ * the CandidateObjectMessage callback is registered at all. */
+bool has_candidate_objects(const irmel::ChannelCapability& capability)
+{
+    const auto& types = capability.getChannelMetadataCapabilities();
+    return types.find(irmel::ChannelMetadataCapabilityType::CandidateObjectMessage) !=
            types.end();
 }
 
@@ -803,8 +972,13 @@ extern "C" ams_mel_status_t ams_mel_ir_track_open(
         bool compatible = static_cast<bool>(state->track);
         const char *reason = "attached channel is not a TrackChannel";
         if (compatible) {
-            compatible = has_track(state->channel->getCapabilities());
+            /* One capability query serves both the channel-type check and the
+             * CandidateObjectMessage advertisement record; no extra provider
+             * call is introduced. */
+            const auto capability = state->channel->getCapabilities();
+            compatible = has_track(capability);
             if (!compatible) reason = "Track capability omits IRSTTrack";
+            else state->candidate_objects_advertised = has_candidate_objects(capability);
         }
         if (!compatible) {
             bool detached = false;
@@ -923,6 +1097,7 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
         (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     std::shared_ptr<MetadataState> state;
     std::shared_ptr<irmel::TrackChannel> channel;
+    bool candidate_advertised = false;
     try {
         /* Publish and retain the callback state first, then release the
          * lifecycle lock, then register. The provider may invoke the
@@ -941,6 +1116,7 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
             state->capacity = queue_capacity;
             track->state->metadata = state;
             channel = track->state->track;
+            candidate_advertised = track->state->candidate_objects_advertised;
         }
         auto owner = std::make_unique<ams_mel_ir_track_metadata>();
         /* Only MetadataState is owned here. The provider graph stays owned by
@@ -961,6 +1137,47 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(
             diagnostic("IRSTTrackReport callback registration failed",
                        out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
+        }
+        /* The @RequiredIfDetectCandidateObjects CandidateObjectMessage callback
+         * is registered second and ONLY when the channel advertised
+         * ChannelMetadataCapabilityType::CandidateObjectMessage. An
+         * unadvertised channel is skipped entirely, so every existing
+         * non-candidate deployment keeps its exact current behavior.
+         *
+         * When the capability IS advertised the registration FAILS CLOSED on
+         * anything other than Success, including NotSupported. Unlike the
+         * @Optional RequestSystemTrackData refusal, a NotSupported here
+         * contradicts the channel's own advertisement: the channel promised the
+         * metadata type, so Metadata Open must not return success while
+         * promising an event path the adapter cannot actually receive.
+         * BadPointer, NotImplemented, and any value added by a future upstream
+         * revision fail closed for the same reason.
+         *
+         * TrackState::mutex is again not held: the provider may deliver a
+         * CandidateObjectMessage synchronously from inside this call. */
+        if (candidate_advertised) {
+            const auto candidate_result = channel->registerMetadataCallback(
+                std::function<void(irmel::Channel&,
+                                   const irmel::CandidateObjectMessage *const)>{
+                    [state](irmel::Channel&,
+                            const irmel::CandidateObjectMessage *value) noexcept {
+                        metadata_callback(state, value);
+                    }});
+            if (candidate_result != irmel::Return::Success) {
+                /* Fail closed. No public owner escapes; `owner` is still the
+                 * unique_ptr and is destroyed on this path. The already
+                 * registered @RequiredIfTrack callback and its retained state
+                 * stay live until Track teardown because upstream provides no
+                 * unregister operation, no unregister is attempted, and the
+                 * one-shot rule stays established so a retry cannot
+                 * double-register. */
+                std::lock_guard lock{state->mutex};
+                state->lifecycle = MetadataLifecycle::Inactive;
+                state->ready.notify_all();
+                diagnostic("CandidateObjectMessage callback registration failed",
+                           out, capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
         }
         /* The @Optional RequestSystemTrackData request shares the same queue.
          * The registration again happens without TrackState::mutex held because
@@ -1102,9 +1319,30 @@ extern "C" ams_mel_status_t ams_mel_ir_track_metadata_close(
     } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
 }
 
+/* Unchanged v1 contract. This operation's output type stays the frozen v1
+ * record, so a consumer compiled before CandidateObjectMessage existed keeps
+ * working without recompilation. It deliberately does NOT gain a larger output
+ * contract: a CandidateObjectMessage event is still delivered here, and
+ * base.kind still reports kind 3, but the candidate payload is reachable only
+ * through ams_mel_ir_track_metadata_event_view_v2. */
 extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view(
     const ams_mel_ir_track_metadata_event *event,
     const ams_mel_ir_track_metadata_event_v1 **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!event || !event->data || !output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    *output = &event->data->view.base;
+    return AMS_MEL_OK;
+}
+
+/* v2 view over the same adapter-owned event storage, with identical ownership,
+ * validity, and diagnostic rules. No provider-owned pointer escapes: both spans
+ * inside candidate_object_message address the event's own vectors. */
+extern "C" ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v2 **output, char *out,
     std::size_t capacity, std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);

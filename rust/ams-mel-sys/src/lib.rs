@@ -642,14 +642,14 @@ pub struct AmsMelIrContributingSensorV1 {
     pub sensor_id: u32,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrDirectionalV1 {
     pub x: f64,
     pub y: f64,
     pub z: f64,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrQuaternionV1 {
     pub x: f64,
     pub y: f64,
@@ -665,7 +665,7 @@ pub struct AmsMelIrNavErrorV1 {
     pub w: f64,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrUncertaintyV1 {
     pub sensor_uncertainties: u32,
     pub platform_uncertainties: u32,
@@ -678,7 +678,7 @@ pub struct AmsMelIrOrientationV1 {
     pub quaternion: AmsMelIrQuaternionV1,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrSensorInertialStateV1 {
     pub system_time_ns: i64,
     pub q_xyzw: AmsMelIrQuaternionV1,
@@ -875,10 +875,112 @@ pub const AMS_MEL_IR_TRACK_MODE_IDLE: u32 = 0;
 pub const AMS_MEL_IR_TRACK_MODE_SCAN: u32 = 1;
 pub const AMS_MEL_IR_TRACK_MODE_STARE: u32 = 2;
 /// The Track metadata event kinds defined by this release. The
-/// `CandidateObjectMessage` and `CandidateObjectPreProcMessage` callbacks
-/// remain unimplemented and have no kind.
+/// `CandidateObjectPreProcMessage` callback remains unimplemented and has no
+/// kind.
 pub const AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT: u32 = 1;
 pub const AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA: u32 = 2;
+pub const AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE: u32 = 3;
+
+/// Upstream `MAX_CANDIDATE_OBJECTS`: the fixed storage length of the published
+/// `std::array<CandidateObject, 900>`. `numberOfCOs` selects the meaningful
+/// prefix; a larger count is malformed.
+pub const AMS_MEL_IR_MAX_CANDIDATE_OBJECTS: u32 = 900;
+
+/// Upstream `HotRegionTypeEnum`. No `MaxExclusive` value exists upstream, so
+/// any provider value above `MASK` is malformed.
+pub const AMS_MEL_IR_HOT_REGION_INVALID: u32 = 0;
+pub const AMS_MEL_IR_HOT_REGION_FLARE: u32 = 1;
+pub const AMS_MEL_IR_HOT_REGION_SOLAR: u32 = 2;
+pub const AMS_MEL_IR_HOT_REGION_MASK: u32 = 3;
+
+/// The one canonical row/column pair, matching upstream `RowCol`. It is
+/// deliberately not an XYZ triple with a meaningless third component.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrRowColV1 {
+    pub row: f64,
+    pub column: f64,
+}
+
+/// Complete `HotRegion`. The geometry keeps its upstream `uint16_t` width.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrHotRegionV1 {
+    pub kind: u32,
+    pub size: u16,
+    pub top: u16,
+    pub left: u16,
+    pub right: u16,
+    pub bottom: u16,
+}
+span!(AmsMelIrHotRegionSpanV1, AmsMelIrHotRegionV1);
+
+/// Complete `CandidateObjectHeader`. `cfar` is upstream `float` and stays
+/// binary32; it is deliberately not widened to `f64`. The validity bitfield is
+/// carried verbatim and is deliberately not decoded.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCandidateObjectHeaderV1 {
+    pub number_of_cos: u16,
+    pub stack_frame_index: u16,
+    pub cfar: f32,
+    pub validity_flag_bitfield: u16,
+    pub tov_utc_ns: i64,
+}
+
+/// Complete `CandidateObject`. Reuses the canonical row/column and XYZ
+/// records; no value is clamped, normalized, or renormalized.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCandidateObjectV1 {
+    pub system_time_ns: i64,
+    pub detection_category: u32,
+    pub sensor_index: u32,
+    pub subpixel: AmsMelIrRowColV1,
+    pub intensity: f64,
+    pub sensor_relative_unit: AmsMelIrDirectionalV1,
+    pub signal_to_interference_ratio: f64,
+    pub signal_to_noise_ratio: f64,
+}
+span!(AmsMelIrCandidateObjectSpanV1, AmsMelIrCandidateObjectV1);
+
+/// Complete `CandidateObjectMessage`. The message class is annotated
+/// @RequiredIfBuiltInTracker, the `TrackChannel` callback that delivers it is
+/// @RequiredIfDetectCandidateObjects, and the contained `CandidateObject` class
+/// is @RequiredIfTrack; these are three distinct upstream conditions.
+///
+/// Upstream declares no `send(CandidateObjectMessage)` and no
+/// `RequestFor<CandidateObjectMessage>`, so this is inbound callback metadata.
+/// Both spans borrow storage owned by the native event owner and stay valid
+/// until event close.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCandidateObjectMessageV1 {
+    pub header: AmsMelIrCandidateObjectHeaderV1,
+    pub inertial_state: AmsMelIrSensorInertialStateV1,
+    pub hot_regions: AmsMelIrHotRegionSpanV1,
+    pub candidate_objects: AmsMelIrCandidateObjectSpanV1,
+}
+
+impl Default for AmsMelIrCandidateObjectMessageV1 {
+    /// Matches the zeroed native event: every unselected span keeps a null
+    /// data pointer and a zero size. A raw pointer has no `Default`, so this
+    /// impl is written out rather than derived.
+    fn default() -> Self {
+        Self {
+            header: AmsMelIrCandidateObjectHeaderV1::default(),
+            inertial_state: AmsMelIrSensorInertialStateV1::default(),
+            hot_regions: AmsMelIrHotRegionSpanV1 {
+                data: core::ptr::null(),
+                size: 0,
+            },
+            candidate_objects: AmsMelIrCandidateObjectSpanV1 {
+                data: core::ptr::null(),
+                size: 0,
+            },
+        }
+    }
+}
 
 /// Complete `RequestSystemTrackData`. Upstream declares this @Optional type
 /// only as an inbound `registerMetadataCallback` overload on `TrackChannel`
@@ -916,12 +1018,25 @@ pub struct AmsMelIrTrackReportV1 {
     pub state: u32,
     pub mode: u32,
 }
+/// FROZEN Track metadata event v1. Exactly these three members; the layout is
+/// permanently fixed and nothing may be appended to it again. Later Track
+/// metadata payloads use a new version record.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AmsMelIrTrackMetadataEventV1 {
     pub kind: u32,
     pub track_report: AmsMelIrTrackReportV1,
     pub request_system_track_data: AmsMelIrRequestSystemTrackDataV1,
+}
+
+/// Track metadata event v2: the complete frozen v1 record first, then the
+/// additive `CandidateObjectMessage` payload. `base.kind` stays the one
+/// discriminator and `offsetof(v2, base)` is 0.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTrackMetadataEventV2 {
+    pub base: AmsMelIrTrackMetadataEventV1,
+    pub candidate_object_message: AmsMelIrCandidateObjectMessageV1,
 }
 
 /// Upstream `TrackStatus` (@RequiredIfTrackUpdate). No `MaxExclusive` value
@@ -1941,6 +2056,13 @@ extern "C" {
     pub fn ams_mel_ir_track_metadata_event_view(
         event: *const AmsMelIrTrackMetadataEvent,
         out_view: *mut *const AmsMelIrTrackMetadataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_track_metadata_event_view_v2(
+        event: *const AmsMelIrTrackMetadataEvent,
+        out_view: *mut *const AmsMelIrTrackMetadataEventV2,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

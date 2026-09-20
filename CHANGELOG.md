@@ -2,6 +2,105 @@
 
 ## Unreleased
 
+- Add the `@RequiredIfDetectCandidateObjects` IR Track `CandidateObjectMessage`
+  as inbound metadata in native C, safe Ada, raw Rust ABI, and private Python
+  ABI. The pinned `TrackChannel` declares `CandidateObjectMessage` **only** as a
+  `registerMetadataCallback` overload and declares no
+  `send(CandidateObjectMessage)` and no `RequestFor<CandidateObjectMessage>`, so
+  it is implemented on the existing bounded DROP-INCOMING Track metadata queue
+  rather than as an asynchronous request. No request handle, completion, worker
+  thread, or `CommandStatus` mapping was added, and `TrackState::requests` is
+  untouched.
+
+  Three distinct upstream annotations are preserved rather than collapsed: the
+  `CandidateObjectMessage` class is `@RequiredIfBuiltInTracker`, the callback is
+  `@RequiredIfDetectCandidateObjects`, and the `CandidateObject` class is
+  `@RequiredIfTrack`. The callback annotation governs registration.
+
+  Registration is conditional on the channel advertising
+  `ChannelMetadataCapabilityType::CandidateObjectMessage`, recorded during Track
+  `Open` from the one capability query that already ran. Unadvertised channels
+  skip it entirely and keep their exact previous behavior. When it **is**
+  advertised, any non-`Success` return -- including `Return::NotSupported` --
+  fails Metadata Open closed with `AMS_MEL_PROVIDER_FAILED`, because refusing a
+  callback the channel itself advertised would promise an event path the adapter
+  cannot receive; an exception maps to `AMS_MEL_PROVIDER_EXCEPTION`. This
+  deliberately differs from the `@Optional` `RequestSystemTrackData`, whose
+  `NotSupported` stays non-fatal. Registration order is `IRSTTrackReport`,
+  `CandidateObjectMessage`, `RequestSystemTrackData`, with `TrackState::mutex`
+  released across every registration call.
+
+  The complete payload is deep-copied: the header (including binary32 `CFAR`,
+  which is deliberately not widened to `double`, and the verbatim undecoded
+  validity bitfield), the complete `HotRegion` vector in published order, the
+  canonical `SensorInertialState`, and exactly `numberOfCOs` candidate objects.
+  `numberOfCOs` is the meaningful prefix length of the upstream fixed 900-entry
+  array, so trailing storage slots are neither exposed nor read; a `numberOfCOs`
+  above `MAX_CANDIDATE_OBJECTS` (900), a null payload, and a `HotRegion` enum
+  outside the upstream `0..3` range are each malformed and enqueue nothing.
+
+  `EventData` now owns two `std::vector` members so the native event owns every
+  byte its spans reference; the spans remain valid until `event_close`, proven
+  by re-verifying a complete message field by field after provider channel
+  destruction and provider library unload.
+
+  New ABI value types `ams_mel_ir_row_col_v1`, `ams_mel_ir_hot_region_v1`,
+  `ams_mel_ir_hot_region_span_v1`, `ams_mel_ir_candidate_object_header_v1`,
+  `ams_mel_ir_candidate_object_v1`, `ams_mel_ir_candidate_object_span_v1`, and
+  `ams_mel_ir_candidate_object_message_v1`, plus
+  `AMS_MEL_IR_MAX_CANDIDATE_OBJECTS` and the four `AMS_MEL_IR_HOT_REGION_*`
+  constants and Track metadata kind 3. The canonical `SensorInertialState`,
+  quaternion, directional, and uncertainty declarations were relocated earlier
+  in `abi.h` so they could be reused; their layouts are unchanged and the ABI
+  probes verify that. Native CTest stays at 15 and the vendor delta is zero.
+
+  **Track metadata event ABI versioning.** `docs/c-abi-policy.md` prohibits
+  appending fields to an existing fixed-layout record without a compatible
+  size/version scheme or a new type and operation. Task 029E had historically
+  appended `request_system_track_data` to
+  `ams_mel_ir_track_metadata_event_v1`, which was itself inconsistent with that
+  rule. Rather than break the record a second time, the layout currently on
+  `main` is **grandfathered and permanently frozen** at exactly `kind`,
+  `track_report`, and `request_system_track_data`, and `CandidateObjectMessage`
+  is **not** appended to it.
+
+  A new versioned record is added instead:
+
+  ```c
+  typedef struct ams_mel_ir_track_metadata_event_v2 {
+      ams_mel_ir_track_metadata_event_v1 base;
+      ams_mel_ir_candidate_object_message_v1 candidate_object_message;
+  } ams_mel_ir_track_metadata_event_v2;
+  ```
+
+  The complete frozen v1 is the first member, so `offsetof(v2, base) == 0`, no
+  report or `RequestSystemTrackData` layout is duplicated, `base.kind` remains
+  the one discriminator, and candidate storage remains event-owned.
+
+  `ams_mel_ir_track_metadata_event_view` is unchanged in signature and
+  semantics and still returns `const ams_mel_ir_track_metadata_event_v1 *`, so
+  existing consumers need no recompilation merely because
+  `CandidateObjectMessage` was added; it does not gain a larger output
+  contract. A Candidate event seen through it reports `kind == 3` with no
+  candidate payload present. One new export,
+  `ams_mel_ir_track_metadata_event_view_v2`, returns the v2 record and is the
+  only way to reach the candidate payload. Exports therefore go **88 -> 89**
+  across `exports.map`, the production and test dynamic symbol tables, the raw
+  Rust declarations, and the private Python `BOUND_FUNCTION_NAMES`. The facade
+  ABI version remains **0.1**.
+
+  Future Track metadata additions must not append fields to v1 or v2; they must
+  introduce a further version record with the earlier version as its first
+  member plus a matching view operation. The C, Rust, and Python ABI probes
+  assert the exact v1 member set so an accidental v1 append fails those
+  compatibility tests.
+
+  `CandidateObjectPreProcMessage` remains the only unimplemented Track metadata
+  callback and the only remaining deferred mock surface, so the Track API as a
+  whole is still not complete. Positive evidence is mock-provider only: pinned
+  Squall still cannot attach Track through `Control::attachChannel`. There is no
+  safe Rust and no public Python Track API.
+
 - Isolate the native production and contract-test CMake build trees. Every
   native script previously shared `native/build`, and
   `native/scripts/configure-build.sh` silently reconfigured that one tree

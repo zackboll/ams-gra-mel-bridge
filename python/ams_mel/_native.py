@@ -318,6 +318,52 @@ AMS_MEL_IR_TRACK_MODE_SCAN = 1
 AMS_MEL_IR_TRACK_MODE_STARE = 2
 AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT = 1
 AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA = 2
+AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE = 3
+# Upstream MAX_CANDIDATE_OBJECTS: the fixed storage length of the published
+# std::array<CandidateObject, 900>. numberOfCOs selects the meaningful prefix;
+# a larger count is malformed.
+AMS_MEL_IR_MAX_CANDIDATE_OBJECTS = 900
+# Upstream HotRegionTypeEnum; no MaxExclusive value exists upstream.
+AMS_MEL_IR_HOT_REGION_INVALID = 0
+AMS_MEL_IR_HOT_REGION_FLARE = 1
+AMS_MEL_IR_HOT_REGION_SOLAR = 2
+AMS_MEL_IR_HOT_REGION_MASK = 3
+# The canonical IR XYZ, quaternion, uncertainty, and SensorInertialState
+# records, declared here so the Track metadata event can reuse them exactly as
+# the C header does. No layout changed and no duplicate exists.
+class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]
+class IrQuaternionV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double),("w",ctypes.c_double)]
+class IrUncertaintyV1(ctypes.Structure): _fields_ = [("sensor_uncertainties",ctypes.c_uint32),("platform_uncertainties",ctypes.c_uint32)]
+class IrSensorInertialStateV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("q_xyzw",IrQuaternionV1),("q_ecef_xyzw",IrQuaternionV1),("sensor_position",IrDirectionalV1),("sensor_velocity",IrDirectionalV1),("uncertainties",IrUncertaintyV1)]
+# The one canonical row/column pair, matching upstream RowCol; deliberately not
+# an XYZ triple with a meaningless third component.
+class IrRowColV1(ctypes.Structure): _fields_ = [("row",ctypes.c_double),("column",ctypes.c_double)]
+# Complete HotRegion; the geometry keeps its upstream uint16_t width.
+class IrHotRegionV1(ctypes.Structure): _fields_ = [
+    ("kind",ctypes.c_uint32),("size",ctypes.c_uint16),("top",ctypes.c_uint16),
+    ("left",ctypes.c_uint16),("right",ctypes.c_uint16),("bottom",ctypes.c_uint16)]
+class IrHotRegionSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrHotRegionV1)),("size",ctypes.c_size_t)]
+# Complete CandidateObjectHeader. cfar is upstream float and stays binary32; it
+# is deliberately not widened to double, and the validity bitfield is carried
+# verbatim rather than decoded.
+class IrCandidateObjectHeaderV1(ctypes.Structure): _fields_ = [
+    ("number_of_cos",ctypes.c_uint16),("stack_frame_index",ctypes.c_uint16),
+    ("cfar",ctypes.c_float),("validity_flag_bitfield",ctypes.c_uint16),
+    ("tov_utc_ns",ctypes.c_int64)]
+# Complete CandidateObject; reuses the canonical row/column and XYZ records.
+class IrCandidateObjectV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),("detection_category",ctypes.c_uint32),
+    ("sensor_index",ctypes.c_uint32),("subpixel",IrRowColV1),
+    ("intensity",ctypes.c_double),("sensor_relative_unit",IrDirectionalV1),
+    ("signal_to_interference_ratio",ctypes.c_double),
+    ("signal_to_noise_ratio",ctypes.c_double)]
+class IrCandidateObjectSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrCandidateObjectV1)),("size",ctypes.c_size_t)]
+# Complete CandidateObjectMessage. Upstream declares no send and no
+# RequestFor, so this is inbound callback metadata. Both spans borrow storage
+# owned by the native event owner and stay valid until event close.
+class IrCandidateObjectMessageV1(ctypes.Structure): _fields_ = [
+    ("header",IrCandidateObjectHeaderV1),("inertial_state",IrSensorInertialStateV1),
+    ("hot_regions",IrHotRegionSpanV1),("candidate_objects",IrCandidateObjectSpanV1)]
 # Upstream RequestSystemTrackData is an inbound @Optional request delivered
 # through the Track metadata callback; TrackChannel declares no matching send.
 class IrRequestSystemTrackDataV1(ctypes.Structure): _fields_ = [
@@ -330,19 +376,20 @@ class IrTrackReportV1(ctypes.Structure): _fields_ = [
     ("range_m",ctypes.c_double),("range_error_m",ctypes.c_double),("spatial_extent_rad",ctypes.c_double),
     ("track_quality",ctypes.c_double),("clutter",ctypes.c_double),("age_ns",ctypes.c_int64),
     ("state",ctypes.c_uint32),("mode",ctypes.c_uint32)]
+# FROZEN Track metadata event v1: exactly these three members. Nothing may be
+# appended again; later Track metadata payloads use a new version record.
 class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("track_report",IrTrackReportV1),("request_system_track_data",IrRequestSystemTrackDataV1)]
+# Track metadata event v2: the complete frozen v1 record first, then the
+# additive CandidateObjectMessage payload. base.kind stays the discriminator.
+class IrTrackMetadataEventV2(ctypes.Structure): _fields_ = [("base",IrTrackMetadataEventV1),("candidate_object_message",IrCandidateObjectMessageV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
 class IrInstrumentationMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("report",IrInstrumentationReportV1)]
 class U8SpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(ctypes.c_uint8)),("size",ctypes.c_size_t)]
 class IrContributingSensorV1(ctypes.Structure): _fields_ = [("location",ComponentLocationV1),("sensor_id",ctypes.c_uint32)]
-class IrDirectionalV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double)]
-class IrQuaternionV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double),("w",ctypes.c_double)]
 class IrNavErrorV1(ctypes.Structure): _fields_ = [("x",ctypes.c_double),("y",ctypes.c_double),("z",ctypes.c_double),("w",ctypes.c_double)]
-class IrUncertaintyV1(ctypes.Structure): _fields_ = [("sensor_uncertainties",ctypes.c_uint32),("platform_uncertainties",ctypes.c_uint32)]
 class IrOrientationV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uint32),("euler",EulerV1),("quaternion",IrQuaternionV1)]
-class IrSensorInertialStateV1(ctypes.Structure): _fields_ = [("system_time_ns",ctypes.c_int64),("q_xyzw",IrQuaternionV1),("q_ecef_xyzw",IrQuaternionV1),("sensor_position",IrDirectionalV1),("sensor_velocity",IrDirectionalV1),("uncertainties",IrUncertaintyV1)]
 class IrSensorNavStateV1(ctypes.Structure): _fields_ = [("position",IrDirectionalV1),("position_error",IrNavErrorV1),("velocity",IrDirectionalV1),("velocity_error",IrNavErrorV1),("acceleration",IrDirectionalV1),("acceleration_error",IrNavErrorV1),("orientation",IrOrientationV1),("orientation_error",IrNavErrorV1),("orientation_velocity",IrOrientationV1),("orientation_velocity_error",IrNavErrorV1),("orientation_acceleration",IrOrientationV1),("orientation_acceleration_error",IrNavErrorV1),("coordinate_system",ctypes.c_uint32)]
 # Conditionally required TrackDataUpdate (@RequiredIfTrackUpdate). Upstream
 # TrackStatus declares no MaxExclusive value, so any input above Delete is
@@ -895,6 +942,9 @@ ams_mel_ir_track_metadata_close.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_view = _LIBRARY.ams_mel_ir_track_metadata_event_view
 ams_mel_ir_track_metadata_event_view.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_view.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_event_view_v2 = _LIBRARY.ams_mel_ir_track_metadata_event_view_v2
+ams_mel_ir_track_metadata_event_view_v2.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV2)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_event_view_v2.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_close = _LIBRARY.ams_mel_ir_track_metadata_event_close
 ams_mel_ir_track_metadata_event_close.argtypes = [ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_close.restype = ctypes.c_int32
@@ -999,6 +1049,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_metadata_get_counters",
     "ams_mel_ir_track_metadata_close",
     "ams_mel_ir_track_metadata_event_view",
+    "ams_mel_ir_track_metadata_event_view_v2",
     "ams_mel_ir_track_metadata_event_close",
     "ams_mel_ir_track_submit_update",
     "ams_mel_ir_track_update_request_wait",
