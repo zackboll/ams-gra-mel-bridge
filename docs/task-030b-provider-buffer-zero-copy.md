@@ -356,19 +356,64 @@ callback completion.
 A non-`Success` return or a thrown exception from `release()` means ownership
 hand-back is **uncertain**. The repository's fail-safe rule applies:
 
-* the `Buffer` object is parked in `ImageStreamState::retained_failed_buffers`
-  and never destroyed;
+* the exact callback `shared_ptr<irmel::Buffer>` is moved into a **preallocated
+  intrusive retention node** and published on a process-lifetime lock-free
+  list, so that Buffer object is never destroyed;
 * its registered host byte range is never freed or resized;
 * `retained_frames` is **not** decremented, so physical teardown is
   permanently deferred for that graph;
 * the allocation-free `image_stream_retain_failed` emergency retention route
-  is taken, so the graph survives even after the public owner is gone;
+  is taken, so the surrounding graph survives even after the public owner is
+  gone;
 * `release()` is **never** retried, because the published interface
   guarantees no safe retry and pinned Squall makes release one-shot;
 * the stream lifecycle is poisoned to `Failed`.
 
 This is a deliberate leak on uncertain ownership, chosen over a possible
 use-after-free or use-after-unload.
+
+### Why the retention node is preallocated (PR #42 corrective)
+
+The first implementation parked a failed Buffer with
+
+```cpp
+state->retained_failed_buffers.push_back(std::move(buffer));
+```
+
+That insertion can allocate and therefore throw. If it did, the local
+`buffer` was destroyed. For pinned Squall the callback object is a
+per-callback `RequeueBuffer` whose destructor requeues, so losing the last
+reference after a failed release caused an unintended **second** `release()`,
+violating the no-retry invariant. `image_stream_retain_failed(state)` retains
+the `ImageStreamState` graph, but the graph does not own that callback
+wrapper, so it is **not** by itself evidence that the wrapper survives.
+
+The correction makes the fail-safe path literally allocation-free:
+
+```text
+provider callback, frame still in a normal-success state
+    |
+    | std::make_unique<RetainedBufferNode>()      <-- may fail harmlessly here
+    v
+node travels with the Buffer through queue -> snapshot -> lease
+    |
+    | Buffer::release()                           <-- may fail or throw
+    v
+park_failed_buffer(node, buffer)   allocation-free, noexcept, never retried
+```
+
+The node exists before `release()` is ever attempted, the list head is a
+static atomic, and moving a `shared_ptr` never allocates. A small static
+reserve of nodes covers any path that somehow arrives without one. Ordinary
+`operator new` is therefore never on the fail-safe path.
+
+`ImageStreamState::retained_failed_buffers` is retained only as an additional
+diagnostic/ownership record and is written **after** the node is published;
+safety never depends on that `push_back` succeeding. The failpoint
+`AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION=fail` forces it to throw at
+exactly that historical point, and
+`test_release_failure_with_park_allocation_failure` proves the callback
+wrapper still survives, is never destroyed, and is released exactly once.
 
 Explicit API operations report it truthfully:
 `ams_mel_ir_frame_snapshot_close` returns `AMS_MEL_PROVIDER_FAILED` with the

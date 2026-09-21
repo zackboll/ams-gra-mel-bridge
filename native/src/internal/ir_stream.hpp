@@ -72,12 +72,20 @@ struct ImageStreamState {
     std::size_t buffer_size{};
     std::vector<std::vector<std::uint8_t>> storage;
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> buffers;
-    /* Task 030B fail-safe retention. A provider buffer whose release() failed
-     * or threw has uncertain provider ownership, so neither the Buffer object
-     * nor its registered host byte range may be destroyed. Such a buffer is
-     * parked here for the lifetime of the graph, and the retained-buffer count
-     * is deliberately never decremented for it, which permanently blocks
-     * physical teardown. Guarded by callback->mutex. */
+    /* Task 030B fail-safe retention, diagnostic record only.
+     *
+     * A provider buffer whose release() failed or threw has uncertain provider
+     * ownership, so neither the Buffer object nor its registered host byte
+     * range may be destroyed, and the retained-buffer count is deliberately
+     * never decremented for it, which permanently blocks physical teardown.
+     *
+     * The AUTHORITATIVE owner of such a buffer is NOT this vector. It is the
+     * preallocated intrusive RetainedBufferNode published by
+     * park_failed_buffer() in ir_stream.cpp, which is allocation-free and
+     * cannot throw. This vector is an additional record kept for ordinary
+     * diagnostics and is written only after that node is published, so a
+     * failed push_back here cannot affect safety (PR #42 corrective).
+     * Guarded by callback->mutex. */
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> retained_failed_buffers;
 
     /* Teardown-participating state. All of the following is guarded by

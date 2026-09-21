@@ -94,6 +94,98 @@ void increment(std::uint64_t& value) noexcept
     }
 }
 
+/* Task 030B corrective: allocation-free emergency ownership for a provider
+ * Buffer whose release() left ownership UNCERTAIN.
+ *
+ * The node is an intrusive list element that is allocated while the frame is
+ * still in a normal-success state, i.e. inside the provider callback and
+ * strictly BEFORE any release() can be attempted for that frame. A frame is
+ * only ever accepted into the receive queue when its node already exists, so
+ * every retained provider Buffer owns its emergency owner in advance.
+ *
+ * When release() fails or throws, park_failed_buffer() moves the exact
+ * callback shared_ptr<Buffer> into that already-allocated node and publishes
+ * the node on a process-lifetime lock-free list. That path performs no
+ * allocation whatsoever: the node exists, the list head is a static atomic,
+ * and moving a shared_ptr never allocates. The node is deliberately never
+ * freed, so the exact callback Buffer object, its vtable, its registered host
+ * bytes, and therefore the provider library can never be destroyed after an
+ * uncertain release.
+ *
+ * This is what makes the no-retry invariant real for pinned Squall, whose
+ * callback object is a RequeueBuffer whose destructor releases: because the
+ * bridge never drops the last reference, no destructor-driven second
+ * release() can occur. */
+struct RetainedBufferNode {
+    std::shared_ptr<irmel::Buffer> buffer;
+    RetainedBufferNode *next{};
+};
+
+std::atomic<RetainedBufferNode *> retained_buffer_head{};
+/* Observable only by tests and diagnostics; never used for a safety decision. */
+std::atomic<std::size_t> retained_buffer_count{};
+
+/* Statically allocated last-resort nodes, used only if a caller somehow
+ * reaches an uncertain release without its preallocated node. They exist for
+ * the whole process before any provider call, so this path allocates nothing
+ * either. */
+constexpr std::size_t retained_reserve_size = 64U;
+struct RetainedReserveSlot {
+    RetainedBufferNode node;
+    std::atomic<bool> claimed{};
+};
+RetainedReserveSlot retained_reserve[retained_reserve_size];
+
+RetainedBufferNode *claim_reserved_node() noexcept
+{
+    for (auto& slot : retained_reserve) {
+        bool expected = false;
+        if (slot.claimed.compare_exchange_strong(expected, true,
+                                                 std::memory_order_acq_rel))
+            return &slot.node;
+    }
+    return nullptr;
+}
+
+/* Test-only deterministic allocation failure at exactly the point where a
+ * failed callback Buffer used to be parked by a potentially allocating
+ * container insertion. Arming it proves that the corrected fail-safe path
+ * does not depend on that insertion succeeding: the Buffer is already owned by
+ * its preallocated emergency node before this can fire. Compiled out entirely
+ * in a non-test build. */
+void failed_buffer_park_allocation_failpoint()
+{
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+    if (const char *failure =
+            std::getenv("AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION");
+        failure != nullptr && std::strcmp(failure, "fail") == 0) {
+        throw std::bad_alloc{};
+    }
+#endif
+}
+
+/* Publishes one permanent owner of a Buffer whose release() left ownership
+ * uncertain. Allocation-free and noexcept by construction: the node already
+ * exists, the list head is a static atomic, and moving a shared_ptr never
+ * allocates. Ownership of the node is abandoned on purpose; the node and the
+ * Buffer it owns are never destroyed. Returns false only if no node at all
+ * could be obtained, which the callers treat as a hard fail-safe condition. */
+bool park_failed_buffer(std::unique_ptr<RetainedBufferNode> node,
+                        std::shared_ptr<irmel::Buffer> buffer) noexcept
+{
+    if (!buffer) return true;
+    RetainedBufferNode *parked = node.release();
+    if (parked == nullptr) parked = claim_reserved_node();
+    if (parked == nullptr) return false;
+    parked->buffer = std::move(buffer);
+    RetainedBufferNode *head = retained_buffer_head.load(std::memory_order_relaxed);
+    do { parked->next = head; }
+    while (!retained_buffer_head.compare_exchange_weak(
+        head, parked, std::memory_order_release, std::memory_order_relaxed));
+    retained_buffer_count.fetch_add(1U, std::memory_order_acq_rel);
+    return true;
+}
+
 /* Task 030B: the queued/snapshot representation owns the provider Buffer
  * itself instead of a payload-sized copy of its bytes.
  *
@@ -120,6 +212,10 @@ struct QueuedFrame {
     /* Retained provider buffer. Destroying this shared_ptr is NOT a release:
      * the published release() protocol must be invoked deliberately. */
     std::shared_ptr<irmel::Buffer> buffer;
+    /* Preallocated emergency owner for that buffer, created before the frame
+     * was accepted and therefore before release() can ever be attempted for
+     * it. Never null while buffer is non-null. */
+    std::unique_ptr<RetainedBufferNode> retention;
     const std::uint8_t *payload{};
     std::size_t payload_size{};
 
@@ -308,23 +404,41 @@ struct CallbackState {
          * The releaser below owns the "release here" arm only. When the frame
          * is accepted, ownership is disarmed by clearing release.value, so the
          * callback releaser and the later lease owner can never both release
-         * the same accepted buffer. */
+         * the same accepted buffer.
+         *
+         * Corrective (PR #42 review): the releaser also carries the
+         * preallocated emergency retention node. If its release() fails or
+         * throws, ownership is uncertain, so the exact callback shared_ptr is
+         * moved into that already-allocated node instead of being dropped when
+         * this frame returns. Dropping it could otherwise destroy the last
+         * reference to a provider wrapper whose destructor releases again,
+         * which the no-retry invariant forbids. Parking is allocation-free. */
         struct Releaser {
             CallbackState& state;
             std::shared_ptr<irmel::Buffer> value;
+            std::unique_ptr<RetainedBufferNode> retention;
             ~Releaser() noexcept
             {
-                if (value) {
-                    try {
-                        if (value->release() != irmel::Return::Success) state.fail();
-                    } catch (...) {
-                        state.fail();
-                    }
+                if (!value) return;
+                bool ok = false;
+                try {
+                    ok = value->release() == irmel::Return::Success;
+                } catch (...) {
+                    ok = false;
                 }
+                if (ok) return;
+                state.fail();
+                /* Uncertain ownership: never destroy the wrapper, never
+                 * retry release(). */
+                park_failed_buffer(std::move(retention), std::move(value));
             }
-        } release{*this, buffer};
+        } release{*this, buffer, {}};
 
         try {
+            /* Preallocated while the frame is still in a normal-success
+             * state, strictly before any release() for this buffer can be
+             * attempted. A failure here is an ordinary frame rejection. */
+            release.retention = std::make_unique<RetainedBufferNode>();
             {
                 std::lock_guard lock{mutex};
                 increment(counters.frames_received);
@@ -388,8 +502,12 @@ struct CallbackState {
             }
             /* Accepted. The bridge now owns a checked-out provider buffer.
              * Move the owner into the queued frame and disarm the callback
-             * releaser so release() cannot happen twice for this frame. */
+             * releaser so release() cannot happen twice for this frame. The
+             * preallocated emergency retention node travels with the buffer,
+             * so the later release attempt is already guaranteed an
+             * allocation-free owner if it fails. */
             frame.buffer = buffer;
+            frame.retention = std::move(release.retention);
             release.value.reset();
             queue.push_back(std::move(frame));
             ++retained_frames;
@@ -458,17 +576,39 @@ namespace {
  * Failure semantics. A non-Success return or a thrown exception means the
  * hand-back of ownership is UNCERTAIN. The repository's fail-safe rule then
  * applies: the Buffer object, its registered host bytes, and the provider
- * library must not be destroyed. Such a buffer is parked in
- * retained_failed_buffers and retained_frames is deliberately NOT
+ * library must not be destroyed, and retained_frames is deliberately NOT
  * decremented, which permanently defers physical teardown for this graph.
  * release() is never retried, because the published interface guarantees no
  * safe retry and pinned Squall makes release one-shot.
  *
+ * Corrective (PR #42 review). The authoritative owner of a failed Buffer is
+ * the caller-supplied `retention` node, which was allocated while the frame
+ * was still in a normal-success state, before this release() was attempted.
+ * Publishing it is allocation-free and cannot throw, so the exact callback
+ * shared_ptr<Buffer> survives for process lifetime even if every subsequent
+ * allocation in this function fails. ImageStreamState::retained_failed_buffers
+ * is kept only as an additional diagnostic/ownership record; safety never
+ * depends on that push_back succeeding.
+ *
  * Returns true when the provider accepted the release. */
 bool release_retained_buffer(const std::shared_ptr<ImageStreamState>& state,
-                             std::shared_ptr<irmel::Buffer> buffer) noexcept
+                             std::shared_ptr<irmel::Buffer> buffer,
+                             std::unique_ptr<RetainedBufferNode> retention) noexcept
 {
     if (!buffer) return true;
+    /* The emergency owner must exist BEFORE the provider call. Normally it
+     * was preallocated in the callback; if a caller did not carry one, try to
+     * allocate it here, while the buffer is still demonstrably unreleased and
+     * a failure is therefore harmless. If even that fails, the statically
+     * reserved nodes inside park_failed_buffer still guarantee an
+     * allocation-free owner, so the release below may proceed either way. */
+    if (!retention) {
+        try {
+            retention = std::make_unique<RetainedBufferNode>();
+        } catch (...) {
+            retention.reset();
+        }
+    }
     bool ok = false;
     try {
         ok = buffer->release() == irmel::Return::Success;
@@ -487,23 +627,33 @@ bool release_retained_buffer(const std::shared_ptr<ImageStreamState>& state,
         }
         return true;
     }
-    /* Uncertain ownership. Park the Buffer so neither it nor its registered
-     * host bytes are ever destroyed, leave retained_frames untouched so
-     * physical teardown stays permanently deferred, and take the existing
-     * allocation-free emergency retention route so the graph survives even
-     * after the public owner is gone. release() is never retried. */
+    /* Uncertain ownership. Step 1 is the only step that safety depends on:
+     * publish the exact callback shared_ptr<Buffer> into the already-allocated
+     * emergency node. It allocates nothing, cannot throw, and makes the Buffer
+     * object, its registered host bytes, and the provider library that owns
+     * its vtable permanently un-destroyable. release() is never retried. */
+    const bool parked = park_failed_buffer(std::move(retention), std::move(buffer));
+    /* Step 2 retains the surrounding graph. Necessary, but explicitly NOT
+     * sufficient on its own to keep the callback wrapper alive; step 1 is what
+     * guarantees that. */
+    image_stream_retain_failed(state);
+    /* Step 3 is best-effort bookkeeping only: poison the lifecycle and, when
+     * step 1 could not obtain any node at all, fall back to the diagnostic
+     * container as an additional owner. retained_frames stays untouched either
+     * way, so physical teardown for this graph is permanently deferred. */
     try {
         std::lock_guard lock{state->callback->mutex};
         state->callback->lifecycle = Lifecycle::Failed;
         state->callback->accepting = false;
         state->callback->ready.notify_all();
-        state->retained_failed_buffers.push_back(std::move(buffer));
+        /* Deterministically forces the historical allocating-park failure. */
+        failed_buffer_park_allocation_failpoint();
+        if (!parked && buffer) state->retained_failed_buffers.push_back(buffer);
     } catch (...) {
-        /* Even parking may fail to allocate; emergency retention below is
-         * allocation-free and keeps the whole graph, including the buffers
-         * vector that still owns this Buffer, alive for process lifetime. */
+        /* An allocation failure here changes nothing about safety: the
+         * callback Buffer is already owned by the parked emergency node, the
+         * graph is already retained, and release() is never retried. */
     }
-    image_stream_retain_failed(state);
     return false;
 }
 
@@ -520,7 +670,8 @@ void discard_queued_frames(const std::shared_ptr<ImageStreamState>& state) noexc
         return;
     }
     for (auto& frame : discarded)
-        (void)release_retained_buffer(state, std::move(frame.buffer));
+        (void)release_retained_buffer(state, std::move(frame.buffer),
+                                      std::move(frame.retention));
 }
 
 /* Called after a provider-buffer release may have removed the last
@@ -835,9 +986,10 @@ ImageCleanupOutcome image_stream_cleanup(
          *     a retained provider buffer exists
          *         => its registered host byte range exists unchanged
          *
-         * A buffer whose release() failed is never counted down and is also
-         * parked in retained_failed_buffers, so uncertain ownership keeps
-         * both the Buffer object and these bytes alive permanently. */
+         * A buffer whose release() failed is never counted down and its exact
+         * callback shared_ptr is owned permanently by a preallocated
+         * RetainedBufferNode, so uncertain ownership keeps both the Buffer
+         * object and these bytes alive for process lifetime. */
         stream.buffers.clear();
         stream.storage.clear();
         {
@@ -888,8 +1040,19 @@ ams_mel_status_t teardown(const std::shared_ptr<ImageStreamState>& state_ptr, bo
          * never blocks on an outstanding Navigation request. Frames accepted
          * before the logical Stop stay consumable and live snapshots stay
          * valid; the last release performs the deferred physical teardown. */
-        if (stream.requests != 0U || stream.callback->retained_frames != 0U)
+        if (stream.requests != 0U || stream.callback->retained_frames != 0U) {
+            /* Deferral is not success when the stream is already poisoned.
+             * The common case, a live lease on a healthy stream, still
+             * reports OK; but a graph whose provider release left ownership
+             * uncertain is permanently un-teardownable, and Stop must say so
+             * rather than imply a clean logical stop. */
+            if (stream.callback->lifecycle == Lifecycle::Failed) {
+                diagnostic("provider stream operation or cleanup failed", out,
+                           capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
             return AMS_MEL_OK;
+        }
     }
     const ImageCleanupOutcome outcome = image_stream_cleanup(state_ptr, false);
     if (outcome == ImageCleanupOutcome::Failed) {
@@ -1108,6 +1271,9 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
      * the queue there; the provider release() afterwards is deliberately
      * outside the lock. */
     std::shared_ptr<irmel::Buffer> consumed;
+    /* Travels with the consumed buffer so the release below already owns its
+     * allocation-free emergency owner. */
+    std::unique_ptr<RetainedBufferNode> consumed_retention;
     ams_mel_status_t status = AMS_MEL_INTERNAL_ERROR;
     try {
         const auto& state = *stream->state;
@@ -1164,13 +1330,15 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         /* Take the checked-out buffer out of the queue; the release below
          * returns it to the provider and decrements retained_frames. */
         consumed = std::move(queued.buffer);
+        consumed_retention = std::move(queued.retention);
         state.callback->queue.pop_front();
         status = AMS_MEL_OK;
     } catch (...) {
         diagnostic("receive failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
-    if (consumed && !release_retained_buffer(stream->state, std::move(consumed))) {
+    if (consumed && !release_retained_buffer(stream->state, std::move(consumed),
+                                             std::move(consumed_retention))) {
         diagnostic("provider buffer release failed; provider graph retained",
                    out, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
@@ -1290,6 +1458,9 @@ extern "C" ams_mel_status_t ams_mel_ir_frame_snapshot_close(
     *snapshot = nullptr;
     auto state = std::move(owner->state);
     auto buffer = std::move(owner->frame.buffer);
+    /* Preallocated in the provider callback, before any release() for this
+     * buffer could be attempted. */
+    auto retention = std::move(owner->frame.retention);
     /* The borrowed span is dead as soon as the buffer goes back. */
     owner->frame.payload = nullptr;
     owner->frame.payload_size = 0U;
@@ -1299,7 +1470,8 @@ extern "C" ams_mel_status_t ams_mel_ir_frame_snapshot_close(
     /* Task 030B: closing a lease now performs a provider call and can fail.
      * A failed release leaves ownership uncertain, so the graph is retained
      * rather than freed and the caller is told the truth. */
-    const bool released = release_retained_buffer(state, std::move(buffer));
+    const bool released = release_retained_buffer(state, std::move(buffer),
+                                                  std::move(retention));
     /* This may have been the final outstanding obligation. */
     maybe_finish_deferred_cleanup(state);
     if (!released) {

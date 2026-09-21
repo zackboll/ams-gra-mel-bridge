@@ -913,6 +913,217 @@ static int test_release_failure(const char *scenario)
     return EXIT_SUCCESS;
 }
 
+/* Task 030B corrective observation surface (PR #42 review). Provided by the
+   mock provider, resolved with dlsym exactly like the pool controls, and not
+   part of the MEL provider interface or the public C ABI. */
+static int mock_flag(const char *name)
+{
+    int (*fn)(void);
+    *(void **)&fn = mock_pool_symbol(name);
+    return fn == NULL ? -1 : fn();
+}
+
+static int mock_failed_release_recorded(void)
+{ return mock_flag("ams_mel_mock_failed_release_recorded"); }
+static int mock_failed_buffer_alive(void)
+{ return mock_flag("ams_mel_mock_failed_buffer_alive"); }
+static int mock_failed_buffer_storage_intact(void)
+{ return mock_flag("ams_mel_mock_failed_buffer_storage_intact"); }
+static unsigned long mock_failed_release_attempts(void)
+{ return mock_pool_query("ams_mel_mock_failed_release_attempts"); }
+static unsigned long mock_failed_buffer_destroyed(void)
+{ return mock_pool_query("ams_mel_mock_failed_buffer_destroyed"); }
+static unsigned long mock_release_calls(void)
+{ return mock_pool_query("ams_mel_mock_release_calls"); }
+static unsigned long mock_callback_buffers(void)
+{ return mock_pool_query("ams_mel_mock_callback_buffers"); }
+static unsigned long mock_image_channels_destroyed(void)
+{ return mock_pool_query("ams_mel_mock_image_channels_destroyed"); }
+static unsigned long mock_controls_destroyed(void)
+{ return mock_pool_query("ams_mel_mock_controls_destroyed"); }
+
+/* Clears only the current failed-release observation, so each regression
+   observes its own buffer. The "never destroyed" evidence stays cumulative
+   across the whole process. */
+static void mock_failed_release_reset(void)
+{
+    void (*fn)(void);
+    *(void **)&fn = mock_pool_symbol("ams_mel_mock_failed_release_reset");
+    if (fn != NULL) fn();
+}
+
+/* PR #42 corrective regression: failed release WITH forced allocation failure
+   at exactly the failed-buffer-parking point.
+   =========================================================================
+
+   This is the case the review found. Before the correction, the only owner of
+   a failed callback Buffer was
+
+       state->retained_failed_buffers.push_back(std::move(buffer));
+
+   a potentially allocating insertion. When that allocation throws, the local
+   `buffer` is destroyed and, for pinned Squall, that wrapper is a
+   RequeueBuffer whose destructor calls release() a second time -- violating
+   the no-retry invariant. image_stream_retain_failed(state) retains the stream
+   graph but is NOT by itself evidence that the wrapper survives.
+
+   The scenario is driven deterministically:
+
+     - one pooled frame is produced on demand and acquired as a lease;
+     - AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION=fail arms the parking
+       allocation failpoint, which throws std::bad_alloc at exactly that
+       historical insertion point;
+     - the provider deliberately fails or throws from release();
+     - closing the lease therefore runs the whole fail-safe path with the
+       parking allocation failing.
+
+   It then proves, from provider-side state rather than from the bridge:
+
+     - release() was attempted exactly once;
+     - it failed/threw as configured;
+     - the exact callback Buffer wrapper is still alive (the provider holds it
+       only weakly, so a dropped last reference would show up immediately);
+     - that wrapper's destructor never ran, so no destructor-driven second
+       release() is possible;
+     - its registered host backing storage is intact and unmodified;
+     - the provider channel and the Control are never destroyed, i.e. the
+       provider/channel/library graph stays retained and physical teardown
+       stays permanently blocked. */
+static int test_release_failure_with_park_allocation_failure(const char *scenario)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *lease_view = NULL;
+    unsigned long channels_before, controls_before;
+    unsigned long releases_before, callbacks_before;
+    config.buffer_count = 2;
+    config.queue_capacity = 4;
+    /* The mock provider is only resolvable once a session has loaded it, so
+       the observation baselines are taken after the stream is open and before
+       any frame is produced. */
+    CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
+    channels_before = mock_image_channels_destroyed();
+    controls_before = mock_controls_destroyed();
+    releases_before = mock_release_calls();
+    callbacks_before = mock_callback_buffers();
+    CHECK(channels_before != ULONG_MAX && controls_before != ULONG_MAX);
+    CHECK(releases_before != ULONG_MAX && callbacks_before != ULONG_MAX);
+    /* Observe this regression's own failed buffer; earlier ones stay under
+       the cumulative never-destroyed check below. */
+    mock_failed_release_reset();
+    CHECK(mock_failed_release_recorded() == 0);
+    CHECK(mock_failed_release_attempts() == 0UL);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* Exactly one frame, acquired as a live zero-copy lease. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &lease, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(lease, &lease_view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(lease_view->pixels.size == 12U && lease_view->pixels.data != NULL);
+    /* The buffer is checked out; nothing released yet. */
+    CHECK(mock_release_calls() == releases_before);
+    CHECK(mock_callback_buffers() == callbacks_before + 1UL);
+
+    /* Arm the deterministic allocation failure at the parking point, then
+       trigger the failing release by closing the lease. */
+    CHECK(setenv("AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION", "fail", 1) == 0);
+    CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) ==
+          AMS_MEL_PROVIDER_FAILED);
+    CHECK(lease == NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION") == 0);
+
+    /* The provider was asked to release exactly once, and it failed/threw. */
+    CHECK(mock_failed_release_recorded() == 1);
+    CHECK(mock_failed_release_attempts() == 1UL);
+    CHECK(mock_release_calls() == releases_before + 1UL);
+    /* The exact callback wrapper survives, and its destructor never ran, so
+       no destructor-driven second release() is possible. */
+    CHECK(mock_failed_buffer_alive() == 1);
+    CHECK(mock_failed_buffer_destroyed() == 0UL);
+    /* Host backing storage is still registered, intact, and unmodified. */
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+
+    /* The failure is reported truthfully and never retried. */
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* After both public owners are gone: still exactly one release attempt,
+       the wrapper still alive and never destroyed, its storage still intact,
+       and physical teardown permanently blocked -- the provider channel and
+       the Control were never destroyed. */
+    CHECK(mock_failed_release_attempts() == 1UL);
+    CHECK(mock_release_calls() == releases_before + 1UL);
+    CHECK(mock_failed_buffer_alive() == 1);
+    CHECK(mock_failed_buffer_destroyed() == 0UL);
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+    CHECK(mock_image_channels_destroyed() == channels_before);
+    CHECK(mock_controls_destroyed() == controls_before);
+    return EXIT_SUCCESS;
+}
+
+/* Companion regression for the ordinary release-failure path, i.e. the same
+   uncertain-ownership handling WITHOUT any forced parking allocation failure.
+   Behavior must be identical, which is what makes the test above a proof about
+   the allocation-failure path specifically rather than about release failure
+   in general. */
+static int test_release_failure_without_park_allocation_failure(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    unsigned long channels_before, controls_before, releases_before;
+    config.buffer_count = 2;
+    config.queue_capacity = 4;
+    /* The parking failpoint is explicitly NOT armed here. */
+    CHECK(getenv("AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION") == NULL);
+    CHECK(open_stream("release-fail-observed", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    channels_before = mock_image_channels_destroyed();
+    controls_before = mock_controls_destroyed();
+    releases_before = mock_release_calls();
+    CHECK(channels_before != ULONG_MAX && releases_before != ULONG_MAX);
+    mock_failed_release_reset();
+    CHECK(mock_failed_release_recorded() == 0);
+    CHECK(mock_failed_release_attempts() == 0UL);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &lease, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) ==
+          AMS_MEL_PROVIDER_FAILED);
+    CHECK(lease == NULL);
+
+    CHECK(mock_failed_release_recorded() == 1);
+    CHECK(mock_failed_release_attempts() == 1UL);
+    CHECK(mock_release_calls() == releases_before + 1UL);
+    CHECK(mock_failed_buffer_alive() == 1);
+    CHECK(mock_failed_buffer_destroyed() == 0UL);
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+
+    CHECK(mock_failed_release_attempts() == 1UL);
+    CHECK(mock_release_calls() == releases_before + 1UL);
+    CHECK(mock_failed_buffer_alive() == 1);
+    CHECK(mock_failed_buffer_destroyed() == 0UL);
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+    CHECK(mock_image_channels_destroyed() == channels_before);
+    CHECK(mock_controls_destroyed() == controls_before);
+    return EXIT_SUCCESS;
+}
+
 static int test_blocked_receive_provider_failure(void)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
@@ -1077,6 +1288,25 @@ int main(void)
     CHECK(test_cleanup_failure("detach-fail") == EXIT_SUCCESS);
     CHECK(test_blocked_receive_provider_failure() == EXIT_SUCCESS);
     CHECK(test_release_failure("release-throw") == EXIT_SUCCESS);
+    /* PR #42 corrective: failed-buffer retention must be genuinely
+       allocation-free, and the exact callback wrapper must survive. Run both
+       the forced-parking-allocation-failure cases and the ordinary
+       release-failure case repeatedly, so the process-lifetime
+       never-destroyed and exactly-once-release invariants are exercised
+       against accumulated retained state rather than a single clean run. */
+    CHECK(test_release_failure_with_park_allocation_failure(
+              "release-fail-park-alloc") == EXIT_SUCCESS);
+    CHECK(test_release_failure_with_park_allocation_failure(
+              "release-throw-park-alloc") == EXIT_SUCCESS);
+    CHECK(test_release_failure_without_park_allocation_failure() == EXIT_SUCCESS);
+    for (unsigned i = 0; i < 5; ++i) {
+        CHECK(test_release_failure_with_park_allocation_failure(
+                  "release-fail-park-alloc") == EXIT_SUCCESS);
+        CHECK(test_release_failure_with_park_allocation_failure(
+                  "release-throw-park-alloc") == EXIT_SUCCESS);
+        CHECK(test_release_failure_without_park_allocation_failure() ==
+              EXIT_SUCCESS);
+    }
     for (unsigned i = 0; i < 10; ++i) CHECK(test_idle() == EXIT_SUCCESS);
     puts("PASS: C IR Mono8 stream receive/queue/lifetime contract");
     return EXIT_SUCCESS;
