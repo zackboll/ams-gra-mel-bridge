@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1944,21 +1945,34 @@ public:
         value.setChannelTypes(scenario_ == "track-capability-wrong" ?
             std::vector<irmel::ChannelType>{irmel::ChannelType::HealthAndStatus} :
             std::vector<irmel::ChannelType>{irmel::ChannelType::IRSTTrack});
-        /* Only the explicit 029F candidate scenarios advertise
-         * CandidateObjectMessage. Every pre-existing scenario keeps its exact
-         * previous advertised set, so its registration behavior is unchanged
-         * and the candidate callback is never registered for it. The mock
-         * never advertises CandidateObjectPreProcMessage, which it does not
-         * implement. */
+        /* The advertised metadata set is assembled from one common base plus
+         * the two conditionally supported kinds, so the reported capabilities
+         * and the registerMetadataCallback answers always agree. Pinned
+         * ChannelCapability: channelMetadataCapabilities is "the set of
+         * Metadata types that are supported by a channel", and a registration
+         * for a kind with no corresponding entry is expected to return
+         * Return::NotSupported.
+         *
+         * - Default / non-PreProc scenarios omit CandidateObjectPreProcMessage
+         *   and therefore answer NotSupported when the adapter attempts that
+         *   @Optional registration; that refusal must stay non-fatal.
+         * - The explicit PreProc scenarios advertise the capability and
+         *   positively implement the callback, including the deliberate
+         *   conflict/error/exception registration scenarios, which model a
+         *   provider that claims the kind and then fails to register it.
+         * - CandidateObjectMessage stays separately controlled by its own
+         *   advertisement rule, so every pre-existing scenario keeps its exact
+         *   previous candidate behavior. */
+        std::set<irmel::ChannelMetadataCapabilityType> metadata{
+            irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
+            irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep};
         if (advertises_candidate_objects())
-            value.setChannelMetadataCapabilities(
-                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
-                 irmel::ChannelMetadataCapabilityType::CandidateObjectMessage,
-                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
-        else
-            value.setChannelMetadataCapabilities(
-                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
-                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+            metadata.insert(
+                irmel::ChannelMetadataCapabilityType::CandidateObjectMessage);
+        if (exercises_preproc())
+            metadata.insert(
+                irmel::ChannelMetadataCapabilityType::CandidateObjectPreProcMessage);
+        value.setChannelMetadataCapabilities(metadata);
         return value;
     }
     Return registerMetadataCallback(

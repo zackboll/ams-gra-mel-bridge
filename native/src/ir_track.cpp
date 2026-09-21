@@ -676,10 +676,16 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
 
 enum class Lifecycle { Attached, Enabled, Failed, Closed };
 
-/* Track channel ownership foundation, extended only as far as the
- * @RequiredIfTrack IRSTTrackReport callback and the @RequiredIfTrackUpdate
- * TrackDataUpdate send require. The existing metadata ownership is unchanged;
- * only the pending-request count is added. */
+/* Owns the complete Track provider graph and all retained Track state: the
+ * session, the attached Channel and its TrackChannel view, the callback-owned
+ * metadata state, the channel lifecycle, and the one pending-request count.
+ *
+ * `requests` is the shared accounting domain for exactly the two RequestFor
+ * send families (TrackDataUpdate and SystemTrackDataResponse). Inbound
+ * metadata callbacks (IRSTTrackReport, RequestSystemTrackData,
+ * CandidateObjectMessage, CandidateObjectPreProcMessage) never take part
+ * in `requests`; their delivery is accounted for by the bounded metadata queue
+ * and its own counters instead. */
 struct TrackState {
     std::mutex mutex;
     std::shared_ptr<SessionState> session;

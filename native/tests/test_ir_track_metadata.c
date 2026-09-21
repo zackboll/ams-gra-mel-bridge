@@ -1291,6 +1291,115 @@ static int receive_rich_preproc(ams_mel_ir_track_metadata *metadata)
     return EXIT_SUCCESS;
 }
 
+/* Membership test over the advertised metadata capability span. The pinned
+ * ChannelCapability documents channelMetadataCapabilities as a std::set with
+ * no published ordering contract for consumers, so membership, never a
+ * hard-coded element index, is what is asserted here. */
+static int capability_has(const ams_mel_ir_channel_capability_v1 *view,
+                          uint32_t kind, int *present)
+{
+    size_t index;
+    *present = 0;
+    CHECK(view != NULL);
+    CHECK(view->metadata_capabilities.size == 0U ||
+          view->metadata_capabilities.data != NULL);
+    for (index = 0; index < view->metadata_capabilities.size; ++index)
+        if (view->metadata_capabilities.data[index] == kind) *present = 1;
+    return EXIT_SUCCESS;
+}
+
+/* Opens the scenario, queries the public capability API, and reports whether
+ * each of the two conditionally advertised Track metadata kinds is present. */
+static int track_metadata_capabilities(const char *scenario, int *candidate,
+                                       int *preproc)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_channel_capability *owner = NULL;
+    const ams_mel_ir_channel_capability_v1 *view = NULL;
+    CHECK(open_track(scenario, &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_get_capabilities(track, &owner, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_view(owner, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(capability_has(view, AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE,
+                         candidate) == EXIT_SUCCESS);
+    CHECK(capability_has(view,
+                         AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE,
+                         preproc) == EXIT_SUCCESS);
+    /* The required Track report kind is always advertised, which proves the
+     * span was actually populated rather than empty. */
+    {
+        int report = 0;
+        CHECK(capability_has(view, AMS_MEL_IR_METADATA_IRST_TRACK_REPORT,
+                             &report) == EXIT_SUCCESS);
+        CHECK(report == 1);
+    }
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(owner == NULL);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* The mock provider's advertised metadata set must agree with the answers its
+ * registerMetadataCallback overloads give. Pinned ChannelCapability:
+ * channelMetadataCapabilities is the set of metadata types supported by a
+ * channel, and a registration for a kind with no corresponding entry is
+ * expected to return Return::NotSupported.
+ *
+ * Positive PreProc scenario   -> capability present, registration Success.
+ * Ordinary/default scenario   -> capability absent, registration NotSupported,
+ *                                and metadata open still succeeds because the
+ *                                callback is @Optional.
+ * Four-kind FIFO scenario     -> both conditional kinds advertised. */
+static int test_capability_coherence(void)
+{
+    int candidate = 0;
+    int preproc = 0;
+
+    /* A. Positive PreProc scenario advertises the optional kind. The existing
+     * test_preproc_success then proves registration Success and delivery. */
+    CHECK(track_metadata_capabilities("track-preproc-rich", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(preproc == 1);
+    CHECK(candidate == 0);
+
+    /* B. An ordinary pre-029G scenario does NOT advertise it. The existing
+     * test_preproc_not_supported_is_nonfatal then proves the adapter still
+     * attempts the @Optional registration, the mock answers NotSupported, and
+     * Metadata Open still succeeds. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-report", &candidate, &preproc) ==
+          EXIT_SUCCESS);
+    CHECK(preproc == 0);
+    CHECK(candidate == 0);
+
+    /* C. The four-kind FIFO scenario advertises BOTH conditional kinds. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-preproc-mixed", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(candidate == 1);
+    CHECK(preproc == 1);
+
+    /* The @RequiredIfDetectCandidateObjects scenarios keep advertising only
+     * their own kind, so the two rules stay independent. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-candidate-rich", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(candidate == 1);
+    CHECK(preproc == 0);
+
+    /* A scenario that advertises PreProc but then refuses registration models
+     * a provider claiming the kind and hitting a registration conflict. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-preproc-register-fail",
+                                      &candidate, &preproc) == EXIT_SUCCESS);
+    CHECK(preproc == 1);
+    return EXIT_SUCCESS;
+}
+
 /* Synchronous PreProc delivery from inside registration. */
 static int test_preproc_success(void)
 {
@@ -1704,6 +1813,8 @@ int main(void)
     CHECK(test_candidate_overflow() == EXIT_SUCCESS);
     CHECK(test_candidate_mixed_fifo() == EXIT_SUCCESS);
     /* @Optional CandidateObjectPreProcMessage. */
+    /* Advertised capability set and registration behavior must agree. */
+    CHECK(test_capability_coherence() == EXIT_SUCCESS);
     CHECK(test_preproc_success() == EXIT_SUCCESS);
     CHECK(test_preproc_async() == EXIT_SUCCESS);
     CHECK(test_preproc_registration_failures() == EXIT_SUCCESS);

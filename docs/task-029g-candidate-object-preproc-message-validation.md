@@ -394,6 +394,60 @@ transposition. Entry 0 carries `edge = false` and entry 1 carries
 `edge = true`, so both boolean states are covered. No arbitrary sleeps are used
 for callback ordering; the async scenario uses a deterministic barrier file.
 
+## Capability coherence of the mock provider
+
+Pinned evidence,
+`native/vendor/ir-mel/include/irmel/library/irmel-types/ChannelCapability.h`:
+
+> Indicates the set of Metadata types that are supported by a channel.
+> Query this set to check if a specific metadata type is supported or get the
+> full list.
+> ...
+> Calls to a channel's `registerMetadataCallback` function where the channel
+> does not have a corresponding entry in this set are expected to return
+> `Return::NotSupported`.
+
+`MockTrackChannel::getCapabilities()` therefore assembles one metadata set
+from a common base plus the two conditionally supported kinds, so the reported
+capabilities and the `registerMetadataCallback` answers always agree:
+
+```
+metadata = { IRSTTrackReport, ChannelCommsTestRep };
+if (advertises_candidate_objects())
+    metadata.insert(CandidateObjectMessage);
+if (exercises_preproc())
+    metadata.insert(CandidateObjectPreProcMessage);
+value.setChannelMetadataCapabilities(metadata);
+```
+
+Final mock policy:
+
+| Scenario class | `CandidateObjectPreProcMessage` advertised | Registration answer |
+| --- | --- | --- |
+| ordinary / pre-029G, e.g. `track-report` | no | `Return::NotSupported` |
+| positive PreProc, e.g. `track-preproc-rich`, `-async`, `-overflow`, `-mixed`, `-lifetime`, `-late` | yes | `Return::Success` |
+| explicit conflict/error, `track-preproc-register-fail` / `-unknown` / `-throw` | yes | `Fail` / unknown `Return` 99 / throw, as selected |
+
+`track-preproc-mixed` advertises both `CandidateObjectMessage` and
+`CandidateObjectPreProcMessage` alongside the common entries, matching the four
+callbacks it registers.
+
+The adapter itself is deliberately unchanged and remains tolerant: the PreProc
+registration is attempted for every Track metadata open because the upstream
+callback is `@Optional`, and `NotSupported` stays non-fatal, so metadata open
+still succeeds against a provider that does not advertise the kind. No
+`preproc_advertised` gate was added to `TrackState`; only
+`candidate_objects_advertised` gates a registration, because that kind is
+`@RequiredIfDetectCandidateObjects` rather than `@Optional`.
+
+`test_capability_coherence` in `native/tests/test_ir_track_metadata.c` proves
+this through the public bridge capability API only
+(`ams_mel_ir_track_get_capabilities` plus
+`ams_mel_ir_channel_capability_view`), using a membership helper over
+`metadata_capabilities` rather than a hard-coded element index: PreProc present
+for `track-preproc-rich`, absent for `track-report`, and both conditional kinds
+present for `track-preproc-mixed`.
+
 ## Four-kind FIFO
 
 `track-preproc-mixed` drives a deterministic sequence made possible by the
