@@ -687,6 +687,58 @@ begin
                Ada.Text_IO.Put_Line ("full FrameHeader: 320x200 Mono8 sparse metadata");
             end;
 
+            --  Task 030A: the same real 320x200 Mono8 frames through the
+            --  high-rate borrowed path. The borrowed view must report the
+            --  expected geometry and an identical checksum to an explicit
+            --  owned copy of the same lease, proving the borrow observed the
+            --  real payload rather than an empty or stale view.
+            declare
+               Lease : AMS.MEL.IR.Image.Frame_Lease :=
+                 AMS.MEL.IR.Image.Acquire_Frame (Stream, Timeout_MS);
+               Borrowed : Interfaces.Unsigned_64 := 0;
+               Length   : Natural := 0;
+               procedure Observe (Pixels : AMS.MEL.IR.Pixel_Array) is
+               begin
+                  Length := Pixels'Length;
+                  Borrowed := Checksum (Pixels);
+               end Observe;
+            begin
+               if not AMS.MEL.IR.Image.Is_Open (Lease)
+                 or else AMS.MEL.IR.Image.Width (Lease) /= 320
+                 or else AMS.MEL.IR.Image.Height (Lease) /= 200
+                 or else AMS.MEL.IR.Image.Bits_Per_Pixel (Lease) /= 8
+                 or else AMS.MEL.IR.Image.Number_Of_Bands (Lease) /= 1
+                 or else AMS.MEL.IR.Image.Pixel_Format (Lease) /= Channel_Value.Mono
+                 or else AMS.MEL.IR.Image.Pixel_Count (Lease) /= 64_000
+               then
+                  raise Program_Error with "invalid Squall zero-copy frame lease";
+               end if;
+               AMS.MEL.IR.Image.With_Pixels (Lease, Observe'Access);
+               declare
+                  Owned : constant AMS.MEL.IR.Pixel_Array :=
+                    AMS.MEL.IR.Image.Copy_Pixels (Lease);
+               begin
+                  if Length /= 64_000
+                    or else Owned'Length /= 64_000
+                    or else Borrowed /= Checksum (Owned)
+                  then
+                     raise Program_Error with "Squall borrowed and owned payloads disagree";
+                  end if;
+                  --  The lease keeps the payload valid after an explicit close
+                  --  only through the owned copy, never through the borrow.
+                  AMS.MEL.IR.Image.Close (Lease);
+                  if AMS.MEL.IR.Image.Is_Open (Lease)
+                    or else Checksum (Owned) /= Borrowed
+                  then
+                     raise Program_Error with "Squall lease close semantics failed";
+                  end if;
+               end;
+               Ada.Text_IO.Put_Line
+                 ("zero-copy lease: 320x200 Mono8 bytes=" & Length'Image & " checksum=" &
+                  Interfaces.Unsigned_64'Image (Borrowed) &
+                  " (borrowed view == owned copy; no native-snapshot payload copy)");
+            end;
+
             declare
                Have_Report : Boolean := False;
                Have_Euler  : Boolean := False;

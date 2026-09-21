@@ -230,6 +230,72 @@ static int test_rich_snapshot_lifetime(void)
     return EXIT_SUCCESS;
 }
 
+/* Task 030A: the snapshot view's pixel span must point into storage the
+ * snapshot itself owns and must stay stable for the snapshot's whole life, so
+ * a consumer binding can borrow it without copying. The test-only address log
+ * publishes exactly that address; this asserts the C view agrees with it, and
+ * that two outstanding snapshots own distinct storage. */
+static int test_snapshot_pixel_storage_identity(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *first = NULL, *second = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *first_view = NULL, *second_view = NULL;
+    const uint8_t *first_data = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(open_stream("success", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &first, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &second, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(first, &first_view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(second, &second_view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(first_view->pixels.size == 12U && second_view->pixels.size == 12U);
+    CHECK(first_view->pixels.data != NULL && second_view->pixels.data != NULL);
+    /* Two live leases own separate payload storage. */
+    CHECK(first_view->pixels.data != second_view->pixels.data);
+    first_data = first_view->pixels.data;
+    /* Repeating view never republishes or relocates the payload. */
+    first_view = NULL;
+    CHECK(ams_mel_ir_frame_snapshot_view(first, &first_view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(first_view->pixels.data == first_data);
+    CHECK(first_view->pixels.data[0] == 16U && first_view->pixels.data[11] == 27U);
+    CHECK(second_view->pixels.data[0] == 32U);
+    /* Releasing one snapshot leaves the other's storage untouched. */
+    CHECK(ams_mel_ir_frame_snapshot_close(&second, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(first_view->pixels.data == first_data && first_view->pixels.data[0] == 16U);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    /* And survives stream, Session, and provider teardown. */
+    CHECK(first_view->pixels.data == first_data && first_view->pixels.data[11] == 27U);
+    CHECK(ams_mel_ir_frame_snapshot_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* The test facade can publish degenerate pixel spans that a real provider
+ * cannot produce, so every consumer binding can prove it fails closed. This
+ * asserts only that the facade actually publishes them; rejection itself is a
+ * binding-level contract asserted in the Ada suite. */
+static int test_snapshot_malformed_pixel_span(const char *shape, int expect_null,
+                                              int expect_zero)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    CHECK(setenv("AMS_MEL_TEST_SNAPSHOT_PIXEL_SPAN", shape, 1) == 0);
+    CHECK(open_stream("success", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(snapshot, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK((view->pixels.data == NULL) == (expect_null != 0));
+    CHECK((view->pixels.size == 0U) == (expect_zero != 0));
+    CHECK(ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_SNAPSHOT_PIXEL_SPAN") == 0);
+    return EXIT_SUCCESS;
+}
+
 static int test_nested_malformed_recovery(const char *scenario)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
@@ -580,6 +646,10 @@ int main(void)
     CHECK(test_success() == EXIT_SUCCESS);
     CHECK(test_capability_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
+    CHECK(test_snapshot_pixel_storage_identity() == EXIT_SUCCESS);
+    CHECK(test_snapshot_malformed_pixel_span("empty", 1, 1) == EXIT_SUCCESS);
+    CHECK(test_snapshot_malformed_pixel_span("null-nonzero", 1, 0) == EXIT_SUCCESS);
+    CHECK(test_snapshot_malformed_pixel_span("oversize", 0, 0) == EXIT_SUCCESS);
     CHECK(test_full_snapshot_rich() == EXIT_SUCCESS);
     CHECK(test_rich_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_nested_malformed_recovery("malformed-image-type") == EXIT_SUCCESS);

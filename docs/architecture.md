@@ -784,3 +784,105 @@ Native C and safe Ada Track coverage is complete for those surfaces. The safe
 Rust Track API and the public Python Track API remain intentionally absent, and
 positive Track behavior remains mock-only because pinned Squall cannot attach a
 Track channel through `Control::attachChannel`.
+
+## High-rate data ownership
+
+The project separates two categories of value with two different ownership
+rules. This split is deliberate and is the intended model for all future
+bulk-data work, not an IR-only convenience.
+
+```text
+Small / control-plane values
+    copied into language-owned representation
+
+Bulk / data-plane values
+    native limited owner + temporary borrowed language view
+```
+
+Control-plane values -- configuration, identifiers, status, capability
+descriptions, command results, metadata records, strings, flags, sensor
+inertial and navigation state -- are copied into ordinary language-owned
+storage at the boundary. That is simpler, has no lifetime coupling, and costs
+nothing measurable relative to their size.
+
+Bulk data-plane values -- image pixel payloads, and in future RF sample and
+packet payloads -- are not copied across the boundary. Instead the binding
+follows one chain:
+
+```text
+native backing owner
+        |
+        v
+opaque C handle
+        |
+        v
+limited language owner
+        |
+        v
+temporary borrowed language view
+```
+
+Each level has one job. The native backing owner keeps the storage alive. The
+opaque C handle is the only thing that crosses the ABI; no borrowed span is
+ever published without an owning object whose lifetime is explicit. The limited
+language owner is non-copyable and releases the handle exactly once, by
+explicit close or by finalization. The borrowed view is valid only for the
+dynamic extent of a borrow operation and must not be retained.
+
+Task 030A implements this for IR Images as `AMS.MEL.IR.Image.Frame_Lease`
+(`Acquire_Frame` / `With_Pixels` / `Copy_Pixels`), documented in
+`docs/task-030a-zero-copy-ada-frame-lease.md`. The public names are
+IR-specific; the ownership pattern is not.
+
+### Intended reuse
+
+```text
+IR Images            implemented (Task 030A, native snapshot -> Ada view)
+RF Receive products  I/Q sample buffers, real sample buffers, VITA packet
+                     buffers, PDW buffers
+RF waveform          waveform source buffers for streaming transmit
+Stacked Image        stacked/accumulated image products
+```
+
+None of those are implemented here. The point of doing IR first is that the RF
+work should inherit a lifetime model that already has deterministic alias
+evidence behind it.
+
+### Memory-kind constraint
+
+Future RF MEL bulk buffers may be supplied from memory regions that are not
+ordinary host heap:
+
+- heap allocations;
+- RDMA-registered memory;
+- GPU memory;
+- FPGA or other device memory.
+
+The design must therefore not assume that every future bulk buffer is ordinary
+CPU-copyable memory that can be bound directly to an Ada array or a Rust slice.
+`docs/c-abi-policy.md` already states the host-memory-only constraint for the
+current profile: device addresses must not be dereferenced as Ada arrays or
+Rust slices. The opaque-handle level of the chain is what makes a future
+non-host memory kind expressible at all -- an owner can describe memory that
+the language cannot directly address, while a raw borrowed span cannot. No
+RDMA, GPU, CUDA, or FPGA support is implemented in Task 030A.
+
+### Current IR copy levels
+
+```text
+After Task 030A                       Future Task 030B
+MEL provider Buffer                   MEL provider Buffer
+        |                                     |
+        | COPY remains                        | retained owner
+        v                                     v
+native snapshot storage               native lease
+        |                                     |
+        | ZERO COPY                           | ZERO COPY
+        v                                     v
+Ada borrowed view                     Ada borrowed view
+```
+
+Task 030A is not end-to-end zero-copy. The native frame callback still copies
+the provider buffer into snapshot-owned storage before `irmel::Buffer::release`
+is called; retaining the upstream buffer instead is the separate Task 030B
+investigation.

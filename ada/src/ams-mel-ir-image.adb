@@ -1,7 +1,6 @@
 with Ada.Unchecked_Conversion;
 with AMS.MEL.IR.Capability_Conversion;
 with Interfaces.C;
-with System;
 with System.Storage_Elements;
 
 package body AMS.MEL.IR.Image is
@@ -11,17 +10,17 @@ package body AMS.MEL.IR.Image is
    use type Interfaces.C.size_t;
    use type Interfaces.C.char;
    use type C.Navigation_Request_Handle;
+   use type C.Frame_Snapshot_Handle;
+   use type System.Address;
    use System.Storage_Elements;
    type View_Access is access all C.IR_Frame_Snapshot_V1;
    type Capability_Access is access all C.IR_Channel_Capability_V1;
    type U32_Access is access all Interfaces.Unsigned_32;
-   type Byte_Access is access all AMS.MEL.IR.Byte;
    type Inertial_Access is access all C.IR_Sensor_Inertial_State_V1;
    type Nav_Access is access all C.IR_Sensor_Nav_State_V1;
    function To_View is new Ada.Unchecked_Conversion (System.Address, View_Access);
    function To_Capability is new Ada.Unchecked_Conversion (System.Address, Capability_Access);
    function To_U32 is new Ada.Unchecked_Conversion (System.Address, U32_Access);
-   function To_Byte is new Ada.Unchecked_Conversion (System.Address, Byte_Access);
    function To_Inertial is new Ada.Unchecked_Conversion (System.Address, Inertial_Access);
    function To_Nav is new Ada.Unchecked_Conversion (System.Address, Nav_Access);
    function Address_At (Base : System.Address; Index, Bytes : Natural) return System.Address
@@ -129,13 +128,148 @@ package body AMS.MEL.IR.Image is
    begin
       Ignored := C.IR_Frame_Snapshot_Close (Handle'Access, D'Address, D'Length, R'Access);
    end Close;
-   function Receive
-     (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Full_Frame
-   is
-      Handle  : aliased C.Frame_Snapshot_Handle := C.Null_Frame_Snapshot;
+   --  Converts every small metadata field of a native frame snapshot view
+   --  into Ada-owned storage and records the bulk pixel payload as a borrowed
+   --  address/length pair. The payload itself is deliberately NOT copied here:
+   --  this one conversion serves both the owned-copy Receive path, which adds
+   --  its own explicit copy afterwards, and the borrowed Acquire_Frame path,
+   --  which never copies the payload at all.
+   function To_Lease_Metadata (Raw : C.IR_Frame_Snapshot_V1) return Lease_Metadata is
+      Result : Lease_Metadata;
+   begin
+      if Raw.Pixel_Format > 2 or else Raw.Image_Type > 2 or else Raw.Image_Flip > 3 then
+         raise Provider_Error with "invalid native full frame enum";
+      end if;
+      Result.Time := Long_Long_Integer (Raw.System_Time_NS);
+      Result.Integration := Long_Long_Integer (Raw.Integration_Time_NS);
+      Result.W := Raw.Width;
+      Result.H := Raw.Height;
+      Result.BPP := Raw.Bits_Per_Pixel;
+      Result.Bands := Raw.Number_Of_Bands;
+      Result.HFOV := Long_Float (Raw.Horizontal_FOV_Rad);
+      Result.VFOV := Long_Float (Raw.Vertical_FOV_Rad);
+      Result.Sensor :=
+        (AMS.MEL.IR.Create_Component_Location
+           (Long_Float (Raw.Contributing_Sensor.Location.Offset_X_M),
+            Long_Float (Raw.Contributing_Sensor.Location.Offset_Y_M),
+            Long_Float (Raw.Contributing_Sensor.Location.Offset_Z_M),
+            Copy_String (Raw.Contributing_Sensor.Location.Key),
+            Copy_String (Raw.Contributing_Sensor.Location.System_Name)),
+         Raw.Contributing_Sensor.Sensor_ID);
+      Result.Format := AMS.MEL.IR.Channel.Pixel_Format'Val (Raw.Pixel_Format);
+      Result.ID := Raw.Frame_ID;
+      Result.Sub_ID := Raw.Subframe_ID;
+      Result.Sub_Total := Raw.Subframe_Total;
+      Result.Kind := Full_Image_Type'Val (Raw.Image_Type);
+      Result.Flip := AMS.MEL.IR.Image_Flip'Val (Raw.Image_Flip);
+      if Raw.Image_Flags.Size > 0 then
+         for I in 0 .. Natural (Raw.Image_Flags.Size) - 1 loop
+            declare
+               V : constant Interfaces.Unsigned_32 :=
+                 To_U32 (Address_At (Raw.Image_Flags.Data, I, 4)).all;
+            begin
+               if V > 3 then
+                  raise Provider_Error with "invalid native image flag";
+               end if;
+               Result.Flags.Append (Image_Flag'Val (V));
+            end;
+         end loop;
+      end if;
+      Result.D_Row := Long_Float (Raw.Dither_Row);
+      Result.D_Column := Long_Float (Raw.Dither_Column);
+      Result.Row := Raw.Row_Offset;
+      Result.Column := Raw.Column_Offset;
+      if Raw.Sensor_Inertial_States.Size > 0 then
+         for I in 0 .. Natural (Raw.Sensor_Inertial_States.Size) - 1 loop
+            declare
+               V : constant C.IR_Sensor_Inertial_State_V1 :=
+                 To_Inertial
+                   (Address_At
+                      (Raw.Sensor_Inertial_States.Data,
+                       I,
+                       C.IR_Sensor_Inertial_State_V1'Object_Size / System.Storage_Unit)).all;
+            begin
+               Result.Inertial.Append
+                 (Sensor_Inertial_State'
+                    (Long_Long_Integer (V.System_Time_NS),
+                     Quaternion_Value (V.Q_XYZW),
+                     Quaternion_Value (V.Q_ECEF_XYZW),
+                     Direction (V.Sensor_Position),
+                     Direction (V.Sensor_Velocity),
+                     (V.Uncertainties.Sensor_Uncertainties,
+                      V.Uncertainties.Platform_Uncertainties)));
+            end;
+         end loop;
+      end if;
+      if Raw.Sensor_Nav_States.Size > 0 then
+         for I in 0 .. Natural (Raw.Sensor_Nav_States.Size) - 1 loop
+            declare
+               V : constant C.IR_Sensor_Nav_State_V1 :=
+                 To_Nav
+                   (Address_At
+                      (Raw.Sensor_Nav_States.Data,
+                       I,
+                       C.IR_Sensor_Nav_State_V1'Object_Size / System.Storage_Unit)).all;
+            begin
+               if V.Coordinate_System > 3 then
+                  raise Provider_Error with "invalid native coordinate system";
+               end if;
+               Result.Nav.Append
+                 (Sensor_Nav_State'
+                    (Direction (V.Position),
+                     Direction (V.Velocity),
+                     Direction (V.Acceleration),
+                     Error_Value (V.Position_Error),
+                     Error_Value (V.Velocity_Error),
+                     Error_Value (V.Acceleration_Error),
+                     Orientation_Value (V.Orientation),
+                     Error_Value (V.Orientation_Error),
+                     Orientation_Value (V.Orientation_Velocity),
+                     Error_Value (V.Orientation_Velocity_Error),
+                     Orientation_Value (V.Orientation_Acceleration),
+                     Error_Value (V.Orientation_Acceleration_Error),
+                     Coordinate_System'Val (V.Coordinate_System)));
+            end;
+         end loop;
+      end if;
+      Result.Band := Raw.Band_Index;
+      --  Bulk payload: pointer and length only. Fail closed on a span that
+      --  cannot be represented as a safe Ada array, or on a null pointer with
+      --  a nonzero size, instead of performing unchecked memory access.
+      if Raw.Pixels.Size > C.Size_T (Natural'Last) then
+         raise Provider_Error with "native pixel span exceeds Ada index range";
+      end if;
+      Result.Payload_Size := Natural (Raw.Pixels.Size);
+      Result.Payload := Raw.Pixels.Data;
+      if Result.Payload_Size > 0 and then Result.Payload = System.Null_Address then
+         raise Provider_Error with "native pixel span has a null pointer with a nonzero size";
+      end if;
+      return Result;
+   end To_Lease_Metadata;
+
+   --  Reads the snapshot view and converts the metadata. Never closes the
+   --  snapshot; the caller owns that decision.
+   function View_Metadata (Handle : C.Frame_Snapshot_Handle) return Lease_Metadata is
       Address : aliased System.Address := System.Null_Address;
       D       : aliased Diagnostic := [others => Interfaces.C.nul];
       R       : aliased C.Size_T := 0;
+   begin
+      Check (C.IR_Frame_Snapshot_View (Handle, Address'Access, D'Address, D'Length, R'Access), D);
+      if Address = System.Null_Address then
+         raise Provider_Error with "native frame snapshot returned a null view";
+      end if;
+      return To_Lease_Metadata (To_View (Address).all);
+   end View_Metadata;
+
+   --  Dequeues one native snapshot. On any failure the output handle stays
+   --  null, so no snapshot is leaked.
+   procedure Acquire_Snapshot
+     (Object               : AMS.MEL.IR.Image_Stream;
+      Timeout_Milliseconds : Natural;
+      Handle               : aliased in out C.Frame_Snapshot_Handle)
+   is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
    begin
       Check
         (C.IR_Stream_Receive_Snapshot
@@ -146,114 +280,75 @@ package body AMS.MEL.IR.Image is
             D'Length,
             R'Access),
          D);
+   end Acquire_Snapshot;
+
+   --  A constrained borrowed view over native pixel storage. Only the address
+   --  is bound; no element is read or written to build it, so construction is
+   --  O(1) in the pixel count.
+   procedure Borrow_Pixels
+     (Payload : System.Address;
+      Size    : Natural;
+      Process : not null access procedure (Pixels : AMS.MEL.IR.Pixel_Array))
+   is
+      Empty : constant AMS.MEL.IR.Pixel_Array (1 .. 0) := [others => 0];
+   begin
+      if Size = 0 then
+         Process (Empty);
+         return;
+      end if;
+      declare
+         View : constant AMS.MEL.IR.Pixel_Array (1 .. Size)
+         with Import, Convention => C, Address => Payload;
       begin
-         Check
-           (C.IR_Frame_Snapshot_View (Handle, Address'Access, D'Address, D'Length, R'Access), D);
+         Process (View);
+      end;
+   end Borrow_Pixels;
+
+   function Receive
+     (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Full_Frame
+   is
+      Handle : aliased C.Frame_Snapshot_Handle := C.Null_Frame_Snapshot;
+   begin
+      Acquire_Snapshot (Object, Timeout_Milliseconds, Handle);
+      begin
          declare
-            Raw    : constant C.IR_Frame_Snapshot_V1 := To_View (Address).all;
+            Meta   : constant Lease_Metadata := View_Metadata (Handle);
             Result : Full_Frame;
+            --  Compatibility path: this API is documented as owned/copying, so
+            --  the payload is explicitly copied into Ada storage here and the
+            --  native snapshot is released before returning.
+            procedure Copy_Into (Pixels : AMS.MEL.IR.Pixel_Array) is
+            begin
+               Result.Data.Reserve_Capacity (Ada.Containers.Count_Type (Pixels'Length));
+               for Value of Pixels loop
+                  Result.Data.Append (Value);
+               end loop;
+            end Copy_Into;
          begin
-            if Raw.Pixel_Format > 2 or else Raw.Image_Type > 2 or else Raw.Image_Flip > 3 then
-               raise Provider_Error with "invalid native full frame enum";
-            end if;
-            Result.Time := Long_Long_Integer (Raw.System_Time_NS);
-            Result.Integration := Long_Long_Integer (Raw.Integration_Time_NS);
-            Result.W := Raw.Width;
-            Result.H := Raw.Height;
-            Result.BPP := Raw.Bits_Per_Pixel;
-            Result.Bands := Raw.Number_Of_Bands;
-            Result.HFOV := Long_Float (Raw.Horizontal_FOV_Rad);
-            Result.VFOV := Long_Float (Raw.Vertical_FOV_Rad);
-            Result.Sensor :=
-              (AMS.MEL.IR.Create_Component_Location
-                 (Long_Float (Raw.Contributing_Sensor.Location.Offset_X_M),
-                  Long_Float (Raw.Contributing_Sensor.Location.Offset_Y_M),
-                  Long_Float (Raw.Contributing_Sensor.Location.Offset_Z_M),
-                  Copy_String (Raw.Contributing_Sensor.Location.Key),
-                  Copy_String (Raw.Contributing_Sensor.Location.System_Name)),
-               Raw.Contributing_Sensor.Sensor_ID);
-            Result.Format := AMS.MEL.IR.Channel.Pixel_Format'Val (Raw.Pixel_Format);
-            Result.ID := Raw.Frame_ID;
-            Result.Sub_ID := Raw.Subframe_ID;
-            Result.Sub_Total := Raw.Subframe_Total;
-            Result.Kind := Full_Image_Type'Val (Raw.Image_Type);
-            Result.Flip := AMS.MEL.IR.Image_Flip'Val (Raw.Image_Flip);
-            if Raw.Image_Flags.Size > 0 then
-               for I in 0 .. Natural (Raw.Image_Flags.Size) - 1 loop
-                  declare
-                     V : constant Interfaces.Unsigned_32 :=
-                       To_U32 (Address_At (Raw.Image_Flags.Data, I, 4)).all;
-                  begin
-                     if V > 3 then
-                        raise Provider_Error with "invalid native image flag";
-                     end if;
-                     Result.Flags.Append (Image_Flag'Val (V));
-                  end;
-               end loop;
-            end if;
-            Result.D_Row := Long_Float (Raw.Dither_Row);
-            Result.D_Column := Long_Float (Raw.Dither_Column);
-            Result.Row := Raw.Row_Offset;
-            Result.Column := Raw.Column_Offset;
-            if Raw.Sensor_Inertial_States.Size > 0 then
-               for I in 0 .. Natural (Raw.Sensor_Inertial_States.Size) - 1 loop
-                  declare
-                     V : constant C.IR_Sensor_Inertial_State_V1 :=
-                       To_Inertial
-                         (Address_At
-                            (Raw.Sensor_Inertial_States.Data,
-                             I,
-                             C.IR_Sensor_Inertial_State_V1'Object_Size / System.Storage_Unit)).all;
-                  begin
-                     Result.Inertial.Append
-                       (Sensor_Inertial_State'
-                          (Long_Long_Integer (V.System_Time_NS),
-                           Quaternion_Value (V.Q_XYZW),
-                           Quaternion_Value (V.Q_ECEF_XYZW),
-                           Direction (V.Sensor_Position),
-                           Direction (V.Sensor_Velocity),
-                           (V.Uncertainties.Sensor_Uncertainties,
-                            V.Uncertainties.Platform_Uncertainties)));
-                  end;
-               end loop;
-            end if;
-            if Raw.Sensor_Nav_States.Size > 0 then
-               for I in 0 .. Natural (Raw.Sensor_Nav_States.Size) - 1 loop
-                  declare
-                     V : constant C.IR_Sensor_Nav_State_V1 :=
-                       To_Nav
-                         (Address_At
-                            (Raw.Sensor_Nav_States.Data,
-                             I,
-                             C.IR_Sensor_Nav_State_V1'Object_Size / System.Storage_Unit)).all;
-                  begin
-                     if V.Coordinate_System > 3 then
-                        raise Provider_Error with "invalid native coordinate system";
-                     end if;
-                     Result.Nav.Append
-                       (Sensor_Nav_State'
-                          (Direction (V.Position),
-                           Direction (V.Velocity),
-                           Direction (V.Acceleration),
-                           Error_Value (V.Position_Error),
-                           Error_Value (V.Velocity_Error),
-                           Error_Value (V.Acceleration_Error),
-                           Orientation_Value (V.Orientation),
-                           Error_Value (V.Orientation_Error),
-                           Orientation_Value (V.Orientation_Velocity),
-                           Error_Value (V.Orientation_Velocity_Error),
-                           Orientation_Value (V.Orientation_Acceleration),
-                           Error_Value (V.Orientation_Acceleration_Error),
-                           Coordinate_System'Val (V.Coordinate_System)));
-                  end;
-               end loop;
-            end if;
-            Result.Band := Raw.Band_Index;
-            if Raw.Pixels.Size > 0 then
-               for I in 0 .. Natural (Raw.Pixels.Size) - 1 loop
-                  Result.Data.Append (To_Byte (Address_At (Raw.Pixels.Data, I, 1)).all);
-               end loop;
-            end if;
+            Result.Time := Meta.Time;
+            Result.Integration := Meta.Integration;
+            Result.W := Meta.W;
+            Result.H := Meta.H;
+            Result.BPP := Meta.BPP;
+            Result.Bands := Meta.Bands;
+            Result.HFOV := Meta.HFOV;
+            Result.VFOV := Meta.VFOV;
+            Result.Sensor := Meta.Sensor;
+            Result.Format := Meta.Format;
+            Result.ID := Meta.ID;
+            Result.Sub_ID := Meta.Sub_ID;
+            Result.Sub_Total := Meta.Sub_Total;
+            Result.Kind := Meta.Kind;
+            Result.Flip := Meta.Flip;
+            Result.Flags := Meta.Flags;
+            Result.D_Row := Meta.D_Row;
+            Result.D_Column := Meta.D_Column;
+            Result.Row := Meta.Row;
+            Result.Column := Meta.Column;
+            Result.Inertial := Meta.Inertial;
+            Result.Nav := Meta.Nav;
+            Result.Band := Meta.Band;
+            Borrow_Pixels (Meta.Payload, Meta.Payload_Size, Copy_Into'Access);
             Close (Handle);
             return Result;
          end;
@@ -511,4 +606,142 @@ package body AMS.MEL.IR.Image is
       when others =>
          Request.Handle := C.Null_Navigation_Request;
    end Finalize;
+
+   ---------------------------------------------------------------------------
+   --  High-rate borrowed data plane (Task 030A)
+   --
+   --  Ownership chain:
+   --
+   --      QueuedFrame storage owned by ams_mel_ir_frame_snapshot   (native)
+   --          -> ams_mel_ir_frame_snapshot *                       (opaque C)
+   --              -> Frame_Lease_Owner.Handle                      (limited Ada)
+   --                  -> Pixel_Array view bound to Pixels.data     (borrowed)
+   --
+   --  The native snapshot is fully independent of the stream, Session, and
+   --  provider after dequeue, so a live lease keeps the payload valid through
+   --  Stop, Close, Session close, and provider teardown.
+
+   function Acquire_Frame
+     (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame_Lease is
+   begin
+      return Result : Frame_Lease do
+         Acquire_Snapshot (Object, Timeout_Milliseconds, Result.Owner.Handle);
+         begin
+            --  Only small metadata is converted here. The payload is retained
+            --  as the snapshot's own address and length; nothing payload-sized
+            --  is allocated or copied.
+            Result.Owner.Data := View_Metadata (Result.Owner.Handle);
+         exception
+            when others =>
+               --  A metadata conversion failure must not leak the snapshot.
+               Close (Result.Owner.Handle);
+               raise;
+         end;
+      end return;
+   end Acquire_Frame;
+
+   function Is_Open (Frame : Frame_Lease) return Boolean
+   is (Frame.Owner.Handle /= C.Null_Frame_Snapshot);
+
+   procedure Close (Frame : in out Frame_Lease) is
+   begin
+      --  Idempotent: the native close clears the handle, and a null handle is
+      --  simply closed again with no effect.
+      Close (Frame.Owner.Handle);
+      Frame.Owner.Data.Payload := System.Null_Address;
+      Frame.Owner.Data.Payload_Size := 0;
+   end Close;
+
+   overriding
+   procedure Finalize (Frame : in out Frame_Lease_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_Frame_Snapshot_Close (Frame.Handle'Access, System.Null_Address, 0, null);
+      Frame.Data.Payload := System.Null_Address;
+      Frame.Data.Payload_Size := 0;
+   exception
+      when others =>
+         Frame.Handle := C.Null_Frame_Snapshot;
+   end Finalize;
+
+   function Pixel_Count (Frame : Frame_Lease) return Natural
+   is (Frame.Owner.Data.Payload_Size);
+
+   procedure With_Pixels
+     (Frame : Frame_Lease; Process : not null access procedure (Pixels : AMS.MEL.IR.Pixel_Array)) is
+   begin
+      if Frame.Owner.Handle = C.Null_Frame_Snapshot then
+         raise Provider_Error with "IR frame lease is closed";
+      end if;
+      if Frame.Owner.Data.Payload_Size > 0 and then Frame.Owner.Data.Payload = System.Null_Address
+      then
+         raise Provider_Error with "IR frame lease has an invalid native pixel view";
+      end if;
+      Borrow_Pixels (Frame.Owner.Data.Payload, Frame.Owner.Data.Payload_Size, Process);
+   end With_Pixels;
+
+   function Copy_Pixels (Frame : Frame_Lease) return AMS.MEL.IR.Pixel_Array is
+      Result : AMS.MEL.IR.Pixel_Array (1 .. Pixel_Count (Frame)) := [others => 0];
+      procedure Copy_Into (Pixels : AMS.MEL.IR.Pixel_Array) is
+      begin
+         Result := Pixels;
+      end Copy_Into;
+   begin
+      With_Pixels (Frame, Copy_Into'Access);
+      return Result;
+   end Copy_Pixels;
+
+   function System_Time_NS (Frame : Frame_Lease) return Long_Long_Integer
+   is (Frame.Owner.Data.Time);
+   function Integration_Time_NS (Frame : Frame_Lease) return Long_Long_Integer
+   is (Frame.Owner.Data.Integration);
+   function Width (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.W);
+   function Height (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.H);
+   function Bits_Per_Pixel (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.BPP);
+   function Number_Of_Bands (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.Bands);
+   function Horizontal_FOV_Rad (Frame : Frame_Lease) return Long_Float
+   is (Frame.Owner.Data.HFOV);
+   function Vertical_FOV_Rad (Frame : Frame_Lease) return Long_Float
+   is (Frame.Owner.Data.VFOV);
+   function Contributing_Sensor_Value (Frame : Frame_Lease) return Contributing_Sensor
+   is (Frame.Owner.Data.Sensor);
+   function Pixel_Format (Frame : Frame_Lease) return AMS.MEL.IR.Channel.Pixel_Format
+   is (Frame.Owner.Data.Format);
+   function Frame_ID (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.ID);
+   function Subframe_ID (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.Sub_ID);
+   function Subframe_Total (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.Sub_Total);
+   function Image_Type (Frame : Frame_Lease) return Full_Image_Type
+   is (Frame.Owner.Data.Kind);
+   function Image_Flip (Frame : Frame_Lease) return AMS.MEL.IR.Image_Flip
+   is (Frame.Owner.Data.Flip);
+   function Image_Flag_Count (Frame : Frame_Lease) return Natural
+   is (Natural (Frame.Owner.Data.Flags.Length));
+   function Image_Flag_At (Frame : Frame_Lease; Index : Positive) return Image_Flag
+   is (Frame.Owner.Data.Flags.Element (Index));
+   function Dither_Row (Frame : Frame_Lease) return Long_Float
+   is (Frame.Owner.Data.D_Row);
+   function Dither_Column (Frame : Frame_Lease) return Long_Float
+   is (Frame.Owner.Data.D_Column);
+   function Row_Offset (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.Row);
+   function Column_Offset (Frame : Frame_Lease) return Interfaces.Unsigned_32
+   is (Frame.Owner.Data.Column);
+   function Sensor_Inertial_State_Count (Frame : Frame_Lease) return Natural
+   is (Natural (Frame.Owner.Data.Inertial.Length));
+   function Sensor_Inertial_State_At
+     (Frame : Frame_Lease; Index : Positive) return Sensor_Inertial_State
+   is (Frame.Owner.Data.Inertial.Element (Index));
+   function Sensor_Nav_State_Count (Frame : Frame_Lease) return Natural
+   is (Natural (Frame.Owner.Data.Nav.Length));
+   function Sensor_Nav_State_At (Frame : Frame_Lease; Index : Positive) return Sensor_Nav_State
+   is (Frame.Owner.Data.Nav.Element (Index));
+   function Band_Index (Frame : Frame_Lease) return AMS.MEL.IR.Byte
+   is (Frame.Owner.Data.Band);
 end AMS.MEL.IR.Image;

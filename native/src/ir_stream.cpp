@@ -971,6 +971,34 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
         owner->frame = std::move(state.callback->queue.front());
         state.callback->queue.pop_front();
         owner->frame.bind();
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+        /* Test-only malformed-span injection. Real providers cannot produce
+         * these spans through bind(), but every consumer binding must still
+         * fail closed instead of dereferencing them, so the test facade can
+         * publish exactly the three degenerate shapes. The variable is not
+         * consumed, so a scenario stays armed for every frame it receives. */
+        if (const char *span = std::getenv("AMS_MEL_TEST_SNAPSHOT_PIXEL_SPAN"); span != nullptr) {
+            if (std::strcmp(span, "null-nonzero") == 0)
+                owner->frame.view.pixels = {nullptr, owner->frame.pixels.size()};
+            else if (std::strcmp(span, "oversize") == 0)
+                owner->frame.view.pixels = {owner->frame.pixels.data(),
+                                            std::numeric_limits<std::size_t>::max()};
+            else if (std::strcmp(span, "empty") == 0)
+                owner->frame.view.pixels = {nullptr, 0U};
+        }
+        /* Test-only zero-copy alias hook. It identifies the storage the
+         * snapshot itself owns so a consumer binding can prove that its
+         * borrowed view aliases exactly this address rather than an
+         * intermediate copy. It publishes no new export and no new ABI type,
+         * writes only when the test explicitly names a log, and records
+         * "<frame_id> <pixel-data-address>" per created snapshot. */
+        if (const char *log = std::getenv("AMS_MEL_TEST_SNAPSHOT_ADDRESS_LOG"); log != nullptr) {
+            std::ofstream stream{log, std::ios::app};
+            stream << owner->frame.view.frame_id << ' '
+                   << reinterpret_cast<std::uintptr_t>(owner->frame.view.pixels.data) << ' '
+                   << owner->frame.view.pixels.size << '\n';
+        }
+#endif
         *snapshot = owner.release();
         return AMS_MEL_OK;
     } catch (...) {
