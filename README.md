@@ -22,19 +22,27 @@ themselves.
 > complete ScanParam, BIT, and ConfigSet, plus all three required C2-specific
 > metadata callbacks. Ada uses safe one-choice BIT operations and fully owned
 > `AMS.MEL.IR.C2.Metadata` values for CommandStatus, BIT_Configuration, and
-> BIT_Status (including complete nested faults). Provider callbacks are copied
-> into a bounded native queue; provider callback threads never invoke Ada
-> application code. Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
+> BIT_Status (including complete nested faults). Provider callbacks enqueue into
+> a bounded native queue -- metadata is copied, and since Task 030B the Image
+> payload is retained in place rather than copied; provider callback threads
+> never invoke Ada application code. Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
 > FrameHeader snapshot; legacy `AMS.MEL.IR.Receive` remains the Mono8 compatibility
 > subset. For the high-rate data plane Ada also provides
 > `AMS.MEL.IR.Image.Frame_Lease` with `Acquire_Frame`, `With_Pixels`, and
 > `Copy_Pixels`: a limited owner of one native frame snapshot that borrows the
-> pixel payload in place, with **no** copy from the native snapshot into Ada.
-> That path is not end-to-end zero-copy -- the native callback still copies the
-> MEL provider buffer once into snapshot-owned storage -- and `Receive` /
-> `Full_Frame` remain the owned-copy compatibility APIs. See
-> `docs/task-030a-zero-copy-ada-frame-lease.md` and the high-rate data ownership
-> section of `docs/architecture.md`.
+> pixel payload in place. Since Task 030B that borrow reaches all the way to
+> the provider: the bridge performs **zero** bulk payload copies from the MEL
+> callback buffer into Ada, and
+> `irmel::Buffer::getImageAddress` == native snapshot `pixels.data` == the Ada
+> `With_Pixels` first-element address. The claim is scoped to the bridge;
+> Squall itself still copies received UDP bytes into the registered MEL host
+> buffer, and nothing is claimed about NIC DMA or sensor transport. A live
+> lease keeps one provider buffer checked out, so it causes real provider-level
+> backpressure and defers physical provider teardown until it is closed;
+> `Receive` / `Full_Frame` remain the owned-copy compatibility APIs. See
+> `docs/task-030b-provider-buffer-zero-copy.md`,
+> `docs/task-030a-zero-copy-ada-frame-lease.md`, and the high-rate data
+> ownership section of `docs/architecture.md`.
 > Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
 > BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp events through one bounded
 > DROP-INCOMING queue. `AMS.MEL.IR.Image` additionally exposes

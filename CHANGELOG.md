@@ -2,6 +2,102 @@
 
 ## Unreleased
 
+- Complete the high-rate zero-copy data plane: the bridge now performs **zero**
+  bulk payload copies from the MEL provider callback buffer into Ada. The
+  native `frame.pixels.assign(...)` and its payload-sized
+  `std::vector<std::uint8_t>` are removed. `QueuedFrame` instead owns the
+  callback's `std::shared_ptr<irmel::Buffer>` plus the validated image address
+  and byte count, and publishes `view.pixels` as a borrowed span directly over
+  `irmel::Buffer::getImageAddress()`. The defining deterministic proof is the
+  three-way pointer identity
+
+      Buffer::getImageAddress() == snapshot pixels.data == Ada view address
+
+  asserted natively and from Ada through a test-only address log, with no
+  production ABI change and no reliance on elapsed-time benchmarks.
+
+  This is a **bridge** claim. Pinned Squall still copies received UDP bytes
+  into the registered MEL host buffer in `SquallImageChannel::udpCallback`, and
+  nothing is claimed about NIC DMA, kernel socket buffers, or sensor transport.
+
+  The public Ada API is unchanged from Task 030A: `Frame_Lease`,
+  `Acquire_Frame`, `Is_Open`, `Close`, `Pixel_Count`, `With_Pixels`,
+  `Copy_Pixels`, and the lease metadata accessors all keep their signatures.
+  Only the meaning of the owner changed underneath, which is what Task 030A
+  existed to make possible.
+
+- Track provider buffers withheld from provider reuse in a new
+  `retained_frames` count covering queued frames **and** live snapshots,
+  guarded by the existing single teardown mutex and deliberately not derived
+  from queue length. A buffer accepted by the bridge is released exactly once
+  by bridge logic: the callback releases on malformed, not-accepting, and
+  queue-full rejections and is explicitly disarmed on acceptance, with the
+  later release performed by legacy `Receive`, snapshot/lease close, or
+  Close-time queue discard. Destroying a C++ `shared_ptr` is never treated as
+  a substitute for the published `release()` protocol.
+
+- Extend the existing Image deferred-teardown state machine rather than adding
+  a second one: physical provider teardown now requires
+  `navigation requests == 0 AND retained_frames == 0`. `Stop` stays logical
+  now / physical later and never blocks on an application-held lease; `Close`
+  additionally discards still-queued, never-acquired frames and releases their
+  provider buffers so none can be stranded in an unreachable queue, while
+  preserving already-dequeued live leases. A live lease therefore survives
+  public stream and Session close because the actual provider unload is
+  **deferred**, not because bytes were copied; the Task 030A lease evidence was
+  replaced with that stronger ordering property, and the owned-copy tests
+  proving copied values survive real provider unload are retained.
+
+- Call `irmel::Buffer::release()` outside the lifecycle mutex under a
+  lock-to-claim / unlock-to-release / lock-to-publish discipline, and from the
+  consumer/snapshot-close path rather than necessarily the provider callback
+  thread. Pinned `Buffer.h` and `ImageListener.h` impose no callback-thread
+  affinity on `release()`, and pinned Squall's `RequeueBuffer::release()` is an
+  atomic one-shot guarded by a pool mutex; no stronger or universal claim is
+  made.
+
+- Treat provider-buffer release failure as a first-class safety case. A
+  non-`Success` return or a thrown exception leaves ownership uncertain, so the
+  `Buffer` is parked and never destroyed, its registered host byte range is
+  never freed or resized, `retained_frames` is never decremented, `release()`
+  is never retried, and allocation-free emergency retention keeps the graph
+  alive. `ams_mel_ir_frame_snapshot_close` reports `AMS_MEL_PROVIDER_FAILED`
+  and Ada `Frame_Lease.Close` now raises `Provider_Error` rather than falsely
+  claiming the buffer was returned; automatic `Finalize` remains non-raising
+  and preserves memory safety. This deliberate leak on uncertain ownership is
+  documented.
+
+- Document backpressure as intentional rather than hiding it: with
+  `Buffer_Count = N` at most N provider buffers can be checked out at once
+  unless the provider has an independent pool, so a slow consumer causes real
+  provider-level drops. The bridge does not silently copy when the pool is
+  exhausted. A provider-side "no reusable buffer available" event is not a
+  bridge callback and is not counted as one; `frames_dropped_queue_full` keeps
+  its existing meaning and no ABI counter field was added.
+
+- Rework the mock provider's Image buffer handling to mirror pinned Squall
+  `b1015728f904c799fa0c07489fce48e78f67845f`: a mutex-guarded available pool,
+  checkout before the callback, requeue on successful `release()`,
+  `accepting_releases = false` at channel destruction, and a one-shot guard
+  that aborts on double release or double checkout. New deterministic
+  native tests cover provider-buffer address identity, three-lease
+  backpressure with explicit pool counters and condition variables rather than
+  sleeps, deferred provider teardown ordering, Close-time queue discard,
+  multiple concurrent leases across Stop/Close/Session close, and legacy
+  `Receive` copy-then-release including the `BUFFER_TOO_SMALL` case that must
+  consume and release nothing; the lease lifetime paths additionally run 20
+  stress iterations. Ada adds a backpressure test and an owned `Full_Frame`
+  independence test, and strengthens the alias proof to the full three-way
+  identity.
+
+- No C ABI change: ABI stays `0.1`, all 90 exports and `exports.map` are
+  unchanged, no public type changed, no frozen record was grown, and the raw
+  Rust and private Python declarations are untouched. Vendored upstream delta
+  is exactly zero. RF MEL, RF header vendoring, RDMA, GPU/CUDA, FPGA mappings,
+  Stacked Image, `cv::Mat` wrapping, zero-copy safe Rust, and zero-copy
+  Python/NumPy remain unimplemented. See
+  `docs/task-030b-provider-buffer-zero-copy.md`.
+
 - Add the first high-rate zero-copy data-plane slice: `AMS.MEL.IR.Image` gains
   a limited `Frame_Lease` with `Acquire_Frame`, `Is_Open`, `Close`,
   `Pixel_Count`, `With_Pixels`, `Copy_Pixels`, and the full set of lease

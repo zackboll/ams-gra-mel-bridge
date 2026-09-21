@@ -608,18 +608,25 @@ package body AMS.MEL.IR.Image is
    end Finalize;
 
    ---------------------------------------------------------------------------
-   --  High-rate borrowed data plane (Task 030A)
+   --  High-rate borrowed data plane (Tasks 030A and 030B)
    --
    --  Ownership chain:
    --
-   --      QueuedFrame storage owned by ams_mel_ir_frame_snapshot   (native)
-   --          -> ams_mel_ir_frame_snapshot *                       (opaque C)
-   --              -> Frame_Lease_Owner.Handle                      (limited Ada)
-   --                  -> Pixel_Array view bound to Pixels.data     (borrowed)
+   --      irmel::Buffer checked out of the provider pool            (provider)
+   --          -> ams_mel_ir_frame_snapshot retains Buffer + graph   (native)
+   --              -> ams_mel_ir_frame_snapshot *                    (opaque C)
+   --                  -> Frame_Lease_Owner.Handle                   (limited Ada)
+   --                      -> Pixel_Array bound to the provider image (borrowed)
    --
-   --  The native snapshot is fully independent of the stream, Session, and
-   --  provider after dequeue, so a live lease keeps the payload valid through
-   --  Stop, Close, Session close, and provider teardown.
+   --  Task 030B replaced the copied snapshot payload with the retained
+   --  provider buffer itself, so the Ada view aliases
+   --  Buffer.getImageAddress directly and the bridge copies no bulk payload.
+   --
+   --  Because the payload is provider memory, a live lease can no longer be
+   --  independent of the provider graph. Instead the native snapshot retains
+   --  the graph and defers physical provider teardown: a lease stays valid
+   --  through Stop, Close and Session close, and the provider channel and
+   --  library are unloaded only after the last lease releases its buffer.
 
    function Acquire_Frame
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame_Lease is
@@ -644,18 +651,40 @@ package body AMS.MEL.IR.Image is
    is (Frame.Owner.Handle /= C.Null_Frame_Snapshot);
 
    procedure Close (Frame : in out Frame_Lease) is
+      D    : aliased Diagnostic := [others => Interfaces.C.nul];
+      R    : aliased C.Size_T := 0;
+      Code : Interfaces.Integer_32;
    begin
       --  Idempotent: the native close clears the handle, and a null handle is
       --  simply closed again with no effect.
-      Close (Frame.Owner.Handle);
+      --
+      --  Task 030B: this native close calls the provider's Buffer.release,
+      --  so unlike Task 030A it is not effectively infallible. The borrowed
+      --  view is invalidated either way, because the payload must not be read
+      --  after the buffer has been handed back or after its ownership became
+      --  uncertain.
+      Code := C.IR_Frame_Snapshot_Close (Frame.Owner.Handle'Access, D'Address, D'Length, R'Access);
       Frame.Owner.Data.Payload := System.Null_Address;
       Frame.Owner.Data.Payload_Size := 0;
+      if Code /= C.Success then
+         --  Do not claim the provider buffer was safely returned. The native
+         --  side has already retained the provider graph, the Buffer object,
+         --  and its host storage, so this is a truthful report, not a leak of
+         --  safety.
+         raise Provider_Error with Message (D);
+      end if;
    end Close;
 
    overriding
    procedure Finalize (Frame : in out Frame_Lease_Owner) is
       Ignored : Interfaces.Integer_32;
    begin
+      --  Finalization must not propagate an exception, so a provider release
+      --  failure is deliberately not reported here. Memory safety is still
+      --  preserved: on failure the native side retains the provider graph,
+      --  the Buffer object and its host storage rather than freeing storage
+      --  whose ownership is uncertain. Use the explicit Close when the
+      --  release outcome matters.
       Ignored := C.IR_Frame_Snapshot_Close (Frame.Handle'Access, System.Null_Address, 0, null);
       Frame.Data.Payload := System.Null_Address;
       Frame.Data.Payload_Size := 0;

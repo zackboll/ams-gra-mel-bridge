@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+#include <dlfcn.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -235,6 +237,370 @@ static int test_rich_snapshot_lifetime(void)
  * a consumer binding can borrow it without copying. The test-only address log
  * publishes exactly that address; this asserts the C view agrees with it, and
  * that two outstanding snapshots own distinct storage. */
+/* Task 030B deterministic backpressure and provider-buffer identity.
+ *
+ * These are implemented by the mock provider and are not part of the MEL
+ * provider interface or of the public C ABI. They exist so buffer reuse can
+ * be asserted from explicit provider state instead of from sleeps.
+ *
+ * The mock provider is loaded at runtime by the facade, so these are resolved
+ * with dlsym against the already-loaded image rather than link-time. The
+ * RTLD_NOLOAD handle is closed immediately, so observing the pool never
+ * extends provider lifetime and cannot mask a teardown-ordering defect. */
+static void *mock_pool_symbol(const char *name)
+{
+    void *handle = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD);
+    void *symbol = NULL;
+    if (handle == NULL) return NULL;
+    symbol = dlsym(handle, name);
+    (void)dlclose(handle);
+    return symbol;
+}
+
+static unsigned long mock_pool_query(const char *name)
+{
+    unsigned long (*fn)(void);
+    *(void **)&fn = mock_pool_symbol(name);
+    return fn == NULL ? ULONG_MAX : fn();
+}
+
+static unsigned long ams_mel_mock_pool_available(void)
+{ return mock_pool_query("ams_mel_mock_pool_available"); }
+static unsigned long ams_mel_mock_pool_produced(void)
+{ return mock_pool_query("ams_mel_mock_pool_produced"); }
+static unsigned long ams_mel_mock_pool_starved(void)
+{ return mock_pool_query("ams_mel_mock_pool_starved"); }
+static int ams_mel_mock_pool_produce_once(void)
+{
+    int (*fn)(void);
+    *(void **)&fn = mock_pool_symbol("ams_mel_mock_pool_produce_once");
+    return fn == NULL ? 0 : fn();
+}
+
+/* Proves the thing Task 030B exists to prove, deterministically:
+ *
+ *   1-3. produce and acquire three frames from a three-buffer pool;
+ *   4.   none of those buffers has been returned to the provider pool;
+ *   5.   another production cycle cannot reuse any of them;
+ *   6-7. releasing exactly one lease returns exactly one buffer;
+ *   8.   a further frame is produced using that returned buffer;
+ *   9.   the still-live leases are unaffected.
+ *
+ * Buffer reuse is controlled by lease release and nothing else. */
+static int test_lease_backpressure(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *leases[3] = {NULL, NULL, NULL};
+    const ams_mel_ir_frame_snapshot_v1 *views[3] = {NULL, NULL, NULL};
+    const uint8_t *addresses[3] = {NULL, NULL, NULL};
+    ams_mel_ir_frame_snapshot *extra = NULL;
+    ams_mel_ir_stream_counters_v1 counters;
+    unsigned long starved_before;
+    size_t i;
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("lease-pool", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    /* All three registered buffers start reusable. */
+    CHECK(ams_mel_mock_pool_available() == 3);
+
+    /* 1-3: three frames, three live leases. */
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &leases[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_frame_snapshot_view(leases[i], &views[i], NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(views[i]->pixels.size == 12U && views[i]->pixels.data != NULL);
+        addresses[i] = views[i]->pixels.data;
+    }
+    CHECK(ams_mel_mock_pool_produced() == 3);
+    /* Three distinct provider buffers are in use simultaneously. */
+    CHECK(addresses[0] != addresses[1] && addresses[1] != addresses[2] &&
+          addresses[0] != addresses[2]);
+    /* 4: not one buffer has gone back to the provider. */
+    CHECK(ams_mel_mock_pool_available() == 0);
+
+    /* 5: with every buffer checked out, the provider cannot produce. This is
+       real provider-level backpressure, not a bridge queue-full drop. */
+    starved_before = ams_mel_mock_pool_starved();
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_starved() == starved_before + 1);
+    CHECK(ams_mel_mock_pool_produced() == 3);
+    CHECK(ams_mel_mock_pool_available() == 0);
+    /* A provider-side "no buffer available" event is not a bridge callback,
+       so it must not be counted as a bridge queue-full drop. */
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.frames_dropped_queue_full == 0);
+    CHECK(counters.frames_received == 3);
+
+    /* 6-7: release exactly one lease, and exactly one buffer comes back. */
+    CHECK(ams_mel_ir_frame_snapshot_close(&leases[0], NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(leases[0] == NULL);
+    CHECK(ams_mel_mock_pool_available() == 1);
+
+    /* 8: the next frame reuses exactly the returned buffer. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_produced() == 4);
+    CHECK(ams_mel_mock_pool_available() == 0);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &extra, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    {
+        const ams_mel_ir_frame_snapshot_v1 *extra_view = NULL;
+        CHECK(ams_mel_ir_frame_snapshot_view(extra, &extra_view, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(extra_view->pixels.data == addresses[0]);
+    }
+
+    /* 9: the two still-live leases are untouched by any of that. */
+    CHECK(views[1]->pixels.data == addresses[1]);
+    CHECK(views[2]->pixels.data == addresses[2]);
+    CHECK(views[1]->pixels.data[0] == 32U && views[2]->pixels.data[0] == 48U);
+
+    CHECK(ams_mel_ir_frame_snapshot_close(&extra, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&leases[1], NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&leases[2], NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 3);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* Proves the defining Task 030B identity for the C facade:
+ *
+ *     Buffer::getImageAddress() == snapshot pixels.data
+ *
+ * using the test-only address log, which records the provider's own image
+ * address alongside the published span. No ABI change and no timing. */
+static int test_provider_buffer_address_identity(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    char path[] = "/tmp/ams-mel-address-XXXXXX";
+    int descriptor = mkstemp(path);
+    FILE *file;
+    unsigned long frame_id = 0;
+    unsigned long long published = 0, size = 0, provider = 0;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_SNAPSHOT_ADDRESS_LOG", path, 1) == 0);
+    config.buffer_count = 3;
+    CHECK(open_stream("lease-pool-identity", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &snapshot, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(snapshot, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->pixels.size == 12U && view->pixels.data != NULL);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    CHECK(fscanf(file, "%lu %llu %llu %llu", &frame_id, &published, &size, &provider) == 4);
+    CHECK(fclose(file) == 0);
+    /* The published span is the provider's own image memory, byte for byte. */
+    CHECK(provider != 0);
+    CHECK(published == provider);
+    CHECK(published == (unsigned long long)(uintptr_t)view->pixels.data);
+    CHECK(size == 12);
+    CHECK(ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(unsetenv("AMS_MEL_TEST_SNAPSHOT_ADDRESS_LOG") == 0);
+    CHECK(unlink(path) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* A live lease survives public stream Close and public Session close, and it
+ * does so by DEFERRING the actual provider teardown, not by copying bytes:
+ *
+ *     public owners closed
+ *         -> channel NOT yet destroyed, library NOT yet unloaded
+ *         -> lease close calls Buffer::release()
+ *         -> only then channel destruction and library unload
+ *
+ * This replaces Task 030A's "copied bytes survive actual provider unload"
+ * evidence for the lease path with the stronger correct property. */
+static int test_lease_defers_provider_teardown(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    const uint8_t *address = NULL;
+    char path[] = "/tmp/ams-mel-defer-XXXXXX";
+    char log[8192];
+    int descriptor = mkstemp(path);
+    FILE *file;
+    size_t count;
+    char *released, *channel_destroyed, *unloaded;
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    config.buffer_count = 3;
+    CHECK(open_stream("lease-pool-defer", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &lease, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(lease, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->pixels.size == 12U);
+    address = view->pixels.data;
+    CHECK(address[0] == 16U && address[11] == 27U);
+
+    /* Public stream Close and public Session close, with the lease live. */
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(session == NULL);
+    /* The borrowed bytes are still valid and still at the same address. */
+    CHECK(view->pixels.data == address);
+    CHECK(address[0] == 16U && address[11] == 27U);
+    /* And the provider has demonstrably NOT been torn down yet:
+       public Session owner closed YES, provider actually unloaded NO. */
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(log, 1, sizeof log - 1U, file);
+    log[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+    CHECK(strstr(log, "library_unloaded") == NULL);
+
+    /* Closing the final lease releases the buffer and only then completes
+       physical teardown. */
+    CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) == AMS_MEL_OK);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(log, 1, sizeof log - 1U, file);
+    log[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(unlink(path) == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    released = strstr(log, "buffer_released");
+    channel_destroyed = strstr(log, "channel_destroyed");
+    CHECK(released != NULL && channel_destroyed != NULL);
+    CHECK(released < channel_destroyed);
+    unloaded = strstr(log, "library_unloaded");
+    if (unloaded != NULL) CHECK(channel_destroyed < unloaded);
+    return EXIT_SUCCESS;
+}
+
+/* Close must not strand a queued, never-acquired frame's provider buffer in
+ * an unreachable queue: the buffer must go back to the provider, while an
+ * already-dequeued live lease is preserved. */
+static int test_close_discards_queued_leases(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *held = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *view = NULL;
+    const uint8_t *address = NULL;
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("lease-pool-discard", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    /* One acquired lease and two frames left queued. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &held, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(held, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    address = view->pixels.data;
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_available() == 0);
+
+    /* Close discards the two queued frames and releases their buffers, but
+       preserves the already-dequeued live lease. */
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 2);
+    CHECK(view->pixels.data == address);
+    CHECK(address[0] == 16U && address[11] == 27U);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(view->pixels.data == address && address[0] == 16U);
+    CHECK(ams_mel_ir_frame_snapshot_close(&held, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* Several live leases across Stop, Close and Session close, then all leases
+ * closing, the last of which triggers the deferred physical teardown. */
+static int test_multiple_leases_close(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *leases[3] = {NULL, NULL, NULL};
+    const ams_mel_ir_frame_snapshot_v1 *views[3] = {NULL, NULL, NULL};
+    size_t i;
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("lease-pool-multi", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &leases[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_frame_snapshot_view(leases[i], &views[i], NULL, 0, NULL) ==
+              AMS_MEL_OK);
+    }
+    /* Stop keeps live leases valid; Close and Session close do too. */
+    CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(views[0]->pixels.data[0] == 16U);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(views[0]->pixels.data[0] == 16U);
+    CHECK(views[1]->pixels.data[0] == 32U);
+    CHECK(views[2]->pixels.data[0] == 48U);
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_ir_frame_snapshot_close(&leases[i], NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(leases[i] == NULL);
+        /* Explicit Close then a second close stays idempotent. */
+        CHECK(ams_mel_ir_frame_snapshot_close(&leases[i], NULL, 0, NULL) == AMS_MEL_OK);
+    }
+    return EXIT_SUCCESS;
+}
+
+/* Legacy owned Receive still copies into caller storage and promptly returns
+ * the provider buffer, so it acquires no provider lifetime dependency. */
+static int test_legacy_receive_releases_buffer(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 frame;
+    uint8_t pixels[12];
+    size_t i;
+    config.buffer_count = 3;
+    CHECK(open_stream("lease-pool-legacy", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_available() == 2);
+    memset(&frame, 0, sizeof frame);
+    frame.pixels = pixels; frame.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    for (i = 0; i < sizeof pixels; ++i) CHECK(pixels[i] == 16U + i);
+    /* Copy-then-release: the buffer is reusable immediately after Receive. */
+    CHECK(ams_mel_mock_pool_available() == 3);
+    /* A too-small caller buffer must NOT consume or release the queued frame. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_available() == 2);
+    memset(&frame, 0, sizeof frame);
+    frame.pixels = pixels; frame.pixel_capacity = 4;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) ==
+          AMS_MEL_BUFFER_TOO_SMALL);
+    CHECK(frame.pixel_required == 12);
+    CHECK(ams_mel_mock_pool_available() == 2);
+    frame.pixel_capacity = sizeof pixels;
+    CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 3);
+    /* Owned data outlives the provider entirely. */
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    for (i = 0; i < sizeof pixels; ++i) CHECK(pixels[i] == 32U + i);
+    return EXIT_SUCCESS;
+}
+
 static int test_snapshot_pixel_storage_identity(void)
 {
     ams_mel_session *session = NULL;
@@ -265,7 +631,11 @@ static int test_snapshot_pixel_storage_identity(void)
     CHECK(first_view->pixels.data == first_data && first_view->pixels.data[0] == 16U);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    /* And survives stream, Session, and provider teardown. */
+    /* And survives public stream and Session close. Since Task 030B the
+       bytes are the provider's own buffer memory, so this holds because
+       actual provider teardown is DEFERRED while the lease is live, not
+       because the payload was copied. See
+       test_lease_defers_provider_teardown for the ordering evidence. */
     CHECK(first_view->pixels.data == first_data && first_view->pixels.data[11] == 27U);
     CHECK(ams_mel_ir_frame_snapshot_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
     return EXIT_SUCCESS;
@@ -647,6 +1017,19 @@ int main(void)
     CHECK(test_capability_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_pixel_storage_identity() == EXIT_SUCCESS);
+    /* Task 030B provider-buffer zero copy. */
+    CHECK(test_provider_buffer_address_identity() == EXIT_SUCCESS);
+    CHECK(test_lease_backpressure() == EXIT_SUCCESS);
+    CHECK(test_lease_defers_provider_teardown() == EXIT_SUCCESS);
+    CHECK(test_close_discards_queued_leases() == EXIT_SUCCESS);
+    CHECK(test_multiple_leases_close() == EXIT_SUCCESS);
+    CHECK(test_legacy_receive_releases_buffer() == EXIT_SUCCESS);
+    /* Stress the new lifetime and release paths repeatedly. */
+    for (unsigned i = 0; i < 20; ++i) {
+        CHECK(test_lease_backpressure() == EXIT_SUCCESS);
+        CHECK(test_multiple_leases_close() == EXIT_SUCCESS);
+        CHECK(test_close_discards_queued_leases() == EXIT_SUCCESS);
+    }
     CHECK(test_snapshot_malformed_pixel_span("empty", 1, 1) == EXIT_SUCCESS);
     CHECK(test_snapshot_malformed_pixel_span("null-nonzero", 1, 0) == EXIT_SUCCESS);
     CHECK(test_snapshot_malformed_pixel_span("oversize", 0, 0) == EXIT_SUCCESS);

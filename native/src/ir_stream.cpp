@@ -94,6 +94,22 @@ void increment(std::uint64_t& value) noexcept
     }
 }
 
+/* Task 030B: the queued/snapshot representation owns the provider Buffer
+ * itself instead of a payload-sized copy of its bytes.
+ *
+ *   metadata ownership        small Ada/C-shaped vectors and strings
+ *   provider Buffer owner     buffer, checked out of the provider pool
+ *   validated payload address payload, validated inside the callback
+ *   validated payload size    payload_size, validated inside the callback
+ *
+ * There is deliberately no std::vector<std::uint8_t> pixels member: a
+ * payload-sized byte vector whose purpose is to duplicate the provider image
+ * is exactly what this task removes. The only vectors here are small metadata
+ * vectors whose length is bounded by the FrameHeader, not by the image size.
+ *
+ * While buffer is non-null the frame counts as one retained provider-buffer
+ * lease in ImageStreamState::retained_frames and the provider cannot reuse
+ * the underlying registered host bytes. */
 struct QueuedFrame {
     ams_mel_ir_frame_snapshot_v1 view{};
     std::string location_key;
@@ -101,7 +117,11 @@ struct QueuedFrame {
     std::vector<std::uint32_t> flags;
     std::vector<ams_mel_ir_sensor_inertial_state_v1> inertial;
     std::vector<ams_mel_ir_sensor_nav_state_v1> nav;
-    std::vector<std::uint8_t> pixels;
+    /* Retained provider buffer. Destroying this shared_ptr is NOT a release:
+     * the published release() protocol must be invoked deliberately. */
+    std::shared_ptr<irmel::Buffer> buffer;
+    const std::uint8_t *payload{};
+    std::size_t payload_size{};
 
     void bind() noexcept
     {
@@ -111,7 +131,8 @@ struct QueuedFrame {
         view.image_flags = {flags.data(), flags.size()};
         view.sensor_inertial_states = {inertial.data(), inertial.size()};
         view.sensor_nav_states = {nav.data(), nav.size()};
-        view.pixels = {pixels.data(), pixels.size()};
+        /* Borrowed span directly over provider Buffer::getImageAddress(). */
+        view.pixels = {payload, payload_size};
     }
 };
 
@@ -135,8 +156,12 @@ ams_mel_ir_orientation_v1 orientation(EulerGetter get_euler,
     }
 }
 
-QueuedFrame copy_frame(const irmel::FrameHeader& header, const std::uint8_t *pixels,
-                       std::size_t pixel_count)
+/* Converts only the small FrameHeader metadata. The bulk payload is recorded
+ * as the already-validated provider address/length pair; nothing
+ * payload-sized is allocated or copied. Task 030A's frame.pixels.assign() was
+ * removed here. */
+QueuedFrame snapshot_frame(const irmel::FrameHeader& header, const std::uint8_t *pixels,
+                           std::size_t pixel_count)
 {
 #ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
     if (const char *failure = std::getenv("AMS_MEL_TEST_FRAME_COPY_FAILURE");
@@ -198,7 +223,10 @@ QueuedFrame copy_frame(const irmel::FrameHeader& header, const std::uint8_t *pix
             nav_error(state.getOrientationAccelError()), coordinate});
     }
     frame.view.band_index = header.getBandIndex();
-    frame.pixels.assign(pixels, pixels + pixel_count);
+    /* Zero-copy: retain the validated provider image address and length. The
+     * caller attaches the provider Buffer owner before enqueueing. */
+    frame.payload = pixels;
+    frame.payload_size = pixel_count;
     frame.bind();
     return frame;
 }
@@ -230,6 +258,27 @@ struct CallbackState {
     ams_mel_ir_stream_counters_v1 counters{};
     std::vector<HostRange> registered_ranges;
     std::atomic<std::size_t> callbacks_in_flight{0U};
+    /* Task 030B outstanding provider-buffer accounting. Counts provider
+     * Buffer objects currently withheld from provider reuse by bridge logic:
+     * queued frames plus live frame snapshots. It lives here, beside the
+     * queue, because the provider callback increments it, but it is emphatically
+     * NOT derived from queue.size(): a snapshot outlives its queue entry and
+     * several snapshots may be outstanding at once. Guarded by mutex.
+     *
+     * Transitions:
+     *
+     *   accepted into the receive queue        +1
+     *   queue-full rejection                    0  (released in the callback)
+     *   malformed/unsupported rejection         0  (released in the callback)
+     *   not-accepting rejection                 0  (released in the callback)
+     *   queue -> snapshot handoff          unchanged
+     *   legacy Receive copy + release          -1
+     *   snapshot/lease close + release         -1
+     *   queue discard during Close + release   -1
+     *   release() failure or exception          0  (permanently retained)
+     *
+     * Physical provider teardown is deferred while this is nonzero. */
+    std::size_t retained_frames{};
 
     void fail() noexcept
     {
@@ -246,6 +295,20 @@ struct CallbackState {
     void image(const irmel::FrameHeader& header,
                const std::shared_ptr<irmel::Buffer>& buffer) noexcept
     {
+        /* Task 030B checked-out-buffer state machine. Exactly one of the
+         * following happens to every Buffer the provider hands the bridge:
+         *
+         *   malformed / unsupported  -> release() here
+         *   not accepting            -> release() here
+         *   queue full               -> count DROP, release() here
+         *   accepted                 -> retained; release() happens later, in
+         *                               legacy Receive, snapshot close, or
+         *                               Close-time queue discard
+         *
+         * The releaser below owns the "release here" arm only. When the frame
+         * is accepted, ownership is disarmed by clearing release.value, so the
+         * callback releaser and the later lease owner can never both release
+         * the same accepted buffer. */
         struct Releaser {
             CallbackState& state;
             std::shared_ptr<irmel::Buffer> value;
@@ -312,16 +375,24 @@ struct CallbackState {
                 return;
             }
 
-            QueuedFrame frame = copy_frame(header,
+            QueuedFrame frame = snapshot_frame(header,
                 static_cast<const std::uint8_t *>(image_pointer), bytes);
 
             std::lock_guard lock{mutex};
+            /* Both rejection arms leave release.value armed, so the buffer is
+             * handed straight back to the provider when this call returns. */
             if (!accepting) return;
             if (queue.size() >= capacity) {
                 increment(counters.frames_dropped_queue_full);
                 return;
             }
+            /* Accepted. The bridge now owns a checked-out provider buffer.
+             * Move the owner into the queued frame and disarm the callback
+             * releaser so release() cannot happen twice for this frame. */
+            frame.buffer = buffer;
+            release.value.reset();
             queue.push_back(std::move(frame));
+            ++retained_frames;
             ready.notify_one();
         } catch (...) {
             std::lock_guard lock{mutex};
@@ -367,6 +438,107 @@ void release_navigation_submission(ImageStreamState& stream) noexcept
     if (stream.requests != 0U) --stream.requests;
 }
 
+namespace {
+/* Returns exactly one checked-out provider buffer to the provider and
+ * publishes the resulting retained_frames transition.
+ *
+ * Locking discipline, per the updated single-lock invariant:
+ *
+ *   (caller already moved the Buffer owner out of the queue/snapshot)
+ *   unlock: Buffer::release()       provider call, never under the mutex
+ *   lock:   publish the count transition / fail-safe retention
+ *
+ * release() is called from the consumer/snapshot-close path, not necessarily
+ * the original provider callback thread. The published irmel::Buffer
+ * interface states no callback-thread affinity for release(), and pinned
+ * Squall's RequeueBuffer::release() is an atomic one-shot guarded by a mutex,
+ * so it is not callback-thread-affine there either. No stronger claim is made
+ * for providers whose implementation has not been inspected.
+ *
+ * Failure semantics. A non-Success return or a thrown exception means the
+ * hand-back of ownership is UNCERTAIN. The repository's fail-safe rule then
+ * applies: the Buffer object, its registered host bytes, and the provider
+ * library must not be destroyed. Such a buffer is parked in
+ * retained_failed_buffers and retained_frames is deliberately NOT
+ * decremented, which permanently defers physical teardown for this graph.
+ * release() is never retried, because the published interface guarantees no
+ * safe retry and pinned Squall makes release one-shot.
+ *
+ * Returns true when the provider accepted the release. */
+bool release_retained_buffer(const std::shared_ptr<ImageStreamState>& state,
+                             std::shared_ptr<irmel::Buffer> buffer) noexcept
+{
+    if (!buffer) return true;
+    bool ok = false;
+    try {
+        ok = buffer->release() == irmel::Return::Success;
+    } catch (...) {
+        ok = false;
+    }
+    if (ok) {
+        try {
+            std::lock_guard lock{state->callback->mutex};
+            if (state->callback->retained_frames != 0U)
+                --state->callback->retained_frames;
+        } catch (...) {
+            /* Publication must never throw out of a noexcept release path.
+             * Leaving the count high only over-defers teardown, which is the
+             * safe direction. */
+        }
+        return true;
+    }
+    /* Uncertain ownership. Park the Buffer so neither it nor its registered
+     * host bytes are ever destroyed, leave retained_frames untouched so
+     * physical teardown stays permanently deferred, and take the existing
+     * allocation-free emergency retention route so the graph survives even
+     * after the public owner is gone. release() is never retried. */
+    try {
+        std::lock_guard lock{state->callback->mutex};
+        state->callback->lifecycle = Lifecycle::Failed;
+        state->callback->accepting = false;
+        state->callback->ready.notify_all();
+        state->retained_failed_buffers.push_back(std::move(buffer));
+    } catch (...) {
+        /* Even parking may fail to allocate; emergency retention below is
+         * allocation-free and keeps the whole graph, including the buffers
+         * vector that still owns this Buffer, alive for process lifetime. */
+    }
+    image_stream_retain_failed(state);
+    return false;
+}
+
+/* Drains and releases every still-queued frame. Ownership is moved out under
+ * the lock and every provider release() runs unlocked afterwards, so provider
+ * code is never entered while the teardown mutex is held. */
+void discard_queued_frames(const std::shared_ptr<ImageStreamState>& state) noexcept
+{
+    std::deque<QueuedFrame> discarded;
+    try {
+        std::lock_guard lock{state->callback->mutex};
+        discarded.swap(state->callback->queue);
+    } catch (...) {
+        return;
+    }
+    for (auto& frame : discarded)
+        (void)release_retained_buffer(state, std::move(frame.buffer));
+}
+
+/* Called after a provider-buffer release may have removed the last
+ * outstanding lifetime obligation. image_stream_cleanup(deferred=true)
+ * already encodes the whole decision safely under the single teardown lock:
+ * it performs physical teardown only when a logical Stop/Close has begun, and
+ * only when requests == 0 and retained_frames == 0; it claims cleanup
+ * ownership exactly once; and a caller that loses the claim blocks on
+ * cleanup_done and adopts the published result instead of racing. It is
+ * therefore safe against public Stop, public Close, Navigation completion,
+ * another lease closing concurrently, and callback completion. */
+void maybe_finish_deferred_cleanup(const std::shared_ptr<ImageStreamState>& state) noexcept
+{
+    if (!state) return;
+    (void)image_stream_cleanup(state, true);
+}
+} // namespace
+
 class Listener final : public irmel::ImageListener {
 public:
     explicit Listener(std::shared_ptr<CallbackState> state) : state_{std::move(state)} {}
@@ -389,8 +561,26 @@ private:
     std::shared_ptr<CallbackState> state_;
 };
 
+/* Task 030B: the opaque snapshot is now a provider-buffer lease.
+ *
+ *   frame   metadata + retained provider Buffer + borrowed payload span
+ *   state   the whole Image provider graph
+ *
+ * Retaining the state is what keeps the four things a live borrowed span
+ * needs alive: the registered host storage, the irmel::Buffer object, the
+ * provider library that contains the virtual release() implementation, and
+ * enough of the channel graph that release() is still valid. It is a strong
+ * reference and that is deliberate and cycle-free: the queue lives inside
+ * the state and holds no back-pointer, and a snapshot only exists after its
+ * frame has been moved OUT of that queue, so ImageStreamState is never
+ * reachable from anything the state itself owns.
+ *
+ * No public C type or export changed: the handle was already opaque and the
+ * view already carried a pixel span. Only what that span points at changed,
+ * from snapshot-owned copied bytes to retained MEL Buffer memory. */
 struct ams_mel_ir_frame_snapshot {
     QueuedFrame frame;
+    std::shared_ptr<ImageStreamState> state;
 };
 
 namespace {
@@ -538,6 +728,14 @@ ImageCleanupOutcome image_stream_cleanup(
             stream.cleanup_done.wait(lock,
                 [&stream] { return !stream.cleanup_in_progress; });
             if (stream.requests != 0U) return ImageCleanupOutcome::NotRequired;
+            /* Task 030B: a queued frame or a live snapshot still holds a
+             * provider Buffer checked out. Destroying the channel, the Buffer
+             * objects, or the registered host storage now would invalidate a
+             * live borrowed span and make the owed release() invalid, so
+             * physical teardown is deferred exactly as it is for a pending
+             * Navigation request. The final lease close performs it instead. */
+            if (stream.callback->retained_frames != 0U)
+                return ImageCleanupOutcome::NotRequired;
             if (stream.cleanup_complete)
                 return stream.cleanup_ok ? ImageCleanupOutcome::Succeeded
                                          : ImageCleanupOutcome::Failed;
@@ -629,6 +827,17 @@ ImageCleanupOutcome image_stream_cleanup(
             failed = failed || stream.callback->lifecycle == Lifecycle::Failed;
             stream.callback->registered_ranges.clear();
         }
+        /* Safe only because this point is reachable only when
+         * callback->retained_frames == 0, checked under the teardown lock
+         * before cleanup ownership was claimed. That is the proof of the
+         * Task 030B host-storage invariant:
+         *
+         *     a retained provider buffer exists
+         *         => its registered host byte range exists unchanged
+         *
+         * A buffer whose release() failed is never counted down and is also
+         * parked in retained_failed_buffers, so uncertain ownership keeps
+         * both the Buffer object and these bytes alive permanently. */
         stream.buffers.clear();
         stream.storage.clear();
         {
@@ -674,7 +883,13 @@ ams_mel_status_t teardown(const std::shared_ptr<ImageStreamState>& state_ptr, bo
     logical_stop(stream, failed);
     {
         std::lock_guard lock{stream.callback->mutex};
-        if (stream.requests != 0U) return AMS_MEL_OK;
+        /* Task 030B: Stop is logical now, physical later. Stop never blocks
+         * waiting for an application-held Frame_Lease, exactly as it already
+         * never blocks on an outstanding Navigation request. Frames accepted
+         * before the logical Stop stay consumable and live snapshots stay
+         * valid; the last release performs the deferred physical teardown. */
+        if (stream.requests != 0U || stream.callback->retained_frames != 0U)
+            return AMS_MEL_OK;
     }
     const ImageCleanupOutcome outcome = image_stream_cleanup(state_ptr, false);
     if (outcome == ImageCleanupOutcome::Failed) {
@@ -886,12 +1101,21 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
     diagnostic("", out, capacity, required);
     if (!stream || !frame || (!frame->pixels && frame->pixel_capacity != 0U) ||
         (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
+    /* Owned-copy compatibility path, unchanged externally: the caller's bytes
+     * are filled from the retained provider buffer and the provider buffer is
+     * then released, so the returned frame keeps no provider dependency. The
+     * copy happens under the lock because the queued frame is still owned by
+     * the queue there; the provider release() afterwards is deliberately
+     * outside the lock. */
+    std::shared_ptr<irmel::Buffer> consumed;
+    ams_mel_status_t status = AMS_MEL_INTERNAL_ERROR;
     try {
         const auto& state = *stream->state;
         std::unique_lock lock{state.callback->mutex};
         /* Stopping is terminal for waiting: a logical Stop/Close has already
          * happened, so no further frame can be queued even though physical
-         * teardown may remain deferred behind a pending Navigation request. */
+         * teardown may remain deferred behind a pending Navigation request or
+         * a retained provider buffer. */
         const auto terminal = [&state] {
             return state.callback->lifecycle == Lifecycle::Stopping ||
                    state.callback->lifecycle == Lifecycle::Stopped ||
@@ -908,9 +1132,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
                 return AMS_MEL_PROVIDER_FAILED;
             return terminal() ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
-        const QueuedFrame& queued = state.callback->queue.front();
-        frame->pixel_required = queued.pixels.size();
-        if (!frame->pixels || frame->pixel_capacity < queued.pixels.size()) {
+        QueuedFrame& queued = state.callback->queue.front();
+        frame->pixel_required = queued.payload_size;
+        if (!frame->pixels || frame->pixel_capacity < queued.payload_size) {
+            /* The frame stays queued and the buffer stays retained. */
             return AMS_MEL_BUFFER_TOO_SMALL;
         }
         std::uint8_t *pixels = frame->pixels;
@@ -933,14 +1158,26 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
         frame->band_index = metadata.band_index;
         frame->pixels = pixels;
         frame->pixel_capacity = pixel_capacity;
-        frame->pixel_required = queued.pixels.size();
-        std::memcpy(pixels, queued.pixels.data(), queued.pixels.size());
+        frame->pixel_required = queued.payload_size;
+        if (queued.payload_size != 0U && queued.payload != nullptr)
+            std::memcpy(pixels, queued.payload, queued.payload_size);
+        /* Take the checked-out buffer out of the queue; the release below
+         * returns it to the provider and decrements retained_frames. */
+        consumed = std::move(queued.buffer);
         state.callback->queue.pop_front();
-        return AMS_MEL_OK;
+        status = AMS_MEL_OK;
     } catch (...) {
         diagnostic("receive failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+    if (consumed && !release_retained_buffer(stream->state, std::move(consumed))) {
+        diagnostic("provider buffer release failed; provider graph retained",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    /* A lease release can be the last outstanding obligation. */
+    maybe_finish_deferred_cleanup(stream->state);
+    return status;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
@@ -968,8 +1205,15 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
             return terminal() ? AMS_MEL_STREAM_STOPPED : AMS_MEL_TIMEOUT;
         }
         auto owner = std::make_unique<ams_mel_ir_frame_snapshot>();
+        /* Queue -> snapshot handoff. The retained provider Buffer moves with
+         * the frame, so retained_frames is deliberately unchanged here: the
+         * same buffer is still checked out, only its owner changed. The
+         * snapshot also retains the provider graph so the borrowed span, the
+         * Buffer object, and the provider release() implementation all stay
+         * valid until snapshot_close. */
         owner->frame = std::move(state.callback->queue.front());
         state.callback->queue.pop_front();
+        owner->state = stream->state;
         owner->frame.bind();
 #ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
         /* Test-only malformed-span injection. Real providers cannot produce
@@ -979,24 +1223,38 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
          * consumed, so a scenario stays armed for every frame it receives. */
         if (const char *span = std::getenv("AMS_MEL_TEST_SNAPSHOT_PIXEL_SPAN"); span != nullptr) {
             if (std::strcmp(span, "null-nonzero") == 0)
-                owner->frame.view.pixels = {nullptr, owner->frame.pixels.size()};
+                owner->frame.view.pixels = {nullptr, owner->frame.payload_size};
             else if (std::strcmp(span, "oversize") == 0)
-                owner->frame.view.pixels = {owner->frame.pixels.data(),
+                owner->frame.view.pixels = {owner->frame.payload,
                                             std::numeric_limits<std::size_t>::max()};
             else if (std::strcmp(span, "empty") == 0)
                 owner->frame.view.pixels = {nullptr, 0U};
         }
-        /* Test-only zero-copy alias hook. It identifies the storage the
-         * snapshot itself owns so a consumer binding can prove that its
-         * borrowed view aliases exactly this address rather than an
-         * intermediate copy. It publishes no new export and no new ABI type,
-         * writes only when the test explicitly names a log, and records
-         * "<frame_id> <pixel-data-address>" per created snapshot. */
+        /* Test-only zero-copy alias hook. Task 030B extends it to the fourth
+         * field, the provider's own Buffer::getImageAddress(), so a consumer
+         * binding can prove the full three-way identity
+         *
+         *     Buffer::getImageAddress() == snapshot pixels.data == Ada view
+         *
+         * rather than only the native-to-Ada half. It publishes no new export
+         * and no new ABI type, writes only when the test explicitly names a
+         * log, and records
+         * "<frame_id> <pixel-data-address> <size> <provider-image-address>". */
         if (const char *log = std::getenv("AMS_MEL_TEST_SNAPSHOT_ADDRESS_LOG"); log != nullptr) {
+            std::uintptr_t provider_address = 0U;
+            if (owner->frame.buffer) {
+                try {
+                    provider_address = reinterpret_cast<std::uintptr_t>(
+                        owner->frame.buffer->getImageAddress());
+                } catch (...) {
+                    provider_address = 0U;
+                }
+            }
             std::ofstream stream{log, std::ios::app};
             stream << owner->frame.view.frame_id << ' '
                    << reinterpret_cast<std::uintptr_t>(owner->frame.view.pixels.data) << ' '
-                   << owner->frame.view.pixels.size << '\n';
+                   << owner->frame.view.pixels.size << ' '
+                   << provider_address << '\n';
         }
 #endif
         *snapshot = owner.release();
@@ -1023,7 +1281,32 @@ extern "C" ams_mel_status_t ams_mel_ir_frame_snapshot_close(
 {
     diagnostic("", out, capacity, required);
     if (!snapshot || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
-    delete *snapshot; *snapshot = nullptr;
+    /* Closing a null handle succeeds, so explicit Close stays idempotent. */
+    if (!*snapshot) return AMS_MEL_OK;
+    /* Take ownership of the owner and of the checked-out provider buffer
+     * before any provider call, so the snapshot cannot be closed twice and
+     * release() cannot be invoked twice for the same buffer. */
+    std::unique_ptr<ams_mel_ir_frame_snapshot> owner{*snapshot};
+    *snapshot = nullptr;
+    auto state = std::move(owner->state);
+    auto buffer = std::move(owner->frame.buffer);
+    /* The borrowed span is dead as soon as the buffer goes back. */
+    owner->frame.payload = nullptr;
+    owner->frame.payload_size = 0U;
+    owner->frame.view.pixels = {nullptr, 0U};
+    owner.reset();
+    if (!state) return AMS_MEL_OK;
+    /* Task 030B: closing a lease now performs a provider call and can fail.
+     * A failed release leaves ownership uncertain, so the graph is retained
+     * rather than freed and the caller is told the truth. */
+    const bool released = release_retained_buffer(state, std::move(buffer));
+    /* This may have been the final outstanding obligation. */
+    maybe_finish_deferred_cleanup(state);
+    if (!released) {
+        diagnostic("provider buffer release failed; provider graph retained",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
     return AMS_MEL_OK;
 }
 
@@ -1111,6 +1394,23 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
         if (!owned) return AMS_MEL_OK;
         auto status = ams_mel_ir_stream_stop(owned, out, capacity, required);
         auto& state = *owned->state;
+        /* Task 030B Close policy. Close is not Stop: once the public stream
+         * owner is gone, a frame that was queued but never acquired can never
+         * be consumed by that caller, so leaving it queued would strand a
+         * provider buffer in an unreachable queue. Discard those frames here
+         * and hand their provider buffers back.
+         *
+         *   Close -> logical stop
+         *         -> discard still-queued, not-yet-acquired frames
+         *         -> release those provider buffers safely
+         *         -> preserve already-dequeued live Frame_Lease objects
+         *         -> defer final physical teardown until
+         *              requests == 0 AND retained_frames == 0
+         *
+         * Ownership is moved out under the lock and every provider release()
+         * runs unlocked, so no provider code is entered while the teardown
+         * mutex is held. */
+        discard_queued_frames(owned->state);
         /* Test-only: allows a regression to run the final Navigation
          * completion and its deferred cleanup exactly here, after the logical
          * Stop but before the owner-release decision is committed. */
@@ -1138,13 +1438,20 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
                 close_cleanup_wait_barrier(state.cleanup_in_progress);
                 state.cleanup_done.wait(lock,
                     [&state] { return !state.cleanup_in_progress; });
-                if (state.requests != 0U) {
-                    /* A pending Navigation request keeps the provider channel
+                if (state.requests != 0U ||
+                    state.callback->retained_frames != 0U) {
+                    /* A pending Navigation request OR a live provider-buffer
+                     * lease keeps the provider channel
                      * attached by design. Release the public owner so the
-                     * logical close is externally observable; the final
-                     * request completion performs deferred physical teardown
-                     * and, if that detach fails, permanent allocation-free
-                     * retention. Committing the owner release and
+                     * logical close is externally observable; whichever
+                     * obligation finishes last, the final request completion
+                     * or the final lease close, performs deferred physical
+                     * teardown and, if that detach fails, permanent
+                     * allocation-free retention. A live lease therefore keeps
+                     * its borrowed bytes valid across public stream Close and
+                     * even across Session close, not by copying but by
+                     * deferring the actual provider unload. Committing the
+                     * owner release and
                      * public_owner_closed inside this same critical section is
                      * what makes the deferred-cleanup decision atomic with
                      * respect to that completion. */

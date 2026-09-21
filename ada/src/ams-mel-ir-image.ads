@@ -116,10 +116,31 @@ package AMS.MEL.IR.Image is
    --  Naming rule: With_* borrows without a bulk copy; Copy_* produces
    --  independently owned Ada storage.
    --
-   --  Task 030A is NOT end-to-end zero-copy. The MEL provider buffer is still
-   --  copied once into native snapshot-owned storage by the native callback.
-   --  What this API removes is the second copy: the native snapshot payload is
-   --  never copied into Ada on this path.
+   --  Task 030B: the bridge performs ZERO bulk payload copies from the MEL
+   --  provider buffer into Ada. The borrowed view aliases the provider's own
+   --  irmel::Buffer image memory:
+   --
+   --      Buffer::getImageAddress ()
+   --          = native snapshot pixels.data
+   --          = With_Pixels first-element address
+   --
+   --  This is a bridge claim only. Squall itself still receives UDP data and
+   --  copies it into the registered MEL host buffer; that copy is outside
+   --  this bridge and is not removed here.
+   --
+   --  Consequences a caller should understand:
+   --
+   --  * A live lease keeps one provider buffer checked out and therefore
+   --    unavailable for provider reuse. With Buffer_Count = N, at most N
+   --    provider buffers can be checked out at once unless the provider has
+   --    another independent pool, so a slow consumer causes real
+   --    provider-level backpressure or provider-side frame drops. That is
+   --    intentional and is not hidden by silently copying. Use Receive or
+   --    Copy_Pixels when independent ownership is preferred.
+   --  * A live lease also defers physical provider teardown. Stop, Close and
+   --    Session close all complete logically at once and never block on an
+   --    application-held lease, but the provider channel and library are not
+   --    actually released until the last lease is closed or finalized.
    type Frame_Lease is limited private;
 
    --  Dequeues one native frame snapshot and takes ownership of it. O(1) with
@@ -132,8 +153,24 @@ package AMS.MEL.IR.Image is
    function Acquire_Frame
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame_Lease;
    function Is_Open (Frame : Frame_Lease) return Boolean;
-   --  Idempotent. Releases the native snapshot; the borrowed pixel storage
-   --  must not be used afterwards.
+
+   --  Idempotent. Returns the retained provider buffer to the provider via
+   --  the published irmel::Buffer::release () operation and releases the
+   --  native snapshot; the borrowed pixel storage must not be used
+   --  afterwards. Closing an already-closed lease succeeds and does nothing.
+   --
+   --  Since Task 030B this is a provider call and can therefore FAIL. When
+   --  the provider refuses or throws on release, buffer ownership is
+   --  uncertain, so Close raises Provider_Error rather than falsely claiming
+   --  the buffer was safely returned, and the bridge deliberately retains the
+   --  provider graph, the Buffer object and its host storage for the lifetime
+   --  of the process instead of freeing memory whose ownership is unknown.
+   --  That retention is an intentional leak on uncertain ownership, chosen
+   --  over a possible use-after-free or use-after-unload.
+   --
+   --  Automatic finalization remains non-raising: a finalization that meets
+   --  the same failure preserves memory safety and retains the graph, but
+   --  reports nothing. Call Close explicitly when the outcome matters.
    procedure Close (Frame : in out Frame_Lease);
 
    --  Number of borrowable pixel bytes. O(1).

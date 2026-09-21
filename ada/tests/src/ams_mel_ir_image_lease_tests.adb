@@ -131,6 +131,47 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       GNAT.OS_Lib.Free (Directory);
    end Close_Address_Log;
 
+   --  Reads one field of the first logged line, whose format since Task 030B
+   --  is "<frame_id> <snapshot-address> <size> <provider-image-address>".
+   --  Field 2 is the published native span; field 4 is the provider's own
+   --  irmel::Buffer::getImageAddress, which makes the full three-way identity
+   --  observable from Ada without touching the production ABI.
+   function Logged_Field (Index : Positive) return System.Storage_Elements.Integer_Address is
+      File  : Ada.Text_IO.File_Type;
+      Value : System.Storage_Elements.Integer_Address := 0;
+   begin
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Log.all);
+      declare
+         Line  : constant String := Ada.Text_IO.Get_Line (File);
+         First : Natural := Line'First;
+         Last  : Natural;
+         Field : Natural := 0;
+      begin
+         Ada.Text_IO.Close (File);
+         while First <= Line'Last loop
+            Last := First;
+            while Last <= Line'Last and then Line (Last) /= ' ' loop
+               Last := Last + 1;
+            end loop;
+            Field := Field + 1;
+            if Field = Index then
+               Value := System.Storage_Elements.Integer_Address'Value (Line (First .. Last - 1));
+            end if;
+            First := Last + 1;
+         end loop;
+      end;
+      return Value;
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (File) then
+            Ada.Text_IO.Close (File);
+         end if;
+         raise;
+   end Logged_Field;
+
+   function Logged_Provider_Address return System.Storage_Elements.Integer_Address
+   is (Logged_Field (4));
+
    --  Reads field 2 ("<frame_id> <address> <size>") of the first logged line.
    function Logged_Native_Address return System.Storage_Elements.Integer_Address is
       File  : Ada.Text_IO.File_Type;
@@ -199,6 +240,26 @@ package body AMS_MEL_IR_Image_Lease_Tests is
             if Observed_Address /= Logged_Native_Address then
                raise Program_Error
                  with "Ada borrowed pixel storage is not the native snapshot storage";
+            end if;
+            --  Task 030B defining proof. The native span is not merely
+            --  consistent with Ada; it IS the provider's own image memory:
+            --
+            --      Buffer.getImageAddress
+            --          = native snapshot pixels.data
+            --          = Ada With_Pixels first-element address
+            --
+            --  This can only hold if no bulk payload copy exists anywhere
+            --  inside the bridge.
+            if Logged_Provider_Address = 0 then
+               raise Program_Error with "provider image address was not observed";
+            end if;
+            if Logged_Provider_Address /= Logged_Native_Address then
+               raise Program_Error
+                 with "native snapshot storage is not the provider buffer image memory";
+            end if;
+            if Observed_Address /= Logged_Provider_Address then
+               raise Program_Error
+                 with "Ada borrowed pixel storage is not the provider buffer image memory";
             end if;
             declare
                First_Address : constant System.Storage_Elements.Integer_Address := Observed_Address;
@@ -343,6 +404,13 @@ package body AMS_MEL_IR_Image_Lease_Tests is
    --  15, 16, 17, 18, 19: the lease keeps its payload valid across stream
    --  Stop, stream Close, and Session close, in that order, and an owned copy
    --  survives the lease itself.
+   --
+   --  Since Task 030B the borrowed bytes are the provider's own buffer, so
+   --  this holds because actual provider teardown is DEFERRED while the lease
+   --  is live, not because the payload was copied. The C suite asserts the
+   --  ordering directly (channel not destroyed and library not unloaded until
+   --  after the final Buffer.release). The owned Copy_Pixels result remains
+   --  genuinely independent and is still valid after the lease is closed.
    procedure Test_Teardown_With_Live_Lease (Provider_Path : String) is
       Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "ada-lease-teardown");
       Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
@@ -527,6 +595,105 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       end loop;
    end Test_Stress;
 
+   ---------------------------------------------------------------------------
+   --  Task 030B backpressure, observed from Ada. With Buffer_Count = 3, three
+   --  simultaneously live leases hold all three provider buffers, so the
+   --  provider cannot produce a fourth frame until a lease is released. This
+   --  asserts the intended ownership model rather than treating it as a bug:
+   --  acquisition with a short timeout must time out, and must succeed again
+   --  once exactly one lease has been closed.
+   procedure Test_Backpressure (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "ada-lease-backpressure");
+      Stream  : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      Starved : Boolean := False;
+   begin
+      AMS.MEL.IR.Start (Stream);
+      declare
+         First  : AMS.MEL.IR.Image.Frame_Lease := AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+         Second : constant AMS.MEL.IR.Image.Frame_Lease :=
+           AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+         Third  : constant AMS.MEL.IR.Image.Frame_Lease :=
+           AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+      begin
+         if not AMS.MEL.IR.Image.Is_Open (First)
+           or else not AMS.MEL.IR.Image.Is_Open (Second)
+           or else not AMS.MEL.IR.Image.Is_Open (Third)
+         then
+            raise Program_Error with "three simultaneous leases failed";
+         end if;
+         --  All three provider buffers are checked out, so no further frame
+         --  can arrive while every lease is retained.
+         begin
+            declare
+               Extra : constant AMS.MEL.IR.Image.Frame_Lease :=
+                 AMS.MEL.IR.Image.Acquire_Frame (Stream, 50);
+            begin
+               raise Program_Error
+                 with
+                   "a fourth frame arrived while every provider buffer was leased:"
+                   & AMS.MEL.IR.Image.Pixel_Count (Extra)'Image;
+            end;
+         exception
+            when AMS.MEL.IR.Timeout_Error | AMS.MEL.IR.Stream_Stopped =>
+               Starved := True;
+         end;
+         if not Starved then
+            raise Program_Error
+              with "a fourth frame arrived while every provider buffer was leased";
+         end if;
+         --  Releasing exactly one lease frees exactly one provider buffer,
+         --  and the still-live leases are unaffected.
+         AMS.MEL.IR.Image.Close (First);
+         AMS.MEL.IR.Image.With_Pixels (Second, Observe'Access);
+         if Observed_Length /= 12 then
+            raise Program_Error with "a sibling lease was disturbed by an unrelated release";
+         end if;
+         AMS.MEL.IR.Image.With_Pixels (Third, Observe'Access);
+         if Observed_Length /= 12 then
+            raise Program_Error with "a sibling lease was disturbed by an unrelated release";
+         end if;
+      end;
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_Backpressure;
+
+   ---------------------------------------------------------------------------
+   --  Owned copying compatibility. Image.Receive/Full_Frame must stay owned:
+   --  the payload is copied into Ada storage and the provider buffer is
+   --  released before Receive returns, so the result is fully independent of
+   --  stream, Session, and provider lifetime. Task 030B must not have made
+   --  this API borrowed.
+   procedure Test_Owned_Full_Frame (Provider_Path : String) is
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "ada-lease-owned");
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+   begin
+      AMS.MEL.IR.Start (Stream);
+      declare
+         Owned : constant AMS.MEL.IR.Image.Full_Frame := AMS.MEL.IR.Image.Receive (Stream, 1_000);
+         Bytes : constant AMS.MEL.IR.Pixel_Array := AMS.MEL.IR.Image.Pixels (Owned);
+      begin
+         if Bytes'Length /= 12 or else AMS.MEL.IR.Image.Frame_ID (Owned) /= 1 then
+            raise Program_Error with "owned Full_Frame reception failed";
+         end if;
+         --  Tear the whole provider graph down, with no lease outstanding.
+         AMS.MEL.IR.Close (Stream);
+         AMS.MEL.Close (Parent);
+         --  The owned value is still intact after actual provider teardown.
+         declare
+            After : constant AMS.MEL.IR.Pixel_Array := AMS.MEL.IR.Image.Pixels (Owned);
+         begin
+            if After'Length /= 12 then
+               raise Program_Error with "owned Full_Frame did not survive provider teardown";
+            end if;
+            for Index in After'Range loop
+               if After (Index) /= AMS.MEL.IR.Byte (1 * 16 + Index - 1) then
+                  raise Program_Error with "owned Full_Frame payload changed";
+               end if;
+            end loop;
+         end;
+      end;
+   end Test_Owned_Full_Frame;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Acquire_And_Fidelity (Provider_Path);
@@ -536,6 +703,9 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       Test_Teardown_With_Live_Lease (Provider_Path);
       Test_Malformed_Spans (Provider_Path);
       Test_Failed_Acquisition (Provider_Path);
+      --  Task 030B provider-buffer zero copy.
+      Test_Backpressure (Provider_Path);
+      Test_Owned_Full_Frame (Provider_Path);
       Test_Stress (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR zero-copy frame lease contract");
    end Run;

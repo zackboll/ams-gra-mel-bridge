@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <deque>
 #include <thread>
 #include <vector>
 
@@ -290,6 +291,41 @@ public:
     ~MockManager() override { record("manager_destroyed"); }
 };
 
+/* Deterministic provider-side buffer pool, modelled directly on pinned Squall
+ * b1015728f904c799fa0c07489fce48e78f67845f
+ * interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc:
+ *
+ *   - the callback removes a registered buffer from available_buffers before
+ *     generating the image callback, and drops the frame when the pool is
+ *     empty;
+ *   - a successful release() pushes the registered buffer back onto
+ *     available_buffers, making it reusable;
+ *   - the pool is protected by a mutex;
+ *   - release is one-shot per checkout;
+ *   - channel destruction sets accepting_releases = false and release fails.
+ *
+ * This is what makes Task 030B backpressure observable without sleeping: the
+ * test can assert exactly how many buffers are back in the pool and can gate
+ * each production cycle on an explicit condition variable. */
+struct BufferPool {
+    std::mutex mutex;
+    std::condition_variable ready;
+    std::deque<std::shared_ptr<irmel::Buffer>> available;
+    bool accepting_releases{true};
+    /* Test-visible history. */
+    unsigned produced{};   /* frames actually handed to the listener */
+    unsigned starved{};    /* production cycles that found an empty pool */
+    unsigned requested{};  /* production cycles the test asked for */
+    unsigned completed{};  /* production cycles finished */
+};
+
+/* The most recently created pooled channel, so the deterministic backpressure
+ * test can observe and drive the provider directly. Test-only. */
+std::mutex active_pool_mutex;
+/* Weak, so observing the pool from a test never extends provider-side buffer
+ * or channel lifetime and cannot mask a genuine teardown-ordering defect. */
+std::weak_ptr<BufferPool> active_pool;
+
 class MockBuffer final : public irmel::Buffer {
 public:
     MockBuffer(std::string scenario, std::shared_ptr<CallbackBarrier> barrier)
@@ -329,6 +365,10 @@ public:
     }
     std::int64_t getSize() const override { return static_cast<std::int64_t>(size_); }
     std::int64_t getContext() const override { return context_; }
+    /* Squall-shaped release: one-shot per checkout, and on success the buffer
+     * goes back into the channel's available pool so it can be reused. A
+     * failed release deliberately does NOT requeue, exactly as pinned Squall's
+     * RequeueBuffer::release() does not requeue when it returns Fail. */
     Return release() override
     {
         if (!outstanding_.exchange(false)) std::abort();
@@ -338,8 +378,21 @@ public:
             return Return::Fail;
         if (scenario_ == "release-throw")
             throw std::runtime_error("mock release exception");
+        if (auto pool = pool_.lock()) {
+            std::lock_guard lock{pool->mutex};
+            if (!pool->accepting_releases) {
+                record("release_after_channel_destroyed");
+                return Return::Fail;
+            }
+            pool->available.push_back(self_.lock());
+            record("buffer_requeued");
+            pool->ready.notify_all();
+        }
         return Return::Success;
     }
+    void attach_pool(const std::shared_ptr<BufferPool>& pool,
+                     const std::shared_ptr<irmel::Buffer>& self)
+    { pool_ = pool; self_ = self; }
     Return getFlags(std::vector<irmel::BufferFlag>& out) const override
     { out = flags_; return Return::Success; }
     void addFlag(irmel::BufferFlag flag) override { flags_.push_back(flag); }
@@ -358,6 +411,9 @@ private:
     std::int64_t context_{};
     std::vector<irmel::BufferFlag> flags_;
     std::atomic<bool> outstanding_{false};
+    /* Weak so the pool and the buffer cannot form an ownership cycle. */
+    std::weak_ptr<BufferPool> pool_;
+    std::weak_ptr<irmel::Buffer> self_;
 };
 
 #define UNSUPPORTED_CALLBACK(Type) \
@@ -368,7 +424,11 @@ class MockImageChannel final : public irmel::ImageChannel {
 public:
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
         : scenario_{std::move(scenario)}, listener_{std::move(listener)},
-          barrier_{callback_barrier} {}
+          barrier_{callback_barrier}
+    {
+        std::lock_guard lock{active_pool_mutex};
+        active_pool = pool_;
+    }
     ~MockImageChannel() override
     {
         stopping_ = true;
@@ -395,10 +455,23 @@ public:
             release_ = true;
         }
         ready_.notify_all();
+        pool_->ready.notify_all();
         if (producer_.joinable()) producer_.join();
         if (metadata_producer_.joinable()) metadata_producer_.join();
         if (navigation_producer_.joinable()) navigation_producer_.join();
         record("callbacks_quiesced_by_channel_destruction");
+        /* Pinned Squall's ~SquallImageChannel stops accepting releases here;
+         * mirroring that is what makes "release after channel destruction
+         * fails" a reproducible mock behavior rather than an assumption. */
+        {
+            std::lock_guard lock{pool_->mutex};
+            pool_->accepting_releases = false;
+            /* Drop the pool's Buffer references here so channel destruction
+             * remains the point at which provider-side buffer ownership ends,
+             * exactly as before Task 030B. */
+            pool_->available.clear();
+            pool_->ready.notify_all();
+        }
         buffers_.clear();
         record("channel_destroyed");
     }
@@ -480,6 +553,15 @@ public:
     {
         record("buffer_registered");
         if (scenario_ == "register-fail") return Return::Fail;
+        /* Squall-shaped: every registered buffer starts in the available
+         * pool, and a buffer handed to the listener leaves the pool until it
+         * is released. */
+        if (auto mock = std::dynamic_pointer_cast<MockBuffer>(buffer))
+            mock->attach_pool(pool_, buffer);
+        {
+            std::lock_guard lock{pool_->mutex};
+            pool_->available.push_back(buffer);
+        }
         buffers_.push_back(std::move(buffer)); return Return::Success;
     }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override
@@ -507,6 +589,7 @@ public:
     {
         if (!producer_.joinable()) return Return::Success;
         record("channel_disabled"); stopping_ = true;
+        pool_->ready.notify_all();
         if (scenario_ == "nonquiescing-disable" ||
             scenario_ == "release-fail-blocked") {
             std::unique_lock lock{barrier_->mutex};
@@ -691,15 +774,85 @@ public:
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectPreProcMessage)
     UNSUPPORTED_CALLBACK(irmel::NUC_TempData)
 private:
+    /* Deterministic backpressure scenarios drive production explicitly from
+     * the test instead of free-running, so buffer reuse can be asserted with
+     * counters and condition variables rather than sleeps. */
+    bool pooled() const { return scenario_.rfind("lease-pool", 0U) == 0U; }
+
+    /* Squall-shaped production cycle: check a buffer out of the pool, or
+     * record starvation and drop the frame when the pool is empty. */
+    void produce_pooled()
+    {
+        for (;;) {
+            std::unique_lock lock{pool_->mutex};
+            pool_->ready.wait(lock, [this] {
+                return stopping_.load() || pool_->requested > pool_->completed;
+            });
+            if (stopping_.load() && pool_->requested <= pool_->completed) return;
+            std::shared_ptr<irmel::Buffer> underlying;
+            if (pool_->available.empty()) {
+                /* Provider-level backpressure: no reusable buffer exists, so
+                 * the provider drops the frame. This is deliberately NOT
+                 * reported to the bridge as a callback, so it must never be
+                 * counted as a bridge queue-full drop. */
+                ++pool_->starved;
+                record("provider_dropped_frame_no_buffer");
+                ++pool_->completed;
+                pool_->ready.notify_all();
+                continue;
+            }
+            underlying = pool_->available.front();
+            pool_->available.pop_front();
+            const unsigned id = ++pool_->produced;
+            lock.unlock();
+
+            auto mock = std::dynamic_pointer_cast<MockBuffer>(underlying);
+            if (mock && mock->size() >= 12U)
+                for (std::size_t i = 0; i < 12U; ++i)
+                    mock->data()[i] = static_cast<unsigned char>(id * 16U + i);
+            irmel::FrameHeader header{std::chrono::nanoseconds{1'000'000 + id},
+                std::chrono::nanoseconds{20'000 + id}, 4U, 3U, 8U, 1U, 0.25, 0.125, {},
+                irmel::PixelFormat::Mono, id, 2U, 4U, irmel::ImageType::Staring,
+                irmel::ImageFlip::Horizontal, {irmel::ImageFlag::StareSnapshot},
+                0.5, -0.25, 7U, 9U, {}, {}, 3U};
+            record("callback_entered");
+            if (mock) mock->begin_callback();
+            ++callback_buffers;
+            listener_->onImage(*this, header, underlying);
+            record("callback_returned");
+
+            std::lock_guard done{pool_->mutex};
+            ++pool_->completed;
+            pool_->ready.notify_all();
+        }
+    }
+
     void produce()
     {
+        if (pooled()) { produce_pooled(); return; }
         const unsigned count = (scenario_ == "idle" ||
             (scenario_.rfind("c2-", 0U) == 0U && scenario_ != "c2-coexist")) ? 0U :
             (scenario_ == "overflow" ? 20U : 3U);
         for (unsigned id = 1; id <= count; ++id) {
             if (stopping_ && scenario_ != "shutdown-callback") break;
             if (buffers_.empty()) break;
-            auto buffer = std::dynamic_pointer_cast<MockBuffer>(buffers_[(id - 1U) % buffers_.size()]);
+            /* Task 030B: buffers are genuinely checked out now, so a producer
+             * can no longer round-robin a buffer that a lease still holds.
+             * Wait for a reusable buffer, exactly as a real pooled provider
+             * would, and give up if teardown starts first. */
+            std::shared_ptr<irmel::Buffer> checked_out;
+            {
+                std::unique_lock lock{pool_->mutex};
+                if (!pool_->ready.wait_for(lock, std::chrono::seconds{5}, [this] {
+                        return !pool_->available.empty() ||
+                               (stopping_.load() && scenario_ != "shutdown-callback");
+                    }))
+                    break;
+                if (pool_->available.empty()) break;
+                checked_out = pool_->available.front();
+                pool_->available.pop_front();
+            }
+            auto buffer = std::dynamic_pointer_cast<MockBuffer>(checked_out);
             if (!buffer || buffer->size() < 12U) break;
             for (std::size_t i = 0; i < 12U; ++i)
                 buffer->data()[i] = static_cast<unsigned char>(id * 16U + i);
@@ -739,8 +892,14 @@ private:
             }
             if (scenario_ == "shutdown-callback")
                 std::this_thread::sleep_for(std::chrono::milliseconds{20});
-            if (scenario_ == "null-buffer") listener_->onImage(*this, header, {});
-            else {
+            if (scenario_ == "null-buffer") {
+                listener_->onImage(*this, header, {});
+                /* No Buffer was handed over, so nothing will ever release it;
+                 * return it to the pool directly. */
+                std::lock_guard lock{pool_->mutex};
+                pool_->available.push_back(checked_out);
+                pool_->ready.notify_all();
+            } else {
                 buffer->begin_callback();
                 ++callback_buffers;
                 listener_->onImage(*this, header, buffer);
@@ -768,6 +927,7 @@ private:
     std::condition_variable ready_;
     bool release_{};
     std::shared_ptr<CallbackBarrier> barrier_;
+    std::shared_ptr<BufferPool> pool_{std::make_shared<BufferPool>()};
     mutable unsigned capability_calls_{};
     unsigned bad_pixel_registration_count_{};
     std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> bad_pixel_callback_;
@@ -2814,6 +2974,69 @@ private:
 };
 struct UnloadRecorder { ~UnloadRecorder() { record("library_unloaded"); } } unload_recorder;
 } // namespace
+
+/* Test-only deterministic backpressure control surface. These are NOT part of
+ * the MEL provider interface and are not used by the production facade; they
+ * exist so the Task 030B backpressure test can assert real provider buffer
+ * reuse with explicit state instead of sleeping. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_available(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return static_cast<unsigned long>(pool->available.size());
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_produced(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return pool->produced;
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_starved(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return pool->starved;
+}
+
+/* Requests exactly one production cycle and blocks until the provider has
+ * finished it, whether it produced a frame or starved. No sleeping. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_pool_produce_once(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    {
+        std::lock_guard lock{active_pool_mutex};
+        pool = active_pool.lock();
+    }
+    if (!pool) return 0;
+    unsigned target = 0U;
+    {
+        std::lock_guard lock{pool->mutex};
+        target = ++pool->requested;
+    }
+    pool->ready.notify_all();
+    std::unique_lock lock{pool->mutex};
+    pool->ready.wait(lock, [&] { return pool->completed >= target; });
+    return 1;
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_pool_reset(void)
+{
+    std::lock_guard lock{active_pool_mutex};
+    active_pool.reset();
+}
 
 extern "C" __attribute__((visibility("default")))
 std::shared_ptr<API_Manager> getAPI_Manager(const std::string& instance)

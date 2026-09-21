@@ -33,10 +33,24 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  * Teardown synchronization invariant (corrective task):
  *
  *   CallbackState::mutex is the single teardown lock. Every read and every
- *   write of requests, cleanup_in_progress, cleanup_complete, cleanup_ok,
- *   public_owner_closed, enable_attempted, channel and image_channel that can
- *   race between an application Stop/Close thread and the adapter's own
- *   Navigation completion thread happens while that mutex is held.
+ *   write of requests, callback->retained_frames, cleanup_in_progress, cleanup_complete,
+ *   cleanup_ok, public_owner_closed, enable_attempted, channel and
+ *   image_channel that can race between an application Stop/Close thread, a
+ *   frame-lease close thread, the provider callback thread, and the adapter's
+ *   own Navigation completion thread happens while that mutex is held.
+ *
+ *   Task 030B extends the deferred-teardown precondition. Physical teardown
+ *   may run only when
+ *
+ *       requests == 0  AND  callback->retained_frames == 0
+ *
+ *   because a queued frame or a live frame snapshot still holds a provider
+ *   Buffer checked out of the provider's pool, and that Buffer's memory, its
+ *   vtable, and its registered host byte range must all stay alive until
+ *   Buffer::release() has been called. Buffer::release() is a provider call
+ *   and therefore never runs under CallbackState::mutex: ownership of the
+ *   retained Buffer is moved out under the lock, release() runs unlocked, and
+ *   the count transition is published under the lock afterwards.
  *
  *   Provider calls (disable/detachChannel/channel destruction) never run
  *   under that mutex. A cleanup owner claims cleanup_in_progress under the
@@ -58,6 +72,13 @@ struct ImageStreamState {
     std::size_t buffer_size{};
     std::vector<std::vector<std::uint8_t>> storage;
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> buffers;
+    /* Task 030B fail-safe retention. A provider buffer whose release() failed
+     * or threw has uncertain provider ownership, so neither the Buffer object
+     * nor its registered host byte range may be destroyed. Such a buffer is
+     * parked here for the lifetime of the graph, and the retained-buffer count
+     * is deliberately never decremented for it, which permanently blocks
+     * physical teardown. Guarded by callback->mutex. */
+    std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> retained_failed_buffers;
 
     /* Teardown-participating state. All of the following is guarded by
      * callback->mutex; see the invariant above. channel/image_channel are
