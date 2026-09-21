@@ -863,8 +863,23 @@ static int test_cleanup_failure(const char *scenario)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
     ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 frame;
+    uint8_t pixels[12];
+    unsigned drained;
     CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Since Task 030B a queued frame holds a provider buffer checked out, and
+       physical teardown is deferred while any buffer is retained. Stop would
+       then legitimately return OK with the cleanup still owed, which is the
+       same deferral already used for a pending Navigation request. Drain the
+       scenario's three frames first -- each Receive copies and releases its
+       buffer -- so that no buffer is retained and Stop is required to perform
+       the physical teardown here and report the disable failure. */
+    for (drained = 0; drained < 3U; ++drained) {
+        memset(&frame, 0, sizeof frame);
+        frame.pixels = pixels; frame.pixel_capacity = sizeof pixels;
+        CHECK(ams_mel_ir_stream_receive(stream, 1000, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    }
     CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);

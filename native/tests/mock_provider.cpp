@@ -785,10 +785,14 @@ private:
     {
         for (;;) {
             std::unique_lock lock{pool_->mutex};
-            pool_->ready.wait(lock, [this] {
+            /* Timed rather than indefinite: stopping_ is an atomic set outside
+             * this mutex, so a purely notification-driven wait could miss the
+             * transition and stall producer_.join() during teardown. */
+            (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10}, [this] {
                 return stopping_.load() || pool_->requested > pool_->completed;
             });
             if (stopping_.load() && pool_->requested <= pool_->completed) return;
+            if (pool_->requested <= pool_->completed) continue;
             std::shared_ptr<irmel::Buffer> underlying;
             if (pool_->available.empty()) {
                 /* Provider-level backpressure: no reusable buffer exists, so
@@ -842,12 +846,19 @@ private:
              * would, and give up if teardown starts first. */
             std::shared_ptr<irmel::Buffer> checked_out;
             {
+                /* Bounded in short slices rather than one long wait, so a
+                 * concurrent disable()/destructor that sets stopping_ is
+                 * observed promptly and producer_.join() cannot stall behind
+                 * a single long timeout on a loaded machine. */
                 std::unique_lock lock{pool_->mutex};
-                if (!pool_->ready.wait_for(lock, std::chrono::seconds{5}, [this] {
+                for (unsigned slice = 0; slice < 500U; ++slice) {
+                    if (!pool_->available.empty()) break;
+                    if (stopping_.load() && scenario_ != "shutdown-callback") break;
+                    (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10}, [this] {
                         return !pool_->available.empty() ||
                                (stopping_.load() && scenario_ != "shutdown-callback");
-                    }))
-                    break;
+                    });
+                }
                 if (pool_->available.empty()) break;
                 checked_out = pool_->available.front();
                 pool_->available.pop_front();
@@ -3027,8 +3038,12 @@ int ams_mel_mock_pool_produce_once(void)
     }
     pool->ready.notify_all();
     std::unique_lock lock{pool->mutex};
-    pool->ready.wait(lock, [&] { return pool->completed >= target; });
-    return 1;
+    /* Bounded so a test can never hang if the channel is torn down mid-cycle;
+     * the wait is still driven by explicit provider state, never by sleeping
+     * for a fixed duration and hoping. */
+    const bool finished = pool->ready.wait_for(lock, std::chrono::seconds{10},
+                                               [&] { return pool->completed >= target; });
+    return finished ? 1 : 0;
 }
 
 extern "C" __attribute__((visibility("default")))
