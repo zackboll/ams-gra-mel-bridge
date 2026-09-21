@@ -13,16 +13,19 @@ package body AMS.MEL.IR.Track.Metadata is
 
    type Diagnostic is array (C.Size_T range <>) of aliased Interfaces.C.char with Convention => C;
    subtype Fixed_Diagnostic is Diagnostic (0 .. 511);
-   --  The safe layer reads the v2 view for every kind: v2 begins with the
-   --  complete frozen v1 record, so Base carries the report and request
-   --  payloads and the additive candidate payload sits beside it.
-   type Event_Access is access all C.IR_Track_Event_V2;
+   --  The safe layer reads the v3 view for every kind: v3 begins with the
+   --  complete frozen v2 record, which itself begins with the complete frozen
+   --  v1 record, so Base.Base carries the report and request payloads,
+   --  Base.Candidate_Object_Message carries the 029F payload, and the additive
+   --  PreProc payload sits beside them.
+   type Event_Access is access all C.IR_Track_Event_V3;
    function To_Event is new Ada.Unchecked_Conversion (System.Address, Event_Access);
 
    --  The native Track metadata event kinds defined by this release.
-   Irst_Track_Report_Kind         : constant Interfaces.Unsigned_32 := 1;
-   Request_System_Track_Data_Kind : constant Interfaces.Unsigned_32 := 2;
-   Candidate_Object_Message_Kind  : constant Interfaces.Unsigned_32 := 3;
+   Irst_Track_Report_Kind                : constant Interfaces.Unsigned_32 := 1;
+   Request_System_Track_Data_Kind        : constant Interfaces.Unsigned_32 := 2;
+   Candidate_Object_Message_Kind         : constant Interfaces.Unsigned_32 := 3;
+   Candidate_Object_PreProc_Message_Kind : constant Interfaces.Unsigned_32 := 4;
 
    function Message (Value : Diagnostic) return String is
       Last : Natural := 0;
@@ -117,44 +120,60 @@ package body AMS.MEL.IR.Track.Metadata is
    --  The hot-region enum was already validated natively against the upstream
    --  0..3 range; the check is repeated rather than using unchecked
    --  enumeration conversion.
-   function Copy_Candidate_Message
-     (Raw : C.IR_Candidate_Object_Message_V1) return Candidate_Object_Message
+   --  The one CandidateObjectHeader scalar copy, shared by both candidate
+   --  message kinds. Number_Of_COs is copied verbatim; no consistency rule
+   --  against any container length is applied here.
+   function Copy_Header (Raw : C.IR_Candidate_Object_Header_V1) return Candidate_Object_Header
+   is (Number_Of_COs          => Raw.Number_Of_COs,
+       Stack_Frame_Index      => Raw.Stack_Frame_Index,
+       CFAR                   => Float (Raw.CFAR),
+       Validity_Flag_Bitfield => Raw.Validity_Flag_Bitfield,
+       TOV_UTC_NS             => Long_Long_Integer (Raw.TOV_UTC_NS));
+
+   --  The one HotRegion span copy, shared by both candidate message kinds.
+   --  The enum was already validated natively against the upstream 0..3 range;
+   --  the check is repeated rather than using unchecked enumeration
+   --  conversion. The span is read here and never retained.
+   procedure Copy_Regions (Raw : C.IR_Hot_Region_Span_V1; Into : in out Hot_Region_Vectors.Vector)
    is
       type Region_Array is array (C.Size_T range <>) of aliased C.IR_Hot_Region_V1
       with Convention => C;
+      use type C.Size_T;
+   begin
+      if Raw.Size = 0 then
+         return;
+      end if;
+      declare
+         Regions : Region_Array (0 .. Raw.Size - 1)
+         with Import, Address => Raw.Data;
+      begin
+         for Index in Regions'Range loop
+            if Regions (Index).Kind > Hot_Region_Type'Enum_Rep (Mask) then
+               raise Provider_Error with "native IR Track returned unknown HotRegionType";
+            end if;
+            Into.Append
+              (Hot_Region'
+                 (Kind   => Hot_Region_Type'Enum_Val (Regions (Index).Kind),
+                  Size   => Regions (Index).Size,
+                  Top    => Regions (Index).Top,
+                  Left   => Regions (Index).Left,
+                  Right  => Regions (Index).Right,
+                  Bottom => Regions (Index).Bottom));
+         end loop;
+      end;
+   end Copy_Regions;
+
+   function Copy_Candidate_Message
+     (Raw : C.IR_Candidate_Object_Message_V1) return Candidate_Object_Message
+   is
       type Object_Array is array (C.Size_T range <>) of aliased C.IR_Candidate_Object_V1
       with Convention => C;
       Result : Candidate_Object_Message;
       use type C.Size_T;
    begin
-      Result.Header_Value :=
-        (Number_Of_COs          => Raw.Header.Number_Of_COs,
-         Stack_Frame_Index      => Raw.Header.Stack_Frame_Index,
-         CFAR                   => Float (Raw.Header.CFAR),
-         Validity_Flag_Bitfield => Raw.Header.Validity_Flag_Bitfield,
-         TOV_UTC_NS             => Long_Long_Integer (Raw.Header.TOV_UTC_NS));
+      Result.Header_Value := Copy_Header (Raw.Header);
       Result.Inertial := To_Inertial_State (Raw.Inertial_State);
-
-      if Raw.Hot_Regions.Size > 0 then
-         declare
-            Regions : Region_Array (0 .. Raw.Hot_Regions.Size - 1)
-            with Import, Address => Raw.Hot_Regions.Data;
-         begin
-            for Index in Regions'Range loop
-               if Regions (Index).Kind > Hot_Region_Type'Enum_Rep (Mask) then
-                  raise Provider_Error with "native IR Track returned unknown HotRegionType";
-               end if;
-               Result.Regions.Append
-                 (Hot_Region'
-                    (Kind   => Hot_Region_Type'Enum_Val (Regions (Index).Kind),
-                     Size   => Regions (Index).Size,
-                     Top    => Regions (Index).Top,
-                     Left   => Regions (Index).Left,
-                     Right  => Regions (Index).Right,
-                     Bottom => Regions (Index).Bottom));
-            end loop;
-         end;
-      end if;
+      Copy_Regions (Raw.Hot_Regions, Result.Regions);
 
       if Raw.Candidate_Objects.Size > 0 then
          declare
@@ -203,20 +222,123 @@ package body AMS.MEL.IR.Track.Metadata is
      (Message : Candidate_Object_Message; Index : Positive) return Candidate_Object
    is (Message.Candidate_Objects (Index));
 
-   --  Fails closed on any kind this release does not implement, which is now
-   --  only the unimplemented CandidateObjectPreProcMessage callback.
-   function Copy_Any_Event (Raw : C.IR_Track_Event_V2) return Metadata_Event is
+   --  Copies the complete CandidateObjectPreProcMessage into wholly Ada-owned
+   --  storage. Both native spans are read here and never retained; the caller
+   --  closes the native event immediately afterwards.
+   --
+   --  The PreProc span size is the upstream vector's OWN size. Header's
+   --  Number_Of_COs is copied verbatim and is deliberately NOT used to
+   --  truncate or validate this vector: the pinned headers publish no
+   --  invariant tying them together.
+   --
+   --  The flat nine-element row-major C patch is mapped explicitly to the
+   --  owned 3x3 Ada value: Samples (Row * 3 + Column) is (Row + 1, Column + 1).
+   function Copy_PreProc_Message
+     (Raw : C.IR_Candidate_Object_PreProc_Message_V1) return Candidate_Object_PreProc_Message
+   is
+      type PreProc_Array is array (C.Size_T range <>) of aliased C.IR_Candidate_Object_PreProc_V1
+      with Convention => C;
+      Result : Candidate_Object_PreProc_Message;
+      use type C.Size_T;
+      use type Interfaces.Unsigned_8;
    begin
-      if Raw.Base.Kind = Irst_Track_Report_Kind then
-         return (Kind => IRST_Track_Report_Event, Report => Copy_Event (Raw.Base));
-      elsif Raw.Base.Kind = Request_System_Track_Data_Kind then
+      Result.Header_Value := Copy_Header (Raw.Header);
+      Result.Inertial := To_Inertial_State (Raw.Inertial_State);
+      Copy_Regions (Raw.Hot_Regions, Result.Regions);
+
+      if Raw.Candidate_Object_PreProcs.Size > 0 then
+         declare
+            PreProcs : PreProc_Array (0 .. Raw.Candidate_Object_PreProcs.Size - 1)
+            with Import, Address => Raw.Candidate_Object_PreProcs.Data;
+         begin
+            for Index in PreProcs'Range loop
+               declare
+                  Source     : C.IR_Candidate_Object_PreProc_V1 renames PreProcs (Index);
+                  Background : Candidate_Background;
+               begin
+                  for Row in Background_Index loop
+                     for Column in Background_Index loop
+                        Background (Row, Column) :=
+                          Source.Candidate_Object_With_Background.Samples
+                            (C.Size_T ((Row - 1) * 3 + (Column - 1)));
+                     end loop;
+                  end loop;
+                  Result.Candidate_PreProcs.Append
+                    (Candidate_Object_PreProc'
+                       (System_Time_NS                   =>
+                          Long_Long_Integer (Source.System_Time_NS),
+                        Detection_Category               => Source.Detection_Category,
+                        Sensor_Index                     => Source.Sensor_Index,
+                        Subpixel                         =>
+                          (Row    => Long_Float (Source.Subpixel.Row),
+                           Column => Long_Float (Source.Subpixel.Column)),
+                        Intensity                        => Long_Float (Source.Intensity),
+                        Sensor_Relative_Unit             =>
+                          To_Directional (Source.Sensor_Relative_Unit),
+                        Signal_To_Interference_Ratio     =>
+                          Long_Float (Source.Signal_To_Interference_Ratio),
+                        Signal_To_Noise_Ratio            =>
+                          Long_Float (Source.Signal_To_Noise_Ratio),
+                        Candidate_Object_With_Background => Background,
+                        Clutter                          => Long_Float (Source.Clutter),
+                        Candidate_Object_Quality         =>
+                          Long_Float (Source.Candidate_Object_Quality),
+                        Sir_Delta                        => Long_Float (Source.Sir_Delta),
+                        Inertial_State                   =>
+                          To_Inertial_State (Source.Inertial_State),
+                        --  The native adapter already normalizes the upstream
+                        --  bool to exactly 0 or 1.
+                        Edge                             => Source.Edge /= 0,
+                        Az_Sigma                         => Long_Float (Source.Az_Sigma),
+                        El_Sigma                         => Long_Float (Source.El_Sigma),
+                        Background_Normalizer            =>
+                          Long_Float (Source.Background_Normalizer)));
+               end;
+            end loop;
+         end;
+      end if;
+      return Result;
+   end Copy_PreProc_Message;
+
+   function Header (Message : Candidate_Object_PreProc_Message) return Candidate_Object_Header
+   is (Message.Header_Value);
+
+   function Inertial_State (Message : Candidate_Object_PreProc_Message) return Sensor_Inertial_State
+   is (Message.Inertial);
+
+   function Hot_Region_Count (Message : Candidate_Object_PreProc_Message) return Natural
+   is (Natural (Message.Regions.Length));
+
+   function Hot_Region_At
+     (Message : Candidate_Object_PreProc_Message; Index : Positive) return Hot_Region
+   is (Message.Regions (Index));
+
+   function Candidate_Object_PreProc_Count
+     (Message : Candidate_Object_PreProc_Message) return Natural
+   is (Natural (Message.Candidate_PreProcs.Length));
+
+   function Candidate_Object_PreProc_At
+     (Message : Candidate_Object_PreProc_Message; Index : Positive) return Candidate_Object_PreProc
+   is (Message.Candidate_PreProcs (Index));
+
+   --  Every published TrackChannel-specific metadata kind is implemented, so
+   --  this fails closed only on a kind a future native release might add.
+   function Copy_Any_Event (Raw : C.IR_Track_Event_V3) return Metadata_Event is
+   begin
+      if Raw.Base.Base.Kind = Irst_Track_Report_Kind then
+         return (Kind => IRST_Track_Report_Event, Report => Copy_Event (Raw.Base.Base));
+      elsif Raw.Base.Base.Kind = Request_System_Track_Data_Kind then
          return
            (Kind    => Request_System_Track_Data_Event,
-            Request => Copy_Request (Raw.Base.Request_System_Track_Data));
-      elsif Raw.Base.Kind = Candidate_Object_Message_Kind then
+            Request => Copy_Request (Raw.Base.Base.Request_System_Track_Data));
+      elsif Raw.Base.Base.Kind = Candidate_Object_Message_Kind then
          return
            (Kind       => Candidate_Object_Message_Event,
-            Candidates => Copy_Candidate_Message (Raw.Candidate_Object_Message));
+            Candidates => Copy_Candidate_Message (Raw.Base.Candidate_Object_Message));
+      elsif Raw.Base.Base.Kind = Candidate_Object_PreProc_Message_Kind then
+         return
+           (Kind               => Candidate_Object_PreProc_Message_Event,
+            Candidate_PreProcs => Copy_PreProc_Message (Raw.Candidate_Object_PreProc_Message));
       else
          raise Provider_Error with "invalid native IR Track metadata kind";
       end if;
@@ -289,7 +411,7 @@ package body AMS.MEL.IR.Track.Metadata is
       elsif Code /= C.Success then
          raise Provider_Error with Message (D);
       end if;
-      if C.IR_Track_Event_View_V2 (Owner, Address'Access, D'Address, D'Length, Required'Access)
+      if C.IR_Track_Event_View_V3 (Owner, Address'Access, D'Address, D'Length, Required'Access)
         /= C.Success
       then
          Release;

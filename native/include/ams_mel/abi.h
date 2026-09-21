@@ -1017,24 +1017,129 @@ typedef struct ams_mel_ir_candidate_object_message_v1 {
     ams_mel_ir_candidate_object_span_v1 candidate_objects;
 } ams_mel_ir_candidate_object_message_v1;
 
-/* Versioned Track metadata event format. The @RequiredIfTrack IRSTTrackReport
- * family, the @Optional RequestSystemTrackData request, and the
- * @RequiredIfDetectCandidateObjects CandidateObjectMessage are implemented;
- * CandidateObjectPreProcMessage deliberately has no storage here. A consumer
- * must fail closed on an unrecognized kind. Only the member selected by kind is
- * populated; the others stay zeroed, and every unselected span keeps a NULL
- * data pointer and a zero size.
+/* Upstream CandidateObjectPreProc::candidateObjectWithBackground is exactly
+ * std::array<std::array<std::int16_t, 3>, 3>: a fixed 3 by 3 patch of
+ * intensities around the candidate object. Both dimension constants are
+ * published here so a consumer never has to hardcode the shape. */
+#define AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE UINT32_C(3)
+#define AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES UINT32_C(9)
+
+/* The one explicit fixed C representation of the upstream 3 by 3 patch. A
+ * C++ std::array object is never memcpy'd into this storage: all nine values
+ * are copied individually through the published getter.
+ *
+ * The mapping is ROW-MAJOR and exact:
+ *
+ *     samples[row * AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE + column]
+ *         == upstream[row][column]      for row, column in 0 .. 2
+ *
+ * The element width stays upstream int16_t and is deliberately NOT widened. */
+typedef struct ams_mel_ir_candidate_background_v1 {
+    int16_t samples[9];
+} ams_mel_ir_candidate_background_v1;
+
+/* Complete CandidateObjectPreProc. Every published getter is represented
+ * exactly once: getSystemTime, getDetectionCategory, getSensorIndex,
+ * getSubpixel, getIntensity, getSenRelUnit, getSignalToInterferenceRatio,
+ * getSignalToNoiseRatio, getCandidateObjectWithBackground, getClutter,
+ * getCandidateObjectQuality, getSirDelta, getInertialState, getEdge,
+ * getAzSigma, getElSigma, and getBackgroundNormalizer.
+ *
+ * system_time_ns preserves the signed std::chrono::nanoseconds count. The
+ * canonical ams_mel_ir_row_col_v1, ams_mel_ir_directional_v1, and
+ * ams_mel_ir_sensor_inertial_state_v1 are reused; no second representation
+ * exists. Each PreProc carries its OWN nested SensorInertialState, distinct
+ * from the message-level one.
+ *
+ * No floating-point value is clamped or normalized: candidate_object_quality
+ * is documented upstream as "0 to 1" but the published setter enforces
+ * nothing, the sensor-relative unit vector is NOT renormalized, and the two
+ * sigma values are carried in whatever units the provider supplied.
+ * detection_category is an upstream bitfield and is deliberately NOT decoded.
+ *
+ * edge is upstream `bool` and is normalized to exactly 0 or 1 so no
+ * indeterminate byte crosses the C boundary. */
+typedef struct ams_mel_ir_candidate_object_preproc_v1 {
+    int64_t system_time_ns;
+    uint32_t detection_category;
+    uint32_t sensor_index;
+    ams_mel_ir_row_col_v1 subpixel;
+    double intensity;
+    ams_mel_ir_directional_v1 sensor_relative_unit;
+    double signal_to_interference_ratio;
+    double signal_to_noise_ratio;
+    ams_mel_ir_candidate_background_v1 candidate_object_with_background;
+    double clutter;
+    double candidate_object_quality;
+    double sir_delta;
+    ams_mel_ir_sensor_inertial_state_v1 inertial_state;
+    uint8_t edge;
+    double az_sigma;
+    double el_sigma;
+    double background_normalizer;
+} ams_mel_ir_candidate_object_preproc_v1;
+
+/* Borrowed view of the event-owned CandidateObjectPreProc storage. Unlike
+ * CandidateObjectMessage, the upstream container here is a
+ * std::vector<CandidateObjectPreProc>, which already carries its own explicit
+ * size, so size is EXACTLY that vector's size and the COMPLETE vector is
+ * deep-copied in its published order.
+ *
+ * The header's number_of_cos is deliberately NOT used to truncate this span:
+ * the pinned headers publish no invariant requiring
+ * numberOfCOs == candidateObjectPreProcs.size(), so both values are preserved
+ * verbatim rather than an undocumented consistency rule being invented.
+ *
+ * data stays valid until the event owner is closed. */
+typedef struct ams_mel_ir_candidate_object_preproc_span_v1 {
+    const ams_mel_ir_candidate_object_preproc_v1 *data;
+    size_t size;
+} ams_mel_ir_candidate_object_preproc_span_v1;
+
+/* Complete CandidateObjectPreProcMessage. Every published getter is
+ * represented exactly once: getCandidateObjectHeader, getSensorInertialState,
+ * and getCandidateObjectPreProcs.
+ *
+ * The TrackChannel callback that delivers it is annotated @Optional and is
+ * documented as intended for IR MFAs that use CandidateObjectPreProc.
+ * Upstream declares NO send(CandidateObjectPreProcMessage) and NO
+ * RequestFor<CandidateObjectPreProcMessage>, so this is inbound callback
+ * metadata and never an asynchronous request.
+ *
+ * ams_mel_ir_candidate_object_header_v1, ams_mel_ir_sensor_inertial_state_v1,
+ * and ams_mel_ir_hot_region_span_v1 are reused verbatim. inertial_state is the
+ * MESSAGE-level state; each PreProc additionally carries its own. Both spans
+ * point into storage owned by the native event owner and stay valid until
+ * event close, including after the provider channel is destroyed and the
+ * provider library is unloaded. */
+typedef struct ams_mel_ir_candidate_object_preproc_message_v1 {
+    ams_mel_ir_candidate_object_header_v1 header;
+    ams_mel_ir_sensor_inertial_state_v1 inertial_state;
+    ams_mel_ir_hot_region_span_v1 hot_regions;
+    ams_mel_ir_candidate_object_preproc_span_v1 candidate_object_preprocs;
+} ams_mel_ir_candidate_object_preproc_message_v1;
+
+/* Versioned Track metadata event format. Every published TrackChannel-specific
+ * metadata callback is implemented: the @RequiredIfTrack IRSTTrackReport
+ * family, the @Optional RequestSystemTrackData request, the
+ * @RequiredIfDetectCandidateObjects CandidateObjectMessage, and the @Optional
+ * CandidateObjectPreProcMessage. A consumer must fail closed on an
+ * unrecognized kind. Only the member selected by kind is populated; the others
+ * stay zeroed, and every unselected span keeps a NULL data pointer and a zero
+ * size.
  *
  * kind is the ONE discriminator for every version of this event. A kind may be
  * introduced whose payload has no storage in an older version record: such an
  * event is still delivered through the older view, with the older view's
  * members zeroed, and the payload is reachable only through the version that
  * declares it. AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE is exactly
- * that case for v1. */
+ * that case for v1, and AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE
+ * is exactly that case for both v1 and v2. */
 typedef uint32_t ams_mel_ir_track_metadata_kind_t;
 #define AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT UINT32_C(1)
 #define AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA UINT32_C(2)
 #define AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE UINT32_C(3)
+#define AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE UINT32_C(4)
 
 /* FROZEN. This record has exactly three members and its layout is permanently
  * fixed at the layout published by task 029E. Nothing may ever be appended to
@@ -1061,12 +1166,35 @@ typedef struct ams_mel_ir_track_metadata_event_v1 {
  *
  * A v1 consumer needs no recompilation because CandidateObjectMessage exists:
  * it keeps calling ams_mel_ir_track_metadata_event_view and keeps receiving the
- * unchanged v1 record. Future Track metadata payloads must introduce a v3 or
- * another compatible scheme; they must not be appended to v1 or to v2. */
+ * unchanged v1 record.
+ *
+ * FROZEN as of task 029G. v2 has exactly these two members and ends exactly
+ * after candidate_object_message. The CandidateObjectPreProcMessage payload
+ * was NOT appended here; it went into v3 instead, and the ABI probes assert
+ * this exact member set so an accidental future append fails compatibility. */
 typedef struct ams_mel_ir_track_metadata_event_v2 {
     ams_mel_ir_track_metadata_event_v1 base;
     ams_mel_ir_candidate_object_message_v1 candidate_object_message;
 } ams_mel_ir_track_metadata_event_v2;
+
+/* Track metadata event v3. The complete frozen v2 record is the first member,
+ * so offsetof(v3, base) is 0 and sizeof(v3.base) == sizeof(v2). Every earlier
+ * payload layout is reused rather than duplicated, and base.base.kind remains
+ * the ONE discriminator for every version of this event. v3 adds only the
+ * @Optional CandidateObjectPreProcMessage payload, whose variable-size storage
+ * stays owned by the native event owner exactly as the rest of the event does.
+ *
+ * Neither a v1 nor a v2 consumer needs recompilation because
+ * CandidateObjectPreProcMessage exists: each keeps calling its own view
+ * operation and keeps receiving its own unchanged record. A PreProc event is
+ * still delivered through those older views with kind 4, but the PreProc
+ * payload is reachable only through
+ * ams_mel_ir_track_metadata_event_view_v3. */
+typedef struct ams_mel_ir_track_metadata_event_v3 {
+    ams_mel_ir_track_metadata_event_v2 base;
+    ams_mel_ir_candidate_object_preproc_message_v1
+        candidate_object_preproc_message;
+} ams_mel_ir_track_metadata_event_v3;
 
 /* Upstream TrackStatus (@RequiredIfTrackUpdate) defines exactly Create = 0,
  * Update = 1, Predict = 2, and Delete = 3 and declares no MaxExclusive value.
@@ -2113,6 +2241,16 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view_v2(
     const ams_mel_ir_track_metadata_event *event,
     const ams_mel_ir_track_metadata_event_v2 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same borrowed event, viewed through the v3 record. Identical ownership,
+ * validity, and diagnostic rules as the v1 and v2 views; the returned pointer
+ * is the same storage, because offsetof(v3, base) is 0 and offsetof(v2, base)
+ * is 0, so all three views address one allocation. Every event kind is
+ * viewable through v3. Only v3 exposes the CandidateObjectPreProcMessage
+ * payload and its two event-owned spans. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_view_v3(
+    const ams_mel_ir_track_metadata_event *event,
+    const ams_mel_ir_track_metadata_event_v3 **out_view, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_metadata_event_close(
     ams_mel_ir_track_metadata_event **event, char *diagnostic,

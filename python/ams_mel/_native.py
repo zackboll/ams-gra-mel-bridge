@@ -319,6 +319,7 @@ AMS_MEL_IR_TRACK_MODE_STARE = 2
 AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT = 1
 AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA = 2
 AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE = 3
+AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE = 4
 # Upstream MAX_CANDIDATE_OBJECTS: the fixed storage length of the published
 # std::array<CandidateObject, 900>. numberOfCOs selects the meaningful prefix;
 # a larger count is malformed.
@@ -382,6 +383,38 @@ class IrTrackMetadataEventV1(ctypes.Structure): _fields_ = [("kind",ctypes.c_uin
 # Track metadata event v2: the complete frozen v1 record first, then the
 # additive CandidateObjectMessage payload. base.kind stays the discriminator.
 class IrTrackMetadataEventV2(ctypes.Structure): _fields_ = [("base",IrTrackMetadataEventV1),("candidate_object_message",IrCandidateObjectMessageV1)]
+# Upstream candidateObjectWithBackground is std::array<std::array<int16_t,3>,3>;
+# the one fixed representation is row-major samples[row * 3 + column].
+AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE = 3
+AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES = 9
+class IrCandidateBackgroundV1(ctypes.Structure): _fields_ = [
+    ("samples",ctypes.c_int16 * 9)]
+# Complete CandidateObjectPreProc. Each entry carries its OWN nested inertial
+# state. No value is clamped or normalized; edge is normalized to exactly 0/1.
+class IrCandidateObjectPreProcV1(ctypes.Structure): _fields_ = [
+    ("system_time_ns",ctypes.c_int64),("detection_category",ctypes.c_uint32),
+    ("sensor_index",ctypes.c_uint32),("subpixel",IrRowColV1),
+    ("intensity",ctypes.c_double),("sensor_relative_unit",IrDirectionalV1),
+    ("signal_to_interference_ratio",ctypes.c_double),
+    ("signal_to_noise_ratio",ctypes.c_double),
+    ("candidate_object_with_background",IrCandidateBackgroundV1),
+    ("clutter",ctypes.c_double),("candidate_object_quality",ctypes.c_double),
+    ("sir_delta",ctypes.c_double),("inertial_state",IrSensorInertialStateV1),
+    ("edge",ctypes.c_uint8),("az_sigma",ctypes.c_double),
+    ("el_sigma",ctypes.c_double),("background_normalizer",ctypes.c_double)]
+class IrCandidateObjectPreProcSpanV1(ctypes.Structure): _fields_ = [("data",ctypes.POINTER(IrCandidateObjectPreProcV1)),("size",ctypes.c_size_t)]
+# Complete CandidateObjectPreProcMessage. The delivering callback is @Optional;
+# upstream declares no send and no RequestFor. The PreProc container is a
+# std::vector, so the span size is the vector's own size and number_of_cos is
+# deliberately not used to truncate it: no such invariant is published.
+class IrCandidateObjectPreProcMessageV1(ctypes.Structure): _fields_ = [
+    ("header",IrCandidateObjectHeaderV1),("inertial_state",IrSensorInertialStateV1),
+    ("hot_regions",IrHotRegionSpanV1),
+    ("candidate_object_preprocs",IrCandidateObjectPreProcSpanV1)]
+# Track metadata event v3: the complete frozen v2 record first, then the
+# additive CandidateObjectPreProcMessage payload. base.base.kind stays the one
+# discriminator.
+class IrTrackMetadataEventV3(ctypes.Structure): _fields_ = [("base",IrTrackMetadataEventV2),("candidate_object_preproc_message",IrCandidateObjectPreProcMessageV1)]
 class IrInstrumentationLevelCommandV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("priority",ctypes.c_uint32)]
 class IrInstrumentationReportV1(ctypes.Structure): _fields_ = [("command_id",ctypes.c_uint32),("size",ctypes.c_uint32),("timestamp_ns",ctypes.c_int64),("priority",ctypes.c_uint32)]
 class IrInstrumentationResultV1(ctypes.Structure): _fields_ = [("report",IrInstrumentationReportV1),("error_code",ctypes.c_uint32)]
@@ -945,6 +978,9 @@ ams_mel_ir_track_metadata_event_view.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_view_v2 = _LIBRARY.ams_mel_ir_track_metadata_event_view_v2
 ams_mel_ir_track_metadata_event_view_v2.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV2)), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_view_v2.restype = ctypes.c_int32
+ams_mel_ir_track_metadata_event_view_v3 = _LIBRARY.ams_mel_ir_track_metadata_event_view_v3
+ams_mel_ir_track_metadata_event_view_v3.argtypes = [IrTrackMetadataEventHandle, ctypes.POINTER(ctypes.POINTER(IrTrackMetadataEventV3)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_track_metadata_event_view_v3.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_event_close = _LIBRARY.ams_mel_ir_track_metadata_event_close
 ams_mel_ir_track_metadata_event_close.argtypes = [ctypes.POINTER(IrTrackMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_event_close.restype = ctypes.c_int32
@@ -1050,6 +1086,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_metadata_close",
     "ams_mel_ir_track_metadata_event_view",
     "ams_mel_ir_track_metadata_event_view_v2",
+    "ams_mel_ir_track_metadata_event_view_v3",
     "ams_mel_ir_track_metadata_event_close",
     "ams_mel_ir_track_submit_update",
     "ams_mel_ir_track_update_request_wait",

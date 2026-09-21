@@ -30,9 +30,17 @@ private with AMS.MEL_C_API;
 --  the channel promised the type. All three kinds share the one bounded queue,
 --  capacity, and counter set and arrive in strict FIFO order.
 --
---  Not implemented here, matching the native facade: the @Optional
---  CandidateObjectPreProcMessage callback. TrackDataUpdate and
---  SystemTrackDataResponse are outbound sends and live in their own packages.
+--  The @Optional CandidateObjectPreProcMessage is also delivered here.
+--  Upstream declares no send(CandidateObjectPreProcMessage) and no
+--  RequestFor<CandidateObjectPreProcMessage>, so it too is inbound callback
+--  metadata. Because the callback itself is @Optional, a provider that answers
+--  NotSupported simply loses this one kind and Open still succeeds; any other
+--  non-Success answer fails Open closed. All four kinds share the one bounded
+--  queue, capacity, and counter set and arrive in strict FIFO order.
+--
+--  Every published TrackChannel-specific metadata callback is now represented.
+--  TrackDataUpdate and SystemTrackDataResponse are outbound sends and live in
+--  their own packages.
 
 package AMS.MEL.IR.Track.Metadata is
    type Metadata_Channel is limited private;
@@ -136,10 +144,69 @@ package AMS.MEL.IR.Track.Metadata is
    function Candidate_Object_At
      (Message : Candidate_Object_Message; Index : Positive) return Candidate_Object;
 
+   --  Upstream candidateObjectWithBackground is exactly a 3 by 3 patch of
+   --  int16_t intensities around the candidate object. This is an owned Ada
+   --  2-D value; the flat row-major C array is mapped to it explicitly.
+   subtype Background_Index is Positive range 1 .. 3;
+   type Candidate_Background is array (Background_Index, Background_Index) of Interfaces.Integer_16;
+
+   --  Complete CandidateObjectPreProc. Every published getter is represented
+   --  exactly once. No floating-point value is clamped or normalized:
+   --  Candidate_Object_Quality is documented upstream as "0 to 1" but the
+   --  published setter enforces nothing, and the sensor-relative unit vector
+   --  is not renormalized. Detection_Category is an upstream bitfield and is
+   --  deliberately not decoded. Each entry carries its OWN nested inertial
+   --  state, distinct from the message-level one.
+   type Candidate_Object_PreProc is record
+      System_Time_NS                   : Long_Long_Integer;
+      Detection_Category               : Interfaces.Unsigned_32;
+      Sensor_Index                     : Interfaces.Unsigned_32;
+      Subpixel                         : Row_Column;
+      Intensity                        : Long_Float;
+      Sensor_Relative_Unit             : Directional;
+      Signal_To_Interference_Ratio     : Long_Float;
+      Signal_To_Noise_Ratio            : Long_Float;
+      Candidate_Object_With_Background : Candidate_Background;
+      Clutter                          : Long_Float;
+      Candidate_Object_Quality         : Long_Float;
+      Sir_Delta                        : Long_Float;
+      Inertial_State                   : Sensor_Inertial_State;
+      Edge                             : Boolean;
+      Az_Sigma                         : Long_Float;
+      El_Sigma                         : Long_Float;
+      Background_Normalizer            : Long_Float;
+   end record;
+
+   --  Wholly Ada-owned CandidateObjectPreProcMessage. The variable-size
+   --  hot-region and PreProc collections are copied out of the native event
+   --  before that event is closed, so no native pointer, native span, or
+   --  provider storage is ever exposed.
+   --
+   --  Unlike Candidate_Object_Message, the upstream container here is a
+   --  std::vector that already carries its own size, and the pinned headers
+   --  publish NO invariant requiring Number_Of_COs to equal that size. Both
+   --  values are therefore preserved verbatim: Header reports the provider's
+   --  Number_Of_COs and Candidate_Object_PreProc_Count reports the actual
+   --  vector length. A mismatch is not an error here.
+   type Candidate_Object_PreProc_Message is private;
+   function Header (Message : Candidate_Object_PreProc_Message) return Candidate_Object_Header;
+   function Inertial_State
+     (Message : Candidate_Object_PreProc_Message) return Sensor_Inertial_State;
+   function Hot_Region_Count (Message : Candidate_Object_PreProc_Message) return Natural;
+   function Hot_Region_At
+     (Message : Candidate_Object_PreProc_Message; Index : Positive) return Hot_Region;
+   function Candidate_Object_PreProc_Count
+     (Message : Candidate_Object_PreProc_Message) return Natural;
+   function Candidate_Object_PreProc_At
+     (Message : Candidate_Object_PreProc_Message; Index : Positive) return Candidate_Object_PreProc;
+
    --  The implemented Track metadata event kinds. Receive_Event fails closed on
    --  any other native kind.
    type Metadata_Kind is
-     (IRST_Track_Report_Event, Request_System_Track_Data_Event, Candidate_Object_Message_Event);
+     (IRST_Track_Report_Event,
+      Request_System_Track_Data_Event,
+      Candidate_Object_Message_Event,
+      Candidate_Object_PreProc_Message_Event);
    type Metadata_Event (Kind : Metadata_Kind := IRST_Track_Report_Event) is record
       case Kind is
          when IRST_Track_Report_Event =>
@@ -150,6 +217,9 @@ package AMS.MEL.IR.Track.Metadata is
 
          when Candidate_Object_Message_Event =>
             Candidates : Candidate_Object_Message;
+
+         when Candidate_Object_PreProc_Message_Event =>
+            Candidate_PreProcs : Candidate_Object_PreProc_Message;
       end case;
    end record;
 
@@ -185,6 +255,20 @@ private
       Inertial          : Sensor_Inertial_State;
       Regions           : Hot_Region_Vectors.Vector;
       Candidate_Objects : Candidate_Object_Vectors.Vector;
+   end record;
+
+   package Candidate_Object_PreProc_Vectors is new
+     Ada.Containers.Vectors (Positive, Candidate_Object_PreProc);
+
+   --  Wholly Ada-owned storage. Both vectors are filled from the native event
+   --  before that event is closed. Header_Value.Number_Of_COs is the
+   --  provider's verbatim count and is independent of Candidate_PreProcs
+   --  length.
+   type Candidate_Object_PreProc_Message is record
+      Header_Value       : Candidate_Object_Header;
+      Inertial           : Sensor_Inertial_State;
+      Regions            : Hot_Region_Vectors.Vector;
+      Candidate_PreProcs : Candidate_Object_PreProc_Vectors.Vector;
    end record;
 
    type Metadata_Channel is new Ada.Finalization.Limited_Controlled with record

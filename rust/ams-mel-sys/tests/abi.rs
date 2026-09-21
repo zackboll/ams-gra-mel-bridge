@@ -284,6 +284,13 @@ fn session_input_function_signatures_match_the_c_header() {
         *mut usize,
     ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_view_v2;
     let _: unsafe extern "C" fn(
+        *const AmsMelIrTrackMetadataEvent,
+        *mut *const AmsMelIrTrackMetadataEventV3,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_track_metadata_event_view_v3;
+    let _: unsafe extern "C" fn(
         *mut *mut AmsMelIrTrackMetadataEvent,
         *mut std::ffi::c_char,
         usize,
@@ -1153,7 +1160,10 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT as usize,
         AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA as usize,
         AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE as usize,
+        AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE as usize,
         AMS_MEL_IR_MAX_CANDIDATE_OBJECTS as usize,
+        AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE as usize,
+        AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES as usize,
         AMS_MEL_IR_HOT_REGION_INVALID as usize,
         AMS_MEL_IR_HOT_REGION_FLARE as usize,
         AMS_MEL_IR_HOT_REGION_SOLAR as usize,
@@ -1240,11 +1250,51 @@ fn declarations_match_the_c_header() {
         track_report,
         request_system_track_data
     );
+    /* The frozen v2 record has exactly these two members. An appended field
+     * would change the probed size, so this comparison against the
+     * authoritative C probe is what detects a future accidental v2 growth. */
     layout!(
         expected,
         AmsMelIrTrackMetadataEventV2,
         base,
         candidate_object_message
+    );
+    layout!(expected, AmsMelIrCandidateBackgroundV1, samples);
+    layout!(
+        expected,
+        AmsMelIrCandidateObjectPreProcV1,
+        system_time_ns,
+        detection_category,
+        sensor_index,
+        subpixel,
+        intensity,
+        sensor_relative_unit,
+        signal_to_interference_ratio,
+        signal_to_noise_ratio,
+        candidate_object_with_background,
+        clutter,
+        candidate_object_quality,
+        sir_delta,
+        inertial_state,
+        edge,
+        az_sigma,
+        el_sigma,
+        background_normalizer
+    );
+    layout!(expected, AmsMelIrCandidateObjectPreProcSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCandidateObjectPreProcMessageV1,
+        header,
+        inertial_state,
+        hot_regions,
+        candidate_object_preprocs
+    );
+    layout!(
+        expected,
+        AmsMelIrTrackMetadataEventV3,
+        base,
+        candidate_object_preproc_message
     );
     expected.extend([
         size_of::<*mut AmsMelIrTrackUpdateRequest>(),

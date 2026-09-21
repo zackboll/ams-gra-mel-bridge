@@ -69,23 +69,26 @@ static int ordered(const char *data, const char *first, const char *second)
     return EXIT_SUCCESS;
 }
 
-/* Only the @Optional CandidateObjectPreProcMessage callback remains deferred;
- * the mock records it, so its absence is provable. These metadata-only
- * scenarios additionally never submit a send, so no send is expected here
- * either.
+/* Every published TrackChannel-specific surface is implemented as of task
+ * 029G, so there is no deferred Track surface and no deferred-call counter.
+ * What remains asserted here is that these metadata-only scenarios perform
+ * exactly the operations they should and no others.
  *
- * The @Optional RequestSystemTrackData registration and the
- * @RequiredIfDetectCandidateObjects CandidateObjectMessage registration are
- * both legitimate, positively implemented surfaces and are deliberately NOT
- * violations. These scenarios do not advertise CandidateObjectMessage, so the
- * adapter must skip that registration entirely, which is asserted here. */
-static int no_deferred_track_operations(const char *data)
+ * The @Optional RequestSystemTrackData and @Optional
+ * CandidateObjectPreProcMessage registrations are both legitimate positively
+ * implemented surfaces, so their presence is NOT a violation. These scenarios
+ * do not advertise CandidateObjectMessage, so the adapter must skip that one
+ * registration entirely, which is asserted here. Neither send is submitted by
+ * a metadata-only scenario, so neither may appear. */
+static int no_unexpected_track_operations(const char *data)
 {
-    CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);
     CHECK(strstr(data, "track_candidate_object_registered") == NULL);
-    CHECK(strstr(data, "track_candidate_object_preproc_registered") == NULL);
     CHECK(strstr(data, "track_data_update_sent") == NULL);
     CHECK(strstr(data, "track_system_track_data_response_sent") == NULL);
+    /* The @Optional PreProc registration IS attempted for every Track
+     * metadata open; a pre-029G scenario simply refuses it with NotSupported,
+     * which must leave the open succeeding. */
+    CHECK(strstr(data, "track_candidate_object_preproc_registered") != NULL);
     return EXIT_SUCCESS;
 }
 
@@ -569,7 +572,7 @@ static int test_callback_after_metadata_close(void)
     /* Provider unload remains strictly last. */
     CHECK(ordered(data, "control_destroyed", "manager_destroyed") == EXIT_SUCCESS);
     CHECK(ordered(data, "manager_destroyed", "library_unloaded") == EXIT_SUCCESS);
-    CHECK(no_deferred_track_operations(data) == EXIT_SUCCESS);
+    CHECK(no_unexpected_track_operations(data) == EXIT_SUCCESS);
     unlink(path);
     return EXIT_SUCCESS;
 }
@@ -652,7 +655,7 @@ static int test_metadata_does_not_retain_provider(void)
           EXIT_SUCCESS);
     CHECK(ordered(data, "track_close_returned_metadata_open",
                   "metadata_close_begin") == EXIT_SUCCESS);
-    CHECK(no_deferred_track_operations(data) == EXIT_SUCCESS);
+    CHECK(no_unexpected_track_operations(data) == EXIT_SUCCESS);
     unlink(path);
     return EXIT_SUCCESS;
 }
@@ -1036,9 +1039,9 @@ static int test_candidate_event_lifetime(void)
           EXIT_SUCCESS);
     CHECK(ordered(data, "candidate_event_only_owner",
                   "candidate_event_close_begin") == EXIT_SUCCESS);
-    /* CandidateObjectPreProcMessage remains the only deferred surface. */
-    CHECK(strstr(data, "track_candidate_object_preproc_registered") == NULL);
-    CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);
+    /* The @Optional PreProc registration is attempted and refused with
+     * NotSupported by this scenario, which must stay non-fatal. */
+    CHECK(strstr(data, "track_candidate_object_preproc_registered") != NULL);
     unlink(path);
     return EXIT_SUCCESS;
 }
@@ -1091,8 +1094,692 @@ static int test_candidate_late_callback(void)
           EXIT_SUCCESS);
     CHECK(ordered(data, "control_destroyed", "manager_destroyed") == EXIT_SUCCESS);
     CHECK(ordered(data, "manager_destroyed", "library_unloaded") == EXIT_SUCCESS);
-    CHECK(strstr(data, "track_candidate_object_preproc_registered") == NULL);
-    CHECK(strstr(data, "track_deferred_operation_invoked") == NULL);
+    CHECK(strstr(data, "track_candidate_object_preproc_registered") != NULL);
+    unlink(path);
+    return EXIT_SUCCESS;
+}
+
+/* The remaining CandidateObjectPreProc fields for one entry: the scalars after
+ * the background patch, the entry's OWN nested SensorInertialState, and the
+ * normalized edge flag. Split out only to keep one function readable. */
+static int check_preproc_tail(const ams_mel_ir_candidate_object_preproc_v1 *p,
+                              size_t index)
+{
+    const double step = (double)index;
+    CHECK(p->clutter == -80.375 - step);
+    /* Deliberately outside the documented 0..1 range and NOT clamped. */
+    CHECK(p->candidate_object_quality == 1.5 + step);
+    CHECK(p->sir_delta == -90.625 - step);
+
+    /* The PreProc's OWN nested SensorInertialState, distinct from the
+     * message-level one and from the other entry's. */
+    CHECK(p->inertial_state.system_time_ns ==
+          INT64_C(-3344556677889900) - (int64_t)index);
+    CHECK(p->inertial_state.q_xyzw.x == 0.75 + step);
+    CHECK(p->inertial_state.q_xyzw.y == -0.8125 - step);
+    CHECK(p->inertial_state.q_xyzw.z == 0.875 + step);
+    CHECK(p->inertial_state.q_xyzw.w == -0.9375 - step);
+    CHECK(p->inertial_state.q_ecef_xyzw.x == -1.0625 - step);
+    CHECK(p->inertial_state.q_ecef_xyzw.y == 1.125 + step);
+    CHECK(p->inertial_state.q_ecef_xyzw.z == -1.1875 - step);
+    CHECK(p->inertial_state.q_ecef_xyzw.w == 1.25 + step);
+    CHECK(p->inertial_state.sensor_position.x == 111111.5 + step);
+    CHECK(p->inertial_state.sensor_position.y == -222222.25 - step);
+    CHECK(p->inertial_state.sensor_position.z == 333333.125 + step);
+    CHECK(p->inertial_state.sensor_velocity.x == -77.125 - step);
+    CHECK(p->inertial_state.sensor_velocity.y == 88.25 + step);
+    CHECK(p->inertial_state.sensor_velocity.z == -99.375 - step);
+    CHECK(p->inertial_state.uncertainties.sensor_uncertainties ==
+          0xA1B2C300U + (uint32_t)index);
+    CHECK(p->inertial_state.uncertainties.platform_uncertainties ==
+          0xD4E5F600U + (uint32_t)index);
+
+    /* Boolean coverage, normalized to exactly 0 or 1. */
+    CHECK(p->edge == (index == 1U ? UINT8_C(1) : UINT8_C(0)));
+    CHECK(p->az_sigma == 0.03125 + step);
+    CHECK(p->el_sigma == -0.015625 - step);
+    CHECK(p->background_normalizer == 123.4375 + step);
+    return EXIT_SUCCESS;
+}
+
+/* Exact all-field fidelity of the distinctive rich
+ * CandidateObjectPreProcMessage. Every published getter of the header, of each
+ * HotRegion, of the message-level SensorInertialState, and of every field of
+ * each CandidateObjectPreProc -- including all nine background samples and the
+ * complete nested SensorInertialState -- is asserted.
+ *
+ * The header reports numberOfCOs == 3 while the PreProc span holds exactly 2:
+ * the pinned headers publish no invariant tying the two together, so both are
+ * preserved verbatim and the span is NOT truncated to the header count. */
+static int check_rich_preproc(
+    const ams_mel_ir_candidate_object_preproc_message_v1 *m)
+{
+    size_t index;
+    /* Header count and vector size are independent and both preserved. */
+    CHECK(m->header.number_of_cos == 3U);
+    CHECK(m->candidate_object_preprocs.size == 2U);
+    CHECK(m->header.stack_frame_index == 0xC0DEU);
+    /* binary32 fidelity: compared against the exact float literal. */
+    CHECK(m->header.cfar == 2.7183e-6F);
+    CHECK(m->header.validity_flag_bitfield == 0x5A3CU);
+    CHECK(m->header.tov_utc_ns == INT64_C(-9988776655443322));
+
+    /* Complete HotRegion vector, in published order. */
+    CHECK(m->hot_regions.size == 2U);
+    CHECK(m->hot_regions.data != NULL);
+    CHECK(m->hot_regions.data[0].type == AMS_MEL_IR_HOT_REGION_SOLAR);
+    CHECK(m->hot_regions.data[0].size == 2001U);
+    CHECK(m->hot_regions.data[0].top == 2002U);
+    CHECK(m->hot_regions.data[0].left == 2003U);
+    CHECK(m->hot_regions.data[0].right == 2004U);
+    CHECK(m->hot_regions.data[0].bottom == 2005U);
+    CHECK(m->hot_regions.data[1].type == AMS_MEL_IR_HOT_REGION_MASK);
+    CHECK(m->hot_regions.data[1].size == 3001U);
+    CHECK(m->hot_regions.data[1].top == 3002U);
+    CHECK(m->hot_regions.data[1].left == 3003U);
+    CHECK(m->hot_regions.data[1].right == 3004U);
+    CHECK(m->hot_regions.data[1].bottom == 3005U);
+
+    /* Complete MESSAGE-level SensorInertialState. */
+    CHECK(m->inertial_state.system_time_ns == INT64_C(-5544332211009988));
+    CHECK(m->inertial_state.q_xyzw.x == 0.0625);
+    CHECK(m->inertial_state.q_xyzw.y == -0.125);
+    CHECK(m->inertial_state.q_xyzw.z == 0.1875);
+    CHECK(m->inertial_state.q_xyzw.w == -0.25);
+    CHECK(m->inertial_state.q_ecef_xyzw.x == -0.3125);
+    CHECK(m->inertial_state.q_ecef_xyzw.y == 0.375);
+    CHECK(m->inertial_state.q_ecef_xyzw.z == -0.4375);
+    CHECK(m->inertial_state.q_ecef_xyzw.w == 0.5);
+    CHECK(m->inertial_state.sensor_position.x == 7654321.5);
+    CHECK(m->inertial_state.sensor_position.y == -8765432.25);
+    CHECK(m->inertial_state.sensor_position.z == 9876543.125);
+    CHECK(m->inertial_state.sensor_velocity.x == -44.625);
+    CHECK(m->inertial_state.sensor_velocity.y == 55.75);
+    CHECK(m->inertial_state.sensor_velocity.z == -66.875);
+    CHECK(m->inertial_state.uncertainties.sensor_uncertainties == 0xBADF00D1U);
+    CHECK(m->inertial_state.uncertainties.platform_uncertainties == 0xFEEDBEE2U);
+
+    CHECK(m->candidate_object_preprocs.data != NULL);
+    for (index = 0; index < 2U; ++index) {
+        const ams_mel_ir_candidate_object_preproc_v1 *p =
+            &m->candidate_object_preprocs.data[index];
+        const double step = (double)index;
+        size_t row, column;
+        CHECK(p->system_time_ns ==
+              INT64_C(-2000000000000) - (int64_t)index * INT64_C(13));
+        CHECK(p->detection_category == 0x33330000U + (uint32_t)index);
+        CHECK(p->sensor_index == 0x44440000U + (uint32_t)index);
+        /* Row and column are far apart, so a transposition is caught. */
+        CHECK(p->subpixel.row == 400.5 + step);
+        CHECK(p->subpixel.column == 900.25 + step);
+        CHECK(p->intensity == 5000.125 + step);
+        CHECK(p->sensor_relative_unit.x == 0.4 + step);
+        CHECK(p->sensor_relative_unit.y == -0.5 - step);
+        CHECK(p->sensor_relative_unit.z == 0.6 + step);
+        CHECK(p->signal_to_interference_ratio == 60.5 + step);
+        CHECK(p->signal_to_noise_ratio == -70.75 - step);
+
+        /* All nine background samples, checked at their exact ROW-MAJOR
+         * positions, so a transposed or reordered patch cannot pass. */
+        for (row = 0; row < AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE; ++row)
+            for (column = 0; column < AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE;
+                 ++column) {
+                const int16_t ordinal = (int16_t)(row * 3U + column);
+                const int16_t magnitude =
+                    (int16_t)(1000 + ordinal + (int16_t)index * 100);
+                const int16_t expected =
+                    (ordinal % 2 == 0) ? magnitude : (int16_t)(-magnitude);
+                CHECK(p->candidate_object_with_background
+                          .samples[row * AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE +
+                                   column] == expected);
+            }
+        CHECK(check_preproc_tail(p, index) == EXIT_SUCCESS);
+    }
+    return EXIT_SUCCESS;
+}
+
+/* Receives one CandidateObjectPreProcMessage and asserts complete fidelity
+ * through the v3 view, which is the only view that declares the PreProc
+ * payload. The same event is also viewed through the unchanged frozen v1 and
+ * v2 records: each reports kind 4, keeps its own members zeroed, and has no
+ * PreProc payload at all. */
+static int receive_rich_preproc(ams_mel_ir_track_metadata *metadata)
+{
+    ams_mel_ir_track_metadata_event *event = NULL;
+    const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+    const ams_mel_ir_track_metadata_event_v2 *view2 = NULL;
+    const ams_mel_ir_track_metadata_event_v3 *view3 = NULL;
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(event != NULL);
+    CHECK(ams_mel_ir_track_metadata_event_view_v3(event, &view3, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view3->base.base.kind ==
+          AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
+    CHECK(check_rich_preproc(&view3->candidate_object_preproc_message) ==
+          EXIT_SUCCESS);
+    /* Every unselected member stays zeroed, including every unselected span. */
+    CHECK(view3->base.base.track_report.activity_id == 0U);
+    CHECK(view3->base.base.request_system_track_data.command_id == 0U);
+    CHECK(view3->base.candidate_object_message.header.number_of_cos == 0U);
+    CHECK(view3->base.candidate_object_message.hot_regions.data == NULL);
+    CHECK(view3->base.candidate_object_message.hot_regions.size == 0U);
+    CHECK(view3->base.candidate_object_message.candidate_objects.data == NULL);
+    CHECK(view3->base.candidate_object_message.candidate_objects.size == 0U);
+
+    /* The unchanged v2 view still works and returns the same storage; it
+     * reports kind 4 with its CandidateObjectMessage payload unselected. */
+    CHECK(ams_mel_ir_track_metadata_event_view_v2(event, &view2, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view2 == &view3->base);
+    CHECK(view2->base.kind ==
+          AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
+    CHECK(view2->candidate_object_message.header.number_of_cos == 0U);
+    CHECK(view2->candidate_object_message.candidate_objects.size == 0U);
+
+    /* The unchanged v1 view still works and returns the same storage. */
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view == &view3->base.base);
+    CHECK(view->kind ==
+          AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
+    CHECK(view->track_report.activity_id == 0U);
+    CHECK(view->request_system_track_data.command_id == 0U);
+
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(event == NULL);
+    return EXIT_SUCCESS;
+}
+
+/* Membership test over the advertised metadata capability span. The pinned
+ * ChannelCapability documents channelMetadataCapabilities as a std::set with
+ * no published ordering contract for consumers, so membership, never a
+ * hard-coded element index, is what is asserted here. */
+static int capability_has(const ams_mel_ir_channel_capability_v1 *view,
+                          uint32_t kind, int *present)
+{
+    size_t index;
+    *present = 0;
+    CHECK(view != NULL);
+    CHECK(view->metadata_capabilities.size == 0U ||
+          view->metadata_capabilities.data != NULL);
+    for (index = 0; index < view->metadata_capabilities.size; ++index)
+        if (view->metadata_capabilities.data[index] == kind) *present = 1;
+    return EXIT_SUCCESS;
+}
+
+/* Opens the scenario, queries the public capability API, and reports whether
+ * each of the two conditionally advertised Track metadata kinds is present. */
+static int track_metadata_capabilities(const char *scenario, int *candidate,
+                                       int *preproc)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_channel_capability *owner = NULL;
+    const ams_mel_ir_channel_capability_v1 *view = NULL;
+    CHECK(open_track(scenario, &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_get_capabilities(track, &owner, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_channel_capability_view(owner, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(capability_has(view, AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE,
+                         candidate) == EXIT_SUCCESS);
+    CHECK(capability_has(view,
+                         AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE,
+                         preproc) == EXIT_SUCCESS);
+    /* The required Track report kind is always advertised, which proves the
+     * span was actually populated rather than empty. */
+    {
+        int report = 0;
+        CHECK(capability_has(view, AMS_MEL_IR_METADATA_IRST_TRACK_REPORT,
+                             &report) == EXIT_SUCCESS);
+        CHECK(report == 1);
+    }
+    CHECK(ams_mel_ir_channel_capability_close(&owner, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(owner == NULL);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* The mock provider's advertised metadata set must agree with the answers its
+ * registerMetadataCallback overloads give. Pinned ChannelCapability:
+ * channelMetadataCapabilities is the set of metadata types supported by a
+ * channel, and a registration for a kind with no corresponding entry is
+ * expected to return Return::NotSupported.
+ *
+ * Positive PreProc scenario   -> capability present, registration Success.
+ * Ordinary/default scenario   -> capability absent, registration NotSupported,
+ *                                and metadata open still succeeds because the
+ *                                callback is @Optional.
+ * Four-kind FIFO scenario     -> both conditional kinds advertised. */
+static int test_capability_coherence(void)
+{
+    int candidate = 0;
+    int preproc = 0;
+
+    /* A. Positive PreProc scenario advertises the optional kind. The existing
+     * test_preproc_success then proves registration Success and delivery. */
+    CHECK(track_metadata_capabilities("track-preproc-rich", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(preproc == 1);
+    CHECK(candidate == 0);
+
+    /* B. An ordinary pre-029G scenario does NOT advertise it. The existing
+     * test_preproc_not_supported_is_nonfatal then proves the adapter still
+     * attempts the @Optional registration, the mock answers NotSupported, and
+     * Metadata Open still succeeds. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-report", &candidate, &preproc) ==
+          EXIT_SUCCESS);
+    CHECK(preproc == 0);
+    CHECK(candidate == 0);
+
+    /* C. The four-kind FIFO scenario advertises BOTH conditional kinds. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-preproc-mixed", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(candidate == 1);
+    CHECK(preproc == 1);
+
+    /* The @RequiredIfDetectCandidateObjects scenarios keep advertising only
+     * their own kind, so the two rules stay independent. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-candidate-rich", &candidate,
+                                      &preproc) == EXIT_SUCCESS);
+    CHECK(candidate == 1);
+    CHECK(preproc == 0);
+
+    /* A scenario that advertises PreProc but then refuses registration models
+     * a provider claiming the kind and hitting a registration conflict. */
+    candidate = 0; preproc = 0;
+    CHECK(track_metadata_capabilities("track-preproc-register-fail",
+                                      &candidate, &preproc) == EXIT_SUCCESS);
+    CHECK(preproc == 1);
+    return EXIT_SUCCESS;
+}
+
+/* Synchronous PreProc delivery from inside registration. */
+static int test_preproc_success(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    CHECK(open_track("track-preproc-rich", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters_are(metadata, 1U, 0U, 0U) == EXIT_SUCCESS);
+    CHECK(receive_rich_preproc(metadata) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* The @Optional refusal is NON-FATAL: metadata open still succeeds and the
+ * already-live @RequiredIfTrack report callback keeps delivering. Every
+ * pre-029G scenario takes exactly this path, which is why the whole existing
+ * suite still passes unchanged. */
+static int test_preproc_not_supported_is_nonfatal(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    CHECK(open_track("track-report", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(metadata != NULL);
+    /* The required report callback still delivered its synchronous report. */
+    CHECK(counters_are(metadata, 1U, 0U, 0U) == EXIT_SUCCESS);
+    CHECK(receive_rich(metadata, NULL) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* Fail and an unknown/future Return each FAIL CLOSED, because neither is a
+ * documented optional refusal; a throwing registration maps to
+ * PROVIDER_EXCEPTION. In every case no public owner escapes and the one-shot
+ * attempt stays consumed. */
+static int preproc_registration_failure(const char *scenario,
+                                        ams_mel_status_t expected)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    CHECK(open_track(scenario, &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          expected);
+    CHECK(metadata == NULL);
+    /* One-shot rule remains consumed after a registration failure. */
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_INVALID_ARGUMENT);
+    CHECK(metadata == NULL);
+    /* Teardown with the earlier registered callbacks still retained remains
+     * safe; no unregister is attempted. */
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_preproc_registration_failures(void)
+{
+    CHECK(test_preproc_not_supported_is_nonfatal() == EXIT_SUCCESS);
+    CHECK(preproc_registration_failure("track-preproc-register-fail",
+                                       AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
+    CHECK(preproc_registration_failure("track-preproc-register-unknown",
+                                       AMS_MEL_PROVIDER_FAILED) == EXIT_SUCCESS);
+    CHECK(preproc_registration_failure("track-preproc-register-throw",
+                                       AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* Each malformed PreProc message is counted once, enqueues nothing, and leaves
+ * the subscription usable. Reuses the shared malformed harness, which asserts
+ * exactly received=1, dropped=0, malformed=1. */
+static int test_preproc_malformed(void)
+{
+    /* Null payload. */
+    CHECK(malformed_scenario("track-preproc-null") == EXIT_SUCCESS);
+    /* HotRegion enum one past MASK. */
+    CHECK(malformed_scenario("track-preproc-bad-region") == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* Asynchronous delivery strictly after registration returned. */
+static int test_preproc_async(void)
+{
+    char path[] = "/tmp/ams-track-pre-XXXXXX";
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    int fd = mkstemp(path);
+    CHECK(fd >= 0);
+    close(fd);
+    unlink(path);
+    CHECK(setenv("AMS_MEL_TEST_TRACK_PREPROC_BARRIER", path, 1) == 0);
+    CHECK(open_track("track-preproc-async", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* Nothing arrived during registration. */
+    CHECK(counters_are(metadata, 0U, 0U, 0U) == EXIT_SUCCESS);
+    {
+        FILE *file = fopen(path, "wb");
+        CHECK(file != NULL);
+        CHECK(fclose(file) == 0);
+    }
+    /* Blocking receive: the adapter waits on a condition variable. */
+    {
+        ams_mel_ir_track_metadata_event *event = NULL;
+        const ams_mel_ir_track_metadata_event_v3 *view = NULL;
+        CHECK(ams_mel_ir_track_metadata_receive(metadata, 10000U, &event, NULL, 0,
+              NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_track_metadata_event_view_v3(event, &view, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(view->base.base.kind ==
+              AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
+        CHECK(check_rich_preproc(&view->candidate_object_preproc_message) ==
+              EXIT_SUCCESS);
+        CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+    }
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(unsetenv("AMS_MEL_TEST_TRACK_PREPROC_BARRIER") == 0);
+    unlink(path);
+    return EXIT_SUCCESS;
+}
+
+/* Six PreProc messages into a capacity-2 queue: DROP-INCOMING keeps the first
+ * two in arrival order on the one shared queue. */
+static int test_preproc_overflow(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    uint16_t index;
+    CHECK(open_track("track-preproc-overflow", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 2U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters_are(metadata, 6U, 4U, 0U) == EXIT_SUCCESS);
+    for (index = 0; index < 2U; ++index) {
+        const ams_mel_ir_track_metadata_event_v3 *view = NULL;
+        CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0,
+              NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_track_metadata_event_view_v3(event, &view, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(view->base.base.kind ==
+              AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE);
+        /* Arrival order is carried in stackFrameIndex. */
+        CHECK(view->candidate_object_preproc_message.header.stack_frame_index ==
+              index);
+        /* Each retained event still owns its own complete storage. */
+        CHECK(view->candidate_object_preproc_message.hot_regions.size == 2U);
+        CHECK(view->candidate_object_preproc_message.candidate_object_preprocs
+                  .size == 2U);
+        CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+    }
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    CHECK(event == NULL);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* All FOUR implemented kinds on the one shared FIFO, in the deterministic
+ * order the registration sequence produces: IRSTTrackReport,
+ * CandidateObjectMessage, RequestSystemTrackData,
+ * CandidateObjectPreProcMessage. One counter set covers all four. */
+static int test_preproc_mixed_fifo(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    const ams_mel_ir_track_metadata_event_v1 *view = NULL;
+    CHECK(open_track("track-preproc-mixed", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 8U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* One shared counter set across all four kinds. */
+    CHECK(counters_are(metadata, 4U, 0U, 0U) == EXIT_SUCCESS);
+
+    CHECK(receive_rich(metadata, NULL) == EXIT_SUCCESS);
+    CHECK(receive_rich_candidate(metadata) == EXIT_SUCCESS);
+
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(view->kind == AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA);
+    CHECK(view->request_system_track_data.command_id == 0xC1234567U);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+
+    CHECK(receive_rich_preproc(metadata) == EXIT_SUCCESS);
+
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_TIMEOUT);
+    CHECK(event == NULL);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* Frozen-v2 compatibility proof, independent of any provider interaction.
+ *
+ * v2 was published by task 029F and is now frozen: it has exactly base and
+ * candidate_object_message and ends exactly after candidate_object_message.
+ * The PreProc payload went into v3 instead. These assertions fail if v2 ever
+ * grows. The background-patch representation is asserted here too. */
+static int test_v2_layout_is_frozen(void)
+{
+    ams_mel_ir_track_metadata_event_v2 v2;
+    ams_mel_ir_track_metadata_event_v3 v3;
+    memset(&v2, 0, sizeof v2);
+    memset(&v3, 0, sizeof v3);
+    /* v2 contains exactly base and candidate_object_message: its size is the
+     * padded end of exactly those two members. Appending a third member
+     * necessarily grows sizeof v2 past that bound. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v2, base) == 0U);
+    CHECK(sizeof v2 ==
+          offsetof(ams_mel_ir_track_metadata_event_v2, candidate_object_message) +
+              sizeof v2.candidate_object_message);
+    CHECK(sizeof(ams_mel_ir_track_metadata_event_v2) <
+          sizeof(ams_mel_ir_track_metadata_event_v3));
+
+    /* v3 is additive over the frozen v2 and reuses it verbatim. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v3, base) == 0U);
+    CHECK(sizeof v3.base == sizeof v2);
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v3,
+                   candidate_object_preproc_message) >= sizeof v2);
+    CHECK(sizeof v3 ==
+          offsetof(ams_mel_ir_track_metadata_event_v3,
+                   candidate_object_preproc_message) +
+              sizeof v3.candidate_object_preproc_message);
+    /* base.base.kind remains the one discriminator, at offset 0 of all three. */
+    CHECK(offsetof(ams_mel_ir_track_metadata_event_v3, base) +
+              offsetof(ams_mel_ir_track_metadata_event_v2, base) +
+              offsetof(ams_mel_ir_track_metadata_event_v1, kind) == 0U);
+
+    /* The 3x3 background patch representation and its dimension constants. */
+    CHECK(AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE == 3U);
+    CHECK(AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES == 9U);
+    CHECK(AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE *
+              AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE ==
+          AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES);
+    CHECK(sizeof(ams_mel_ir_candidate_background_v1) ==
+          AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES * sizeof(int16_t));
+    CHECK(offsetof(ams_mel_ir_candidate_background_v1, samples) == 0U);
+    return EXIT_SUCCESS;
+}
+
+/* A PreProc event acquired before teardown must remain fully readable after
+ * metadata close, Track close, Session close, provider channel destruction,
+ * and provider library unload. Runs in a child process so a provider already
+ * loaded by the parent cannot hide unload behavior. */
+static int run_preproc_lifetime_child(const char *log)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    ams_mel_ir_track_metadata_event *event = NULL;
+    const ams_mel_ir_track_metadata_event_v3 *view = NULL;
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
+    CHECK(open_track("track-preproc-lifetime", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* Acquire the event owner, then tear everything else down. */
+    CHECK(ams_mel_ir_track_metadata_receive(metadata, 0U, &event, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_event_view_v3(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(check_rich_preproc(&view->candidate_object_preproc_message) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Provider code is fully unloaded here; the event is the only owner left. */
+    CHECK(mark(log, "preproc_event_only_owner") == EXIT_SUCCESS);
+    /* Re-read EVERY field through the same view after provider unload. */
+    CHECK(check_rich_preproc(&view->candidate_object_preproc_message) ==
+          EXIT_SUCCESS);
+    /* And re-acquire the view, proving the operation itself still works. */
+    view = NULL;
+    CHECK(ams_mel_ir_track_metadata_event_view_v3(event, &view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(check_rich_preproc(&view->candidate_object_preproc_message) ==
+          EXIT_SUCCESS);
+    CHECK(mark(log, "preproc_event_close_begin") == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_metadata_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_preproc_event_lifetime(void)
+{
+    char path[] = "/tmp/ams-track-pre-life-XXXXXX";
+    char data[8192];
+    int fd = mkstemp(path);
+    pid_t child;
+    int status = 0;
+    CHECK(fd >= 0);
+    close(fd);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) _exit(run_preproc_lifetime_child(path));
+    CHECK(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+          WEXITSTATUS(status) == 0);
+    CHECK(read_log(path, data, sizeof data) == EXIT_SUCCESS);
+    CHECK(ordered(data, "track_candidate_object_preproc_registered",
+                  "track_preproc_emitted_lifetime") == EXIT_SUCCESS);
+    /* The whole provider graph was destroyed and the library unloaded strictly
+     * before the event became the only remaining owner. */
+    CHECK(ordered(data, "track_channel_destroyed", "control_destroyed") ==
+          EXIT_SUCCESS);
+    CHECK(ordered(data, "control_destroyed", "manager_destroyed") == EXIT_SUCCESS);
+    CHECK(ordered(data, "manager_destroyed", "library_unloaded") == EXIT_SUCCESS);
+    CHECK(ordered(data, "library_unloaded", "preproc_event_only_owner") ==
+          EXIT_SUCCESS);
+    CHECK(ordered(data, "preproc_event_only_owner", "preproc_event_close_begin") ==
+          EXIT_SUCCESS);
+    unlink(path);
+    return EXIT_SUCCESS;
+}
+
+/* After public metadata close the provider invokes the retained PreProc
+ * callback: it enters, returns, queues nothing, lets no exception escape, and
+ * returns strictly before TrackChannel destruction. */
+static int run_preproc_late_child(const char *log)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_track *track = NULL;
+    ams_mel_ir_track_metadata *metadata = NULL;
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", log, 1) == 0);
+    CHECK(open_track("track-preproc-late", &session, &track) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_track_enable(track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_metadata_open(track, 4U, &metadata, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* Nothing was emitted during registration for this scenario. */
+    CHECK(counters_are(metadata, 0U, 0U, 0U) == EXIT_SUCCESS);
+    /* Close public consumption before the provider emits. */
+    CHECK(ams_mel_ir_track_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_track_close(&track, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+static int test_preproc_late_callback(void)
+{
+    char path[] = "/tmp/ams-track-pre-late-XXXXXX";
+    char data[8192];
+    int fd = mkstemp(path);
+    pid_t child;
+    int status = 0;
+    CHECK(fd >= 0);
+    close(fd);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) _exit(run_preproc_late_child(path));
+    CHECK(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+          WEXITSTATUS(status) == 0);
+    CHECK(read_log(path, data, sizeof data) == EXIT_SUCCESS);
+    /* The late callback entered and returned safely after public close. */
+    CHECK(ordered(data, "track_preproc_late_callback_entered",
+                  "track_preproc_late_callback_returned") == EXIT_SUCCESS);
+    /* It returned strictly before TrackChannel destruction, which is the
+     * callback-quiescence boundary, and unload remains strictly last. */
+    CHECK(ordered(data, "track_preproc_late_callback_returned",
+                  "track_channel_destroyed") == EXIT_SUCCESS);
+    CHECK(ordered(data, "track_channel_destroyed", "control_destroyed") ==
+          EXIT_SUCCESS);
+    CHECK(ordered(data, "control_destroyed", "manager_destroyed") == EXIT_SUCCESS);
+    CHECK(ordered(data, "manager_destroyed", "library_unloaded") == EXIT_SUCCESS);
     unlink(path);
     return EXIT_SUCCESS;
 }
@@ -1106,6 +1793,8 @@ int main(void)
     CHECK(test_metadata_does_not_retain_provider() == EXIT_SUCCESS);
     CHECK(test_candidate_event_lifetime() == EXIT_SUCCESS);
     CHECK(test_candidate_late_callback() == EXIT_SUCCESS);
+    CHECK(test_preproc_event_lifetime() == EXIT_SUCCESS);
+    CHECK(test_preproc_late_callback() == EXIT_SUCCESS);
     CHECK(test_attached_registration_rich_report() == EXIT_SUCCESS);
     CHECK(test_enabled_registration_and_one_shot() == EXIT_SUCCESS);
     CHECK(test_registration_failures() == EXIT_SUCCESS);
@@ -1123,9 +1812,20 @@ int main(void)
     CHECK(test_candidate_malformed() == EXIT_SUCCESS);
     CHECK(test_candidate_overflow() == EXIT_SUCCESS);
     CHECK(test_candidate_mixed_fifo() == EXIT_SUCCESS);
+    /* @Optional CandidateObjectPreProcMessage. */
+    /* Advertised capability set and registration behavior must agree. */
+    CHECK(test_capability_coherence() == EXIT_SUCCESS);
+    CHECK(test_preproc_success() == EXIT_SUCCESS);
+    CHECK(test_preproc_async() == EXIT_SUCCESS);
+    CHECK(test_preproc_registration_failures() == EXIT_SUCCESS);
+    CHECK(test_preproc_malformed() == EXIT_SUCCESS);
+    CHECK(test_preproc_overflow() == EXIT_SUCCESS);
+    CHECK(test_preproc_mixed_fifo() == EXIT_SUCCESS);
     /* Task 029F ABI versioning: v1 is frozen, v2 is additive. */
     CHECK(test_v1_layout_is_frozen() == EXIT_SUCCESS);
     CHECK(test_v1_view_compatibility() == EXIT_SUCCESS);
+    /* Task 029G ABI versioning: v2 is frozen, v3 is additive. */
+    CHECK(test_v2_layout_is_frozen() == EXIT_SUCCESS);
     puts("PASS: native IR Track metadata contract");
     return EXIT_SUCCESS;
 }

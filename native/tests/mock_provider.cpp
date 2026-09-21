@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1505,15 +1506,15 @@ private:
  * registration, Task 029C adds the @RequiredIfTrackUpdate
  * send(TrackDataUpdate), Task 029D adds the @Optional
  * send(SystemTrackDataResponse), Task 029E adds the @Optional
- * RequestSystemTrackData callback, and Task 029F adds the
- * @RequiredIfDetectCandidateObjects CandidateObjectMessage callback.
+ * RequestSystemTrackData callback, Task 029F adds the
+ * @RequiredIfDetectCandidateObjects CandidateObjectMessage callback, and Task
+ * 029G adds the @Optional CandidateObjectPreProcMessage callback.
  *
- * The ONLY remaining deferred Track surface is the @Optional
- * CandidateObjectPreProcMessage callback, which stays instrumented and reports
- * unsupported so the tests can prove it was never exercised. Every positively
- * implemented registration and send above -- including legitimate
- * CandidateObjectMessage registration -- is NOT counted here. */
-std::atomic<std::uint64_t> track_deferred_calls{};
+ * Every published TrackChannel-specific surface is now positively implemented,
+ * so there is NO deferred Track surface left and no deferred-call counter.
+ * A default Track scenario may still answer Return::NotSupported to the
+ * @Optional PreProc registration: that is a legitimate optional refusal, not a
+ * violation. */
 
 /* The exact distinctive TrackDataUpdate the Track update tests submit. Every
  * field, including all 21 covariance terms, carries a value that cannot be
@@ -1750,15 +1751,119 @@ irmel::CandidateObjectMessage rich_candidate_object_message()
     return message;
 }
 
+/* Distinctive rich CandidateObjectPreProcMessage, built through published
+ * setters only. Every scalar is unique so a swapped field, a narrowed width, a
+ * lost sign, a float/double confusion, or a row/column transposition cannot
+ * pass.
+ *
+ * The header's numberOfCOs is deliberately 3 while the PreProc VECTOR holds 2
+ * entries. The pinned headers publish no invariant tying the two together, so
+ * the adapter must preserve both verbatim: the header must still report 3 and
+ * the span must still expose exactly 2. A truncating or rejecting adapter
+ * fails on this fixture.
+ *
+ * The two entries deliberately cover edge=false and edge=true. */
+irmel::CandidateObjectPreProcMessage rich_candidate_preproc_message()
+{
+    irmel::CandidateObjectHeader header;
+    /* Deliberately NOT equal to the PreProc vector size of 2. */
+    header.setNumberOfCOs(3U);
+    header.setStackFrameIndex(0xC0DEU);
+    /* Exactly representable in binary32 and distinct from the 029F value. */
+    header.setCFAR(2.7183e-6F);
+    header.setValidityFlagBitField(0x5A3CU);
+    header.setTOVutcNanoseconds(std::chrono::nanoseconds{-9988776655443322LL});
+    header.addHotRegion(irmel::HotRegion{irmel::HOTREGIONTYPE_SOLAR,
+                                         2001U, 2002U, 2003U, 2004U, 2005U});
+    header.addHotRegion(irmel::HotRegion{irmel::HOTREGIONTYPE_MASK,
+                                         3001U, 3002U, 3003U, 3004U, 3005U});
+
+    /* Top-level message inertial state, distinct from every nested one. */
+    irmel::SensorInertialState inertial;
+    inertial.setSystemTime(std::chrono::nanoseconds{-5544332211009988LL});
+    inertial.setQ_xyzw(irmel::Quaternion{0.0625, -0.125, 0.1875, -0.25});
+    inertial.setQECEF_xyzw(irmel::Quaternion{-0.3125, 0.375, -0.4375, 0.5});
+    inertial.setSensorPosition(irmel::IR_Directional{7654321.5, -8765432.25, 9876543.125});
+    inertial.setSensorVelocity(irmel::IR_Directional{-44.625, 55.75, -66.875});
+    inertial.setUncertainties(irmel::Uncertainty{0xBADF00D1U, 0xFEEDBEE2U});
+
+    std::vector<irmel::CandidateObjectPreProc> preprocs;
+    for (std::uint32_t index = 0; index < 2U; ++index) {
+        const auto step = static_cast<double>(index);
+        irmel::CandidateObjectPreProc preproc;
+        preproc.setSystemTime(std::chrono::nanoseconds{
+            -2000000000000LL - static_cast<std::int64_t>(index) * 13LL});
+        preproc.setDetectionCategory(0x33330000U + index);
+        preproc.setSensorIndex(0x44440000U + index);
+        /* Row and column differ by far more than the per-entry step, so a
+         * transposition is unmistakable. */
+        preproc.setSubpixel(irmel::RowCol{400.5 + step, 900.25 + step});
+        preproc.setIntensity(5000.125 + step);
+        preproc.setSenRelUnit(irmel::IR_Directional{
+            0.4 + step, -0.5 - step, 0.6 + step});
+        preproc.setSignalToInterferenceRatio(60.5 + step);
+        preproc.setSignalToNoiseRatio(-70.75 - step);
+
+        /* All nine background samples unique across both entries, with mixed
+         * signs and values beyond int8 range, so a width error, a sign loss,
+         * or a row/column transposition is caught. Entry 0 uses
+         * 1000,-1001,1002 / -1003,1004,-1005 / 1006,-1007,1008 and entry 1
+         * offsets every element by 100. */
+        std::array<std::array<std::int16_t, 3>, 3> background{};
+        for (std::size_t row = 0; row < 3U; ++row)
+            for (std::size_t column = 0; column < 3U; ++column) {
+                const auto ordinal = static_cast<std::int16_t>(row * 3U + column);
+                const auto magnitude = static_cast<std::int16_t>(
+                    1000 + ordinal + static_cast<std::int16_t>(index) * 100);
+                background[row][column] = (ordinal % 2 == 0)
+                    ? magnitude : static_cast<std::int16_t>(-magnitude);
+            }
+        preproc.setCandidateObjectWithBackground(background);
+
+        preproc.setClutter(-80.375 - step);
+        /* Deliberately OUTSIDE the documented 0..1 range: the published setter
+         * enforces nothing, so the adapter must not clamp. */
+        preproc.setCandidateObjectQuality(1.5 + step);
+        preproc.setSirDelta(-90.625 - step);
+
+        /* The PreProc's OWN nested inertial state, distinct from the
+         * message-level one and from the other entry's. */
+        irmel::SensorInertialState nested;
+        nested.setSystemTime(std::chrono::nanoseconds{
+            -3344556677889900LL - static_cast<std::int64_t>(index)});
+        nested.setQ_xyzw(irmel::Quaternion{
+            0.75 + step, -0.8125 - step, 0.875 + step, -0.9375 - step});
+        nested.setQECEF_xyzw(irmel::Quaternion{
+            -1.0625 - step, 1.125 + step, -1.1875 - step, 1.25 + step});
+        nested.setSensorPosition(irmel::IR_Directional{
+            111111.5 + step, -222222.25 - step, 333333.125 + step});
+        nested.setSensorVelocity(irmel::IR_Directional{
+            -77.125 - step, 88.25 + step, -99.375 - step});
+        nested.setUncertainties(irmel::Uncertainty{0xA1B2C300U + index,
+                                                   0xD4E5F600U + index});
+        preproc.setInertialState(nested);
+
+        /* Boolean coverage across the two entries: entry 0 false, entry 1
+         * true. */
+        preproc.setEdge(index == 1U);
+        preproc.setAzSigma(0.03125 + step);
+        preproc.setElSigma(-0.015625 - step);
+        preproc.setBackgroundNormalizer(123.4375 + step);
+        preprocs.push_back(preproc);
+    }
+
+    irmel::CandidateObjectPreProcMessage message;
+    message.setCandidateObjectHeader(header);
+    message.setSensorInertialState(inertial);
+    message.setCandidateObjectPreProcs(preprocs);
+    return message;
+}
+
 class MockTrackChannel final : public irmel::TrackChannel {
 public:
     explicit MockTrackChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockTrackChannel() override
     {
-        /* Any deferred Track operation would have been recorded already; the
-         * saturating counter is reported so a test can assert exactly zero. */
-        if (track_deferred_calls.load() != 0U)
-            record("track_deferred_operation_invoked");
         /* The pending-update producer must be joined before this channel dies;
          * the adapter guarantees this destructor runs only after the request
          * that owns the future has completed. */
@@ -1772,6 +1877,10 @@ public:
          * this destructor remains the callback-quiescence boundary for the
          * @RequiredIfDetectCandidateObjects kind too. */
         if (candidate_producer_.joinable()) candidate_producer_.join();
+        /* The PreProc producer is joined on the same basis, so this destructor
+         * remains the callback-quiescence boundary for the @Optional
+         * CandidateObjectPreProcMessage kind too. */
+        if (preproc_producer_.joinable()) preproc_producer_.join();
         record("track_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -1815,6 +1924,17 @@ public:
             candidate_callback_(*this, &message);
             record("track_candidate_late_callback_returned");
         }
+        /* The same deterministic late-callback proof for the @Optional
+         * CandidateObjectPreProcMessage kind: the retained PreProc callback is
+         * invoked during teardown, after the public metadata owner was closed.
+         * The ordered log proves the callback entered and returned strictly
+         * before this channel was destroyed. */
+        if (scenario_ == "track-preproc-late" && preproc_callback_) {
+            const auto message = rich_candidate_preproc_message();
+            record("track_preproc_late_callback_entered");
+            preproc_callback_(*this, &message);
+            record("track_preproc_late_callback_returned");
+        }
         return scenario_ == "track-disable-fail" ? Return::Fail : Return::Success;
     }
     irmel::ChannelCapability getCapabilities() const override
@@ -1825,21 +1945,34 @@ public:
         value.setChannelTypes(scenario_ == "track-capability-wrong" ?
             std::vector<irmel::ChannelType>{irmel::ChannelType::HealthAndStatus} :
             std::vector<irmel::ChannelType>{irmel::ChannelType::IRSTTrack});
-        /* Only the explicit 029F candidate scenarios advertise
-         * CandidateObjectMessage. Every pre-existing scenario keeps its exact
-         * previous advertised set, so its registration behavior is unchanged
-         * and the candidate callback is never registered for it. The mock
-         * never advertises CandidateObjectPreProcMessage, which it does not
-         * implement. */
+        /* The advertised metadata set is assembled from one common base plus
+         * the two conditionally supported kinds, so the reported capabilities
+         * and the registerMetadataCallback answers always agree. Pinned
+         * ChannelCapability: channelMetadataCapabilities is "the set of
+         * Metadata types that are supported by a channel", and a registration
+         * for a kind with no corresponding entry is expected to return
+         * Return::NotSupported.
+         *
+         * - Default / non-PreProc scenarios omit CandidateObjectPreProcMessage
+         *   and therefore answer NotSupported when the adapter attempts that
+         *   @Optional registration; that refusal must stay non-fatal.
+         * - The explicit PreProc scenarios advertise the capability and
+         *   positively implement the callback, including the deliberate
+         *   conflict/error/exception registration scenarios, which model a
+         *   provider that claims the kind and then fails to register it.
+         * - CandidateObjectMessage stays separately controlled by its own
+         *   advertisement rule, so every pre-existing scenario keeps its exact
+         *   previous candidate behavior. */
+        std::set<irmel::ChannelMetadataCapabilityType> metadata{
+            irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
+            irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep};
         if (advertises_candidate_objects())
-            value.setChannelMetadataCapabilities(
-                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
-                 irmel::ChannelMetadataCapabilityType::CandidateObjectMessage,
-                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
-        else
-            value.setChannelMetadataCapabilities(
-                {irmel::ChannelMetadataCapabilityType::IRSTTrackReport,
-                 irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+            metadata.insert(
+                irmel::ChannelMetadataCapabilityType::CandidateObjectMessage);
+        if (exercises_preproc())
+            metadata.insert(
+                irmel::ChannelMetadataCapabilityType::CandidateObjectPreProcMessage);
+        value.setChannelMetadataCapabilities(metadata);
         return value;
     }
     Return registerMetadataCallback(
@@ -2074,10 +2207,34 @@ public:
         emit_synchronous_requests();
         return Return::Success;
     }
+    /* The @Optional CandidateObjectPreProcMessage callback, positively
+     * implemented as of task 029G. It is NOT gated on the advertised
+     * capability set: the callback's own annotation is @Optional, so the
+     * adapter always attempts registration and a NotSupported answer is a
+     * legitimate refusal rather than a violation. Every pre-029G scenario
+     * reaches the default branch below and answers NotSupported, which must
+     * leave Metadata Open succeeding. */
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&,
-                           const irmel::CandidateObjectPreProcMessage *const)>) override
-    { return deferred_registration("track_candidate_object_preproc_registered"); }
+                           const irmel::CandidateObjectPreProcMessage *const)> callback)
+        override
+    {
+        record("track_candidate_object_preproc_registered");
+        if (scenario_ == "track-preproc-register-throw")
+            throw std::runtime_error(
+                "mock CandidateObjectPreProcMessage registration exception");
+        if (scenario_ == "track-preproc-register-fail") return Return::Fail;
+        if (scenario_ == "track-preproc-register-unknown")
+            return static_cast<Return>(99U);
+        /* Every scenario that does not positively exercise this @Optional kind
+         * refuses it, exactly as a provider without CandidateObjectPreProc
+         * support does. This must stay non-fatal. */
+        if (!exercises_preproc()) return Return::NotSupported;
+        if (!callback) return Return::Fail;
+        preproc_callback_ = std::move(callback);
+        emit_synchronous_preprocs();
+        return Return::Success;
+    }
 
 private:
     /* Deterministic scenario-selected synchronous emission from inside
@@ -2118,6 +2275,19 @@ private:
             return;
         }
         if (scenario_ == "track-report-none") return;
+        /* First kind of the deterministic FOUR-kind FIFO scenario. The adapter
+         * registers this callback first, so the report is queued first. */
+        if (scenario_ == "track-preproc-mixed") {
+            const auto report = rich_track_report();
+            record("track_preproc_mixed_report_emitted");
+            report_callback_(*this, &report);
+            return;
+        }
+        /* Every other 029G PreProc scenario drives its own emission ordering
+         * from the PreProc callback, which the adapter registers last, so the
+         * shared counters and the shared queue isolate the optional kind
+         * exactly. */
+        if (exercises_preproc()) return;
         /* The 029E scenarios that exercise the @Optional RequestSystemTrackData
          * payload emit no report, so the shared counters and the shared queue
          * isolate the optional kind exactly. The register-refusal scenarios are
@@ -2200,6 +2370,17 @@ private:
             record("track_candidate_mixed_request_emitted");
             return;
         }
+        /* Third kind of the deterministic FOUR-kind FIFO scenario. The report
+         * and the candidate message were already emitted from the earlier
+         * registrations, and the PreProc message follows from the last one, so
+         * the resulting queue order is exactly
+         * report, candidate, request, preproc. */
+        if (scenario_ == "track-preproc-mixed") {
+            const auto request = rich_request_system_track_data();
+            request_callback_(*this, &request);
+            record("track_preproc_mixed_request_emitted");
+            return;
+        }
         /* The cross-mechanism scenario delivers BOTH metadata kinds while two
          * RequestFor futures are outstanding, so a test can prove that inbound
          * metadata never perturbs async request accounting. */
@@ -2241,7 +2422,13 @@ private:
      * advertised-but-refusing ones. Anything else keeps its historical
      * advertised set exactly. */
     bool advertises_candidate_objects() const
-    { return scenario_.rfind("track-candidate", 0U) == 0U; }
+    {
+        /* The four-kind FIFO scenario additionally needs the
+         * @RequiredIfDetectCandidateObjects callback registered, so it
+         * advertises the capability too. */
+        return scenario_.rfind("track-candidate", 0U) == 0U ||
+               scenario_ == "track-preproc-mixed";
+    }
 
     /* Deterministic scenario-selected synchronous emission of
      * CandidateObjectMessage from inside registerMetadataCallback. */
@@ -2335,20 +2522,103 @@ private:
             candidate_callback_(*this, &message);
             return;
         }
+        /* Second kind of the deterministic FOUR-kind FIFO scenario. */
+        if (scenario_ == "track-preproc-mixed") {
+            const auto message = rich_candidate_object_message();
+            record("track_preproc_mixed_candidate_emitted");
+            candidate_callback_(*this, &message);
+            return;
+        }
     }
 
-    /* Both published TrackChannel sends, the @Optional RequestSystemTrackData
-     * callback, and the @RequiredIfDetectCandidateObjects
-     * CandidateObjectMessage callback are now positively implemented, so the
-     * ONLY remaining deferred Track surface is the @Optional
-     * CandidateObjectPreProcMessage callback. Legitimate
-     * CandidateObjectMessage registration is never counted here. */
-    static Return deferred_registration(const char *event)
+    /* Every scenario that positively exercises the @Optional
+     * CandidateObjectPreProcMessage callback. Anything else refuses it with
+     * NotSupported, which must remain non-fatal. The register-failure
+     * scenarios are handled before this check, so they are deliberately not
+     * listed. */
+    bool exercises_preproc() const
+    { return scenario_.rfind("track-preproc", 0U) == 0U; }
+
+    /* Deterministic scenario-selected synchronous emission of
+     * CandidateObjectPreProcMessage from inside registerMetadataCallback. No
+     * thread and no sleep is involved. */
+    void emit_synchronous_preprocs()
     {
-        track_deferred_calls.fetch_add(1U);
-        record(event);
-        return Return::NotSupported;
+        if (scenario_ == "track-preproc-null") {
+            record("track_preproc_emitted_null");
+            preproc_callback_(*this, nullptr);
+            return;
+        }
+        if (scenario_ == "track-preproc-bad-region") {
+            /* One past MASK: upstream declares no MaxExclusive value. */
+            auto message = rich_candidate_preproc_message();
+            auto header = message.getCandidateObjectHeader();
+            std::vector<irmel::HotRegion> regions = header.getHotRegions();
+            regions[1].setType(static_cast<irmel::HotRegionTypeEnum>(4U));
+            header.setHotRegions(regions);
+            message.setCandidateObjectHeader(header);
+            record("track_preproc_emitted_bad_region");
+            preproc_callback_(*this, &message);
+            return;
+        }
+        if (scenario_ == "track-preproc-overflow") {
+            /* Six messages into a capacity-2 queue proves this kind obeys the
+             * same DROP-INCOMING policy on the same shared queue.
+             * stackFrameIndex counts arrival order. */
+            for (std::uint16_t index = 0; index < 6U; ++index) {
+                auto message = rich_candidate_preproc_message();
+                auto header = message.getCandidateObjectHeader();
+                header.setStackFrameIndex(index);
+                message.setCandidateObjectHeader(header);
+                preproc_callback_(*this, &message);
+            }
+            record("track_preproc_emitted_six");
+            return;
+        }
+        if (scenario_ == "track-preproc-mixed") {
+            /* Deterministic FOUR-kind FIFO: report, candidate, request,
+             * preproc. The adapter registers report first, then candidate,
+             * then request, then preproc, so the first three were already
+             * emitted from their own registrations and this is the last. */
+            const auto message = rich_candidate_preproc_message();
+            preproc_callback_(*this, &message);
+            record("track_preproc_emitted_mixed");
+            return;
+        }
+        /* Asynchronous delivery strictly AFTER registerMetadataCallback has
+         * returned, on a separate provider thread, which is the ordering a
+         * real provider uses. The test releases a barrier file, so no sleep is
+         * involved and the ordering stays deterministic. */
+        if (scenario_ == "track-preproc-async") {
+            const char *barrier = std::getenv("AMS_MEL_TEST_TRACK_PREPROC_BARRIER");
+            const std::string path = barrier ? barrier : std::string{};
+            auto callback = preproc_callback_;
+            preproc_producer_ = std::thread{[this, path, callback]() {
+                if (!path.empty()) wait_for_file(path);
+                const auto message = rich_candidate_preproc_message();
+                record("track_preproc_emitted_async");
+                callback(*this, &message);
+                record("track_preproc_async_returned");
+            }};
+            return;
+        }
+        /* The late-callback scenario emits from disable(), after the public
+         * metadata owner has been closed. */
+        if (scenario_ == "track-preproc-late") return;
+        if (scenario_ == "track-preproc-lifetime") {
+            const auto message = rich_candidate_preproc_message();
+            record("track_preproc_emitted_lifetime");
+            preproc_callback_(*this, &message);
+            return;
+        }
+        if (scenario_ == "track-preproc-rich") {
+            const auto message = rich_candidate_preproc_message();
+            record("track_preproc_emitted_rich");
+            preproc_callback_(*this, &message);
+            return;
+        }
     }
+
     std::string scenario_;
     bool enabled_{};
     std::thread update_producer_;
@@ -2361,6 +2631,10 @@ private:
     std::thread candidate_producer_;
     std::function<void(irmel::Channel&, const irmel::CandidateObjectMessage *const)>
         candidate_callback_;
+    std::thread preproc_producer_;
+    std::function<void(irmel::Channel&,
+                       const irmel::CandidateObjectPreProcMessage *const)>
+        preproc_callback_;
 };
 
 class MockControl final : public irmel::Control {

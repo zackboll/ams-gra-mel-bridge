@@ -101,6 +101,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_metadata_close",
                 "ams_mel_ir_track_metadata_event_view",
                 "ams_mel_ir_track_metadata_event_view_v2",
+                "ams_mel_ir_track_metadata_event_view_v3",
                 "ams_mel_ir_track_metadata_event_close",
                 "ams_mel_ir_track_submit_update",
                 "ams_mel_ir_track_update_request_wait",
@@ -110,7 +111,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_system_response_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 89)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 90)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -553,7 +554,10 @@ class AbiTests(unittest.TestCase):
                 _native.AMS_MEL_IR_TRACK_METADATA_IRST_TRACK_REPORT,
                 _native.AMS_MEL_IR_TRACK_METADATA_REQUEST_SYSTEM_TRACK_DATA,
                 _native.AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_MESSAGE,
+                _native.AMS_MEL_IR_TRACK_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE,
                 _native.AMS_MEL_IR_MAX_CANDIDATE_OBJECTS,
+                _native.AMS_MEL_IR_CANDIDATE_BACKGROUND_SIDE,
+                _native.AMS_MEL_IR_CANDIDATE_BACKGROUND_SAMPLES,
                 _native.AMS_MEL_IR_HOT_REGION_INVALID,
                 _native.AMS_MEL_IR_HOT_REGION_FLARE,
                 _native.AMS_MEL_IR_HOT_REGION_SOLAR,
@@ -648,11 +652,55 @@ class AbiTests(unittest.TestCase):
                 'request_system_track_data',
             )
         )
+        # Frozen v2 has exactly these two members; the authoritative C probe
+        # comparison is what would detect a future accidental v2 growth.
         expected.extend(
             self._layout(
                 _native.IrTrackMetadataEventV2,
                 'base',
                 'candidate_object_message',
+            )
+        )
+        expected.extend(self._layout(_native.IrCandidateBackgroundV1, 'samples'))
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectPreProcV1,
+                'system_time_ns',
+                'detection_category',
+                'sensor_index',
+                'subpixel',
+                'intensity',
+                'sensor_relative_unit',
+                'signal_to_interference_ratio',
+                'signal_to_noise_ratio',
+                'candidate_object_with_background',
+                'clutter',
+                'candidate_object_quality',
+                'sir_delta',
+                'inertial_state',
+                'edge',
+                'az_sigma',
+                'el_sigma',
+                'background_normalizer',
+            )
+        )
+        expected.extend(
+            self._layout(_native.IrCandidateObjectPreProcSpanV1, 'data', 'size')
+        )
+        expected.extend(
+            self._layout(
+                _native.IrCandidateObjectPreProcMessageV1,
+                'header',
+                'inertial_state',
+                'hot_regions',
+                'candidate_object_preprocs',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.IrTrackMetadataEventV3,
+                'base',
+                'candidate_object_preproc_message',
             )
         )
         expected.extend(

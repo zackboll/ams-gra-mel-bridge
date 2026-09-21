@@ -12,13 +12,15 @@ with Interfaces;
 --
 --  Current status: the @RequiredIfTrackUpdate TrackDataUpdate send, the
 --  @Optional SystemTrackDataResponse send, the @Optional
---  RequestSystemTrackData inbound request, and the
---  @RequiredIfDetectCandidateObjects CandidateObjectMessage inbound metadata
---  are all implemented in the child packages.
+--  RequestSystemTrackData inbound request, the
+--  @RequiredIfDetectCandidateObjects CandidateObjectMessage inbound metadata,
+--  and the @Optional CandidateObjectPreProcMessage inbound metadata are all
+--  implemented in the child packages.
 --
---  Deliberately absent in this release: the @Optional
---  CandidateObjectPreProcMessage callback. The Track API as a whole is
---  therefore NOT complete.
+--  Every published TrackChannel-specific surface is therefore represented and
+--  the safe Ada Track API is complete. Positive Track behavior remains
+--  mock-only: pinned Squall cannot attach a Track channel through
+--  Control::attachChannel.
 --
 --  Facade lifecycle policy: Open attaches the upstream channel. Capabilities
 --  is valid while attached or enabled. Enable explicitly calls upstream

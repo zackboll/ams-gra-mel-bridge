@@ -498,12 +498,76 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
 
-   --  Track metadata event v2: the complete frozen v1 record first, then the
-   --  additive CandidateObjectMessage payload. Base.Kind stays the one
-   --  discriminator for every kind.
+   --  FROZEN. Track metadata event v2: the complete frozen v1 record first,
+   --  then the additive CandidateObjectMessage payload. Base.Kind stays the
+   --  one discriminator for every kind. Exactly these two members; the
+   --  CandidateObjectPreProcMessage payload went into v3 instead.
    type IR_Track_Event_V2 is record
       Base                     : IR_Track_Event_V1;
       Candidate_Object_Message : IR_Candidate_Object_Message_V1;
+   end record
+   with Convention => C;
+
+   --  The one explicit fixed import of the upstream 3 by 3 background patch.
+   --  It is a flat nine-element C-compatible array in ROW-MAJOR order:
+   --  Samples (Row * 3 + Column) is upstream [Row][Column]. The safe layer
+   --  maps it explicitly to an owned 3x3 Ada value.
+   subtype IR_Candidate_Background_Index is Size_T range 0 .. 8;
+   type IR_Candidate_Background_Samples is
+     array (IR_Candidate_Background_Index) of aliased Interfaces.Integer_16
+   with Convention => C;
+   type IR_Candidate_Background_V1 is record
+      Samples : IR_Candidate_Background_Samples;
+   end record
+   with Convention => C;
+
+   --  Complete CandidateObjectPreProc; reuses the canonical row/column, XYZ,
+   --  and SensorInertialState imports. Each entry carries its OWN nested
+   --  inertial state. Edge is the C uint8_t, always exactly 0 or 1.
+   type IR_Candidate_Object_PreProc_V1 is record
+      System_Time_NS                   : Interfaces.Integer_64;
+      Detection_Category               : Interfaces.Unsigned_32;
+      Sensor_Index                     : Interfaces.Unsigned_32;
+      Subpixel                         : IR_Row_Col_V1;
+      Intensity                        : Interfaces.C.double;
+      Sensor_Relative_Unit             : IR_Directional_V1;
+      Signal_To_Interference_Ratio     : Interfaces.C.double;
+      Signal_To_Noise_Ratio            : Interfaces.C.double;
+      Candidate_Object_With_Background : IR_Candidate_Background_V1;
+      Clutter                          : Interfaces.C.double;
+      Candidate_Object_Quality         : Interfaces.C.double;
+      Sir_Delta                        : Interfaces.C.double;
+      Inertial_State                   : IR_Sensor_Inertial_State_V1;
+      Edge                             : Interfaces.Unsigned_8;
+      Az_Sigma                         : Interfaces.C.double;
+      El_Sigma                         : Interfaces.C.double;
+      Background_Normalizer            : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Candidate_Object_PreProc_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+
+   --  Complete CandidateObjectPreProcMessage. Both spans borrow storage owned
+   --  by the native event owner; the safe layer copies everything before
+   --  close. The PreProc span size is the upstream vector's own size and is
+   --  deliberately NOT truncated to Header.Number_Of_COs.
+   type IR_Candidate_Object_PreProc_Message_V1 is record
+      Header                    : IR_Candidate_Object_Header_V1;
+      Inertial_State            : IR_Sensor_Inertial_State_V1;
+      Hot_Regions               : IR_Hot_Region_Span_V1;
+      Candidate_Object_PreProcs : IR_Candidate_Object_PreProc_Span_V1;
+   end record
+   with Convention => C;
+
+   --  Track metadata event v3: the complete frozen v2 record first, then the
+   --  additive CandidateObjectPreProcMessage payload. Base.Base.Kind stays the
+   --  one discriminator for every kind.
+   type IR_Track_Event_V3 is record
+      Base                             : IR_Track_Event_V2;
+      Candidate_Object_PreProc_Message : IR_Candidate_Object_PreProc_Message_V1;
    end record
    with Convention => C;
    type Attitude_Rate_V1 is record
@@ -1445,6 +1509,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_view_v2";
+   function IR_Track_Event_View_V3
+     (Handle              : Track_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_track_metadata_event_view_v3";
    function IR_Track_Event_Close
      (Handle              : access Track_Event_Handle;
       Diagnostic          : System.Address;
