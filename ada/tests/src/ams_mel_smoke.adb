@@ -5,6 +5,7 @@ with Ada.Environment_Variables;
 with AMS.MEL;
 with AMS_MEL_IR_Tests;
 with AMS_MEL_IR_Image_Tests;
+with AMS_MEL_IR_Image_Lease_Tests;
 with AMS_MEL_IR_Image_Metadata_Tests;
 with AMS_MEL_IR_Image_Navigation_Tests;
 with AMS_MEL_IR_C2_Tests;
@@ -225,6 +226,7 @@ begin
    end;
    AMS_MEL_IR_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Image_Lease_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Metadata_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Navigation_Tests.Run (Provider_Path);
    AMS_MEL_IR_C2_Tests.Run (Provider_Path);

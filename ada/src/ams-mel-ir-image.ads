@@ -5,6 +5,7 @@ with AMS.MEL.IR.Channel;
 with AMS.MEL.Status;
 with Interfaces;
 private with AMS.MEL_C_API;
+private with System;
 
 package AMS.MEL.IR.Image is
    use type Interfaces.Unsigned_8;
@@ -58,6 +59,11 @@ package AMS.MEL.IR.Image is
    type Full_Frame is private;
    function Capabilities
      (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.Channel_Capability;
+   --  Owned-copy compatibility path. Receive copies the complete native frame
+   --  snapshot, including the whole pixel payload, into Ada-owned storage and
+   --  releases the native snapshot before returning. The result therefore has
+   --  no native lifetime dependency and outlives the stream, the Session, and
+   --  provider unload. Use Acquire_Frame instead for the high-rate data plane.
    function Receive
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Full_Frame;
    function System_Time_NS (Value : Full_Frame) return Long_Long_Integer;
@@ -88,7 +94,101 @@ package AMS.MEL.IR.Image is
    function Sensor_Nav_State_At (Value : Full_Frame; Index : Positive) return Sensor_Nav_State;
    function Band_Index (Value : Full_Frame) return AMS.MEL.IR.Byte;
    function Pixel_Count (Value : Full_Frame) return Natural;
+   --  Owned copy. The result is independent Ada storage.
    function Pixels (Value : Full_Frame) return AMS.MEL.IR.Pixel_Array;
+
+   ---------------------------------------------------------------------------
+   --  High-rate borrowed data plane (Task 030A)
+   --
+   --  This is the bulk-data ownership model the repository intends to reuse
+   --  for other high-bandwidth interfaces (RF I/Q, real samples, VITA packet
+   --  buffers, PDW buffers, waveform sources, Stacked Image):
+   --
+   --      native backing owner -> opaque C handle -> limited Ada owner
+   --                           -> temporary borrowed Ada view
+   --
+   --  Frame_Lease is the IR-specific spelling of the limited Ada owner. One
+   --  live lease owns exactly one native frame snapshot. The lease is limited,
+   --  so it cannot be copied, and finalization closes the native snapshot
+   --  exactly once. Close is idempotent and finalization after Close is
+   --  harmless.
+   --
+   --  Naming rule: With_* borrows without a bulk copy; Copy_* produces
+   --  independently owned Ada storage.
+   --
+   --  Task 030A is NOT end-to-end zero-copy. The MEL provider buffer is still
+   --  copied once into native snapshot-owned storage by the native callback.
+   --  What this API removes is the second copy: the native snapshot payload is
+   --  never copied into Ada on this path.
+   type Frame_Lease is limited private;
+
+   --  Dequeues one native frame snapshot and takes ownership of it. O(1) with
+   --  respect to pixel count after dequeue: only small metadata is copied, and
+   --  the pixel payload is retained by pointer and length. Raises
+   --  Timeout_Error, Stream_Stopped, or Provider_Error exactly as Receive
+   --  does. A failed acquisition leaks no native snapshot. At most one task
+   --  may acquire or receive on a given Image_Stream at a time; leases already
+   --  removed from the queue may be processed concurrently.
+   function Acquire_Frame
+     (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame_Lease;
+   function Is_Open (Frame : Frame_Lease) return Boolean;
+   --  Idempotent. Releases the native snapshot; the borrowed pixel storage
+   --  must not be used afterwards.
+   procedure Close (Frame : in out Frame_Lease);
+
+   --  Number of borrowable pixel bytes. O(1).
+   function Pixel_Count (Frame : Frame_Lease) return Natural;
+
+   --  Borrowed, read-only, O(1) view of the native snapshot payload.
+   --
+   --  The pixel array aliases storage owned by Frame_Lease and must not be
+   --  retained beyond the dynamic extent of With_Pixels.
+   --
+   --  No payload-sized allocation, no per-byte loop, no container population,
+   --  and no memcpy from the native snapshot occurs. An exception raised by
+   --  Process propagates normally and leaves the lease valid. A null payload
+   --  pointer with a nonzero size, or a size that cannot be represented as an
+   --  Ada index, raises Provider_Error rather than touching memory.
+   procedure With_Pixels
+     (Frame : Frame_Lease; Process : not null access procedure (Pixels : AMS.MEL.IR.Pixel_Array))
+   with Pre => Is_Open (Frame);
+
+   --  Explicit owned copy: allocates and copies Pixel_Count (Frame) bytes into
+   --  independent Ada storage that remains valid after the lease is closed or
+   --  finalized. This is deliberately not named Pixels.
+   function Copy_Pixels (Frame : Frame_Lease) return AMS.MEL.IR.Pixel_Array
+   with Pre => Is_Open (Frame);
+
+   --  Lease metadata. Small metadata is copied into Ada fields at acquisition,
+   --  so every accessor stays valid for the whole lease lifetime and is
+   --  unaffected by later frames or by native teardown.
+   function System_Time_NS (Frame : Frame_Lease) return Long_Long_Integer;
+   function Integration_Time_NS (Frame : Frame_Lease) return Long_Long_Integer;
+   function Width (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Height (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Bits_Per_Pixel (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Number_Of_Bands (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Horizontal_FOV_Rad (Frame : Frame_Lease) return Long_Float;
+   function Vertical_FOV_Rad (Frame : Frame_Lease) return Long_Float;
+   function Contributing_Sensor_Value (Frame : Frame_Lease) return Contributing_Sensor;
+   function Pixel_Format (Frame : Frame_Lease) return AMS.MEL.IR.Channel.Pixel_Format;
+   function Frame_ID (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Subframe_ID (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Subframe_Total (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Image_Type (Frame : Frame_Lease) return Full_Image_Type;
+   function Image_Flip (Frame : Frame_Lease) return AMS.MEL.IR.Image_Flip;
+   function Image_Flag_Count (Frame : Frame_Lease) return Natural;
+   function Image_Flag_At (Frame : Frame_Lease; Index : Positive) return Image_Flag;
+   function Dither_Row (Frame : Frame_Lease) return Long_Float;
+   function Dither_Column (Frame : Frame_Lease) return Long_Float;
+   function Row_Offset (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Column_Offset (Frame : Frame_Lease) return Interfaces.Unsigned_32;
+   function Sensor_Inertial_State_Count (Frame : Frame_Lease) return Natural;
+   function Sensor_Inertial_State_At
+     (Frame : Frame_Lease; Index : Positive) return Sensor_Inertial_State;
+   function Sensor_Nav_State_Count (Frame : Frame_Lease) return Natural;
+   function Sensor_Nav_State_At (Frame : Frame_Lease; Index : Positive) return Sensor_Nav_State;
+   function Band_Index (Frame : Frame_Lease) return AMS.MEL.IR.Byte;
 
    --  Complete published mel::PositionSolutionState. MaxExclusive is not a
    --  valid safe value.
@@ -209,6 +309,37 @@ private
       Nav                   : Nav_Vectors.Vector;
       Band                  : AMS.MEL.IR.Byte;
       Data                  : Pixel_Vectors.Vector;
+   end record;
+
+   --  Small metadata copied at acquisition; the bulk payload is not copied.
+   type Lease_Metadata is record
+      Time, Integration     : Long_Long_Integer := 0;
+      W, H, BPP, Bands      : Interfaces.Unsigned_32 := 0;
+      HFOV, VFOV            : Long_Float := 0.0;
+      Sensor                : Contributing_Sensor;
+      Format                : AMS.MEL.IR.Channel.Pixel_Format := AMS.MEL.IR.Channel.Mono;
+      ID, Sub_ID, Sub_Total : Interfaces.Unsigned_32 := 0;
+      Kind                  : Full_Image_Type := Staring;
+      Flip                  : AMS.MEL.IR.Image_Flip := AMS.MEL.IR.No_Flip;
+      Flags                 : Flag_Vectors.Vector;
+      D_Row, D_Column       : Long_Float := 0.0;
+      Row, Column           : Interfaces.Unsigned_32 := 0;
+      Inertial              : Inertial_Vectors.Vector;
+      Nav                   : Nav_Vectors.Vector;
+      Band                  : AMS.MEL.IR.Byte := 0;
+      Payload               : System.Address := System.Null_Address;
+      Payload_Size          : Natural := 0;
+   end record;
+
+   --  The limited owner of exactly one native frame snapshot.
+   type Frame_Lease_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Frame_Snapshot_Handle := AMS.MEL_C_API.Null_Frame_Snapshot;
+      Data   : Lease_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Frame : in out Frame_Lease_Owner);
+   type Frame_Lease is limited record
+      Owner : Frame_Lease_Owner;
    end record;
 
    package US renames Ada.Strings.Unbounded;

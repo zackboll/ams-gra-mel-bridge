@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+- Add the first high-rate zero-copy data-plane slice: `AMS.MEL.IR.Image` gains
+  a limited `Frame_Lease` with `Acquire_Frame`, `Is_Open`, `Close`,
+  `Pixel_Count`, `With_Pixels`, `Copy_Pixels`, and the full set of lease
+  metadata accessors. The lease is an `Ada.Finalization.Limited_Controlled`
+  owner of exactly one `ams_mel_ir_frame_snapshot`, and `With_Pixels` binds a
+  constrained `AMS.MEL.IR.Pixel_Array` directly to the snapshot's own
+  `pixels.data` with `Import` plus an address clause. This removes the
+  native-snapshot-to-Ada pixel copy: no payload-sized Ada allocation, no
+  `memcpy` from the snapshot, no per-pixel FFI call, no per-pixel `Append`
+  loop, and no `Ada.Containers` pixel Vector on the lease path.
+  `Acquire_Frame` and `With_Pixels` setup are both O(1) with respect to pixel
+  count.
+
+  This is deliberately **not** end-to-end zero-copy. The native frame callback
+  still copies the MEL provider buffer once into snapshot-owned storage before
+  `irmel::Buffer::release`; retaining the upstream `irmel::Buffer` until the Ada
+  lease is released is the separate Task 030B investigation. Payload copies on
+  the high-rate path are therefore `provider -> native storage: 1` and
+  `native storage -> Ada: 0`.
+
+  The naming makes ownership explicit: `Receive`/`Pixels` are owned and may
+  copy, `Acquire_Frame`/`With_Pixels` borrow without a bulk copy, and `Copy_*`
+  is an explicit owned copy. No function named simply `Pixels` was added to the
+  lease. `AMS.MEL.IR.Receive`, the owned `Frame` record,
+  `AMS.MEL.IR.Image.Receive`, `Full_Frame`, and `Pixels (Full_Frame)` are all
+  unchanged compatibility/copying APIs; `Receive` was refactored to share one
+  metadata conversion with the lease path and now performs its payload copy
+  explicitly, with identical observable behavior. Existing applications acquire
+  no new native lifetime dependency.
+
+  Lease semantics: one live lease owns one snapshot, the owner cannot be
+  copied, finalization closes exactly once, `Close` is idempotent, finalization
+  after an explicit close is harmless, failed acquisition and metadata
+  conversion failures leak nothing, later frames do not invalidate an earlier
+  lease, multiple outstanding leases each own distinct storage, and the lease
+  stays valid through queue advance, stream Stop, stream Close, Session close,
+  and provider teardown. The existing one-task-per-stream receive restriction is
+  preserved, and no lock is held across the borrow callback. Null-pointer-with-
+  nonzero-size and out-of-Ada-index-range spans fail closed with
+  `Provider_Error`; zero-length payloads are valid.
+
+  Zero-copy is proven structurally, not by timing. A test-only facade hook under
+  `AMS_MEL_ENABLE_TEST_FAILPOINTS` logs each snapshot's pixel-data address, and
+  the Ada regression requires the borrowed view's first element address to equal
+  it exactly; a new C test additionally proves the snapshot's payload address is
+  stable, distinct per snapshot, and survives stream/Session/provider teardown.
+
+  **No C ABI change.** No export was added or removed, no public type changed,
+  `exports.map` is untouched, and the ABI version stays `0.1`; the existing
+  snapshot receive/view/close trio already provided the required
+  opaque-handle-plus-borrowed-span shape. `docs/architecture.md` gains a
+  high-rate data ownership section describing the reusable
+  native-owner/opaque-handle/limited-owner/borrowed-view chain, its intended
+  reuse by RF Receive products, RF waveform streaming, and Stacked Image, and
+  the explicit constraint that future bulk buffers -- heap, RDMA-registered,
+  GPU, or FPGA/device memory -- must not be assumed to be ordinary CPU-copyable
+  Ada memory. No RF MEL, RDMA, GPU, CUDA, FPGA, Stacked Image, or
+  provider-buffer retention work is implemented here.
+
 - Add the `@Optional` IR Track `CandidateObjectPreProcMessage` as inbound
   metadata in native C, safe Ada, raw Rust ABI, and private Python ABI,
   completing every published `TrackChannel`-specific surface. The pinned

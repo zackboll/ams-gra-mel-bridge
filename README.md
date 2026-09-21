@@ -26,7 +26,16 @@ themselves.
 > into a bounded native queue; provider callback threads never invoke Ada
 > application code. Ada additionally provides `AMS.MEL.IR.Image.Full_Frame`, an owned complete
 > FrameHeader snapshot; legacy `AMS.MEL.IR.Receive` remains the Mono8 compatibility
-> subset. Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
+> subset. For the high-rate data plane Ada also provides
+> `AMS.MEL.IR.Image.Frame_Lease` with `Acquire_Frame`, `With_Pixels`, and
+> `Copy_Pixels`: a limited owner of one native frame snapshot that borrows the
+> pixel payload in place, with **no** copy from the native snapshot into Ada.
+> That path is not end-to-end zero-copy -- the native callback still copies the
+> MEL provider buffer once into snapshot-owned storage -- and `Receive` /
+> `Full_Frame` remain the owned-copy compatibility APIs. See
+> `docs/task-030a-zero-copy-ada-frame-lease.md` and the high-rate data ownership
+> section of `docs/architecture.md`.
+> Image capability access and `AMS.MEL.IR.Image.Metadata` implement owned
 > BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp events through one bounded
 > DROP-INCOMING queue. `AMS.MEL.IR.Image` additionally exposes
 > `Submit_Navigation_Report`/`Wait`/`Close` for `ImageChannel::send(NavigationReport)`:
