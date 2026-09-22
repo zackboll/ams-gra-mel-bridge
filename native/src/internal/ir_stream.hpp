@@ -43,6 +43,13 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  *   may run only when
  *
  *       requests == 0  AND  callback->retained_frames == 0
+ *                      AND  !callback->uncertain_release
+ *
+ *   The third term is the PR #42 second-review corrective backstop. It is a
+ *   lock-free atomic published the instant ANY release for this stream is
+ *   uncertain, including a callback-side rejection, so teardown stays blocked
+ *   even if the retained_frames publication under this mutex could not be
+ *   performed at all.
  *
  *   because a queued frame or a live frame snapshot still holds a provider
  *   Buffer checked out of the provider's pool, and that Buffer's memory, its
@@ -80,12 +87,14 @@ struct ImageStreamState {
      * never decremented for it, which permanently blocks physical teardown.
      *
      * The AUTHORITATIVE owner of such a buffer is NOT this vector. It is the
-     * preallocated intrusive RetainedBufferNode published by
-     * park_failed_buffer() in ir_stream.cpp, which is allocation-free and
-     * cannot throw. This vector is an additional record kept for ordinary
-     * diagnostics and is written only after that node is published, so a
-     * failed push_back here cannot affect safety (PR #42 corrective).
-     * Guarded by callback->mutex. */
+     * frame's dedicated slot in CallbackState::retention_slots, preallocated
+     * from the configured buffer_count in ams_mel_ir_stream_start() before
+     * channel->enable() and therefore before any provider callback can run.
+     * Moving the exact callback shared_ptr into that existing empty slot is
+     * allocation-free and cannot throw. This vector is an additional record
+     * kept for ordinary diagnostics and is written only after that slot is
+     * published, so a failed push_back here cannot affect safety (PR #42
+     * second-review corrective). Guarded by callback->mutex. */
     std::vector<std::shared_ptr<ams::iface::irmel::Buffer>> retained_failed_buffers;
 
     /* Teardown-participating state. All of the following is guarded by

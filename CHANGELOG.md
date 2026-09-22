@@ -26,6 +26,53 @@
   Only the meaning of the owner changed underneath, which is what Task 030A
   existed to make possible.
 
+- Correct uncertain `Buffer::release()` ownership handling so it is complete
+  and no longer depends on an arbitrary process-global limit.
+
+  Two linked defects are fixed. First, `CallbackState::image()` releases frames
+  the bridge **rejects before queue acceptance** -- malformed/unsupported,
+  queue-full, and not-accepting. Those frames were never counted in
+  `retained_frames` and the path never called `image_stream_retain_failed()`,
+  so after an uncertain release a later Stop/Close could still observe
+  `requests == 0 && retained_frames == 0` and physically tear the provider
+  graph down, clear registered host storage, and unload the provider library.
+  Second, the previous fail-safe could return `false` when a fixed 64-slot
+  reserve was exhausted, and because callers passed the Buffer by `std::move`
+  that return **destroyed the exact callback wrapper**, so the fixed reserve
+  reduced risk without establishing the claimed invariant.
+
+  Emergency ownership is now stream-owned and preallocated from the configured
+  `buffer_count`: `CallbackState::retention_slots` is built in Start before
+  `channel->enable()`, i.e. before any provider callback can run. Moving the
+  exact callback `shared_ptr` into an existing empty slot allocates nothing and
+  cannot throw. The enforced rule is that the bridge never calls `release()`
+  unless it already owns a dedicated slot for that exact Buffer; if a
+  non-conforming provider exhausts the pool the bridge refuses to release and
+  keeps the buffer instead, which is safe because that branch runs *before* any
+  release, so no wrapper can ever be dropped after a failed one. A
+  `weak_ptr<ImageStreamState>` established at stream construction lets a
+  callback-side uncertain release invoke the same graph-retention policy as
+  snapshot/lease release.
+
+  Retained-buffer accounting is documented exactly rather than fudged: an
+  uncertain release of an *accepted* frame leaves the count unchanged (it is
+  already counted and never decremented), while an uncertain release of a
+  *rejected* frame adds one. Both reach the same post-condition -- exactly one
+  never-removed unit -- so teardown is permanently blocked either way. A
+  lock-free `uncertain_release` flag is an additional backstop, so physical
+  teardown now requires
+  `requests == 0 && retained_frames == 0 && !uncertain_release`.
+
+  Deterministic regressions cover callback-side release failure for the
+  malformed, queue-full, and not-accepting arms plus retention-slot exhaustion,
+  each proving exactly one release attempt, the exact wrapper alive with
+  destructor count 0, host bytes intact, provider channel/`Control` never
+  destroyed, both public owners closable without freeing the graph, and no
+  retry. A negative control deliberately drops the wrapper and asserts those
+  invariants then fail, and a 96-buffer/200-cycle test proves capacity follows
+  configured provider-buffer count rather than the old 64-slot constant. No ABI
+  change: still ABI `0.1` with 90 exports and zero vendor delta.
+
 - Track provider buffers withheld from provider reuse in a new
   `retained_frames` count covering queued frames **and** live snapshots,
   guarded by the existing single teardown mutex and deliberately not derived

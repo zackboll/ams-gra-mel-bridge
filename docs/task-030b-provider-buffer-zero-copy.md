@@ -259,8 +259,47 @@ legacy copy + release                  -1
 owned Full_Frame + release             -1
 snapshot / lease close                 -1
 explicit queue discard                 -1
-release() failure or exception          0   (permanently retained)
 ```
+
+Uncertain release, i.e. `release()` returned non-`Success` or threw, is the
+corrective (PR #42 second review) transition and is stated exactly:
+
+```text
+uncertain release of an ACCEPTED frame   unchanged   (stays counted forever)
+uncertain release of a REJECTED frame          +1    (becomes counted forever)
+no retention slot, release refused             +1    (becomes counted forever)
+```
+
+All three end in the same state: the buffer contributes exactly one unit to
+`retained_frames` that is never removed, so physical teardown for that graph is
+permanently blocked. The asymmetry is not counter fudging. A frame rejected in
+the callback -- malformed, queue-full, or not-accepting -- was released
+*before* queue acceptance and so was never counted; an uncertain result there
+must therefore **add** the permanent obligation the accepted path already
+holds. The post-condition
+
+> an uncertain buffer contributes exactly one never-removed unit to
+> `retained_frames`
+
+holds uniformly across every path.
+
+This is what the original PR #42 implementation got wrong. The callback
+rejection paths neither counted the frame nor called
+`image_stream_retain_failed()`, so after an uncertain release a later
+Stop/Close could still observe `requests == 0 && retained_frames == 0` and
+physically tear the provider graph down, clear the registered host storage, and
+unload the provider library while Buffer ownership was uncertain.
+
+`CallbackState::uncertain_release` is an additional lock-free backstop,
+published with release ordering the instant any release for the stream is
+uncertain. Physical teardown now requires
+
+```text
+requests == 0  AND  retained_frames == 0  AND  !uncertain_release
+```
+
+so teardown stays blocked even if the `retained_frames` publication under the
+mutex could not be performed at all.
 
 Decrements are saturating (`if (n != 0) --n`) and fail closed: if publishing
 a decrement ever failed, the count stays high, which only over-defers
@@ -388,32 +427,128 @@ violating the no-retry invariant. `image_stream_retain_failed(state)` retains
 the `ImageStreamState` graph, but the graph does not own that callback
 wrapper, so it is **not** by itself evidence that the wrapper survives.
 
-The correction makes the fail-safe path literally allocation-free:
+The first correction moved the Buffer into a preallocated intrusive node, but
+still fell back to a fixed 64-slot process-global reserve, and
+`park_failed_buffer()` could return `false` when that reserve was exhausted.
+Callers passed the Buffer by `std::move`, so a `false` return destroyed the
+by-value `shared_ptr` while the caller's own had already been emptied, and the
+`if (!parked && buffer)` fallback could not retain anything. The reserve
+reduced risk without establishing the claimed invariant, and the callback
+`Releaser` ignored the result entirely.
+
+The second correction removes the arbitrary global limit from the correctness
+argument. Emergency ownership is now **stream-owned and preallocated from the
+configured `buffer_count`**:
 
 ```text
-provider callback, frame still in a normal-success state
+ams_mel_ir_stream_start(), BEFORE channel->enable()
     |
-    | std::make_unique<RetainedBufferNode>()      <-- may fail harmlessly here
-    v
-node travels with the Buffer through queue -> snapshot -> lease
+    | callback->retention_slots.resize(buffer_count)   <-- may fail harmlessly
+    | callback->free_retention_slots.reserve(...)          here, before any
+    v                                                      provider callback
+provider callback: slot = acquire_retention_slot()    O(1), allocation-free
     |
-    | Buffer::release()                           <-- may fail or throw
+    | slot index travels with the Buffer: queue -> snapshot -> lease
+    |
+    | Buffer::release()                               <-- may fail or throw
     v
-park_failed_buffer(node, buffer)   allocation-free, noexcept, never retried
+retention_slots[slot] = std::move(buffer)   allocation-free, cannot throw,
+                                            never retried
 ```
 
-The node exists before `release()` is ever attempted, the list head is a
-static atomic, and moving a `shared_ptr` never allocates. A small static
-reserve of nodes covers any path that somehow arrives without one. Ordinary
-`operator new` is therefore never on the fail-safe path.
+Moving a `shared_ptr` into an already-constructed empty vector element
+allocates nothing and cannot throw. Successful release returns the slot to the
+free list; uncertain release consumes it permanently. Ordinary `operator new`
+is therefore never on the fail-safe path.
+
+**The central rule** the design enforces is:
+
+> the bridge never calls `Buffer::release()` unless it already owns a
+> dedicated, preallocated retention slot for that exact Buffer.
+
+Bounding argument, which replaces the 64-slot dependency. A slot is held
+exactly while this stream has the corresponding provider buffer checked out,
+plus permanently for each buffer lost to uncertain release. The bridge only
+accepts a buffer whose base address is one of the `buffer_count` registered
+host ranges it published, so a conforming provider cannot drive concurrent
+checkouts above `buffer_count`. Capacity follows configured provider-buffer
+capacity, not a process-global constant.
+
+If a non-conforming provider *does* exhaust the pool, the bridge does **not**
+release: it keeps the buffer, records the same permanent teardown obligation,
+and parks it in the process-global reserve. That branch runs strictly *before*
+any `release()` for the buffer, so even if the reserve is also exhausted and
+the wrapper is dropped, the wrapper's own destructor performs its **first**
+release. The forbidden case -- dropping a wrapper *after* a failed release,
+making its destructor retry -- is unreachable by construction. The global list
+therefore remains only a diagnostic record plus depth for that pre-release
+branch, and no safety property depends on its size.
+
+`CallbackState` also holds a `std::weak_ptr<ImageStreamState> owner`,
+established during stream construction before any provider callback can exist,
+so a callback-side uncertain release invokes exactly the same
+`image_stream_retain_failed()` graph-retention policy as snapshot/lease
+release.
 
 `ImageStreamState::retained_failed_buffers` is retained only as an additional
-diagnostic/ownership record and is written **after** the node is published;
-safety never depends on that `push_back` succeeding. The failpoint
+diagnostic record and is written **after** the slot is published; safety never
+depends on that `push_back` succeeding. The failpoint
 `AMS_MEL_TEST_FAILED_BUFFER_PARK_ALLOCATION=fail` forces it to throw at
 exactly that historical point, and
 `test_release_failure_with_park_allocation_failure` proves the callback
 wrapper still survives, is never destroyed, and is released exactly once.
+
+### Callback-side release-failure evidence
+
+The mock provider hands the listener a per-callback `RequeueBuffer`, modelling
+pinned Squall: the bridge's `shared_ptr` is the wrapper's **only** owner, and
+the wrapper marks itself requeued only when the hand-back actually succeeded,
+so a dropped reference after a failed release performs the forbidden second
+`release()`. The provider holds the wrapper only **weakly**, so a lost last
+reference is observable immediately.
+
+`test_callback_release_failure` drives each bridge rejection arm
+deterministically -- `malformed`, `queue-full`, `not-accepting` -- by leasing
+one healthy frame, putting the stream into the state that arm needs, and then
+producing a frame that arm rejects whose in-callback release the provider
+fails. Each proves, from provider state rather than from the bridge:
+
+- release attempted exactly once;
+- the exact callback wrapper still alive, destructor count 0;
+- host backing bytes intact and unmodified;
+- provider channel and `Control` never destroyed, so the provider library
+  remains loaded and physical cleanup never runs;
+- `Stop`/`Close` report `AMS_MEL_PROVIDER_FAILED`, and both public owners can
+  be released without freeing the graph;
+- release never retried.
+
+`test_retention_slot_exhaustion` arms `AMS_MEL_TEST_RETENTION_SLOTS=exhaust`
+and proves the bridge refuses to call `release()` at all, the wrapper stays
+alive, and the graph is retained.
+
+`test_retention_capacity_exceeds_legacy_reserve` opens `buffer_count = 96` and
+sustains 200 checkout/lease/release cycles -- more than three times the old
+global reserve -- entirely on this stream's own recycled slots.
+
+`test_stop_status_healthy_versus_poisoned` asserts both halves of the Stop
+contract explicitly: a healthy graph with an outstanding lease returns
+`AMS_MEL_OK` with teardown deferred to the last lease close, while a poisoned
+graph returns `AMS_MEL_PROVIDER_FAILED` and is never torn down.
+
+`test_callback_release_failure_negative_control` arms
+`AMS_MEL_TEST_DROP_FAILED_BUFFER=drop` so the fail-safe path deliberately drops
+the wrapper, and asserts the invariants are then **violated** -- wrapper
+destroyed, destructor-driven second release, attempt count above one -- which
+is what makes the positive regressions non-vacuous. Those destructions are
+counted in a separate `expected_failed_buffers_destroyed` bucket so the
+deliberate defect can never mask a genuine one elsewhere.
+
+Two independent source mutations were also confirmed to be caught: inverting
+the retention-slot store so the wrapper is dropped, and removing both the
+`uncertain_release` backstop and the rejected-frame count. The latter
+reproduces the original defect exactly and fails on
+`mock_failed_buffer_storage_intact()`, i.e. the registered host storage being
+freed under an uncertain Buffer.
 
 Explicit API operations report it truthfully:
 `ams_mel_ir_frame_snapshot_close` returns `AMS_MEL_PROVIDER_FAILED` with the
