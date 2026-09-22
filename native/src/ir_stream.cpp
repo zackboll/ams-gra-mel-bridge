@@ -195,6 +195,40 @@ void failed_buffer_park_allocation_failpoint()
 #endif
 }
 
+/* Test-only deterministic allocation failure at exactly the enqueue-allocation
+ * boundary, i.e. the std::deque::push_back that publishes an accepted frame to
+ * the receive queue. push_back may allocate and therefore may throw, so the
+ * callback Releaser must still be ARMED when it runs (PR #42 third-review
+ * corrective). Arming this failpoint proves the handoff order is exception
+ * safe: a failed insertion still performs exactly one bridge-controlled
+ * release and never leaks the frame's retention slot. Compiled out entirely in
+ * a non-test build. */
+void enqueue_allocation_failpoint()
+{
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+    if (const char *failure = std::getenv("AMS_MEL_TEST_ENQUEUE_ALLOCATION");
+        failure != nullptr && std::strcmp(failure, "fail") == 0) {
+        throw std::bad_alloc{};
+    }
+#endif
+}
+
+/* Test-only NEGATIVE CONTROL for the post-callback-drain teardown recheck.
+ * When armed, image_stream_cleanup() skips that recheck and therefore
+ * reintroduces exactly the TOCTOU defect the corrective task forbids: host
+ * storage and registered Buffers are freed although an in-flight callback
+ * published an uncertain release after the initial gate. Compiled out in a
+ * non-test build. */
+bool skip_post_drain_recheck_failpoint() noexcept
+{
+#ifdef AMS_MEL_ENABLE_TEST_FAILPOINTS
+    const char *value = std::getenv("AMS_MEL_TEST_SKIP_POST_DRAIN_RECHECK");
+    return value != nullptr && std::strcmp(value, "skip") == 0;
+#else
+    return false;
+#endif
+}
+
 /* Test-only. Forces the stream's preallocated retention slot pool to report
  * exhaustion, so a regression can drive the non-conforming-provider branch in
  * which the bridge must refuse to call release() rather than risk an uncertain
@@ -634,6 +668,26 @@ struct CallbackState {
         } release{*this, buffer, no_retention_slot};
 
         try {
+            /* A null Buffer is rejected BEFORE any retention slot is acquired
+             * (PR #42 third-review corrective).
+             *
+             * Emergency ownership only ever exists for an object that exists.
+             * The Releaser destructor returns immediately when value is null,
+             * so it can never recycle a slot it was given for a null Buffer;
+             * acquiring one here would therefore consume a stream-sized,
+             * never-recycled retention slot for every null callback, and a
+             * provider emitting more than buffer_count of them would starve a
+             * later valid frame out of the emergency ownership the corrective
+             * design requires it to have. There is also nothing to own: no
+             * release() is possible or owed for a Buffer that does not exist.
+             *
+             * This arm is a plain malformed/unsupported rejection. */
+            if (!buffer) {
+                std::lock_guard lock{mutex};
+                increment(counters.frames_received);
+                increment(counters.malformed_or_unsupported_frames);
+                return;
+            }
             {
                 std::lock_guard lock{mutex};
                 increment(counters.frames_received);
@@ -643,7 +697,7 @@ struct CallbackState {
                  * the slot objects and the free list were built at Start. */
                 release.retention = acquire_retention_slot();
             }
-            if (buffer && release.retention == no_retention_slot) {
+            if (release.retention == no_retention_slot) {
                 /* No slot: a non-conforming provider has more buffers
                  * simultaneously outstanding than it registered. Refuse to
                  * release, because an uncertain result could not be owned.
@@ -668,7 +722,7 @@ struct CallbackState {
                 retain_uncertain_buffer(buffer, no_retention_slot, false);
                 return;
             }
-            if (!buffer || header.getWidth() == 0U || header.getHeight() == 0U ||
+            if (header.getWidth() == 0U || header.getHeight() == 0U ||
                 header.getBitsPerPixel() != 8U || header.getNumBands() != 1U ||
                 header.getFormat() != irmel::PixelFormat::Mono ||
                 static_cast<std::uint32_t>(header.getImageType()) > 2U ||
@@ -726,16 +780,36 @@ struct CallbackState {
                 return;
             }
             /* Accepted. The bridge now owns a checked-out provider buffer.
-             * Move the owner into the queued frame and disarm the callback
-             * releaser so release() cannot happen twice for this frame. The
-             * dedicated preallocated retention slot travels with the buffer,
-             * so the later release attempt is already guaranteed an
-             * allocation-free owner if it fails. */
+             *
+             * Exception-safety ordering (PR #42 third-review corrective).
+             * std::deque::push_back MAY ALLOCATE AND THROW. The releaser must
+             * therefore stay ARMED across the insertion, so a throwing enqueue
+             * still funnels this buffer through the single bridge-controlled
+             * release policy -- exactly one release(), and the uncertain-
+             * ownership path with its dedicated retention slot if that release
+             * fails -- instead of silently dropping an owned provider buffer.
+             *
+             *   1. prepare frame.buffer and frame.retention;
+             *   2. releaser stays armed (release.value / release.retention
+             *      still describe this exact buffer and slot);
+             *   3. queue.push_back(...)  <- the only throwing step;
+             *   4. only now disarm the releaser;
+             *   5. publish retained_frames and notify the consumer.
+             *
+             * frame.retention is a COPY of release.retention until step 4, so
+             * a throw leaves exactly one owner of the slot, the releaser, and
+             * the discarded frame is destroyed without ever having released
+             * anything. All of this happens under the mutex, so the queued
+             * frame cannot be consumed between steps 3 and 4 and the two
+             * owners can never both release. */
             frame.buffer = buffer;
             frame.retention = release.retention;
+            enqueue_allocation_failpoint();
+            queue.push_back(std::move(frame));
+            /* Insertion succeeded: the queue now owns the buffer and the slot.
+             * Disarming is noexcept, so ownership transfer is complete. */
             release.retention = no_retention_slot;
             release.value.reset();
-            queue.push_back(std::move(frame));
             ++retained_frames;
             ready.notify_one();
         } catch (...) {
@@ -1193,14 +1267,75 @@ ImageCleanupOutcome image_stream_cleanup(
             in_flight = stream.callback->callbacks_in_flight.load(
                 std::memory_order_acquire);
         }
+        /* Post-drain teardown recheck (PR #42 third-review corrective).
+         *
+         * The initial gate above proved requests == 0, retained_frames == 0
+         * and !uncertain_release at the instant cleanup ownership was claimed.
+         * That is NOT sufficient: a callback that was ALREADY in flight when
+         * the gate was passed can still fail a Buffer::release() and publish
+         * its uncertainty afterwards. Freeing registered host storage on the
+         * strength of the stale gate result would destroy the exact host bytes
+         * and the exact Buffer objects an uncertain provider hand-back forbids
+         * destroying.
+         *
+         * Visibility is established, not assumed. retain_uncertain_buffer()
+         * publishes uncertain_release with release ordering and, for the
+         * accepted-frame path, retained_frames under the mutex; both happen
+         * strictly BEFORE the callback's callbacks_in_flight decrement, which
+         * is a release (acq_rel) RMW. The drain loop above observes that count
+         * reach zero with acquire ordering, so everything the callback
+         * published is visible here. The mutex below additionally orders the
+         * retained_frames read.
+         *
+         * Achievable guarantee, stated exactly. The provider channel has
+         * already crossed its documented quiescence/destruction boundary by
+         * this point -- disable(), detachChannel() and channel destruction all
+         * ran above -- so this path deliberately does NOT claim the channel
+         * remained attached. What it does guarantee is what an uncertain
+         * hand-back actually requires: the registered host storage, the
+         * registered Buffer objects, CallbackState, ImageStreamState, the
+         * Session graph and therefore the provider library are retained for
+         * process lifetime, no retained Buffer ownership is destroyed, the
+         * uncertain release is never retried, and the failure is reported
+         * truthfully. */
+        bool late_uncertain = false;
         {
             std::lock_guard lock{stream.callback->mutex};
             failed = failed || stream.callback->lifecycle == Lifecycle::Failed;
-            stream.callback->registered_ranges.clear();
+            late_uncertain =
+                (stream.callback->retained_frames != 0U ||
+                 stream.callback->uncertain_release.load(
+                     std::memory_order_acquire)) &&
+                !skip_post_drain_recheck_failpoint();
+            /* Registered ranges are part of the host-storage description an
+             * uncertain buffer still points at, so they are cleared only when
+             * the storage itself is about to be freed. */
+            if (!late_uncertain) stream.callback->registered_ranges.clear();
+        }
+        if (late_uncertain) {
+            image_stream_retain_failed(state_ptr);
+            {
+                std::lock_guard lock{stream.callback->mutex};
+                stream.callback->accepting = false;
+                stream.callback->lifecycle = Lifecycle::Failed;
+                stream.callback->ready.notify_all();
+                stream.enable_attempted = false;
+                /* detachChannel() succeeded, so there is nothing to retry and
+                 * this cleanup is terminal; it is simply terminal in FAILURE,
+                 * because provider ownership of at least one Buffer is
+                 * uncertain. */
+                stream.cleanup_ok = false;
+                stream.cleanup_complete = true;
+                stream.cleanup_failed = true;
+                stream.cleanup_in_progress = false;
+                stream.cleanup_done.notify_all();
+            }
+            return ImageCleanupOutcome::Failed;
         }
         /* Safe only because this point is reachable only when
-         * callback->retained_frames == 0, checked under the teardown lock
-         * before cleanup ownership was claimed. That is the proof of the
+         * callback->retained_frames == 0 and !uncertain_release, checked under
+         * the teardown lock before cleanup ownership was claimed AND rechecked
+         * above after the callback drain. That is the proof of the
          * Task 030B host-storage invariant:
          *
          *     a retained provider buffer exists
@@ -1411,8 +1546,26 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             case Lifecycle::Running: return AMS_MEL_OK;
             case Lifecycle::Stopped: return AMS_MEL_STREAM_STOPPED;
             case Lifecycle::Failed: return AMS_MEL_PROVIDER_FAILED;
-            case Lifecycle::Starting:
-            case Lifecycle::Stopping: return AMS_MEL_PROVIDER_FAILED;
+            /* A concurrent Start is genuinely a misuse. */
+            case Lifecycle::Starting: return AMS_MEL_PROVIDER_FAILED;
+            /* Stopping is a LOGICALLY STOPPED stream whose physical teardown
+             * is merely deferred (PR #42 third-review corrective).
+             *
+             * Task 030B made Stop logical-now/physical-later: with a queued
+             * frame or a live lease still holding a provider buffer, Stop
+             * returns AMS_MEL_OK and the lifecycle stays Stopping until the
+             * last release performs the deferred teardown and publishes
+             * Stopped. Reporting AMS_MEL_PROVIDER_FAILED for a Start in that
+             * window described a healthy deferral as a provider failure, and
+             * did so nondeterministically -- whether a Start after a healthy
+             * Stop saw Stopping or Stopped depended purely on whether the
+             * provider's producer happened to leave a frame queued.
+             *
+             * STREAM_STOPPED is both the truthful answer and the one Receive
+             * already gives for this same state, so Start and Receive now
+             * agree. A genuinely poisoned stream is Failed, not Stopping, and
+             * still reports AMS_MEL_PROVIDER_FAILED above. */
+            case Lifecycle::Stopping: return AMS_MEL_STREAM_STOPPED;
             case Lifecycle::Attached: break;
             }
             stream->state->callback->lifecycle = Lifecycle::Starting;

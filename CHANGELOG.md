@@ -73,6 +73,69 @@
   configured provider-buffer count rather than the old 64-slot constant. No ABI
   change: still ABI `0.1` with 90 exports and zero vendor delta.
 
+- Close three remaining provider-Buffer ownership/lifetime defects found in the
+  PR #42 third review.
+
+  **Close teardown TOCTOU after an in-flight callback release failure.**
+  `image_stream_cleanup()` checked `retained_frames`/`uncertain_release` once,
+  before claiming physical cleanup, then destroyed and detached the provider
+  channel, drained `callbacks_in_flight`, and cleared the registered ranges,
+  registered Buffers, and backing host storage. A callback already in flight
+  when that gate was passed could publish an uncertain `Buffer::release()`
+  result afterwards, so cleanup could free registered host memory although
+  `uncertain_release == true`, the failed wrapper was retained, and provider
+  ownership hand-back was uncertain. Cleanup now re-evaluates that state after
+  the drain reaches zero and before clearing anything. Visibility is
+  established, not assumed: the callback publishes its uncertainty strictly
+  before its `callbacks_in_flight` decrement (`acq_rel`), which the drain loop
+  observes with acquire ordering. On late uncertainty cleanup keeps the host
+  storage and retained Buffer ownership, retains the provider library and
+  Session graph, reports failure truthfully, and never retries the release.
+  Because the channel has already crossed its documented quiescence/destruction
+  boundary by that point, the guarantee is documented exactly as retention of
+  the storage/Buffer/library graph rather than a claim that the channel stayed
+  attached. A barrier-driven regression proves the precise interleaving with no
+  sleeps, and a negative mutation proves removing the recheck makes the
+  host-storage assertion fail.
+
+  **Callback `Releaser` disarmed before enqueue.** `std::deque::push_back` may
+  allocate and throw, and the releaser was disarmed before it, so a throwing
+  enqueue bypassed the release/uncertain-retention policy and dropped an owned
+  provider buffer. The releaser now stays armed across the insertion and is
+  disarmed only after it succeeds, all under the existing mutex. A failpoint at
+  the enqueue-allocation boundary proves exactly one bridge-controlled release
+  on failure, slot return on success, the uncertain path on a failing release,
+  no wrapper destroyed after a failed release, and no leaked retention slot.
+
+  **Null callback Buffer consumed a retention slot.** A slot was acquired
+  before `!buffer` was tested, and the `Releaser` destructor returns
+  immediately for a null value, so the slot was never recycled. A null Buffer
+  is now rejected before any slot is acquired, never acquiring emergency
+  ownership for an object that does not exist. A regression emits 40
+  null-buffer callbacks against a `buffer_count` of 2 and proves later valid
+  frames still acquire slots and complete normally.
+
+  Also corrects `ams_mel_ir_stream_start` for `Lifecycle::Stopping`. Since Stop
+  became logical-now/physical-later, a healthy stream with a queued frame or a
+  live lease stays `Stopping` after a successful Stop, and Start reported
+  `AMS_MEL_PROVIDER_FAILED` for it -- describing a healthy deferral as a
+  provider failure, nondeterministically, depending only on whether the
+  provider left a frame queued. Start now returns `AMS_MEL_STREAM_STOPPED`
+  there, matching what `Receive` already reports; a poisoned stream is `Failed`
+  and still reports `AMS_MEL_PROVIDER_FAILED`. Still ABI `0.1`, 90 exports,
+  zero vendor delta.
+
+- Make the pre-existing C2 lifetime assertions in `test_post_send_failure` and
+  `test_bit_post_send_failure` deterministic. They slept a fixed 100 ms and then
+  asserted `mode_completed`/`bit_completed` was already logged, but the retained
+  worker completes the provider future asynchronously and the mock's delayed
+  producer itself waits up to 40 ms, so under load -- exactly the CI condition
+  of a 50x parallel `ctest` repeat -- the marker had not appeared yet. Both now
+  poll the explicit completion condition under a generous bounded deadline. The
+  assertion is not weakened: the retained worker must still genuinely reach the
+  completion marker. This is unrelated C2 test infrastructure and is kept
+  logically separate from the provider-buffer ownership work.
+
 - Track provider buffers withheld from provider reuse in a new
   `retained_frames` count covering queued frames **and** live snapshots,
   guarded by the existing single teardown mutex and deliberately not derived

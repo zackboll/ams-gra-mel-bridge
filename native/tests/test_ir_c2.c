@@ -678,6 +678,50 @@ static int read_log(const char *path, char *buffer, size_t capacity)
     return EXIT_SUCCESS;
 }
 
+/* Bounded wait for a lifetime-log marker.
+   ======================================
+
+   PR #42 third-review corrective, kept logically separate from the
+   provider-buffer ownership work: this is pre-existing C2 test infrastructure.
+
+   test_post_send_failure() and test_bit_post_send_failure() used to sleep for
+   a fixed 100 ms and then assert that "mode_completed"/"bit_completed" was
+   already in the log. That is a race, not a synchronization: the retained
+   worker thread completes the provider future asynchronously, and the mock's
+   delayed producer itself waits up to 40 ms before recording completion. On a
+   loaded machine -- exactly the CI condition of a 50x parallel ctest repeat --
+   100 ms is simply not enough, so the assertion failed although the retained
+   worker was progressing normally. Reproduced on the PR base SHA, so it is a
+   pre-existing load-sensitive flake, not a regression from this PR.
+
+   The assertion itself is deliberately NOT weakened: the retained worker must
+   still genuinely reach the completion marker. Only the waiting strategy
+   changes, from "sleep a fixed 100 ms and hope" to "poll the explicit
+   completion condition under a generous bounded deadline". A genuinely
+   non-completing worker still fails, just after the deadline instead of after
+   100 ms. */
+static int wait_for_marker(const char *path, const char *marker, char *buffer,
+                           size_t capacity)
+{
+    /* 20 s at 1 ms granularity. Generous enough that only a real failure to
+       complete can exhaust it, and bounded so a hang is still a test failure
+       rather than an indefinite stall. */
+    for (unsigned attempt = 0; attempt < 20000U; ++attempt) {
+        CHECK(read_log(path, buffer, capacity) == EXIT_SUCCESS);
+        if (strstr(buffer, marker) != NULL) return EXIT_SUCCESS;
+        {
+            const struct timespec delay = {0, 1000000L};
+            CHECK(nanosleep(&delay, NULL) == 0);
+        }
+    }
+    /* Deadline exhausted: report the same failure the fixed sleep would have,
+       with the marker named, and keep the caller's CHECK(strstr(...)) as the
+       authoritative assertion. */
+    fprintf(stderr, "marker \"%s\" never appeared in %s within the deadline\n",
+            marker, path);
+    return EXIT_FAILURE;
+}
+
 static int check_order(const char *text, const char *first, const char *second)
 {
     const char *a = strstr(text, first);
@@ -1007,11 +1051,11 @@ static int test_post_send_failure(const char *failpoint)
     CHECK(request == NULL);
     CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 100000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    /* Wait for the explicit completion condition instead of a fixed sleep.
+       The retained worker must still genuinely reach mode_completed; only the
+       waiting strategy is bounded-deadline polling rather than timing luck. */
+    CHECK(wait_for_marker(path, "mode_completed", log, sizeof log) ==
+          EXIT_SUCCESS);
     CHECK(strstr(log, "mode_sent") != NULL);
     CHECK(strstr(log, "mode_completed") != NULL);
     CHECK(strstr(log, "c2_channel_destroyed") == NULL);
@@ -1257,11 +1301,10 @@ static int test_bit_post_send_failure(const char *failpoint)
     CHECK(request == NULL);
     CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 100000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    /* Same bounded-deadline wait as the mode variant above, for the same
+       pre-existing load-sensitivity reason. */
+    CHECK(wait_for_marker(path, "bit_completed", log, sizeof log) ==
+          EXIT_SUCCESS);
     CHECK(strstr(log, "bit_sent") != NULL);
     CHECK(strstr(log, "bit_completed") != NULL);
     CHECK(strstr(log, "c2_channel_destroyed") == NULL);

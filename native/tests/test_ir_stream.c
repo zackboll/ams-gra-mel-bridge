@@ -952,6 +952,26 @@ static unsigned long mock_image_channels_destroyed(void)
 static unsigned long mock_controls_destroyed(void)
 { return mock_pool_query("ams_mel_mock_controls_destroyed"); }
 
+/* Corrective (PR #42 third review) observation surface. */
+static int mock_callback_blocked_inside(void)
+{ return mock_flag("ams_mel_mock_callback_blocked_inside"); }
+static int mock_failed_registered_buffer_alive(void)
+{ return mock_flag("ams_mel_mock_failed_registered_buffer_alive"); }
+static unsigned long mock_registered_buffers_destroyed(void)
+{ return mock_pool_query("ams_mel_mock_registered_buffers_destroyed"); }
+static unsigned long mock_destructor_driven_releases(void);
+
+static void mock_void_call(const char *name)
+{
+    void (*fn)(void);
+    *(void **)&fn = mock_pool_symbol(name);
+    if (fn != NULL) fn();
+}
+static void mock_release_blocked_callback(void)
+{ mock_void_call("ams_mel_mock_release_blocked_callback"); }
+static void mock_arm_blocked_callback(void)
+{ mock_void_call("ams_mel_mock_arm_blocked_callback"); }
+
 /* Clears only the current failed-release observation, so each regression
    observes its own buffer. The "never destroyed" evidence stays cumulative
    across the whole process. */
@@ -1399,6 +1419,388 @@ static int test_retention_slot_exhaustion(void)
     return EXIT_SUCCESS;
 }
 
+/* PR #42 THIRD-review corrective regression 1: close teardown TOCTOU after an
+   in-flight callback publishes an uncertain release.
+   =======================================================================
+
+   image_stream_cleanup() checks retained_frames / uncertain_release once,
+   under the teardown lock, before it claims physical cleanup. It then destroys
+   and detaches the provider channel, waits for callbacks_in_flight to reach
+   zero, and clears the registered ranges, the registered Buffers, and the
+   backing host storage.
+
+   A callback that was ALREADY in flight when the gate was passed can publish
+   an uncertain Buffer::release() result after that gate but before the drain
+   completes. Cleanup could therefore free registered host memory although:
+
+     - uncertain_release == true;
+     - the failed callback wrapper is retained;
+     - provider ownership hand-back is uncertain.
+
+   The interleaving proven here is exactly the one the corrective task
+   specifies, driven by a barrier/failpoint and NEVER by sleeping:
+
+       cleanup passes initial gate
+       callback is still in flight
+       callback release fails
+       callback publishes uncertainty
+       callback drains
+       cleanup must NOT free host storage
+
+   Mechanism. The "teardown-race-late-uncertain" scenario blocks inside
+   getImageAddress(), i.e. inside the bridge listener with callbacks_in_flight
+   already incremented, and publishes that fact. The test waits for that
+   published flag, then starts Close on another thread -- at which point
+   retained_frames == 0 and uncertain_release == false, so cleanup passes its
+   initial gate -- and the armed before-detach barrier holds cleanup while the
+   test releases the blocked callback. The callback then returns a null image
+   address, the bridge rejects the frame, its callback-side release fails,
+   retain_uncertain_buffer() publishes the uncertainty, and only then does the
+   callback drain.
+
+   The assertion is about HOST STORAGE, not about the channel: the channel has
+   already crossed its documented quiescence/destruction boundary by the drain
+   point, which is why the corrective design documents retention of the host
+   storage/Buffer/library graph rather than claiming the channel stayed
+   attached. */
+struct race_close_args {
+    ams_mel_ir_stream **stream;
+    ams_mel_status_t status;
+};
+
+static int race_close_entry(void *argument)
+{
+    struct race_close_args *args = (struct race_close_args *)argument;
+    args->status = ams_mel_ir_stream_close(args->stream, NULL, 0, NULL);
+    return 0;
+}
+
+static int produce_once_entry(void *argument)
+{
+    (void)argument;
+    return ams_mel_mock_pool_produce_once();
+}
+
+static int wait_for_file(const char *path)
+{
+    unsigned attempt;
+    for (attempt = 0; attempt < 20000U; ++attempt) {
+        FILE *file = fopen(path, "rb");
+        if (file != NULL) { (void)fclose(file); return EXIT_SUCCESS; }
+        {
+            const struct timespec delay = {0, 1000000L};
+            (void)nanosleep(&delay, NULL);
+        }
+    }
+    return EXIT_FAILURE;
+}
+
+static int create_file(const char *path)
+{
+    FILE *file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs("x\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    return EXIT_SUCCESS;
+}
+
+/* skip_recheck != 0 arms AMS_MEL_TEST_SKIP_POST_DRAIN_RECHECK=skip, the
+   NEGATIVE MUTATION: cleanup then omits the post-drain recheck and the
+   host-storage assertion below MUST fail, proving it is not vacuous.
+   Returns EXIT_SUCCESS iff the host storage was kept. */
+static int run_teardown_race_late_uncertain(int skip_recheck)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct race_close_args args;
+    thrd_t closer, producer;
+    char base[64] = "/tmp/ams-mel-race-XXXXXX";
+    char detach_arm[128], detach_reached[128], detach_release[128];
+    unsigned long registered_destroyed_before;
+    unsigned attempt;
+    int descriptor, host_storage_kept;
+    config.buffer_count = 2;
+    config.queue_capacity = 4;
+
+    descriptor = mkstemp(base);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(unlink(base) == 0);
+    CHECK(snprintf(detach_arm, sizeof detach_arm, "%s.before-detach.arm",
+                   base) > 0);
+    CHECK(snprintf(detach_reached, sizeof detach_reached,
+                   "%s.before-detach.reached", base) > 0);
+    CHECK(snprintf(detach_release, sizeof detach_release,
+                   "%s.before-detach.release", base) > 0);
+    CHECK(setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) == 0);
+    CHECK(create_file(detach_arm) == EXIT_SUCCESS);
+    if (skip_recheck)
+        CHECK(setenv("AMS_MEL_TEST_SKIP_POST_DRAIN_RECHECK", "skip", 1) == 0);
+
+    mock_arm_blocked_callback();
+    mock_failed_release_reset();
+    CHECK(open_stream("teardown-race-late-uncertain", &session, &stream,
+                      &config) == EXIT_SUCCESS);
+    registered_destroyed_before = mock_registered_buffers_destroyed();
+    CHECK(registered_destroyed_before != ULONG_MAX);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* Ask for one frame; its callback blocks INSIDE the bridge listener.
+       Production is driven on another thread so this one can proceed. */
+    CHECK(thrd_create(&producer, produce_once_entry, NULL) == thrd_success);
+    /* Explicit published condition, no sleeping decides anything: the
+       callback is genuinely in flight. */
+    for (attempt = 0; attempt < 20000U; ++attempt) {
+        if (mock_callback_blocked_inside() == 1) break;
+        { const struct timespec d = {0, 1000000L}; (void)nanosleep(&d, NULL); }
+    }
+    CHECK(mock_callback_blocked_inside() == 1);
+
+    /* At this instant retained_frames == 0 and uncertain_release == false, so
+       a Close starting now passes cleanup's INITIAL gate while the callback is
+       still in flight. Close parks on the armed before-detach barrier. */
+    args.stream = &stream;
+    args.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(thrd_create(&closer, race_close_entry, &args) == thrd_success);
+    CHECK(wait_for_file(detach_reached) == EXIT_SUCCESS);
+
+    /* Cleanup has passed its initial gate and owns cleanup. NOW let the
+       in-flight callback fail its release and publish the uncertainty. */
+    mock_release_blocked_callback();
+    for (attempt = 0; attempt < 20000U; ++attempt) {
+        if (mock_failed_release_recorded() == 1) break;
+        { const struct timespec d = {0, 1000000L}; (void)nanosleep(&d, NULL); }
+    }
+    CHECK(mock_failed_release_recorded() == 1);
+
+    /* Release cleanup; it detaches, destroys the channel, drains the callback,
+       and reaches the post-drain recheck. */
+    CHECK(create_file(detach_release) == EXIT_SUCCESS);
+    CHECK(thrd_join(closer, NULL) == thrd_success);
+    CHECK(thrd_join(producer, NULL) == thrd_success);
+
+    /* THE ASSERTION: registered host storage must NOT have been freed. */
+    host_storage_kept =
+        mock_failed_registered_buffer_alive() == 1 &&
+        mock_registered_buffers_destroyed() == registered_destroyed_before;
+
+    if (!skip_recheck) {
+        CHECK(host_storage_kept);
+        /* Retained Buffer ownership is not destroyed, the uncertain release is
+           never retried, and the failure is reported truthfully. */
+        CHECK(mock_failed_buffer_alive() == 1);
+        CHECK(mock_failed_buffer_destroyed() == 0UL);
+        CHECK(mock_failed_release_attempts() == 1UL);
+        CHECK(args.status == AMS_MEL_PROVIDER_FAILED);
+    }
+
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    (void)unlink(detach_arm);
+    (void)unlink(detach_reached);
+    (void)unlink(detach_release);
+    CHECK(unsetenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER") == 0);
+    if (skip_recheck)
+        CHECK(unsetenv("AMS_MEL_TEST_SKIP_POST_DRAIN_RECHECK") == 0);
+    mock_arm_blocked_callback();
+    return host_storage_kept ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int test_teardown_race_late_uncertain(void)
+{
+    CHECK(run_teardown_race_late_uncertain(0) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* NEGATIVE MUTATION for the regression above. With the post-drain recheck
+   removed, cleanup frees the registered host storage the uncertain release
+   forbids freeing, so the host-storage assertion MUST fail. */
+static int test_teardown_race_negative_mutation(void)
+{
+    CHECK(run_teardown_race_late_uncertain(1) == EXIT_FAILURE);
+    mock_failed_release_reset();
+    return EXIT_SUCCESS;
+}
+
+/* PR #42 THIRD-review corrective regression 2: the callback Releaser must stay
+   ARMED until the enqueue succeeds.
+   ====================================================================
+
+   std::deque::push_back may allocate and therefore may throw. The previous
+   code disarmed the Releaser BEFORE that insertion, so a throwing enqueue
+   bypassed the explicit release/uncertain-retention policy entirely and the
+   owned provider buffer was simply dropped.
+
+   AMS_MEL_TEST_ENQUEUE_ALLOCATION=fail throws std::bad_alloc at exactly the
+   enqueue-allocation boundary. Proven here:
+
+     - a failed enqueue invokes EXACTLY ONE bridge-controlled release;
+     - success returns the retention slot;
+     - a failed/throwing release on that path follows the uncertain-ownership
+       path;
+     - no wrapper is accidentally destroyed after a failed release;
+     - no retention slot is leaked. */
+static int test_enqueue_allocation_failure(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    ams_mel_ir_stream_counters_v1 counters;
+    unsigned long releases_before;
+    unsigned i;
+    config.buffer_count = 2;
+    config.queue_capacity = 4;
+
+    /* --- Arm A: enqueue throws, the release SUCCEEDS. ----------------- */
+    CHECK(open_stream("enqueue-alloc-fail", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    releases_before = mock_pool_releases();
+    CHECK(releases_before != ULONG_MAX);
+    mock_failed_release_reset();
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(setenv("AMS_MEL_TEST_ENQUEUE_ALLOCATION", "fail", 1) == 0);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(unsetenv("AMS_MEL_TEST_ENQUEUE_ALLOCATION") == 0);
+    /* EXACTLY ONE bridge-controlled release for the failed enqueue, and it
+       succeeded, so no uncertain-ownership state was created. Under the old
+       order the releaser was already disarmed and this would be +0. */
+    CHECK(mock_pool_releases() == releases_before + 1UL);
+    CHECK(mock_failed_release_recorded() == 0);
+    CHECK(mock_failed_release_attempts() == 0UL);
+    /* Nothing was enqueued. */
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 5, &lease, NULL, 0, NULL) !=
+          AMS_MEL_OK);
+    CHECK(lease == NULL);
+    /* NO RETENTION SLOT WAS LEAKED: a successful release returns the slot, so
+       the pool keeps serving frames. buffer_count is 2, so 20 further frames
+       completing proves recycling rather than a leak. */
+    for (i = 0; i < 20U; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &lease, NULL, 0,
+                                                 NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(lease == NULL);
+    }
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters.frames_received >= 21U);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+
+    /* --- Arm B: enqueue throws AND the release then FAILS. ------------ */
+    {
+        unsigned long channels_before, controls_before;
+        ams_mel_ir_stream_config_v1 failing = configuration();
+        failing.buffer_count = 2;
+        failing.queue_capacity = 4;
+        mock_failed_release_reset();
+        CHECK(open_stream("enqueue-alloc-fail-release-fail", &session, &stream,
+                          &failing) == EXIT_SUCCESS);
+        channels_before = mock_image_channels_destroyed();
+        controls_before = mock_controls_destroyed();
+        CHECK(channels_before != ULONG_MAX && controls_before != ULONG_MAX);
+        CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(setenv("AMS_MEL_TEST_ENQUEUE_ALLOCATION", "fail", 1) == 0);
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(unsetenv("AMS_MEL_TEST_ENQUEUE_ALLOCATION") == 0);
+        /* The still-armed Releaser performed EXACTLY ONE release, it failed,
+           and the uncertain-ownership path ran: the wrapper is owned by its
+           retention slot, never destroyed, never retried. */
+        CHECK(mock_failed_release_recorded() == 1);
+        CHECK(mock_failed_release_attempts() == 1UL);
+        CHECK(mock_failed_buffer_alive() == 1);
+        CHECK(mock_failed_buffer_destroyed() == 0UL);
+        CHECK(mock_failed_buffer_storage_intact() == 1);
+        /* Uncertain ownership permanently blocks teardown, truthfully. */
+        CHECK(ams_mel_ir_stream_stop(stream, NULL, 0, NULL) ==
+              AMS_MEL_PROVIDER_FAILED);
+        CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) ==
+              AMS_MEL_PROVIDER_FAILED);
+        CHECK(stream == NULL);
+        CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(mock_failed_release_attempts() == 1UL);
+        CHECK(mock_failed_buffer_alive() == 1);
+        CHECK(mock_failed_buffer_destroyed() == 0UL);
+        CHECK(mock_image_channels_destroyed() == channels_before);
+        CHECK(mock_controls_destroyed() == controls_before);
+        mock_failed_release_reset();
+    }
+    return EXIT_SUCCESS;
+}
+
+/* PR #42 THIRD-review corrective regression 3: a NULL callback Buffer must not
+   consume a retention slot.
+   ====================================================================
+
+   The callback used to acquire a retention slot before testing !buffer. The
+   Releaser destructor returns immediately when value is null, so that slot was
+   never recycled: every null-Buffer callback permanently consumed one of the
+   stream-sized slots.
+
+   The corrected code rejects a null Buffer BEFORE acquiring a slot -- the
+   simpler design the task prefers, never acquiring emergency ownership for an
+   object that does not exist.
+
+   The scenario emits substantially more null-buffer callbacks than
+   buffer_count (40 vs 2), then valid frames. Under the defect the pool would
+   be long exhausted and a later valid frame would hit the no-slot branch: the
+   bridge would refuse to release it, drop it, and poison the stream. Here the
+   later valid frames must instead acquire slots and complete normally. */
+static int test_null_buffer_no_retention_slot(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    ams_mel_ir_stream_counters_v1 counters;
+    unsigned long releases_before, destructor_before;
+    unsigned i;
+    /* Far fewer slots than null callbacks, which is the whole point. */
+    config.buffer_count = 2;
+    config.queue_capacity = 4;
+    mock_failed_release_reset();
+    CHECK(open_stream("null-buffer-callbacks", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    releases_before = mock_pool_releases();
+    destructor_before = mock_destructor_driven_releases();
+    CHECK(releases_before != ULONG_MAX && destructor_before != ULONG_MAX);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+
+    /* 40 null-Buffer callbacks, i.e. 20x buffer_count. */
+    for (i = 0; i < 40U; ++i)
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters.frames_received >= 40U);
+    /* Each was rejected as malformed/unsupported... */
+    CHECK(counters.malformed_or_unsupported_frames >= 40U);
+    /* ...with no release attempted, since there is no Buffer to release, and
+       no uncertain ownership created. */
+    CHECK(mock_pool_releases() == releases_before);
+    CHECK(mock_failed_release_recorded() == 0);
+    CHECK(mock_failed_release_attempts() == 0UL);
+    CHECK(mock_destructor_driven_releases() == destructor_before);
+
+    /* LATER VALID FRAMES STILL ACQUIRE SLOTS AND COMPLETE NORMALLY. */
+    for (i = 0; i < 5U; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 1000, &lease, NULL, 0,
+                                                 NULL) == AMS_MEL_OK);
+        CHECK(lease != NULL);
+        CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        CHECK(lease == NULL);
+    }
+    /* Released normally, so slots were genuinely available and recycled. */
+    CHECK(mock_pool_releases() >= releases_before + 5UL);
+    CHECK(mock_failed_release_recorded() == 0);
+    /* The stream stays healthy: no uncertain ownership was ever created, so
+       ordinary Stop/Close still succeed and teardown still runs. */
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
 /* Bounded by CONFIGURED provider-buffer capacity, not by a global constant.
    =======================================================================
 
@@ -1691,6 +2093,11 @@ int main(void)
     CHECK(test_retention_slot_exhaustion() == EXIT_SUCCESS);
     CHECK(test_retention_capacity_exceeds_legacy_reserve() == EXIT_SUCCESS);
     CHECK(test_stop_status_healthy_versus_poisoned() == EXIT_SUCCESS);
+    /* PR #42 THIRD corrective. These run BEFORE the negative controls below,
+       which deliberately violate the cumulative invariants. */
+    CHECK(test_null_buffer_no_retention_slot() == EXIT_SUCCESS);
+    CHECK(test_enqueue_allocation_failure() == EXIT_SUCCESS);
+    CHECK(test_teardown_race_late_uncertain() == EXIT_SUCCESS);
     /* Repeat, so the process-lifetime never-destroyed and exactly-once
        invariants hold against accumulated retained state. */
     for (unsigned i = 0; i < 3; ++i) {
@@ -1706,6 +2113,10 @@ int main(void)
        violates the invariants, so it must not run before the positive
        regressions that assert them cumulatively. */
     CHECK(test_callback_release_failure_negative_control() == EXIT_SUCCESS);
+    /* PR #42 THIRD corrective NEGATIVE MUTATION: removing the post-drain
+       teardown recheck must make the host-storage assertion fail. Also placed
+       after the positive regressions for the same reason. */
+    CHECK(test_teardown_race_negative_mutation() == EXIT_SUCCESS);
     for (unsigned i = 0; i < 5; ++i) {
         CHECK(test_release_failure_with_park_allocation_failure(
                   "release-fail-park-alloc") == EXIT_SUCCESS);

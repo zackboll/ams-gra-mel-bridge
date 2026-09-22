@@ -325,6 +325,110 @@ confirmed `requests == 0 && retained_frames == 0`. A buffer whose release
 failed is never counted down, so it permanently blocks that point and its
 bytes are never freed or resized.
 
+### Post-callback-drain recheck (PR #42 third review)
+
+The initial gate alone is **not** sufficient, and the original implementation
+relied on it alone. Cleanup checks `retained_frames`/`uncertain_release`, then
+destroys and detaches the provider channel, waits for `callbacks_in_flight` to
+reach zero, and only then clears the registered ranges, Buffers, and storage. A
+callback that was **already in flight** when the gate was passed can fail a
+`Buffer::release()` and publish its uncertainty after that gate but before the
+drain finishes, so cleanup could free registered host memory although
+`uncertain_release == true`, the failed wrapper was retained, and provider
+ownership hand-back was uncertain.
+
+`image_stream_cleanup` therefore re-evaluates the retained-buffer/uncertain
+state **after** the drain reaches zero and **before** clearing any registered
+range, registered Buffer, or backing storage.
+
+Visibility is established rather than assumed. `retain_uncertain_buffer()`
+publishes `uncertain_release` with release ordering, and `retained_frames`
+under the mutex, strictly **before** the callback's `callbacks_in_flight`
+decrement, which is an `acq_rel` RMW. The drain loop observes that count reach
+zero with acquire ordering, so everything the callback published happens-before
+the recheck; the mutex additionally orders the `retained_frames` read.
+
+When late uncertainty is observed cleanup does not free registered host
+storage, does not destroy retained Buffer ownership, retains the provider
+library and Session graph via `image_stream_retain_failed()`, reports
+`ImageCleanupOutcome::Failed` (so Stop/Close report `AMS_MEL_PROVIDER_FAILED`),
+and never retries the uncertain release.
+
+**Exact guarantee.** By this point the provider channel has already crossed its
+documented quiescence/destruction boundary -- `disable()`, `detachChannel()`
+and channel destruction all ran earlier in the same call -- so this path
+deliberately does **not** claim the channel remained attached. What it
+guarantees is what an uncertain hand-back actually requires: the registered
+host storage, the registered `Buffer` objects, `CallbackState`,
+`ImageStreamState`, the `Session` graph, and therefore the provider library
+survive for process lifetime.
+
+`test_teardown_race_late_uncertain` proves the interleaving deterministically
+with a barrier/failpoint and never a sleep, and
+`test_teardown_race_negative_mutation` proves that removing the recheck makes
+the host-storage assertion fail.
+
+## Callback handoff exception safety (PR #42 third review)
+
+`std::deque::push_back` may allocate and therefore may throw. The original
+accepted-frame code disarmed the callback `Releaser` **before** the insertion,
+so a throwing enqueue bypassed the explicit release/uncertain-retention policy
+entirely and silently dropped an owned provider buffer.
+
+The handoff order is now:
+
+```text
+1. prepare frame.buffer and frame.retention
+2. Releaser stays ARMED
+3. queue.push_back(...)          <- the only throwing step
+4. only now disarm the Releaser
+5. ++retained_frames; notify the consumer
+```
+
+`frame.retention` is a copy of `release.retention` until step 4, so a throw
+leaves exactly one owner of the slot -- the releaser -- and the discarded frame
+is destroyed without ever having released anything. All five steps run under
+`CallbackState::mutex`, so the queued frame cannot be consumed between
+insertion and disarming and the two owners can never both release.
+
+`test_enqueue_allocation_failure` drives
+`AMS_MEL_TEST_ENQUEUE_ALLOCATION=fail` at exactly that boundary and proves a
+failed enqueue performs exactly one bridge-controlled release, that success
+returns the retention slot, that a failed release there follows the
+uncertain-ownership path, that no wrapper is destroyed after a failed release,
+and that no retention slot is leaked.
+
+## Null callback Buffer (PR #42 third review)
+
+The callback used to acquire a retention slot before testing `!buffer`. The
+`Releaser` destructor returns immediately when `value` is null, so such a slot
+was never recycled and every null-Buffer callback permanently consumed one of
+the stream-sized slots.
+
+A null `Buffer` is now rejected **before** any slot is acquired -- the simpler
+design, which never acquires emergency ownership for an object that does not
+exist. There is nothing to own and no `release()` is possible or owed; the arm
+is a plain malformed/unsupported rejection.
+
+`test_null_buffer_no_retention_slot` emits 40 null-Buffer callbacks against a
+`buffer_count` of 2 and then proves later valid frames still acquire slots and
+complete normally.
+
+## Start during deferred teardown (PR #42 third review)
+
+Because Stop is logical-now/physical-later, a healthy stream with a queued
+frame or a live lease stays in `Lifecycle::Stopping` after a successful Stop.
+`ams_mel_ir_stream_start` reported `AMS_MEL_PROVIDER_FAILED` for that state,
+describing a healthy deferral as a provider failure -- and doing so
+nondeterministically, since whether a Start after Stop observed `Stopping` or
+`Stopped` depended purely on whether the provider's producer happened to leave
+a frame queued.
+
+Start now returns `AMS_MEL_STREAM_STOPPED` for `Stopping`, which is both
+truthful and consistent with what `Receive` already reports for that state. A
+genuinely poisoned stream is `Failed`, not `Stopping`, and still reports
+`AMS_MEL_PROVIDER_FAILED`.
+
 ## Stop, Close, and Session close
 
 ```text
