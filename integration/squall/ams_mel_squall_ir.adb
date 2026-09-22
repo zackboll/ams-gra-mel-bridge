@@ -687,11 +687,22 @@ begin
                Ada.Text_IO.Put_Line ("full FrameHeader: 320x200 Mono8 sparse metadata");
             end;
 
-            --  Task 030A: the same real 320x200 Mono8 frames through the
-            --  high-rate borrowed path. The borrowed view must report the
+            --  Tasks 030A and 030B: the same real 320x200 Mono8 frames through
+            --  the high-rate borrowed path. The borrowed view must report the
             --  expected geometry and an identical checksum to an explicit
             --  owned copy of the same lease, proving the borrow observed the
             --  real payload rather than an empty or stale view.
+            --
+            --  Since Task 030B those borrowed bytes are pinned Squall's own
+            --  registered MEL host buffer, reached through
+            --  RequeueBuffer::getImageAddress, and the explicit Close performs
+            --  the real RequeueBuffer::release that returns the buffer to
+            --  Squall's available_buffers pool. Exact provider address
+            --  observation is not available through the safe public Ada API
+            --  here, so the normative pointer-identity evidence is the
+            --  deterministic mock-provider proof in the native and Ada test
+            --  suites; this integration supplies behavioral and lifetime
+            --  evidence against the real provider.
             declare
                Lease : AMS.MEL.IR.Image.Frame_Lease :=
                  AMS.MEL.IR.Image.Acquire_Frame (Stream, Timeout_MS);
@@ -868,7 +879,59 @@ begin
          end;
          Health_Metadata.Close (Health_Stream);
       end;
-      AMS.MEL.IR.Close (Stream);
+      --  Task 030B lifetime evidence against the real provider. A lease is
+      --  acquired, the public Image_Stream is then closed while that lease is
+      --  still live, and the borrowed bytes must remain valid and unchanged.
+      --
+      --  With Task 030B those bytes are Squall's own registered MEL host
+      --  buffer, so this can only hold because physical provider teardown is
+      --  DEFERRED until the lease releases the buffer; it is not achieved by
+      --  copying the payload. The explicit Close then performs the real
+      --  RequeueBuffer::release and must succeed, after which final provider
+      --  teardown is permitted to complete.
+      declare
+         Deferred : Interfaces.Unsigned_64 := 0;
+         Bytes    : Natural := 0;
+         procedure Observe_Deferred (Pixels : AMS.MEL.IR.Pixel_Array) is
+         begin
+            Bytes := Pixels'Length;
+            Deferred := Checksum (Pixels);
+         end Observe_Deferred;
+      begin
+         declare
+            Held : AMS.MEL.IR.Image.Frame_Lease :=
+              AMS.MEL.IR.Image.Acquire_Frame (Stream, Timeout_MS);
+         begin
+            AMS.MEL.IR.Image.With_Pixels (Held, Observe_Deferred'Access);
+            if Bytes /= 64_000 then
+               raise Program_Error with "Squall deferred-teardown lease payload failed";
+            end if;
+            --  Close the public stream owner while the lease is still live.
+            AMS.MEL.IR.Close (Stream);
+            declare
+               After : Interfaces.Unsigned_64 := 0;
+               procedure Observe_After (Pixels : AMS.MEL.IR.Pixel_Array) is
+               begin
+                  After := Checksum (Pixels);
+               end Observe_After;
+            begin
+               AMS.MEL.IR.Image.With_Pixels (Held, Observe_After'Access);
+               if After /= Deferred then
+                  raise Program_Error
+                    with "Squall lease payload changed after public stream Close";
+               end if;
+            end;
+            --  Performs the real RequeueBuffer::release. A provider refusal
+            --  would raise Provider_Error rather than silently claim success.
+            AMS.MEL.IR.Image.Close (Held);
+            if AMS.MEL.IR.Image.Is_Open (Held) then
+               raise Program_Error with "Squall lease close did not release";
+            end if;
+         end;
+         Ada.Text_IO.Put_Line
+           ("zero-copy lease lifetime: valid across public stream Close, released"
+            & " by lease Close (provider teardown deferred, payload not copied)");
+      end;
       Ada.Text_IO.Put_Line ("PASS: real Squall IR Ada integration");
    end;
 exception

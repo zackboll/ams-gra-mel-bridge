@@ -954,3 +954,63 @@ ABI probes assert the exact v1 and v2 member sets, so an accidental append to
 either fails those compatibility tests; this was verified by a temporary
 mutation that appended the PreProc payload to v2 and was observed to fail all
 three, then reverted.
+
+## Task 030B retained borrowed storage
+
+Task 030B changed no ABI. ABI stays `0.1`, all 90 exports are unchanged,
+`exports.map` is unchanged, no public type changed, and no frozen fixed-layout
+record was grown. The raw Rust and private Python declarations are unchanged.
+This section records a policy point rather than an ABI delta, because it is
+the first place a published borrowed span points at storage the adapter does
+not own outright.
+
+`ams_mel_ir_stream_receive_snapshot`, `ams_mel_ir_frame_snapshot_view`, and
+`ams_mel_ir_frame_snapshot_close` keep their signatures and their
+opaque-owner-plus-borrowed-span shape. Only what `view.pixels` points at
+changed:
+
+```text
+before: span -> snapshot-owned copied std::vector
+after:  span -> retained provider irmel::Buffer memory
+```
+
+The existing policy requirement is unaffected: no borrowed span is published
+without an owning object whose lifetime is explicit and whose pointer validity
+is documented. The opaque snapshot is still that owner. It is precisely
+because the owner was already opaque, and the span already documented as valid
+until snapshot close, that this became an implementation change rather than an
+ABI change. This is the intended shape for future bulk-data interfaces: publish
+an opaque owner, not a raw pointer whose backing is unnamed.
+
+What did change is what the owner must retain, and that is the rule for future
+borrowed-storage interfaces:
+
+* An owner that publishes a span over provider or other external storage must
+  retain everything required to keep that span valid: the storage itself, the
+  provider object that owns it, the provider library containing any virtual
+  hand-back implementation, and enough of the provider graph that hand-back
+  remains legal.
+* A live borrowed-storage owner therefore **defers** physical provider
+  teardown. It must not extend it by copying bytes behind the caller's back.
+  The externally observable guarantee "a snapshot remains valid after public
+  stream and Session close" is preserved, but it is now achieved by deferring
+  the actual unload. Documentation must say which mechanism is in use, because
+  the two are not equivalent for a caller reasoning about provider lifetime.
+* Hand-back of external storage must use the published release operation
+  exactly once and must not rely on a destructor. Release must occur outside
+  any lifecycle mutex the provider could need.
+* A failed or uncertain hand-back must retain the owner and its storage rather
+  than free them, must not be retried unless the published contract guarantees
+  a safe retry, and must be reported truthfully by explicit close operations.
+  `ams_mel_ir_frame_snapshot_close` returns `AMS_MEL_PROVIDER_FAILED` in that
+  case, which is a behavior change to a pre-existing export's possible status
+  values, not a signature or layout change.
+* Retained external storage implies real backpressure. That must be documented
+  rather than hidden, and a provider-side "no buffer available" condition must
+  not be reported through a bridge counter that means something else; no new
+  ABI field was added for it.
+
+The host-memory-only constraint for the current profile is unchanged: device
+addresses must not be dereferenced as Ada arrays or Rust slices, and a future
+non-host memory kind must be expressed through the opaque owner rather than by
+publishing a span the language cannot legally address.

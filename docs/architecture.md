@@ -831,13 +831,18 @@ dynamic extent of a borrow operation and must not be retained.
 
 Task 030A implements this for IR Images as `AMS.MEL.IR.Image.Frame_Lease`
 (`Acquire_Frame` / `With_Pixels` / `Copy_Pixels`), documented in
-`docs/task-030a-zero-copy-ada-frame-lease.md`. The public names are
-IR-specific; the ownership pattern is not.
+`docs/task-030a-zero-copy-ada-frame-lease.md`. Task 030B then made the native
+backing owner retain the provider's `irmel::Buffer` itself instead of a copy
+of its bytes, documented in `docs/task-030b-provider-buffer-zero-copy.md`.
+The public Ada API is unchanged between the two: only the meaning of the owner
+changed, which was the point of establishing the pattern first. The public
+names are IR-specific; the ownership pattern is not.
 
 ### Intended reuse
 
 ```text
-IR Images            implemented (Task 030A, native snapshot -> Ada view)
+IR Images            implemented (Tasks 030A and 030B,
+                     provider Buffer -> native lease -> Ada view)
 RF Receive products  I/Q sample buffers, real sample buffers, VITA packet
                      buffers, PDW buffers
 RF waveform          waveform source buffers for streaming transmit
@@ -870,7 +875,7 @@ RDMA, GPU, CUDA, or FPGA support is implemented in Task 030A.
 ### Current IR copy levels
 
 ```text
-After Task 030A                       Future Task 030B
+After Task 030A                       After Task 030B
 MEL provider Buffer                   MEL provider Buffer
         |                                     |
         | COPY remains                        | retained owner
@@ -882,7 +887,75 @@ native snapshot storage               native lease
 Ada borrowed view                     Ada borrowed view
 ```
 
-Task 030A is not end-to-end zero-copy. The native frame callback still copies
-the provider buffer into snapshot-owned storage before `irmel::Buffer::release`
-is called; retaining the upstream buffer instead is the separate Task 030B
-investigation.
+Task 030B removed the remaining bridge copy. The frame callback now retains
+the callback's `std::shared_ptr<irmel::Buffer>` in the queued frame and
+publishes a borrowed span over `Buffer::getImageAddress()`, so the bridge
+performs zero bulk payload copies from the MEL callback buffer into Ada and
+
+```text
+Buffer::getImageAddress() == snapshot pixels.data == Ada view address
+```
+
+holds for a non-empty frame. That claim is scoped to the bridge: Squall still
+copies received UDP bytes into the registered MEL host buffer, and nothing is
+claimed about NIC DMA, kernel socket buffers, or sensor transport. See
+`docs/task-030b-provider-buffer-zero-copy.md`.
+
+### Lifetime consequences of retained external storage
+
+Borrowing external storage rather than copying it changes the lifetime
+contract, and this is the part intended to carry over to RF.
+
+A live lease retains whatever is required to keep the borrow valid: the host
+storage, the provider object that owns it, the provider library containing the
+virtual release implementation, and enough of the channel graph that release
+is still legal. Consequently:
+
+```text
+logical Stop / Close / Session close   completes immediately
+physical provider teardown             deferred until
+                                         requests == 0
+                                         AND retained buffers == 0
+```
+
+This reuses the existing Image deferred-teardown state machine rather than a
+second one, and extends the documented single-lock invariant: every racing
+read and write of the request count, the retained-buffer count, cleanup
+ownership and result, public owner state, channel owners, and logical
+lifecycle happens under `CallbackState::mutex`, while provider calls never
+do. Release follows `lock to claim, unlock to release, lock to publish`.
+
+Two further properties generalize beyond IR. Retained external storage means
+real backpressure: with `Buffer_Count = N` at most N provider buffers can be
+checked out at once unless the provider has another independent pool, and a
+slow consumer causes provider-level drops rather than a silent hidden copy.
+And a failed or uncertain hand-back is a first-class safety case: the owner
+and its storage are retained permanently rather than freed, the outstanding
+count is never decremented, release is never retried, and explicit operations
+report the failure while finalization stays non-raising.
+
+### Reusing the model for RF, not the type
+
+```text
+external / native backing storage
+        |
+explicit lifetime owner
+        |
+opaque bridge lease
+        |
+language-safe borrowed view when CPU-addressable
+```
+
+What transfers to the RF MEL data plane is the **ownership model**, not the IR
+array-view type. The IR view is CPU-host-memory-specific: it binds an Ada
+`Pixel_Array` to a host address. RF MEL permits receive endpoints over
+application memory regions that may be ordinary host memory, RDMA-registered
+memory, GPU memory, or FPGA/device memory, so a future RF region must not be
+assumed representable as an Ada `Pixel_Array`. RF may instead require typed
+spans, byte spans, packet views, device-memory descriptors, or explicit
+non-CPU-addressable handles, and the final "language-safe borrowed view" level
+of the chain simply does not exist for a non-CPU-addressable region.
+
+The opaque owner level is what makes that expressible at all. RF MEL, RF
+header vendoring, RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain
+unimplemented.

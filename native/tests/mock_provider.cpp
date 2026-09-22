@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <future>
@@ -24,6 +25,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <deque>
 #include <thread>
 #include <vector>
 
@@ -32,6 +34,88 @@ using namespace ams::iface;
 using irmel::Return;
 std::atomic<std::uint64_t> callback_buffers{};
 std::atomic<std::uint64_t> buffer_releases{};
+/* Buffers handed to a listener for which no release() has been attempted yet.
+ * Incremented at checkout and decremented on the single release attempt,
+ * whether that attempt succeeds, fails, or throws. A nonzero residual value at
+ * Control destruction means the bridge is deliberately still holding those
+ * buffers, which the corrected no-retention-slot path does on purpose. */
+std::atomic<std::uint64_t> buffers_outstanding{};
+
+/* Task 030B corrective instrumentation (PR #42 review).
+ *
+ * These observe exactly one thing: what happens to the callback Buffer wrapper
+ * after a release() that the provider deliberately failed. They are test-only
+ * provider state and are not part of the MEL provider interface or the public
+ * C ABI.
+ *
+ * failed_release_buffer is WEAK on purpose. If the bridge dropped the last
+ * reference to the callback wrapper after an uncertain release, this weak_ptr
+ * would expire and the regression would fail; holding it strongly here would
+ * mask exactly the defect being tested. */
+std::mutex failed_release_mutex;
+std::weak_ptr<irmel::Buffer> failed_release_buffer;
+std::atomic<std::uint64_t> failed_release_attempts{};
+std::atomic<std::uint64_t> failed_buffers_destroyed{};
+std::atomic<std::uint64_t> image_channels_destroyed{};
+std::atomic<std::uint64_t> controls_destroyed{};
+/* Registered host byte range of the buffer whose release failed, plus a copy
+ * of its contents at that moment, so the test can prove the provider's
+ * registered host storage was neither freed nor reused. */
+const unsigned char *failed_release_address{};
+std::size_t failed_release_size{};
+unsigned char failed_release_bytes[12]{};
+bool failed_release_recorded{};
+const irmel::Buffer *failed_release_raw{};
+/* Every wrapper that ever had a failed release, for the whole process. This
+ * is deliberately never cleared by the per-test reset: "the failed wrapper is
+ * never destroyed" is a process-lifetime invariant, so a destructor running
+ * long after its own regression finished must still be detected. */
+std::set<const irmel::Buffer *> all_failed_release_raw;
+
+/* Task 030B corrective (PR #42 second review) instrumentation.
+ *
+ * last_callback_wrapper is WEAK and is set for every per-callback wrapper the
+ * mock hands to the listener, whether or not release() is ever attempted. It
+ * lets the retention-slot-exhaustion regression prove the wrapper survives on
+ * a path where release() is deliberately never called, so the failed-release
+ * bookkeeping above never fires.
+ *
+ * destructor_driven_releases counts RequeueBuffer destructors that had to
+ * perform the requeue themselves because release() had not completed. For a
+ * wrapper whose release already FAILED this is exactly the forbidden second
+ * release; the negative control asserts it becomes nonzero only when the
+ * bridge is deliberately told to drop the wrapper. */
+std::weak_ptr<irmel::Buffer> last_callback_wrapper;
+std::atomic<std::uint64_t> destructor_driven_releases{};
+
+/* Task 030B corrective (PR #42 third review): the REGISTERED buffer underneath
+ * the failed per-callback wrapper, held weakly.
+ *
+ * The registered MockBuffer objects live in ImageStreamState::buffers and their
+ * host bytes live in ImageStreamState::storage; physical teardown clears both
+ * in the same step. Observing this weak_ptr therefore tells a regression
+ * directly whether cleanup freed the registered host storage an uncertain
+ * provider hand-back forbids freeing. */
+std::weak_ptr<irmel::Buffer> failed_release_registered;
+
+/* Every registered MockBuffer destruction, for the whole process. Physical
+ * teardown clearing ImageStreamState::buffers/storage is exactly what makes
+ * this rise, so the post-drain teardown-recheck regression and its negative
+ * mutation can distinguish "host storage kept" from "host storage freed". */
+std::atomic<std::uint64_t> registered_buffers_destroyed{};
+
+/* Destructions of a failed wrapper that the NEGATIVE CONTROL deliberately
+ * provoked. They are counted apart from failed_buffers_destroyed so the
+ * deliberate defect cannot mask a genuine one in any other regression. */
+std::atomic<std::uint64_t> expected_failed_buffers_destroyed{};
+
+/* True while the negative control has armed the bridge to drop a failed
+ * wrapper, i.e. exactly when such a destruction is the expected outcome. */
+bool expect_failed_buffer_drop() noexcept
+{
+    const char *value = std::getenv("AMS_MEL_TEST_DROP_FAILED_BUFFER");
+    return value != nullptr && std::strcmp(value, "drop") == 0;
+}
 
 std::string long_rejection_description()
 {
@@ -245,6 +329,25 @@ struct CallbackBarrier {
     bool capability_called{false};
     bool callback_returned{false};
 };
+
+/* Task 030B corrective (PR #42 third review). 1 while a provider image
+ * callback is blocked INSIDE the bridge's listener, i.e. while
+ * CallbackState::callbacks_in_flight is nonzero for that callback. Lets the
+ * teardown-race regression wait for a real in-flight callback instead of
+ * sleeping. Test-only. */
+std::atomic<int> callback_blocked_inside{0};
+
+/* Set by the teardown-race regression to let that blocked callback proceed.
+ * The callback then returns a null image address, so the bridge rejects the
+ * frame and performs its callback-side release, which the wrapper fails. */
+std::atomic<bool> callback_release_hold{true};
+
+/* Number of leading null-Buffer callbacks the "null-buffer-callbacks" scenario
+ * emits before its first valid frame. Deliberately far more than any
+ * buffer_count the regression configures, so a bridge that consumed one
+ * never-recycled retention slot per null callback would have exhausted the
+ * pool long before the valid frame arrives. */
+constexpr unsigned null_buffer_callbacks = 40U;
 std::shared_ptr<CallbackBarrier> callback_barrier = std::make_shared<CallbackBarrier>();
 
 void record(const char *event)
@@ -290,15 +393,79 @@ public:
     ~MockManager() override { record("manager_destroyed"); }
 };
 
+/* Deterministic provider-side buffer pool, modelled directly on pinned Squall
+ * b1015728f904c799fa0c07489fce48e78f67845f
+ * interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc:
+ *
+ *   - the callback removes a registered buffer from available_buffers before
+ *     generating the image callback, and drops the frame when the pool is
+ *     empty;
+ *   - a successful release() pushes the registered buffer back onto
+ *     available_buffers, making it reusable;
+ *   - the pool is protected by a mutex;
+ *   - release is one-shot per checkout;
+ *   - channel destruction sets accepting_releases = false and release fails.
+ *
+ * This is what makes Task 030B backpressure observable without sleeping: the
+ * test can assert exactly how many buffers are back in the pool and can gate
+ * each production cycle on an explicit condition variable. */
+struct BufferPool {
+    std::mutex mutex;
+    std::condition_variable ready;
+    std::deque<std::shared_ptr<irmel::Buffer>> available;
+    bool accepting_releases{true};
+    /* Test-visible history. */
+    unsigned produced{};   /* frames actually handed to the listener */
+    unsigned starved{};    /* production cycles that found an empty pool */
+    unsigned requested{};  /* production cycles the test asked for */
+    unsigned completed{};  /* production cycles finished */
+    /* Corrective (PR #42 second review): per-pool release accounting.
+     *
+     * The process-global buffer_releases/callback_buffers counters are no
+     * longer safe to difference across tests. Now that an uncertain release
+     * permanently blocks physical teardown, an earlier poisoned stream's
+     * provider channel is deliberately never destroyed, so its producer
+     * thread is never joined and can still touch those globals while a later
+     * test is capturing its baseline. These per-pool counters belong to
+     * exactly one channel, so a test observes only its own stream. */
+    std::atomic<unsigned long> releases{0U};
+    std::atomic<unsigned long> callbacks{0U};
+};
+
+/* The most recently created pooled channel, so the deterministic backpressure
+ * test can observe and drive the provider directly. Test-only. */
+std::mutex active_pool_mutex;
+/* Weak, so observing the pool from a test never extends provider-side buffer
+ * or channel lifetime and cannot mask a genuine teardown-ordering defect. */
+std::weak_ptr<BufferPool> active_pool;
+
 class MockBuffer final : public irmel::Buffer {
 public:
     MockBuffer(std::string scenario, std::shared_ptr<CallbackBarrier> barrier)
         : scenario_{std::move(scenario)}, barrier_{std::move(barrier)} {}
     ~MockBuffer() override
     {
-        if (outstanding_) std::abort();
+        /* A registered buffer left checked out by a failed release is expected
+         * and must never be destroyed; the abort below is the ordinary
+         * still-outstanding check for the healthy scenarios. */
+        if (outstanding_ && !uncertain_) std::abort();
+        {
+            std::lock_guard lock{failed_release_mutex};
+            if (all_failed_release_raw.count(this) != 0U) {
+                /* Same split as the wrapper destructor above. */
+                if (expect_failed_buffer_drop())
+                    ++expected_failed_buffers_destroyed;
+                else
+                    ++failed_buffers_destroyed;
+                record("failed_buffer_destroyed");
+            }
+        }
+        ++registered_buffers_destroyed;
         record("buffer_destroyed");
     }
+    /* Marks this registered buffer as left checked out by an uncertain
+     * release performed through its per-callback RequeueBuffer wrapper. */
+    void mark_uncertain() noexcept { uncertain_ = true; }
     Return init(void *address, std::size_t size, std::int64_t context) override
     {
         record("buffer_initialized");
@@ -309,6 +476,28 @@ public:
     void *getImageAddress() const override
     {
         if (scenario_ == "null-image") return nullptr;
+        /* Task 030B corrective (PR #42 third review) teardown-race scenario.
+         *
+         * This runs on the provider callback thread while the bridge's
+         * CallbackState::callbacks_in_flight is already incremented, i.e. the
+         * callback is genuinely IN FLIGHT. Publishing callback_blocked_inside
+         * and then waiting lets the regression establish, with no sleeping:
+         *
+         *   cleanup has already passed its initial retained_frames /
+         *   uncertain_release gate   AND   this callback is still in flight.
+         *
+         * Returning nullptr afterwards makes the bridge reject the frame and
+         * perform its callback-side release, which the per-callback
+         * RequeueBuffer wrapper then fails -- so the uncertainty is published
+         * strictly AFTER cleanup passed its gate, which is exactly the
+         * interleaving the corrective task requires to be safe. */
+        if (scenario_ == "teardown-race-late-uncertain") {
+            callback_blocked_inside.store(1);
+            while (callback_release_hold.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            callback_blocked_inside.store(0);
+            return nullptr;
+        }
         if (scenario_ == "nonquiescing-disable" ||
             scenario_ == "release-fail-blocked") {
             std::unique_lock lock{barrier_->mutex};
@@ -329,17 +518,47 @@ public:
     }
     std::int64_t getSize() const override { return static_cast<std::int64_t>(size_); }
     std::int64_t getContext() const override { return context_; }
+    /* Squall-shaped release: one-shot per checkout, and on success the buffer
+     * goes back into the channel's available pool so it can be reused. A
+     * failed release deliberately does NOT requeue, exactly as pinned Squall's
+     * RequeueBuffer::release() does not requeue when it returns Fail. */
     Return release() override
     {
         if (!outstanding_.exchange(false)) std::abort();
         ++buffer_releases;
+        --buffers_outstanding;
+        if (auto pool = pool_.lock()) ++pool->releases;
         record("buffer_released");
+        /* The corrective release-failure scenarios fail inside the
+         * per-callback RequeueBuffer wrapper instead, because that wrapper,
+         * not this registered buffer, is the object whose survival the
+         * corrective task is about. */
         if (scenario_ == "release-fail" || scenario_ == "release-fail-blocked")
             return Return::Fail;
         if (scenario_ == "release-throw")
             throw std::runtime_error("mock release exception");
+        if (auto pool = pool_.lock()) {
+            std::lock_guard lock{pool->mutex};
+            if (!pool->accepting_releases) {
+                record("release_after_channel_destroyed");
+                return Return::Fail;
+            }
+            pool->available.push_back(self_.lock());
+            record("buffer_requeued");
+            pool->ready.notify_all();
+        }
         return Return::Success;
     }
+    /* Records a release against this buffer's owning pool for a release that
+     * was performed through the per-callback wrapper and therefore never
+     * reached MockBuffer::release(). */
+    void note_pool_release() noexcept
+    {
+        if (auto pool = pool_.lock()) ++pool->releases;
+    }
+    void attach_pool(const std::shared_ptr<BufferPool>& pool,
+                     const std::shared_ptr<irmel::Buffer>& self)
+    { pool_ = pool; self_ = self; }
     Return getFlags(std::vector<irmel::BufferFlag>& out) const override
     { out = flags_; return Return::Success; }
     void addFlag(irmel::BufferFlag flag) override { flags_.push_back(flag); }
@@ -358,6 +577,144 @@ private:
     std::int64_t context_{};
     std::vector<irmel::BufferFlag> flags_;
     std::atomic<bool> outstanding_{false};
+    std::atomic<bool> uncertain_{false};
+    /* Weak so the pool and the buffer cannot form an ownership cycle. */
+    std::weak_ptr<BufferPool> pool_;
+    std::weak_ptr<irmel::Buffer> self_;
+};
+
+/* Models pinned Squall b1015728f904c799fa0c07489fce48e78f67845f
+ * interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc RequeueBuffer.
+ *
+ * The critical structural property, and the reason PR #42's review finding is
+ * a real defect rather than a theoretical one, is that the object handed to
+ * ImageListener::onImage is a PER-CALLBACK wrapper whose only owner is that
+ * shared_ptr. The registered buffer underneath it outlives the callback; the
+ * wrapper does not. Its destructor requeues (i.e. releases) if release() has
+ * not already completed.
+ *
+ * Consequences this models faithfully:
+ *
+ *   - if the bridge drops the last reference to the wrapper after an
+ *     uncertain release, the destructor runs and release() happens a SECOND
+ *     time, violating the no-retry invariant;
+ *   - a weak_ptr to the wrapper therefore expires exactly when the bridge
+ *     loses it, which is what the corrective regressions observe.
+ *
+ * A second release is recorded rather than aborted, so the regression can
+ * report it as a clean assertion failure. */
+class RequeueBuffer final : public irmel::Buffer {
+public:
+    /* force_fail lets the producer decide per FRAME whether this particular
+     * checkout's release is uncertain, which the corrective (PR #42 second
+     * review) callback-rejection regressions need: they accept and lease one
+     * frame normally and must fail the release of a different, rejected
+     * frame. */
+    RequeueBuffer(std::shared_ptr<MockBuffer> underlying, std::string scenario,
+                  bool force_fail = false)
+        : underlying_{std::move(underlying)}, scenario_{std::move(scenario)},
+          force_fail_{force_fail} {}
+    ~RequeueBuffer() override
+    {
+        {
+            std::lock_guard lock{failed_release_mutex};
+            if (all_failed_release_raw.count(this) != 0U) {
+                /* The negative-control regression deliberately makes the
+                 * bridge drop a failed wrapper, so its destruction is EXPECTED
+                 * and is counted separately. Everything else is counted in
+                 * failed_buffers_destroyed, which is never reset because
+                 * "a failed wrapper is never destroyed" is a process-lifetime
+                 * invariant that must keep holding for every earlier
+                 * regression's buffer. */
+                if (expect_failed_buffer_drop())
+                    ++expected_failed_buffers_destroyed;
+                else
+                    ++failed_buffers_destroyed;
+                record("failed_buffer_destroyed");
+            }
+        }
+        record("requeue_wrapper_destroyed");
+        /* Squall-shaped: the wrapper requeues on destruction unless release()
+         * already completed. After a FAILED release this is precisely the
+         * unintended second release() the corrective task forbids. */
+        if (!released_) {
+            ++destructor_driven_releases;
+            record("destructor_driven_second_release");
+            (void)release();
+        }
+    }
+    Return init(void *address, std::size_t size, std::int64_t context) override
+    { return underlying_->init(address, size, context); }
+    void *getBufferAddress() const override { return underlying_->getBufferAddress(); }
+    void *getImageAddress() const override { return underlying_->getImageAddress(); }
+    std::int64_t getSize() const override { return underlying_->getSize(); }
+    std::int64_t getContext() const override { return underlying_->getContext(); }
+    Return release() override
+    {
+        /* Attribute the failed release to the wrapper, which is the object
+         * whose survival the corrective task is about. */
+        const bool fails = force_fail_ ||
+                           scenario_ == "release-fail-park-alloc" ||
+                           scenario_ == "release-fail-observed";
+        const bool throws = scenario_ == "release-throw-park-alloc";
+        /* Squall-shaped, and the reason the corrective task's no-retry rule
+         * has teeth: the wrapper records the requeue as DONE only when the
+         * hand-back actually succeeded. After a failed or throwing release it
+         * stays "not requeued", so if anything ever drops the last reference
+         * the destructor below performs a SECOND release() -- exactly the
+         * forbidden retry. Marking released_ unconditionally would have hidden
+         * that, making the guarantee untestable. */
+        released_ = !fails && !throws;
+        if (!fails && !throws) return underlying_->release();
+        /* The underlying registered buffer is deliberately NOT released: a
+         * failed hand-back leaves it checked out, exactly as pinned Squall's
+         * RequeueBuffer does not requeue when release returns Fail. */
+        underlying_->mark_uncertain();
+        note_failed();
+        if (throws) {
+            record("release_threw_uncertain_ownership");
+            throw std::runtime_error("mock release exception");
+        }
+        record("release_failed_uncertain_ownership");
+        return Return::Fail;
+    }
+    Return getFlags(std::vector<irmel::BufferFlag>& out) const override
+    { return underlying_->getFlags(out); }
+    void addFlag(irmel::BufferFlag flag) override { underlying_->addFlag(flag); }
+    void setFlags(const std::vector<irmel::BufferFlag>& flags) override
+    { underlying_->setFlags(flags); }
+    void bind_self(const std::shared_ptr<irmel::Buffer>& self) { self_ = self; }
+private:
+    void note_failed()
+    {
+        ++buffer_releases;
+        --buffers_outstanding;
+        underlying_->note_pool_release();
+        record("buffer_released");
+        ++failed_release_attempts;
+        std::lock_guard lock{failed_release_mutex};
+        all_failed_release_raw.insert(this);
+        if (failed_release_recorded) return;
+        failed_release_recorded = true;
+        failed_release_raw = this;
+        failed_release_buffer = self_;
+        /* Weak handle on the REGISTERED buffer under this wrapper, so a
+           regression can observe whether physical teardown freed the
+           registered host storage after an uncertain release. */
+        failed_release_registered = underlying_;
+        failed_release_address =
+            static_cast<const unsigned char *>(underlying_->getBufferAddress());
+        failed_release_size = underlying_->size();
+        if (failed_release_address != nullptr &&
+            failed_release_size >= sizeof failed_release_bytes)
+            std::memcpy(failed_release_bytes, failed_release_address,
+                        sizeof failed_release_bytes);
+    }
+    std::shared_ptr<MockBuffer> underlying_;
+    std::string scenario_;
+    bool force_fail_{};
+    bool released_{};
+    std::weak_ptr<irmel::Buffer> self_;
 };
 
 #define UNSUPPORTED_CALLBACK(Type) \
@@ -368,7 +725,11 @@ class MockImageChannel final : public irmel::ImageChannel {
 public:
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
         : scenario_{std::move(scenario)}, listener_{std::move(listener)},
-          barrier_{callback_barrier} {}
+          barrier_{callback_barrier}
+    {
+        std::lock_guard lock{active_pool_mutex};
+        active_pool = pool_;
+    }
     ~MockImageChannel() override
     {
         stopping_ = true;
@@ -395,11 +756,25 @@ public:
             release_ = true;
         }
         ready_.notify_all();
+        pool_->ready.notify_all();
         if (producer_.joinable()) producer_.join();
         if (metadata_producer_.joinable()) metadata_producer_.join();
         if (navigation_producer_.joinable()) navigation_producer_.join();
         record("callbacks_quiesced_by_channel_destruction");
+        /* Pinned Squall's ~SquallImageChannel stops accepting releases here;
+         * mirroring that is what makes "release after channel destruction
+         * fails" a reproducible mock behavior rather than an assumption. */
+        {
+            std::lock_guard lock{pool_->mutex};
+            pool_->accepting_releases = false;
+            /* Drop the pool's Buffer references here so channel destruction
+             * remains the point at which provider-side buffer ownership ends,
+             * exactly as before Task 030B. */
+            pool_->available.clear();
+            pool_->ready.notify_all();
+        }
         buffers_.clear();
+        ++image_channels_destroyed;
         record("channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
@@ -480,6 +855,15 @@ public:
     {
         record("buffer_registered");
         if (scenario_ == "register-fail") return Return::Fail;
+        /* Squall-shaped: every registered buffer starts in the available
+         * pool, and a buffer handed to the listener leaves the pool until it
+         * is released. */
+        if (auto mock = std::dynamic_pointer_cast<MockBuffer>(buffer))
+            mock->attach_pool(pool_, buffer);
+        {
+            std::lock_guard lock{pool_->mutex};
+            pool_->available.push_back(buffer);
+        }
         buffers_.push_back(std::move(buffer)); return Return::Success;
     }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer> buffer) override
@@ -507,6 +891,7 @@ public:
     {
         if (!producer_.joinable()) return Return::Success;
         record("channel_disabled"); stopping_ = true;
+        pool_->ready.notify_all();
         if (scenario_ == "nonquiescing-disable" ||
             scenario_ == "release-fail-blocked") {
             std::unique_lock lock{barrier_->mutex};
@@ -691,15 +1076,219 @@ public:
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectPreProcMessage)
     UNSUPPORTED_CALLBACK(irmel::NUC_TempData)
 private:
+    /* Deterministic backpressure scenarios drive production explicitly from
+     * the test instead of free-running, so buffer reuse can be asserted with
+     * counters and condition variables rather than sleeps. */
+    bool pooled() const
+    {
+        /* The corrective release-failure regressions are pool-driven too, so
+         * exactly one frame is produced on demand and the release failure is
+         * reached deterministically from the test thread rather than from a
+         * free-running producer. */
+        return scenario_.rfind("lease-pool", 0U) == 0U ||
+               scenario_ == "null-buffer-callbacks" || requeue_wrapped();
+    }
+
+    /* Scenarios that model pinned Squall's per-callback RequeueBuffer. */
+    bool requeue_wrapped() const
+    {
+        return scenario_ == "release-fail-observed" ||
+               scenario_ == "release-fail-park-alloc" ||
+               scenario_ == "release-throw-park-alloc" ||
+               scenario_ == "teardown-race-late-uncertain" ||
+               scenario_ == "enqueue-alloc-fail" ||
+               scenario_ == "enqueue-alloc-fail-release-fail" ||
+               callback_rejected();
+    }
+
+    /* Corrective (PR #42 second review) scenarios. The frame is deliberately
+     * REJECTED by the bridge before queue acceptance -- malformed header,
+     * queue-full, or a late/not-accepting callback -- and the provider then
+     * fails the release the bridge performs in the callback. This is the
+     * uncertain-release path that previously never reached
+     * image_stream_retain_failed() and never counted in retained_frames, so
+     * Stop/Close could still tear the graph down.
+     *
+     * "slot-exhaustion" is different: release never fails, but the bridge's
+     * retention slot pool is forced empty so it must refuse to release at
+     * all. */
+    bool callback_rejected() const
+    {
+        return scenario_ == "callback-reject-malformed" ||
+               scenario_ == "callback-reject-queue-full" ||
+               scenario_ == "callback-reject-not-accepting" ||
+               scenario_ == "callback-reject-negative-control" ||
+               scenario_ == "callback-reject-slot-exhaustion";
+    }
+
+    /* Squall-shaped production cycle: check a buffer out of the pool, or
+     * record starvation and drop the frame when the pool is empty. */
+    void produce_pooled()
+    {
+        for (;;) {
+            std::unique_lock lock{pool_->mutex};
+            /* Timed rather than indefinite: stopping_ is an atomic set outside
+             * this mutex, so a purely notification-driven wait could miss the
+             * transition and stall producer_.join() during teardown. */
+            (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10}, [this] {
+                return stopping_.load() || pool_->requested > pool_->completed;
+            });
+            if (stopping_.load() && pool_->requested <= pool_->completed) return;
+            if (pool_->requested <= pool_->completed) continue;
+            std::shared_ptr<irmel::Buffer> underlying;
+            if (pool_->available.empty()) {
+                /* Provider-level backpressure: no reusable buffer exists, so
+                 * the provider drops the frame. This is deliberately NOT
+                 * reported to the bridge as a callback, so it must never be
+                 * counted as a bridge queue-full drop. */
+                ++pool_->starved;
+                record("provider_dropped_frame_no_buffer");
+                ++pool_->completed;
+                pool_->ready.notify_all();
+                continue;
+            }
+            underlying = pool_->available.front();
+            pool_->available.pop_front();
+            const unsigned id = ++pool_->produced;
+            lock.unlock();
+
+            auto mock = std::dynamic_pointer_cast<MockBuffer>(underlying);
+            if (mock && mock->size() >= 12U)
+                for (std::size_t i = 0; i < 12U; ++i)
+                    mock->data()[i] = static_cast<unsigned char>(id * 16U + i);
+            irmel::FrameHeader header{std::chrono::nanoseconds{1'000'000 + id},
+                std::chrono::nanoseconds{20'000 + id}, 4U, 3U, 8U, 1U, 0.25, 0.125, {},
+                irmel::PixelFormat::Mono, id, 2U, 4U, irmel::ImageType::Staring,
+                irmel::ImageFlip::Horizontal, {irmel::ImageFlag::StareSnapshot},
+                0.5, -0.25, 7U, 9U, {}, {}, 3U};
+            /* Corrective (PR #42 second review): drive a bridge-side REJECTION
+             * deterministically, on the SECOND produced frame only, so the
+             * regression can first accept and lease a healthy frame and then
+             * observe a rejected frame whose callback-side release fails.
+             *
+             * Rejection shapes, matching the three bridge rejection arms:
+             *
+             *   malformed        out-of-range ImageType
+             *   queue-full       the test fills the queue first; the header is
+             *                    healthy and the bridge rejects on capacity
+             *   not-accepting    the test performs a logical Stop first, so
+             *                    accepting == false when this callback runs
+             *
+             * All three release inside the callback, before queue acceptance.
+             *
+             * The queue-full arm needs one extra healthy frame first, to
+             * occupy the single queue slot, so its rejected frame is the
+             * third rather than the second. */
+            const unsigned reject_from =
+                scenario_ == "callback-reject-queue-full" ? 3U : 2U;
+            const bool reject_now = callback_rejected() && id >= reject_from;
+            /* Corrective (PR #42 third review). These scenarios drive their
+             * release failure from the wrapper on EVERY produced frame:
+             *
+             *   teardown-race-late-uncertain    the frame is rejected because
+             *                                   getImageAddress() returns null
+             *                                   after the barrier, and the
+             *                                   callback-side release fails,
+             *                                   publishing uncertainty late;
+             *   enqueue-alloc-fail-release-fail the frame is ACCEPTED, but the
+             *                                   enqueue failpoint throws and
+             *                                   the still-armed releaser's
+             *                                   release then fails. */
+            const bool force_release_failure =
+                scenario_ == "teardown-race-late-uncertain" ||
+                scenario_ == "enqueue-alloc-fail-release-fail";
+            if (reject_now && (scenario_ == "callback-reject-malformed" ||
+                               scenario_ == "callback-reject-negative-control"))
+                header.setImageType(static_cast<irmel::ImageType>(99U));
+            /* Corrective (PR #42 third review): NULL-Buffer callbacks.
+             *
+             * A non-conforming provider may invoke onImage with a null Buffer.
+             * The bridge must reject it WITHOUT acquiring a retention slot,
+             * because the Releaser destructor returns immediately for a null
+             * value and could never recycle such a slot. This scenario emits
+             * substantially more null-buffer callbacks than buffer_count and
+             * then a valid frame, so the regression can prove the valid frame
+             * still gets a slot and completes normally.
+             *
+             * The checked-out registered buffer is returned to the pool here,
+             * since no callback ever takes ownership of it. */
+            if (scenario_ == "null-buffer-callbacks" &&
+                id <= null_buffer_callbacks) {
+                record("null_buffer_callback");
+                listener_->onImage(*this, header,
+                                   std::shared_ptr<irmel::Buffer>{});
+                {
+                    std::lock_guard back{pool_->mutex};
+                    pool_->available.push_back(underlying);
+                    ++pool_->completed;
+                    pool_->ready.notify_all();
+                }
+                continue;
+            }
+            record("callback_entered");
+            if (mock) mock->begin_callback();
+            ++callback_buffers;
+            ++buffers_outstanding;
+            ++pool_->callbacks;
+            if (requeue_wrapped()) {
+                /* Squall-shaped: hand the listener a per-callback wrapper,
+                 * not the registered buffer itself. The bridge's shared_ptr is
+                 * then the ONLY owner of that wrapper. */
+                auto wrapper = std::make_shared<RequeueBuffer>(
+                    mock, scenario_,
+                    force_release_failure ||
+                    (reject_now &&
+                     scenario_ != "callback-reject-slot-exhaustion"));
+                wrapper->bind_self(wrapper);
+                {
+                    std::lock_guard lock{failed_release_mutex};
+                    last_callback_wrapper = wrapper;
+                }
+                listener_->onImage(*this, header, wrapper);
+            } else {
+                listener_->onImage(*this, header, underlying);
+            }
+            record("callback_returned");
+
+            std::lock_guard done{pool_->mutex};
+            ++pool_->completed;
+            pool_->ready.notify_all();
+        }
+    }
+
     void produce()
     {
+        if (pooled()) { produce_pooled(); return; }
         const unsigned count = (scenario_ == "idle" ||
             (scenario_.rfind("c2-", 0U) == 0U && scenario_ != "c2-coexist")) ? 0U :
             (scenario_ == "overflow" ? 20U : 3U);
         for (unsigned id = 1; id <= count; ++id) {
             if (stopping_ && scenario_ != "shutdown-callback") break;
             if (buffers_.empty()) break;
-            auto buffer = std::dynamic_pointer_cast<MockBuffer>(buffers_[(id - 1U) % buffers_.size()]);
+            /* Task 030B: buffers are genuinely checked out now, so a producer
+             * can no longer round-robin a buffer that a lease still holds.
+             * Wait for a reusable buffer, exactly as a real pooled provider
+             * would, and give up if teardown starts first. */
+            std::shared_ptr<irmel::Buffer> checked_out;
+            {
+                /* Bounded in short slices rather than one long wait, so a
+                 * concurrent disable()/destructor that sets stopping_ is
+                 * observed promptly and producer_.join() cannot stall behind
+                 * a single long timeout on a loaded machine. */
+                std::unique_lock lock{pool_->mutex};
+                for (unsigned slice = 0; slice < 500U; ++slice) {
+                    if (!pool_->available.empty()) break;
+                    if (stopping_.load() && scenario_ != "shutdown-callback") break;
+                    (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10}, [this] {
+                        return !pool_->available.empty() ||
+                               (stopping_.load() && scenario_ != "shutdown-callback");
+                    });
+                }
+                if (pool_->available.empty()) break;
+                checked_out = pool_->available.front();
+                pool_->available.pop_front();
+            }
+            auto buffer = std::dynamic_pointer_cast<MockBuffer>(checked_out);
             if (!buffer || buffer->size() < 12U) break;
             for (std::size_t i = 0; i < 12U; ++i)
                 buffer->data()[i] = static_cast<unsigned char>(id * 16U + i);
@@ -739,10 +1328,17 @@ private:
             }
             if (scenario_ == "shutdown-callback")
                 std::this_thread::sleep_for(std::chrono::milliseconds{20});
-            if (scenario_ == "null-buffer") listener_->onImage(*this, header, {});
-            else {
+            if (scenario_ == "null-buffer") {
+                listener_->onImage(*this, header, {});
+                /* No Buffer was handed over, so nothing will ever release it;
+                 * return it to the pool directly. */
+                std::lock_guard lock{pool_->mutex};
+                pool_->available.push_back(checked_out);
+                pool_->ready.notify_all();
+            } else {
                 buffer->begin_callback();
                 ++callback_buffers;
+                ++buffers_outstanding;
                 listener_->onImage(*this, header, buffer);
             }
             record("callback_returned");
@@ -768,6 +1364,7 @@ private:
     std::condition_variable ready_;
     bool release_{};
     std::shared_ptr<CallbackBarrier> barrier_;
+    std::shared_ptr<BufferPool> pool_{std::make_shared<BufferPool>()};
     mutable unsigned capability_calls_{};
     unsigned bad_pixel_registration_count_{};
     std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> bad_pixel_callback_;
@@ -2654,7 +3251,26 @@ public:
     }
     ~MockControl() override
     {
-        if (callback_buffers.load() != buffer_releases.load()) std::abort();
+        /* Every buffer handed to a listener must have had exactly one release
+         * attempt, or still be legitimately checked out by the bridge. A
+         * failed release still counts as that one attempt: the bridge must
+         * never retry it, and must never let a destructor retry it either.
+         *
+         * Corrective (PR #42 second review): the accounting is now stated as
+         *
+         *     callbacks == release attempts + still checked out
+         *
+         * rather than callbacks == release attempts. The corrected bridge has
+         * one path that deliberately never calls release() at all: when it
+         * cannot obtain a dedicated retention slot for a buffer, it keeps the
+         * buffer permanently rather than risk an uncertain result it could not
+         * own. Such a buffer is still checked out, so it belongs in the third
+         * term. This is strictly stronger than deleting the check: an
+         * unexplained missing release still aborts, because it would have to
+         * show up as neither released nor outstanding. */
+        if (callback_buffers.load() !=
+            buffer_releases.load() + buffers_outstanding.load()) std::abort();
+        ++controls_destroyed;
         record("control_destroyed");
     }
     Return init(const std::string& aperture) override
@@ -2814,6 +3430,244 @@ private:
 };
 struct UnloadRecorder { ~UnloadRecorder() { record("library_unloaded"); } } unload_recorder;
 } // namespace
+
+/* Test-only deterministic backpressure control surface. These are NOT part of
+ * the MEL provider interface and are not used by the production facade; they
+ * exist so the Task 030B backpressure test can assert real provider buffer
+ * reuse with explicit state instead of sleeping. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_available(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return static_cast<unsigned long>(pool->available.size());
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_produced(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return pool->produced;
+}
+
+/* Corrective (PR #42 second review). Per-CHANNEL release and callback counts.
+ *
+ * The process-global equivalents are no longer safe to difference across
+ * tests: an uncertain release now permanently blocks physical teardown, so a
+ * poisoned stream's channel is deliberately never destroyed and its producer
+ * thread is never joined, leaving it free to touch the globals while a later
+ * test captures its baseline. These belong to exactly one channel. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_releases(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    return pool->releases.load();
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_callbacks(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    return pool->callbacks.load();
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_pool_starved(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    { std::lock_guard lock{active_pool_mutex}; pool = active_pool.lock(); }
+    if (!pool) return 0UL;
+    std::lock_guard held{pool->mutex};
+    return pool->starved;
+}
+
+/* Requests exactly one production cycle and blocks until the provider has
+ * finished it, whether it produced a frame or starved. No sleeping. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_pool_produce_once(void)
+{
+    std::shared_ptr<BufferPool> pool;
+    {
+        std::lock_guard lock{active_pool_mutex};
+        pool = active_pool.lock();
+    }
+    if (!pool) return 0;
+    unsigned target = 0U;
+    {
+        std::lock_guard lock{pool->mutex};
+        target = ++pool->requested;
+    }
+    pool->ready.notify_all();
+    std::unique_lock lock{pool->mutex};
+    /* Bounded so a test can never hang if the channel is torn down mid-cycle;
+     * the wait is still driven by explicit provider state, never by sleeping
+     * for a fixed duration and hoping. */
+    const bool finished = pool->ready.wait_for(lock, std::chrono::seconds{10},
+                                               [&] { return pool->completed >= target; });
+    return finished ? 1 : 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_pool_reset(void)
+{
+    std::lock_guard lock{active_pool_mutex};
+    active_pool.reset();
+}
+
+/* Task 030B corrective observation surface (PR #42 review). Test-only; not
+ * part of the MEL provider interface and not part of the public C ABI. */
+
+/* Clears only the "current" failed-release observation so each corrective
+ * regression observes its own buffer. It deliberately does NOT clear
+ * all_failed_release_raw or failed_buffers_destroyed: "a failed wrapper is
+ * never destroyed" must keep holding for every earlier regression's buffer
+ * too, for the rest of the process. */
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_failed_release_reset(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    failed_release_recorded = false;
+    failed_release_raw = nullptr;
+    failed_release_buffer.reset();
+    failed_release_address = nullptr;
+    failed_release_size = 0U;
+    failed_release_attempts.store(0U);
+    last_callback_wrapper.reset();
+}
+
+/* Corrective (PR #42 second review) observation surface. Test-only. */
+
+/* 1 while the most recent per-callback wrapper handed to the listener is still
+ * alive. The provider holds it only weakly, so this is 0 the moment the bridge
+ * drops the last reference. Used by the retention-slot-exhaustion regression,
+ * where release() is deliberately never attempted and the failed-release
+ * bookkeeping therefore never fires. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_last_callback_wrapper_alive(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    return last_callback_wrapper.expired() ? 0 : 1;
+}
+
+/* Number of RequeueBuffer destructors that had to perform the requeue
+ * themselves because release() had not completed. For a wrapper whose release
+ * already FAILED this is the forbidden destructor-driven second release. */
+/* Destructions of a failed wrapper that the negative control deliberately
+ * provoked, counted apart from the process-lifetime never-destroyed evidence
+ * so the deliberate defect cannot mask a genuine one elsewhere. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_expected_failed_buffer_destroyed(void)
+{ return static_cast<unsigned long>(expected_failed_buffers_destroyed.load()); }
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_destructor_driven_releases(void)
+{ return static_cast<unsigned long>(destructor_driven_releases.load()); }
+
+/* 1 once the provider has deliberately failed or thrown from release(). */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_failed_release_recorded(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    return failed_release_recorded ? 1 : 0;
+}
+
+/* Total release() attempts that the provider answered with failure or an
+ * exception. Must be exactly 1 for a single failed frame: any bridge retry or
+ * destructor-driven second release would make this 2 or more. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_failed_release_attempts(void)
+{ return static_cast<unsigned long>(failed_release_attempts.load()); }
+
+/* Total release() calls of any outcome, for the same one-shot proof. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_release_calls(void)
+{ return static_cast<unsigned long>(buffer_releases.load()); }
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_callback_buffers(void)
+{ return static_cast<unsigned long>(callback_buffers.load()); }
+
+/* 1 while the exact callback Buffer wrapper whose release failed is still
+ * alive. The provider holds it only weakly, so this is 0 the moment the
+ * bridge drops the last reference. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_failed_buffer_alive(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    return failed_release_buffer.expired() ? 0 : 1;
+}
+
+/* Number of times the failed wrapper's destructor ran. Must remain 0. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_failed_buffer_destroyed(void)
+{ return static_cast<unsigned long>(failed_buffers_destroyed.load()); }
+
+/* 1 while the failed buffer's registered host byte range is still intact and
+ * still holds the contents it had at the failed release. Proves the provider's
+ * host backing storage was neither freed nor reused. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_failed_buffer_storage_intact(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    if (!failed_release_recorded || failed_release_address == nullptr) return 0;
+    if (failed_release_size < sizeof failed_release_bytes) return 0;
+    return std::memcmp(failed_release_address, failed_release_bytes,
+                       sizeof failed_release_bytes) == 0 ? 1 : 0;
+}
+
+/* Corrective (PR #42 third review) observation surface for the post-callback-
+   drain teardown recheck. Test-only. */
+
+/* 1 while a provider image callback is blocked inside the bridge listener, so
+   the teardown-race regression can establish "callback still in flight"
+   without sleeping. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_callback_blocked_inside(void)
+{ return callback_blocked_inside.load(); }
+
+/* Releases that blocked callback, which then rejects the frame and performs
+   the callback-side release the wrapper fails. */
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_release_blocked_callback(void)
+{ callback_release_hold.store(false); }
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_arm_blocked_callback(void)
+{ callback_release_hold.store(true); callback_blocked_inside.store(0); }
+
+/* 1 while the REGISTERED buffer under the failed wrapper is still alive.
+   Physical teardown clears ImageStreamState::buffers and ::storage together,
+   so this going to 0 is direct evidence that cleanup freed the registered host
+   storage an uncertain release forbids freeing. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_failed_registered_buffer_alive(void)
+{
+    std::lock_guard lock{failed_release_mutex};
+    return failed_release_registered.expired() ? 0 : 1;
+}
+
+/* Total registered MockBuffer destructions, for the same host-storage
+   evidence expressed as a monotone count. */
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_registered_buffers_destroyed(void)
+{ return static_cast<unsigned long>(registered_buffers_destroyed.load()); }
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_image_channels_destroyed(void)
+{ return static_cast<unsigned long>(image_channels_destroyed.load()); }
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_controls_destroyed(void)
+{ return static_cast<unsigned long>(controls_destroyed.load()); }
 
 extern "C" __attribute__((visibility("default")))
 std::shared_ptr<API_Manager> getAPI_Manager(const std::string& instance)

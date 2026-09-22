@@ -51,6 +51,27 @@ input fields; their complete fidelity is proven only by the mock provider.
 Quaternion LOS and other optional Image metadata are not asserted. C, Rust, and
 Python safe integration behavior remains unchanged.
 
+Tasks 030A and 030B additionally have Ada consume real 320x200 Mono8 frames
+through the high-rate borrowed `Frame_Lease` path. The borrowed view must
+report the expected geometry and a checksum identical to an explicit
+`Copy_Pixels` of the same lease. Since Task 030B those borrowed bytes are
+pinned Squall's own registered MEL host buffer, reached through
+`RequeueBuffer::getImageAddress`, and the explicit lease `Close` performs the
+real `RequeueBuffer::release` that returns the buffer to Squall's
+`available_buffers` pool. Ada also acquires a lease, closes the public
+`Image_Stream` while that lease is still live, requires the borrowed payload
+to remain valid and unchanged, and then requires the lease `Close` to succeed
+-- which can only hold because physical provider teardown is deferred until
+the buffer is released, not because the payload was copied.
+
+Exact provider-address observation is not available through the safe public
+Ada API in this integration, so the normative
+`Buffer::getImageAddress == snapshot pixels.data == Ada view address`
+pointer-identity evidence is the deterministic mock-provider proof in the
+native and Ada suites; pinned Squall supplies behavioral and lifetime evidence
+against the real provider. C, Rust, and Python integration behavior is
+unchanged.
+
 Provide an existing checkout with this exact source closure:
 
 | Path below Squall root | Repository (`open-arsenal/...`) | Commit |

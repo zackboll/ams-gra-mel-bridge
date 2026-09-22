@@ -2,6 +2,212 @@
 
 ## Unreleased
 
+- Complete the high-rate zero-copy data plane: the bridge now performs **zero**
+  bulk payload copies from the MEL provider callback buffer into Ada. The
+  native `frame.pixels.assign(...)` and its payload-sized
+  `std::vector<std::uint8_t>` are removed. `QueuedFrame` instead owns the
+  callback's `std::shared_ptr<irmel::Buffer>` plus the validated image address
+  and byte count, and publishes `view.pixels` as a borrowed span directly over
+  `irmel::Buffer::getImageAddress()`. The defining deterministic proof is the
+  three-way pointer identity
+
+      Buffer::getImageAddress() == snapshot pixels.data == Ada view address
+
+  asserted natively and from Ada through a test-only address log, with no
+  production ABI change and no reliance on elapsed-time benchmarks.
+
+  This is a **bridge** claim. Pinned Squall still copies received UDP bytes
+  into the registered MEL host buffer in `SquallImageChannel::udpCallback`, and
+  nothing is claimed about NIC DMA, kernel socket buffers, or sensor transport.
+
+  The public Ada API is unchanged from Task 030A: `Frame_Lease`,
+  `Acquire_Frame`, `Is_Open`, `Close`, `Pixel_Count`, `With_Pixels`,
+  `Copy_Pixels`, and the lease metadata accessors all keep their signatures.
+  Only the meaning of the owner changed underneath, which is what Task 030A
+  existed to make possible.
+
+- Correct uncertain `Buffer::release()` ownership handling so it is complete
+  and no longer depends on an arbitrary process-global limit.
+
+  Two linked defects are fixed. First, `CallbackState::image()` releases frames
+  the bridge **rejects before queue acceptance** -- malformed/unsupported,
+  queue-full, and not-accepting. Those frames were never counted in
+  `retained_frames` and the path never called `image_stream_retain_failed()`,
+  so after an uncertain release a later Stop/Close could still observe
+  `requests == 0 && retained_frames == 0` and physically tear the provider
+  graph down, clear registered host storage, and unload the provider library.
+  Second, the previous fail-safe could return `false` when a fixed 64-slot
+  reserve was exhausted, and because callers passed the Buffer by `std::move`
+  that return **destroyed the exact callback wrapper**, so the fixed reserve
+  reduced risk without establishing the claimed invariant.
+
+  Emergency ownership is now stream-owned and preallocated from the configured
+  `buffer_count`: `CallbackState::retention_slots` is built in Start before
+  `channel->enable()`, i.e. before any provider callback can run. Moving the
+  exact callback `shared_ptr` into an existing empty slot allocates nothing and
+  cannot throw. The enforced rule is that the bridge never calls `release()`
+  unless it already owns a dedicated slot for that exact Buffer; if a
+  non-conforming provider exhausts the pool the bridge refuses to release and
+  keeps the buffer instead, which is safe because that branch runs *before* any
+  release, so no wrapper can ever be dropped after a failed one. A
+  `weak_ptr<ImageStreamState>` established at stream construction lets a
+  callback-side uncertain release invoke the same graph-retention policy as
+  snapshot/lease release.
+
+  Retained-buffer accounting is documented exactly rather than fudged: an
+  uncertain release of an *accepted* frame leaves the count unchanged (it is
+  already counted and never decremented), while an uncertain release of a
+  *rejected* frame adds one. Both reach the same post-condition -- exactly one
+  never-removed unit -- so teardown is permanently blocked either way. A
+  lock-free `uncertain_release` flag is an additional backstop, so physical
+  teardown now requires
+  `requests == 0 && retained_frames == 0 && !uncertain_release`.
+
+  Deterministic regressions cover callback-side release failure for the
+  malformed, queue-full, and not-accepting arms plus retention-slot exhaustion,
+  each proving exactly one release attempt, the exact wrapper alive with
+  destructor count 0, host bytes intact, provider channel/`Control` never
+  destroyed, both public owners closable without freeing the graph, and no
+  retry. A negative control deliberately drops the wrapper and asserts those
+  invariants then fail, and a 96-buffer/200-cycle test proves capacity follows
+  configured provider-buffer count rather than the old 64-slot constant. No ABI
+  change: still ABI `0.1` with 90 exports and zero vendor delta.
+
+- Close three remaining provider-Buffer ownership/lifetime defects found in the
+  PR #42 third review.
+
+  **Close teardown TOCTOU after an in-flight callback release failure.**
+  `image_stream_cleanup()` checked `retained_frames`/`uncertain_release` once,
+  before claiming physical cleanup, then destroyed and detached the provider
+  channel, drained `callbacks_in_flight`, and cleared the registered ranges,
+  registered Buffers, and backing host storage. A callback already in flight
+  when that gate was passed could publish an uncertain `Buffer::release()`
+  result afterwards, so cleanup could free registered host memory although
+  `uncertain_release == true`, the failed wrapper was retained, and provider
+  ownership hand-back was uncertain. Cleanup now re-evaluates that state after
+  the drain reaches zero and before clearing anything. Visibility is
+  established, not assumed: the callback publishes its uncertainty strictly
+  before its `callbacks_in_flight` decrement (`acq_rel`), which the drain loop
+  observes with acquire ordering. On late uncertainty cleanup keeps the host
+  storage and retained Buffer ownership, retains the provider library and
+  Session graph, reports failure truthfully, and never retries the release.
+  Because the channel has already crossed its documented quiescence/destruction
+  boundary by that point, the guarantee is documented exactly as retention of
+  the storage/Buffer/library graph rather than a claim that the channel stayed
+  attached. A barrier-driven regression proves the precise interleaving with no
+  sleeps, and a negative mutation proves removing the recheck makes the
+  host-storage assertion fail.
+
+  **Callback `Releaser` disarmed before enqueue.** `std::deque::push_back` may
+  allocate and throw, and the releaser was disarmed before it, so a throwing
+  enqueue bypassed the release/uncertain-retention policy and dropped an owned
+  provider buffer. The releaser now stays armed across the insertion and is
+  disarmed only after it succeeds, all under the existing mutex. A failpoint at
+  the enqueue-allocation boundary proves exactly one bridge-controlled release
+  on failure, slot return on success, the uncertain path on a failing release,
+  no wrapper destroyed after a failed release, and no leaked retention slot.
+
+  **Null callback Buffer consumed a retention slot.** A slot was acquired
+  before `!buffer` was tested, and the `Releaser` destructor returns
+  immediately for a null value, so the slot was never recycled. A null Buffer
+  is now rejected before any slot is acquired, never acquiring emergency
+  ownership for an object that does not exist. A regression emits 40
+  null-buffer callbacks against a `buffer_count` of 2 and proves later valid
+  frames still acquire slots and complete normally.
+
+  Also corrects `ams_mel_ir_stream_start` for `Lifecycle::Stopping`. Since Stop
+  became logical-now/physical-later, a healthy stream with a queued frame or a
+  live lease stays `Stopping` after a successful Stop, and Start reported
+  `AMS_MEL_PROVIDER_FAILED` for it -- describing a healthy deferral as a
+  provider failure, nondeterministically, depending only on whether the
+  provider left a frame queued. Start now returns `AMS_MEL_STREAM_STOPPED`
+  there, matching what `Receive` already reports; a poisoned stream is `Failed`
+  and still reports `AMS_MEL_PROVIDER_FAILED`. Still ABI `0.1`, 90 exports,
+  zero vendor delta.
+
+- Make the pre-existing C2 lifetime assertions in `test_post_send_failure` and
+  `test_bit_post_send_failure` deterministic. They slept a fixed 100 ms and then
+  asserted `mode_completed`/`bit_completed` was already logged, but the retained
+  worker completes the provider future asynchronously and the mock's delayed
+  producer itself waits up to 40 ms, so under load -- exactly the CI condition
+  of a 50x parallel `ctest` repeat -- the marker had not appeared yet. Both now
+  poll the explicit completion condition under a generous bounded deadline. The
+  assertion is not weakened: the retained worker must still genuinely reach the
+  completion marker. This is unrelated C2 test infrastructure and is kept
+  logically separate from the provider-buffer ownership work.
+
+- Track provider buffers withheld from provider reuse in a new
+  `retained_frames` count covering queued frames **and** live snapshots,
+  guarded by the existing single teardown mutex and deliberately not derived
+  from queue length. A buffer accepted by the bridge is released exactly once
+  by bridge logic: the callback releases on malformed, not-accepting, and
+  queue-full rejections and is explicitly disarmed on acceptance, with the
+  later release performed by legacy `Receive`, snapshot/lease close, or
+  Close-time queue discard. Destroying a C++ `shared_ptr` is never treated as
+  a substitute for the published `release()` protocol.
+
+- Extend the existing Image deferred-teardown state machine rather than adding
+  a second one: physical provider teardown now requires
+  `navigation requests == 0 AND retained_frames == 0`. `Stop` stays logical
+  now / physical later and never blocks on an application-held lease; `Close`
+  additionally discards still-queued, never-acquired frames and releases their
+  provider buffers so none can be stranded in an unreachable queue, while
+  preserving already-dequeued live leases. A live lease therefore survives
+  public stream and Session close because the actual provider unload is
+  **deferred**, not because bytes were copied; the Task 030A lease evidence was
+  replaced with that stronger ordering property, and the owned-copy tests
+  proving copied values survive real provider unload are retained.
+
+- Call `irmel::Buffer::release()` outside the lifecycle mutex under a
+  lock-to-claim / unlock-to-release / lock-to-publish discipline, and from the
+  consumer/snapshot-close path rather than necessarily the provider callback
+  thread. Pinned `Buffer.h` and `ImageListener.h` impose no callback-thread
+  affinity on `release()`, and pinned Squall's `RequeueBuffer::release()` is an
+  atomic one-shot guarded by a pool mutex; no stronger or universal claim is
+  made.
+
+- Treat provider-buffer release failure as a first-class safety case. A
+  non-`Success` return or a thrown exception leaves ownership uncertain, so the
+  `Buffer` is parked and never destroyed, its registered host byte range is
+  never freed or resized, `retained_frames` is never decremented, `release()`
+  is never retried, and allocation-free emergency retention keeps the graph
+  alive. `ams_mel_ir_frame_snapshot_close` reports `AMS_MEL_PROVIDER_FAILED`
+  and Ada `Frame_Lease.Close` now raises `Provider_Error` rather than falsely
+  claiming the buffer was returned; automatic `Finalize` remains non-raising
+  and preserves memory safety. This deliberate leak on uncertain ownership is
+  documented.
+
+- Document backpressure as intentional rather than hiding it: with
+  `Buffer_Count = N` at most N provider buffers can be checked out at once
+  unless the provider has an independent pool, so a slow consumer causes real
+  provider-level drops. The bridge does not silently copy when the pool is
+  exhausted. A provider-side "no reusable buffer available" event is not a
+  bridge callback and is not counted as one; `frames_dropped_queue_full` keeps
+  its existing meaning and no ABI counter field was added.
+
+- Rework the mock provider's Image buffer handling to mirror pinned Squall
+  `b1015728f904c799fa0c07489fce48e78f67845f`: a mutex-guarded available pool,
+  checkout before the callback, requeue on successful `release()`,
+  `accepting_releases = false` at channel destruction, and a one-shot guard
+  that aborts on double release or double checkout. New deterministic
+  native tests cover provider-buffer address identity, three-lease
+  backpressure with explicit pool counters and condition variables rather than
+  sleeps, deferred provider teardown ordering, Close-time queue discard,
+  multiple concurrent leases across Stop/Close/Session close, and legacy
+  `Receive` copy-then-release including the `BUFFER_TOO_SMALL` case that must
+  consume and release nothing; the lease lifetime paths additionally run 20
+  stress iterations. Ada adds a backpressure test and an owned `Full_Frame`
+  independence test, and strengthens the alias proof to the full three-way
+  identity.
+
+- No C ABI change: ABI stays `0.1`, all 90 exports and `exports.map` are
+  unchanged, no public type changed, no frozen record was grown, and the raw
+  Rust and private Python declarations are untouched. Vendored upstream delta
+  is exactly zero. RF MEL, RF header vendoring, RDMA, GPU/CUDA, FPGA mappings,
+  Stacked Image, `cv::Mat` wrapping, zero-copy safe Rust, and zero-copy
+  Python/NumPy remain unimplemented. See
+  `docs/task-030b-provider-buffer-zero-copy.md`.
+
 - Add the first high-rate zero-copy data-plane slice: `AMS.MEL.IR.Image` gains
   a limited `Frame_Lease` with `Acquire_Frame`, `Is_Open`, `Close`,
   `Pixel_Count`, `With_Pixels`, `Copy_Pixels`, and the full set of lease
