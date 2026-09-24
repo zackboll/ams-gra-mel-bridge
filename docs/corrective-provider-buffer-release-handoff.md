@@ -2,6 +2,16 @@
 
 ## Starting state
 
+PR #43 review-correction session:
+
+- Actual local HEAD, remote branch head, and PR `headRefOid` at start:
+  `6b71d6abf81413511166a2854777cd3e9a5f9c5d`.
+- The working tree was clean, the branch had not advanced, PR #43 was open and
+  unmerged, and auto-merge was disabled. No reset, force-push, or replacement
+  PR was used.
+
+Original corrective branch creation:
+
 - Actual starting SHA: `b8df5aee274fee31faf3cece54be2a872e27cc53`
   (`origin/main`, merge of PR #42, task 030B provider-buffer zero copy).
 - Branch: `corrective/provider-buffer-release-handoff`, created from that
@@ -66,6 +76,27 @@ overlapping wrapper ownership, because the provider's republication point and
 the bridge's reconciliation point are not the same instant.
 
 ## Deterministic baseline reproduction
+
+### PR #43 repeated-generation correction
+
+The reviewed head `6b71d6abf81413511166a2854777cd3e9a5f9c5d` still used six
+(`2 * buffer_count`) RELEASE slots for a three-buffer stream. A new counted
+mock barrier reproduced the remaining defect without either exhaustion
+failpoint: A generation 0 was released on its own thread and paused after
+republication; A1 through A5 repeated that sequence while B and C remained
+live and byte-identical. All six slots became genuinely occupied. Closing A6
+returned `AMS_MEL_PROVIDER_FAILED`; no seventh provider call occurred, A stayed
+withheld, and teardown could not complete. The focused baseline command exited
+zero only because the regression expected and asserted that reviewed failure:
+
+```text
+PASS: reviewed repeated-generation release pool exhausted
+baseline_exit=0
+```
+
+This executed result, not a source prediction, disproves the former argument:
+disjoint release sources do not bound the number of overlapping generations
+created by either source.
 
 Two mock scenarios were added, both pooled and driven on demand from the test
 thread. Neither sleeps to create the interleaving, and both record that the
@@ -140,6 +171,31 @@ incremented for a perfectly healthy frame.
 
 ## Ownership state transitions
 
+### Corrected bounded protocol
+
+The final implementation bounds quantities it actually controls:
+
+| quantity | enforced bound | ownership while saturated |
+| --- | ---: | --- |
+| physical checkouts in HOLD or callback-deferred state | `buffer_count` | HOLD/deferred preallocated slots |
+| provider `Buffer::release()` calls executing | **1 per stream** | `active_release` plus a reserved uncertain slot |
+| callback-side deferred releases | `buffer_count` | preallocated deferred slots; drained iteratively |
+| permanently uncertain wrappers | `buffer_count` | preallocated uncertain slots, one per physical checkout removed from reuse |
+
+An ordinary explicit close encountering the active limit waits while retaining
+its HOLD slot. It therefore reports the outcome of its own release and never
+turns temporary congestion into provider failure. A callback reentered from the
+active provider call cannot wait for itself; it transfers its exact wrapper to
+a preallocated deferred slot, returns from the callback, and the active executor
+drains deferred work without recursive provider-release nesting. Every active
+or deferred obligation increments teardown accounting.
+
+Before each provider call the exact wrapper is already present in a reserved
+uncertain slot, so failure/throw requires no allocation. Success clears and
+recycles it. Failure leaves it there permanently, is never retried, publishes
+uncertainty, and retains the provider graph; the execution permit itself is
+released so unrelated healthy physical buffers can still be returned.
+
 ### Before
 
 One pool, `retention_slots`, sized `buffer_count`, covering both obligations:
@@ -149,36 +205,40 @@ One pool, `retention_slots`, sized `buffer_count`, covering both obligations:
 | queued frame / live snapshot | held |
 | release in progress | still held (the defect) |
 | release succeeded | returned, after the provider call |
-| release uncertain | consumed permanently |
-
+Preallocated ownership is built in `ams_mel_ir_stream_start()` before
+`channel->enable()` and therefore before any callback can run:
 ### After
 
 Two **disjoint** preallocated pools, both built in `ams_mel_ir_stream_start()`
 before `channel->enable()` and therefore before any callback can run:
-
+| `active_release` | 1 | one provider release executes |
+| `deferred_releases` | `buffer_count` | callback-side releases cannot wait for their enclosing provider call |
+| `uncertain_slots` | `buffer_count` | allocation-free fallback reserved before each attempt and retained permanently only on uncertainty |
 | pool | size | occupied while |
-| --- | --- | --- |
+The distinguished states are explicit:
 | `retention_slots` (HOLD) | `buffer_count` | the bridge holds a buffer it has not yet begun releasing -- a queued frame or a live snapshot |
 | `release_slots` (RELEASE) | `2 * buffer_count` | one bridge-controlled `release()` is unresolved; permanently if that release was uncertain |
 
 The distinguished states are now explicit:
-
-| state | representation |
-| --- | --- |
+| explicit close waiting for execution | hold slot; no provider call started |
+| callback-side release waiting for execution | deferred slot; hold slot already returned |
+| release executing | `active_release` plus reserved uncertain slot |
+| permanently uncertain release | uncertain slot never returned; `uncertain_release` set; counted forever |
 | registered physical buffer | `registered_ranges` / `ImageStreamState::buffers` |
-| per-callback wrapper generation | the `shared_ptr<Buffer>` in a hold or release slot |
-| release still executing | occupies a release slot |
-| successful release, bookkeeping not reconciled | occupies a release slot; hold slot **already returned** |
+`CallbackState::release_buffer()` is the single entry point. Admission and
+ownership transitions happen under `CallbackState::mutex`; provider calls do
+not:
 | permanently retained uncertain release | release slot never returned; `uncertain_release` set; counted in `retained_frames` forever |
 
 `CallbackState::begin_release()` is the single entry point and performs the
-whole handoff atomically under `CallbackState::mutex`, strictly **before** the
-provider call:
-
+    wait for active permit OR defer if callback-side reentry
+    reserve uncertain_slots[u]
+    active_release = wrapper
+    return_retention_slot(H)
 ```
-under mutex:
-    claim a release slot           (admission control; may refuse)
-    release_slots[r] = wrapper     (non-allocating, non-throwing)
+    buffer->release()
+on success  -> recycle u; admit/drain next obligation
+on failure  -> retain u permanently; never retry; admit/drain other obligation
     return_retention_slot(H)       <-- the corrective step
 unlock
     buffer->release()              (provider call, never under the mutex)
@@ -193,49 +253,37 @@ on failure  -> retain_uncertain_buffer(...); slot r never returned
   can republish, because it is returned in the same critical section that
   precedes the release call.
 - **B.** Before any bridge-controlled release attempt the exact wrapper already
-  owns a dedicated, preallocated, non-allocating ownership path -- its release
-  slot. Emergency ownership is allocated *before* the release, never after one
+  owns a dedicated, preallocated uncertain slot. Emergency ownership is
+  allocated *before* the release, never after one
   has failed.
 - **C.** A failed or throwing release is never retried and its exact callback
-  wrapper is never destroyed: the release slot keeps owning it and is never
+  wrapper is never destroyed: the uncertain slot keeps owning it and is never
   returned to the free list.
 - **D.** Provider calls remain outside the lifecycle/callback mutex.
-  `begin_release()` performs no provider call; `release()` runs unlocked.
-- **E.** The slot returned for reuse is the HOLD slot, which is in a pool
-  disjoint from the one that would be needed for permanent ownership of the
-  unresolved release. Returning it can never strand an uncertain release.
+  Admission performs no provider call; `release()` runs unlocked.
+- **E.** Temporary execution saturation waits or defers with safe ownership; it
+  is not provider failure and does not create permanent uncertainty.
 - **F.** Physical teardown still requires
-  `requests == 0 && retained_frames == 0 && !uncertain_release`, unchanged, and
+  `requests == 0 && retained_frames == 0 && release_obligations == 0 &&
+  !uncertain_release`, and
   the post-callback-drain recheck is unchanged.
-- **G.** No callback deadlock. `begin_release()` takes the mutex, performs only
-  non-allocating vector/`shared_ptr` operations, and releases it before the
-  provider call, so a provider that reenters `onImage` from inside `release()`
-  -- which `handoff-reuse-inside` does -- never waits on a lock that release
-  holds. The reentrant hook is one-shot, so there is no recursive
-  release/reissue loop.
-- **H.** Explicit-close error behavior is unchanged: a refused or failed
-  release still returns `AMS_MEL_PROVIDER_FAILED` from
+- **G.** No callback deadlock. Callback-side reentry transfers into deferred
+  ownership and returns; the active executor drains a finite chain iteratively.
+  Production logic, not a one-shot mock, limits provider release nesting to one.
+- **H.** Explicit-close behavior is unchanged: it waits through temporary
+  congestion and reports its own release outcome; a failed release returns
+  `AMS_MEL_PROVIDER_FAILED` from
   `ams_mel_ir_frame_snapshot_close`, and Ada finalization stays non-raising.
 
 ## Capacity and boundedness argument
 
-The release pool is `2 * buffer_count`, and that factor is derived, not
-assumed. A release slot is occupied for exactly the interval
-`begin_release() .. release() resolves`. The bridge is the only thing that
-starts a release, and it starts one from exactly two **disjoint** sources:
-
-1. the provider callback's `Releaser`, for a **rejected** frame. A callback
-   holds a hold slot for its whole duration, so at most `buffer_count` of these
-   can be in flight simultaneously.
-2. an owner-driven release of an **accepted** frame -- snapshot close, legacy
-   `Receive`, or Close-time queue discard. Each consumes a distinct accepted
-   frame, and every accepted frame holds a distinct hold slot until
-   `begin_release()`, so at most `buffer_count` of these can be in flight
-   simultaneously.
-
-A wrapper is either rejected in its callback or accepted into the queue, never
-both, so the two sources cannot overlap on the same wrapper and the total is
-bounded by `2 * buffer_count`.
+The implementation directly enforces one active provider call. Every explicit
+waiter keeps one physical checkout in HOLD; every callback-deferred obligation
+keeps one distinct physical checkout in a deferred slot. Their combined count
+cannot exceed `buffer_count`. An uncertain slot is consumed only after an actual
+failed/throwing provider call, and that physical checkout is never republished,
+so at most `buffer_count` uncertain slots can be consumed. Wrapper generations
+are not used as a bound.
 
 Crucially, this bound is **enforced**, not merely argued: `begin_release()`
 performs admission control and refuses to release when no release slot is
@@ -281,9 +329,20 @@ Native (`native/tests/test_ir_stream.c`):
   (`pool_releases` delta == `pool_callbacks` delta); provider capacity fully
   restored after all owners close; channel destroyed before Control destruction
   and provider unload, with no emergency-retention leak.
+- `test_repeated_generation_release_backpressure` -- eight A generations,
+  exceeding the reviewed six-slot guess, prove one active call, waiting closes,
+  recovery after each counted release, exact A address reuse, unchanged B/C
+  bytes, exactly-once release, restored capacity, and normal teardown.
+- `test_callback_rejection_reentry_chain` -- nine actual queue-full callbacks
+  are driven from release-side reuse. All ten wrappers release exactly once and
+  observed maximum provider release nesting is one.
 - `test_concurrent_release_distinct_owners` -- two snapshots closed from two
-  threads with a third live, proving overlapping releases each get their own
-  release slot, none is refused, and there is no deadlock.
+  threads with a third live; counted entry proves intentional serialization and
+  recoverable backpressure rather than merely creating two threads.
+- `test_close_discard_release_backpressure` -- pauses each release during actual
+  queue discard and proves no channel teardown occurs until all three resolve;
+  a test-specific log then proves channel destruction, Control destruction, and
+  library unload in order.
 - `test_release_reuse_handoff_common_paths` -- the same window through legacy
   owned-copy `Receive` and through Close-time queue discard, i.e. the other two
   entries into the common release helper.
@@ -300,12 +359,10 @@ slot exhaustion, and which now exercise the corrected `Releaser` handoff.
 
 Ada (`ada/tests/src/ams_mel_ir_image_lease_tests.adb`):
 
-- `Test_Release_Reuse_Handoff` -- drives the `handoff-reuse-inside` scenario
-  through the public safe Ada API. Closing a `Frame_Lease` performs the
-  bridge-controlled release; the regression asserts a subsequent
-  `Acquire_Frame` returns an open lease, the live sibling keeps its borrowed
-  address and bytes, and teardown completes. No production C export was added
-  for testing.
+- `Test_Release_Reuse_Handoff` -- acquires all A/B/C leases before closing A,
+  records A's address and frame ID 1, and requires replacement frame ID 4 at
+  A's exact address. B/C bytes stay unchanged and a test-only lifecycle log
+  records exactly four delivered callbacks. No production C export was added.
 
 ## Mutation evidence
 
@@ -372,6 +429,8 @@ channel-framework or `RequestFor`-worker redesign was performed.
 | `make check-ada-format` | **PASS** (`make format-ada` was run first, as AGENTS.md requires) |
 | `git diff --check` | **PASS** -- clean |
 | `make check` | **FAILS** -- see limitation below |
+| GCC Debug CMake + CTest | **PASS** -- 15/15 |
+| GCC Release CMake + CTest | **PASS** -- 15/15 |
 
 ### `make check` limitation
 
@@ -398,6 +457,6 @@ command is reported as failed, not relabelled as passed.
   document is **mock-provider evidence**: the interleaving is forced by the
   test-only mock, which is modelled on pinned Squall's `RequeueBuffer` but is
   not the real provider. No real-provider claim is made.
-- **Clang and Release configurations** were not exercised locally; only the
-  default local toolchain configuration was. CI coverage for the pushed head is
+- **Clang** was unavailable locally (`clang: command not found`). GCC Debug and
+  Release were both exercised locally. CI coverage for the pushed exact head is
   reported in the pull request.

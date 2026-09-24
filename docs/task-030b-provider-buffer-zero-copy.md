@@ -597,22 +597,19 @@ capacity, not a process-global constant.
 > non-conforming provider, producing a false malformed count and a permanently
 > poisoned stream.
 >
-> Ownership is now split across two **disjoint** preallocated pools:
-> `retention_slots` (HOLD, `buffer_count`) and `release_slots` (RELEASE,
-> `2 * buffer_count`), with `CallbackState::begin_release()` handing the hold
-> slot back atomically and strictly *before* the provider call. The
-> `2 * buffer_count` bound is derived from the two disjoint release sources and
-> is enforced by admission control, not assumed.
+> **PR #43 correction:** the later `2 * buffer_count` RELEASE-pool claim was
+> also invalid. Repeated physical-buffer reuse can create arbitrarily many
+> unresolved wrapper generations from either release source. The bridge now
+> enforces one active provider release per stream. Ordinary callers wait with
+> HOLD ownership; callback-side reentry transfers into `buffer_count`
+> preallocated deferred owners and is drained iteratively. Before every attempt
+> the exact wrapper has a reserved allocation-free uncertain-owner slot. The
+> hold slot is handed back atomically and strictly *before* the provider call.
 
-If a non-conforming provider *does* exhaust the pool, the bridge does **not**
-release: it keeps the buffer, records the same permanent teardown obligation,
-and parks it in the process-global reserve. That branch runs strictly *before*
-any `release()` for the buffer, so even if the reserve is also exhausted and
-the wrapper is dropped, the wrapper's own destructor performs its **first**
-release. The forbidden case -- dropping a wrapper *after* a failed release,
-making its destructor retry -- is unreachable by construction. The global list
-therefore remains only a diagnostic record plus depth for that pre-release
-branch, and no safety property depends on its size.
+Ordinary release congestion no longer enters a refusal/parking branch and is
+never classified as malformed provider data. The process-global reserve remains
+only for legacy failpoint/non-conforming-provider safety evidence; no healthy
+capacity argument depends on its size.
 
 `CallbackState` also holds a `std::weak_ptr<ImageStreamState> owner`,
 established during stream construction before any provider callback can exist,

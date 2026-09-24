@@ -305,6 +305,30 @@ static int mock_handoff_window_reached(void)
 { return mock_handoff_int("ams_mel_mock_handoff_window_reached"); }
 static unsigned long mock_handoff_reentrant_callbacks(void)
 { return mock_pool_query("ams_mel_mock_handoff_reentrant_callbacks"); }
+static void mock_reentry_configure(unsigned long budget)
+{
+    void (*fn)(unsigned long);
+    *(void **)&fn = mock_pool_symbol("ams_mel_mock_reentry_configure");
+    if (fn != NULL) fn(budget);
+}
+static unsigned long mock_reentry_callbacks(void)
+{ return mock_pool_query("ams_mel_mock_reentry_callbacks"); }
+static unsigned long mock_max_release_depth(void)
+{ return mock_pool_query("ams_mel_mock_max_release_depth"); }
+static int mock_handoff_wait_count(unsigned long target)
+{
+    int (*fn)(unsigned long);
+    *(void **)&fn = mock_pool_symbol("ams_mel_mock_handoff_wait_count");
+    return fn == NULL ? 0 : fn(target);
+}
+static unsigned long mock_handoff_reached_count(void)
+{ return mock_pool_query("ams_mel_mock_handoff_reached_count"); }
+static void mock_handoff_release_count(unsigned long target)
+{
+    void (*fn)(unsigned long);
+    *(void **)&fn = mock_pool_symbol("ams_mel_mock_handoff_release_count");
+    if (fn != NULL) fn(target);
+}
 
 /* Proves the thing Task 030B exists to prove, deterministically:
  *
@@ -2286,13 +2310,10 @@ static int handoff_verify(struct handoff_ctx *ctx)
     return EXIT_SUCCESS;
 }
 
-/* Concurrent release with DISTINCT snapshot owners. Two snapshots are closed
-   from two different threads while a third stays live on the main thread, so
-   two bridge-controlled releases genuinely overlap. This exercises the release
-   pool's concurrency and rules out both deadlock and an unjustified capacity
-   assumption: each overlapping release obtains its own dedicated release slot
-   and none is refused. The same public handle is never touched by two
-   threads. */
+/* Concurrent close with DISTINCT snapshot owners. The counted provider barrier
+   proves the corrected protocol intentionally admits one provider release and
+   backpressures the second owner until that release resolves. The same public
+   handle is never touched by two threads. */
 static int test_concurrent_release_distinct_owners(void)
 {
     ams_mel_session *session = NULL;
@@ -2319,16 +2340,27 @@ static int test_concurrent_release_distinct_owners(void)
     }
     CHECK(ams_mel_mock_pool_available() == 0);
 
+    mock_handoff_arm();
+    closers[0].snapshot = leases[0];
+    closers[0].status = AMS_MEL_INTERNAL_ERROR;
+    leases[0] = NULL;
+    CHECK(thrd_create(&threads[0], handoff_close_thread, &closers[0]) == thrd_success);
+    CHECK(mock_handoff_wait_count(1UL));
+    closers[1].snapshot = leases[1];
+    closers[1].status = AMS_MEL_INTERNAL_ERROR;
+    leases[1] = NULL;
+    CHECK(thrd_create(&threads[1], handoff_close_thread, &closers[1]) == thrd_success);
+    /* The second distinct owner is genuinely backpressured: only one provider
+       call has entered. */
+    CHECK(mock_handoff_reached_count() == 1UL);
+    mock_handoff_release_count(1UL);
+    CHECK(thrd_join(threads[0], NULL) == thrd_success);
+    CHECK(mock_handoff_wait_count(2UL));
+    CHECK(closers[0].status == AMS_MEL_OK && closers[0].snapshot == NULL);
+    mock_handoff_release_count(2UL);
+    CHECK(thrd_join(threads[1], NULL) == thrd_success);
+    mock_handoff_disarm();
     for (i = 0; i < 2; ++i) {
-        closers[i].snapshot = leases[i];
-        closers[i].status = AMS_MEL_INTERNAL_ERROR;
-        leases[i] = NULL;
-        CHECK(thrd_create(&threads[i], handoff_close_thread, &closers[i]) ==
-              thrd_success);
-    }
-    for (i = 0; i < 2; ++i) {
-        CHECK(thrd_join(threads[i], NULL) == thrd_success);
-        /* No release was refused and none was uncertain. */
         CHECK(closers[i].status == AMS_MEL_OK);
         CHECK(closers[i].snapshot == NULL);
     }
@@ -2347,6 +2379,254 @@ static int test_concurrent_release_distinct_owners(void)
     CHECK(ams_mel_ir_frame_snapshot_close(&leases[2], NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_mock_pool_available() == 3);
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* Repeated successful reuse reaches the real execution bound (one active
+   provider release), then proves later explicit closes wait with safe HOLD
+   ownership. Releasing the active window admits each waiter in turn. Eight A
+   generations exceed the reviewed six-slot guess without exceeding the
+   corrected execution limit. */
+static int test_repeated_generation_release_backpressure(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *current = NULL;
+    ams_mel_ir_frame_snapshot *siblings[2] = {NULL, NULL};
+    const ams_mel_ir_frame_snapshot_v1 *current_view = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *sibling_views[2] = {NULL, NULL};
+    const uint8_t *address_a = NULL;
+    const uint8_t *sibling_addresses[2] = {NULL, NULL};
+    uint8_t sibling_bytes[2][12];
+    struct handoff_closer closers[8];
+    thrd_t threads[8];
+    int joined[8] = {0};
+    size_t started = 0U;
+    int result = EXIT_FAILURE;
+    size_t generation;
+    unsigned long releases_before = 0UL;
+
+    memset(closers, 0, sizeof closers);
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    if (open_stream("handoff-repeat-saturation", &session, &stream, &config) !=
+        EXIT_SUCCESS) goto cleanup;
+    if (ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    mock_handoff_arm();
+    releases_before = mock_pool_releases();
+
+    /* Acquire A, B, and C before any close. Receives are serialized here on
+       this one test thread. */
+    if (ams_mel_mock_pool_produce_once() != 1 ||
+        ams_mel_ir_stream_receive_snapshot(stream, 2000, &current, NULL, 0, NULL) !=
+            AMS_MEL_OK ||
+        ams_mel_ir_frame_snapshot_view(current, &current_view, NULL, 0, NULL) !=
+            AMS_MEL_OK) goto cleanup;
+    address_a = current_view->pixels.data;
+    for (size_t i = 0; i < 2U; ++i) {
+        if (ams_mel_mock_pool_produce_once() != 1 ||
+            ams_mel_ir_stream_receive_snapshot(stream, 2000, &siblings[i],
+                NULL, 0, NULL) != AMS_MEL_OK ||
+            ams_mel_ir_frame_snapshot_view(siblings[i], &sibling_views[i],
+                NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+        sibling_addresses[i] = sibling_views[i]->pixels.data;
+        memcpy(sibling_bytes[i], sibling_views[i]->pixels.data, 12U);
+    }
+    if (address_a == sibling_addresses[0] || address_a == sibling_addresses[1] ||
+        sibling_addresses[0] == sibling_addresses[1] ||
+        ams_mel_mock_pool_available() != 0UL) goto cleanup;
+
+    for (generation = 0U; generation < 8U; ++generation) {
+        ams_mel_ir_frame_snapshot *next = NULL;
+        const ams_mel_ir_frame_snapshot_v1 *next_view = NULL;
+        closers[started].snapshot = current;
+        closers[started].status = AMS_MEL_INTERNAL_ERROR;
+        current = NULL;
+        if (thrd_create(&threads[started], handoff_close_thread,
+                        &closers[started]) != thrd_success) goto cleanup;
+        ++started;
+        if (generation != 0U) {
+            /* The new closer is backpressured behind the one active provider
+               call; it has not recursively or concurrently entered release. */
+            if (mock_handoff_reached_count() != (unsigned long)generation ||
+                ams_mel_mock_pool_available() != 0UL) goto cleanup;
+            mock_handoff_release_count((unsigned long)generation);
+            if (thrd_join(threads[generation - 1U], NULL) != thrd_success)
+                goto cleanup;
+            joined[generation - 1U] = 1;
+            if (closers[generation - 1U].status != AMS_MEL_OK ||
+                closers[generation - 1U].snapshot != NULL) goto cleanup;
+        }
+        if (!mock_handoff_wait_count((unsigned long)(generation + 1U)) ||
+            ams_mel_mock_pool_available() != 1UL) goto cleanup;
+        if (generation == 7U) break;
+        if (ams_mel_mock_pool_produce_once() != 1 ||
+            ams_mel_ir_stream_receive_snapshot(stream, 2000, &next,
+                NULL, 0, NULL) != AMS_MEL_OK ||
+            ams_mel_ir_frame_snapshot_view(next, &next_view, NULL, 0, NULL) !=
+                AMS_MEL_OK) goto cleanup;
+        if (next_view->pixels.data != address_a ||
+            next_view->frame_id != (uint32_t)(4U + generation)) goto cleanup;
+        for (size_t i = 0; i < 2U; ++i) {
+            if (sibling_views[i]->pixels.data != sibling_addresses[i] ||
+                memcmp(sibling_views[i]->pixels.data, sibling_bytes[i], 12U) != 0)
+                goto cleanup;
+        }
+        current = next;
+    }
+
+    mock_handoff_release_count(8UL);
+    if (thrd_join(threads[7], NULL) != thrd_success) goto cleanup;
+    joined[7] = 1;
+    for (generation = 0U; generation < 8U; ++generation)
+        if (closers[generation].status != AMS_MEL_OK ||
+            closers[generation].snapshot != NULL) goto cleanup;
+    if (mock_pool_releases() - releases_before != 8UL ||
+        ams_mel_mock_pool_available() != 1UL) goto cleanup;
+    for (size_t i = 0; i < 2U; ++i) {
+        if (sibling_views[i]->pixels.data != sibling_addresses[i] ||
+            memcmp(sibling_views[i]->pixels.data, sibling_bytes[i], 12U) != 0)
+            goto cleanup;
+    }
+    mock_handoff_release_count(ULONG_MAX);
+    for (size_t i = 0; i < 2U; ++i) {
+        if (ams_mel_ir_frame_snapshot_close(&siblings[i], NULL, 0, NULL) != AMS_MEL_OK)
+            goto cleanup;
+    }
+    if (ams_mel_mock_pool_available() != 3UL ||
+        close_all(&session, &stream) != EXIT_SUCCESS) goto cleanup;
+    result = EXIT_SUCCESS;
+
+cleanup:
+    mock_handoff_release_count(ULONG_MAX);
+    mock_handoff_disarm();
+    for (size_t i = 0; i < started; ++i)
+        if (!joined[i]) (void)thrd_join(threads[i], NULL);
+    if (current != NULL)
+        (void)ams_mel_ir_frame_snapshot_close(&current, NULL, 0, NULL);
+    for (size_t i = 0; i < 2U; ++i)
+        if (siblings[i] != NULL)
+            (void)ams_mel_ir_frame_snapshot_close(&siblings[i], NULL, 0, NULL);
+    if (stream != NULL)
+        (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session != NULL)
+        (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    return result;
+}
+
+/* A queue-full callback is released from inside an enclosing release. Each
+   successful deferred release republishes A and drives another queue-full
+   callback. The finite budget exceeds the reviewed six-slot guess, while the
+   bridge drains iteratively and keeps provider release nesting at one. */
+static int test_callback_rejection_reentry_chain(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    ams_mel_ir_stream_counters_v1 counters;
+    const unsigned long budget = 9UL;
+    unsigned long releases_before;
+
+    config.buffer_count = 3;
+    config.queue_capacity = 1;
+    CHECK(open_stream("handoff-reentry-chain", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    mock_reentry_configure(budget);
+    releases_before = mock_pool_releases();
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 2000, &lease, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    /* Fill the only queue entry so every reentrant callback takes the real
+       queue-full rejection path. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(mock_reentry_callbacks() == budget);
+    CHECK(mock_max_release_depth() == 1UL);
+    CHECK(mock_pool_releases() - releases_before == budget + 1UL);
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(counters.frames_dropped_queue_full == budget);
+    CHECK(mock_failed_release_attempts() == 0UL);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+struct discard_close_args {
+    ams_mel_ir_stream **stream;
+    ams_mel_status_t status;
+};
+
+static int discard_close_entry(void *argument)
+{
+    struct discard_close_args *args = (struct discard_close_args *)argument;
+    args->status = ams_mel_ir_stream_close(args->stream, NULL, 0, NULL);
+    return 0;
+}
+
+static int test_close_discard_release_backpressure(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct discard_close_args args;
+    thrd_t thread;
+    char path[] = "/tmp/ams-mel-close-discard-XXXXXX";
+    char log[8192];
+    int descriptor = mkstemp(path);
+    FILE *file;
+    size_t count;
+    char *channel_destroyed, *control_destroyed, *unloaded;
+    size_t released_count = 0U;
+
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
+    config.buffer_count = 3;
+    config.queue_capacity = 4;
+    CHECK(open_stream("handoff-close-discard", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    for (size_t i = 0; i < 3U; ++i) CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_mock_pool_available() == 0UL);
+    mock_handoff_arm();
+    args.stream = &stream;
+    args.status = AMS_MEL_INTERNAL_ERROR;
+    CHECK(thrd_create(&thread, discard_close_entry, &args) == thrd_success);
+    CHECK(mock_handoff_wait_count(1UL));
+    CHECK(mock_handoff_reached_count() == 1UL);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(log, 1, sizeof log - 1U, file);
+    log[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(strstr(log, "channel_destroyed") == NULL);
+    for (unsigned long ordinal = 1UL; ordinal <= 3UL; ++ordinal) {
+        mock_handoff_release_count(ordinal);
+        if (ordinal != 3UL) CHECK(mock_handoff_wait_count(ordinal + 1UL));
+    }
+    CHECK(thrd_join(thread, NULL) == thrd_success);
+    mock_handoff_disarm();
+    CHECK(args.status == AMS_MEL_OK && stream == NULL);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(log, 1, sizeof log - 1U, file);
+    log[count] = '\0';
+    CHECK(fclose(file) == 0);
+    CHECK(unlink(path) == 0);
+    channel_destroyed = strstr(log, "channel_destroyed");
+    control_destroyed = strstr(log, "control_destroyed");
+    unloaded = strstr(log, "library_unloaded");
+    CHECK(channel_destroyed != NULL && control_destroyed != NULL && unloaded != NULL);
+    CHECK(channel_destroyed < control_destroyed && control_destroyed < unloaded);
+    for (char *event = log; (event = strstr(event, "buffer_released\n")) != NULL;
+         event += strlen("buffer_released\n"))
+        ++released_count;
+    CHECK(released_count == 3U);
     return EXIT_SUCCESS;
 }
 
@@ -2542,6 +2822,9 @@ int main(void)
        inside the still-executing release call. */
     CHECK(test_release_reuse_handoff("handoff-pause-after") == EXIT_SUCCESS);
     CHECK(test_release_reuse_handoff("handoff-reuse-inside") == EXIT_SUCCESS);
+    CHECK(test_repeated_generation_release_backpressure() == EXIT_SUCCESS);
+    CHECK(test_callback_rejection_reentry_chain() == EXIT_SUCCESS);
+    CHECK(test_close_discard_release_backpressure() == EXIT_SUCCESS);
     CHECK(test_concurrent_release_distinct_owners() == EXIT_SUCCESS);
     CHECK(test_release_reuse_handoff_common_paths() == EXIT_SUCCESS);
     /* Repetition SUPPLEMENTS the deterministic coverage above; it does not

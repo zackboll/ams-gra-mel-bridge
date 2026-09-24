@@ -4,6 +4,17 @@ The current ABI is 0.1, not yet stable. Header version macros describe this
 facade only. Provider API, upstream source, architecture, and package versions
 must remain distinct.
 
+The provider-buffer zero-copy path internally enforces one active provider
+`Buffer::release()` per stream. Temporary contention is backpressure: an
+explicit snapshot close waits and reports its own release outcome, while a
+callback reentered from that provider call transfers allocation-free into
+preallocated deferred ownership rather than waiting on itself. Every active or
+deferred release obligation blocks physical teardown. Before each provider
+attempt the exact wrapper already has preallocated failure retention; a failed
+or throwing release is never retried and that exact wrapper is never destroyed.
+This scheduling/ownership correction changes no public layout, export, status,
+or ABI version.
+
 ## Required for subsequent features
 
 - Fixed-width numeric status and enum representations, not compiler-dependent

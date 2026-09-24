@@ -135,31 +135,24 @@ void increment(std::uint64_t& value) noexcept
  *     -- a queued frame or a live snapshot. Each is a distinct physical
  *     checkout, so buffer_count genuinely bounds this.
  *
- *   release_slots (RELEASE), 2 * buffer_count entries
- *     occupied while one bridge-controlled release() is unresolved, and
- *     permanently if that release was uncertain. Bounded because releases
- *     start from exactly two disjoint sources -- callback-side rejection and
- *     owner-driven release of an accepted frame -- each itself bounded by
- *     buffer_count. See ams_mel_ir_stream_start() for the full derivation.
- *     The bound is ENFORCED by admission control in begin_release(), not
- *     merely assumed.
+ *   active_release (ACTIVE), one entry
+ *     occupied by the one provider release() call admitted for this stream,
+ *     and permanently if that call is uncertain.
+ *
+ *   deferred_releases (DEFERRED), buffer_count entries
+ *     occupied only when callback-side release reenters an active provider
+ *     release. Such a callback must not wait for its enclosing call. Each
+ *     deferred wrapper still owns a distinct physical checkout, so this pool is
+ *     bounded by buffer_count. Non-callback callers instead wait while keeping
+ *     their HOLD ownership; temporary saturation is backpressure, not failure.
  *
  * The handoff from hold to release ownership happens atomically under
  * CallbackState::mutex, strictly before the provider call, so the hold slot a
  * legitimate reuse needs is already free while the old release is still
  * running, and the old wrapper always already owns its permanent fallback.
  *
- * If a non-conforming provider does exhaust the pool, the bridge does NOT
- * release: it keeps the buffer instead. That branch runs BEFORE any release()
- * for the buffer, where dropping the wrapper is harmless, because a
- * never-released wrapper's destructor performs its FIRST release. The
- * forbidden case -- dropping a wrapper AFTER a failed release, making that
- * destructor retry release() -- is unreachable by construction.
- *
- * The process-global list below is only a publication/diagnostic record plus
- * extra depth for that pre-release branch. No safety property depends on it,
- * and the previous fixed 64-slot reserve is no longer a correctness
- * dependency. */
+ * The process-global list below is only a publication/diagnostic record for
+ * legacy fail-safe tests. No ordinary congestion path uses it. */
 struct RetainedBufferNode {
     std::shared_ptr<irmel::Buffer> buffer;
     RetainedBufferNode *next{};
@@ -488,6 +481,10 @@ enum class Lifecycle {
 };
 
 struct CallbackState {
+    struct DeferredRelease {
+        std::shared_ptr<irmel::Buffer> buffer;
+        bool already_counted{};
+    };
     struct HostRange {
         std::uintptr_t base;
         std::size_t size;
@@ -554,9 +551,7 @@ struct CallbackState {
     std::vector<std::shared_ptr<irmel::Buffer>> retention_slots;
     std::vector<std::size_t> free_retention_slots;
 
-    /* CORRECTIVE (provider-buffer release/reuse handoff). A SECOND, DISJOINT
-     * preallocated pool, dedicated exclusively to release calls that are still
-     * executing.
+    /* CORRECTIVE (PR #43 review). Provider release execution is serialized.
      *
      * Why a second pool is required, and why buffer_count alone never bounded
      * the first one:
@@ -586,21 +581,26 @@ struct CallbackState {
      *                        queued frames and live snapshots. Bounded by
      *                        buffer_count, because each one is a distinct
      *                        physical checkout.
-     *   release_slots        RELEASE ownership. Occupied exactly while one
-     *                        bridge-controlled release() for a specific
-     *                        wrapper is unresolved, and permanently thereafter
-     *                        if that release was uncertain. Bounded by
-     *                        max_concurrent_releases, which the implementation
-     *                        ENFORCES by admission control in begin_release().
+     *   active_release       exact wrapper for the one admitted provider call;
+     *                        retained permanently if its result is uncertain.
+     *   deferred_releases    callback-side obligations that reentered an active
+     *                        release and therefore cannot wait for it. There are
+     *                        buffer_count slots because each deferred obligation
+     *                        still withholds one distinct physical checkout.
      *
-     * begin_release() performs the handoff atomically under mutex: it moves
-     * the exact wrapper into a release slot and returns the hold slot in the
-     * same critical section, strictly BEFORE the provider call. So the hold
-     * slot a healthy reuse needs is already free when the provider republishes
-     * the physical buffer, and the wrapper still has a guaranteed
-     * non-allocating permanent owner if that release fails or throws. */
-    std::vector<std::shared_ptr<irmel::Buffer>> release_slots;
-    std::vector<std::size_t> free_release_slots;
+     * Admission reserves one exact uncertain-owner slot and moves the wrapper
+     * into active_release before the provider call. It returns the hold slot in
+     * the same critical section. Success recycles both; failure transfers the
+     * exact wrapper permanently into the already-reserved uncertain slot. */
+    std::shared_ptr<irmel::Buffer> active_release;
+    std::size_t active_uncertain_slot{no_retention_slot};
+    std::vector<std::shared_ptr<irmel::Buffer>> uncertain_slots;
+    std::vector<std::size_t> free_uncertain_slots;
+    std::vector<DeferredRelease> deferred_releases;
+    std::vector<std::size_t> free_deferred_releases;
+    std::vector<std::size_t> pending_deferred_releases;
+    std::condition_variable release_ready;
+    std::size_t release_obligations{};
 
     /* Acquires one dedicated retention (HOLD) slot, or no_retention_slot when
      * the pool is exhausted. Caller must hold mutex. Allocation-free. */
@@ -624,53 +624,23 @@ struct CallbackState {
             free_retention_slots.push_back(index);
     }
 
-    /* Returns a RELEASE slot whose buffer was released SUCCESSFULLY, so it can
-     * serve the next release. Never called for an uncertain release: such a
-     * slot is consumed permanently and keeps owning its wrapper forever.
-     * Caller must hold mutex. Allocation-free. */
-    void return_release_slot(std::size_t index) noexcept
+    bool defer_release(const std::shared_ptr<irmel::Buffer>& buffer,
+                       std::size_t hold_slot, bool already_counted) noexcept
     {
-        if (index == no_retention_slot || index >= release_slots.size()) return;
-        release_slots[index].reset();
-        if (free_release_slots.size() < free_release_slots.capacity())
-            free_release_slots.push_back(index);
+        if (free_deferred_releases.empty()) return false;
+        const std::size_t index = free_deferred_releases.back();
+        free_deferred_releases.pop_back();
+        deferred_releases[index].buffer = buffer;
+        deferred_releases[index].already_counted = already_counted;
+        pending_deferred_releases.push_back(index);
+        ++release_obligations;
+        if (!skip_release_handoff_failpoint()) return_retention_slot(hold_slot);
+        return true;
     }
 
-    /* THE corrective handoff, and the ONLY way a bridge-controlled release is
-     * ever entered. Runs entirely under mutex and performs no provider call.
-     *
-     * Establishes, before any release() is attempted:
-     *
-     *   - invariant B: the exact wrapper is already owned by a dedicated,
-     *     preallocated release slot, so a failed or throwing release has a
-     *     guaranteed non-allocating permanent owner and the exact callback
-     *     wrapper can never be destroyed;
-     *   - invariant A: the HOLD slot is returned here, not after the provider
-     *     call, so a healthy provider republishing this physical buffer inside
-     *     release() cannot cause false hold-slot exhaustion;
-     *   - invariant E: the hold slot returned is NOT the slot that would be
-     *     needed for permanent ownership of this unresolved release -- that is
-     *     the disjoint release slot -- so returning it for reuse can never
-     *     strand an uncertain release without an owner.
-     *
-     * Returns no_retention_slot when no release slot is available, in which
-     * case the caller MUST NOT call release(): admission control refuses the
-     * release rather than risking an unownable uncertain result. */
-    std::size_t begin_release(const std::shared_ptr<irmel::Buffer>& buffer,
-                              std::size_t hold_slot) noexcept
-    {
-        if (free_release_slots.empty() || exhaust_release_slots_failpoint())
-            return no_retention_slot;
-        const std::size_t index = free_release_slots.back();
-        free_release_slots.pop_back();
-        /* Moving into an already-constructed empty shared_ptr slot allocates
-         * nothing and cannot throw. */
-        release_slots[index] = buffer;
-        /* Hand the hold slot back for immediate reuse in the SAME critical
-         * section. This is the corrective step. */
-        if (!skip_release_handoff_failpoint()) return_retention_slot(hold_slot);
-        return index;
-    }
+    bool release_buffer(std::shared_ptr<irmel::Buffer> buffer,
+                        std::size_t hold_slot, bool already_counted,
+                        bool callback_side) noexcept;
 
     /* Set as soon as any Buffer belonging to this stream reaches uncertain
      * ownership, from ANY path including a callback-side rejection. It is an
@@ -724,11 +694,11 @@ struct CallbackState {
          *
          * Emergency ownership is allocated BEFORE the release, never after it
          * failed, which is the property invariant B demands. */
-        if (slot != no_retention_slot && slot < release_slots.size()) {
+        if (slot != no_retention_slot && slot < uncertain_slots.size()) {
             if (drop_failed_buffer_failpoint())
-                release_slots[slot].reset();
+                uncertain_slots[slot].reset();
             else
-                release_slots[slot] = std::move(buffer);
+                uncertain_slots[slot] = std::move(buffer);
         }
         if (auto state = owner.lock()) image_stream_retain_failed(state);
         try {
@@ -803,50 +773,7 @@ struct CallbackState {
             ~Releaser() noexcept
             {
                 if (!value) return;
-                /* CORRECTIVE handoff, identical to the accepted-frame path:
-                 * under the lock and strictly before the provider call, move
-                 * this exact wrapper into a dedicated preallocated RELEASE
-                 * slot and hand the HOLD slot straight back for reuse. The
-                 * provider call below stays outside the mutex. */
-                std::size_t release_slot = no_retention_slot;
-                try {
-                    std::lock_guard lock{state.mutex};
-                    release_slot = state.begin_release(value, retention);
-                } catch (...) {
-                    release_slot = no_retention_slot;
-                }
-                if (release_slot == no_retention_slot) {
-                    /* Admission control refused. No release() has been
-                     * attempted for this wrapper, so parking it and blocking
-                     * teardown is the safe action; a dropped wrapper would
-                     * only perform the provider's own FIRST release. */
-                    (void)park_pre_release_buffer(value);
-                    state.retain_uncertain_buffer(std::move(value),
-                                                  no_retention_slot, false);
-                    return;
-                }
-                bool ok = false;
-                try {
-                    ok = value->release() == irmel::Return::Success;
-                } catch (...) {
-                    ok = false;
-                }
-                if (ok) {
-                    /* Provider ownership is proven handed back; the release
-                     * obligation is discharged and its slot is reusable. */
-                    try {
-                        std::lock_guard lock{state.mutex};
-                        state.return_release_slot(release_slot);
-                    } catch (...) {
-                    }
-                    return;
-                }
-                /* Uncertain ownership: never destroy the wrapper, never retry
-                 * release(), and permanently block physical teardown. The
-                 * frame was rejected before queue acceptance, so it is not yet
-                 * counted in retained_frames. The release slot already owns
-                 * the wrapper and is never returned. */
-                state.retain_uncertain_buffer(std::move(value), release_slot, false);
+                (void)state.release_buffer(std::move(value), retention, false, true);
             }
         } release{*this, buffer, no_retention_slot};
 
@@ -1002,6 +929,133 @@ struct CallbackState {
     }
 };
 
+bool CallbackState::release_buffer(std::shared_ptr<irmel::Buffer> buffer,
+                                   std::size_t hold_slot, bool already_counted,
+                                   bool callback_side) noexcept
+{
+    if (!buffer) return true;
+    bool original_result = true;
+    bool original = true;
+    try {
+        std::unique_lock lock{mutex};
+        if (exhaust_release_slots_failpoint()) {
+            (void)park_pre_release_buffer(buffer);
+            lock.unlock();
+            retain_uncertain_buffer(std::move(buffer), no_retention_slot,
+                                    already_counted);
+            return false;
+        }
+        if (active_release) {
+            if (callback_side) {
+                /* A callback reentered from active_release->release(). Waiting
+                 * here would deadlock on its own enclosing provider call. The
+                 * exact wrapper is instead transferred allocation-free into a
+                 * preallocated deferred slot and the outer executor will drain
+                 * it iteratively after returning from provider code. */
+                return defer_release(buffer, hold_slot, already_counted);
+            }
+            release_ready.wait(lock, [this] {
+                return !active_release ||
+                       uncertain_release.load(std::memory_order_acquire);
+            });
+            if (active_release) {
+                /* An earlier release became uncertain. This call was never
+                 * attempted; park its wrapper while the already-poisoned graph
+                 * remains retained. This is not ordinary congestion. */
+                (void)park_pre_release_buffer(buffer);
+                return false;
+            }
+        }
+        if (free_uncertain_slots.empty()) {
+            (void)park_pre_release_buffer(buffer);
+            return false;
+        }
+        active_uncertain_slot = free_uncertain_slots.back();
+        free_uncertain_slots.pop_back();
+        uncertain_slots[active_uncertain_slot] = buffer;
+        active_release = buffer;
+        ++release_obligations;
+        if (!skip_release_handoff_failpoint()) return_retention_slot(hold_slot);
+        lock.unlock();
+
+        for (;;) {
+            bool ok = false;
+            try {
+                ok = active_release->release() == irmel::Return::Success;
+            } catch (...) {
+                ok = false;
+            }
+            if (!ok) {
+                if (original) original_result = false;
+                lock.lock();
+                const std::size_t failed_slot = active_uncertain_slot;
+                std::shared_ptr<irmel::Buffer> failed_buffer =
+                    uncertain_slots[failed_slot];
+                /* Publish before dropping the final active-obligation count or
+                 * releasing the teardown mutex. This closes the same
+                 * post-callback-drain teardown window as every other uncertain
+                 * release path. retain_uncertain_buffer repeats the store. */
+                uncertain_release.store(true, std::memory_order_release);
+                active_release.reset();
+                active_uncertain_slot = no_retention_slot;
+                if (release_obligations != 0U) --release_obligations;
+                release_ready.notify_all();
+                lock.unlock();
+                retain_uncertain_buffer(std::move(failed_buffer), failed_slot,
+                                        already_counted);
+                lock.lock();
+                if (pending_deferred_releases.empty()) {
+                    lock.unlock();
+                    return original_result;
+                }
+                const std::size_t index = pending_deferred_releases.back();
+                pending_deferred_releases.pop_back();
+                active_release = std::move(deferred_releases[index].buffer);
+                active_uncertain_slot = free_uncertain_slots.back();
+                free_uncertain_slots.pop_back();
+                uncertain_slots[active_uncertain_slot] = active_release;
+                already_counted = deferred_releases[index].already_counted;
+                deferred_releases[index].already_counted = false;
+                free_deferred_releases.push_back(index);
+                original = false;
+                lock.unlock();
+                continue;
+            }
+
+            lock.lock();
+            if (already_counted && retained_frames != 0U) --retained_frames;
+            active_release.reset();
+            uncertain_slots[active_uncertain_slot].reset();
+            free_uncertain_slots.push_back(active_uncertain_slot);
+            active_uncertain_slot = no_retention_slot;
+            if (release_obligations != 0U) --release_obligations;
+            if (pending_deferred_releases.empty()) {
+                release_ready.notify_all();
+                lock.unlock();
+                return original_result;
+            }
+
+            /* Continue on this executor rather than recursively entering
+             * release(). The deferred slot stays occupied until its exact
+             * wrapper has moved into active_release. */
+            const std::size_t index = pending_deferred_releases.back();
+            pending_deferred_releases.pop_back();
+            active_release = std::move(deferred_releases[index].buffer);
+            active_uncertain_slot = free_uncertain_slots.back();
+            free_uncertain_slots.pop_back();
+            uncertain_slots[active_uncertain_slot] = active_release;
+            already_counted = deferred_releases[index].already_counted;
+            deferred_releases[index].already_counted = false;
+            free_deferred_releases.push_back(index);
+            original = false;
+            lock.unlock();
+        }
+    } catch (...) {
+        (void)park_pre_release_buffer(buffer);
+        return false;
+    }
+}
+
 bool claim_image_metadata(
     ImageStreamState& stream,
     const std::shared_ptr<ImageMetadataState>& state,
@@ -1083,65 +1137,16 @@ bool release_retained_buffer(const std::shared_ptr<ImageStreamState>& state,
                              std::shared_ptr<irmel::Buffer> buffer,
                              std::size_t retention) noexcept
 {
-    if (!buffer) return true;
-    /* CORRECTIVE handoff. Under the lock, and strictly BEFORE the provider
-     * call: move this exact wrapper into a dedicated preallocated RELEASE
-     * slot, and hand the HOLD slot back for immediate reuse. Provider code is
-     * never entered under this mutex (invariant D). */
-    std::size_t release_slot = no_retention_slot;
-    try {
-        std::lock_guard lock{state->callback->mutex};
-        release_slot = state->callback->begin_release(buffer, retention);
-    } catch (...) {
-        release_slot = no_retention_slot;
-    }
-    if (release_slot == no_retention_slot) {
-        /* Admission control refused: no dedicated permanent owner is
-         * available for an uncertain result, so do not release at all. This
-         * runs BEFORE any release() for this wrapper, so dropping it would
-         * only trigger the provider's own FIRST release, never a forbidden
-         * retry. Park it and block teardown permanently instead. */
-        (void)park_pre_release_buffer(buffer);
-        state->callback->retain_uncertain_buffer(std::move(buffer),
-                                                 no_retention_slot, true);
-        return false;
-    }
-    bool ok = false;
-    try {
-        ok = buffer->release() == irmel::Return::Success;
-    } catch (...) {
-        ok = false;
-    }
-    if (ok) {
+    const bool ok = state->callback->release_buffer(
+        buffer, retention, true, false);
+    if (!ok && state->callback->uncertain_release.load(std::memory_order_acquire)) {
         try {
             std::lock_guard lock{state->callback->mutex};
-            if (state->callback->retained_frames != 0U)
-                --state->callback->retained_frames;
-            /* Resolved successfully: the release obligation is discharged, so
-             * its dedicated release slot becomes available again. The hold
-             * slot was already returned by begin_release(). */
-            state->callback->return_release_slot(release_slot);
+            state->retained_failed_buffers.push_back(std::move(buffer));
         } catch (...) {
-            /* Publication must never throw out of a noexcept release path.
-             * Leaving the count high only over-defers teardown, which is the
-             * safe direction. */
         }
-        return true;
     }
-    /* Uncertain ownership. This frame was accepted into the queue, so it is
-     * already counted in retained_frames and that unit is never removed. The
-     * release slot is never returned, so it owns this wrapper forever and
-     * release() is never retried. */
-    state->callback->retain_uncertain_buffer(buffer, release_slot, true);
-    try {
-        std::lock_guard lock{state->callback->mutex};
-        /* Additional diagnostic record only; failing here changes nothing. */
-        state->retained_failed_buffers.push_back(buffer);
-    } catch (...) {
-        /* The callback Buffer is already owned by its retention slot, the
-         * graph is already retained, and release() is never retried. */
-    }
-    return false;
+    return ok;
 }
 
 /* Drains and releases every still-queued frame. Ownership is moved out under
@@ -1379,6 +1384,7 @@ ImageCleanupOutcome image_stream_cleanup(
              * so physical teardown is blocked even if the retained_frames
              * publication under the lock could not be performed. */
             if (stream.callback->retained_frames != 0U ||
+                stream.callback->release_obligations != 0U ||
                 stream.callback->uncertain_release.load(std::memory_order_acquire))
                 return ImageCleanupOutcome::NotRequired;
             if (stream.cleanup_complete)
@@ -1825,59 +1831,26 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
                 if (!state.callback->retention_slots[i])
                     state.callback->free_retention_slots.push_back(i);
             }
-            /* CORRECTIVE: the disjoint RELEASE-ownership pool, built here for
-             * the same reason and with the same restart-safe rules.
-             *
-             * Capacity argument, and why this is not an arbitrary reserve.
-             * A release slot is occupied for exactly the interval
-             *
-             *     begin_release()  ..  release() resolves
-             *
-             * so the number simultaneously occupied equals the number of
-             * bridge-controlled release calls concurrently in flight, plus the
-             * ones permanently consumed by uncertain results. The bridge
-             * itself is the only thing that starts a release, and it starts
-             * one only from these sources:
-             *
-             *   1. the provider callback's Releaser, for a REJECTED frame.
-             *      Bounded by the number of concurrent provider callbacks; a
-             *      callback holds a hold slot for its whole duration, so this
-             *      is bounded by buffer_count.
-             *   2. an owner-driven release of an ACCEPTED frame: snapshot
-             *      close, legacy Receive, or Close-time queue discard. Each
-             *      one consumes a distinct accepted frame, and every accepted
-             *      frame holds a distinct hold slot until begin_release(), so
-             *      at most buffer_count of these can be in flight at once.
-             *
-             * Those two sources are disjoint -- a wrapper is either rejected
-             * in its callback or accepted into the queue, never both -- and
-             * each is bounded by buffer_count, so at most 2 * buffer_count
-             * bridge-controlled releases can be unresolved simultaneously.
-             * That bound is not assumed: begin_release() ENFORCES it by
-             * admission control, refusing to release rather than exceeding the
-             * pool, and the refusal path is the already-proven pre-release
-             * branch that never retries a failed release.
-             *
-             * A release slot permanently consumed by an uncertain result also
-             * permanently removes its physical buffer from provider reuse and
-             * poisons the stream, so such consumption is bounded by the same
-             * capacity and cannot recur on a healthy stream. */
-            const std::size_t release_capacity =
-                state.buffer_count >
-                        std::numeric_limits<std::size_t>::max() / 2U
-                    ? std::numeric_limits<std::size_t>::max()
-                    : state.buffer_count * 2U;
-            if (state.callback->release_slots.size() < release_capacity)
-                state.callback->release_slots.resize(release_capacity);
-            state.callback->free_release_slots.clear();
-            state.callback->free_release_slots.reserve(
-                state.callback->release_slots.size());
-            for (std::size_t i = state.callback->release_slots.size(); i-- > 0U;) {
-                /* A slot still holding an uncertain buffer is never reset or
-                 * freed, exactly as for the hold pool. */
-                if (!state.callback->release_slots[i])
-                    state.callback->free_release_slots.push_back(i);
-            }
+            /* One active execution slot enforces the provider-call bound.
+             * Callback reentry cannot wait for that slot, so buffer_count
+             * preallocated deferred owners cover every distinct checkout that
+             * can be returned by a reentrant rejection. */
+            if (state.callback->deferred_releases.size() < state.buffer_count)
+                state.callback->deferred_releases.resize(state.buffer_count);
+            if (state.callback->uncertain_slots.size() < state.buffer_count)
+                state.callback->uncertain_slots.resize(state.buffer_count);
+            state.callback->free_uncertain_slots.clear();
+            state.callback->free_uncertain_slots.reserve(state.buffer_count);
+            for (std::size_t i = state.callback->uncertain_slots.size(); i-- > 0U;)
+                if (!state.callback->uncertain_slots[i])
+                    state.callback->free_uncertain_slots.push_back(i);
+            state.callback->free_deferred_releases.clear();
+            state.callback->free_deferred_releases.reserve(state.buffer_count);
+            state.callback->pending_deferred_releases.clear();
+            state.callback->pending_deferred_releases.reserve(state.buffer_count);
+            for (std::size_t i = state.callback->deferred_releases.size(); i-- > 0U;)
+                if (!state.callback->deferred_releases[i].buffer)
+                    state.callback->free_deferred_releases.push_back(i);
             state.callback->accepting = true;
             /* Teardown-participating state: record under the teardown lock
                that disable() is now owed to the provider. The lifecycle is

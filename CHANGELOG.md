@@ -19,41 +19,40 @@
 
   This retracts the previous claim that the physical `buffer_count` alone
   bounds emergency ownership. A retention slot is keyed to a **per-callback
-  `Buffer` wrapper generation**, not to a physical buffer, and one physical
-  buffer legitimately has two live wrapper generations during that window.
-  `buffer_count` bounds simultaneous physical checkouts only.
+  `Buffer` wrapper generation**, not to a physical buffer.
 
-  Ownership is now split across two disjoint preallocated pools, both built in
-  Start before `channel->enable()`: `retention_slots` (HOLD, `buffer_count`)
-  for a buffer the bridge holds but has not begun releasing, and
-  `release_slots` (RELEASE, `2 * buffer_count`) for a bridge-controlled
-  `release()` that is still unresolved. `CallbackState::begin_release()`
-  performs the handoff atomically under the teardown mutex and strictly before
-  the provider call: it moves the exact wrapper into a release slot and returns
-  the hold slot in the same critical section. The `2 * buffer_count` bound is
-  derived from the two disjoint release sources -- callback-side rejection and
-  owner-driven release of an accepted frame, each bounded by `buffer_count` --
-  and is **enforced** by admission control, which refuses to release rather
-  than exceed the pool. The legacy process-global 64-entry reserve was not
-  increased.
+  This further retracts the reviewed claim that two disjoint release sources
+  bound unresolved wrapper generations by `2 * buffer_count`: repeated reuse
+  lets either source create arbitrarily many generations while older provider
+  calls remain unresolved. The bridge now enforces one active provider
+  `release()` per stream. Ordinary explicit closes wait with their HOLD
+  ownership intact, preserving synchronous result reporting. Callback-side
+  reentry cannot wait for its enclosing release, so it transfers allocation-
+  free into one of `buffer_count` preallocated deferred owners; the active
+  executor drains those obligations iteratively. Before every provider call,
+  the exact wrapper is also stored in one of `buffer_count` preallocated
+  uncertain-owner slots. Success recycles that slot; failure consumes it
+  permanently, is never retried, and does not block unrelated healthy releases.
+  The legacy process-global 64-entry reserve was not increased and is not used
+  for ordinary congestion.
 
   Uncertain-release safety is unweakened: emergency ownership is now allocated
   *before* the release rather than after one has failed, a failed or throwing
   release is still never retried, its exact wrapper is still never destroyed,
   teardown still requires
-  `requests == 0 AND retained_frames == 0 AND !uncertain_release`, and explicit
+  `requests == 0 AND retained_frames == 0 AND release_obligations == 0 AND
+  !uncertain_release`, and explicit
   close still reports `AMS_MEL_PROVIDER_FAILED` while Ada finalization stays
   non-raising.
 
-  Deterministic regressions force the exact interleaving with condition
-  variables, never sleeps, and prove the forced window was reached: a release
-  paused after successfully republishing the buffer, and reuse driven from
-  inside the still-executing release call with the provider pool mutex
-  released. Coverage includes accepted-frame and callback-side release entry,
-  legacy `Receive` and Close-time queue discard, concurrent release from
-  distinct snapshot owners, release-slot admission control, and an Ada
-  `Frame_Lease` regression through the public safe API. A negative control
-  proves removing the handoff makes the new regressions fail.
+  Counted deterministic regressions now drive eight repeated A generations,
+  prove the one-call execution limit and recovery, and drive nine actual
+  queue-full callbacks from release-side reentry while observing maximum
+  provider release nesting of one. Distinct snapshot-owner closes prove
+  intentional serialization, and actual Close-time queue discard is paused and
+  accounted before stream-channel, Control, and library destruction. The Ada
+  regression acquires A/B/C before closing A and requires frame 4 at A's exact
+  address, with a log proving four callbacks were delivered.
 
   No C ABI change: ABI stays `0.1` with all 90 exports and `exports.map`
   unchanged, frozen record layouts untouched, zero bulk payload copies

@@ -374,12 +374,21 @@ std::condition_variable handoff_ready;
 bool handoff_window_reached{false};
 /* Set by the test to let a paused release call return. */
 bool handoff_window_released{false};
+/* Counted variant used by the repeated-generation saturation regression. Each
+ * successful release gets its own ordinal after republishing its physical
+ * buffer, and waits until that exact ordinal has been released by the test. */
+unsigned long handoff_windows_reached{0U};
+unsigned long handoff_windows_released{0U};
 /* Counts complete new callbacks the provider drove from INSIDE a still-
  * executing release call. Proves reuse-before-return was actually exercised. */
 std::atomic<unsigned long> handoff_reentrant_callbacks{0U};
 /* Armed by the test so only the intended release enters the window; the
  * scenario's other releases behave completely normally. */
 std::atomic<bool> handoff_armed{false};
+std::atomic<unsigned long> reentry_budget{0U};
+std::atomic<unsigned long> reentry_callbacks{0U};
+std::atomic<unsigned long> release_depth{0U};
+std::atomic<unsigned long> max_release_depth{0U};
 
 /* Number of leading null-Buffer callbacks the "null-buffer-callbacks" scenario
  * emits before its first valid frame. Deliberately far more than any
@@ -563,6 +572,16 @@ public:
      * RequeueBuffer::release() does not requeue when it returns Fail. */
     Return release() override
     {
+        struct DepthGuard {
+            unsigned long depth;
+            DepthGuard() : depth{release_depth.fetch_add(1U) + 1U}
+            {
+                unsigned long observed = max_release_depth.load();
+                while (observed < depth &&
+                       !max_release_depth.compare_exchange_weak(observed, depth)) {}
+            }
+            ~DepthGuard() { release_depth.fetch_sub(1U); }
+        } depth_guard;
         if (!outstanding_.exchange(false)) std::abort();
         ++buffer_releases;
         --buffers_outstanding;
@@ -593,7 +612,25 @@ public:
              * returned, so the bridge cannot have reconciled its bookkeeping
              * for this wrapper. Everything below is condition-variable driven
              * and records that the window was actually reached. */
-            if (handoff_armed.load()) {
+            if (scenario_ == "handoff-reentry-chain") {
+                unsigned long remaining = reentry_budget.load();
+                while (remaining != 0U &&
+                       !reentry_budget.compare_exchange_weak(remaining,
+                                                             remaining - 1U)) {}
+                if (remaining != 0U && reentrant_producer_) {
+                    reentrant_producer_();
+                    ++reentry_callbacks;
+                }
+            } else if (scenario_ == "handoff-repeat-saturation" ||
+                       scenario_ == "handoff-concurrent" ||
+                       scenario_ == "handoff-close-discard") {
+                std::unique_lock lock{handoff_mutex};
+                const unsigned long ordinal = ++handoff_windows_reached;
+                handoff_ready.notify_all();
+                handoff_ready.wait(lock, [ordinal] {
+                    return handoff_windows_released >= ordinal;
+                });
+            } else if (handoff_armed.load()) {
                 if (scenario_ == "handoff-pause-after") {
                     std::unique_lock lock{handoff_mutex};
                     handoff_window_reached = true;
@@ -945,7 +982,8 @@ public:
              * hook only ever runs from a release performed while the channel
              * is alive, and the channel joins its producer before destruction. */
             if (scenario_ == "handoff-reuse-inside" ||
-                scenario_ == "handoff-ada-reuse")
+                scenario_ == "handoff-ada-reuse" ||
+                scenario_ == "handoff-reentry-chain")
                 mock->set_reentrant_producer([this] { (void)drive_one_callback(); });
         }
         {
@@ -1183,9 +1221,12 @@ private:
     bool handoff_scenario() const
     {
         return scenario_ == "handoff-pause-after" ||
+               scenario_ == "handoff-repeat-saturation" ||
+               scenario_ == "handoff-reentry-chain" ||
                scenario_ == "handoff-reuse-inside" ||
                scenario_ == "handoff-ada-reuse" ||
-               scenario_ == "handoff-concurrent";
+               scenario_ == "handoff-concurrent" ||
+               scenario_ == "handoff-close-discard";
     }
 
     /* Scenarios that model pinned Squall's per-callback RequeueBuffer. */
@@ -1439,17 +1480,9 @@ private:
             if (stopping_.load()) break;
             if (!drive_one_callback()) break;
         }
-        /* Keep serving further callbacks as buffers come back, so an Ada
-         * Acquire_Frame after the reuse always has a frame available. */
-        while (!stopping_.load()) {
-            std::unique_lock lock{pool_->mutex};
-            (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10},
-                [this] { return stopping_.load() || !pool_->available.empty(); });
-            if (stopping_.load()) break;
-            if (pool_->available.empty()) continue;
-            lock.unlock();
-            if (!drive_one_callback()) break;
-        }
+        /* No free-running producer after A/B/C. The selected lease's release
+         * hook alone delivers generation 4, making the critical window fully
+         * deterministic for Ada. */
     }
 
     void produce()
@@ -3732,9 +3765,38 @@ void ams_mel_mock_handoff_arm(void)
         std::lock_guard lock{handoff_mutex};
         handoff_window_reached = false;
         handoff_window_released = false;
+        handoff_windows_reached = 0U;
+        handoff_windows_released = 0U;
     }
     handoff_reentrant_callbacks.store(0U);
     handoff_armed.store(true);
+}
+
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_handoff_wait_count(unsigned long target)
+{
+    std::unique_lock lock{handoff_mutex};
+    return handoff_ready.wait_for(lock, std::chrono::seconds{10}, [target] {
+        return handoff_windows_reached >= target;
+    }) ? 1 : 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_handoff_reached_count(void)
+{
+    std::lock_guard lock{handoff_mutex};
+    return handoff_windows_reached;
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_handoff_release_count(unsigned long target)
+{
+    {
+        std::lock_guard lock{handoff_mutex};
+        if (handoff_windows_released < target)
+            handoff_windows_released = target;
+    }
+    handoff_ready.notify_all();
 }
 
 /* Blocks until a release has republished its physical buffer and entered the
@@ -3772,12 +3834,34 @@ unsigned long ams_mel_mock_handoff_reentrant_callbacks(void)
 }
 
 extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_reentry_configure(unsigned long budget)
+{
+    reentry_budget.store(budget);
+    reentry_callbacks.store(0U);
+    release_depth.store(0U);
+    max_release_depth.store(0U);
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_reentry_callbacks(void)
+{
+    return reentry_callbacks.load();
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_max_release_depth(void)
+{
+    return max_release_depth.load();
+}
+
+extern "C" __attribute__((visibility("default")))
 void ams_mel_mock_handoff_disarm(void)
 {
     handoff_armed.store(false);
     {
         std::lock_guard lock{handoff_mutex};
         handoff_window_released = true;
+        handoff_windows_released = std::numeric_limits<unsigned long>::max();
     }
     handoff_ready.notify_all();
 }

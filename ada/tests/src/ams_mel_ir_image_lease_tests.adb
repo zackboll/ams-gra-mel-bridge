@@ -11,6 +11,7 @@ with System.Storage_Elements;
 package body AMS_MEL_IR_Image_Lease_Tests is
    use type Interfaces.Unsigned_32;
    use type AMS.MEL.IR.Byte;
+   use type AMS.MEL.IR.Pixel_Array;
    use type AMS.MEL.IR.Image_Flip;
    use type GNAT.OS_Lib.File_Descriptor;
    use type GNAT.OS_Lib.String_Access;
@@ -709,69 +710,99 @@ package body AMS_MEL_IR_Image_Lease_Tests is
    --  could not return an open lease. The sibling leases must also keep their
    --  own payloads throughout, and explicit Close must stay non-raising.
    procedure Test_Release_Reuse_Handoff (Provider_Path : String) is
-      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "handoff-ada-reuse");
-      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      Descriptor     : GNAT.OS_Lib.File_Descriptor;
+      Callback_Log   : GNAT.OS_Lib.String_Access;
+      Closed         : Boolean;
+      Deleted        : Boolean;
+      Callback_Count : Natural := 0;
    begin
-      AMS.MEL.IR.Start (Stream);
+      GNAT.OS_Lib.Create_Temp_File (Descriptor, Callback_Log);
+      if Descriptor = GNAT.OS_Lib.Invalid_FD or else Callback_Log = null then
+         raise Program_Error with "could not reserve an Ada handoff callback log";
+      end if;
+      GNAT.OS_Lib.Close (Descriptor, Closed);
+      if not Closed then
+         raise Program_Error with "could not close the Ada handoff callback log";
+      end if;
+      Ada.Environment_Variables.Set ("AMS_MEL_TEST_LIFETIME_LOG", Callback_Log.all);
       declare
-         First  : AMS.MEL.IR.Image.Frame_Lease := AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
-         Second : constant AMS.MEL.IR.Image.Frame_Lease :=
-           AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+         Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "handoff-ada-reuse");
+         Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
       begin
-         if not AMS.MEL.IR.Image.Is_Open (First) or else not AMS.MEL.IR.Image.Is_Open (Second) then
-            raise Program_Error with "two simultaneous leases failed";
-         end if;
-         --  Record the surviving sibling's borrowed address and payload.
-         AMS.MEL.IR.Image.With_Pixels (Second, Observe'Access);
+         AMS.MEL.IR.Start (Stream);
          declare
-            Sibling_Address : constant System.Storage_Elements.Integer_Address := Observed_Address;
-            Sibling_Bytes   : constant AMS.MEL.IR.Pixel_Array :=
-              AMS.MEL.IR.Image.Copy_Pixels (Second);
+            First  : AMS.MEL.IR.Image.Frame_Lease := AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+            Second : constant AMS.MEL.IR.Image.Frame_Lease :=
+              AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+            Third  : constant AMS.MEL.IR.Image.Frame_Lease :=
+              AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
          begin
-            --  Closing this lease performs the provider release. The mock
-            --  reuses the freed physical buffer from inside that very call.
-            AMS.MEL.IR.Image.Close (First);
-            if AMS.MEL.IR.Image.Is_Open (First) then
-               raise Program_Error with "explicit lease close did not close the lease";
+            if not AMS.MEL.IR.Image.Is_Open (First)
+              or else not AMS.MEL.IR.Image.Is_Open (Second)
+              or else not AMS.MEL.IR.Image.Is_Open (Third)
+            then
+               raise Program_Error with "three simultaneous handoff leases failed";
             end if;
-            --  THE CORRECTIVE ASSERTION. The reusing callback must have been
-            --  accepted normally, so a further lease is obtainable.
+            AMS.MEL.IR.Image.With_Pixels (First, Observe'Access);
             declare
-               Reused : AMS.MEL.IR.Image.Frame_Lease :=
-                 AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+               Selected_Address : constant System.Storage_Elements.Integer_Address :=
+                 Observed_Address;
+               Selected_ID      : constant Interfaces.Unsigned_32 :=
+                 AMS.MEL.IR.Image.Frame_ID (First);
+               Second_Bytes     : constant AMS.MEL.IR.Pixel_Array :=
+                 AMS.MEL.IR.Image.Copy_Pixels (Second);
+               Third_Bytes      : constant AMS.MEL.IR.Pixel_Array :=
+                 AMS.MEL.IR.Image.Copy_Pixels (Third);
             begin
-               if not AMS.MEL.IR.Image.Is_Open (Reused) then
-                  raise Program_Error
-                    with "reuse of a successfully released provider buffer was rejected";
+               if Selected_ID /= 1 then
+                  raise Program_Error with "unexpected selected handoff frame identity";
                end if;
-               AMS.MEL.IR.Image.With_Pixels (Reused, Observe'Access);
-               if Observed_Length /= 12 then
-                  raise Program_Error with "reused lease lost its payload";
+               AMS.MEL.IR.Image.Close (First);
+               if AMS.MEL.IR.Image.Is_Open (First) then
+                  raise Program_Error with "explicit lease close did not close the lease";
                end if;
-               AMS.MEL.IR.Image.Close (Reused);
-            end;
-            --  The still-live sibling kept its address and its bytes.
-            AMS.MEL.IR.Image.With_Pixels (Second, Observe'Access);
-            if Observed_Address /= Sibling_Address or else Observed_Length /= 12 then
-               raise Program_Error with "live sibling lease was disturbed by the reuse";
-            end if;
-            declare
-               Now : constant AMS.MEL.IR.Pixel_Array := AMS.MEL.IR.Image.Copy_Pixels (Second);
-            begin
-               if Now'Length /= Sibling_Bytes'Length then
-                  raise Program_Error with "live sibling lease payload length changed";
-               end if;
-               for Index in Now'Range loop
-                  if Now (Index) /= Sibling_Bytes (Index) then
-                     raise Program_Error with "live sibling lease payload changed";
+               declare
+                  Reused : AMS.MEL.IR.Image.Frame_Lease :=
+                    AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+               begin
+                  AMS.MEL.IR.Image.With_Pixels (Reused, Observe'Access);
+                  if Observed_Address /= Selected_Address
+                    or else AMS.MEL.IR.Image.Frame_ID (Reused) /= 4
+                  then
+                     raise Program_Error with "replacement did not reuse selected A generation";
                   end if;
-               end loop;
+                  if AMS.MEL.IR.Image.Copy_Pixels (Second) /= Second_Bytes
+                    or else AMS.MEL.IR.Image.Copy_Pixels (Third) /= Third_Bytes
+                  then
+                     raise Program_Error with "live sibling payload changed during Ada handoff";
+                  end if;
+                  AMS.MEL.IR.Image.Close (Reused);
+               end;
             end;
          end;
+         AMS.MEL.IR.Close (Stream);
+         AMS.MEL.Close (Parent);
       end;
-      --  Teardown must complete normally: nothing was permanently retained.
-      AMS.MEL.IR.Close (Stream);
-      AMS.MEL.Close (Parent);
+      Ada.Environment_Variables.Clear ("AMS_MEL_TEST_LIFETIME_LOG");
+      declare
+         File : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Callback_Log.all);
+         while not Ada.Text_IO.End_Of_File (File) loop
+            if Ada.Text_IO.Get_Line (File) = "callback_entered" then
+               Callback_Count := Callback_Count + 1;
+            end if;
+         end loop;
+         Ada.Text_IO.Close (File);
+      end;
+      if Callback_Count /= 4 then
+         raise Program_Error with "Ada handoff did not deliver exactly four callbacks";
+      end if;
+      GNAT.OS_Lib.Delete_File (Callback_Log.all, Deleted);
+      GNAT.OS_Lib.Free (Callback_Log);
+      if not Deleted then
+         raise Program_Error with "could not delete the Ada handoff callback log";
+      end if;
    end Test_Release_Reuse_Handoff;
 
    procedure Run (Provider_Path : String) is

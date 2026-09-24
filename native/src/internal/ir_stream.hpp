@@ -43,9 +43,10 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  *   may run only when
  *
  *       requests == 0  AND  callback->retained_frames == 0
+ *                      AND  callback->release_obligations == 0
  *                      AND  !callback->uncertain_release
  *
- *   The third term is the PR #42 second-review corrective backstop. It is a
+ *   The final term is the PR #42 second-review corrective backstop. It is a
  *   lock-free atomic published the instant ANY release for this stream is
  *   uncertain, including a callback-side rejection, so teardown stays blocked
  *   even if the retained_frames publication under this mutex could not be
