@@ -878,6 +878,15 @@ outstanding-lease count, deferred physical teardown gated on that count,
 fail-safe retention on uncertain ownership, release outside the lifecycle
 lock, and honest backpressure.
 
+PR #43's final correction also makes the release executor an explicit permit
+independent of the current wrapper. Each provider attempt has one local
+exact-wrapper owner and one reserved uncertain-slot identity; the permit remains
+owned through failure publication, deferred draining, and unlocked final wrapper
+destruction. Active and deferred release obligations participate in Stop, Close,
+initial cleanup, and post-drain decisions. See
+`corrective-provider-buffer-release-handoff.md` for the final protocol and
+mutation evidence.
+
 RF MEL, RF header vendoring, RDMA, GPU/CUDA buffers, FPGA mappings, Stacked
 Image, `cv::Mat` wrapping, zero-copy safe Rust, zero-copy Python/NumPy, and
 Scheduling are all explicitly **not** implemented by this task. No vendored

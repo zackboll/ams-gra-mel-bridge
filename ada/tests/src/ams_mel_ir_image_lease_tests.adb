@@ -1,5 +1,6 @@
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.Real_Time;
 with Ada.Text_IO;
 with AMS.MEL;
 with AMS.MEL.IR;
@@ -805,6 +806,90 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       end if;
    end Test_Release_Reuse_Handoff;
 
+   procedure Test_Callback_Only_Close (Provider_Path : String) is
+      use type Ada.Real_Time.Time;
+      Descriptor : GNAT.OS_Lib.File_Descriptor;
+      Base       : GNAT.OS_Lib.String_Access;
+      Closed     : Boolean;
+      Deleted    : Boolean;
+
+      procedure Create_Marker (Path : String) is
+         File : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
+         Ada.Text_IO.Put_Line (File, "release");
+         Ada.Text_IO.Close (File);
+      end Create_Marker;
+
+      procedure Wait_For_Marker (Path : String) is
+         Deadline : constant Ada.Real_Time.Time := Ada.Real_Time.Clock + Ada.Real_Time.Seconds (10);
+      begin
+         while not Ada.Directories.Exists (Path) loop
+            if Ada.Real_Time.Clock >= Deadline then
+               raise Program_Error with "timed out waiting for callback-only Close marker";
+            end if;
+            delay 0.001;
+         end loop;
+      end Wait_For_Marker;
+   begin
+      GNAT.OS_Lib.Create_Temp_File (Descriptor, Base);
+      if Descriptor = GNAT.OS_Lib.Invalid_FD or else Base = null then
+         raise Program_Error with "could not reserve callback-only Close barrier";
+      end if;
+      GNAT.OS_Lib.Close (Descriptor, Closed);
+      GNAT.OS_Lib.Delete_File (Base.all, Deleted);
+      if not Closed or else not Deleted then
+         raise Program_Error with "could not prepare callback-only Close barrier";
+      end if;
+      Ada.Environment_Variables.Set ("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", Base.all);
+      Ada.Environment_Variables.Set ("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER", Base.all);
+      declare
+         Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "callback-close-obligation");
+         Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      begin
+         AMS.MEL.IR.Start (Stream);
+         declare
+            task Closer;
+            task body Closer is
+            begin
+               Wait_For_Marker (Base.all & ".entered");
+               AMS.MEL.IR.Close (Stream);
+            end Closer;
+         begin
+            Wait_For_Marker (Base.all & ".close-obligation.reached");
+            Create_Marker (Base.all & ".release");
+         exception
+            when others =>
+               Create_Marker (Base.all & ".release");
+               raise;
+         end; --  joins Closer before inspecting the public owner
+         if AMS.MEL.IR.Is_Open (Stream) then
+            raise Program_Error with "Ada callback-only Close left its handle open";
+         end if;
+         AMS.MEL.Close (Parent);
+      end;
+      Ada.Environment_Variables.Clear ("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER");
+      Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+      if Ada.Directories.Exists (Base.all & ".entered") then
+         Ada.Directories.Delete_File (Base.all & ".entered");
+      end if;
+      if Ada.Directories.Exists (Base.all & ".close-obligation.reached") then
+         Ada.Directories.Delete_File (Base.all & ".close-obligation.reached");
+      end if;
+      if Ada.Directories.Exists (Base.all & ".release") then
+         Ada.Directories.Delete_File (Base.all & ".release");
+      end if;
+      GNAT.OS_Lib.Free (Base);
+   exception
+      when others =>
+         if Base /= null then
+            Create_Marker (Base.all & ".release");
+         end if;
+         Ada.Environment_Variables.Clear ("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER");
+         Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+         raise;
+   end Test_Callback_Only_Close;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Acquire_And_Fidelity (Provider_Path);
@@ -819,6 +904,7 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       Test_Owned_Full_Frame (Provider_Path);
       --  CORRECTIVE: provider-buffer release/reuse handoff.
       Test_Release_Reuse_Handoff (Provider_Path);
+      Test_Callback_Only_Close (Provider_Path);
       Test_Stress (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR zero-copy frame lease contract");
    end Run;

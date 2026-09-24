@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Complete PR #43 release-obligation lifecycle integration. Release-executor
+  ownership is explicit rather than inferred from a non-null active wrapper,
+  survives failed/throwing operations and deferred draining, and covers unlocked
+  final provider-wrapper destruction. Deferred promotion checks uncertain-slot
+  availability and never indexes an empty free list or drops pending ownership.
+  Stop, Close, initial cleanup, and post-drain cleanup consistently account for
+  active and deferred obligations; public Close joins finite healthy
+  callback-only work, returns `AMS_MEL_OK` only with a cleared handle, and then
+  permits ordered channel, Control, manager, and library teardown. Deterministic
+  C regressions cover failure, exception, actual waiter entry, A/B/C ownership,
+  destructor reentry, callback-only Close, and separate executor/Close-gate
+  mutations; safe Ada covers callback-only Close. ABI 0.1, all 90 exports,
+  frozen layouts, zero-copy behavior, and vendor bytes remain unchanged.
+
 - Correct the provider-buffer release/reuse handoff so a healthy provider that
   reuses a successfully returned physical buffer can no longer be misread as a
   non-conforming one.

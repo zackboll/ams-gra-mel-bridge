@@ -33,7 +33,8 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  * Teardown synchronization invariant (corrective task):
  *
  *   CallbackState::mutex is the single teardown lock. Every read and every
- *   write of requests, callback->retained_frames, cleanup_in_progress, cleanup_complete,
+     *   write of requests, callback->retained_frames,
+     *   callback->release_obligations, cleanup_in_progress, cleanup_complete,
  *   cleanup_ok, public_owner_closed, enable_attempted, channel and
  *   image_channel that can race between an application Stop/Close thread, a
  *   frame-lease close thread, the provider callback thread, and the adapter's

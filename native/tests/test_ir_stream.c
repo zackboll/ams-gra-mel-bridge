@@ -330,6 +330,31 @@ static void mock_handoff_release_count(unsigned long target)
     if (fn != NULL) fn(target);
 }
 
+static void mock_executor_race_void(const char *name)
+{ mock_handoff_void(name); }
+static int mock_executor_race_int(const char *name)
+{ return mock_handoff_int(name); }
+static unsigned long mock_executor_race_max_active(void)
+{ return mock_pool_query("ams_mel_mock_executor_race_max_active"); }
+
+static int create_marker(const char *path)
+{
+    FILE *file = fopen(path, "wb");
+    if (file == NULL) return 0;
+    if (fputs("release\n", file) < 0) { (void)fclose(file); return 0; }
+    return fclose(file) == 0;
+}
+
+static int wait_for_marker(const char *path)
+{
+    const struct timespec delay = {0, 1000000};
+    for (unsigned attempt = 0; attempt < 10000U; ++attempt) {
+        if (access(path, F_OK) == 0) return 1;
+        (void)nanosleep(&delay, NULL);
+    }
+    return 0;
+}
+
 /* Proves the thing Task 030B exists to prove, deterministically:
  *
  *   1-3. produce and acquire three frames from a three-buffer pool;
@@ -484,7 +509,7 @@ static int test_lease_defers_provider_teardown(void)
     const ams_mel_ir_frame_snapshot_v1 *view = NULL;
     const uint8_t *address = NULL;
     char path[] = "/tmp/ams-mel-defer-XXXXXX";
-    char log[8192];
+    char log[8192] = {0};
     int descriptor = mkstemp(path);
     FILE *file;
     size_t count;
@@ -2107,6 +2132,12 @@ struct handoff_closer {
     ams_mel_status_t status;
 };
 
+struct stream_closer {
+    ams_mel_ir_stream *stream;
+    ams_mel_status_t status;
+};
+struct pool_producer { int status; };
+
 /* All state the shared scenario and its verification step exchange, so the
    verification can live in its own function without a long parameter list. */
 struct handoff_ctx {
@@ -2130,6 +2161,20 @@ static int handoff_close_thread(void *argument)
     struct handoff_closer *closer = (struct handoff_closer *)argument;
     /* This thread is the sole owner of this snapshot handle. */
     closer->status = ams_mel_ir_frame_snapshot_close(&closer->snapshot, NULL, 0, NULL);
+    return 0;
+}
+
+static int stream_close_thread(void *argument)
+{
+    struct stream_closer *closer = (struct stream_closer *)argument;
+    closer->status = ams_mel_ir_stream_close(&closer->stream, NULL, 0, NULL);
+    return 0;
+}
+
+static int pool_produce_thread(void *argument)
+{
+    struct pool_producer *producer = (struct pool_producer *)argument;
+    producer->status = ams_mel_mock_pool_produce_once();
     return 0;
 }
 
@@ -2325,6 +2370,9 @@ static int test_concurrent_release_distinct_owners(void)
     thrd_t threads[2];
     ams_mel_ir_stream_counters_v1 counters;
     unsigned long failed_attempts_before, destructor_before;
+    char barrier[] = "/tmp/ams-mel-release-waiter-XXXXXX";
+    char waiter[PATH_MAX];
+    int descriptor;
     size_t i;
 
     config.buffer_count = 3;
@@ -2341,6 +2389,12 @@ static int test_concurrent_release_distinct_owners(void)
     CHECK(ams_mel_mock_pool_available() == 0);
 
     mock_handoff_arm();
+    descriptor = mkstemp(barrier);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(unlink(barrier) == 0);
+    CHECK(snprintf(waiter, sizeof waiter, "%s.waiter.reached", barrier) > 0);
+    CHECK(setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", barrier, 1) == 0);
     closers[0].snapshot = leases[0];
     closers[0].status = AMS_MEL_INTERNAL_ERROR;
     leases[0] = NULL;
@@ -2350,8 +2404,9 @@ static int test_concurrent_release_distinct_owners(void)
     closers[1].status = AMS_MEL_INTERNAL_ERROR;
     leases[1] = NULL;
     CHECK(thrd_create(&threads[1], handoff_close_thread, &closers[1]) == thrd_success);
-    /* The second distinct owner is genuinely backpressured: only one provider
-       call has entered. */
+    /* The bridge itself has observed the second explicit closer at execution
+       backpressure; thread creation and provider-entry count are not evidence. */
+    CHECK(wait_for_marker(waiter));
     CHECK(mock_handoff_reached_count() == 1UL);
     mock_handoff_release_count(1UL);
     CHECK(thrd_join(threads[0], NULL) == thrd_success);
@@ -2360,6 +2415,8 @@ static int test_concurrent_release_distinct_owners(void)
     mock_handoff_release_count(2UL);
     CHECK(thrd_join(threads[1], NULL) == thrd_success);
     mock_handoff_disarm();
+    CHECK(unsetenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER") == 0);
+    CHECK(unlink(waiter) == 0);
     for (i = 0; i < 2; ++i) {
         CHECK(closers[i].status == AMS_MEL_OK);
         CHECK(closers[i].snapshot == NULL);
@@ -2380,6 +2437,282 @@ static int test_concurrent_release_distinct_owners(void)
     CHECK(ams_mel_mock_pool_available() == 3);
     CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
+}
+
+/* A fails while B is callback-deferred and C is an actual explicit waiter.
+   The mutation surrenders executor ownership in the forced post-failure window
+   and must produce two concurrent provider calls. */
+static int test_failed_release_executor_handoff(const char *scenario, int mutation)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *leases[2] = {NULL, NULL};
+    struct handoff_closer closers[2] = {{0}};
+    thrd_t threads[2];
+    int started[2] = {0, 0};
+    int joined[2] = {0, 0};
+    int result = EXIT_FAILURE;
+    unsigned stage = 0U;
+    char base[] = "/tmp/ams-mel-executor-race-XXXXXX";
+    char arm[PATH_MAX], reached[PATH_MAX], release[PATH_MAX], waiter[PATH_MAX];
+    int descriptor = mkstemp(base);
+    unsigned long failed_before = 0UL;
+    unsigned long destructor_before = 0UL;
+
+    if (descriptor < 0 || close(descriptor) != 0 || unlink(base) != 0) goto cleanup;
+    stage = 1U;
+    if (snprintf(arm, sizeof arm, "%s.failure.arm", base) <= 0 ||
+        snprintf(reached, sizeof reached, "%s.failure.reached", base) <= 0 ||
+        snprintf(release, sizeof release, "%s.failure.release", base) <= 0 ||
+        snprintf(waiter, sizeof waiter, "%s.waiter.reached", base) <= 0)
+        goto cleanup;
+    if (!create_marker(arm) ||
+        setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", base, 1) != 0) goto cleanup;
+    stage = 2U;
+    if (mutation && setenv("AMS_MEL_TEST_SURRENDER_RELEASE_EXECUTOR", "surrender", 1) != 0)
+        goto cleanup;
+    config.buffer_count = 3;
+    config.queue_capacity = 4;
+    if (open_stream(scenario, &session, &stream, &config) != EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    failed_before = mock_failed_release_attempts();
+    destructor_before = mock_destructor_driven_releases();
+    stage = 3U;
+    mock_executor_race_void("ams_mel_mock_executor_race_reset");
+    for (size_t i = 0; i < 2U; ++i) {
+        if (ams_mel_mock_pool_produce_once() != 1 ||
+            ams_mel_ir_stream_receive_snapshot(stream, 2000, &leases[i],
+                NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    }
+    stage = 4U;
+    closers[0].snapshot = leases[0]; leases[0] = NULL;
+    closers[0].status = AMS_MEL_INTERNAL_ERROR;
+    if (thrd_create(&threads[0], handoff_close_thread, &closers[0]) != thrd_success)
+        goto cleanup;
+    started[0] = 1;
+    if (!wait_for_marker(reached)) goto cleanup;
+    stage = 5U;
+    closers[1].snapshot = leases[1]; leases[1] = NULL;
+    closers[1].status = AMS_MEL_INTERNAL_ERROR;
+    if (thrd_create(&threads[1], handoff_close_thread, &closers[1]) != thrd_success)
+        goto cleanup;
+    started[1] = 1;
+    if (mutation) {
+        if (!mock_executor_race_int("ams_mel_mock_executor_race_wait_c") ||
+            !create_marker(release) ||
+            !mock_executor_race_int("ams_mel_mock_executor_race_wait_overlap")) goto cleanup;
+        mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+    } else {
+        if (!wait_for_marker(waiter) || !create_marker(release)) goto cleanup;
+    }
+    stage = 6U;
+    for (size_t i = 0; i < 2U; ++i) {
+        if (thrd_join(threads[i], NULL) != thrd_success) goto cleanup;
+        joined[i] = 1;
+    }
+    stage = 7U;
+    if (mutation) {
+        if (mock_executor_race_max_active() < 2UL) goto cleanup;
+    } else {
+        if (mock_executor_race_max_active() != 1UL ||
+            closers[0].status != AMS_MEL_PROVIDER_FAILED ||
+            closers[1].status != AMS_MEL_PROVIDER_FAILED ||
+            mock_failed_release_attempts() != failed_before + 1UL ||
+            mock_destructor_driven_releases() != destructor_before ||
+            ams_mel_mock_pool_available() != 1UL)
+            goto cleanup;
+    }
+    result = EXIT_SUCCESS;
+
+cleanup:
+    if (result != EXIT_SUCCESS)
+        fprintf(stderr, "executor race %s mutation=%d failed stage=%u max=%lu "
+                "status=%d/%d failed=%lu/%lu destructor=%lu/%lu\n",
+                scenario, mutation, stage, mock_executor_race_max_active(),
+                (int)closers[0].status, (int)closers[1].status,
+                mock_failed_release_attempts(), failed_before,
+                mock_destructor_driven_releases(), destructor_before);
+    (void)create_marker(release);
+    mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+    for (size_t i = 0; i < 2U; ++i)
+        if (started[i] && !joined[i]) (void)thrd_join(threads[i], NULL);
+    for (size_t i = 0; i < 2U; ++i)
+        if (leases[i] != NULL)
+            (void)ams_mel_ir_frame_snapshot_close(&leases[i], NULL, 0, NULL);
+    if (stream != NULL) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session != NULL) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    (void)unsetenv("AMS_MEL_TEST_SURRENDER_RELEASE_EXECUTOR");
+    (void)unsetenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+    (void)unlink(arm); (void)unlink(reached); (void)unlink(release); (void)unlink(waiter);
+    return result;
+}
+
+static int test_callback_only_release_close(int mutation)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct stream_closer closer = {NULL, AMS_MEL_INTERNAL_ERROR};
+    thrd_t thread;
+    int started = 0, joined = 0, result = EXIT_FAILURE;
+    unsigned stage = 0U;
+    char base[] = "/tmp/ams-mel-close-obligation-XXXXXX";
+    char marker[PATH_MAX];
+    char lifetime[] = "/tmp/ams-mel-close-lifetime-XXXXXX";
+    char log[8192];
+    int descriptor = mkstemp(base);
+    int lifetime_descriptor = -1;
+
+    if (descriptor < 0 || close(descriptor) != 0 || unlink(base) != 0) goto cleanup;
+    stage = 1U;
+    if (snprintf(marker, sizeof marker, "%s.close-obligation.reached", base) <= 0 ||
+        setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", base, 1) != 0) goto cleanup;
+    if (mutation && setenv("AMS_MEL_TEST_OMIT_RELEASE_OBLIGATION_GATE", "omit", 1) != 0)
+        goto cleanup;
+    lifetime_descriptor = mkstemp(lifetime);
+    if (lifetime_descriptor < 0 || close(lifetime_descriptor) != 0 ||
+        setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime, 1) != 0) goto cleanup;
+    lifetime_descriptor = -1;
+    config.buffer_count = 1;
+    config.queue_capacity = 1;
+    if (open_stream("callback-close-obligation", &session, &stream, &config) !=
+            EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    stage = 2U;
+    mock_executor_race_void("ams_mel_mock_executor_race_reset");
+    /* The malformed callback enters its healthy provider release and pauses.
+       Nothing was accepted, so retained_frames remains zero. */
+    {
+        int producer_started = 0;
+        struct pool_producer producer = {0};
+        thrd_t producer_thread;
+        if (thrd_create(&producer_thread, pool_produce_thread, &producer) != thrd_success)
+            goto cleanup;
+        producer_started = 1;
+        if (!mock_executor_race_int("ams_mel_mock_executor_race_wait_c")) {
+            mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+            if (producer_started) (void)thrd_join(producer_thread, NULL);
+            goto cleanup;
+        }
+        stage = 3U;
+        closer.stream = stream;
+        stream = NULL;
+        if (thrd_create(&thread, stream_close_thread, &closer) != thrd_success) {
+            stream = closer.stream;
+            closer.stream = NULL;
+            mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+            (void)thrd_join(producer_thread, NULL);
+            goto cleanup;
+        }
+        started = 1;
+        if (!mutation && !wait_for_marker(marker)) {
+            mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+            (void)thrd_join(producer_thread, NULL);
+            goto cleanup;
+        }
+        if (mutation) {
+            if (thrd_join(thread, NULL) != thrd_success) goto cleanup;
+            joined = 1;
+            if (closer.status != AMS_MEL_OK || closer.stream == NULL) goto cleanup;
+        }
+        stage = 4U;
+        mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+        if (thrd_join(producer_thread, NULL) != thrd_success || producer.status != 1)
+            goto cleanup;
+    }
+    stage = 5U;
+    if (!joined) {
+        if (thrd_join(thread, NULL) != thrd_success) goto cleanup;
+        joined = 1;
+    }
+    stage = 6U;
+    if (!mutation && (closer.status != AMS_MEL_OK || closer.stream != NULL)) goto cleanup;
+    if (mutation) {
+        result = EXIT_SUCCESS;
+        goto cleanup;
+    }
+    if (ams_mel_session_close(&session, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    {
+        FILE *file = fopen(lifetime, "rb");
+        size_t count;
+        char *released, *channel, *control, *manager, *unloaded;
+        if (file == NULL) goto cleanup;
+        count = fread(log, 1, sizeof log - 1U, file);
+        log[count] = '\0';
+        if (fclose(file) != 0) goto cleanup;
+        released = strstr(log, "buffer_released");
+        channel = strstr(log, "channel_destroyed");
+        control = strstr(log, "control_destroyed");
+        manager = strstr(log, "manager_destroyed");
+        unloaded = strstr(log, "library_unloaded");
+        if (released == NULL || channel == NULL || control == NULL ||
+            manager == NULL || unloaded == NULL || !(released < channel &&
+            channel < control && control < manager && manager < unloaded)) goto cleanup;
+    }
+    result = EXIT_SUCCESS;
+
+cleanup:
+    if (result != EXIT_SUCCESS)
+        fprintf(stderr, "callback-only Close failed stage=%u status=%d handle=%p "
+                "lifetime=%s\n", stage, (int)closer.status,
+                (void *)closer.stream, log);
+    mock_executor_race_void("ams_mel_mock_executor_race_release_c");
+    if (started && !joined) (void)thrd_join(thread, NULL);
+    if (closer.stream != NULL)
+        (void)ams_mel_ir_stream_close(&closer.stream, NULL, 0, NULL);
+    if (stream != NULL) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session != NULL) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    (void)unsetenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+    (void)unsetenv("AMS_MEL_TEST_OMIT_RELEASE_OBLIGATION_GATE");
+    (void)unsetenv("AMS_MEL_TEST_LIFETIME_LOG");
+    if (lifetime_descriptor >= 0) (void)close(lifetime_descriptor);
+    (void)unlink(marker);
+    (void)unlink(lifetime);
+    return result;
+}
+
+static int test_deferred_wrapper_destruction_reentry(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    struct handoff_closer closer = {NULL, AMS_MEL_INTERNAL_ERROR};
+    thrd_t thread;
+    int started = 0, joined = 0, result = EXIT_FAILURE;
+
+    config.buffer_count = 2;
+    config.queue_capacity = 2;
+    if (open_stream("destructor-reentry", &session, &stream, &config) != EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    mock_executor_race_void("ams_mel_mock_destruction_reentry_reset");
+    if (ams_mel_mock_pool_produce_once() != 1 ||
+        ams_mel_ir_stream_receive_snapshot(stream, 2000, &lease, NULL, 0, NULL) !=
+            AMS_MEL_OK) goto cleanup;
+    closer.snapshot = lease;
+    lease = NULL;
+    if (thrd_create(&thread, handoff_close_thread, &closer) != thrd_success)
+        goto cleanup;
+    started = 1;
+    if (thrd_join(thread, NULL) != thrd_success) goto cleanup;
+    joined = 1;
+    if (closer.status != AMS_MEL_OK || closer.snapshot != NULL ||
+        mock_pool_query("ams_mel_mock_reentrant_wrapper_destructions") != 1UL ||
+        mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||
+        mock_max_release_depth() != 1UL || ams_mel_mock_pool_available() != 2UL)
+        goto cleanup;
+    if (close_all(&session, &stream) != EXIT_SUCCESS) goto cleanup;
+    result = EXIT_SUCCESS;
+
+cleanup:
+    if (started && !joined) (void)thrd_join(thread, NULL);
+    if (lease != NULL) (void)ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL);
+    if (closer.snapshot != NULL)
+        (void)ams_mel_ir_frame_snapshot_close(&closer.snapshot, NULL, 0, NULL);
+    if (stream != NULL) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session != NULL) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    return result;
 }
 
 /* Repeated successful reuse reaches the real execution bound (one active
@@ -2826,6 +3159,8 @@ int main(void)
     CHECK(test_callback_rejection_reentry_chain() == EXIT_SUCCESS);
     CHECK(test_close_discard_release_backpressure() == EXIT_SUCCESS);
     CHECK(test_concurrent_release_distinct_owners() == EXIT_SUCCESS);
+    CHECK(test_callback_only_release_close(0) == EXIT_SUCCESS);
+    CHECK(test_deferred_wrapper_destruction_reentry() == EXIT_SUCCESS);
     CHECK(test_release_reuse_handoff_common_paths() == EXIT_SUCCESS);
     /* Repetition SUPPLEMENTS the deterministic coverage above; it does not
        replace it. The exact interleaving is already forced and proven. */
@@ -2907,6 +3242,10 @@ int main(void)
     CHECK(test_null_buffer_no_retention_slot() == EXIT_SUCCESS);
     CHECK(test_enqueue_allocation_failure() == EXIT_SUCCESS);
     CHECK(test_teardown_race_late_uncertain() == EXIT_SUCCESS);
+    CHECK(test_failed_release_executor_handoff("executor-race-fail", 0) ==
+          EXIT_SUCCESS);
+    CHECK(test_failed_release_executor_handoff("executor-race-throw", 0) ==
+          EXIT_SUCCESS);
     /* Repeat, so the process-lifetime never-destroyed and exactly-once
        invariants hold against accumulated retained state. */
     for (unsigned i = 0; i < 3; ++i) {
@@ -2932,6 +3271,9 @@ int main(void)
        cumulative invariants. */
     CHECK(test_release_slot_admission_control() == EXIT_SUCCESS);
     CHECK(test_release_reuse_handoff_negative_mutation() == EXIT_SUCCESS);
+    CHECK(test_failed_release_executor_handoff("executor-race-fail", 1) ==
+          EXIT_SUCCESS);
+    CHECK(test_callback_only_release_close(1) == EXIT_SUCCESS);
     for (unsigned i = 0; i < 5; ++i) {
         CHECK(test_release_failure_with_park_allocation_failure(
                   "release-fail-park-alloc") == EXIT_SUCCESS);

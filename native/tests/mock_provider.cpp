@@ -390,6 +390,18 @@ std::atomic<unsigned long> reentry_callbacks{0U};
 std::atomic<unsigned long> release_depth{0U};
 std::atomic<unsigned long> max_release_depth{0U};
 
+/* PR #43 executor-race controls. Counts RequeueBuffer provider calls (without
+ * double-counting the underlying registered buffer call), pauses C (ordinal 2)
+ * in the mutation run, and lets the test observe exact provider concurrency. */
+std::mutex executor_race_mutex;
+std::condition_variable executor_race_ready;
+bool executor_race_c_entered{false};
+bool executor_race_c_released{false};
+std::atomic<unsigned long> executor_race_active{0U};
+std::atomic<unsigned long> executor_race_max_active{0U};
+std::atomic<unsigned long> reentrant_wrapper_destructions{0U};
+std::atomic<unsigned long> destruction_callbacks_returned{0U};
+
 /* Number of leading null-Buffer callbacks the "null-buffer-callbacks" scenario
  * emits before its first valid frame. Deliberately far more than any
  * buffer_count the regression configures, so a bridge that consumed one
@@ -727,9 +739,9 @@ public:
      * frame normally and must fail the release of a different, rejected
      * frame. */
     RequeueBuffer(std::shared_ptr<MockBuffer> underlying, std::string scenario,
-                  bool force_fail = false)
+                  bool force_fail = false, unsigned ordinal = 0U)
         : underlying_{std::move(underlying)}, scenario_{std::move(scenario)},
-          force_fail_{force_fail} {}
+          force_fail_{force_fail}, ordinal_{ordinal} {}
     ~RequeueBuffer() override
     {
         {
@@ -750,6 +762,12 @@ public:
             }
         }
         record("requeue_wrapper_destroyed");
+        if (scenario_ == "destructor-reentry" && ordinal_ == 2U && released_ &&
+            reentrant_producer_) {
+            ++reentrant_wrapper_destructions;
+            reentrant_producer_();
+            ++destruction_callbacks_returned;
+        }
         /* Squall-shaped: the wrapper requeues on destruction unless release()
          * already completed. After a FAILED release this is precisely the
          * unintended second release() the corrective task forbids. */
@@ -767,12 +785,54 @@ public:
     std::int64_t getContext() const override { return underlying_->getContext(); }
     Return release() override
     {
+        struct ExecutorRaceGuard {
+            bool armed;
+            explicit ExecutorRaceGuard(bool value) : armed{value}
+            {
+                if (!armed) return;
+                const unsigned long active = executor_race_active.fetch_add(1U) + 1U;
+                unsigned long observed = executor_race_max_active.load();
+                while (observed < active &&
+                       !executor_race_max_active.compare_exchange_weak(observed, active)) {}
+                executor_race_ready.notify_all();
+            }
+            ~ExecutorRaceGuard()
+            {
+                if (armed) executor_race_active.fetch_sub(1U);
+            }
+        } race_guard{scenario_ == "executor-race-fail" ||
+                     scenario_ == "executor-race-throw"};
+        if (race_guard.armed && ordinal_ == 2U) {
+            std::unique_lock lock{executor_race_mutex};
+            executor_race_c_entered = true;
+            executor_race_ready.notify_all();
+            executor_race_ready.wait(lock, [] { return executor_race_c_released; });
+        }
+        if (scenario_ == "callback-close-obligation") {
+            if (const char *base = std::getenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER")) {
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+            } else {
+                std::unique_lock lock{executor_race_mutex};
+                executor_race_c_entered = true;
+                executor_race_ready.notify_all();
+                executor_race_ready.wait(lock, [] { return executor_race_c_released; });
+            }
+        }
         /* Attribute the failed release to the wrapper, which is the object
          * whose survival the corrective task is about. */
+        const bool executor_race = ordinal_ == 1U &&
+            (scenario_ == "executor-race-fail" ||
+             scenario_ == "executor-race-throw");
+        if (executor_race && reentrant_producer_) reentrant_producer_();
+        if (scenario_ == "destructor-reentry" && ordinal_ == 1U &&
+            reentrant_producer_) reentrant_producer_();
         const bool fails = force_fail_ ||
+                           (scenario_ == "executor-race-fail" && ordinal_ == 1U) ||
                            scenario_ == "release-fail-park-alloc" ||
                            scenario_ == "release-fail-observed";
-        const bool throws = scenario_ == "release-throw-park-alloc";
+        const bool throws = scenario_ == "release-throw-park-alloc" ||
+                            (scenario_ == "executor-race-throw" && ordinal_ == 1U);
         /* Squall-shaped, and the reason the corrective task's no-retry rule
          * has teeth: the wrapper records the requeue as DONE only when the
          * hand-back actually succeeded. After a failed or throwing release it
@@ -800,6 +860,8 @@ public:
     void setFlags(const std::vector<irmel::BufferFlag>& flags) override
     { underlying_->setFlags(flags); }
     void bind_self(const std::shared_ptr<irmel::Buffer>& self) { self_ = self; }
+    void set_reentrant_producer(std::function<void()> producer)
+    { reentrant_producer_ = std::move(producer); }
 private:
     void note_failed()
     {
@@ -830,6 +892,8 @@ private:
     std::string scenario_;
     bool force_fail_{};
     bool released_{};
+    unsigned ordinal_{};
+    std::function<void()> reentrant_producer_;
     std::weak_ptr<irmel::Buffer> self_;
 };
 
@@ -1006,6 +1070,12 @@ public:
         if (scenario_ == "enable-fail") return Return::Fail;
         stopping_ = false;
         producer_ = std::thread([this] { produce(); });
+        if (scenario_ == "callback-close-obligation" &&
+            std::getenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER") != nullptr) {
+            std::lock_guard lock{pool_->mutex};
+            ++pool_->requested;
+            pool_->ready.notify_all();
+        }
         if (scenario_ == "nonquiescing-disable" ||
             scenario_ == "release-fail-blocked") {
             std::unique_lock lock{barrier_->mutex};
@@ -1237,6 +1307,10 @@ private:
          * the defect is precisely that retention slots are keyed to wrapper
          * generations rather than to physical buffers. */
         return handoff_scenario() ||
+               scenario_ == "callback-close-obligation" ||
+               scenario_ == "destructor-reentry" ||
+               scenario_ == "executor-race-fail" ||
+               scenario_ == "executor-race-throw" ||
                scenario_ == "release-fail-observed" ||
                scenario_ == "release-fail-park-alloc" ||
                scenario_ == "release-throw-park-alloc" ||
@@ -1307,8 +1381,27 @@ private:
         ++pool_->callbacks;
         /* A brand new per-callback wrapper generation over the same physical
          * buffer, which is exactly what the corrective task is about. */
-        auto wrapper = std::make_shared<RequeueBuffer>(mock, scenario_, false);
+        if (((scenario_ == "executor-race-fail" ||
+             scenario_ == "executor-race-throw") && id == 3U)
+            || (scenario_ == "callback-close-obligation" && id == 1U)
+            || (scenario_ == "destructor-reentry" && id == 2U))
+            header = irmel::FrameHeader{std::chrono::nanoseconds{1'000'000 + id},
+                std::chrono::nanoseconds{20'000 + id}, 99U, 3U, 8U, 1U, 0.25,
+                0.125, {}, irmel::PixelFormat::Mono, id, 2U, 4U,
+                irmel::ImageType::Staring, irmel::ImageFlip::Horizontal,
+                {irmel::ImageFlag::StareSnapshot}, 0.5, -0.25, 7U, 9U, {}, {}, 3U};
+        auto wrapper = std::make_shared<RequeueBuffer>(mock, scenario_, false, id);
         wrapper->bind_self(wrapper);
+        if ((scenario_ == "executor-race-fail" ||
+             scenario_ == "executor-race-throw") && id == 1U)
+            wrapper->set_reentrant_producer([this] { (void)drive_one_callback(); });
+        if (scenario_ == "destructor-reentry" && id == 1U)
+            wrapper->set_reentrant_producer([this] { (void)drive_one_callback(); });
+        if (scenario_ == "destructor-reentry" && id == 2U)
+            wrapper->set_reentrant_producer([this] {
+                const irmel::FrameHeader header{};
+                listener_->onImage(*this, header, nullptr);
+            });
         {
             std::lock_guard lock{failed_release_mutex};
             last_callback_wrapper = wrapper;
@@ -1332,7 +1425,10 @@ private:
             });
             if (stopping_.load() && pool_->requested <= pool_->completed) return;
             if (pool_->requested <= pool_->completed) continue;
-            if (handoff_scenario()) {
+            if (handoff_scenario() || scenario_ == "callback-close-obligation" ||
+                scenario_ == "destructor-reentry" ||
+                scenario_ == "executor-race-fail" ||
+                scenario_ == "executor-race-throw") {
                 /* One complete Squall-shaped cycle per requested production,
                  * delivered by the shared helper so the ordinary path and the
                  * reuse-inside-release path exercise identical machinery. */
@@ -3770,6 +3866,66 @@ void ams_mel_mock_handoff_arm(void)
     }
     handoff_reentrant_callbacks.store(0U);
     handoff_armed.store(true);
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_executor_race_reset(void)
+{
+    std::lock_guard lock{executor_race_mutex};
+    executor_race_c_entered = false;
+    executor_race_c_released = false;
+    executor_race_active.store(0U);
+    executor_race_max_active.store(0U);
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_destruction_reentry_reset(void)
+{
+    reentrant_wrapper_destructions.store(0U);
+    destruction_callbacks_returned.store(0U);
+    max_release_depth.store(0U);
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_reentrant_wrapper_destructions(void)
+{ return reentrant_wrapper_destructions.load(); }
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_destruction_callbacks_returned(void)
+{ return destruction_callbacks_returned.load(); }
+
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_executor_race_wait_c(void)
+{
+    std::unique_lock lock{executor_race_mutex};
+    return executor_race_ready.wait_for(lock, std::chrono::seconds{10}, [] {
+        return executor_race_c_entered;
+    }) ? 1 : 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_executor_race_wait_overlap(void)
+{
+    std::unique_lock lock{executor_race_mutex};
+    return executor_race_ready.wait_for(lock, std::chrono::seconds{10}, [] {
+        return executor_race_max_active.load() >= 2U;
+    }) ? 1 : 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_executor_race_release_c(void)
+{
+    {
+        std::lock_guard lock{executor_race_mutex};
+        executor_race_c_released = true;
+    }
+    executor_race_ready.notify_all();
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_executor_race_max_active(void)
+{
+    return executor_race_max_active.load();
 }
 
 extern "C" __attribute__((visibility("default")))
