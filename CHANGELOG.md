@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+- Correct the provider-buffer release/reuse handoff so a healthy provider that
+  reuses a successfully returned physical buffer can no longer be misread as a
+  non-conforming one.
+
+  The bridge previously held the old callback's emergency-ownership retention
+  slot for the whole duration of `Buffer::release()` and returned it only after
+  the provider call completed. A conforming provider makes the physical buffer
+  reusable as soon as the release succeeds -- pinned Squall republishes it
+  **inside** `RequeueBuffer::release()`, with its pool mutex released, before
+  the call returns. With every slot occupied, a new callback for that
+  successfully returned buffer found an empty slot free list, and the bridge
+  refused to release, counted a false malformed frame, published
+  `uncertain_release`, poisoned the stream to `Failed`, and retained the
+  provider graph permanently.
+
+  This retracts the previous claim that the physical `buffer_count` alone
+  bounds emergency ownership. A retention slot is keyed to a **per-callback
+  `Buffer` wrapper generation**, not to a physical buffer, and one physical
+  buffer legitimately has two live wrapper generations during that window.
+  `buffer_count` bounds simultaneous physical checkouts only.
+
+  Ownership is now split across two disjoint preallocated pools, both built in
+  Start before `channel->enable()`: `retention_slots` (HOLD, `buffer_count`)
+  for a buffer the bridge holds but has not begun releasing, and
+  `release_slots` (RELEASE, `2 * buffer_count`) for a bridge-controlled
+  `release()` that is still unresolved. `CallbackState::begin_release()`
+  performs the handoff atomically under the teardown mutex and strictly before
+  the provider call: it moves the exact wrapper into a release slot and returns
+  the hold slot in the same critical section. The `2 * buffer_count` bound is
+  derived from the two disjoint release sources -- callback-side rejection and
+  owner-driven release of an accepted frame, each bounded by `buffer_count` --
+  and is **enforced** by admission control, which refuses to release rather
+  than exceed the pool. The legacy process-global 64-entry reserve was not
+  increased.
+
+  Uncertain-release safety is unweakened: emergency ownership is now allocated
+  *before* the release rather than after one has failed, a failed or throwing
+  release is still never retried, its exact wrapper is still never destroyed,
+  teardown still requires
+  `requests == 0 AND retained_frames == 0 AND !uncertain_release`, and explicit
+  close still reports `AMS_MEL_PROVIDER_FAILED` while Ada finalization stays
+  non-raising.
+
+  Deterministic regressions force the exact interleaving with condition
+  variables, never sleeps, and prove the forced window was reached: a release
+  paused after successfully republishing the buffer, and reuse driven from
+  inside the still-executing release call with the provider pool mutex
+  released. Coverage includes accepted-frame and callback-side release entry,
+  legacy `Receive` and Close-time queue discard, concurrent release from
+  distinct snapshot owners, release-slot admission control, and an Ada
+  `Frame_Lease` regression through the public safe API. A negative control
+  proves removing the handoff makes the new regressions fail.
+
+  No C ABI change: ABI stays `0.1` with all 90 exports and `exports.map`
+  unchanged, frozen record layouts untouched, zero bulk payload copies
+  preserved, and no vendor delta. Mock-provider evidence only; the pinned
+  Squall runtime was unavailable. See
+  `docs/corrective-provider-buffer-release-handoff.md`.
+
 - Complete the high-rate zero-copy data plane: the bridge now performs **zero**
   bulk payload copies from the MEL provider callback buffer into Ada. The
   native `frame.pixels.assign(...)` and its payload-sized

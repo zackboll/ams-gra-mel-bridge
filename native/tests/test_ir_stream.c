@@ -277,6 +277,35 @@ static int ams_mel_mock_pool_produce_once(void)
     return fn == NULL ? 0 : fn();
 }
 
+/* CORRECTIVE release/reuse handoff control surface. Test-only mock facilities;
+   no production C export exists or was added for any of these. */
+static int mock_handoff_int(const char *name)
+{
+    int (*fn)(void);
+    *(void **)&fn = mock_pool_symbol(name);
+    return fn == NULL ? -1 : fn();
+}
+
+static void mock_handoff_void(const char *name)
+{
+    void (*fn)(void);
+    *(void **)&fn = mock_pool_symbol(name);
+    if (fn != NULL) fn();
+}
+
+static void mock_handoff_arm(void)
+{ mock_handoff_void("ams_mel_mock_handoff_arm"); }
+static void mock_handoff_disarm(void)
+{ mock_handoff_void("ams_mel_mock_handoff_disarm"); }
+static void mock_handoff_release_window(void)
+{ mock_handoff_void("ams_mel_mock_handoff_release_window"); }
+static int mock_handoff_wait_window(void)
+{ return mock_handoff_int("ams_mel_mock_handoff_wait_window"); }
+static int mock_handoff_window_reached(void)
+{ return mock_handoff_int("ams_mel_mock_handoff_window_reached"); }
+static unsigned long mock_handoff_reentrant_callbacks(void)
+{ return mock_pool_query("ams_mel_mock_handoff_reentrant_callbacks"); }
+
 /* Proves the thing Task 030B exists to prove, deterministically:
  *
  *   1-3. produce and acquire three frames from a three-buffer pool;
@@ -2015,6 +2044,489 @@ static int test_arguments(void)
     return EXIT_SUCCESS;
 }
 
+/* ===================================================================
+   CORRECTIVE: provider-buffer release/reuse handoff.
+
+   The defect. The bridge held the old callback's emergency-ownership
+   (retention) slot for the whole duration of Buffer::release() and returned it
+   only after that provider call completed. A conforming provider republishes
+   the physical buffer into its reusable pool as soon as the release succeeds --
+   pinned Squall does so INSIDE release(), with the pool mutex released, before
+   the call returns. With every retention slot occupied, a brand new callback
+   for that successfully returned physical buffer therefore found an EMPTY slot
+   free list, and the bridge treated that healthy reuse as a non-conforming
+   provider: it refused to release, counted a malformed frame, published
+   uncertain_release, poisoned the lifecycle to Failed, and retained the graph
+   permanently.
+
+   Why physical buffer_count did not bound this. A retention slot is keyed to a
+   PER-CALLBACK Buffer WRAPPER generation, not to a physical buffer. During the
+   window above, one physical buffer legitimately has TWO live wrapper
+   generations: the one whose release is still executing and the new one the
+   provider just delivered. buffer_count bounds simultaneous physical
+   CHECKOUTS; it never bounded overlapping wrapper ownership.
+
+   The reproduction is fully deterministic. The mock pauses inside release()
+   AFTER the physical buffer has been republished, and the test proves the
+   window was actually reached before driving the reusing callback. Nothing
+   sleeps to create the interleaving and no probabilistic stress is involved.
+
+   These regressions deliberately do NOT use AMS_MEL_TEST_RETENTION_SLOTS:
+   manufacturing exhaustion that way would bypass the real handoff defect.
+
+   Distinct live snapshot owners are used for the internal concurrency; the
+   same public handle is never used or closed from two threads.
+   =================================================================== */
+
+struct handoff_closer {
+    ams_mel_ir_frame_snapshot *snapshot;
+    ams_mel_status_t status;
+};
+
+/* All state the shared scenario and its verification step exchange, so the
+   verification can live in its own function without a long parameter list. */
+struct handoff_ctx {
+    ams_mel_session *session;
+    ams_mel_ir_stream *stream;
+    ams_mel_ir_frame_snapshot *leases[3];
+    const ams_mel_ir_frame_snapshot_v1 *views[3];
+    const uint8_t *addresses[3];
+    uint8_t bytes1;
+    uint8_t bytes2;
+    ams_mel_ir_stream_counters_v1 before;
+    unsigned long destructor_releases_before;
+    unsigned long failed_destroyed_before;
+    unsigned long failed_attempts_before;
+    unsigned long callbacks_before;
+    unsigned long releases_before;
+};
+
+static int handoff_close_thread(void *argument)
+{
+    struct handoff_closer *closer = (struct handoff_closer *)argument;
+    /* This thread is the sole owner of this snapshot handle. */
+    closer->status = ams_mel_ir_frame_snapshot_close(&closer->snapshot, NULL, 0, NULL);
+    return 0;
+}
+
+/* Shared scenario:
+
+     1. three provider buffers, three live snapshots, all checked out;
+     2. close one snapshot on a dedicated thread, so its release blocks in the
+        forced window with the physical buffer already republished;
+     3. prove the window was reached;
+     4. drive a new callback for that same physical buffer while the old
+        retention slot is, in the defective build, still held;
+     5. let the paused release return and join;
+     6. assert the new frame was accepted normally and reuses the address. */
+static int handoff_verify(struct handoff_ctx *ctx);
+
+static int test_release_reuse_handoff(const char *scenario)
+{
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct handoff_ctx ctx;
+    struct handoff_closer closer;
+    thrd_t closer_thread;
+    const int reuse_inside = strcmp(scenario, "handoff-reuse-inside") == 0;
+    size_t i;
+
+    memset(&ctx, 0, sizeof ctx);
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream(scenario, &ctx.session, &ctx.stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(ctx.stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 3);
+
+    ctx.destructor_releases_before = mock_destructor_driven_releases();
+    ctx.failed_destroyed_before = mock_failed_buffer_destroyed();
+    ctx.failed_attempts_before = mock_failed_release_attempts();
+    ctx.callbacks_before = mock_pool_callbacks();
+    ctx.releases_before = mock_pool_releases();
+
+    /* 1: three live snapshots; every physical buffer is checked out. */
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(ctx.stream, 2000, &ctx.leases[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_frame_snapshot_view(ctx.leases[i], &ctx.views[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ctx.views[i]->pixels.size == 12U && ctx.views[i]->pixels.data != NULL);
+        ctx.addresses[i] = ctx.views[i]->pixels.data;
+    }
+    CHECK(ctx.addresses[0] != ctx.addresses[1] &&
+          ctx.addresses[1] != ctx.addresses[2] &&
+          ctx.addresses[0] != ctx.addresses[2]);
+    CHECK(ams_mel_mock_pool_available() == 0);
+    /* Every retention slot is now occupied: exactly the precondition under
+       which the defect turns a healthy reuse into a false exhaustion. */
+    ctx.bytes1 = ctx.views[1]->pixels.data[0];
+    ctx.bytes2 = ctx.views[2]->pixels.data[0];
+    CHECK(ams_mel_ir_stream_get_counters(ctx.stream, &ctx.before, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ctx.before.malformed_or_unsupported_frames == 0);
+    CHECK(ctx.before.frames_dropped_queue_full == 0);
+
+    /* 2: close ONE snapshot on its own thread. Its release republishes the
+       physical buffer and then enters the forced window. */
+    mock_handoff_arm();
+    closer.snapshot = ctx.leases[0];
+    closer.status = AMS_MEL_INTERNAL_ERROR;
+    ctx.leases[0] = NULL;
+    CHECK(thrd_create(&closer_thread, handoff_close_thread, &closer) == thrd_success);
+
+    if (reuse_inside) {
+        /* The provider itself drives the reusing callback from INSIDE the
+           still-executing release call, with its pool mutex released. The fix
+           therefore cannot depend on an unsupported return-before-reuse
+           assumption. Join first, then verify reentry actually happened. */
+        CHECK(thrd_join(closer_thread, NULL) == thrd_success);
+        CHECK(closer.status == AMS_MEL_OK);
+        CHECK(closer.snapshot == NULL);
+        CHECK(mock_handoff_window_reached() == 1);
+        CHECK(mock_handoff_reentrant_callbacks() == 1UL);
+    } else {
+        /* 3: prove the window was ACTUALLY reached -- the physical buffer is
+           already back in the provider pool while the bridge has not yet
+           reconciled its bookkeeping for the old wrapper. */
+        CHECK(mock_handoff_wait_window() == 1);
+        CHECK(ams_mel_mock_pool_available() == 1);
+
+        /* 4: force a brand new callback for that SAME physical buffer now,
+           inside the window. In the defective build this is where the bridge
+           finds an empty retention free list. */
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+
+        /* 5: let the paused release return and join its owner thread. */
+        mock_handoff_release_window();
+        CHECK(thrd_join(closer_thread, NULL) == thrd_success);
+        CHECK(closer.status == AMS_MEL_OK);
+        CHECK(closer.snapshot == NULL);
+    }
+    mock_handoff_disarm();
+    return handoff_verify(&ctx);
+}
+
+/* Step 6 and the full post-conditions, shared by both handoff windows. */
+static int handoff_verify(struct handoff_ctx *ctx)
+{
+    ams_mel_ir_frame_snapshot *reused = NULL;
+    const ams_mel_ir_frame_snapshot_v1 *reused_view = NULL;
+    ams_mel_ir_stream_counters_v1 after;
+    unsigned long channels_before, controls_before;
+
+    /* THE BASELINE FAILING ASSERTIONS. The new callback must be accepted
+       normally. Before the fix the bridge rejected it as a non-conforming
+       provider, so this returned AMS_MEL_PROVIDER_FAILED -- the lifecycle had
+       been poisoned to Failed -- instead of AMS_MEL_OK. */
+    CHECK(ams_mel_ir_stream_receive_snapshot(ctx->stream, 2000, &reused,
+          NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_view(reused, &reused_view, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(reused_view->pixels.size == 12U);
+    /* The new snapshot uses the returned physical buffer's address. */
+    CHECK(reused_view->pixels.data == ctx->addresses[0]);
+
+    /* The two still-live snapshots keep their original addresses AND bytes. */
+    CHECK(ctx->views[1]->pixels.data == ctx->addresses[1]);
+    CHECK(ctx->views[2]->pixels.data == ctx->addresses[2]);
+    CHECK(ctx->views[1]->pixels.data[0] == ctx->bytes1);
+    CHECK(ctx->views[2]->pixels.data[0] == ctx->bytes2);
+
+    /* No false malformed count and no false queue-full count. Before the fix
+       the refused-release branch incremented malformed_or_unsupported_frames
+       for a perfectly healthy frame. */
+    CHECK(ams_mel_ir_stream_get_counters(ctx->stream, &after, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(after.malformed_or_unsupported_frames == 0);
+    CHECK(after.frames_dropped_queue_full == 0);
+    CHECK(after.frames_received > ctx->before.frames_received);
+
+    /* No permanent uncertain-ownership state was introduced: no release
+       failed, no failed wrapper was destroyed, and no wrapper destructor had
+       to perform a second release. Each callback wrapper therefore received
+       exactly ONE bridge-controlled release attempt. */
+    CHECK(mock_failed_release_attempts() == ctx->failed_attempts_before);
+    CHECK(mock_failed_buffer_destroyed() == ctx->failed_destroyed_before);
+    CHECK(mock_destructor_driven_releases() == ctx->destructor_releases_before);
+
+    /* After all legitimate owners close, provider capacity is restored. */
+    CHECK(ams_mel_ir_frame_snapshot_close(&reused, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&ctx->leases[1], NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&ctx->leases[2], NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 3);
+
+    /* Exactly one release per callback wrapper, across the whole scenario. */
+    CHECK(mock_pool_releases() - ctx->releases_before ==
+          mock_pool_callbacks() - ctx->callbacks_before);
+
+    /* Channel destruction and provider unload occur in the correct order and
+       no emergency retention leaked: a poisoned stream would have kept the
+       channel attached forever, so these counters would NOT advance.
+       Baselines are captured immediately before Close, so only this stream's
+       own teardown is observed. */
+    channels_before = mock_image_channels_destroyed();
+    controls_before = mock_controls_destroyed();
+    /* Stream close first, while the provider library is still loaded, so the
+       mock's counters remain observable. A poisoned stream would have kept
+       the channel attached, so this counter would not advance. */
+    CHECK(ams_mel_ir_stream_close(&ctx->stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ctx->stream == NULL);
+    CHECK(mock_image_channels_destroyed() > channels_before);
+    /* Physical teardown released every registered Buffer, so still no
+       destructor-driven second release and no failed-wrapper destruction. */
+    CHECK(mock_destructor_driven_releases() == ctx->destructor_releases_before);
+    CHECK(mock_failed_buffer_destroyed() == ctx->failed_destroyed_before);
+    /* Only now the Session: Control is destroyed and the provider unloaded,
+       strictly after the channel, which is the required ordering. */
+    CHECK(ams_mel_ir_stream_close(&ctx->stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&ctx->session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(controls_before != ULONG_MAX);
+    return EXIT_SUCCESS;
+}
+
+/* Concurrent release with DISTINCT snapshot owners. Two snapshots are closed
+   from two different threads while a third stays live on the main thread, so
+   two bridge-controlled releases genuinely overlap. This exercises the release
+   pool's concurrency and rules out both deadlock and an unjustified capacity
+   assumption: each overlapping release obtains its own dedicated release slot
+   and none is refused. The same public handle is never touched by two
+   threads. */
+static int test_concurrent_release_distinct_owners(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *leases[3] = {NULL, NULL, NULL};
+    ams_mel_ir_frame_snapshot *extra = NULL;
+    struct handoff_closer closers[2];
+    thrd_t threads[2];
+    ams_mel_ir_stream_counters_v1 counters;
+    unsigned long failed_attempts_before, destructor_before;
+    size_t i;
+
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("handoff-concurrent", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    failed_attempts_before = mock_failed_release_attempts();
+    destructor_before = mock_destructor_driven_releases();
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 2000, &leases[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+    }
+    CHECK(ams_mel_mock_pool_available() == 0);
+
+    for (i = 0; i < 2; ++i) {
+        closers[i].snapshot = leases[i];
+        closers[i].status = AMS_MEL_INTERNAL_ERROR;
+        leases[i] = NULL;
+        CHECK(thrd_create(&threads[i], handoff_close_thread, &closers[i]) ==
+              thrd_success);
+    }
+    for (i = 0; i < 2; ++i) {
+        CHECK(thrd_join(threads[i], NULL) == thrd_success);
+        /* No release was refused and none was uncertain. */
+        CHECK(closers[i].status == AMS_MEL_OK);
+        CHECK(closers[i].snapshot == NULL);
+    }
+    CHECK(ams_mel_mock_pool_available() == 2);
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.malformed_or_unsupported_frames == 0);
+    CHECK(counters.frames_dropped_queue_full == 0);
+    CHECK(mock_failed_release_attempts() == failed_attempts_before);
+    CHECK(mock_destructor_driven_releases() == destructor_before);
+
+    /* Reuse still works afterwards, so no slot leaked in either pool. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 2000, &extra, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&extra, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_frame_snapshot_close(&leases[2], NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_available() == 3);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* The same release/reuse window reached through the LEGACY owned-copy Receive
+   and through Close-time queue discard, i.e. the other two entry points into
+   the common release helper. Deliberately small: it reuses the existing
+   handoff scenario machinery instead of duplicating test infrastructure. */
+static int test_release_reuse_handoff_common_paths(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_v1 frame;
+    uint8_t pixels[12] = {0};
+    ams_mel_ir_stream_counters_v1 counters;
+    unsigned long failed_attempts_before, destructor_before;
+
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("handoff-reuse-inside", &session, &stream, &config) ==
+          EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Captured only after the provider library is loaded: the mock counters
+       are resolved with dlsym against the loaded image, so a baseline taken
+       before the Session exists would read the not-loaded sentinel. */
+    failed_attempts_before = mock_failed_release_attempts();
+    destructor_before = mock_destructor_driven_releases();
+
+    /* Legacy Receive copies the bytes out and then releases the provider
+       buffer through the same common helper. Arming the window makes that
+       release republish and be reused before it returns. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    memset(&frame, 0, sizeof frame);
+    frame.pixels = pixels;
+    frame.pixel_capacity = sizeof pixels;
+    mock_handoff_arm();
+    CHECK(ams_mel_ir_stream_receive(stream, 2000, &frame, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(mock_handoff_window_reached() == 1);
+    CHECK(mock_handoff_reentrant_callbacks() == 1UL);
+    mock_handoff_disarm();
+    /* Owned-copy behavior is unchanged. */
+    CHECK(frame.width == 4 && frame.height == 3 && frame.pixel_required == 12);
+
+    /* The reentrant callback left a frame queued but never acquired. Close
+       discards it and releases its provider buffer through the same helper,
+       with no false malformed or queue-full accounting. */
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.malformed_or_unsupported_frames == 0);
+    CHECK(counters.frames_dropped_queue_full == 0);
+    /* Checked while the provider is still loaded: no release failed and no
+       wrapper destructor performed a second release on either path. */
+    CHECK(mock_failed_release_attempts() == failed_attempts_before);
+    CHECK(mock_destructor_driven_releases() == destructor_before);
+    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+/* NEGATIVE CONTROL / MUTATION CHECK.
+
+   AMS_MEL_TEST_SKIP_RELEASE_HANDOFF=skip removes exactly the essential
+   corrective step: begin_release() still moves the wrapper into its dedicated
+   release slot, but no longer hands the HOLD slot back before the provider
+   call. That is precisely the defective protocol, so the reusing callback must
+   again observe a falsely exhausted hold pool and be rejected.
+
+   This proves the positive regressions above detect the defect rather than
+   passing vacuously. The mutation is a test-only failpoint compiled out of
+   production builds; no temporary source mutation is left behind. */
+static int test_release_reuse_handoff_negative_mutation(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *leases[3] = {NULL, NULL, NULL};
+    ams_mel_ir_frame_snapshot *reused = NULL;
+    ams_mel_ir_stream_counters_v1 counters;
+    struct handoff_closer closer;
+    thrd_t closer_thread;
+    ams_mel_status_t reuse_status;
+    size_t i;
+
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(setenv("AMS_MEL_TEST_SKIP_RELEASE_HANDOFF", "skip", 1) == 0);
+    CHECK(open_stream("handoff-pause-after", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    for (i = 0; i < 3; ++i) {
+        CHECK(ams_mel_mock_pool_produce_once() == 1);
+        CHECK(ams_mel_ir_stream_receive_snapshot(stream, 2000, &leases[i],
+              NULL, 0, NULL) == AMS_MEL_OK);
+    }
+    CHECK(ams_mel_mock_pool_available() == 0);
+
+    mock_handoff_arm();
+    closer.snapshot = leases[0];
+    closer.status = AMS_MEL_INTERNAL_ERROR;
+    leases[0] = NULL;
+    CHECK(thrd_create(&closer_thread, handoff_close_thread, &closer) == thrd_success);
+    CHECK(mock_handoff_wait_window() == 1);
+    CHECK(ams_mel_mock_pool_available() == 1);
+    /* The reusing callback arrives while the mutated build still holds the
+       old hold slot. */
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    mock_handoff_release_window();
+    CHECK(thrd_join(closer_thread, NULL) == thrd_success);
+    mock_handoff_disarm();
+
+    reuse_status = ams_mel_ir_stream_receive_snapshot(stream, 500, &reused,
+                                                      NULL, 0, NULL);
+    /* THE MUTATION EVIDENCE. With the corrective handoff removed the healthy
+       reuse is NOT accepted: the stream was poisoned by the false exhaustion
+       branch, so no snapshot is produced and the frame was miscounted as
+       malformed. */
+    CHECK(reuse_status != AMS_MEL_OK);
+    CHECK(reused == NULL);
+    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(counters.malformed_or_unsupported_frames >= 1);
+    CHECK(unsetenv("AMS_MEL_TEST_SKIP_RELEASE_HANDOFF") == 0);
+
+    /* The mutated run deliberately poisoned the stream, so it is permanently
+       un-teardownable by design. Release the remaining public owners; the
+       graph stays retained, which is the documented uncertain-release policy
+       and exactly what the positive regressions assert does NOT happen. */
+    (void)ams_mel_ir_frame_snapshot_close(&leases[1], NULL, 0, NULL);
+    (void)ams_mel_ir_frame_snapshot_close(&leases[2], NULL, 0, NULL);
+    (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    return EXIT_SUCCESS;
+}
+
+/* Release-slot admission control. AMS_MEL_TEST_RELEASE_SLOTS=exhaust forces
+   the DISJOINT release pool empty -- a different pool and a different branch
+   from AMS_MEL_TEST_RETENTION_SLOTS. With no dedicated permanent owner
+   available for a potentially uncertain result, the bridge must refuse to
+   release at all rather than risk an unownable outcome: the close reports the
+   failure truthfully, the exact wrapper is never destroyed, no release is
+   attempted, and the provider graph is retained. */
+static int test_release_slot_admission_control(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    unsigned long releases_before, destructor_before, failed_destroyed_before;
+
+    config.buffer_count = 3;
+    config.queue_capacity = 8;
+    CHECK(open_stream("handoff-concurrent", &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    CHECK(ams_mel_ir_stream_receive_snapshot(stream, 2000, &lease, NULL, 0, NULL) ==
+          AMS_MEL_OK);
+    releases_before = mock_pool_releases();
+    destructor_before = mock_destructor_driven_releases();
+    failed_destroyed_before = mock_failed_buffer_destroyed();
+
+    CHECK(setenv("AMS_MEL_TEST_RELEASE_SLOTS", "exhaust", 1) == 0);
+    /* Refused, and reported truthfully rather than silently succeeding. */
+    CHECK(ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL) ==
+          AMS_MEL_PROVIDER_FAILED);
+    CHECK(lease == NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_RELEASE_SLOTS") == 0);
+
+    /* No release() was attempted at all, so no uncertain result could arise
+       and no forbidden retry is possible. */
+    CHECK(mock_pool_releases() == releases_before);
+    /* The exact wrapper survives: parked, never destroyed, so its destructor
+       never performed a release either. */
+    CHECK(mock_last_callback_wrapper_alive() == 1);
+    CHECK(mock_destructor_driven_releases() == destructor_before);
+    CHECK(mock_failed_buffer_destroyed() == failed_destroyed_before);
+    /* The buffer is permanently withheld: provider capacity is NOT restored
+       and physical teardown stays blocked, exactly as for any other
+       unresolved ownership obligation. */
+    CHECK(ams_mel_mock_pool_available() == 2);
+    (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    return EXIT_SUCCESS;
+}
+
 int main(void)
 {
     static const char *malformed[] = {"null-buffer", "null-image", "image-before",
@@ -2025,6 +2537,20 @@ int main(void)
     CHECK(test_capability_snapshot_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_fifo_and_lifetime() == EXIT_SUCCESS);
     CHECK(test_snapshot_pixel_storage_identity() == EXIT_SUCCESS);
+    /* CORRECTIVE: provider-buffer release/reuse handoff. Both forced windows:
+       paused after a successful provider release, and reuse driven from
+       inside the still-executing release call. */
+    CHECK(test_release_reuse_handoff("handoff-pause-after") == EXIT_SUCCESS);
+    CHECK(test_release_reuse_handoff("handoff-reuse-inside") == EXIT_SUCCESS);
+    CHECK(test_concurrent_release_distinct_owners() == EXIT_SUCCESS);
+    CHECK(test_release_reuse_handoff_common_paths() == EXIT_SUCCESS);
+    /* Repetition SUPPLEMENTS the deterministic coverage above; it does not
+       replace it. The exact interleaving is already forced and proven. */
+    for (unsigned i = 0; i < 5; ++i) {
+        CHECK(test_release_reuse_handoff("handoff-pause-after") == EXIT_SUCCESS);
+        CHECK(test_release_reuse_handoff("handoff-reuse-inside") == EXIT_SUCCESS);
+        CHECK(test_concurrent_release_distinct_owners() == EXIT_SUCCESS);
+    }
     /* Task 030B provider-buffer zero copy. */
     CHECK(test_provider_buffer_address_identity() == EXIT_SUCCESS);
     CHECK(test_lease_backpressure() == EXIT_SUCCESS);
@@ -2117,6 +2643,12 @@ int main(void)
        teardown recheck must make the host-storage assertion fail. Also placed
        after the positive regressions for the same reason. */
     CHECK(test_teardown_race_negative_mutation() == EXIT_SUCCESS);
+    /* CORRECTIVE release/reuse handoff. Admission control deliberately
+       poisons its stream, and the mutation deliberately reintroduces the
+       defect, so both run AFTER every positive regression that asserts the
+       cumulative invariants. */
+    CHECK(test_release_slot_admission_control() == EXIT_SUCCESS);
+    CHECK(test_release_reuse_handoff_negative_mutation() == EXIT_SUCCESS);
     for (unsigned i = 0; i < 5; ++i) {
         CHECK(test_release_failure_with_park_allocation_failure(
                   "release-fail-park-alloc") == EXIT_SUCCESS);

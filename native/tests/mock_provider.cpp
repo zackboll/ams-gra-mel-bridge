@@ -342,6 +342,45 @@ std::atomic<int> callback_blocked_inside{0};
  * frame and performs its callback-side release, which the wrapper fails. */
 std::atomic<bool> callback_release_hold{true};
 
+/* CORRECTIVE (provider-buffer release/reuse handoff) coordination.
+ *
+ * These model exactly what pinned Squall's RequeueBuffer::release() does: it
+ * republishes the physical buffer into the channel's available pool WHILE the
+ * release call is still executing, with the pool mutex released before it
+ * returns. The bridge therefore cannot assume it has finished any bookkeeping
+ * for the old wrapper before a new callback for that same physical buffer can
+ * legitimately arrive.
+ *
+ * Two deterministic windows are provided, selected per scenario:
+ *
+ *   "handoff-pause-after"   release() republishes the buffer, then BLOCKS
+ *                           inside the provider call until the test releases
+ *                           it. The forced window is therefore "successfully
+ *                           published, bridge bookkeeping not yet reconciled".
+ *   "handoff-reuse-inside"  release() republishes the buffer and then, still
+ *                           inside the release call and with the pool mutex
+ *                           released, drives one complete new callback for
+ *                           that same physical buffer before returning. This
+ *                           proves the fix does not depend on an unsupported
+ *                           return-before-reuse assumption.
+ *
+ * All waiting is condition-variable driven; nothing here sleeps to create the
+ * interleaving, and each flag records that the window was actually reached so
+ * a regression can assert it rather than assume it. */
+std::mutex handoff_mutex;
+std::condition_variable handoff_ready;
+/* Set by the provider the instant a release has republished its physical
+ * buffer and entered the forced window. Proves the window was reached. */
+bool handoff_window_reached{false};
+/* Set by the test to let a paused release call return. */
+bool handoff_window_released{false};
+/* Counts complete new callbacks the provider drove from INSIDE a still-
+ * executing release call. Proves reuse-before-return was actually exercised. */
+std::atomic<unsigned long> handoff_reentrant_callbacks{0U};
+/* Armed by the test so only the intended release enters the window; the
+ * scenario's other releases behave completely normally. */
+std::atomic<bool> handoff_armed{false};
+
 /* Number of leading null-Buffer callbacks the "null-buffer-callbacks" scenario
  * emits before its first valid frame. Deliberately far more than any
  * buffer_count the regression configures, so a bridge that consumed one
@@ -538,17 +577,55 @@ public:
         if (scenario_ == "release-throw")
             throw std::runtime_error("mock release exception");
         if (auto pool = pool_.lock()) {
-            std::lock_guard lock{pool->mutex};
-            if (!pool->accepting_releases) {
-                record("release_after_channel_destroyed");
-                return Return::Fail;
+            {
+                std::lock_guard lock{pool->mutex};
+                if (!pool->accepting_releases) {
+                    record("release_after_channel_destroyed");
+                    return Return::Fail;
+                }
+                pool->available.push_back(self_.lock());
+                record("buffer_requeued");
+                pool->ready.notify_all();
             }
-            pool->available.push_back(self_.lock());
-            record("buffer_requeued");
-            pool->ready.notify_all();
+            /* CORRECTIVE release/reuse handoff window. The physical buffer is
+             * now genuinely reusable and the POOL MUTEX IS RELEASED, exactly
+             * as pinned Squall leaves it, yet this release call has not
+             * returned, so the bridge cannot have reconciled its bookkeeping
+             * for this wrapper. Everything below is condition-variable driven
+             * and records that the window was actually reached. */
+            if (handoff_armed.load()) {
+                if (scenario_ == "handoff-pause-after") {
+                    std::unique_lock lock{handoff_mutex};
+                    handoff_window_reached = true;
+                    handoff_ready.notify_all();
+                    handoff_ready.wait(lock, [] { return handoff_window_released; });
+                } else if (scenario_ == "handoff-reuse-inside" ||
+                           scenario_ == "handoff-ada-reuse") {
+                    /* Reuse BEFORE this release returns: drive one complete
+                     * new callback for this same physical buffer from inside
+                     * the still-executing release call. */
+                    {
+                        std::lock_guard lock{handoff_mutex};
+                        handoff_window_reached = true;
+                    }
+                    handoff_ready.notify_all();
+                    /* One-shot, so the reentrant callback's own release cannot
+                     * recurse. Bounded by construction, never unbounded. */
+                    handoff_armed.store(false);
+                    if (reentrant_producer_) {
+                        reentrant_producer_();
+                        ++handoff_reentrant_callbacks;
+                    }
+                }
+            }
         }
         return Return::Success;
     }
+
+    /* Installed by the channel so this buffer's release can drive exactly one
+     * further production cycle from inside itself. Test-only. */
+    void set_reentrant_producer(std::function<void()> producer)
+    { reentrant_producer_ = std::move(producer); }
     /* Records a release against this buffer's owning pool for a release that
      * was performed through the per-callback wrapper and therefore never
      * reached MockBuffer::release(). */
@@ -581,6 +658,8 @@ private:
     /* Weak so the pool and the buffer cannot form an ownership cycle. */
     std::weak_ptr<BufferPool> pool_;
     std::weak_ptr<irmel::Buffer> self_;
+    /* Test-only reentrant production hook; see set_reentrant_producer. */
+    std::function<void()> reentrant_producer_;
 };
 
 /* Models pinned Squall b1015728f904c799fa0c07489fce48e78f67845f
@@ -858,8 +937,17 @@ public:
         /* Squall-shaped: every registered buffer starts in the available
          * pool, and a buffer handed to the listener leaves the pool until it
          * is released. */
-        if (auto mock = std::dynamic_pointer_cast<MockBuffer>(buffer))
+        if (auto mock = std::dynamic_pointer_cast<MockBuffer>(buffer)) {
             mock->attach_pool(pool_, buffer);
+            /* CORRECTIVE: let this buffer's own release drive exactly one new
+             * callback generation from inside itself, for the
+             * "handoff-reuse-inside" window. Raw `this` is safe because the
+             * hook only ever runs from a release performed while the channel
+             * is alive, and the channel joins its producer before destruction. */
+            if (scenario_ == "handoff-reuse-inside" ||
+                scenario_ == "handoff-ada-reuse")
+                mock->set_reentrant_producer([this] { (void)drive_one_callback(); });
+        }
         {
             std::lock_guard lock{pool_->mutex};
             pool_->available.push_back(buffer);
@@ -1086,13 +1174,29 @@ private:
          * reached deterministically from the test thread rather than from a
          * free-running producer. */
         return scenario_.rfind("lease-pool", 0U) == 0U ||
-               scenario_ == "null-buffer-callbacks" || requeue_wrapped();
+               scenario_ == "null-buffer-callbacks" ||
+               handoff_scenario() || requeue_wrapped();
+    }
+
+    /* CORRECTIVE release/reuse handoff scenarios. Pooled and on-demand, so the
+     * exact interleaving is driven from the test thread, never from timing. */
+    bool handoff_scenario() const
+    {
+        return scenario_ == "handoff-pause-after" ||
+               scenario_ == "handoff-reuse-inside" ||
+               scenario_ == "handoff-ada-reuse" ||
+               scenario_ == "handoff-concurrent";
     }
 
     /* Scenarios that model pinned Squall's per-callback RequeueBuffer. */
     bool requeue_wrapped() const
     {
-        return scenario_ == "release-fail-observed" ||
+        /* The handoff scenarios model pinned Squall faithfully, so they hand
+         * the listener a PER-CALLBACK wrapper too. That is essential here:
+         * the defect is precisely that retention slots are keyed to wrapper
+         * generations rather than to physical buffers. */
+        return handoff_scenario() ||
+               scenario_ == "release-fail-observed" ||
                scenario_ == "release-fail-park-alloc" ||
                scenario_ == "release-throw-park-alloc" ||
                scenario_ == "teardown-race-late-uncertain" ||
@@ -1121,6 +1225,58 @@ private:
                scenario_ == "callback-reject-slot-exhaustion";
     }
 
+    /* CORRECTIVE: one complete, synchronous, Squall-shaped production cycle
+     * for the handoff scenarios. Checks a buffer out of the pool, wraps it in
+     * a fresh per-callback RequeueBuffer generation, and delivers onImage,
+     * all on the CALLING thread.
+     *
+     * Used both by the ordinary on-demand producer and, for
+     * "handoff-reuse-inside", from inside a still-executing release() call, so
+     * a new wrapper generation for a just-republished physical buffer reaches
+     * the bridge before the old generation's release has returned. Returns
+     * false when no buffer is available.
+     *
+     * Deliberately NOT recursive: the reentrant hook is one-shot (handoff_armed
+     * is cleared before this runs), so the callback this delivers performs an
+     * ordinary release and no further reentry occurs. */
+    bool drive_one_callback()
+    {
+        std::shared_ptr<irmel::Buffer> underlying;
+        unsigned id = 0U;
+        {
+            std::lock_guard lock{pool_->mutex};
+            if (pool_->available.empty()) return false;
+            underlying = pool_->available.front();
+            pool_->available.pop_front();
+            id = ++pool_->produced;
+        }
+        auto mock = std::dynamic_pointer_cast<MockBuffer>(underlying);
+        if (mock && mock->size() >= 12U)
+            for (std::size_t i = 0; i < 12U; ++i)
+                mock->data()[i] = static_cast<unsigned char>(id * 16U + i);
+        irmel::FrameHeader header{std::chrono::nanoseconds{1'000'000 + id},
+            std::chrono::nanoseconds{20'000 + id}, 4U, 3U, 8U, 1U, 0.25, 0.125, {},
+            irmel::PixelFormat::Mono, id, 2U, 4U, irmel::ImageType::Staring,
+            irmel::ImageFlip::Horizontal, {irmel::ImageFlag::StareSnapshot},
+            0.5, -0.25, 7U, 9U, {}, {}, 3U};
+        record("callback_entered");
+        if (mock) mock->begin_callback();
+        ++callback_buffers;
+        ++buffers_outstanding;
+        ++pool_->callbacks;
+        /* A brand new per-callback wrapper generation over the same physical
+         * buffer, which is exactly what the corrective task is about. */
+        auto wrapper = std::make_shared<RequeueBuffer>(mock, scenario_, false);
+        wrapper->bind_self(wrapper);
+        {
+            std::lock_guard lock{failed_release_mutex};
+            last_callback_wrapper = wrapper;
+        }
+        listener_->onImage(*this, header, wrapper);
+        record("callback_returned");
+        return true;
+    }
+
     /* Squall-shaped production cycle: check a buffer out of the pool, or
      * record starvation and drop the frame when the pool is empty. */
     void produce_pooled()
@@ -1135,6 +1291,21 @@ private:
             });
             if (stopping_.load() && pool_->requested <= pool_->completed) return;
             if (pool_->requested <= pool_->completed) continue;
+            if (handoff_scenario()) {
+                /* One complete Squall-shaped cycle per requested production,
+                 * delivered by the shared helper so the ordinary path and the
+                 * reuse-inside-release path exercise identical machinery. */
+                lock.unlock();
+                const bool produced = drive_one_callback();
+                std::lock_guard done{pool_->mutex};
+                if (!produced) {
+                    ++pool_->starved;
+                    record("provider_dropped_frame_no_buffer");
+                }
+                ++pool_->completed;
+                pool_->ready.notify_all();
+                continue;
+            }
             std::shared_ptr<irmel::Buffer> underlying;
             if (pool_->available.empty()) {
                 /* Provider-level backpressure: no reusable buffer exists, so
@@ -1256,8 +1427,34 @@ private:
         }
     }
 
+    /* CORRECTIVE: free-running variant of the reuse-inside window, for
+     * consumers that cannot drive the on-demand pool control surface -- the
+     * Ada regression uses only the public safe Ada API. The window is armed
+     * here rather than by the test, and the same MockBuffer::release() hook
+     * performs the reuse, so this exercises identical bridge machinery. */
+    void produce_handoff_ada()
+    {
+        handoff_armed.store(true);
+        for (unsigned frame = 0; frame < 3U; ++frame) {
+            if (stopping_.load()) break;
+            if (!drive_one_callback()) break;
+        }
+        /* Keep serving further callbacks as buffers come back, so an Ada
+         * Acquire_Frame after the reuse always has a frame available. */
+        while (!stopping_.load()) {
+            std::unique_lock lock{pool_->mutex};
+            (void)pool_->ready.wait_for(lock, std::chrono::milliseconds{10},
+                [this] { return stopping_.load() || !pool_->available.empty(); });
+            if (stopping_.load()) break;
+            if (pool_->available.empty()) continue;
+            lock.unlock();
+            if (!drive_one_callback()) break;
+        }
+    }
+
     void produce()
     {
+        if (scenario_ == "handoff-ada-reuse") { produce_handoff_ada(); return; }
         if (pooled()) { produce_pooled(); return; }
         const unsigned count = (scenario_ == "idle" ||
             (scenario_.rfind("c2-", 0U) == 0U && scenario_ != "c2-coexist")) ? 0U :
@@ -3521,6 +3718,68 @@ void ams_mel_mock_pool_reset(void)
 {
     std::lock_guard lock{active_pool_mutex};
     active_pool.reset();
+}
+
+/* CORRECTIVE release/reuse handoff control surface. Test-only; not part of the
+ * MEL provider interface and not part of the public C ABI. These let a
+ * regression force the exact interleaving with explicit coordination rather
+ * than a scheduling sleep, and prove the forced window was actually reached. */
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_handoff_arm(void)
+{
+    {
+        std::lock_guard lock{handoff_mutex};
+        handoff_window_reached = false;
+        handoff_window_released = false;
+    }
+    handoff_reentrant_callbacks.store(0U);
+    handoff_armed.store(true);
+}
+
+/* Blocks until a release has republished its physical buffer and entered the
+ * forced window. Returns 1 when the window was genuinely reached. */
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_handoff_wait_window(void)
+{
+    std::unique_lock lock{handoff_mutex};
+    return handoff_ready.wait_for(lock, std::chrono::seconds{10},
+                                  [] { return handoff_window_reached; }) ? 1 : 0;
+}
+
+/* Lets a paused release call return. */
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_handoff_release_window(void)
+{
+    {
+        std::lock_guard lock{handoff_mutex};
+        handoff_window_released = true;
+    }
+    handoff_ready.notify_all();
+}
+
+extern "C" __attribute__((visibility("default")))
+int ams_mel_mock_handoff_window_reached(void)
+{
+    std::lock_guard lock{handoff_mutex};
+    return handoff_window_reached ? 1 : 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+unsigned long ams_mel_mock_handoff_reentrant_callbacks(void)
+{
+    return handoff_reentrant_callbacks.load();
+}
+
+extern "C" __attribute__((visibility("default")))
+void ams_mel_mock_handoff_disarm(void)
+{
+    handoff_armed.store(false);
+    {
+        std::lock_guard lock{handoff_mutex};
+        handoff_window_released = true;
+    }
+    handoff_ready.notify_all();
 }
 
 /* Task 030B corrective observation surface (PR #42 review). Test-only; not

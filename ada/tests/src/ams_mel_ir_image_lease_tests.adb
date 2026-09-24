@@ -694,6 +694,86 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       end;
    end Test_Owned_Full_Frame;
 
+   ---------------------------------------------------------------------------
+   --  CORRECTIVE: provider-buffer release/reuse handoff, from Ada.
+   --
+   --  The "handoff-reuse-inside" test-only mock scenario republishes the
+   --  physical provider buffer inside Buffer::release() and, before that call
+   --  returns, delivers a brand new callback generation for that same physical
+   --  buffer. Closing an Ada Frame_Lease is exactly such a bridge-controlled
+   --  release, so this exercises the corrected handoff through the public safe
+   --  Ada API with no production C export added for testing.
+   --
+   --  Before the correction the reusing callback hit a falsely exhausted
+   --  retention pool, the stream was poisoned, and the next Acquire_Frame
+   --  could not return an open lease. The sibling leases must also keep their
+   --  own payloads throughout, and explicit Close must stay non-raising.
+   procedure Test_Release_Reuse_Handoff (Provider_Path : String) is
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "handoff-ada-reuse");
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+   begin
+      AMS.MEL.IR.Start (Stream);
+      declare
+         First  : AMS.MEL.IR.Image.Frame_Lease := AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+         Second : constant AMS.MEL.IR.Image.Frame_Lease :=
+           AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+      begin
+         if not AMS.MEL.IR.Image.Is_Open (First) or else not AMS.MEL.IR.Image.Is_Open (Second) then
+            raise Program_Error with "two simultaneous leases failed";
+         end if;
+         --  Record the surviving sibling's borrowed address and payload.
+         AMS.MEL.IR.Image.With_Pixels (Second, Observe'Access);
+         declare
+            Sibling_Address : constant System.Storage_Elements.Integer_Address := Observed_Address;
+            Sibling_Bytes   : constant AMS.MEL.IR.Pixel_Array :=
+              AMS.MEL.IR.Image.Copy_Pixels (Second);
+         begin
+            --  Closing this lease performs the provider release. The mock
+            --  reuses the freed physical buffer from inside that very call.
+            AMS.MEL.IR.Image.Close (First);
+            if AMS.MEL.IR.Image.Is_Open (First) then
+               raise Program_Error with "explicit lease close did not close the lease";
+            end if;
+            --  THE CORRECTIVE ASSERTION. The reusing callback must have been
+            --  accepted normally, so a further lease is obtainable.
+            declare
+               Reused : AMS.MEL.IR.Image.Frame_Lease :=
+                 AMS.MEL.IR.Image.Acquire_Frame (Stream, 1_000);
+            begin
+               if not AMS.MEL.IR.Image.Is_Open (Reused) then
+                  raise Program_Error
+                    with "reuse of a successfully released provider buffer was rejected";
+               end if;
+               AMS.MEL.IR.Image.With_Pixels (Reused, Observe'Access);
+               if Observed_Length /= 12 then
+                  raise Program_Error with "reused lease lost its payload";
+               end if;
+               AMS.MEL.IR.Image.Close (Reused);
+            end;
+            --  The still-live sibling kept its address and its bytes.
+            AMS.MEL.IR.Image.With_Pixels (Second, Observe'Access);
+            if Observed_Address /= Sibling_Address or else Observed_Length /= 12 then
+               raise Program_Error with "live sibling lease was disturbed by the reuse";
+            end if;
+            declare
+               Now : constant AMS.MEL.IR.Pixel_Array := AMS.MEL.IR.Image.Copy_Pixels (Second);
+            begin
+               if Now'Length /= Sibling_Bytes'Length then
+                  raise Program_Error with "live sibling lease payload length changed";
+               end if;
+               for Index in Now'Range loop
+                  if Now (Index) /= Sibling_Bytes (Index) then
+                     raise Program_Error with "live sibling lease payload changed";
+                  end if;
+               end loop;
+            end;
+         end;
+      end;
+      --  Teardown must complete normally: nothing was permanently retained.
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_Release_Reuse_Handoff;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Acquire_And_Fidelity (Provider_Path);
@@ -706,6 +786,8 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       --  Task 030B provider-buffer zero copy.
       Test_Backpressure (Provider_Path);
       Test_Owned_Full_Frame (Provider_Path);
+      --  CORRECTIVE: provider-buffer release/reuse handoff.
+      Test_Release_Reuse_Handoff (Provider_Path);
       Test_Stress (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR zero-copy frame lease contract");
    end Run;

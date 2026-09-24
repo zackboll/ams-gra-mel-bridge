@@ -578,6 +578,32 @@ host ranges it published, so a conforming provider cannot drive concurrent
 checkouts above `buffer_count`. Capacity follows configured provider-buffer
 capacity, not a process-global constant.
 
+> **SUPERSEDED — see
+> `docs/corrective-provider-buffer-release-handoff.md`.**
+>
+> The paragraph immediately above is **wrong**, and the defect it caused has
+> been corrected. A retention slot is keyed to a **per-callback `Buffer`
+> wrapper generation**, not to a physical buffer. A conforming provider makes
+> the physical buffer reusable as soon as `release()` succeeds — pinned Squall
+> republishes it *inside* `RequeueBuffer::release()`, with its pool mutex
+> released, before that call returns — so one physical buffer legitimately has
+> **two** live wrapper generations at once: the one whose release is still
+> executing and the new callback the provider has already delivered for that
+> same buffer. Physical `buffer_count` bounds simultaneous *checkouts*; it does
+> **not** bound overlapping wrapper ownership.
+>
+> Because the old code held the hold slot across the provider call, a healthy
+> reuse in that window found an empty free list and was misclassified as a
+> non-conforming provider, producing a false malformed count and a permanently
+> poisoned stream.
+>
+> Ownership is now split across two **disjoint** preallocated pools:
+> `retention_slots` (HOLD, `buffer_count`) and `release_slots` (RELEASE,
+> `2 * buffer_count`), with `CallbackState::begin_release()` handing the hold
+> slot back atomically and strictly *before* the provider call. The
+> `2 * buffer_count` bound is derived from the two disjoint release sources and
+> is enforced by admission control, not assumed.
+
 If a non-conforming provider *does* exhaust the pool, the bridge does **not**
 release: it keeps the buffer, records the same permanent teardown obligation,
 and parks it in the process-global reserve. That branch runs strictly *before*
