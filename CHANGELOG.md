@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Characterize RequestFor completion scaling with test-only worker/get counters,
+  deterministic held mock futures and a separate non-gating benchmark. C11
+  coverage exercises 1/10/100 pending C2 Return operations and 100 mixed C2
+  requests, including early request close and parent-first lifetime. No public
+  ABI or production worker scheduling changes.
+  Add seven-type N=100 controlled-wave success and stored-exception regressions:
+  check consumed futures, weak result expiration before cleanup, empty Completion
+  provider graphs, and final captured-owner reclamation. Preserve the original
+  failed owner-before-unload assertion in the task history and distinguish
+  provider safety from detached captured-storage lifetime.
+  Separate seven-type retained-handle tests verify non-cancelling zero/positive
+  timeouts, exact cached payloads, cached stored-exception statuses, and one get
+  per future through request close. Separate non-gating five-run GCC Debug and
+  three-run GCC Release C2-only and seven-type N=100 measurements characterize
+  worker/thread growth, resident versus virtual memory, and distinct completion
+  phases. Mixed measurements release the benchmark's own provider DSO handle
+  after the last control call and observe actual physical teardown through an
+  external test-only monotonic timeline, including library unload before exit.
+  Bounded-resource designs remain Task 031B work.
+
 - PR #43 follow-up: gate physical teardown through actual release-wrapper
   destruction; keep a strong graph during late callback execution and join
   callback-only work again at Close's final decision. Close-time queued-buffer

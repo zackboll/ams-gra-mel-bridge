@@ -83,10 +83,10 @@ note 'Running CTest from the test tree without rebuilding it'
 if ctest --test-dir "$tests" --output-on-failure >"$tests/isolation-ctest.log" 2>&1; then
     total=$(sed -n 's/.*tests passed, .* out of \([0-9]*\)/\1/p' \
         "$tests/isolation-ctest.log" | tail -1)
-    if [ "$total" = 15 ]; then
-        pass "native suite 15/15 after a production build"
+    if [ "$total" = 20 ]; then
+        pass "native suite 20/20"
     else
-        fail "native suite reported $total tests (expected 15)"
+        fail "native suite reported $total tests (expected 20)"
     fi
 else
     fail "native suite failed after a production build; see $tests/isolation-ctest.log"

@@ -246,7 +246,7 @@ independent concerns: DROP-INCOMING does not imply that a consumer must poll.
 Provider callback threads never invoke Ada application code; they only validate,
 copy, and enqueue into adapter-owned storage before returning to provider code.
 
-### Future roadmap: asynchronous completion-thread scalability
+### Task 031A: measured completion-thread scalability
 
 This concerns the `RequestFor<T>` request/future path only. The current
 implementation is deliberately correctness-first and uses approximately one
@@ -262,17 +262,38 @@ It does **not** apply to `RequestSystemTrackData`, which is inbound and
 callback/queue based: it has no provider future, no request handle, and no
 completion worker, so it contributes nothing to this thread count.
 
-A future, separately scheduled optimization task -- deliberately unnumbered so
-that 029F/029G sequencing is not disturbed -- should first *measure* the
-existing implementation, with benchmarks or instrumentation covering at least 1,
-10, and 100 outstanding requests, high-rate repeated requests, and mixed request
-types. Where practical it should measure native thread count, resident
-memory/stack impact, request completion latency, submission latency, CPU
-consumption both while futures are idle and during completion bursts, and
-teardown latency. The concern is scalability and performance -- OS thread
-creation/destruction, per-thread stack memory, scheduler and context-switch
-overhead, large numbers of blocked native threads, and resource growth
-proportional to outstanding provider futures -- not functional correctness.
+Task 031A measures the current implementation using held mock-provider futures.
+The deterministic C11 regression confirms 1/10/100 simultaneously blocked C2
+Return workers (and a 100-operation C2 Mode/Return/CommsTest mix); all drain
+with one `get()` per future, including 100 early request closes and parent-first
+Session/C2 closure. Linux thread count rises from 1 to 2/11/101 while held;
+virtual memory grows substantially with the blocked threads. This characterizes
+the **current implementation**, not an API guarantee or a requirement for a
+future executor. See `task-031a-request-completion-scalability.md` for the
+measurements and explicit mixed-family coverage limits. Functional correctness
+and scalability remain separate concerns.
+
+The seven-type N=100 regression additionally tests controlled C2,
+Image/Instrumentation, and Track release waves with all public owners closed.
+Both success and stored-exception runs check future invalidation and weak result
+expiration before deferred cleanup, and empty Completion graph fields before
+local graph-owner release. Captured WorkerInput destruction may follow provider
+unload: the published RequestFor alias is a consumed, invalid `std::future`, and
+the remaining Completion and inactive emergency bookkeeping are bridge-owned.
+The captured-owner marker measures resource reclamation, not provider safety.
+Separate seven-type retained-handle success and stored-exception tests verify
+zero/positive non-cancelling timeouts, exact cached payloads or exception status,
+and exactly-once get through request close. Separate non-gating C2-only and
+seven-type mixed N=100 benchmarks observe approximately one additional native
+OS thread per pending worker. The mixed benchmark releases its own DSO control
+handle after its last provider call and records physical channel, Control,
+manager and library teardown via an external test-only monotonic timeline;
+it never invokes saved provider pointers after releasing that handle.
+The implementation remains functionally correct
+under the tested loads; timing and memory measurements characterize this mock
+environment, not portable performance guarantees. Task 031B should investigate
+bounded resources without assuming a pool of blocking `get()` calls makes
+progress when its first futures remain unresolved.
 
 The preferred design space is an investigation rather than a decision already
 made. Candidate approaches include a bounded asynchronous completion executor, a

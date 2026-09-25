@@ -1,5 +1,6 @@
 #include <ams_mel/abi.h>
 #include "internal/ir_stream.hpp"
+#include "internal/completion_probe.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
 
@@ -144,6 +145,7 @@ struct Completion {
 };
 
 struct WorkerInput {
+    AMS_MEL_PROBE_OWNER(Navigation)
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::NavigationReportResp> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -219,7 +221,7 @@ void complete(const std::shared_ptr<Completion>& state,
     ams_mel_ir_navigation_result_v1 result{};
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Navigation, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -256,6 +258,7 @@ void complete(const std::shared_ptr<Completion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Navigation);
     auto stream = state->stream;
     const bool cleanup_ok = finish_stream(stream);
     if (!cleanup_ok) {
@@ -269,6 +272,7 @@ void complete(const std::shared_ptr<Completion>& state,
         state->result = result;
         state->message = std::move(message);
         state->stream.reset();
+        AMS_MEL_PROBE_GRAPH(Navigation, stream);
     }
     stream.reset();
     state->ready.notify_all();
@@ -278,8 +282,9 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
+    AMS_MEL_PROBE_WORKER(Navigation);
     try {
-        complete(input->completion, input->future);
+        complete(input->completion, input->future); AMS_MEL_PROBE_RETURN(Navigation);
     } catch (...) {
         /* A mutex/system failure must neither escape the detached thread nor
          * destroy an unaccounted future/provider graph. */

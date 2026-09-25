@@ -1,4 +1,5 @@
 #include <irmel/library/image/ImageChannel.h>
+#include "lifecycle_timeline.hpp"
 #include <irmel/library/c2/C2Channel.h>
 #include <irmel/library/health-status/HealthStatusChannel.h>
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
@@ -40,6 +41,106 @@ std::atomic<std::uint64_t> buffer_releases{};
  * Control destruction means the bridge is deliberately still holding those
  * buffers, which the corrected no-retention-slot path does on purpose. */
 std::atomic<std::uint64_t> buffers_outstanding{};
+
+/* Test-only provider promise gate: sends return real RequestFor futures. No
+ * producer thread is needed; release removes promises under the mutex and
+ * fulfils them outside it. The gate is shared across channels in a process. */
+std::mutex completion_gate_mutex;
+std::condition_variable completion_gate_ready;
+struct HeldCompletion {
+    unsigned family;
+    std::function<void()> complete;
+};
+std::deque<HeldCompletion> completion_gate_pending;
+std::uint64_t completion_gate_submitted{};
+std::uint64_t completion_gate_released{};
+bool completion_gate_exception{};
+std::vector<std::pair<unsigned, std::weak_ptr<void>>> completion_results;
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_completion_live_results(
+    unsigned family)
+{
+    std::lock_guard lock{completion_gate_mutex};
+    unsigned live = 0;
+    for (const auto& entry : completion_results)
+        if (entry.first == family && !entry.second.expired()) ++live;
+    return live;
+}
+
+template<class T>
+mel::RequestFor<T> held_request(std::shared_ptr<T> result, unsigned family)
+{
+    auto promise = std::make_shared<std::promise<mel::ErrorOr<std::shared_ptr<T>>>>();
+    auto future = promise->get_future();
+    {
+        std::lock_guard lock{completion_gate_mutex};
+        completion_results.emplace_back(family, result);
+        const bool exceptional = completion_gate_exception;
+        completion_gate_pending.push_back({family, [promise, exceptional, result = std::move(result)] () mutable {
+            if (exceptional) {
+                result.reset();
+                promise->set_exception(std::make_exception_ptr(std::runtime_error{"held future exception"}));
+            } else promise->set_value(mel::ErrorOr<std::shared_ptr<T>>{std::move(result)});
+        }});
+        ++completion_gate_submitted;
+    }
+    completion_gate_ready.notify_all();
+    return future;
+}
+
+extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
+    unsigned operation, std::uint64_t amount, std::uint64_t *submitted,
+    std::uint64_t *released)
+{
+    if (operation > 3U) return 0;
+    if (operation == 3U) completion_gate_exception = true;
+    if (operation == 1U) {
+        std::unique_lock lock{completion_gate_mutex};
+        if (!completion_gate_ready.wait_for(lock, std::chrono::seconds{15},
+                [=] { return completion_gate_submitted >= amount; })) return 0;
+    }
+    if (operation == 2U) {
+        for (std::uint64_t index = 0; index < amount; ++index) {
+            std::function<void()> complete;
+            {
+                std::lock_guard lock{completion_gate_mutex};
+                if (completion_gate_pending.empty()) return 0;
+                complete = std::move(completion_gate_pending.front().complete);
+                completion_gate_pending.pop_front();
+                ++completion_gate_released;
+            }
+            complete();
+        }
+    }
+    std::lock_guard lock{completion_gate_mutex};
+    if (submitted) *submitted = completion_gate_submitted;
+    if (released) *released = completion_gate_released;
+    return 1;
+}
+
+/* Release a specified worker family in a controlled wave, without depending
+ * on the order in which channels were submitted. 0..5 match the test probe. */
+extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
+    unsigned family, unsigned amount)
+{
+    if (family >= 6U) return 0;
+    for (unsigned index = 0; index < amount; ++index) {
+        std::function<void()> complete;
+        {
+            std::lock_guard lock{completion_gate_mutex};
+            const auto it = std::find_if(completion_gate_pending.begin(),
+                completion_gate_pending.end(), [family](const HeldCompletion& entry) {
+                    return entry.family == family;
+                });
+            if (it == completion_gate_pending.end()) return 0;
+            complete = std::move(it->complete);
+            completion_gate_pending.erase(it);
+            ++completion_gate_released;
+        }
+        complete();
+    }
+    return 1;
+}
 
 /* Task 030B corrective instrumentation (PR #42 review).
  *
@@ -412,6 +513,7 @@ std::shared_ptr<CallbackBarrier> callback_barrier = std::make_shared<CallbackBar
 
 void record(const char *event)
 {
+    ams_mel_test_timeline::record(event);
     if (const char *path = std::getenv("AMS_MEL_TEST_LIFETIME_LOG")) {
         std::ofstream stream(path, std::ios::app);
         stream << event << '\n';
@@ -992,6 +1094,8 @@ public:
         if (scenario_ == "navigation-send-throw") throw std::runtime_error("mock navigation send exception");
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(std::make_shared<irmel::NavigationReportResp>(rich_navigation_response()), 3);
         if (scenario_ == "navigation-reject") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
                 mel::Error{mel::ErrorCode::InvalidParameters, "invalid navigation report"}});
@@ -1780,6 +1884,8 @@ public:
     mel::RequestFor<Return> sendKeepAliveRep() override
     {
         record("keepalive_sent");
+        if (scenario_ == "completion-scale")
+            return held_request(std::make_shared<Return>(Return::Success), 1);
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
         auto future = promise.get_future();
@@ -1812,6 +1918,7 @@ public:
             throw std::runtime_error("CommsTest request conversion mismatch");
         auto response = std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID());
+        if (scenario_ == "completion-scale") return held_request(std::move(response), 2);
         if (comms_callback_) comms_callback_(*this, response.get());
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>> promise;
         auto future = promise.get_future();
@@ -1859,6 +1966,8 @@ public:
                     irmel::CannotComply::NotSet, "");
         std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(std::make_shared<Return>(Return::Success), 1);
         if (scenario_ == "bit-fail") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
                 std::make_shared<Return>(Return::Fail)});
@@ -1940,6 +2049,8 @@ public:
         else
             promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{
                 std::make_shared<Return>(Return::Success)});
+        if (scenario_ == "completion-scale")
+            return held_request(std::make_shared<Return>(Return::Success), 1);
         return promise.get_future();
     }
     mel::RequestFor<irmel::MFA_Mode> send(irmel::ModeCmd command) override
@@ -1988,6 +2099,8 @@ public:
         }
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched), 0);
         if (scenario_ == "c2-reject") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
                 mel::Error{mel::ErrorCode::InvalidParameters, "invalid task schedule"}});
@@ -2424,6 +2537,8 @@ public:
         }
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(response, 4);
         if (scenario_ == "instr-reject")
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{
                 mel::Error{mel::ErrorCode::InvalidState, long_rejection_description()}});
@@ -2954,7 +3069,7 @@ public:
            distinctive numbers, so only the two bool values differ. */
         if (scenario_ == "track-response-flags-false")
             verify_rich_track_response(response, false, false);
-        else if (scenario_ != "track-response-any")
+        else if (scenario_ != "track-response-any" && scenario_ != "completion-scale")
             verify_rich_track_response(response, true, true);
         if (scenario_ == "track-response-send-throw")
             throw std::runtime_error("mock Track response send exception");
@@ -2970,6 +3085,8 @@ public:
 
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(rich_track_response_command_status(), 5);
         if (scenario_ == "track-response-reject")
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
                 mel::Error{mel::ErrorCode::InvalidParameters,
@@ -3036,7 +3153,8 @@ public:
     {
         record("track_data_update_sent");
         if (!enabled_) throw std::logic_error("TrackDataUpdate sent before enable");
-        if (scenario_ != "track-update-any" && scenario_ != "track-mixed-requests")
+        if (scenario_ != "track-update-any" && scenario_ != "track-mixed-requests" &&
+            scenario_ != "completion-scale")
             verify_rich_track_update(update);
         if (scenario_ == "track-update-send-throw")
             throw std::runtime_error("mock Track update send exception");
@@ -3052,6 +3170,8 @@ public:
 
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
         auto future = promise.get_future();
+        if (scenario_ == "completion-scale")
+            return held_request(rich_track_command_status(), 5);
         if (scenario_ == "track-update-reject")
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{
                 mel::Error{mel::ErrorCode::InvalidParameters,

@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
+#include "internal/completion_probe.hpp"
 
 #include <irmel/library/irmel-types/CandidateObjectMessage.h>
 #include <irmel/library/irmel-types/CandidateObjectPreProcMessage.h>
@@ -856,6 +857,7 @@ struct Completion {
 };
 
 struct WorkerInput {
+    AMS_MEL_PROBE_OWNER(Track)
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::CommandStatus> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -927,7 +929,7 @@ void complete(const std::shared_ptr<Completion>& state,
     std::string reason_text;
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Track, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -969,6 +971,7 @@ void complete(const std::shared_ptr<Completion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Track);
     auto channel = state->channel;
     if (!finish_request(channel)) {
         /* Deferred detach could not be proven: the complete graph stays
@@ -992,6 +995,7 @@ void complete(const std::shared_ptr<Completion>& state,
         state->status.reason_description.size = state->reason_text.size();
         state->message = std::move(message);
         state->channel.reset();
+        AMS_MEL_PROBE_GRAPH(Track, channel);
     }
     channel.reset();
     state->ready.notify_all();
@@ -1001,8 +1005,9 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
+    AMS_MEL_PROBE_WORKER(Track);
     try {
-        complete(input->completion, input->future);
+        complete(input->completion, input->future); AMS_MEL_PROBE_RETURN(Track);
     } catch (...) {
         /* A mutex/system failure must neither escape the detached thread nor
          * destroy an unaccounted future/provider graph. */
