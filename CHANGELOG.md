@@ -2,6 +2,84 @@
 
 ## Unreleased
 
+- PR #43 follow-up: gate physical teardown through actual release-wrapper
+  destruction; keep a strong graph during late callback execution and join
+  callback-only work again at Close's final decision. Close-time queued-buffer
+  release failure/exception now overrides Stop's earlier success; C and Ada
+  exercise the public error without retrying uncertain hand-backs.
+
+- Complete PR #43 release-obligation lifecycle integration. Release-executor
+  ownership is explicit rather than inferred from a non-null active wrapper,
+  survives failed/throwing operations and deferred draining, and covers unlocked
+  final provider-wrapper destruction. Deferred promotion checks uncertain-slot
+  availability and never indexes an empty free list or drops pending ownership.
+  Stop, Close, initial cleanup, and post-drain cleanup consistently account for
+  active and deferred obligations; public Close joins finite healthy
+  callback-only work, returns `AMS_MEL_OK` only with a cleared handle, and then
+  permits ordered channel, Control, manager, and library teardown. Deterministic
+  C regressions cover failure, exception, actual waiter entry, A/B/C ownership,
+  destructor reentry, callback-only Close, and separate executor/Close-gate
+  mutations; safe Ada covers callback-only Close. ABI 0.1, all 90 exports,
+  frozen layouts, zero-copy behavior, and vendor bytes remain unchanged.
+
+- Correct the provider-buffer release/reuse handoff so a healthy provider that
+  reuses a successfully returned physical buffer can no longer be misread as a
+  non-conforming one.
+
+  The bridge previously held the old callback's emergency-ownership retention
+  slot for the whole duration of `Buffer::release()` and returned it only after
+  the provider call completed. A conforming provider makes the physical buffer
+  reusable as soon as the release succeeds -- pinned Squall republishes it
+  **inside** `RequeueBuffer::release()`, with its pool mutex released, before
+  the call returns. With every slot occupied, a new callback for that
+  successfully returned buffer found an empty slot free list, and the bridge
+  refused to release, counted a false malformed frame, published
+  `uncertain_release`, poisoned the stream to `Failed`, and retained the
+  provider graph permanently.
+
+  This retracts the previous claim that the physical `buffer_count` alone
+  bounds emergency ownership. A retention slot is keyed to a **per-callback
+  `Buffer` wrapper generation**, not to a physical buffer.
+
+  This further retracts the reviewed claim that two disjoint release sources
+  bound unresolved wrapper generations by `2 * buffer_count`: repeated reuse
+  lets either source create arbitrarily many generations while older provider
+  calls remain unresolved. The bridge now enforces one active provider
+  `release()` per stream. Ordinary explicit closes wait with their HOLD
+  ownership intact, preserving synchronous result reporting. Callback-side
+  reentry cannot wait for its enclosing release, so it transfers allocation-
+  free into one of `buffer_count` preallocated deferred owners; the active
+  executor drains those obligations iteratively. Before every provider call,
+  the exact wrapper is also stored in one of `buffer_count` preallocated
+  uncertain-owner slots. Success recycles that slot; failure consumes it
+  permanently, is never retried, and does not block unrelated healthy releases.
+  The legacy process-global 64-entry reserve was not increased and is not used
+  for ordinary congestion.
+
+  Uncertain-release safety is unweakened: emergency ownership is now allocated
+  *before* the release rather than after one has failed, a failed or throwing
+  release is still never retried, its exact wrapper is still never destroyed,
+  teardown still requires
+  `requests == 0 AND retained_frames == 0 AND release_obligations == 0 AND
+  !uncertain_release`, and explicit
+  close still reports `AMS_MEL_PROVIDER_FAILED` while Ada finalization stays
+  non-raising.
+
+  Counted deterministic regressions now drive eight repeated A generations,
+  prove the one-call execution limit and recovery, and drive nine actual
+  queue-full callbacks from release-side reentry while observing maximum
+  provider release nesting of one. Distinct snapshot-owner closes prove
+  intentional serialization, and actual Close-time queue discard is paused and
+  accounted before stream-channel, Control, and library destruction. The Ada
+  regression acquires A/B/C before closing A and requires frame 4 at A's exact
+  address, with a log proving four callbacks were delivered.
+
+  No C ABI change: ABI stays `0.1` with all 90 exports and `exports.map`
+  unchanged, frozen record layouts untouched, zero bulk payload copies
+  preserved, and no vendor delta. Mock-provider evidence only; the pinned
+  Squall runtime was unavailable. See
+  `docs/corrective-provider-buffer-release-handoff.md`.
+
 - Complete the high-rate zero-copy data plane: the bridge now performs **zero**
   bulk payload copies from the MEL provider callback buffer into Ada. The
   native `frame.pixels.assign(...)` and its payload-sized

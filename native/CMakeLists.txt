@@ -27,8 +27,19 @@ target_include_directories(ams_mel_c SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
 target_link_libraries(ams_mel_c PRIVATE ${CMAKE_DL_LIBS})
 if(UNIX AND NOT APPLE)
+    set(ams_mel_export_map "${CMAKE_CURRENT_SOURCE_DIR}/src/exports.map")
+    if(AMS_MEL_BUILD_TESTS)
+        # Observation/rescue hooks are private to the contract-test facade.
+        # Never extend the production export map or installed C headers.
+        file(READ "${ams_mel_export_map}" ams_mel_test_exports)
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
+        set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
+        file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
+    endif()
     target_link_options(ams_mel_c PRIVATE
-        "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/exports.map")
+        "LINKER:--version-script=${ams_mel_export_map}")
+    set_property(TARGET ams_mel_c APPEND PROPERTY LINK_DEPENDS "${ams_mel_export_map}")
 endif()
 set_target_properties(ams_mel_c PROPERTIES
     CXX_EXTENSIONS OFF

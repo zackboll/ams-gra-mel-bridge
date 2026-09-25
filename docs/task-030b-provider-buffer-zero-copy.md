@@ -578,15 +578,38 @@ host ranges it published, so a conforming provider cannot drive concurrent
 checkouts above `buffer_count`. Capacity follows configured provider-buffer
 capacity, not a process-global constant.
 
-If a non-conforming provider *does* exhaust the pool, the bridge does **not**
-release: it keeps the buffer, records the same permanent teardown obligation,
-and parks it in the process-global reserve. That branch runs strictly *before*
-any `release()` for the buffer, so even if the reserve is also exhausted and
-the wrapper is dropped, the wrapper's own destructor performs its **first**
-release. The forbidden case -- dropping a wrapper *after* a failed release,
-making its destructor retry -- is unreachable by construction. The global list
-therefore remains only a diagnostic record plus depth for that pre-release
-branch, and no safety property depends on its size.
+> **SUPERSEDED — see
+> `docs/corrective-provider-buffer-release-handoff.md`.**
+>
+> The paragraph immediately above is **wrong**, and the defect it caused has
+> been corrected. A retention slot is keyed to a **per-callback `Buffer`
+> wrapper generation**, not to a physical buffer. A conforming provider makes
+> the physical buffer reusable as soon as `release()` succeeds — pinned Squall
+> republishes it *inside* `RequeueBuffer::release()`, with its pool mutex
+> released, before that call returns — so one physical buffer legitimately has
+> **two** live wrapper generations at once: the one whose release is still
+> executing and the new callback the provider has already delivered for that
+> same buffer. Physical `buffer_count` bounds simultaneous *checkouts*; it does
+> **not** bound overlapping wrapper ownership.
+>
+> Because the old code held the hold slot across the provider call, a healthy
+> reuse in that window found an empty free list and was misclassified as a
+> non-conforming provider, producing a false malformed count and a permanently
+> poisoned stream.
+>
+> **PR #43 correction:** the later `2 * buffer_count` RELEASE-pool claim was
+> also invalid. Repeated physical-buffer reuse can create arbitrarily many
+> unresolved wrapper generations from either release source. The bridge now
+> enforces one active provider release per stream. Ordinary callers wait with
+> HOLD ownership; callback-side reentry transfers into `buffer_count`
+> preallocated deferred owners and is drained iteratively. Before every attempt
+> the exact wrapper has a reserved allocation-free uncertain-owner slot. The
+> hold slot is handed back atomically and strictly *before* the provider call.
+
+Ordinary release congestion no longer enters a refusal/parking branch and is
+never classified as malformed provider data. The process-global reserve remains
+only for legacy failpoint/non-conforming-provider safety evidence; no healthy
+capacity argument depends on its size.
 
 `CallbackState` also holds a `std::weak_ptr<ImageStreamState> owner`,
 established during stream construction before any provider callback can exist,
@@ -854,6 +877,15 @@ What does transfer directly: explicit checked-out/returned states, an exact
 outstanding-lease count, deferred physical teardown gated on that count,
 fail-safe retention on uncertain ownership, release outside the lifecycle
 lock, and honest backpressure.
+
+PR #43's final correction also makes the release executor an explicit permit
+independent of the current wrapper. Each provider attempt has one local
+exact-wrapper owner and one reserved uncertain-slot identity; the permit remains
+owned through failure publication, deferred draining, and unlocked final wrapper
+destruction. Active and deferred release obligations participate in Stop, Close,
+initial cleanup, and post-drain decisions. See
+`corrective-provider-buffer-release-handoff.md` for the final protocol and
+mutation evidence.
 
 RF MEL, RF header vendoring, RDMA, GPU/CUDA buffers, FPGA mappings, Stacked
 Image, `cv::Mat` wrapping, zero-copy safe Rust, zero-copy Python/NumPy, and

@@ -209,7 +209,7 @@ bool finish_stream(const std::shared_ptr<ImageStreamState>& stream)
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
     finish_stream_test_barrier();
 #endif
-    return image_stream_cleanup(stream, true) != ImageCleanupOutcome::Failed;
+    return finish_deferred_cleanup_from_external_owner(stream) != ImageCleanupOutcome::Failed;
 }
 
 void complete(const std::shared_ptr<Completion>& state,
