@@ -167,6 +167,23 @@ enum class ImageCleanupOutcome {
  * Defined in ir_stream.cpp. */
 ImageCleanupOutcome image_stream_cleanup(const std::shared_ptr<ImageStreamState>& state,
                                          bool deferred) noexcept;
+/* External contexts ONLY: public Close/Receive, snapshot close, and the
+ * adapter-created Navigation completion worker. Never call from a provider
+ * listener, callback Releaser, or destructor reentry: channel destruction may
+ * join that provider thread. The by-value owner survives all joins and retries;
+ * callbacks only publish completion, never execute deferred physical cleanup.
+ * close_public_owner atomically transfers responsibility to a live child by
+ * publishing public_owner_closed under the lifecycle lock. Otherwise the
+ * caller retains responsibility until cleanup succeeds or fails terminally.
+ * Responsibility table:
+ *   public open: Stop/Close (a finishing child may assist after logical Stop);
+ *   public closed + snapshots: final snapshot completion;
+ *   public closed + requests: final Navigation adapter worker;
+ *   both: whichever removes the last requests/retained_frames obligation;
+ *   callbacks only: the external joiner must remain, never callback teardown;
+ *   uncertain ownership: permanent graph retention, no release retry. */
+ImageCleanupOutcome finish_deferred_cleanup_from_external_owner(
+    std::shared_ptr<ImageStreamState> state, bool close_public_owner = false) noexcept;
 void image_stream_retain_failed(const std::shared_ptr<ImageStreamState>& state) noexcept;
 
 /* Validates the stream is logically Attached or Running, retrieves a copy of

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- PR #43 follow-up: gate physical teardown through actual release-wrapper
+  destruction; keep a strong graph during late callback execution and join
+  callback-only work again at Close's final decision. Close-time queued-buffer
+  release failure/exception now overrides Stop's earlier success; C and Ada
+  exercise the public error without retrying uncertain hand-backs.
+
 - Complete PR #43 release-obligation lifecycle integration. Release-executor
   ownership is explicit rather than inferred from a non-null active wrapper,
   survives failed/throwing operations and deferred draining, and covers unlocked

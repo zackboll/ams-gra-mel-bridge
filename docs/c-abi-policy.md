@@ -14,8 +14,12 @@ deferred release obligation blocks physical teardown. Before each provider
 attempt the exact wrapper already has preallocated failure retention; a failed
 or throwing release is never retried and that exact wrapper is never destroyed.
 The executor remains owned through failure publication, deferred draining, and
-unlocked final wrapper destruction. Public Close joins finite healthy
-callback-only release work; `AMS_MEL_OK` never leaves its stream handle open.
+unlocked final wrapper destruction; cleanup also gates on the permit, not only
+the release count. Public Close re-joins callback-only work arriving after
+Stop, preserving the public graph owner during callback execution. Discard
+failures override Stop's earlier success and report `AMS_MEL_PROVIDER_FAILED`
+even when the public handle is cleared under uncertain-owner retention.
+`AMS_MEL_OK` never leaves its stream handle open.
 This scheduling/ownership correction changes no public layout, export, status,
 or ABI version.
 

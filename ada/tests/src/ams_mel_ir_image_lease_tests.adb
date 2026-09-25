@@ -11,6 +11,7 @@ with System.Storage_Elements;
 
 package body AMS_MEL_IR_Image_Lease_Tests is
    use type Interfaces.Unsigned_32;
+   use type AMS.MEL.IR.Counter;
    use type AMS.MEL.IR.Byte;
    use type AMS.MEL.IR.Pixel_Array;
    use type AMS.MEL.IR.Image_Flip;
@@ -890,6 +891,33 @@ package body AMS_MEL_IR_Image_Lease_Tests is
          raise;
    end Test_Callback_Only_Close;
 
+   procedure Test_Close_Discard_Failure (Provider_Path : String; Scenario : String) is
+      use type Ada.Real_Time.Time;
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, Scenario);
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+   begin
+      AMS.MEL.IR.Start (Stream);
+      declare
+         Deadline : constant Ada.Real_Time.Time := Ada.Real_Time.Clock + Ada.Real_Time.Seconds (10);
+      begin
+         while AMS.MEL.IR.Counters (Stream).Frames_Received = 0 loop
+            if Ada.Real_Time.Clock >= Deadline then
+               raise Program_Error with "discard failure frame not queued";
+            end if;
+            delay 0.001;
+         end loop;
+      end;
+      begin
+         AMS.MEL.IR.Close (Stream);
+         raise Program_Error with "discard failure was reported as success";
+      exception
+         when AMS.MEL.Provider_Error =>
+            null;
+      end;
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_Close_Discard_Failure;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Acquire_And_Fidelity (Provider_Path);
@@ -905,6 +933,8 @@ package body AMS_MEL_IR_Image_Lease_Tests is
       --  CORRECTIVE: provider-buffer release/reuse handoff.
       Test_Release_Reuse_Handoff (Provider_Path);
       Test_Callback_Only_Close (Provider_Path);
+      Test_Close_Discard_Failure (Provider_Path, "ada-close-discard-fail");
+      Test_Close_Discard_Failure (Provider_Path, "ada-close-discard-throw");
       Test_Stress (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR zero-copy frame lease contract");
    end Run;

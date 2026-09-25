@@ -2715,6 +2715,412 @@ cleanup:
     return result;
 }
 
+/* A starts from an application-owned snapshot. Its successful release
+   synchronously delivers rejected B; B's final wrapper destructor is paused
+   before its callback-side mutex work. Close must actually enter the bridge's
+   obligation wait, not merely remain unscheduled. */
+static int test_destructor_close_gap(int mutation)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_frame_snapshot *lease = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct handoff_closer releaser = {NULL, AMS_MEL_INTERNAL_ERROR};
+    struct stream_closer closer = {NULL, AMS_MEL_INTERNAL_ERROR};
+    thrd_t release_thread, close_thread;
+    int release_started = 0, close_started = 0, result = EXIT_FAILURE;
+    unsigned stage = 0U;
+    char base[] = "/tmp/ams-mel-destructor-gap-XXXXXX";
+    char claimed[PATH_MAX] = "", claim_release[PATH_MAX] = "", claim_arm[PATH_MAX] = "";
+    char entered[PATH_MAX], unblock[PATH_MAX], waiting[PATH_MAX];
+    char lifetime[] = "/tmp/ams-mel-destructor-order-XXXXXX";
+    char log[8192] = "";
+    entered[0] = '\0'; unblock[0] = '\0'; waiting[0] = '\0';
+    int fd = mkstemp(base), lifetime_fd = -1;
+    unsigned long destroyed_before, retry_before;
+    if (fd < 0 || close(fd) != 0 || unlink(base) != 0) goto cleanup;
+    stage = 1U;
+    if (snprintf(entered, sizeof entered, "%s.entered", base) <= 0 ||
+        snprintf(unblock, sizeof unblock, "%s.release", base) <= 0 ||
+        snprintf(waiting, sizeof waiting, "%s.close-obligation.reached", base) <= 0)
+        goto cleanup;
+    lifetime_fd = mkstemp(lifetime);
+    if (lifetime_fd < 0 || close(lifetime_fd) != 0 ||
+        setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime, 1) != 0 ||
+        setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", base, 1) != 0 ||
+        setenv("AMS_MEL_TEST_DESTRUCTOR_BARRIER", base, 1) != 0) goto cleanup;
+    lifetime_fd = -1;
+    stage = 2U;
+    if (mutation && setenv("AMS_MEL_TEST_PREMATURE_DESTRUCTION_GATE",
+                           "premature", 1) != 0) goto cleanup;
+    if (mutation) {
+        if (snprintf(claimed, sizeof claimed, "%s.before-detach.reached", base) <= 0 ||
+            snprintf(claim_release, sizeof claim_release, "%s.before-detach.release", base) <= 0 ||
+            snprintf(claim_arm, sizeof claim_arm, "%s.before-detach.arm", base) <= 0 ||
+            setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||
+            !create_marker(claim_arm)) goto cleanup;
+    }
+    config.buffer_count = 2;
+    mock_executor_race_void("ams_mel_mock_destruction_reentry_reset");
+    if (open_stream("destructor-close-gap", &session, &stream, &config) != EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK ||
+        ams_mel_mock_pool_produce_once() != 1 ||
+        ams_mel_ir_stream_receive_snapshot(stream, 2000, &lease, NULL, 0, NULL) !=
+            AMS_MEL_OK) goto cleanup;
+    stage = 3U;
+    destroyed_before = mock_registered_buffers_destroyed();
+    retry_before = mock_destructor_driven_releases();
+    releaser.snapshot = lease; lease = NULL;
+    if (thrd_create(&release_thread, handoff_close_thread, &releaser) != thrd_success)
+        goto cleanup;
+    release_started = 1;
+    if (!wait_for_marker(entered)) goto cleanup;
+    stage = 4U;
+    closer.stream = stream; stream = NULL;
+    if (thrd_create(&close_thread, stream_close_thread, &closer) != thrd_success)
+        goto cleanup;
+    close_started = 1;
+    if (!mutation && !wait_for_marker(waiting)) goto cleanup;
+    if (mutation && !wait_for_marker(claimed)) goto cleanup;
+    stage = 5U;
+    if (mock_registered_buffers_destroyed() != destroyed_before ||
+        mock_destructor_driven_releases() != retry_before ||
+        mock_max_release_depth() != 1UL ||
+        mock_pool_query("ams_mel_mock_reentrant_wrapper_destructions") != 0UL)
+        goto cleanup;
+    {
+        FILE *file = fopen(lifetime, "rb");
+        size_t count;
+        if (!file) goto cleanup;
+        count = fread(log, 1, sizeof log - 1U, file);
+        log[count] = '\0';
+        if (fclose(file) != 0 || strstr(log, "channel_destroyed") ||
+            strstr(log, "library_unloaded")) goto cleanup;
+    }
+    if (!create_marker(unblock)) goto cleanup;
+    if (mutation) {
+        /* Direct defect evidence: cleanup already owns the channel while B's
+           destructor is held. Keep teardown paused until destructor reentry
+           has finished, avoiding intentional invalid provider access. */
+        for (unsigned i = 0; i < 15000U &&
+             mock_pool_query("ams_mel_mock_destruction_callbacks_returned") == 0UL; ++i) {
+            const struct timespec pause = {0, 1000000};
+            thrd_sleep(&pause, NULL);
+        }
+        if (mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||
+            !create_marker(claim_release)) goto cleanup;
+    }
+    stage = 6U;
+    if (thrd_join(release_thread, NULL) != thrd_success) goto cleanup;
+    release_started = 0;
+    if (thrd_join(close_thread, NULL) != thrd_success) goto cleanup;
+    close_started = 0;
+    stage = 7U;
+    if (releaser.status != AMS_MEL_OK || closer.status != AMS_MEL_OK ||
+        closer.stream != NULL ||
+        mock_pool_query("ams_mel_mock_reentrant_wrapper_destructions") != 1UL ||
+        mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||
+        mock_destructor_driven_releases() != retry_before) goto cleanup;
+    if (ams_mel_session_close(&session, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    stage = 8U;
+    if (mutation) {
+        /* Failure-graph tests earlier in the mutation group intentionally
+           pin the DSO. The direct cleanup-claim evidence above is independent
+           of process-global unload. Healthy ordering remains mandatory. */
+        result = EXIT_SUCCESS;
+        goto cleanup;
+    }
+    {
+        FILE *file = fopen(lifetime, "rb");
+        size_t count;
+        char *done, *channel, *control, *manager, *unloaded;
+        if (!file) goto cleanup;
+        count = fread(log, 1, sizeof log - 1U, file);
+        log[count] = '\0';
+        if (fclose(file) != 0) goto cleanup;
+        done = strstr(log, "destructor_callback_returned");
+        channel = strstr(log, "channel_destroyed");
+        control = strstr(log, "control_destroyed");
+        manager = strstr(log, "manager_destroyed");
+        unloaded = strstr(log, "library_unloaded");
+        if (!done || !channel || !control || !manager || !unloaded ||
+            !strstr(log, "release_exact_bridge_owners") ||
+            strstr(log, "release_extra_bridge_owner") ||
+            !(done < channel && channel < control && control < manager &&
+              manager < unloaded)) goto cleanup;
+    }
+    result = EXIT_SUCCESS;
+cleanup:
+    if (result != EXIT_SUCCESS)
+        fprintf(stderr, "destructor close gap failed stage=%u mutation=%d release=%d close=%d log=%s\n",
+                stage, mutation, (int)releaser.status, (int)closer.status, log);
+    if (unblock[0]) (void)create_marker(unblock);
+    if (claim_release[0]) (void)create_marker(claim_release);
+    if (release_started) (void)thrd_join(release_thread, NULL);
+    if (close_started) (void)thrd_join(close_thread, NULL);
+    if (lease) (void)ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL);
+    if (closer.stream) (void)ams_mel_ir_stream_close(&closer.stream, NULL, 0, NULL);
+    if (stream) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    (void)unsetenv("AMS_MEL_TEST_PREMATURE_DESTRUCTION_GATE");
+    (void)unsetenv("AMS_MEL_TEST_LIFETIME_LOG");
+    (void)unsetenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+    (void)unsetenv("AMS_MEL_TEST_DESTRUCTOR_BARRIER");
+    (void)unsetenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (claimed[0]) (void)unlink(claimed);
+    if (claim_release[0]) (void)unlink(claim_release);
+    if (claim_arm[0]) (void)unlink(claim_arm);
+    if (entered[0]) (void)unlink(entered);
+    if (unblock[0]) (void)unlink(unblock);
+    if (waiting[0]) (void)unlink(waiting);
+    (void)unlink(base); (void)unlink(lifetime);
+    return result;
+}
+
+static int test_destructor_close_gap_mutation(void)
+{
+    /* Success requires observing the forbidden cleanup claim, not an inner
+       failure or a timeout waiting for the healthy join marker. */
+    return test_destructor_close_gap(1);
+}
+
+/* B is delivered only after Stop's first join and Close's healthy discard
+   have finished. Its real !accepting rejection runs on a distinct thread. */
+/* Private test-facade exports: absent from production headers/map/binary. */
+extern int ams_mel_test_lost_cleanup_inspect(void);
+extern int ams_mel_test_lost_cleanup_rescue(void);
+
+/* 0 Close; 1 snapshot post-release; 2 Navigation; 3 snapshot B-active;
+   4 snapshot skipped final cleanup, observed then rescued. */
+static int test_late_callback_close(int child)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    struct stream_closer closer = {NULL, AMS_MEL_INTERNAL_ERROR};
+    struct pool_producer producer = {0};
+    struct handoff_closer snapshot_closer = {NULL, AMS_MEL_INTERNAL_ERROR};
+    ams_mel_ir_frame_snapshot *snapshot = NULL;
+    ams_mel_ir_navigation_request *request = NULL;
+    ams_mel_ir_navigation_result_v1 navigation_result;
+    char nav_base[] = "/tmp/ams-mel-late-nav-XXXXXX";
+    char nav_release[PATH_MAX] = "", nav_complete[PATH_MAX] = "";
+    thrd_t close_thread, callback_thread;
+    int close_started = 0, callback_started = 0, result = EXIT_FAILURE;
+    char base[] = "/tmp/ams-mel-late-close-XXXXXX";
+    char joining[PATH_MAX] = "";
+    char waiter[PATH_MAX] = "";
+    char decision[PATH_MAX], resume[PATH_MAX], entered[PATH_MAX], release[PATH_MAX];
+    char lifetime[] = "/tmp/ams-mel-late-order-XXXXXX";
+    char log[8192];
+    unsigned long destroyed_before, channel_before;
+    int fd = mkstemp(base), log_fd = -1;
+    decision[0] = resume[0] = entered[0] = release[0] = '\0';
+    if (fd < 0 || close(fd) != 0 || unlink(base) != 0) goto cleanup;
+    const char *stage = child ? "snapshot-completion" : "close-decision";
+    if (snprintf(decision, sizeof decision, "%s.%s.reached", base, stage) <= 0 ||
+        snprintf(joining, sizeof joining, "%s.reached", base) <= 0 ||
+        snprintf(waiter, sizeof waiter, "%s.waiter.reached", base) <= 0 ||
+        snprintf(resume, sizeof resume, "%s.%s.release", base, stage) <= 0 ||
+        snprintf(entered, sizeof entered, "%s.entered", base) <= 0 ||
+        snprintf(release, sizeof release, "%s.release", base) <= 0) goto cleanup;
+    log_fd = mkstemp(lifetime);
+    if (log_fd < 0 || close(log_fd) != 0 ||
+        setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime, 1) != 0 ||
+        setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||
+        setenv("AMS_MEL_TEST_EXTERNAL_JOIN", base, 1) != 0 ||
+        setenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER", base, 1) != 0)
+        goto cleanup;
+    log_fd = -1;
+    mock_executor_race_void("ams_mel_mock_executor_race_reset");
+    if (child == 3 && setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", base, 1) != 0)
+        goto cleanup;
+    if (child == 4 && setenv("AMS_MEL_TEST_SKIP_FINAL_SNAPSHOT_CLEANUP", "skip", 1) != 0)
+        goto cleanup;
+    if (child == 2) {
+        int nav_fd = mkstemp(nav_base);
+        if (nav_fd < 0 || close(nav_fd) != 0 || unlink(nav_base) != 0 ||
+            snprintf(nav_release, sizeof nav_release, "%s.release", nav_base) <= 0 ||
+            snprintf(nav_complete, sizeof nav_complete, "%s.complete", nav_base) <= 0 ||
+            setenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER", nav_base, 1) != 0)
+            goto cleanup;
+    }
+    config.buffer_count = 2;
+    if (open_stream("late-callback-close", &session, &stream, &config) != EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK ||
+        ams_mel_mock_pool_produce_once() != 1) goto cleanup;
+    destroyed_before = mock_registered_buffers_destroyed();
+    channel_before = mock_image_channels_destroyed();
+    if (child == 2) {
+        ams_mel_navigation_report_v1 report = {0};
+        report.state = AMS_MEL_POSITION_SOLUTION_BLENDED;
+        if (ams_mel_ir_stream_submit_navigation_report(stream, &report, &request,
+                                                       NULL, 0, NULL) != AMS_MEL_OK ||
+            ams_mel_ir_stream_close(&stream, NULL, 0, NULL) != AMS_MEL_OK || stream != NULL ||
+            mock_image_channels_destroyed() != channel_before ||
+            thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
+            goto cleanup;
+        callback_started = 1;
+        if (!wait_for_marker(entered) || !create_marker(nav_release) ||
+            !create_marker(nav_complete) || !wait_for_marker(joining) ||
+            ams_mel_ir_navigation_request_wait(request, 0, &navigation_result,
+                NULL, 0, NULL) != AMS_MEL_TIMEOUT) goto cleanup;
+        goto verify_join;
+    }
+    if (child) {
+        if (ams_mel_ir_stream_receive_snapshot(stream, 2000, &snapshot, NULL, 0, NULL) != AMS_MEL_OK ||
+            ams_mel_ir_stream_close(&stream, NULL, 0, NULL) != AMS_MEL_OK || stream != NULL ||
+            mock_image_channels_destroyed() != channel_before) goto cleanup;
+    }
+    {
+        char arm[PATH_MAX];
+        if (snprintf(arm, sizeof arm, "%s.%s.arm", base, stage) <= 0 ||
+            !create_marker(arm)) goto cleanup;
+    }
+    closer.stream = stream; stream = NULL;
+    if (child == 3) {
+        if (thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
+            goto cleanup;
+        callback_started = 1;
+        if (!wait_for_marker(entered)) goto cleanup;
+    }
+    if (child) {
+        snapshot_closer.snapshot = snapshot; snapshot = NULL;
+        if (thrd_create(&close_thread, handoff_close_thread, &snapshot_closer) != thrd_success)
+            goto cleanup;
+    } else if (thrd_create(&close_thread, stream_close_thread, &closer) != thrd_success)
+        goto cleanup;
+    close_started = 1;
+    if (child == 3) {
+        /* B already owns the executor. S cannot reach its own completion
+           barrier until admission succeeds; this is the earlier safe join. */
+        if (!wait_for_marker(waiter) || access(decision, F_OK) == 0 ||
+            mock_pool_releases() != 0UL || mock_executor_race_max_active() != 1UL)
+            goto cleanup;
+        goto verify_join;
+    }
+    if (!wait_for_marker(decision) || ams_mel_mock_pool_available() != 2UL)
+        goto cleanup;
+    if (thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
+        goto cleanup;
+    callback_started = 1;
+    if (!wait_for_marker(entered)) goto cleanup;
+    if (child == 4) {
+        /* Complete B healthily before S skips the final cleanup call. */
+        if (!create_marker(release) || thrd_join(callback_thread, NULL) != thrd_success)
+            goto cleanup;
+        callback_started = 0;
+        if (producer.status != 1 || !create_marker(resume) ||
+            thrd_join(close_thread, NULL) != thrd_success) goto cleanup;
+        close_started = 0;
+        if (snapshot_closer.status != AMS_MEL_OK || snapshot_closer.snapshot != NULL ||
+            ams_mel_test_lost_cleanup_inspect() != 1) goto cleanup;
+        goto verify_join;
+    }
+    if (!create_marker(resume)) goto cleanup;
+    if (!wait_for_marker(joining)) goto cleanup;
+    /* The callback has entered the provider release; the public Close thread
+       must retain the graph until that finite work finishes. */
+verify_join:
+    {
+        FILE *file = fopen(lifetime, "rb");
+        size_t count;
+        if (!file) goto cleanup;
+        count = fread(log, 1, sizeof log - 1U, file);
+        log[count] = '\0';
+        if (fclose(file) != 0 || strstr(log, "release_extra_bridge_owner") ||
+            mock_executor_race_max_active() != 1UL ||
+            strstr(log, "channel_destroyed") ||
+            strstr(log, "control_destroyed") || strstr(log, "manager_destroyed") ||
+            strstr(log, "channel_detached") || strstr(log, "library_unloaded") ||
+            mock_registered_buffers_destroyed() != destroyed_before ||
+            mock_image_channels_destroyed() != channel_before) goto cleanup;
+    }
+    if (child == 4) {
+        if (unsetenv("AMS_MEL_TEST_SKIP_FINAL_SNAPSHOT_CLEANUP") != 0 ||
+            ams_mel_test_lost_cleanup_rescue() != 1) goto cleanup;
+        goto verify_cleaned;
+    }
+    if (!create_marker(release)) goto cleanup;
+    if (thrd_join(callback_thread, NULL) != thrd_success) goto cleanup;
+    callback_started = 0;
+    if (child == 3) {
+        if (!wait_for_marker(decision) || mock_pool_releases() != 2UL ||
+            !create_marker(resume)) goto cleanup;
+    }
+    if (child == 2) {
+        if (ams_mel_ir_navigation_request_wait(request, 10000, &navigation_result,
+                NULL, 0, NULL) != AMS_MEL_OK ||
+            ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) != AMS_MEL_OK)
+            goto cleanup;
+        snapshot_closer.status = AMS_MEL_OK;
+    } else if (thrd_join(close_thread, NULL) != thrd_success) goto cleanup;
+    close_started = 0;
+verify_cleaned:
+    if (producer.status != 1 ||
+        mock_executor_race_max_active() != 1UL ||
+        (child ? snapshot_closer.status : closer.status) != AMS_MEL_OK ||
+        closer.stream != NULL || mock_image_channels_destroyed() != channel_before + 1UL)
+        goto cleanup;
+    if (ams_mel_session_close(&session, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+    {
+        FILE *file = fopen(lifetime, "rb");
+        size_t count;
+        char *wrapper, *second_wrapper, *channel, *control, *manager, *unloaded;
+        if (!file) goto cleanup;
+        count = fread(log, 1, sizeof log - 1U, file);
+        log[count] = '\0';
+        if (fclose(file) != 0) goto cleanup;
+        wrapper = strstr(log, "requeue_wrapper_destroyed");
+        second_wrapper = wrapper ? strstr(wrapper + strlen("requeue_wrapper_destroyed"),
+                                          "requeue_wrapper_destroyed") : NULL;
+        channel = strstr(log, "channel_destroyed");
+        control = strstr(log, "control_destroyed");
+        manager = strstr(log, "manager_destroyed");
+        unloaded = strstr(log, "library_unloaded");
+        if (!wrapper || !second_wrapper || !channel || !control || !manager || !unloaded ||
+            strstr(second_wrapper + strlen("requeue_wrapper_destroyed"), "requeue_wrapper_destroyed") ||
+            !(second_wrapper < channel && channel < control && control < manager && manager < unloaded))
+            goto cleanup;
+    }
+    result = EXIT_SUCCESS;
+cleanup:
+    if (nav_release[0]) (void)create_marker(nav_release);
+    if (nav_complete[0]) (void)create_marker(nav_complete);
+    if (resume[0]) (void)create_marker(resume);
+    if (release[0]) (void)create_marker(release);
+    if (callback_started) (void)thrd_join(callback_thread, NULL);
+    if (close_started) (void)thrd_join(close_thread, NULL);
+    (void)unsetenv("AMS_MEL_TEST_SKIP_FINAL_SNAPSHOT_CLEANUP");
+    if (child == 4) (void)ams_mel_test_lost_cleanup_rescue();
+    (void)unsetenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER");
+    if (waiter[0]) (void)unlink(waiter);
+    if (request) {
+        (void)ams_mel_ir_navigation_request_wait(request, 10000, &navigation_result, NULL, 0, NULL);
+        (void)ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL);
+    }
+    (void)unsetenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER");
+    if (nav_release[0]) (void)unlink(nav_release);
+    if (nav_complete[0]) (void)unlink(nav_complete);
+    if (snapshot) (void)ams_mel_ir_frame_snapshot_close(&snapshot, NULL, 0, NULL);
+    if (snapshot_closer.snapshot)
+        (void)ams_mel_ir_frame_snapshot_close(&snapshot_closer.snapshot, NULL, 0, NULL);
+    if (closer.stream) (void)ams_mel_ir_stream_close(&closer.stream, NULL, 0, NULL);
+    if (stream) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    (void)unsetenv("AMS_MEL_TEST_EXTERNAL_JOIN");
+    if (joining[0]) (void)unlink(joining);
+    (void)unsetenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER");
+    (void)unsetenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    (void)unsetenv("AMS_MEL_TEST_LIFETIME_LOG");
+    if (decision[0]) (void)unlink(decision);
+    if (resume[0]) (void)unlink(resume);
+    if (entered[0]) (void)unlink(entered);
+    if (release[0]) (void)unlink(release);
+    (void)unlink(base); (void)unlink(lifetime);
+    return result;
+}
+
 /* Repeated successful reuse reaches the real execution bound (one active
    provider release), then proves later explicit closes wait with safe HOLD
    ownership. Releasing the active window admits each waiter in turn. Eight A
@@ -2963,6 +3369,67 @@ static int test_close_discard_release_backpressure(void)
     return EXIT_SUCCESS;
 }
 
+/* The first release of this accepted, never-acquired frame occurs in Close,
+   not Stop. Both provider failure forms must override Stop's earlier OK. */
+static int test_close_discard_failure(const char *scenario)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    unsigned long attempts, destroyed, registered, retries, channels;
+    config.buffer_count = 2;
+    CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_mock_pool_produce_once() == 1);
+    attempts = mock_failed_release_attempts();
+    destroyed = mock_failed_buffer_destroyed();
+    registered = mock_registered_buffers_destroyed();
+    retries = mock_destructor_driven_releases();
+    channels = mock_image_channels_destroyed();
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+    CHECK(mock_failed_release_attempts() == attempts + 1UL);
+    CHECK(mock_failed_buffer_destroyed() == destroyed);
+    CHECK(mock_failed_buffer_alive() == 1);
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+    CHECK(mock_registered_buffers_destroyed() == registered);
+    CHECK(mock_destructor_driven_releases() == retries);
+    CHECK(mock_image_channels_destroyed() == channels);
+    CHECK(ams_mel_mock_pool_available() == 1UL);
+    CHECK(stream == NULL);
+    CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(mock_failed_release_attempts() == attempts + 1UL);
+    CHECK(mock_failed_buffer_destroyed() == destroyed);
+    CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(mock_destructor_driven_releases() == retries);
+    CHECK(mock_image_channels_destroyed() == channels);
+    CHECK(mock_failed_buffer_storage_intact() == 1);
+    return EXIT_SUCCESS;
+}
+
+static int test_discard_failure_suppression_mutation(void)
+{
+    ams_mel_session *session = NULL;
+    ams_mel_ir_stream *stream = NULL;
+    ams_mel_ir_stream_config_v1 config = configuration();
+    ams_mel_status_t status;
+    int result = EXIT_FAILURE;
+    config.buffer_count = 2;
+    if (setenv("AMS_MEL_TEST_SUPPRESS_DISCARD_FAILURE", "suppress", 1) != 0)
+        return EXIT_FAILURE;
+    if (open_stream("close-discard-fail", &session, &stream, &config) != EXIT_SUCCESS ||
+        ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK ||
+        ams_mel_mock_pool_produce_once() != 1) goto cleanup;
+    status = ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (status == AMS_MEL_OK && stream == NULL &&
+        mock_failed_buffer_alive() == 1 && mock_failed_buffer_storage_intact() == 1)
+        result = EXIT_SUCCESS;
+cleanup:
+    if (stream) (void)ams_mel_ir_stream_close(&stream, NULL, 0, NULL);
+    if (session) (void)ams_mel_session_close(&session, NULL, 0, NULL);
+    (void)unsetenv("AMS_MEL_TEST_SUPPRESS_DISCARD_FAILURE");
+    return result;
+}
+
 /* The same release/reuse window reached through the LEGACY owned-copy Receive
    and through Close-time queue discard, i.e. the other two entry points into
    the common release helper. Deliberately small: it reuses the existing
@@ -3161,6 +3628,12 @@ int main(void)
     CHECK(test_concurrent_release_distinct_owners() == EXIT_SUCCESS);
     CHECK(test_callback_only_release_close(0) == EXIT_SUCCESS);
     CHECK(test_deferred_wrapper_destruction_reentry() == EXIT_SUCCESS);
+    CHECK(test_destructor_close_gap(0) == EXIT_SUCCESS);
+    CHECK(test_late_callback_close(0) == EXIT_SUCCESS);
+    CHECK(test_late_callback_close(1) == EXIT_SUCCESS);
+    CHECK(test_late_callback_close(2) == EXIT_SUCCESS);
+    CHECK(test_late_callback_close(3) == EXIT_SUCCESS);
+    CHECK(test_late_callback_close(4) == EXIT_SUCCESS);
     CHECK(test_release_reuse_handoff_common_paths() == EXIT_SUCCESS);
     /* Repetition SUPPLEMENTS the deterministic coverage above; it does not
        replace it. The exact interleaving is already forced and proven. */
@@ -3208,6 +3681,8 @@ int main(void)
     CHECK(test_capability_failure("capability-throw", AMS_MEL_PROVIDER_EXCEPTION) == EXIT_SUCCESS);
     CHECK(test_shutdown_callback() == EXIT_SUCCESS);
     CHECK(test_nonquiescing_disable() == EXIT_SUCCESS);
+    CHECK(test_close_discard_failure("close-discard-fail") == EXIT_SUCCESS);
+    CHECK(test_close_discard_failure("close-discard-throw") == EXIT_SUCCESS);
     CHECK(test_capability_during_inflight_callback() == EXIT_SUCCESS);
     CHECK(test_concurrent_receive_stop() == EXIT_SUCCESS);
     CHECK(test_cleanup_failure("disable-fail") == EXIT_SUCCESS);
@@ -3274,6 +3749,8 @@ int main(void)
     CHECK(test_failed_release_executor_handoff("executor-race-fail", 1) ==
           EXIT_SUCCESS);
     CHECK(test_callback_only_release_close(1) == EXIT_SUCCESS);
+    CHECK(test_destructor_close_gap_mutation() == EXIT_SUCCESS);
+    CHECK(test_discard_failure_suppression_mutation() == EXIT_SUCCESS);
     for (unsigned i = 0; i < 5; ++i) {
         CHECK(test_release_failure_with_park_allocation_failure(
                   "release-fail-park-alloc") == EXIT_SUCCESS);

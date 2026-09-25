@@ -11,7 +11,7 @@
 | Verified upstream dependency closure | Implemented for IR receive/C2/Health/Instrumentation slices | 94 unmodified headers; no upstream compiled source |
 | Separately loadable mock C++ MEL provider | Implemented, test-only | Native C and Ada contract tests |
 | Real MEL factory/resource adaptation | Control foundation implemented | load/factory/init/version/close only |
-| Buffer and callback lifetimes | Hardened with non-quiescing and repeated-generation mocks | Independent per-stream executor ownership through failure/deferred draining/unlocked destruction; observed explicit-close backpressure; allocation-free callback deferral; exact failed-wrapper retention; callback-only obligations joined by Close before ordered channel/Control/unload teardown; release checked exactly once |
+| Buffer and callback lifetimes | PR #43 deferred-cleanup correction implemented | Explicit callback Buffer transfer; one release executor through final wrapper destruction; shared external cleanup helper; public Close, both snapshot wait schedules and Navigation late-work evidence; direct destructor premature-claim and lost-cleanup observation/rescue mutations. Native and Ada discard Fail/throw checks; test observer/rescue absent from production. See corrective protocol for ownership audit and validation |
 | IR image receive | Mono8 receive implemented | Host-memory Mono8 only; legacy subset plus complete owned snapshot in C/Ada |
 | IR C2 required sends | Complete in native C and safe Ada | General ModeCmd/complete ScanParam, intended BIT choices, and ConfigSet; existing request owners reused |
 | IR C2 safe Rust/Python subset | Constrained existing subset | Operate/TaskSched and BIT no-op only; no safe Task-017 expansion |

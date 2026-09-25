@@ -762,6 +762,16 @@ public:
             }
         }
         record("requeue_wrapper_destroyed");
+        if (scenario_ == "destructor-close-gap" && ordinal_ == 2U && released_) {
+            if (const char *base = std::getenv("AMS_MEL_TEST_DESTRUCTOR_BARRIER")) {
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+            }
+            ++reentrant_wrapper_destructions;
+            if (reentrant_producer_) reentrant_producer_();
+            ++destruction_callbacks_returned;
+            record("destructor_callback_returned");
+        }
         if (scenario_ == "destructor-reentry" && ordinal_ == 2U && released_ &&
             reentrant_producer_) {
             ++reentrant_wrapper_destructions;
@@ -785,6 +795,13 @@ public:
     std::int64_t getContext() const override { return underlying_->getContext(); }
     Return release() override
     {
+        if ((scenario_ == "late-callback-close" ||
+             scenario_ == "destructor-close-gap") && ordinal_ == 2U) {
+            /* The provider transfers its callback owner. Only the bridge's
+             * active operation and pre-reserved uncertain fallback may remain. */
+            record(self_.use_count() == 2 ? "release_exact_bridge_owners"
+                                          : "release_extra_bridge_owner");
+        }
         struct ExecutorRaceGuard {
             bool armed;
             explicit ExecutorRaceGuard(bool value) : armed{value}
@@ -801,14 +818,16 @@ public:
                 if (armed) executor_race_active.fetch_sub(1U);
             }
         } race_guard{scenario_ == "executor-race-fail" ||
-                     scenario_ == "executor-race-throw"};
-        if (race_guard.armed && ordinal_ == 2U) {
+                     scenario_ == "executor-race-throw" ||
+                     scenario_ == "late-callback-close"};
+        if (race_guard.armed && scenario_ != "late-callback-close" && ordinal_ == 2U) {
             std::unique_lock lock{executor_race_mutex};
             executor_race_c_entered = true;
             executor_race_ready.notify_all();
             executor_race_ready.wait(lock, [] { return executor_race_c_released; });
         }
-        if (scenario_ == "callback-close-obligation") {
+        if (scenario_ == "callback-close-obligation" ||
+            (scenario_ == "late-callback-close" && ordinal_ == 2U)) {
             if (const char *base = std::getenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER")) {
                 create_file(std::string{base} + ".entered");
                 wait_for_file(std::string{base} + ".release");
@@ -825,13 +844,18 @@ public:
             (scenario_ == "executor-race-fail" ||
              scenario_ == "executor-race-throw");
         if (executor_race && reentrant_producer_) reentrant_producer_();
-        if (scenario_ == "destructor-reentry" && ordinal_ == 1U &&
+        if ((scenario_ == "destructor-reentry" ||
+             scenario_ == "destructor-close-gap") && ordinal_ == 1U &&
             reentrant_producer_) reentrant_producer_();
         const bool fails = force_fail_ ||
                            (scenario_ == "executor-race-fail" && ordinal_ == 1U) ||
                            scenario_ == "release-fail-park-alloc" ||
-                           scenario_ == "release-fail-observed";
+                           scenario_ == "release-fail-observed" ||
+                           scenario_ == "close-discard-fail" ||
+                           scenario_ == "ada-close-discard-fail";
         const bool throws = scenario_ == "release-throw-park-alloc" ||
+                            scenario_ == "close-discard-throw" ||
+                            scenario_ == "ada-close-discard-throw" ||
                             (scenario_ == "executor-race-throw" && ordinal_ == 1U);
         /* Squall-shaped, and the reason the corrective task's no-retry rule
          * has teeth: the wrapper records the requeue as DONE only when the
@@ -987,6 +1011,7 @@ public:
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
                 std::make_shared<irmel::NavigationReportResp>(value)});
         } else if ((scenario_ == "navigation-hold" ||
+                    scenario_ == "late-callback-close" ||
                     scenario_ == "navigation-hold-detach-fail") &&
                    !navigation_producer_.joinable()) {
             /* Deterministic barrier-driven request. The request stays pending
@@ -1296,7 +1321,9 @@ private:
                scenario_ == "handoff-reuse-inside" ||
                scenario_ == "handoff-ada-reuse" ||
                scenario_ == "handoff-concurrent" ||
-               scenario_ == "handoff-close-discard";
+               scenario_ == "handoff-close-discard" ||
+               scenario_ == "destructor-close-gap" ||
+               scenario_ == "late-callback-close";
     }
 
     /* Scenarios that model pinned Squall's per-callback RequeueBuffer. */
@@ -1309,9 +1336,12 @@ private:
         return handoff_scenario() ||
                scenario_ == "callback-close-obligation" ||
                scenario_ == "destructor-reentry" ||
+               scenario_ == "destructor-close-gap" ||
                scenario_ == "executor-race-fail" ||
                scenario_ == "executor-race-throw" ||
                scenario_ == "release-fail-observed" ||
+               scenario_ == "close-discard-fail" ||
+               scenario_ == "close-discard-throw" ||
                scenario_ == "release-fail-park-alloc" ||
                scenario_ == "release-throw-park-alloc" ||
                scenario_ == "teardown-race-late-uncertain" ||
@@ -1384,7 +1414,8 @@ private:
         if (((scenario_ == "executor-race-fail" ||
              scenario_ == "executor-race-throw") && id == 3U)
             || (scenario_ == "callback-close-obligation" && id == 1U)
-            || (scenario_ == "destructor-reentry" && id == 2U))
+            || ((scenario_ == "destructor-reentry" ||
+                 scenario_ == "destructor-close-gap") && id == 2U))
             header = irmel::FrameHeader{std::chrono::nanoseconds{1'000'000 + id},
                 std::chrono::nanoseconds{20'000 + id}, 99U, 3U, 8U, 1U, 0.25,
                 0.125, {}, irmel::PixelFormat::Mono, id, 2U, 4U,
@@ -1395,9 +1426,11 @@ private:
         if ((scenario_ == "executor-race-fail" ||
              scenario_ == "executor-race-throw") && id == 1U)
             wrapper->set_reentrant_producer([this] { (void)drive_one_callback(); });
-        if (scenario_ == "destructor-reentry" && id == 1U)
+        if ((scenario_ == "destructor-reentry" ||
+             scenario_ == "destructor-close-gap") && id == 1U)
             wrapper->set_reentrant_producer([this] { (void)drive_one_callback(); });
-        if (scenario_ == "destructor-reentry" && id == 2U)
+        if ((scenario_ == "destructor-reentry" ||
+             scenario_ == "destructor-close-gap") && id == 2U)
             wrapper->set_reentrant_producer([this] {
                 const irmel::FrameHeader header{};
                 listener_->onImage(*this, header, nullptr);
@@ -1406,7 +1439,7 @@ private:
             std::lock_guard lock{failed_release_mutex};
             last_callback_wrapper = wrapper;
         }
-        listener_->onImage(*this, header, wrapper);
+        listener_->onImage(*this, header, std::move(wrapper));
         record("callback_returned");
         return true;
     }
@@ -1587,7 +1620,8 @@ private:
         if (pooled()) { produce_pooled(); return; }
         const unsigned count = (scenario_ == "idle" ||
             (scenario_.rfind("c2-", 0U) == 0U && scenario_ != "c2-coexist")) ? 0U :
-            (scenario_ == "overflow" ? 20U : 3U);
+            (scenario_ == "overflow" ? 20U :
+             (scenario_.rfind("ada-close-discard-", 0U) == 0U ? 1U : 3U));
         for (unsigned id = 1; id <= count; ++id) {
             if (stopping_ && scenario_ != "shutdown-callback") break;
             if (buffers_.empty()) break;
@@ -1665,7 +1699,14 @@ private:
                 buffer->begin_callback();
                 ++callback_buffers;
                 ++buffers_outstanding;
-                listener_->onImage(*this, header, buffer);
+                if (scenario_.rfind("ada-close-discard-", 0U) == 0U) {
+                    auto wrapper = std::make_shared<RequeueBuffer>(
+                        buffer, scenario_, false, id);
+                    wrapper->bind_self(wrapper);
+                    listener_->onImage(*this, header, wrapper);
+                } else {
+                    listener_->onImage(*this, header, buffer);
+                }
             }
             record("callback_returned");
             if (scenario_ == "capability-inflight") {
