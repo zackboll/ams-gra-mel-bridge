@@ -12,7 +12,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp
-    src/ir_instrumentation.cpp src/ir_track.cpp)
+    src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -32,7 +32,7 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -131,6 +131,40 @@ if(AMS_MEL_BUILD_TESTS)
         DEPENDS track_header_compile_probe
         VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
+
+    add_executable(test_completion_scalability tests/test_completion_scalability.c)
+    target_compile_features(test_completion_scalability PRIVATE c_std_11)
+    set_target_properties(test_completion_scalability PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_completion_scalability PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_completion_scalability PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_completion_scalability mock_ir_provider)
+    ams_mel_warnings(test_completion_scalability)
+    add_test(NAME completion_scalability COMMAND test_completion_scalability)
+
+    add_executable(test_completion_cross_family tests/test_completion_cross_family.c)
+    target_compile_features(test_completion_cross_family PRIVATE c_std_11)
+    set_target_properties(test_completion_cross_family PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_completion_cross_family PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_completion_cross_family PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_completion_cross_family mock_ir_provider)
+    ams_mel_warnings(test_completion_cross_family)
+    add_test(NAME completion_cross_family COMMAND test_completion_cross_family)
+    add_test(NAME completion_cross_family_exception COMMAND test_completion_cross_family exception)
+    add_test(NAME completion_retained COMMAND test_completion_cross_family retained)
+    add_test(NAME completion_retained_exception COMMAND test_completion_cross_family retained exception)
+    set_tests_properties(completion_cross_family completion_cross_family_exception
+        completion_retained completion_retained_exception
+        PROPERTIES TIMEOUT 120)
+
+    add_executable(request_completion_scalability bench/request_completion_scalability.cpp)
+    target_compile_features(request_completion_scalability PRIVATE cxx_std_20)
+    target_compile_definitions(request_completion_scalability PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(request_completion_scalability PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(request_completion_scalability mock_ir_provider)
+    ams_mel_warnings(request_completion_scalability)
 
     add_executable(test_cpp_header tests/test_cpp_header.cpp)
     target_compile_features(test_cpp_header PRIVATE cxx_std_20)

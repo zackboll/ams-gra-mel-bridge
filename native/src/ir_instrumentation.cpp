@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
+#include "internal/completion_probe.hpp"
 
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
 
@@ -313,6 +314,7 @@ struct Completion {
 };
 
 struct WorkerInput {
+    AMS_MEL_PROBE_OWNER(Instrumentation)
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::InstrumentationReport> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -357,7 +359,7 @@ void complete(const std::shared_ptr<Completion>& state,
     ams_mel_ir_instrumentation_result_v1 result{};
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Instrumentation, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -396,6 +398,7 @@ void complete(const std::shared_ptr<Completion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Instrumentation);
     auto channel = state->channel;
     const bool cleanup_ok = finish_channel(channel);
     if (!cleanup_ok) {
@@ -409,6 +412,7 @@ void complete(const std::shared_ptr<Completion>& state,
         state->result = result;
         state->message = std::move(message);
         state->channel.reset();
+        AMS_MEL_PROBE_GRAPH(Instrumentation, channel);
     }
     channel.reset();
     state->ready.notify_all();
@@ -418,8 +422,9 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
+    AMS_MEL_PROBE_WORKER(Instrumentation);
     try {
-        complete(input->completion, input->future);
+        complete(input->completion, input->future); AMS_MEL_PROBE_RETURN(Instrumentation);
     } catch (...) {
         /* A mutex/system failure must neither escape the detached thread nor
          * destroy an unaccounted future/provider graph. */

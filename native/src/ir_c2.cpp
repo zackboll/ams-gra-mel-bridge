@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
+#include "internal/completion_probe.hpp"
 
 #include <irmel/library/c2/C2Channel.h>
 
@@ -484,6 +485,7 @@ struct Completion {
 };
 
 struct WorkerInput {
+    AMS_MEL_PROBE_OWNER(Mode)
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::MFA_Mode> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -527,7 +529,7 @@ void complete(const std::shared_ptr<Completion>& state,
     ams_mel_ir_mode_result_v1 result{};
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Mode, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -566,6 +568,7 @@ void complete(const std::shared_ptr<Completion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Mode);
     auto channel = state->channel;
     const bool cleanup_ok = finish_channel(channel);
     if (!cleanup_ok) {
@@ -579,6 +582,7 @@ void complete(const std::shared_ptr<Completion>& state,
         state->result = result;
         state->message = std::move(message);
         state->channel.reset();
+        AMS_MEL_PROBE_GRAPH(Mode, channel);
     }
     channel.reset();
     state->ready.notify_all();
@@ -588,8 +592,9 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
+    AMS_MEL_PROBE_WORKER(Mode);
     try {
-        complete(input->completion, input->future);
+        complete(input->completion, input->future); AMS_MEL_PROBE_RETURN(Mode);
     } catch (...) {
         /* A mutex/system failure must neither escape the detached thread nor
          * destroy an unaccounted future/provider graph. */
@@ -608,6 +613,7 @@ struct ReturnCompletion {
 };
 
 struct ReturnWorkerInput {
+    AMS_MEL_PROBE_OWNER(Return)
     std::shared_ptr<ReturnCompletion> completion;
     mel::RequestFor<irmel::Return> future;
     std::shared_ptr<ReturnWorkerInput> emergency_self;
@@ -640,7 +646,7 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
     ams_mel_ir_return_result_v1 result{};
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Return, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -679,6 +685,7 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Return);
     auto channel = state->channel;
     if (!finish_channel(channel)) {
         kind = CompletionKind::ProviderFailure;
@@ -691,6 +698,7 @@ void complete_return(const std::shared_ptr<ReturnCompletion>& state,
         state->result = result;
         state->message = std::move(message);
         state->channel.reset();
+        AMS_MEL_PROBE_GRAPH(Return, channel);
     }
     channel.reset();
     state->ready.notify_all();
@@ -700,8 +708,9 @@ void run_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
+    AMS_MEL_PROBE_WORKER(Return);
     try {
-        complete_return(input->completion, input->future);
+        complete_return(input->completion, input->future); AMS_MEL_PROBE_RETURN(Return);
     } catch (...) {
         arm_return_worker(input);
         retain_return_worker(input);
@@ -717,6 +726,7 @@ struct CommsCompletion {
     std::shared_ptr<ChannelState> channel;
 };
 struct CommsWorkerInput {
+    AMS_MEL_PROBE_OWNER(Comms)
     std::shared_ptr<CommsCompletion> completion;
     mel::RequestFor<irmel::ChannelCommsTestRep> future;
     std::shared_ptr<CommsWorkerInput> emergency_self;
@@ -744,7 +754,7 @@ void complete_comms(const std::shared_ptr<CommsCompletion>& state,
     ams_mel_ir_channel_comms_test_result_v1 result{};
     std::string message;
     try {
-        auto outcome = future.get();
+        auto outcome = AMS_MEL_PROBE_GET(Comms, future.get());
         if (outcome) {
             const auto& value = outcome.get();
             if (!value) {
@@ -782,6 +792,7 @@ void complete_comms(const std::shared_ptr<CommsCompletion>& state,
         kind = CompletionKind::ProviderException;
         try { message = "unknown provider future exception"; } catch (...) {}
     }
+    AMS_MEL_PROBE_BOUNDARY(Comms);
     auto channel = state->channel;
     if (!finish_channel(channel)) {
         kind = CompletionKind::ProviderFailure;
@@ -791,6 +802,7 @@ void complete_comms(const std::shared_ptr<CommsCompletion>& state,
         std::lock_guard lock{state->mutex};
         state->kind = kind; state->result = result;
         state->message = std::move(message); state->channel.reset();
+        AMS_MEL_PROBE_GRAPH(Comms, channel);
     }
     channel.reset(); state->ready.notify_all();
 }
@@ -798,7 +810,8 @@ void run_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
 {
     while (input->launch_state.load(std::memory_order_acquire) == 0U)
         std::this_thread::yield();
-    try { complete_comms(input->completion, input->future); }
+    AMS_MEL_PROBE_WORKER(Comms);
+    try { complete_comms(input->completion, input->future); AMS_MEL_PROBE_RETURN(Comms); }
     catch (...) { arm_comms_worker(input); retain_comms_worker(input); }
 }
 
