@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Normalize C2 Mode, Return, and CommsTest submission: reserve request ownership
+  under the lifecycle mutex, then invoke provider send unlocked. Synchronous
+  send exceptions unwind accounting and perform deferred cleanup if Close won
+  meanwhile; post-send emergency retention remains unchanged. Deterministic C11
+  barriers cover all three engines, Close races, throw recovery, and isolated
+  launch/allocation failures. No public ABI/API or bounded-admission change.
+
 - Characterize RequestFor completion scaling with test-only worker/get counters,
   deterministic held mock futures and a separate non-gating benchmark. C11
   coverage exercises 1/10/100 pending C2 Return operations and 100 mixed C2

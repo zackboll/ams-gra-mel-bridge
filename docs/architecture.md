@@ -183,6 +183,15 @@ graph indefinitely rather than risking unload of live code.
 
 ## Asynchronous request execution path
 
+C2 Mode, Return, and CommsTest reserve their request under the channel lifecycle
+mutex before invoking provider send outside that mutex. The shared claim
+linearizes submission against logical Close: claimed sends keep physical cleanup
+deferred, while a claim after Close fails without sending. Synchronous send
+exceptions release that reservation; post-send launch failures retain it with
+the future. This internal ownership rule does not make arbitrary concurrent
+public-wrapper access safe. See
+`corrective-c2-unlocked-request-submission.md` for deterministic evidence.
+
 For an asynchronous request the conceptual path is:
 
 ```text

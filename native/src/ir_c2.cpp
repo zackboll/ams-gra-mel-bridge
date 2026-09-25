@@ -511,6 +511,25 @@ void retain_worker(const std::shared_ptr<WorkerInput>& input) noexcept
         head, input.get(), std::memory_order_release, std::memory_order_relaxed));
 }
 
+enum class SubmissionRequirement { Enabled, AttachedOrEnabled };
+
+/* The lifecycle lock linearizes Close against submission. A successful claim
+ * reserves physical lifetime before unlocking: later Close defers cleanup.
+ * If Close wins first, no provider call is made. Never hold this lock across
+ * provider code, including synchronous metadata callbacks. */
+bool claim_c2_submission(const std::shared_ptr<ChannelState>& state,
+                         SubmissionRequirement requirement,
+                         std::shared_ptr<irmel::C2Channel>& channel)
+{
+    std::lock_guard lock{state->mutex};
+    if (state->lifecycle != C2Lifecycle::Enabled &&
+        !(requirement == SubmissionRequirement::AttachedOrEnabled &&
+          state->lifecycle == C2Lifecycle::Attached)) return false;
+    channel = state->c2;
+    ++state->requests;
+    return true;
+}
+
 bool finish_channel(const std::shared_ptr<ChannelState>& channel)
 {
     bool close = false;
@@ -840,19 +859,42 @@ struct ams_mel_ir_c2_metadata {
 };
 struct ams_mel_ir_c2_metadata_event { std::unique_ptr<EventData> data; };
 
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* Test-owned state observation survives public wrapper Close. It deliberately
+ * keeps the Session alive until operation 2; it owns no extra C2Channel. */
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_c2_submission(
+    ams_mel_ir_c2 *c2, unsigned operation, void **token, std::size_t *requests) noexcept
+{
+    try {
+        if (operation == 0U) {
+            *token = new std::shared_ptr<ChannelState>{c2->state};
+            return 1;
+        }
+        auto *owner = static_cast<std::shared_ptr<ChannelState> *>(*token);
+        if (operation == 2U) { delete owner; *token = nullptr; return 1; }
+        if (operation != 1U || !owner) return 0;
+        std::unique_lock lock{(*owner)->mutex, std::try_to_lock};
+        if (!lock.owns_lock()) return 0;
+        *requests = (*owner)->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 namespace {
 ams_mel_status_t submit_mode_command(
     ams_mel_ir_c2 *c2, irmel::ModeCmd command,
     ams_mel_ir_mode_request **out_request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
 {
+    const auto state = c2->state;
     std::shared_ptr<Completion> completion;
     std::shared_ptr<WorkerInput> input;
     std::unique_ptr<ams_mel_ir_mode_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
         completion = std::make_shared<Completion>();
-        completion->channel = c2->state;
+        completion->channel = state;
         input = std::make_shared<WorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_ir_mode_request>();
@@ -862,28 +904,35 @@ ams_mel_status_t submit_mode_command(
         diagnostic("allocation failed before provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
-    std::unique_lock<std::mutex> lock;
-    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
-    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
-    if (c2->state->lifecycle != C2Lifecycle::Enabled) {
-        diagnostic("C2 channel is not enabled", out, capacity, required);
-        return AMS_MEL_PROVIDER_FAILED;
+    std::shared_ptr<irmel::C2Channel> channel;
+    try {
+        if (!claim_c2_submission(state, SubmissionRequirement::Enabled, channel)) {
+            diagnostic("C2 channel is not enabled", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+    } catch (...) {
+        diagnostic("C2 submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
     try {
         try {
-            input->future = c2->state->c2->send(std::move(command));
+            input->future = channel->send(std::move(command));
             arm_worker(input);
-            ++c2->state->requests;
         } catch (const std::exception& error) {
+            channel.reset();
+            (void)finish_channel(state);
             const char *what = error.what();
             const std::string_view text = what ? std::string_view{what} : std::string_view{};
             diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
+            channel.reset();
+            (void)finish_channel(state);
             diagnostic("unknown provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
-        lock.unlock();
+        /* Only the accounted graph may own the channel when cleanup runs. */
+        channel.reset();
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
         const SubmitFailpoint failpoint = submit_failpoint();
         if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
@@ -915,13 +964,14 @@ ams_mel_status_t submit_return_operation(
     ams_mel_ir_return_request **out_request, char *out, std::size_t capacity,
     std::size_t *required) noexcept
 {
+    const auto state = c2->state;
     std::shared_ptr<ReturnCompletion> completion;
     std::shared_ptr<ReturnWorkerInput> input;
     std::unique_ptr<ams_mel_ir_return_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
         completion = std::make_shared<ReturnCompletion>();
-        completion->channel = c2->state;
+        completion->channel = state;
         input = std::make_shared<ReturnWorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_ir_return_request>();
@@ -931,31 +981,35 @@ ams_mel_status_t submit_return_operation(
         diagnostic("allocation failed before provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
-    std::unique_lock<std::mutex> lock;
-    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
-    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
-    if ((require_enabled && c2->state->lifecycle != C2Lifecycle::Enabled) ||
-        (!require_enabled && c2->state->lifecycle != C2Lifecycle::Attached &&
-         c2->state->lifecycle != C2Lifecycle::Enabled)) {
-        diagnostic(require_enabled ? "C2 channel is not enabled" :
-            "C2 channel is not available", out, capacity, required);
-        return AMS_MEL_PROVIDER_FAILED;
+    std::shared_ptr<irmel::C2Channel> channel;
+    try {
+        if (!claim_c2_submission(state, require_enabled ? SubmissionRequirement::Enabled : SubmissionRequirement::AttachedOrEnabled, channel)) {
+            diagnostic(require_enabled ? "C2 channel is not enabled" : "C2 channel is not available", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+    } catch (...) {
+        diagnostic("C2 submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
     try {
         try {
-            input->future = send(*c2->state->c2);
+            input->future = send(*channel);
             arm_return_worker(input);
-            ++c2->state->requests;
         } catch (const std::exception& error) {
+            channel.reset();
+            (void)finish_channel(state);
             const char *what = error.what();
             const std::string_view text = what ? std::string_view{what} : std::string_view{};
             diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
+            channel.reset();
+            (void)finish_channel(state);
             diagnostic("unknown provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
-        lock.unlock();
+        /* Only the accounted graph may own the channel when cleanup runs. */
+        channel.reset();
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
         const SubmitFailpoint failpoint = submit_failpoint();
         if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};
@@ -998,12 +1052,13 @@ ams_mel_status_t submit_comms_operation(
     ams_mel_ir_channel_comms_request **out_request, char *out,
     std::size_t capacity, std::size_t *required) noexcept
 {
+    const auto state = c2->state;
     std::shared_ptr<CommsCompletion> completion;
     std::shared_ptr<CommsWorkerInput> input;
     std::unique_ptr<ams_mel_ir_channel_comms_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
-        completion = std::make_shared<CommsCompletion>(); completion->channel = c2->state;
+        completion = std::make_shared<CommsCompletion>(); completion->channel = state;
         input = std::make_shared<CommsWorkerInput>(); input->completion = completion;
         owner = std::make_unique<ams_mel_ir_channel_comms_request>(); owner->state = completion;
         worker = std::make_unique<std::thread>();
@@ -1011,29 +1066,36 @@ ams_mel_status_t submit_comms_operation(
         diagnostic("allocation failed before provider send", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
-    std::unique_lock<std::mutex> lock;
-    try { lock = std::unique_lock<std::mutex>{c2->state->mutex}; }
-    catch (...) { diagnostic("C2 submission lock failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
-    if (c2->state->lifecycle != C2Lifecycle::Attached &&
-        c2->state->lifecycle != C2Lifecycle::Enabled) {
-        diagnostic("C2 channel is not available", out, capacity, required);
-        return AMS_MEL_PROVIDER_FAILED;
+    std::shared_ptr<irmel::C2Channel> channel;
+    try {
+        if (!claim_c2_submission(state, SubmissionRequirement::AttachedOrEnabled, channel)) {
+            diagnostic("C2 channel is not available", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+    } catch (...) {
+        diagnostic("C2 submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
     try {
         try {
-            input->future = c2->state->c2->send(std::move(command));
-            arm_comms_worker(input); ++c2->state->requests;
+            input->future = channel->send(std::move(command));
+            arm_comms_worker(input);
         } catch (const std::exception& error) {
+            channel.reset();
+            (void)finish_channel(state);
             const char *what = error.what();
             const std::string_view text = what ? std::string_view{what} : std::string_view{};
             diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
                        out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
+            channel.reset();
+            (void)finish_channel(state);
             diagnostic("unknown provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
-        lock.unlock();
+        /* Only the accounted graph may own the channel when cleanup runs. */
+        channel.reset();
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
         const SubmitFailpoint failpoint = submit_failpoint();
         if (failpoint == SubmitFailpoint::Allocation) throw std::bad_alloc{};

@@ -42,6 +42,42 @@ std::atomic<std::uint64_t> buffer_releases{};
  * buffers, which the corrected no-retention-slot path does on purpose. */
 std::atomic<std::uint64_t> buffers_outstanding{};
 
+/* One-shot, per-engine send-entry barrier. Only explicitly armed tests enter
+ * it; no timing or sleep is used to decide whether a send has begun. */
+struct C2SendBarrier {
+    bool armed{}, entered{}, released{}, throws{};
+};
+C2SendBarrier c2_send_barriers[3];
+std::mutex c2_send_mutex;
+std::condition_variable c2_send_ready;
+
+extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
+    unsigned family, unsigned operation, unsigned throws)
+{
+    if (family >= 3U || operation > 2U) return 0;
+    std::unique_lock lock{c2_send_mutex};
+    auto& barrier = c2_send_barriers[family];
+    if (operation == 0U) barrier = {true, false, false, throws != 0U};
+    if (operation == 1U)
+        return c2_send_ready.wait_for(lock, std::chrono::seconds{15},
+                                     [&] { return barrier.entered; });
+    if (operation == 2U) { barrier.released = true; c2_send_ready.notify_all(); }
+    return 1;
+}
+
+void c2_send_boundary(unsigned family)
+{
+    std::unique_lock lock{c2_send_mutex};
+    auto& barrier = c2_send_barriers[family];
+    if (!barrier.armed) return;
+    barrier.entered = true;
+    c2_send_ready.notify_all();
+    if (!c2_send_ready.wait_for(lock, std::chrono::seconds{15},
+                              [&] { return barrier.released; })) std::abort();
+    barrier.armed = false;
+    if (barrier.throws) throw std::runtime_error{"barrier send exception"};
+}
+
 /* Test-only provider promise gate: sends return real RequestFor futures. No
  * producer thread is needed; release removes promises under the mutex and
  * fulfils them outside it. The gate is shared across channels in a process. */
@@ -1883,6 +1919,7 @@ public:
     }
     mel::RequestFor<Return> sendKeepAliveRep() override
     {
+        c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "completion-scale")
             return held_request(std::make_shared<Return>(Return::Success), 1);
@@ -1911,6 +1948,7 @@ public:
     }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
     {
+        c2_send_boundary(2);
         record("comms_sent");
         if (scenario_ == "comms-send-throw") throw std::runtime_error("mock comms send exception");
         if (scenario_ == "comms-high" && (request.getCommandID() != 0x80000001U ||
@@ -2055,6 +2093,7 @@ public:
     }
     mel::RequestFor<irmel::MFA_Mode> send(irmel::ModeCmd command) override
     {
+        c2_send_boundary(0);
         record("mode_sent");
         if (!enabled_) throw std::logic_error("mode sent before enable");
         if (scenario_ == "mode-full") {

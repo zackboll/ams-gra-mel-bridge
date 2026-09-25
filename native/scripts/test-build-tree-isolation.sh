@@ -69,6 +69,8 @@ done
 before_facade=$(hash_of "$test_facade")
 before_navigation=$(hash_of "$navigation")
 before_cache=$(hash_of "$tests/CMakeCache.txt")
+expected_total=$(ctest --test-dir "$tests" -N | sed -n 's/^Total Tests: //p')
+test "$expected_total" -gt 0
 
 sh "$root/scripts/build.sh" >/dev/null
 
@@ -83,10 +85,10 @@ note 'Running CTest from the test tree without rebuilding it'
 if ctest --test-dir "$tests" --output-on-failure >"$tests/isolation-ctest.log" 2>&1; then
     total=$(sed -n 's/.*tests passed, .* out of \([0-9]*\)/\1/p' \
         "$tests/isolation-ctest.log" | tail -1)
-    if [ "$total" = 20 ]; then
-        pass "native suite 20/20"
+    if [ "$total" = "$expected_total" ]; then
+        pass "native suite $total/$expected_total"
     else
-        fail "native suite reported $total tests (expected 20)"
+        fail "native suite reported $total tests (expected $expected_total)"
     fi
 else
     fail "native suite failed after a production build; see $tests/isolation-ctest.log"
