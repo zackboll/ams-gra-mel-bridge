@@ -87,9 +87,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Open;
@@ -103,9 +101,7 @@ package body AMS.MEL.IR.C2 is
       Code       : constant Interfaces.Integer_32 :=
         C.IR_C2_Enable (Channel.Handle, Diagnostic'Address, Diagnostic'Length, Required'Access);
    begin
-      if Code /= C.Success then
-         raise Provider_Error with Failure_Message (Diagnostic);
-      end if;
+      Check_Submission (Code, Failure_Message (Diagnostic));
    end Enable;
 
    function Submit_Operate (Channel : Control_Channel; ID : Command_ID := 0) return Mode_Request is
@@ -123,9 +119,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Submit_Operate;
@@ -194,9 +188,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Submit_Mode;
@@ -220,9 +212,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Submit_BIT_No_Op;
@@ -265,9 +255,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Submit_BIT_IDs;
@@ -317,9 +305,7 @@ package body AMS.MEL.IR.C2 is
                     Diagnostic'Length,
                     Required'Access);
             begin
-               if Code /= C.Success then
-                  raise Provider_Error with Failure_Message (Diagnostic);
-               end if;
+               Check_Submission (Code, Failure_Message (Diagnostic));
             end;
          end return;
       end;
@@ -350,9 +336,7 @@ package body AMS.MEL.IR.C2 is
                  Diagnostic'Length,
                  Required'Access);
          begin
-            if Code /= C.Success then
-               raise Provider_Error with Failure_Message (Diagnostic);
-            end if;
+            Check_Submission (Code, Failure_Message (Diagnostic));
          end;
       end return;
    end Submit_Config_Set;
@@ -522,9 +506,7 @@ package body AMS.MEL.IR.C2 is
         C.IR_Mode_Request_Close
           (Request.Owner.Handle'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
    begin
-      if Code /= C.Success then
-         raise Provider_Error with Failure_Message (Diagnostic);
-      end if;
+      Check_Submission (Code, Failure_Message (Diagnostic));
    end Close;
 
    procedure Close (Request : in out Return_Request) is
@@ -534,9 +516,7 @@ package body AMS.MEL.IR.C2 is
         C.IR_Return_Request_Close
           (Request.Owner.Handle'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
    begin
-      if Code /= C.Success then
-         raise Provider_Error with Failure_Message (Diagnostic);
-      end if;
+      Check_Submission (Code, Failure_Message (Diagnostic));
    end Close;
 
    procedure Close (Channel : in out Control_Channel) is
@@ -546,9 +526,7 @@ package body AMS.MEL.IR.C2 is
         C.IR_C2_Close
           (Channel.Handle'Access, Diagnostic'Address, Diagnostic'Length, Required'Access);
    begin
-      if Code /= C.Success then
-         raise Provider_Error with Failure_Message (Diagnostic);
-      end if;
+      Check_Submission (Code, Failure_Message (Diagnostic));
    end Close;
 
    overriding

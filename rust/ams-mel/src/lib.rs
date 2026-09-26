@@ -46,6 +46,7 @@ pub enum ErrorKind {
     InternalError,
     Timeout,
     StreamStopped,
+    ResourceExhausted,
     InvalidUtf8,
     ProtocolInconsistency,
     Unknown(i32),
@@ -342,12 +343,36 @@ pub struct Session {
     _not_send_sync: Rc<()>,
 }
 
+/// Session-wide asynchronous admission limit. Zero (the default) is unlimited.
+/// Refusal is explicit backpressure; the bridge neither queues nor retries.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub struct SessionOptions {
+    pub max_async_requests: u32,
+}
+
 impl Session {
     pub fn open(
         provider_library: impl AsRef<Path>,
         instance: impl AsRef<str>,
         aperture: impl AsRef<str>,
     ) -> Result<Self, Error> {
+        Self::open_with_options(
+            provider_library,
+            instance,
+            aperture,
+            SessionOptions::default(),
+        )
+    }
+
+    pub fn open_with_options(
+        provider_library: impl AsRef<Path>,
+        instance: impl AsRef<str>,
+        aperture: impl AsRef<str>,
+        options: SessionOptions,
+    ) -> Result<Self, Error> {
+        let options = sys::AmsMelSessionOptionsV1 {
+            max_async_requests: options.max_async_requests,
+        };
         let library = c_path(provider_library.as_ref())?;
         let instance = c_string(instance.as_ref(), "instance")?;
         let aperture = c_string(aperture.as_ref(), "aperture")?;
@@ -357,10 +382,11 @@ impl Session {
             // SAFETY: all C strings live through the call; `raw` is an initially
             // null writable owner and diagnostic storage matches its capacity.
             unsafe {
-                sys::ams_mel_session_open(
+                sys::ams_mel_session_open_with_options(
                     library.as_ptr(),
                     instance.as_ptr(),
                     aperture.as_ptr(),
+                    &options,
                     &mut raw,
                     buffer,
                     capacity,
@@ -1292,6 +1318,7 @@ fn error_from_status(
         sys::AMS_MEL_INTERNAL_ERROR => ErrorKind::InternalError,
         sys::AMS_MEL_TIMEOUT => ErrorKind::Timeout,
         sys::AMS_MEL_STREAM_STOPPED => ErrorKind::StreamStopped,
+        sys::AMS_MEL_RESOURCE_EXHAUSTED => ErrorKind::ResourceExhausted,
         unknown => ErrorKind::Unknown(unknown),
     };
     Error {

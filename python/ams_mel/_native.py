@@ -20,6 +20,12 @@ AMS_MEL_TIMEOUT = 9
 AMS_MEL_STREAM_STOPPED = 10
 AMS_MEL_PROVIDER_FAILED = 11
 AMS_MEL_COMMAND_REJECTED = 12
+AMS_MEL_RESOURCE_EXHAUSTED = 13
+
+
+class SessionOptionsV1(ctypes.Structure):
+    _fields_ = [("max_async_requests", ctypes.c_uint32)]
+
 
 AMS_MEL_IR_CHANNEL_IRST_TRACK = 0
 AMS_MEL_IR_CHANNEL_IRST_IMAGE = 1
@@ -607,6 +613,19 @@ ams_mel_session_open.argtypes = [
 ]
 ams_mel_session_open.restype = ctypes.c_int32
 
+ams_mel_session_open_with_options = _LIBRARY.ams_mel_session_open_with_options
+ams_mel_session_open_with_options.argtypes = [
+    ctypes.c_char_p,
+    ctypes.c_char_p,
+    ctypes.c_char_p,
+    ctypes.POINTER(SessionOptionsV1),
+    ctypes.POINTER(SessionHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_session_open_with_options.restype = ctypes.c_int32
+
 ams_mel_session_get_provider_version = (
     _LIBRARY.ams_mel_session_get_provider_version
 )
@@ -1006,6 +1025,7 @@ ams_mel_ir_track_system_response_request_close.restype = ctypes.c_int32
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
+    "ams_mel_session_open_with_options",
     "ams_mel_session_get_provider_version",
     "ams_mel_session_close",
     "ams_mel_ir_stream_open",

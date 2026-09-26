@@ -146,6 +146,7 @@ struct Completion {
 
 struct WorkerInput {
     AMS_MEL_PROBE_OWNER(Navigation)
+    CompletionPermit admission;
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::NavigationReportResp> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -347,6 +348,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_submit_navigation_report(
     }
 
     std::shared_ptr<irmel::ImageChannel> image_channel;
+    if (!acquire_completion_permit(stream->state->session->admission, input->admission)) {
+        diagnostic("async request limit reached", out, capacity, required);
+        return AMS_MEL_RESOURCE_EXHAUSTED;
+    }
     if (!claim_navigation_submission(*stream->state, image_channel)) {
         diagnostic("Image stream is not Attached or Running", out, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;

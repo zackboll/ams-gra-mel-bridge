@@ -12,11 +12,17 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
 
-   Success          : constant Interfaces.Integer_32 := 0;
-   Buffer_Too_Small : constant Interfaces.Integer_32 := 7;
-   Timeout          : constant Interfaces.Integer_32 := 9;
-   Stream_Stopped   : constant Interfaces.Integer_32 := 10;
-   Command_Rejected : constant Interfaces.Integer_32 := 12;
+   Success            : constant Interfaces.Integer_32 := 0;
+   Buffer_Too_Small   : constant Interfaces.Integer_32 := 7;
+   Timeout            : constant Interfaces.Integer_32 := 9;
+   Stream_Stopped     : constant Interfaces.Integer_32 := 10;
+   Command_Rejected   : constant Interfaces.Integer_32 := 12;
+   Resource_Exhausted : constant Interfaces.Integer_32 := 13;
+
+   type Session_Options_V1 is record
+      Max_Async_Requests : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
@@ -942,6 +948,17 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_session_open";
+
+   function Session_Open_With_Options
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Instance            : Interfaces.C.Strings.chars_ptr;
+      Aperture_Config_ID  : Interfaces.C.Strings.chars_ptr;
+      Options             : access constant Session_Options_V1;
+      Output              : access Session_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_session_open_with_options";
 
    function Session_Get_Provider_Version
      (Handle              : Session_Handle;

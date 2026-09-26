@@ -54,6 +54,24 @@ with fake implementations returning success.
 
 ## Task 001 provider session contract
 
+### Task 031B Session admission option
+
+ABI 0.1 adds `ams_mel_session_open_with_options` and the independent four-byte
+`ams_mel_session_options_v1` record, containing `uint32_t max_async_requests`.
+Zero means unlimited, as does the unchanged legacy open. A nonzero limit is
+shared across all seven asynchronous request types in one Session. Status 13,
+`AMS_MEL_RESOURCE_EXHAUSTED`, with `async request limit reached`, refuses before
+provider send or request accounting and leaves the output request null. There
+is no bridge queue or automatic retry. This is distinct from a provider's
+`InsufficientResources`, which is a successfully submitted request's rejection.
+
+The permit follows WorkerInput lifetime, not public request ownership: Close,
+Wait, future get, and parent Close do not release capacity. Final WorkerInput
+destruction releases the permit after destroying its future and Completion.
+A permanently retained future permanently consumes one slot. Synchronous send
+failure unwinds both the channel claim and permit; post-send failure retains
+both. This bounds admission without multiplexing futures or pooling threads.
+
 The façade ABI remains 0.1. `ams_mel_session_open` creates one uniquely owned,
 opaque session only after the provider library is loaded, both published
 factories return non-null owners, and `Control::init` returns `Success`. Failure
@@ -156,10 +174,13 @@ Wait may be repeated, but request close must not race wait on the same handle.
 Enable, submit, and close on one C2 owner require external serialization; parent
 Session close rules are unchanged.
 
-All façade owners and worker storage are allocated before provider `send`. Once
-`send` returns a valid future, the future move, allocation-free self-retention,
-and request-count increment establish lifetime accounting without an intervening
-throwing operation. Provider `send` exceptions map to `PROVIDER_EXCEPTION`;
+All façade owners and worker storage are allocated before provider `send`.
+After PR #45, C2 submission claims request accounting under the lifecycle lock
+before provider `send`; provider `send` executes unlocked; synchronous send
+failure unwinds that claim, while post-send failure retains it. Once `send`
+returns a valid future, the future move and allocation-free self-retention
+preserve that accounting without an intervening throwing operation. Provider
+`send` exceptions map to `PROVIDER_EXCEPTION`;
 façade allocation and worker launch/detach failures map to `INTERNAL_ERROR`.
 Post-send façade failure publishes no request and permanently retains the
 already-accounted graph through an intrusive atomic root and pre-existing

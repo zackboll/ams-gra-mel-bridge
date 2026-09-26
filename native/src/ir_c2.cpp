@@ -486,6 +486,7 @@ struct Completion {
 
 struct WorkerInput {
     AMS_MEL_PROBE_OWNER(Mode)
+    CompletionPermit admission;
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::MFA_Mode> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -633,6 +634,7 @@ struct ReturnCompletion {
 
 struct ReturnWorkerInput {
     AMS_MEL_PROBE_OWNER(Return)
+    CompletionPermit admission;
     std::shared_ptr<ReturnCompletion> completion;
     mel::RequestFor<irmel::Return> future;
     std::shared_ptr<ReturnWorkerInput> emergency_self;
@@ -746,6 +748,7 @@ struct CommsCompletion {
 };
 struct CommsWorkerInput {
     AMS_MEL_PROBE_OWNER(Comms)
+    CompletionPermit admission;
     std::shared_ptr<CommsCompletion> completion;
     mel::RequestFor<irmel::ChannelCommsTestRep> future;
     std::shared_ptr<CommsWorkerInput> emergency_self;
@@ -881,6 +884,19 @@ extern "C" __attribute__((visibility("default"))) int ams_mel_test_c2_submission
 }
 #endif
 
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_c2_requests(
+    const ams_mel_ir_c2 *owner, std::size_t *requests) noexcept
+{
+    try {
+        if (!owner || !requests) return 0;
+        std::lock_guard lock{owner->state->mutex};
+        *requests = owner->state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 namespace {
 ams_mel_status_t submit_mode_command(
     ams_mel_ir_c2 *c2, irmel::ModeCmd command,
@@ -906,6 +922,10 @@ ams_mel_status_t submit_mode_command(
     }
     std::shared_ptr<irmel::C2Channel> channel;
     try {
+        if (!acquire_completion_permit(state->session->admission, input->admission)) {
+            diagnostic("async request limit reached", out, capacity, required);
+            return AMS_MEL_RESOURCE_EXHAUSTED;
+        }
         if (!claim_c2_submission(state, SubmissionRequirement::Enabled, channel)) {
             diagnostic("C2 channel is not enabled", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
@@ -983,6 +1003,10 @@ ams_mel_status_t submit_return_operation(
     }
     std::shared_ptr<irmel::C2Channel> channel;
     try {
+        if (!acquire_completion_permit(state->session->admission, input->admission)) {
+            diagnostic("async request limit reached", out, capacity, required);
+            return AMS_MEL_RESOURCE_EXHAUSTED;
+        }
         if (!claim_c2_submission(state, require_enabled ? SubmissionRequirement::Enabled : SubmissionRequirement::AttachedOrEnabled, channel)) {
             diagnostic(require_enabled ? "C2 channel is not enabled" : "C2 channel is not available", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
@@ -1068,6 +1092,10 @@ ams_mel_status_t submit_comms_operation(
     }
     std::shared_ptr<irmel::C2Channel> channel;
     try {
+        if (!acquire_completion_permit(state->session->admission, input->admission)) {
+            diagnostic("async request limit reached", out, capacity, required);
+            return AMS_MEL_RESOURCE_EXHAUSTED;
+        }
         if (!claim_c2_submission(state, SubmissionRequirement::AttachedOrEnabled, channel)) {
             diagnostic("C2 channel is not available", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;

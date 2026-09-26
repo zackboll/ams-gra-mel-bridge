@@ -16,6 +16,16 @@ macro_rules! layout {
 #[test]
 fn session_input_function_signatures_match_the_c_header() {
     let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *const AmsMelSessionOptionsV1,
+        *mut *mut AmsMelSession,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_session_open_with_options;
+    let _: unsafe extern "C" fn(
         *const AmsMelSession,
         *mut AmsMelProviderVersionV1,
         *mut std::ffi::c_char,
@@ -344,6 +354,12 @@ fn session_input_function_signatures_match_the_c_header() {
 
 #[test]
 fn declarations_match_the_c_header() {
+    assert_eq!(AMS_MEL_RESOURCE_EXHAUSTED, 13);
+    assert_eq!(std::mem::size_of::<AmsMelSessionOptionsV1>(), 4);
+    assert_eq!(
+        std::mem::align_of::<AmsMelSessionOptionsV1>(),
+        std::mem::align_of::<u32>()
+    );
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repository = manifest.join("../..");
     let output = env::temp_dir().join(format!("ams-mel-abi-probe-{}", std::process::id()));
@@ -400,6 +416,7 @@ fn declarations_match_the_c_header() {
         AMS_MEL_STREAM_STOPPED as usize,
         AMS_MEL_PROVIDER_FAILED as usize,
         AMS_MEL_COMMAND_REJECTED as usize,
+        AMS_MEL_RESOURCE_EXHAUSTED as usize,
         AMS_MEL_IR_CHANNEL_IRST_IMAGE as usize,
         AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL as usize,
         AMS_MEL_IR_MFA_MODE_UNUSED as usize,
@@ -451,6 +468,7 @@ fn declarations_match_the_c_header() {
         AMS_MEL_IR_FLIP_BOTH as usize,
     ];
     layout!(expected, AmsMelAbiVersionV1, major, minor);
+    layout!(expected, AmsMelSessionOptionsV1, max_async_requests);
     layout!(
         expected,
         AmsMelProviderVersionV1,

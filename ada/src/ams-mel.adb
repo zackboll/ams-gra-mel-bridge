@@ -1,4 +1,3 @@
-with Interfaces;
 with Interfaces.C;
 with Interfaces.C.Strings;
 with System;
@@ -11,6 +10,15 @@ package body AMS.MEL is
    package C renames AMS.MEL_C_API;
    package CS renames Interfaces.C.Strings;
    package US renames Ada.Strings.Unbounded;
+
+   procedure Check_Submission (Code : Interfaces.Integer_32; Diagnostic : String) is
+   begin
+      if Code = C.Resource_Exhausted then
+         raise Resource_Exhausted with Diagnostic;
+      elsif Code /= C.Success then
+         raise Provider_Error with Diagnostic;
+      end if;
+   end Check_Submission;
 
    type C_String_Owner is new Ada.Finalization.Limited_Controlled with record
       Value : CS.chars_ptr := CS.Null_Ptr;
@@ -86,13 +94,25 @@ package body AMS.MEL is
    end Reject_NUL;
 
    function Open
-     (Library_Path : String; Instance : String; Aperture_Config_ID : String := "") return Session
+     (Library_Path : String; Instance : String; Aperture_Config_ID : String := "") return Session is
+   begin
+      return
+        Open_With_Options (Library_Path, Instance, (Max_Async_Requests => 0), Aperture_Config_ID);
+   end Open;
+
+   function Open_With_Options
+     (Library_Path       : String;
+      Instance           : String;
+      Options            : Session_Options;
+      Aperture_Config_ID : String := "") return Session
    is
-      Library_C  : C_String_Owner;
-      Instance_C : C_String_Owner;
-      Aperture_C : C_String_Owner;
-      Diagnostic : aliased Diagnostic_Array := [others => Interfaces.C.nul];
-      Required   : aliased C.Size_T := 0;
+      Raw_Options : aliased constant C.Session_Options_V1 :=
+        (Max_Async_Requests => Interfaces.Unsigned_32 (Options.Max_Async_Requests));
+      Library_C   : C_String_Owner;
+      Instance_C  : C_String_Owner;
+      Aperture_C  : C_String_Owner;
+      Diagnostic  : aliased Diagnostic_Array := [others => Interfaces.C.nul];
+      Required    : aliased C.Size_T := 0;
    begin
       Reject_NUL (Library_Path, "Library_Path");
       Reject_NUL (Instance, "Instance");
@@ -103,10 +123,11 @@ package body AMS.MEL is
       return Result : Session do
          declare
             Status : constant Interfaces.Integer_32 :=
-              C.Session_Open
+              C.Session_Open_With_Options
                 (Library_C.Value,
                  Instance_C.Value,
                  Aperture_C.Value,
+                 Raw_Options'Access,
                  Result.Handle'Access,
                  Diagnostic'Address,
                  Diagnostic'Length,
@@ -117,7 +138,7 @@ package body AMS.MEL is
             end if;
          end;
       end return;
-   end Open;
+   end Open_With_Options;
 
    function Is_Open (Object : Session) return Boolean
    is (Object.Handle /= C.Null_Session);

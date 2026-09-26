@@ -22,6 +22,7 @@ typedef int32_t ams_mel_status_t;
 #define AMS_MEL_STREAM_STOPPED      INT32_C(10)
 #define AMS_MEL_PROVIDER_FAILED     INT32_C(11)
 #define AMS_MEL_COMMAND_REJECTED    INT32_C(12)
+#define AMS_MEL_RESOURCE_EXHAUSTED  INT32_C(13)
 
 #if defined(_WIN32)
 #  if defined(AMS_MEL_BUILDING_LIBRARY)
@@ -51,6 +52,10 @@ typedef struct ams_mel_abi_version_v1 {
 } ams_mel_abi_version_v1;
 
 typedef struct ams_mel_session ams_mel_session;
+/* Zero preserves unlimited asynchronous RequestFor admission. */
+typedef struct ams_mel_session_options_v1 {
+    uint32_t max_async_requests;
+} ams_mel_session_options_v1;
 typedef struct ams_mel_ir_stream ams_mel_ir_stream;
 typedef struct ams_mel_ir_frame_snapshot ams_mel_ir_frame_snapshot;
 typedef struct ams_mel_ir_image_metadata ams_mel_ir_image_metadata;
@@ -1598,6 +1603,20 @@ AMS_MEL_API ams_mel_status_t ams_mel_session_open(
     const char *library_path,
     const char *instance,
     const char *aperture_config_id,
+    ams_mel_session **out_session,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Options are copied at open; NULL options are invalid. A nonzero bound is
+ * shared by all asynchronous RequestFor operations on this Session. Admission
+ * refusal precedes provider send and reports AMS_MEL_RESOURCE_EXHAUSTED with
+ * "async request limit reached". There is no internal queue or retry. */
+AMS_MEL_API ams_mel_status_t ams_mel_session_open_with_options(
+    const char *library_path,
+    const char *instance,
+    const char *aperture_config_id,
+    const ams_mel_session_options_v1 *options,
     ams_mel_session **out_session,
     char *diagnostic,
     size_t diagnostic_capacity,

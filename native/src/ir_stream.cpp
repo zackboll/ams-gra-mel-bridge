@@ -1235,6 +1235,19 @@ bool claim_navigation_submission(
     return true;
 }
 
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_navigation_requests(
+    const ams_mel_ir_stream *owner, std::size_t *requests) noexcept
+{
+    try {
+        if (!owner || !requests) return 0;
+        std::lock_guard lock{owner->state->callback->mutex};
+        *requests = owner->state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 void release_navigation_submission(ImageStreamState& stream) noexcept
 {
     std::lock_guard lock{stream.callback->mutex};

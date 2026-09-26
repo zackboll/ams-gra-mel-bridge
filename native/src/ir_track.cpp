@@ -858,6 +858,7 @@ struct Completion {
 
 struct WorkerInput {
     AMS_MEL_PROBE_OWNER(Track)
+    CompletionPermit admission;
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::CommandStatus> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -1034,6 +1035,19 @@ SubmitFailpoint submit_failpoint(const char *variable) noexcept
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_track_requests(
+    const ams_mel_ir_track *owner, std::size_t *requests) noexcept
+{
+    try {
+        if (!owner || !requests) return 0;
+        std::lock_guard lock{owner->state->mutex};
+        *requests = owner->state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 struct ams_mel_ir_track_update_request { std::shared_ptr<Completion> state; };
 /* A deliberately distinct public owner for the @Optional
  * SystemTrackDataResponse family. The TrackDataUpdate request type is never
@@ -1633,6 +1647,11 @@ extern "C" ams_mel_status_t ams_mel_ir_track_submit_update(
         return AMS_MEL_INTERNAL_ERROR;
     }
 
+    if (!acquire_completion_permit(track->state->session->admission, input->admission)) {
+        diagnostic("async request limit reached", out, capacity, required);
+        return AMS_MEL_RESOURCE_EXHAUSTED;
+    }
+
     /* Validate Enabled, copy the shared TrackChannel locally, and account the
      * request under the lifecycle mutex, then release it: provider send() may
      * synchronously invoke the IRSTTrackReport metadata callback, which
@@ -1773,6 +1792,11 @@ extern "C" ams_mel_status_t ams_mel_ir_track_submit_system_track_data_response(
     } catch (...) {
         diagnostic("SystemTrackDataResponse preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    if (!acquire_completion_permit(track->state->session->admission, input->admission)) {
+        diagnostic("async request limit reached", out, capacity, required);
+        return AMS_MEL_RESOURCE_EXHAUSTED;
     }
 
     /* Validate Enabled, copy the shared TrackChannel locally, and account the

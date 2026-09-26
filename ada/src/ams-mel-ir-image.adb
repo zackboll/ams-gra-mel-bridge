@@ -49,7 +49,7 @@ package body AMS.MEL.IR.Image is
       elsif Code = C.Stream_Stopped then
          raise Stream_Stopped;
       elsif Code /= C.Success then
-         raise Provider_Error with Message (Buffer);
+         Check_Submission (Code, Message (Buffer));
       end if;
    end Check;
    function Capabilities
@@ -496,15 +496,18 @@ package body AMS.MEL.IR.Image is
       R   : aliased C.Size_T := 0;
    begin
       return Result : Navigation_Request do
-         Check
-           (C.IR_Stream_Submit_Navigation_Report
-              (Object.Handle,
-               Raw'Access,
-               Result.Owner.Handle'Access,
-               D'Address,
-               D'Length,
-               R'Access),
-            D);
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Stream_Submit_Navigation_Report
+                (Object.Handle,
+                 Raw'Access,
+                 Result.Owner.Handle'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            Check (Code, D);
+         end;
       end return;
    end Submit_Navigation_Report;
 
