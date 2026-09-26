@@ -1,5 +1,10 @@
 # Architecture decisions
 
+Task 032A1 extracts Return and Comms request completion into a private
+family-neutral engine. Only C2 supplies a finish adapter today; no common
+Channel view or public surface exists yet. See
+`task-032a1-common-completion-engine.md`.
+
 Task 031B adds opt-in Session-scoped admission before async
 RequestFor provider sends. Zero remains unlimited; rejection has no bridge
 queue or retry. An admitted future still has its own blocked worker; this

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extract C2 Return and CommsTest completion, emergency retention, and opaque
+  request Wait/Close into one private family-neutral module. A move-only claim
+  supplies the C2 finish adapter without changing Mode, public ABI 0.1, or the
+  91 production exports; other families remain future work.
+
 - Add opt-in per-Session asynchronous RequestFor admission, shared across seven
   request types, with backward-compatible unlimited defaults in C, Ada, Rust,
   and Python. Bridge status 13 reports refusal before send; request Close does

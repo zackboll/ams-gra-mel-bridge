@@ -121,6 +121,8 @@ struct FinalOwner {
     ams_mel_test_completion::boundary(ams_mel_test_completion::family, !future.valid())
 #define AMS_MEL_PROBE_GRAPH(family, field) \
     ams_mel_test_completion::graph_released(ams_mel_test_completion::family, !state->field)
+#define AMS_MEL_PROBE_GRAPH_EMPTY(family, expression) \
+    ams_mel_test_completion::graph_released(ams_mel_test_completion::family, (expression))
 #define AMS_MEL_PROBE_RETURN(family) \
     if (ams_mel_test_completion::safety_mask != 7U || input->future.valid() || \
         input->emergency_self || input->emergency_retained.load()) std::abort(); \
@@ -140,6 +142,7 @@ struct FinalOwner {
 #define AMS_MEL_PROBE_WORKER(family)
 #define AMS_MEL_PROBE_BOUNDARY(family)
 #define AMS_MEL_PROBE_GRAPH(family, field)
+#define AMS_MEL_PROBE_GRAPH_EMPTY(family, expression)
 #define AMS_MEL_PROBE_RETURN(family)
 #define AMS_MEL_PROBE_GET(family, expression) (expression)
 #endif

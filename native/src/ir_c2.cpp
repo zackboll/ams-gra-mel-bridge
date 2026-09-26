@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
+#include "internal/common_channel_requests.hpp"
 #include "internal/completion_probe.hpp"
 
 #include <irmel/library/c2/C2Channel.h>
@@ -28,6 +29,17 @@
 
 namespace {
 using namespace ams::iface;
+using ams_mel_common::CommonRequestClaim;
+using ams_mel_common::ReturnCompletion;
+using ams_mel_common::ReturnWorkerInput;
+using ams_mel_common::CommsCompletion;
+using ams_mel_common::CommsWorkerInput;
+using ams_mel_common::arm_return_worker;
+using ams_mel_common::retain_return_worker;
+using ams_mel_common::run_return_worker;
+using ams_mel_common::arm_comms_worker;
+using ams_mel_common::retain_comms_worker;
+using ams_mel_common::run_comms_worker;
 
 bool valid_utf8(std::string_view value) noexcept
 {
@@ -170,18 +182,6 @@ bool valid_span(const ams_mel_string_view_span_v1& span) noexcept
     for (std::size_t index = 0; index < span.size; ++index)
         if (!valid_view(span.data[index])) return false;
     return true;
-}
-
-bool map_return(irmel::Return input, ams_mel_ir_return_t& value) noexcept
-{
-    switch (input) {
-    case irmel::Return::Success: value = AMS_MEL_IR_RETURN_SUCCESS; return true;
-    case irmel::Return::BadPointer: value = AMS_MEL_IR_RETURN_BAD_POINTER; return true;
-    case irmel::Return::Fail: value = AMS_MEL_IR_RETURN_FAIL; return true;
-    case irmel::Return::NotSupported: value = AMS_MEL_IR_RETURN_NOT_SUPPORTED; return true;
-    case irmel::Return::NotImplemented: value = AMS_MEL_IR_RETURN_NOT_IMPLEMENTED; return true;
-    }
-    return false;
 }
 
 void increment(std::uint64_t& value) noexcept
@@ -542,6 +542,13 @@ bool finish_channel(const std::shared_ptr<ChannelState>& channel)
     return !close || cleanup(channel, true);
 }
 
+/* The erased finish function is the only C2-specific part of the shared claim. */
+bool finish_c2_request(const std::shared_ptr<void>& erased) noexcept
+{
+    try { return finish_channel(std::static_pointer_cast<ChannelState>(erased)); }
+    catch (...) { return false; }
+}
+
 void complete(const std::shared_ptr<Completion>& state,
               mel::RequestFor<irmel::MFA_Mode>& future)
 {
@@ -623,219 +630,6 @@ void run_worker(const std::shared_ptr<WorkerInput>& input) noexcept
     }
 }
 
-struct ReturnCompletion {
-    std::mutex mutex;
-    std::condition_variable ready;
-    CompletionKind kind{CompletionKind::Pending};
-    ams_mel_ir_return_result_v1 result{};
-    std::string message;
-    std::shared_ptr<ChannelState> channel;
-};
-
-struct ReturnWorkerInput {
-    AMS_MEL_PROBE_OWNER(Return)
-    CompletionPermit admission;
-    std::shared_ptr<ReturnCompletion> completion;
-    mel::RequestFor<irmel::Return> future;
-    std::shared_ptr<ReturnWorkerInput> emergency_self;
-    ReturnWorkerInput *emergency_next{};
-    std::atomic<bool> emergency_retained{};
-    std::atomic<unsigned> launch_state{};
-};
-
-void arm_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
-{
-    input->emergency_self = input;
-}
-
-void retain_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
-{
-    static std::atomic<ReturnWorkerInput *> retained{};
-    bool expected = false;
-    if (!input->emergency_retained.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) return;
-    ReturnWorkerInput *head = retained.load(std::memory_order_relaxed);
-    do { input->emergency_next = head; }
-    while (!retained.compare_exchange_weak(
-        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
-}
-
-void complete_return(const std::shared_ptr<ReturnCompletion>& state,
-                     mel::RequestFor<irmel::Return>& future)
-{
-    CompletionKind kind = CompletionKind::ProviderException;
-    ams_mel_ir_return_result_v1 result{};
-    std::string message;
-    try {
-        auto outcome = AMS_MEL_PROBE_GET(Return, future.get());
-        if (outcome) {
-            const auto& value = outcome.get();
-            if (!value) {
-                kind = CompletionKind::ProviderFailure;
-                message = "provider returned null successful Return result";
-            } else if (!map_return(*value, result.value)) {
-                kind = CompletionKind::ProviderFailure;
-                message = "provider returned unknown IR Return value";
-            } else {
-                kind = CompletionKind::Success;
-            }
-        } else {
-            const mel::Error& error = outcome.getError();
-            bool known = false;
-            result.error_code = map_error(error.getCode(), known);
-            if (!known) {
-                kind = CompletionKind::ProviderFailure;
-                message = "provider returned unknown MEL error code";
-            } else {
-                kind = CompletionKind::Rejected;
-                const std::string& description = error.getDescription();
-                message = valid_utf8(description) ? description :
-                          "provider rejection description was invalid UTF-8 or contained NUL";
-            }
-        }
-    } catch (const std::bad_alloc&) {
-        kind = CompletionKind::InternalError;
-        message.clear();
-    } catch (const std::exception& error) {
-        kind = CompletionKind::ProviderException;
-        const char *what = error.what();
-        const std::string_view text = what ? std::string_view{what} : std::string_view{};
-        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
-        catch (...) { message.clear(); }
-    } catch (...) {
-        kind = CompletionKind::ProviderException;
-        try { message = "unknown provider future exception"; } catch (...) {}
-    }
-    AMS_MEL_PROBE_BOUNDARY(Return);
-    auto channel = state->channel;
-    if (!finish_channel(channel)) {
-        kind = CompletionKind::ProviderFailure;
-        try { message = "deferred C2 cleanup failed"; }
-        catch (...) { message.clear(); }
-    }
-    {
-        std::lock_guard lock{state->mutex};
-        state->kind = kind;
-        state->result = result;
-        state->message = std::move(message);
-        state->channel.reset();
-        AMS_MEL_PROBE_GRAPH(Return, channel);
-    }
-    channel.reset();
-    state->ready.notify_all();
-}
-
-void run_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept
-{
-    while (input->launch_state.load(std::memory_order_acquire) == 0U)
-        std::this_thread::yield();
-    AMS_MEL_PROBE_WORKER(Return);
-    try {
-        complete_return(input->completion, input->future); AMS_MEL_PROBE_RETURN(Return);
-    } catch (...) {
-        arm_return_worker(input);
-        retain_return_worker(input);
-    }
-}
-
-struct CommsCompletion {
-    std::mutex mutex;
-    std::condition_variable ready;
-    CompletionKind kind{CompletionKind::Pending};
-    ams_mel_ir_channel_comms_test_result_v1 result{};
-    std::string message;
-    std::shared_ptr<ChannelState> channel;
-};
-struct CommsWorkerInput {
-    AMS_MEL_PROBE_OWNER(Comms)
-    CompletionPermit admission;
-    std::shared_ptr<CommsCompletion> completion;
-    mel::RequestFor<irmel::ChannelCommsTestRep> future;
-    std::shared_ptr<CommsWorkerInput> emergency_self;
-    CommsWorkerInput *emergency_next{};
-    std::atomic<bool> emergency_retained{};
-    std::atomic<unsigned> launch_state{};
-};
-void arm_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
-{ input->emergency_self = input; }
-void retain_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
-{
-    static std::atomic<CommsWorkerInput *> retained{};
-    bool expected = false;
-    if (!input->emergency_retained.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) return;
-    CommsWorkerInput *head = retained.load(std::memory_order_relaxed);
-    do { input->emergency_next = head; }
-    while (!retained.compare_exchange_weak(
-        head, input.get(), std::memory_order_release, std::memory_order_relaxed));
-}
-void complete_comms(const std::shared_ptr<CommsCompletion>& state,
-                    mel::RequestFor<irmel::ChannelCommsTestRep>& future)
-{
-    CompletionKind kind = CompletionKind::ProviderException;
-    ams_mel_ir_channel_comms_test_result_v1 result{};
-    std::string message;
-    try {
-        auto outcome = AMS_MEL_PROBE_GET(Comms, future.get());
-        if (outcome) {
-            const auto& value = outcome.get();
-            if (!value) {
-                kind = CompletionKind::ProviderFailure;
-                message = "provider returned null successful CommsTest result";
-            } else {
-                result.command_id = value->getCommandID();
-                result.request_id = value->getRequestID();
-                result.error_code = AMS_MEL_ERROR_NONE;
-                kind = CompletionKind::Success;
-            }
-        } else {
-            const mel::Error& error = outcome.getError();
-            bool known = false;
-            result.error_code = map_error(error.getCode(), known);
-            if (!known) {
-                kind = CompletionKind::ProviderFailure;
-                message = "provider returned unknown MEL error code";
-            } else {
-                kind = CompletionKind::Rejected;
-                const std::string& description = error.getDescription();
-                message = valid_utf8(description) ? description :
-                    "provider rejection description was invalid UTF-8 or contained NUL";
-            }
-        }
-    } catch (const std::bad_alloc&) {
-        kind = CompletionKind::InternalError;
-    } catch (const std::exception& error) {
-        kind = CompletionKind::ProviderException;
-        const char *what = error.what();
-        const std::string_view text = what ? std::string_view{what} : std::string_view{};
-        try { message = !text.empty() && valid_utf8(text) ? text : "provider future exception"; }
-        catch (...) { message.clear(); }
-    } catch (...) {
-        kind = CompletionKind::ProviderException;
-        try { message = "unknown provider future exception"; } catch (...) {}
-    }
-    AMS_MEL_PROBE_BOUNDARY(Comms);
-    auto channel = state->channel;
-    if (!finish_channel(channel)) {
-        kind = CompletionKind::ProviderFailure;
-        try { message = "deferred C2 cleanup failed"; } catch (...) { message.clear(); }
-    }
-    {
-        std::lock_guard lock{state->mutex};
-        state->kind = kind; state->result = result;
-        state->message = std::move(message); state->channel.reset();
-        AMS_MEL_PROBE_GRAPH(Comms, channel);
-    }
-    channel.reset(); state->ready.notify_all();
-}
-void run_comms_worker(const std::shared_ptr<CommsWorkerInput>& input) noexcept
-{
-    while (input->launch_state.load(std::memory_order_acquire) == 0U)
-        std::this_thread::yield();
-    AMS_MEL_PROBE_WORKER(Comms);
-    try { complete_comms(input->completion, input->future); AMS_MEL_PROBE_RETURN(Comms); }
-    catch (...) { arm_comms_worker(input); retain_comms_worker(input); }
-}
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 enum class SubmitFailpoint { None, Allocation, WorkerLaunch };
@@ -854,8 +648,6 @@ SubmitFailpoint submit_failpoint() noexcept
 
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
-struct ams_mel_ir_return_request { std::shared_ptr<ReturnCompletion> state; };
-struct ams_mel_ir_channel_comms_request { std::shared_ptr<CommsCompletion> state; };
 struct ams_mel_ir_c2_metadata {
     std::shared_ptr<MetadataState> state;
     std::weak_ptr<ChannelState> channel;
@@ -991,7 +783,6 @@ ams_mel_status_t submit_return_operation(
     std::unique_ptr<std::thread> worker;
     try {
         completion = std::make_shared<ReturnCompletion>();
-        completion->channel = state;
         input = std::make_shared<ReturnWorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_ir_return_request>();
@@ -1015,20 +806,22 @@ ams_mel_status_t submit_return_operation(
         diagnostic("C2 submission lock failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+    completion->claim = CommonRequestClaim{state, finish_c2_request,
+                                           "deferred C2 cleanup failed"};
     try {
         try {
             input->future = send(*channel);
             arm_return_worker(input);
         } catch (const std::exception& error) {
             channel.reset();
-            (void)finish_channel(state);
+            (void)completion->claim.finish();
             const char *what = error.what();
             const std::string_view text = what ? std::string_view{what} : std::string_view{};
             diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
             channel.reset();
-            (void)finish_channel(state);
+            (void)completion->claim.finish();
             diagnostic("unknown provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
@@ -1082,7 +875,7 @@ ams_mel_status_t submit_comms_operation(
     std::unique_ptr<ams_mel_ir_channel_comms_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
-        completion = std::make_shared<CommsCompletion>(); completion->channel = state;
+        completion = std::make_shared<CommsCompletion>();
         input = std::make_shared<CommsWorkerInput>(); input->completion = completion;
         owner = std::make_unique<ams_mel_ir_channel_comms_request>(); owner->state = completion;
         worker = std::make_unique<std::thread>();
@@ -1104,13 +897,15 @@ ams_mel_status_t submit_comms_operation(
         diagnostic("C2 submission lock failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+    completion->claim = CommonRequestClaim{state, finish_c2_request,
+                                           "deferred C2 cleanup failed"};
     try {
         try {
             input->future = channel->send(std::move(command));
             arm_comms_worker(input);
         } catch (const std::exception& error) {
             channel.reset();
-            (void)finish_channel(state);
+            (void)completion->claim.finish();
             const char *what = error.what();
             const std::string_view text = what ? std::string_view{what} : std::string_view{};
             diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
@@ -1118,7 +913,7 @@ ams_mel_status_t submit_comms_operation(
             return AMS_MEL_PROVIDER_EXCEPTION;
         } catch (...) {
             channel.reset();
-            (void)finish_channel(state);
+            (void)completion->claim.finish();
             diagnostic("unknown provider send exception", out, capacity, required);
             return AMS_MEL_PROVIDER_EXCEPTION;
         }
@@ -1445,46 +1240,6 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_comms_test(
     }
 }
 
-extern "C" ams_mel_status_t ams_mel_ir_channel_comms_request_wait(
-    const ams_mel_ir_channel_comms_request *request, std::uint32_t timeout_ms,
-    ams_mel_ir_channel_comms_test_result_v1 *result, char *out,
-    std::size_t capacity, std::size_t *required) noexcept
-{
-    diagnostic("", out, capacity, required);
-    if (!request || !request->state || !result || (!out && capacity))
-        return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::unique_lock lock{request->state->mutex};
-        if (request->state->kind == CompletionKind::Pending &&
-            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
-                [&] { return request->state->kind != CompletionKind::Pending; }))
-            return AMS_MEL_TIMEOUT;
-        *result = request->state->result;
-        diagnostic(request->state->message, out, capacity, required);
-        switch (request->state->kind) {
-        case CompletionKind::Success: return AMS_MEL_OK;
-        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
-        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
-        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
-        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
-        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
-        }
-    } catch (...) {
-        diagnostic("CommsTest request wait failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    return AMS_MEL_INTERNAL_ERROR;
-}
-
-extern "C" ams_mel_status_t ams_mel_ir_channel_comms_request_close(
-    ams_mel_ir_channel_comms_request **request, char *out, std::size_t capacity,
-    std::size_t *required) noexcept
-{
-    diagnostic("", out, capacity, required);
-    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
-    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
-    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
-}
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_get_capabilities(
     ams_mel_ir_c2 *c2, ams_mel_ir_channel_capability **output, char *out,
@@ -1598,46 +1353,6 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_event_view(const ams_mel_ir_c
 extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_event_close(ams_mel_ir_c2_metadata_event **event,char *out,std::size_t capacity,std::size_t *required) noexcept
 {diagnostic("",out,capacity,required);if(!event||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{delete std::exchange(*event,nullptr);return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
 
-extern "C" ams_mel_status_t ams_mel_ir_return_request_wait(
-    const ams_mel_ir_return_request *request, std::uint32_t timeout_ms,
-    ams_mel_ir_return_result_v1 *result, char *out, std::size_t capacity,
-    std::size_t *required) noexcept
-{
-    diagnostic("", out, capacity, required);
-    if (!request || !request->state || !result || (!out && capacity))
-        return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::unique_lock lock{request->state->mutex};
-        if (request->state->kind == CompletionKind::Pending &&
-            !request->state->ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
-                [&] { return request->state->kind != CompletionKind::Pending; }))
-            return AMS_MEL_TIMEOUT;
-        *result = request->state->result;
-        diagnostic(request->state->message, out, capacity, required);
-        switch (request->state->kind) {
-        case CompletionKind::Success: return AMS_MEL_OK;
-        case CompletionKind::Rejected: return AMS_MEL_COMMAND_REJECTED;
-        case CompletionKind::ProviderException: return AMS_MEL_PROVIDER_EXCEPTION;
-        case CompletionKind::ProviderFailure: return AMS_MEL_PROVIDER_FAILED;
-        case CompletionKind::InternalError: return AMS_MEL_INTERNAL_ERROR;
-        case CompletionKind::Pending: return AMS_MEL_TIMEOUT;
-        }
-    } catch (...) {
-        diagnostic("return request wait failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
-    return AMS_MEL_INTERNAL_ERROR;
-}
-
-extern "C" ams_mel_status_t ams_mel_ir_return_request_close(
-    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
-    std::size_t *required) noexcept
-{
-    diagnostic("", out, capacity, required);
-    if (!request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
-    try { delete std::exchange(*request, nullptr); return AMS_MEL_OK; }
-    catch (...) { diagnostic("request close failed", out, capacity, required); return AMS_MEL_INTERNAL_ERROR; }
-}
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_close(
     ams_mel_ir_c2 **c2, char *out, std::size_t capacity,

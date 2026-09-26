@@ -11,7 +11,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
-    src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp
+    src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
