@@ -1,9 +1,13 @@
 # Architecture decisions
 
-Task 032A1 extracts Return and Comms request completion into a private
-family-neutral engine. Only C2 supplies a finish adapter today; no common
-Channel view or public surface exists yet. See
-`task-032a1-common-completion-engine.md`.
+Tasks 032A1 (merged PR #47) and 032A2 extract Return and Comms completion
+into a private family-neutral engine and prove weak common Channel submission
+through C2 and Image typed adapters. The idle access owns no provider graph;
+an admitted request claims the existing family count and uses the shared
+Session permit. The Image claim joins Navigation's deferred cleanup protocol.
+The common view is test-only; no public Channel view exists yet. See
+`task-032a1-common-completion-engine.md` and
+`task-032a2-common-access-image.md`.
 
 Task 031B adds opt-in Session-scoped admission before async
 RequestFor provider sends. Zero remains unlimited; rejection has no bridge

@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <new>
+#include <system_error>
 #include <string_view>
 #include <thread>
 #include <utility>
@@ -81,6 +83,191 @@ bool map_return(irmel::Return input, ams_mel_ir_return_t& value) noexcept
 }
 
 } // namespace
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+struct ams_mel_test_common_channel {
+    explicit ams_mel_test_common_channel(CommonChannelAccess value) noexcept : access{std::move(value)} {}
+    CommonChannelAccess access;
+};
+#endif
+
+namespace {
+using namespace ams::iface;
+using namespace ams_mel_common;
+enum class CommonFailure { None, Allocation, WorkerLaunch };
+CommonFailure common_failure() noexcept
+{
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    const char *value = std::getenv("AMS_MEL_TEST_COMMON_POST_SEND_FAILURE");
+    if (value && std::strcmp(value, "allocation") == 0) return CommonFailure::Allocation;
+    if (value && std::strcmp(value, "worker-launch") == 0) return CommonFailure::WorkerLaunch;
+#endif
+    return CommonFailure::None;
+}
+
+template<typename Completion, typename Input, typename Owner, typename Send,
+         typename Arm, typename Retain, typename Run>
+ams_mel_status_t submit_common(const CommonChannelAccess& access, Owner **output,
+    Send send, Arm arm, Retain retain, Run run,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    std::shared_ptr<Completion> completion;
+    std::shared_ptr<Input> input;
+    std::unique_ptr<Owner> owner;
+    std::unique_ptr<std::thread> worker;
+    try {
+        completion = std::make_shared<Completion>();
+        input = std::make_shared<Input>();
+        input->completion = completion;
+        owner = std::make_unique<Owner>();
+        owner->state = completion;
+        worker = std::make_unique<std::thread>();
+    } catch (...) {
+        diagnostic("allocation failed before provider send", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    auto state = access.lock();
+    if (!state) {
+        diagnostic("common channel is no longer available", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    std::shared_ptr<irmel::Channel> channel;
+    try {
+        if (!acquire_completion_permit(access.admission(state), input->admission)) {
+            diagnostic("async request limit reached", out, capacity, required);
+            return AMS_MEL_RESOURCE_EXHAUSTED;
+        }
+        if (!access.claim(state, channel, completion->claim)) {
+            diagnostic("common channel is not available", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+    } catch (...) {
+        /* An adapter throwing after claim cannot be unwound as a normal
+         * refusal: keep the claim and provider graph forever instead. */
+        if (!completion->claim.empty()) {
+            arm(input);
+            retain(input);
+        }
+        diagnostic("common channel submission lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    try {
+        try {
+            input->future = send(*channel);
+            arm(input);
+        } catch (const std::exception& error) {
+            channel.reset();
+            (void)completion->claim.finish();
+            const char *what = error.what();
+            const std::string_view text = what ? std::string_view{what} : std::string_view{};
+            diagnostic(!text.empty() && valid_utf8(text) ? text : "provider send exception",
+                       out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        } catch (...) {
+            channel.reset();
+            (void)completion->claim.finish();
+            diagnostic("unknown provider send exception", out, capacity, required);
+            return AMS_MEL_PROVIDER_EXCEPTION;
+        }
+        channel.reset();
+        const auto failure = common_failure();
+        if (failure == CommonFailure::Allocation) throw std::bad_alloc{};
+        if (failure == CommonFailure::WorkerLaunch)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+        *worker = std::thread{[input, run] { run(input); }};
+        worker->detach();
+        input->emergency_self.reset();
+        input->launch_state.store(1U, std::memory_order_release);
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        retain(input);
+        diagnostic("facade allocation failed after provider send", out, capacity, required);
+    } catch (...) {
+        retain(input);
+        if (worker && worker->joinable()) (void)worker.release();
+        input->launch_state.store(2U, std::memory_order_release);
+        diagnostic("facade worker launch failed", out, capacity, required);
+    }
+    return AMS_MEL_INTERNAL_ERROR;
+}
+} // namespace
+
+namespace ams_mel_common {
+using namespace ams::iface;
+ams_mel_status_t submit_common_keepalive(const CommonChannelAccess& access,
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!request || *request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    return submit_common<ReturnCompletion, ReturnWorkerInput>(access, request,
+        [](irmel::Channel& channel) { return channel.sendKeepAliveRep(); },
+        arm_return_worker, retain_return_worker, run_return_worker, out, capacity, required);
+}
+
+ams_mel_status_t submit_common_comms(const CommonChannelAccess& access,
+    const ams_mel_ir_channel_comms_test_request_v1 *command,
+    ams_mel_ir_channel_comms_request **request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!command || !request || *request || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        irmel::ChannelCommsTestReq upstream;
+        upstream.setCommandID(command->command_id);
+        upstream.setChannelID(command->channel_id);
+        upstream.setRequestID(command->request_id);
+        return submit_common<CommsCompletion, CommsWorkerInput>(access, request,
+            [value = std::move(upstream)](irmel::Channel& channel) mutable {
+                return channel.send(std::move(value));
+            }, arm_comms_worker, retain_comms_worker, run_comms_worker, out, capacity, required);
+    } catch (...) {
+        diagnostic("CommsTest command preparation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+} // namespace ams_mel_common
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+using namespace ams_mel_common;
+extern "C" __attribute__((visibility("default"))) ams_mel_status_t
+ams_mel_test_common_from_c2(const ams_mel_ir_c2 *owner,
+    ams_mel_test_common_channel **output) noexcept
+{
+    if (!owner || !output || *output) return AMS_MEL_INVALID_ARGUMENT;
+    try { *output = new ams_mel_test_common_channel{common_from_c2(owner)}; return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+extern "C" __attribute__((visibility("default"))) ams_mel_status_t
+ams_mel_test_common_from_stream(const ams_mel_ir_stream *owner,
+    ams_mel_test_common_channel **output) noexcept
+{
+    if (!owner || !output || *output) return AMS_MEL_INVALID_ARGUMENT;
+    try { *output = new ams_mel_test_common_channel{common_from_stream(owner)}; return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+extern "C" __attribute__((visibility("default"))) ams_mel_status_t
+ams_mel_test_common_send_keepalive(const ams_mel_test_common_channel *owner,
+    ams_mel_ir_return_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    if (!owner) return AMS_MEL_INVALID_ARGUMENT;
+    return submit_common_keepalive(owner->access, request, out, capacity, required);
+}
+extern "C" __attribute__((visibility("default"))) ams_mel_status_t
+ams_mel_test_common_submit_comms_test(const ams_mel_test_common_channel *owner,
+    const ams_mel_ir_channel_comms_test_request_v1 *command,
+    ams_mel_ir_channel_comms_request **request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    if (!owner) return AMS_MEL_INVALID_ARGUMENT;
+    return submit_common_comms(owner->access, command, request, out, capacity, required);
+}
+extern "C" __attribute__((visibility("default"))) void
+ams_mel_test_common_close(ams_mel_test_common_channel **owner) noexcept
+{ if (owner) { delete *owner; *owner = nullptr; } }
+#endif
 
 namespace ams_mel_common {
 void arm_return_worker(const std::shared_ptr<ReturnWorkerInput>& input) noexcept

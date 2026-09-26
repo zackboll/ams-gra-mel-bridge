@@ -2,6 +2,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/ir_stream.hpp"
+#include "internal/common_channel_requests.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
@@ -25,6 +26,27 @@
 #include <string_view>
 #include <thread>
 #include <vector>
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* Reuse the Navigation post-decrement stage for common Image completions. */
+namespace ams_mel_common {
+void common_image_post_decrement_barrier() noexcept
+{
+    const char *base = std::getenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER");
+    if (!base) return;
+    try {
+        const std::string prefix = std::string{base} + ".post-decrement";
+        if (!std::ifstream{prefix + ".arm"}.good()) return;
+        { std::ofstream marker{prefix + ".reached"}; marker << "reached\n"; }
+        const std::string release = prefix + ".release";
+        for (unsigned attempt = 0; attempt < 15000U; ++attempt) {
+            if (std::ifstream{release}.good()) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+    } catch (...) {}
+}
+}
+#endif
 
 namespace {
 using namespace ams::iface;
@@ -1253,6 +1275,59 @@ void release_navigation_submission(ImageStreamState& stream) noexcept
     std::lock_guard lock{stream.callback->mutex};
     if (stream.requests != 0U) --stream.requests;
 }
+
+bool finish_image_request(const std::shared_ptr<ImageStreamState>& stream,
+                          void (*after_decrement)() noexcept) noexcept
+{
+    try {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *failure = std::getenv("AMS_MEL_TEST_IMAGE_FINISH_FAILURE");
+            failure && std::strcmp(failure, "exception") == 0)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        {
+            std::lock_guard lock{stream->callback->mutex};
+            if (stream->requests == 0U) throw std::logic_error{"Image request count underflow"};
+            --stream->requests;
+        }
+        if (after_decrement) after_decrement();
+        return finish_deferred_cleanup_from_external_owner(stream) != ImageCleanupOutcome::Failed;
+    } catch (...) {
+        image_stream_retain_failed(stream);
+        return false;
+    }
+}
+
+namespace ams_mel_common {
+using namespace ams::iface;
+CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
+{
+    return {owner->state,
+        [](const std::shared_ptr<void>& erased) noexcept {
+            return std::static_pointer_cast<ImageStreamState>(erased)->session->admission;
+        },
+        [](const std::shared_ptr<void>& erased, std::shared_ptr<irmel::Channel>& channel,
+           CommonRequestClaim& claim) {
+            const auto state = std::static_pointer_cast<ImageStreamState>(erased);
+            std::lock_guard lock{state->callback->mutex};
+            const auto lifecycle = state->callback->lifecycle;
+            if (!state->image_channel ||
+                (lifecycle != Lifecycle::Attached && lifecycle != Lifecycle::Running)) return false;
+            channel = state->image_channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& value) noexcept {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    return finish_image_request(std::static_pointer_cast<ImageStreamState>(value),
+                                                common_image_post_decrement_barrier);
+#else
+                    return finish_image_request(std::static_pointer_cast<ImageStreamState>(value));
+#endif
+                }, "deferred Image cleanup failed"};
+            return true;
+        }};
+}
+} // namespace ams_mel_common
 
 namespace {
 /* Returns exactly one checked-out provider buffer to the provider and

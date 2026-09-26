@@ -199,3 +199,5 @@ bool claim_navigation_submission(
  * before a provider future exists, and by final Navigation request
  * completion. Defined in ir_stream.cpp. */
 void release_navigation_submission(ImageStreamState& stream) noexcept;
+bool finish_image_request(const std::shared_ptr<ImageStreamState>& stream,
+                          void (*after_decrement)() noexcept = nullptr) noexcept;
