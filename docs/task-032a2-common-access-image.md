@@ -57,13 +57,18 @@ both, parent-first pending Return for both, Image finish-exception retention,
 post-send allocation and worker-launch retention, unlocked Image race handoff,
 synchronous send throws, and shared Session limit-one admission against typed
 C2 Mode and Image Navigation. Existing C2 and Image contracts stay enabled.
-Evidence is mock-provider-only. The test-only observer/DSO handles are dropped
-before assertions about physical teardown; a permanent retention failpoint has
-process exit as its only cleanup boundary.
+Evidence is mock-provider-only. Parent-first tests retain their test-owned DSO
+pin until the mock gate has released the held future, then prove channel,
+Control, and manager destruction while the weak common view is still alive.
+After all mock function-pointer calls they drop the pin and prove library
+unload. A permanent retention failpoint has process exit as its only cleanup
+boundary.
 
-Local GCC Debug and Release CTest each pass **82/82**. The **24** common-view
-CTest scenarios pass **30 repetitions in each** configuration (720 executions
-per configuration). `make test-native` and `make test-build-isolation` pass.
+Initial local GCC Debug and Release CTest each passed **82/82**. The **24**
+common-view CTest scenarios initially passed **30 repetitions in each**
+configuration (720 executions per configuration); see the corrective validation
+below for the final stress results. `make test-native` and
+`make test-build-isolation` passed initially.
 `make check-ada-format`, `alr -C ada build`, and `alr -C ada/tests run` pass
 independently; Rust workspace check/test, all-target Clippy `-D warnings`,
 fmt check and `make test-rust` pass; `make test-python` passes 54 tests and
@@ -86,3 +91,43 @@ barrier proves exactly one cleanup adoption/detach. Return and Comms send
 throws leave no request or worker and restore accounting; post-send failures
 retain claim and permit permanently. A forced Image finish exception reports
 ProviderFailed and retains the graph rather than unloading it.
+
+## PR #48 parallel-stress corrective
+
+At head `51bedb591bcc2b186f108a778045bcb99f9d7163`, hosted push and PR
+CI passed the first ordinary CTest run but all four native GCC/Clang Debug and
+Release jobs failed the parallel `--repeat until-fail:50` phase. Ada, Rust,
+Python, and build isolation passed. Investigation found two **test ordering**
+defects, not missing production graph ownership: `comms-high` validates IDs but
+returns an already-ready future, so its worker can finish before the test reads
+the request count; and the parent-first/finish tests used a mock DSO function
+pointer after dropping their explicit `dlopen` reference. Both C2/Image
+`CommonRequestClaim` owners hold their family state, whose Session owns the
+provider graph until claim finish. No production source or public contract was
+changed by this corrective.
+
+The mock now has a separate `comms-high-held` scenario. It validates the three
+high-bit IDs exactly and uses the existing family-2 held future; the old
+`comms-high` path is unchanged. The common Comms test observes one Image/C2
+request and one admission permit with the worker blocked in `future.get`, then
+explicitly releases the held future and verifies exactly one get, both reply
+IDs, the cached Wait, zero requests and the FinalOwner permit release. Parent
+tests keep their DSO pin through all gate calls, prove no channel/Control/manager
+destruction before release, prove exactly one of each after worker reclamation,
+verify both inherited calls fail from the expired weak view without sends, then
+drop the test pin and prove library unload. The forced Image finish-exception
+test also releases via the still-pinned gate before dropping its pin and proves
+permanent graph retention afterward. No provider function pointer is called
+after `dlclose`. Image FrameLease/buffer release, post-drain recheck and
+lost-cleanup paths are unchanged.
+
+Final corrective local validation: a fresh GCC Debug ordinary CTest passed
+**82/82**, followed by the exact hosted `--parallel 4 --repeat until-fail:50`
+suite **82/82** (102.28 seconds). The five targeted Comms/parent/finish cases
+also passed 100 parallel repetitions each. A fresh GCC Release ordinary CTest
+passed **82/82** and the same full parallel repeat-50 suite passed **82/82**
+(88.30 seconds). Sequential `make test-native`, `make test-build-isolation`,
+Ada format and direct Alire build/tests, Rust workspace check/test/Clippy/fmt
+and `make test-rust`, and `make test-python` (54 tests plus compileall) pass.
+The corrective changes only this document, the test mock, and the C11 common
+view test. Production ABI 0.1 and its original 91-export set remain unchanged.

@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     const int cross = strstr(name, "cross") != NULL;
     const int race = strstr(name, "race") != NULL;
     const char *scenario = (throws ? (comms ? "comms-send-throw" : "keepalive-send-throw") :
-                            comms && !parent && !failure ? "comms-high" : "completion-scale");
+                            comms && !parent && !failure ? "comms-high-held" : "completion-scale");
     char path[] = "/tmp/ams-common-view-XXXXXX";
     int fd = mkstemp(path);
     CHECK(fd >= 0 && close(fd) == 0);
@@ -211,7 +211,8 @@ int main(int argc, char **argv)
     CHECK(ams_mel_test_admission(NULL, 1, &token, &active, &maximum));
     CHECK(active == (throws ? 0U : 1U) && maximum == 1U);
     uint64_t sent = 0, released = 0;
-    CHECK(gate(0, 0, &sent, &released) && sent == (!throws && !strcmp(scenario, "completion-scale") ? 1U : 0U));
+    CHECK(gate(0, 0, &sent, &released) && sent == (throws ? 0U : 1U));
+    if (!throws && !failure) CHECK(ams_mel_test_completion_wait(comms ? 2U : 1U, 4, 1U));
     if (cross) {
         ams_mel_ir_mode_request *mode = NULL;
         ams_mel_ir_navigation_request *navigation = NULL;
@@ -249,6 +250,8 @@ int main(int argc, char **argv)
         else CHECK(ams_mel_ir_c2_close(&c2, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
         if (!failure) CHECK(count(path, image ? "channel_destroyed\n" : "c2_channel_destroyed\n") == 0U);
+        CHECK(count(path, "control_destroyed\n") == 0U);
+        CHECK(count(path, "manager_destroyed\n") == 0U);
         CHECK(ams_mel_test_admission(NULL, 1, &token, &active, &maximum) && active == 1U);
     }
     if (failure) {
@@ -274,6 +277,9 @@ int main(int argc, char **argv)
         CHECK(count(path, "channel_detached\n") == 1U);
         marker(decrement_release);
         CHECK(ams_mel_test_completion_wait(1, 3, 1U));
+        uint64_t return_counts[6] = {0};
+        CHECK(ams_mel_test_completion_snapshot(1, return_counts));
+        CHECK(return_counts[4] == 1U && return_counts[5] == 1U);
         CHECK(count(path, "channel_detached\n") == 1U);
         CHECK(ams_mel_ir_return_request_close(&ret, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(ams_mel_test_completion_wait(1, 5, 1U));
@@ -288,8 +294,10 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!throws && !comms) {
-        if (!parent && !finish) CHECK(gate(2, 1, &sent, &released));
-        else { CHECK(dlclose(library) == 0); library = NULL; CHECK(gate(2, 1, &sent, &released)); }
+        /* No provider function pointer may outlive the test's DSO pin. The
+         * channel/Control/manager destruction probes remain meaningful while
+         * that pin is held; it keeps only the DSO loaded, not those objects. */
+        CHECK(gate(2, 1, &sent, &released));
         if (!parent) {
             ams_mel_ir_return_result_v1 result = {0};
             char diagnostic[128] = {0};
@@ -301,16 +309,30 @@ int main(int argc, char **argv)
         }
         CHECK(ams_mel_test_completion_wait(1, 3, 1U));
         if (parent) {
+            uint64_t observed = 0;
+            CHECK(ams_mel_test_completion_owner(1, 1U, &observed));
             CHECK(count(path, image ? "channel_destroyed\n" : "c2_channel_destroyed\n") == 1U);
+            CHECK(count(path, "control_destroyed\n") == 1U);
+            CHECK(count(path, "manager_destroyed\n") == 1U);
+            CHECK(count(path, "library_unloaded\n") == 0U);
             CHECK(ams_mel_test_common_send_keepalive(common, &ret, NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED);
+            ams_mel_ir_channel_comms_request *expired = NULL;
+            CHECK(ams_mel_test_common_submit_comms_test(common, &command, &expired,
+                NULL, 0, NULL) == AMS_MEL_PROVIDER_FAILED && !expired);
+            CHECK(count(path, "keepalive_sent\n") == 1U);
+            CHECK(count(path, "comms_sent\n") == 0U);
         }
     } else if (!throws) {
+        CHECK(gate(2, 1, &sent, &released));
         ams_mel_ir_channel_comms_test_result_v1 result = {0};
         CHECK(ams_mel_ir_channel_comms_request_wait(reply, 15000, &result, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(result.command_id == command.command_id && result.request_id == command.request_id);
         CHECK(ams_mel_ir_channel_comms_request_wait(reply, 0, &result, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(ams_mel_ir_channel_comms_request_close(&reply, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(ams_mel_test_completion_wait(2, 3, 1U));
+        uint64_t comms_counts[6] = {0};
+        CHECK(ams_mel_test_completion_snapshot(2, comms_counts));
+        CHECK(comms_counts[4] == 1U && comms_counts[5] == 1U);
     }
     if (!parent && !finish) {
         CHECK(image ? ams_mel_test_navigation_requests(stream, &requests) : ams_mel_test_c2_requests(c2, &requests));
@@ -333,6 +355,7 @@ int main(int argc, char **argv)
     if (library) CHECK(dlclose(library) == 0);
     ams_mel_test_common_close(&common);
     CHECK(count(path, image ? "channel_destroyed\n" : "c2_channel_destroyed\n") == (finish ? 0U : 1U));
+    if (parent) CHECK(count(path, "library_unloaded\n") == 1U);
     if (finish) {
         CHECK(count(path, "control_destroyed\n") == 0U);
         CHECK(count(path, "manager_destroyed\n") == 0U);
