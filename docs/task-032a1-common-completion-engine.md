@@ -47,6 +47,7 @@ C2 submission, stored exception, parent-first, admission, permanent retention,
 and cross-family completion probes exercise the extracted engines. The new
 finish exception tests add no production export or public binding surface.
 
-032A2 will separately add weak `CommonChannelAccess`, family adapters, Health
-request accounting and deferred cleanup, and test-only five-family inherited
-KeepAlive/Comms coverage. None of these are implemented here.
+032A1 was merged as PR #47. Task 032A2 subsequently adds weak
+`CommonChannelAccess` for C2 and Image only, with test-only inherited
+KeepAlive/Comms coverage. Health accounting and deferred cleanup, along with
+Instrumentation and Track adapters, remain future tasks.

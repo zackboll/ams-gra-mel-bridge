@@ -660,6 +660,28 @@ SubmitFailpoint submit_failpoint() noexcept
 } // namespace
 
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
+
+namespace ams_mel_common {
+using namespace ams::iface;
+CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
+{
+    return {owner->state,
+        [](const std::shared_ptr<void>& erased) noexcept {
+            return std::static_pointer_cast<ChannelState>(erased)->session->admission;
+        },
+        [](const std::shared_ptr<void>& erased, std::shared_ptr<irmel::Channel>& channel,
+           CommonRequestClaim& claim) {
+            const auto state = std::static_pointer_cast<ChannelState>(erased);
+            std::lock_guard lock{state->mutex};
+            if ((state->lifecycle != C2Lifecycle::Attached &&
+                 state->lifecycle != C2Lifecycle::Enabled) || !state->c2) return false;
+            channel = state->c2;
+            ++state->requests;
+            claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+            return true;
+        }};
+}
+} // namespace ams_mel_common
 struct ams_mel_ir_mode_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_c2_metadata {
     std::shared_ptr<MetadataState> state;

@@ -17,6 +17,30 @@
 
 namespace ams_mel_common {
 
+class CommonRequestClaim;
+/* An idle view holds no provider or Session owner. Typed adapters live only in
+ * their respective family translation units. */
+class CommonChannelAccess {
+public:
+    using AdmissionFunction = std::shared_ptr<CompletionAdmission> (*)(const std::shared_ptr<void>&) noexcept;
+    using ClaimFunction = bool (*)(const std::shared_ptr<void>&,
+        std::shared_ptr<ams::iface::irmel::Channel>&, CommonRequestClaim&);
+    CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
+                        ClaimFunction claim) noexcept
+        : state_{std::move(state)}, admission_{admission}, claim_{claim} {}
+    bool expired() const noexcept { return state_.expired(); }
+    std::shared_ptr<void> lock() const noexcept { return state_.lock(); }
+    std::shared_ptr<CompletionAdmission> admission(const std::shared_ptr<void>& state) const noexcept
+    { return admission_(state); }
+    bool claim(const std::shared_ptr<void>& state,
+               std::shared_ptr<ams::iface::irmel::Channel>& channel,
+               CommonRequestClaim& request) const { return claim_(state, channel, request); }
+private:
+    std::weak_ptr<void> state_;
+    AdmissionFunction admission_;
+    ClaimFunction claim_;
+};
+
 /* Construction is allocation-free after family accounting has been reserved.
  * The finish adapter must not throw. A failed cleanup may retain the graph
  * itself; dropping the claim never implies that provider teardown succeeded. */
@@ -115,6 +139,13 @@ void run_return_worker(const std::shared_ptr<ReturnWorkerInput>&) noexcept;
 void arm_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 void retain_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 void run_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
+CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *);
+CommonChannelAccess common_from_stream(const ams_mel_ir_stream *);
+ams_mel_status_t submit_common_keepalive(const CommonChannelAccess&,
+    ams_mel_ir_return_request **, char *, std::size_t, std::size_t *) noexcept;
+ams_mel_status_t submit_common_comms(const CommonChannelAccess&,
+    const ams_mel_ir_channel_comms_test_request_v1 *,
+    ams_mel_ir_channel_comms_request **, char *, std::size_t, std::size_t *) noexcept;
 } // namespace ams_mel_common
 
 struct ams_mel_ir_return_request {

@@ -1129,8 +1129,32 @@ public:
         ++image_channels_destroyed;
         record("channel_destroyed");
     }
-    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
-    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override { return {}; }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        if (scenario_ == "completion-scale") return held_request(std::make_shared<Return>(Return::Success), 1);
+        std::promise<mel::ErrorOr<std::shared_ptr<Return>>> promise;
+        auto future = promise.get_future();
+        promise.set_value(mel::ErrorOr<std::shared_ptr<Return>>{std::make_shared<Return>(Return::Success)});
+        return future;
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (scenario_ == "comms-send-throw") throw std::runtime_error("mock comms send exception");
+        if (scenario_ == "comms-high" && (request.getCommandID() != 0x80000001U ||
+            request.getChannelID() != 0xf0000002U || request.getRequestID() != 0xe0000003U))
+            throw std::runtime_error("CommsTest request conversion mismatch");
+        auto result = std::make_shared<irmel::ChannelCommsTestRep>(request.getCommandID(), request.getRequestID());
+        if (scenario_ == "completion-scale") return held_request(std::move(result), 2);
+        std::promise<mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>> promise;
+        auto future = promise.get_future();
+        promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{std::move(result)});
+        return future;
+    }
     mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override { return {}; }
     mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport report) override
     {
