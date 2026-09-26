@@ -11,7 +11,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
-    src/ir_channel.cpp src/ir_c2.cpp src/ir_health.cpp src/ir_navigation.cpp
+    src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
@@ -145,6 +145,18 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_c2_submission)
     add_test(NAME c2_submission COMMAND test_c2_submission)
     set_tests_properties(c2_submission PROPERTIES TIMEOUT 120)
+    add_executable(test_c2_finish_exception tests/test_c2_finish_exception.c)
+    target_compile_features(test_c2_finish_exception PRIVATE c_std_11)
+    set_target_properties(test_c2_finish_exception PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_c2_finish_exception PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_c2_finish_exception PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_c2_finish_exception mock_ir_provider)
+    ams_mel_warnings(test_c2_finish_exception)
+    foreach(family IN ITEMS 1 2)
+        add_test(NAME c2_finish_exception_${family} COMMAND test_c2_finish_exception ${family})
+        set_tests_properties(c2_finish_exception_${family} PROPERTIES TIMEOUT 30)
+    endforeach()
     foreach(family RANGE 0 2)
         foreach(failure allocation worker-launch)
             add_test(NAME c2_submission_${family}_${failure}
