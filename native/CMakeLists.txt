@@ -32,7 +32,7 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -131,6 +131,25 @@ if(AMS_MEL_BUILD_TESTS)
         DEPENDS track_header_compile_probe
         VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
+
+    find_package(Threads REQUIRED)
+    add_executable(test_c2_submission tests/test_c2_submission.c)
+    target_compile_features(test_c2_submission PRIVATE c_std_11)
+    set_target_properties(test_c2_submission PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_c2_submission PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_c2_submission PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_c2_submission mock_ir_provider)
+    ams_mel_warnings(test_c2_submission)
+    add_test(NAME c2_submission COMMAND test_c2_submission)
+    set_tests_properties(c2_submission PROPERTIES TIMEOUT 120)
+    foreach(family RANGE 0 2)
+        foreach(failure allocation worker-launch)
+            add_test(NAME c2_submission_${family}_${failure}
+                COMMAND test_c2_submission ${family} ${failure})
+            set_tests_properties(c2_submission_${family}_${failure} PROPERTIES TIMEOUT 30)
+        endforeach()
+    endforeach()
 
     add_executable(test_completion_scalability tests/test_completion_scalability.c)
     target_compile_features(test_completion_scalability PRIVATE c_std_11)
