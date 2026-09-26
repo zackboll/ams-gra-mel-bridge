@@ -2177,7 +2177,7 @@ public:
         }
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>> promise;
         auto future = promise.get_future();
-        if (scenario_ == "completion-scale")
+        if (scenario_ == "completion-scale" || scenario_ == "health-common")
             return held_request(std::make_shared<irmel::MFA_Mode>(irmel::MFA_Mode::TaskSched), 0);
         if (scenario_ == "c2-reject") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::MFA_Mode>>{
@@ -2464,8 +2464,24 @@ public:
         if(producer_.joinable())producer_.join();
         record("health_channel_destroyed");
     }
-    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
-    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override { return {}; }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "health-keepalive-throw") throw std::runtime_error("Health KeepAlive send failed");
+        return held_request(std::make_shared<Return>(Return::Success), 1);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (scenario_ == "health-comms-throw") throw std::runtime_error("Health Comms send failed");
+        if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
+            request.getRequestID() != 0xe0000003U)
+            throw std::runtime_error("Health Comms IDs changed");
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 2);
+    }
     Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
     Return enable() override { enabled_=true;record("health_enabled");return scenario_=="health-enable-fail"?Return::Fail:Return::Success; }
@@ -3815,6 +3831,11 @@ public:
         else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
+        if (instance_ == "health-common") {
+            irmel::ChannelCapability c2_capability;
+            c2_capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
+            capabilities_.push_back(std::move(c2_capability));
+        }
     }
     ~MockControl() override
     {

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add private Health common request accounting, weak test-only common access,
+  and logical Close with deferred physical cleanup. C11 race, metadata,
+  admission and retention tests; no public ABI change (Task 032A3).
 - Add internal weak common Channel access and C2/Image adapters for inherited
   KeepAlive and CommsTest. Reuse 032A1 completion and 031B admission; unify
   Image request finish with Navigation's deferred cleanup. Add C11 test-only

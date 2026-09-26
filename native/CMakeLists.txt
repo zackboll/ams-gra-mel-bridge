@@ -32,9 +32,9 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -152,6 +152,22 @@ if(AMS_MEL_BUILD_TESTS)
 
     find_package(Threads REQUIRED)
     target_link_libraries(test_common_channel_view PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_executable(test_common_channel_health tests/test_common_channel_health.c)
+    target_compile_features(test_common_channel_health PRIVATE c_std_11)
+    set_target_properties(test_common_channel_health PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_common_channel_health PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_common_channel_health PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_common_channel_health mock_ir_provider)
+    ams_mel_warnings(test_common_channel_health)
+    foreach(case IN ITEMS return comms enabled-return enabled-comms weak close-first
+            parent-attached parent-enabled metadata-stop metadata-inflight
+            return-throw close-wins-throw close-wins-attached-throw comms-throw cross cross-reverse
+            return-allocation return-worker-launch comms-allocation comms-worker-launch
+            finish-exception deferred-detach-fail)
+        add_test(NAME common_health_${case} COMMAND test_common_channel_health ${case})
+        set_tests_properties(common_health_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
     add_executable(test_c2_submission tests/test_c2_submission.c)
     target_compile_features(test_c2_submission PRIVATE c_std_11)
     set_target_properties(test_c2_submission PROPERTIES C_EXTENSIONS OFF)

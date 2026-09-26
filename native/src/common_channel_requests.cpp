@@ -248,6 +248,14 @@ ams_mel_test_common_from_stream(const ams_mel_ir_stream *owner,
     catch (...) { return AMS_MEL_INTERNAL_ERROR; }
 }
 extern "C" __attribute__((visibility("default"))) ams_mel_status_t
+ams_mel_test_common_from_health(const ams_mel_ir_health *owner,
+    ams_mel_test_common_channel **output) noexcept
+{
+    if (!owner || !output || *output) return AMS_MEL_INVALID_ARGUMENT;
+    try { *output = new ams_mel_test_common_channel{common_from_health(owner)}; return AMS_MEL_OK; }
+    catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+extern "C" __attribute__((visibility("default"))) ams_mel_status_t
 ams_mel_test_common_send_keepalive(const ams_mel_test_common_channel *owner,
     ams_mel_ir_return_request **request, char *out, std::size_t capacity,
     std::size_t *required) noexcept

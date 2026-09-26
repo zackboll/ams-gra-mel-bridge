@@ -1,10 +1,18 @@
 # Implementation coverage
 
+Task 032A3 adds test-only weak Health common access and request accounting:
+C11 evidence covers held KeepAlive/Comms, weak idle, Attached/Enabled deferred
+cleanup, pending-request callback quiescence and logical metadata stop,
+Close-wins send throw, both limit-one C2 admission directions and permanent
+failure retention. No public common view; see `task-032a3-common-access-health.md`.
+The Task 030B zero-copy row below describes its historical 90-export snapshot;
+the current post-031B production inventory is 91 exports.
+
 Task 032A1 is merged (PR #47). Task 032A2 adds test-only weak common access
 for inherited C2/Image KeepAlive and Comms, sharing the existing Return/Comms
 engines, Session admission and Image Navigation request/cleanup accounting.
-No public common view or inherited services for Health, Instrumentation or
-Track are implemented by 032A2; see `task-032a2-common-access-image.md`.
+032A2 did not implement inherited services for Health, Instrumentation or
+Track; see `task-032a2-common-access-image.md`.
 
 | Area | Status | Evidence / next step |
 |---|---|---|
