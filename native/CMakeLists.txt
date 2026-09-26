@@ -34,7 +34,7 @@ if(UNIX AND NOT APPLE)
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
         string(REPLACE "    global:" "    global:\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -134,7 +134,24 @@ if(AMS_MEL_BUILD_TESTS)
         VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
 
+    add_executable(test_common_channel_view tests/test_common_channel_view.c)
+    target_compile_features(test_common_channel_view PRIVATE c_std_11)
+    set_target_properties(test_common_channel_view PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_common_channel_view PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    add_dependencies(test_common_channel_view mock_ir_provider)
+    ams_mel_warnings(test_common_channel_view)
+    foreach(case IN ITEMS c2-return image-return c2-comms image-comms
+            c2-weak image-weak c2-close-first image-close-first image-running
+            c2-parent image-parent c2-throw image-throw image-comms-throw
+            image-finish image-cross image-cross-reverse c2-cross image-race image-return-allocation image-return-worker-launch
+            image-comms-allocation image-comms-worker-launch c2-return-allocation)
+        add_test(NAME common_${case} COMMAND test_common_channel_view ${case})
+        set_tests_properties(common_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
+
     find_package(Threads REQUIRED)
+    target_link_libraries(test_common_channel_view PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
     add_executable(test_c2_submission tests/test_c2_submission.c)
     target_compile_features(test_c2_submission PRIVATE c_std_11)
     set_target_properties(test_c2_submission PROPERTIES C_EXTENSIONS OFF)

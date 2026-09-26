@@ -208,11 +208,11 @@ void finish_stream_test_barrier() noexcept
 
 bool finish_stream(const std::shared_ptr<ImageStreamState>& stream)
 {
-    release_navigation_submission(*stream);
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-    finish_stream_test_barrier();
+    return finish_image_request(stream, finish_stream_test_barrier);
+#else
+    return finish_image_request(stream);
 #endif
-    return finish_deferred_cleanup_from_external_owner(stream) != ImageCleanupOutcome::Failed;
 }
 
 void complete(const std::shared_ptr<Completion>& state,

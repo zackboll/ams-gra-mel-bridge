@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add internal weak common Channel access and C2/Image adapters for inherited
+  KeepAlive and CommsTest. Reuse 032A1 completion and 031B admission; unify
+  Image request finish with Navigation's deferred cleanup. Add C11 test-only
+  common view and lifecycle/race/retention coverage. No public ABI change.
 - Extract C2 Return and CommsTest completion, emergency retention, and opaque
   request Wait/Close into one private family-neutral module. A move-only claim
   supplies the C2 finish adapter without changing Mode, public ABI 0.1, or the
