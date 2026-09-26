@@ -9,6 +9,10 @@ extern ams_mel_status_t ams_mel_test_common_from_c2(
     const ams_mel_ir_c2 *, ams_mel_test_common_channel **);
 extern ams_mel_status_t ams_mel_test_common_from_stream(
     const ams_mel_ir_stream *, ams_mel_test_common_channel **);
+extern ams_mel_status_t ams_mel_test_common_from_health(
+    const ams_mel_ir_health *, ams_mel_test_common_channel **);
+extern int ams_mel_test_health_requests(const ams_mel_ir_health *, size_t *);
+extern int ams_mel_test_health_callbacks(const ams_mel_ir_health_metadata *, size_t *);
 extern ams_mel_status_t ams_mel_test_common_send_keepalive(
     const ams_mel_test_common_channel *, ams_mel_ir_return_request **,
     char *, size_t, size_t *);

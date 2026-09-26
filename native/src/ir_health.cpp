@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
+#include "internal/common_channel_requests.hpp"
 
 #include <irmel/library/health-status/HealthStatusChannel.h>
 
@@ -17,6 +18,8 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <cassert>
+#include <system_error>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -246,7 +249,7 @@ template<class Build> void callback(const std::shared_ptr<MetadataState>& state,
 
 enum class Lifecycle { Attached,Enabled,Failed,Closed };
 struct HealthState {
-    std::mutex mutex;std::shared_ptr<SessionState> session;std::shared_ptr<irmel::Channel> channel;std::shared_ptr<irmel::HealthStatusChannel> health;std::shared_ptr<MetadataState> metadata;Lifecycle lifecycle{Lifecycle::Attached};bool enable_attempted{},metadata_attempted{},cleanup_started{};std::shared_ptr<HealthState> emergency_self;HealthState* emergency_next{};std::atomic<bool> retained{};
+    std::mutex mutex;std::shared_ptr<SessionState> session;std::shared_ptr<irmel::Channel> channel;std::shared_ptr<irmel::HealthStatusChannel> health;std::shared_ptr<MetadataState> metadata;Lifecycle lifecycle{Lifecycle::Attached};std::size_t requests{};bool enable_attempted{},metadata_attempted{},cleanup_started{};std::shared_ptr<HealthState> emergency_self;HealthState* emergency_next{};std::atomic<bool> retained{};
 };
 void retain_failed(const std::shared_ptr<HealthState>& state) noexcept
 {
@@ -258,7 +261,7 @@ bool has_health(const irmel::ChannelCapability& capability)
 bool cleanup(const std::shared_ptr<HealthState>& state,bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;std::shared_ptr<MetadataState> metadata;bool disable=false;
-    {std::lock_guard lock{state->mutex};if(state->cleanup_started)return !state->channel;state->cleanup_started=true;channel=state->channel;metadata=state->metadata;disable=state->enable_attempted;}
+    {std::lock_guard lock{state->mutex};if(state->requests!=0U)return false;if(state->cleanup_started)return !state->channel;state->cleanup_started=true;channel=state->channel;metadata=state->metadata;disable=state->enable_attempted;}
     if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;}
     bool ok=true;if(disable&&channel){try{if(channel->disable()!=irmel::Return::Success)ok=false;}catch(...){ok=false;}}
     bool detached=!channel;if(channel){try{detached=state->session->control->detachChannel(channel)==irmel::Return::Success;}catch(...){detached=false;}}
@@ -266,11 +269,74 @@ bool cleanup(const std::shared_ptr<HealthState>& state,bool retain_orphan)
     {std::lock_guard lock{state->mutex};state->health.reset();state->channel.reset();state->lifecycle=Lifecycle::Closed;state->enable_attempted=false;}channel.reset();
     if(metadata){std::unique_lock lock{metadata->mutex};metadata->callbacks_done.wait(lock,[&]{return metadata->callbacks.load(std::memory_order_acquire)==0U;});if(metadata->lifecycle!=MetadataLifecycle::Failed)metadata->lifecycle=MetadataLifecycle::Stopped;metadata->ready.notify_all();}return ok;
 }
+bool finish_health_request(const std::shared_ptr<HealthState>& state) noexcept
+{
+    try {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *failure = std::getenv("AMS_MEL_TEST_HEALTH_FINISH_FAILURE");
+            failure && std::strcmp(failure, "exception") == 0)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        bool close_now;
+        {
+            std::lock_guard lock{state->mutex};
+            assert(state->requests > 0U);
+            --state->requests;
+            close_now = state->requests == 0U && state->lifecycle == Lifecycle::Closed;
+        }
+        return !close_now || cleanup(state, true);
+    } catch (...) {
+        retain_failed(state);
+        return false;
+    }
+}
 } // namespace
 
 struct ams_mel_ir_health { std::shared_ptr<HealthState> state; };
 struct ams_mel_ir_health_metadata { std::shared_ptr<MetadataState> state;std::weak_ptr<HealthState> channel; };
 struct ams_mel_ir_health_metadata_event { std::unique_ptr<EventData> data; };
+
+namespace ams_mel_common {
+CommonChannelAccess common_from_health(const ams_mel_ir_health *owner)
+{
+    return {owner->state,
+        [](const std::shared_ptr<void>& erased) noexcept {
+            return std::static_pointer_cast<HealthState>(erased)->session->admission;
+        },
+        [](const std::shared_ptr<void>& erased, std::shared_ptr<irmel::Channel>& channel,
+           CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<HealthState>(erased);
+            std::lock_guard lock{state->mutex};
+            if ((state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+                || !state->channel || !state->health) return false;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& value) noexcept {
+                    return finish_health_request(std::static_pointer_cast<HealthState>(value));
+                }, "deferred Health cleanup failed"};
+            return true;
+        }};
+}
+} // namespace ams_mel_common
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_health_requests(
+    const ams_mel_ir_health *owner, std::size_t *count) noexcept
+{
+    if (!owner || !count) return 0;
+    std::lock_guard lock{owner->state->mutex};
+    *count = owner->state->requests;
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_health_callbacks(
+    const ams_mel_ir_health_metadata *owner, std::size_t *count) noexcept
+{
+    if (!owner || !count) return 0;
+    *count = owner->state->callbacks.load(std::memory_order_acquire);
+    return 1;
+}
+#endif
 
 extern "C" ams_mel_status_t ams_mel_ir_health_open(const ams_mel_session* session,const ams_mel_ir_health_config_v1* config,ams_mel_ir_health** output,char* out,std::size_t capacity,std::size_t* required) noexcept
 {
@@ -311,4 +377,4 @@ extern "C" ams_mel_status_t ams_mel_ir_health_metadata_event_close(ams_mel_ir_he
 {diagnostic("",out,capacity,required);if(!event||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{delete std::exchange(*event,nullptr);return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
 
 extern "C" ams_mel_status_t ams_mel_ir_health_close(ams_mel_ir_health** health,char* out,std::size_t capacity,std::size_t* required) noexcept
-{diagnostic("",out,capacity,required);if(!health||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;auto* owner=*health;if(!owner)return AMS_MEL_OK;try{auto state=owner->state;{std::lock_guard lock{state->mutex};state->lifecycle=Lifecycle::Closed;}const bool ok=cleanup(state,false);if(state->channel){diagnostic("Health detach failed; provider state retained",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}*health=nullptr;delete owner;if(!ok){diagnostic("Health disable failed",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}return AMS_MEL_OK;}catch(...){diagnostic("Health close failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}}
+{diagnostic("",out,capacity,required);if(!health||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;auto* owner=*health;if(!owner)return AMS_MEL_OK;try{auto state=owner->state;bool now;std::shared_ptr<MetadataState> metadata;{std::lock_guard lock{state->mutex};state->lifecycle=Lifecycle::Closed;now=state->requests==0U;metadata=state->metadata;}if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;metadata->ready.notify_all();}if(!now){*health=nullptr;delete owner;return AMS_MEL_OK;}const bool ok=cleanup(state,false);if(state->channel){diagnostic("Health detach failed; provider state retained",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}*health=nullptr;delete owner;if(!ok){diagnostic("Health disable failed",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}return AMS_MEL_OK;}catch(...){diagnostic("Health close failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}}

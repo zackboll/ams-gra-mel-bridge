@@ -1,5 +1,11 @@
 # Architecture decisions
 
+Task 032A3: Health joins the private weak common access and
+shared Return/Comms completion engines. Health Close is logical first with
+pending common requests, immediately deactivates metadata, and defers physical
+cleanup (including callback drain) to the final claim. See
+`task-032a3-common-access-health.md` for deterministic concurrency evidence.
+
 Tasks 032A1 (merged PR #47) and 032A2 extract Return and Comms completion
 into a private family-neutral engine and prove weak common Channel submission
 through C2 and Image typed adapters. The idle access owns no provider graph;

@@ -141,6 +141,7 @@ void retain_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 void run_comms_worker(const std::shared_ptr<CommsWorkerInput>&) noexcept;
 CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *);
 CommonChannelAccess common_from_stream(const ams_mel_ir_stream *);
+CommonChannelAccess common_from_health(const ams_mel_ir_health *);
 ams_mel_status_t submit_common_keepalive(const CommonChannelAccess&,
     ams_mel_ir_return_request **, char *, std::size_t, std::size_t *) noexcept;
 ams_mel_status_t submit_common_comms(const CommonChannelAccess&,
