@@ -1,5 +1,10 @@
 # Architecture decisions
 
+Task 031B adds opt-in Session-scoped admission before async
+RequestFor provider sends. Zero remains unlimited; rejection has no bridge
+queue or retry. An admitted future still has its own blocked worker; this
+does not multiplex futures. See `task-031b-bounded-completion-admission.md`.
+
 ## Scope
 
 Build a consumer-side binding, not a new official MEL standard and not a

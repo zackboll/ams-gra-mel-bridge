@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add opt-in per-Session asynchronous RequestFor admission, shared across seven
+  request types, with backward-compatible unlimited defaults in C, Ada, Rust,
+  and Python. Bridge status 13 reports refusal before send; request Close does
+  not cancel work or release capacity. Add deterministic safe-binding tests and
+  mock-only limit-eight benchmarks; no thread pooling or throughput claim.
+
 - Normalize C2 Mode, Return, and CommsTest submission: reserve request ownership
   under the lifecycle mutex, then invoke provider send unlocked. Synchronous
   send exceptions unwind accounting and perform deferred cleanup if Close won

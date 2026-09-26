@@ -90,7 +90,10 @@ struct Worker {
     ~Worker() { finish(family); }
 };
 /* Declare this as the FIRST WorkerInput field: it is destroyed last, after
- * the future and Completion. The submitting thread drops its input reference
+ * the future, Completion shared owner, and CompletionPermit (in that order).
+ * A FinalOwner observation therefore proves that admission has been released.
+ * Keep the permit before Completion/future and after this first field.
+ * The submitting thread drops its input reference
  * after launch; only the captured thread owner remains in normal operation. */
 struct FinalOwner {
     Family family;

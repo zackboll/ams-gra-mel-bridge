@@ -315,6 +315,7 @@ struct Completion {
 
 struct WorkerInput {
     AMS_MEL_PROBE_OWNER(Instrumentation)
+    CompletionPermit admission;
     std::shared_ptr<Completion> completion;
     mel::RequestFor<irmel::InstrumentationReport> future;
     std::shared_ptr<WorkerInput> emergency_self;
@@ -447,6 +448,19 @@ SubmitFailpoint submit_failpoint() noexcept
 } // namespace
 
 struct ams_mel_ir_instrumentation { std::shared_ptr<ChannelState> state; };
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_instrumentation_requests(
+    const ams_mel_ir_instrumentation *owner, std::size_t *requests) noexcept
+{
+    try {
+        if (!owner || !requests) return 0;
+        std::lock_guard lock{owner->state->mutex};
+        *requests = owner->state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 struct ams_mel_ir_instrumentation_request { std::shared_ptr<Completion> state; };
 struct ams_mel_ir_instrumentation_metadata {
     std::shared_ptr<MetadataState> state;
@@ -617,6 +631,12 @@ extern "C" ams_mel_status_t ams_mel_ir_instrumentation_submit_level(
     } catch (...) {
         diagnostic("InstrumentationLevelCmd preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
+    }
+
+    if (!acquire_completion_permit(instrumentation->state->session->admission,
+                                   input->admission)) {
+        diagnostic("async request limit reached", out, capacity, required);
+        return AMS_MEL_RESOURCE_EXHAUSTED;
     }
 
     /* Account the request and copy the shared InstrumentationChannel locally

@@ -73,6 +73,7 @@ int main(void)
     VALUE(AMS_MEL_INTERNAL_ERROR); VALUE(AMS_MEL_TIMEOUT);
     VALUE(AMS_MEL_STREAM_STOPPED); VALUE(AMS_MEL_PROVIDER_FAILED);
     VALUE(AMS_MEL_COMMAND_REJECTED);
+    VALUE(AMS_MEL_RESOURCE_EXHAUSTED);
     VALUE(AMS_MEL_IR_CHANNEL_IRST_IMAGE);
     VALUE(AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL);
     VALUE(AMS_MEL_IR_MFA_MODE_UNUSED); VALUE(AMS_MEL_IR_MFA_MODE_TASK_SCHED);
@@ -106,6 +107,8 @@ int main(void)
 
     LAYOUT(ams_mel_abi_version_v1);
     FIELD(ams_mel_abi_version_v1, major); FIELD(ams_mel_abi_version_v1, minor);
+    LAYOUT(ams_mel_session_options_v1);
+    FIELD(ams_mel_session_options_v1, max_async_requests);
     LAYOUT(ams_mel_provider_version_v1);
     FIELD(ams_mel_provider_version_v1, api_version);
     FIELD(ams_mel_provider_version_v1, library_version);

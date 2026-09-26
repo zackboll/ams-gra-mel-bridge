@@ -17,6 +17,13 @@ pub const AMS_MEL_TIMEOUT: AmsMelStatus = 9;
 pub const AMS_MEL_STREAM_STOPPED: AmsMelStatus = 10;
 pub const AMS_MEL_PROVIDER_FAILED: AmsMelStatus = 11;
 pub const AMS_MEL_COMMAND_REJECTED: AmsMelStatus = 12;
+pub const AMS_MEL_RESOURCE_EXHAUSTED: AmsMelStatus = 13;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelSessionOptionsV1 {
+    pub max_async_requests: u32,
+}
 
 pub const AMS_MEL_IR_CHANNEL_IRST_TRACK: u32 = 0;
 pub const AMS_MEL_IR_CHANNEL_IRST_IMAGE: u32 = 1;
@@ -1577,6 +1584,17 @@ extern "C" {
         library_path: *const c_char,
         instance: *const c_char,
         aperture_config_id: *const c_char,
+        out_session: *mut *mut AmsMelSession,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_session_open_with_options(
+        library_path: *const c_char,
+        instance: *const c_char,
+        aperture_config_id: *const c_char,
+        options: *const AmsMelSessionOptionsV1,
         out_session: *mut *mut AmsMelSession,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

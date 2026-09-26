@@ -107,7 +107,7 @@ struct Timeline {
     }
 };
 
-static int mixed(Gate gate, void *&handle)
+static int mixed(Gate gate, void *&handle, bool bounded = false)
 {
     constexpr std::array<unsigned, 6> counts{15, 15, 14, 14, 14, 28};
     std::array<std::array<std::uint64_t, 6>, 6> base{}, held{};
@@ -186,8 +186,12 @@ static int mixed(Gate gate, void *&handle)
         if (!ams_mel_test_completion_snapshot(f, base[f].data()) ||
             !ams_mel_test_completion_owner(f, 0, &owners[f])) return 1;
     std::uint64_t sent{}, released{};
+    const ams_mel_session_options_v1 options{8};
+    const auto opened = bounded
+        ? ams_mel_session_open_with_options(AMS_MEL_TEST_MOCK_PROVIDER, "completion-scale", "", &options, &session, nullptr, 0, nullptr)
+        : ams_mel_session_open(AMS_MEL_TEST_MOCK_PROVIDER, "completion-scale", "", &session, nullptr, 0, nullptr);
     if (!gate(0, 0, &sent, &released) || sent != released ||
-        ams_mel_session_open(AMS_MEL_TEST_MOCK_PROVIDER, "completion-scale", "", &session, nullptr, 0, nullptr) != AMS_MEL_OK ||
+        opened != AMS_MEL_OK ||
         ams_mel_ir_c2_open(session, &cc, &c2, nullptr, 0, nullptr) != AMS_MEL_OK ||
         ams_mel_ir_stream_open(session, &ic, &image, nullptr, 0, nullptr) != AMS_MEL_OK ||
         ams_mel_ir_instrumentation_open(session, &lc, &instr, nullptr, 0, nullptr) != AMS_MEL_OK ||
@@ -204,6 +208,75 @@ static int mixed(Gate gate, void *&handle)
     level.priority = AMS_MEL_IR_PRIORITY_DEBUG;
     update.track_status = AMS_MEL_IR_TRACK_STATUS_UPDATE;
     cr.command_id = 0x80000001U; cr.request_id = 0xe0000003U;
+    if (bounded) {
+        unsigned accepted{}, pending{}, refused{}, peak{};
+        std::array<unsigned, 6> submitted_counts{};
+        constexpr std::array<unsigned, 7> family{1, 0, 2, 3, 4, 5, 5};
+        OsState maximum = baseline;
+        while (accepted < 100 || pending) {
+            ams_mel_status_t status = AMS_MEL_RESOURCE_EXHAUSTED;
+            const auto index = accepted / 7;
+            if (accepted < 100) {
+                switch (accepted % 7) {
+                case 0: status = ams_mel_ir_c2_send_keepalive(c2, &returns[index], nullptr, 0, nullptr); break;
+                case 1: status = ams_mel_ir_c2_submit_operate(c2, 1, &modes[index], nullptr, 0, nullptr); break;
+                case 2: status = ams_mel_ir_c2_submit_comms_test(c2, &cr, &comms[index], nullptr, 0, nullptr); break;
+                case 3: status = ams_mel_ir_stream_submit_navigation_report(image, &nr, &navigation[index], nullptr, 0, nullptr); break;
+                case 4: status = ams_mel_ir_instrumentation_submit_level(instr, &level, &levels[index], nullptr, 0, nullptr); break;
+                case 5: status = ams_mel_ir_track_submit_update(track, &update, &updates[index], nullptr, 0, nullptr); break;
+                case 6: status = ams_mel_ir_track_submit_system_track_data_response(track, &response, &responses[index], nullptr, 0, nullptr); break;
+                }
+            }
+            if (status == AMS_MEL_OK) {
+                ++submitted_counts[family[accepted % 7]];
+                ++accepted;
+                if (++pending > 8) return 1;
+                continue;
+            }
+            if (status != AMS_MEL_RESOURCE_EXHAUSTED || !pending) return 1;
+            if (accepted < 100) ++refused;
+            std::uint64_t observed_sent{};
+            if (!gate(0, 0, &observed_sent, nullptr) || observed_sent != sent + accepted) return 1;
+            unsigned active{};
+            for (unsigned f = 0; f < 6; ++f) {
+                if (!ams_mel_test_completion_wait(f, 4, base[f][4] + submitted_counts[f]) ||
+                    !ams_mel_test_completion_snapshot(f, held[f].data())) return 1;
+                active += static_cast<unsigned>(held[f][1]);
+            }
+            if (active != pending || active > 8) return 1;
+            peak = std::max(peak, active);
+            const auto sample = os_state();
+            maximum.threads = std::max(maximum.threads, sample.threads);
+            maximum.rss = std::max(maximum.rss, sample.rss);
+            maximum.virtual_kb = std::max(maximum.virtual_kb, sample.virtual_kb);
+            if (!gate(2, pending, nullptr, nullptr)) return 1;
+            // Refused inputs also have FinalOwners. Await all created inputs,
+            // not worker-return counters, before retrying the same operation.
+            for (unsigned f = 0; f < 6; ++f) {
+                std::uint64_t boundary[4]{}, observed{};
+                if (!ams_mel_test_completion_boundary(f, 3, 0, boundary) ||
+                    !ams_mel_test_completion_owner(f, boundary[2], &observed)) return 1;
+            }
+            pending = 0;
+        }
+        unsigned gets{}, active{};
+        for (unsigned f = 0; f < 6; ++f) {
+            if (!ams_mel_test_completion_snapshot(f, held[f].data()) ||
+                held[f][0] != base[f][0] + counts[f] ||
+                held[f][5] != base[f][5] + counts[f]) return 1;
+            gets += static_cast<unsigned>(held[f][5] - base[f][5]);
+            active += static_cast<unsigned>(held[f][1]);
+        }
+        if (accepted != 100 || gets != 100 || active != 0 || peak > 8) return 1;
+        std::cout << "bounded logical_requests=" << accepted << " provider_sends=" << accepted
+                  << " gets=" << gets << " final_active_workers=" << active
+                  << " peak_active_workers=" << peak << " resource_exhausted=" << refused
+                  << " threads_base=" << baseline.threads << " threads_peak_held=" << maximum.threads
+                  << " rss_base_kb=" << baseline.rss << " rss_peak_held_kb=" << maximum.rss
+                  << " vm_base_kb=" << baseline.virtual_kb << " vm_peak_held_kb=" << maximum.virtual_kb
+                  << " duration_ms=" << ms(benchmark_begin, Clock::now()) << '\n';
+        return 0;
+    }
     const auto submission_begin = Clock::now();
     for (auto& r : returns) if (ams_mel_ir_c2_send_keepalive(c2, &r, nullptr, 0, nullptr) != AMS_MEL_OK) return 1;
     for (auto& r : modes) if (ams_mel_ir_c2_submit_operate(c2, 1, &r, nullptr, 0, nullptr) != AMS_MEL_OK) return 1;
@@ -316,6 +389,11 @@ int main(int argc, char **argv)
         if (status != 0 || !timeline.report()) return 1;
         timeline.complete = true;
         return 0;
+    }
+    if (argc == 2 && std::string{argv[1]} == "bounded") {
+        const int status = mixed(gate, handle, true);
+        dlclose(handle);
+        return status;
     }
     if (argc != 1) return 1;
     struct Cleanup {

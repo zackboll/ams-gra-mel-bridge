@@ -9,6 +9,33 @@
 #include <string>
 #include <string_view>
 
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* This token deliberately owns no provider-dependent state. */
+struct ams_mel_test_admission_token {
+    std::shared_ptr<CompletionAdmission> admission;
+};
+
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_admission(
+    const ams_mel_session *session, unsigned operation,
+    ams_mel_test_admission_token **token, std::uint32_t *active,
+    std::uint32_t *maximum) noexcept
+{
+    try {
+        if (!token) return 0;
+        if (operation == 0U) {
+            if (!session || *token || !session->state->admission) return 0;
+            *token = new ams_mel_test_admission_token{session->state->admission};
+            return 1;
+        }
+        if (operation == 2U) { delete *token; *token = nullptr; return 1; }
+        if (operation != 1U || !*token || !active || !maximum) return 0;
+        *active = (*token)->admission->active.load(std::memory_order_acquire);
+        *maximum = (*token)->admission->maximum;
+        return 1;
+    } catch (...) { return 0; }
+}
+#endif
+
 namespace {
 
 using ManagerFactory = std::shared_ptr<API_Manager> (*)(const std::string&);
@@ -108,9 +135,10 @@ bool valid_utf8(std::string_view value, bool reject_nul) noexcept
 
 } // namespace
 
-extern "C" ams_mel_status_t ams_mel_session_open(
+static ams_mel_status_t open_session_impl(
     const char *library_path, const char *instance,
-    const char *aperture_config_id, ams_mel_session **out_session,
+    const char *aperture_config_id, std::uint32_t maximum,
+    ams_mel_session **out_session,
     char *diagnostic, std::size_t diagnostic_capacity,
     std::size_t *diagnostic_required) noexcept
 {
@@ -182,6 +210,8 @@ extern "C" ams_mel_status_t ams_mel_session_open(
         }
 
         auto state = std::make_shared<SessionState>();
+        if (maximum != 0U)
+            state->admission = std::make_shared<CompletionAdmission>(maximum);
         state->library = std::move(library);
         state->manager = std::move(manager);
         state->control = std::move(control);
@@ -203,6 +233,30 @@ extern "C" ams_mel_status_t ams_mel_session_open(
                          diagnostic_capacity, diagnostic_required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
+}
+
+extern "C" ams_mel_status_t ams_mel_session_open(
+    const char *library_path, const char *instance, const char *aperture_config_id,
+    ams_mel_session **out_session, char *diagnostic, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    return open_session_impl(library_path, instance, aperture_config_id, 0U,
+                             out_session, diagnostic, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_session_open_with_options(
+    const char *library_path, const char *instance, const char *aperture_config_id,
+    const ams_mel_session_options_v1 *options, ams_mel_session **out_session,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    if (!options) {
+        clear_diagnostic(diagnostic, capacity, required);
+        write_diagnostic("invalid argument", diagnostic, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    return open_session_impl(library_path, instance, aperture_config_id,
+                             options->max_async_requests, out_session,
+                             diagnostic, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_session_get_provider_version(

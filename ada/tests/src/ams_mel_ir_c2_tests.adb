@@ -1,4 +1,8 @@
 with Ada.Text_IO;
+with Ada.Exceptions;
+with Ada.Unchecked_Conversion;
+with Interfaces.C;
+with System;
 with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.IR.C2;
@@ -422,6 +426,160 @@ package body AMS_MEL_IR_C2_Tests is
       end;
    end Test_Config_Set;
 
+   procedure Test_Admission (Provider_Path : String) is
+      --  Test-local synchronization only; Session/channel/request calls below
+      --  all exercise the safe binding. Resolve observers dynamically because
+      --  they intentionally do not exist in the production link library.
+      package C renames Interfaces.C;
+      use type C.int;
+      use type System.Address;
+      type Count is mod 2**64 with Convention => C;
+      type Counts is array (0 .. 3) of aliased Count with Convention => C;
+      function Dlopen (Path : C.char_array; Flags : C.int) return System.Address
+      with Import, Convention => C, External_Name => "dlopen";
+      function Dlsym (Handle : System.Address; Name : C.char_array) return System.Address
+      with Import, Convention => C, External_Name => "dlsym";
+      function Dlclose (Handle : System.Address) return C.int
+      with Import, Convention => C, External_Name => "dlclose";
+      type Gate_Function is
+        access function
+          (Operation : C.unsigned; Target : Count; Sent, Released : System.Address) return C.int
+      with Convention => C;
+      type Boundary_Function is
+        access function
+          (Family, Operation : C.unsigned; Target : Count; Values : System.Address) return C.int
+      with Convention => C;
+      type Owner_Function is
+        access function
+          (Family : C.unsigned; Target : Count; Observed : System.Address) return C.int
+      with Convention => C;
+      function To_Gate is new Ada.Unchecked_Conversion (System.Address, Gate_Function);
+      function To_Boundary is new Ada.Unchecked_Conversion (System.Address, Boundary_Function);
+      function To_Owner is new Ada.Unchecked_Conversion (System.Address, Owner_Function);
+      Provider : constant System.Address := Dlopen (C.To_C (Provider_Path), 2);
+      Facade   : constant System.Address := Dlopen (C.To_C ("libams_mel_c.so.0"), 2);
+      Gate     : Gate_Function;
+      Boundary : Boundary_Function;
+      Owner    : Owner_Function;
+
+      procedure Require (Value : Boolean) is
+      begin
+         if not Value then
+            raise Program_Error with "Ada admission contract failed";
+         end if;
+      end Require;
+
+      procedure Release (Number : Count) is
+      begin
+         Require (Gate (2, Number, System.Null_Address, System.Null_Address) = 1);
+      end Release;
+
+      procedure Reclaimed is
+         Values   : aliased Counts := [others => 0];
+         Observed : aliased Count := 0;
+      begin
+         for Family in C.unsigned range 0 .. 1 loop
+            Require (Boundary (Family, 3, 0, Values'Address) = 1);
+            Require (Owner (Family, Values (2), Observed'Address) = 1);
+         end loop;
+      end Reclaimed;
+
+      procedure Refused (Channel : in out C2.Control_Channel) is
+      begin
+         declare
+            Unexpected : C2.Return_Request := C2.Submit_BIT_No_Op (Channel, 2);
+         begin
+            C2.Close (Unexpected);
+            raise Program_Error with "bounded submission unexpectedly succeeded";
+         end;
+      exception
+         when Error : AMS.MEL.Resource_Exhausted =>
+            Require (Ada.Exceptions.Exception_Message (Error) = "async request limit reached");
+      end Refused;
+
+      function Open_Case (Which : Positive) return AMS.MEL.Session is
+      begin
+         if Which = 1 then
+            return AMS.MEL.Open (Provider_Path, "completion-scale");
+         else
+            return
+              AMS.MEL.Open_With_Options
+                (Provider_Path,
+                 "completion-scale",
+                 Options => (Max_Async_Requests => (if Which = 2 then 0 else 1)));
+         end if;
+      end Open_Case;
+   begin
+      Require (Provider /= System.Null_Address and then Facade /= System.Null_Address);
+      Gate := To_Gate (Dlsym (Provider, C.To_C ("mock_completion_gate")));
+      Boundary := To_Boundary (Dlsym (Facade, C.To_C ("ams_mel_test_completion_boundary")));
+      Owner := To_Owner (Dlsym (Facade, C.To_C ("ams_mel_test_completion_owner")));
+      Require (Gate /= null and then Boundary /= null and then Owner /= null);
+      for Which in 1 .. 3 loop
+         declare
+            Parent  : AMS.MEL.Session := Open_Case (Which);
+            Channel : C2.Control_Channel := C2.Open (Parent, Config);
+         begin
+            C2.Enable (Channel);
+            declare
+               First : C2.Mode_Request := C2.Submit_Operate (Channel, 1);
+            begin
+               if Which = 3 then
+                  Refused (Channel);
+                  C2.Close (First);
+                  Refused (Channel);
+                  Release (1);
+               else
+                  declare
+                     Second : C2.Return_Request := C2.Submit_BIT_No_Op (Channel, 2);
+                  begin
+                     Release (2);
+                     Require (C2.Status (C2.Wait (Second, 15_000)) = C2.Success);
+                     C2.Close (Second);
+                  end;
+               end if;
+               Reclaimed;
+               C2.Close (First);
+            end;
+            declare
+               Retry : C2.Mode_Request := C2.Submit_Operate (Channel, 4);
+            begin
+               Release (1);
+               Require (C2.Status (C2.Wait (Retry, 15_000)) = C2.Success);
+               Reclaimed;
+               C2.Close (Retry);
+            end;
+            C2.Close (Channel);
+            AMS.MEL.Close (Parent);
+         end;
+      end loop;
+      Require (Gate (4, 0, System.Null_Address, System.Null_Address) = 1);
+      declare
+         Parent  : AMS.MEL.Session := Open_Case (3);
+         Channel : C2.Control_Channel := C2.Open (Parent, Config);
+      begin
+         C2.Enable (Channel);
+         declare
+            Request : C2.Mode_Request := C2.Submit_Operate (Channel, 5);
+         begin
+            Release (1);
+            declare
+               Result : constant C2.Mode_Result := C2.Wait (Request, 15_000);
+            begin
+               Require (C2.Status (Result) = C2.Rejected);
+               Require (C2.Rejection_Code (Result) = C2.Insufficient_Resources);
+            end;
+            Reclaimed;
+            C2.Close (Request);
+         end;
+         C2.Close (Channel);
+         AMS.MEL.Close (Parent);
+      end;
+      Require (Dlclose (Provider) = 0);
+      Require (Dlclose (Facade) = 0);
+      Ada.Text_IO.Put_Line ("PASS: Ada bounded admission and provider resource distinction");
+   end Test_Admission;
+
    procedure Run (Provider_Path : String) is
    begin
       Test_Success (Provider_Path);
@@ -437,6 +595,7 @@ package body AMS_MEL_IR_C2_Tests is
       Test_General_Mode (Provider_Path);
       Test_BIT_Choices (Provider_Path);
       Test_Config_Set (Provider_Path);
+      Test_Admission (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada required IR C2 command contract");
    end Run;
 end AMS_MEL_IR_C2_Tests;

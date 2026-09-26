@@ -47,15 +47,17 @@ std::atomic<std::uint64_t> buffers_outstanding{};
 struct C2SendBarrier {
     bool armed{}, entered{}, released{}, throws{};
 };
-C2SendBarrier c2_send_barriers[3];
+C2SendBarrier c2_send_barriers[6];
+unsigned send_entries[6]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 3U || operation > 2U) return 0;
+    if (family >= 6U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
+    if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
     if (operation == 0U) barrier = {true, false, false, throws != 0U};
     if (operation == 1U)
@@ -68,6 +70,7 @@ extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
 void c2_send_boundary(unsigned family)
 {
     std::unique_lock lock{c2_send_mutex};
+    ++send_entries[family];
     auto& barrier = c2_send_barriers[family];
     if (!barrier.armed) return;
     barrier.entered = true;
@@ -91,6 +94,7 @@ std::deque<HeldCompletion> completion_gate_pending;
 std::uint64_t completion_gate_submitted{};
 std::uint64_t completion_gate_released{};
 bool completion_gate_exception{};
+bool completion_gate_resource_rejection{};
 std::vector<std::pair<unsigned, std::weak_ptr<void>>> completion_results;
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_completion_live_results(
@@ -112,10 +116,15 @@ mel::RequestFor<T> held_request(std::shared_ptr<T> result, unsigned family)
         std::lock_guard lock{completion_gate_mutex};
         completion_results.emplace_back(family, result);
         const bool exceptional = completion_gate_exception;
-        completion_gate_pending.push_back({family, [promise, exceptional, result = std::move(result)] () mutable {
+        const bool rejected = completion_gate_resource_rejection && family == 0U;
+        completion_gate_pending.push_back({family, [promise, exceptional, rejected, result = std::move(result)] () mutable {
             if (exceptional) {
                 result.reset();
                 promise->set_exception(std::make_exception_ptr(std::runtime_error{"held future exception"}));
+            } else if (rejected) {
+                result.reset();
+                promise->set_value(mel::ErrorOr<std::shared_ptr<T>>{mel::Error{
+                    mel::ErrorCode::InsufficientResources, "provider resource rejection"}});
             } else promise->set_value(mel::ErrorOr<std::shared_ptr<T>>{std::move(result)});
         }});
         ++completion_gate_submitted;
@@ -128,8 +137,9 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
     unsigned operation, std::uint64_t amount, std::uint64_t *submitted,
     std::uint64_t *released)
 {
-    if (operation > 3U) return 0;
+    if (operation > 4U) return 0;
     if (operation == 3U) completion_gate_exception = true;
+    if (operation == 4U) completion_gate_resource_rejection = true;
     if (operation == 1U) {
         std::unique_lock lock{completion_gate_mutex};
         if (!completion_gate_ready.wait_for(lock, std::chrono::seconds{15},
@@ -1124,6 +1134,7 @@ public:
     mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override { return {}; }
     mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport report) override
     {
+        c2_send_boundary(3);
         record("navigation_sent");
         if (scenario_ == "navigation-fidelity" && !navigation_report_matches(report))
             throw std::runtime_error("NavigationReport conversion mismatch");
@@ -2562,6 +2573,7 @@ public:
             (command.getCommandID() != 7U ||
              command.getInstrumentationPriority() != irmel::Priority::Normal))
             throw std::runtime_error("Normal InstrumentationLevelCmd conversion mismatch");
+        c2_send_boundary(4);
         if (scenario_ == "instr-send-throw")
             throw std::runtime_error("mock Instrumentation send exception");
 
@@ -3190,6 +3202,7 @@ public:
     /* The one positively implemented @RequiredIfTrackUpdate Track send. */
     mel::RequestFor<irmel::CommandStatus> send(irmel::TrackDataUpdate update) override
     {
+        c2_send_boundary(5);
         record("track_data_update_sent");
         if (!enabled_) throw std::logic_error("TrackDataUpdate sent before enable");
         if (scenario_ != "track-update-any" && scenario_ != "track-mixed-requests" &&

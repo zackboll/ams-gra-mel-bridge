@@ -21,6 +21,7 @@ class AbiTests(unittest.TestCase):
             (
                 "ams_mel_get_abi_version",
                 "ams_mel_session_open",
+                "ams_mel_session_open_with_options",
                 "ams_mel_session_get_provider_version",
                 "ams_mel_session_close",
                 "ams_mel_ir_stream_open",
@@ -111,7 +112,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_system_response_request_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 90)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 91)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -163,6 +164,7 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_STREAM_STOPPED,
             _native.AMS_MEL_PROVIDER_FAILED,
             _native.AMS_MEL_COMMAND_REJECTED,
+            _native.AMS_MEL_RESOURCE_EXHAUSTED,
             _native.AMS_MEL_IR_CHANNEL_IRST_IMAGE,
             _native.AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL,
             _native.AMS_MEL_IR_MFA_MODE_UNUSED,
@@ -200,6 +202,7 @@ class AbiTests(unittest.TestCase):
             _native.AMS_MEL_IR_FLIP_BOTH,
         ]
         expected.extend(self._layout(_native.AbiVersionV1, "major", "minor"))
+        expected.extend(self._layout(_native.SessionOptionsV1, "max_async_requests"))
         expected.extend(
             self._layout(
                 _native.ProviderVersionV1,

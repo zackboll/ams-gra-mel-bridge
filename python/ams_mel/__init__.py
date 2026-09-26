@@ -267,6 +267,7 @@ class ErrorKind(Enum):
     INTERNAL_ERROR = "internal_error"
     TIMEOUT = "timeout"
     STREAM_STOPPED = "stream_stopped"
+    RESOURCE_EXHAUSTED = "resource_exhausted"
     INVALID_UTF8 = "invalid_utf8"
     PROTOCOL_INCONSISTENCY = "protocol_inconsistency"
     UNKNOWN = "unknown"
@@ -302,6 +303,7 @@ _STATUS_KINDS = {
     _native.AMS_MEL_INTERNAL_ERROR: ErrorKind.INTERNAL_ERROR,
     _native.AMS_MEL_TIMEOUT: ErrorKind.TIMEOUT,
     _native.AMS_MEL_STREAM_STOPPED: ErrorKind.STREAM_STOPPED,
+    _native.AMS_MEL_RESOURCE_EXHAUSTED: ErrorKind.RESOURCE_EXHAUSTED,
 }
 
 
@@ -504,8 +506,13 @@ class Session:
         provider_library: str | os.PathLike[str],
         instance: str,
         aperture: str,
+        *,
+        max_async_requests: int = 0,
     ) -> Session:
-        """Load, create, and initialize a provider session."""
+        """Open a session; zero admission limit is unlimited, with no queue/retry."""
+
+        _validate_uint32(max_async_requests, "max_async_requests")
+        options = _native.SessionOptionsV1(max_async_requests)
 
         try:
             path = os.fspath(provider_library)
@@ -526,10 +533,11 @@ class Session:
 
         try:
             _call_with_diagnostic(
-                lambda diagnostic, required: _native.ams_mel_session_open(
+                lambda diagnostic, required: _native.ams_mel_session_open_with_options(
                     library_bytes,
                     instance_bytes,
                     aperture_bytes,
+                    _ctypes.byref(options),
                     _ctypes.byref(owner),
                     diagnostic,
                     len(diagnostic),

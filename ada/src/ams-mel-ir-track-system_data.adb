@@ -105,17 +105,18 @@ package body AMS.MEL.IR.Track.System_Data is
          raise Provider_Error with "IR Track channel is closed";
       end if;
       return Result : Response_Request do
-         if C.IR_Track_Submit_System_Track_Data_Response
-              (Channel.Handle,
-               Raw'Access,
-               Result.Owner.Handle'Access,
-               D'Address,
-               D'Length,
-               Required'Access)
-           /= C.Success
-         then
-            raise Provider_Error with Message (D);
-         end if;
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Track_Submit_System_Track_Data_Response
+                (Channel.Handle,
+                 Raw'Access,
+                 Result.Owner.Handle'Access,
+                 D'Address,
+                 D'Length,
+                 Required'Access);
+         begin
+            Check_Submission (Code, Message (D));
+         end;
       end return;
    end Submit;
 

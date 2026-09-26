@@ -36,12 +36,13 @@ package body AMS.MEL.IR.C2.Common is
       R : aliased C.Size_T := 0;
    begin
       return Result : Return_Request do
-         if C.IR_C2_Send_Keepalive
-              (Channel.Handle, Result.Owner.Handle'Access, D'Address, D'Length, R'Access)
-           /= C.Success
-         then
-            raise Provider_Error with Message (D);
-         end if;
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Send_Keepalive
+                (Channel.Handle, Result.Owner.Handle'Access, D'Address, D'Length, R'Access);
+         begin
+            Check_Submission (Code, Message (D));
+         end;
       end return;
    end Send_Keep_Alive;
    function Submit_Comms_Test
@@ -58,17 +59,18 @@ package body AMS.MEL.IR.C2.Common is
       R   : aliased C.Size_T := 0;
    begin
       return Result : Comms_Request do
-         if C.IR_C2_Submit_Comms_Test
-              (Channel.Handle,
-               Raw'Access,
-               Result.Owner.Handle'Access,
-               D'Address,
-               D'Length,
-               R'Access)
-           /= C.Success
-         then
-            raise Provider_Error with Message (D);
-         end if;
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Submit_Comms_Test
+                (Channel.Handle,
+                 Raw'Access,
+                 Result.Owner.Handle'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            Check_Submission (Code, Message (D));
+         end;
       end return;
    end Submit_Comms_Test;
    function Wait (Request : Comms_Request; Timeout_Milliseconds : Natural) return Comms_Result is

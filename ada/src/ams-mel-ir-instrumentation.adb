@@ -174,17 +174,18 @@ package body AMS.MEL.IR.Instrumentation is
       Required : aliased C.Size_T := 0;
    begin
       return Result : Instrumentation_Request do
-         if C.IR_Instrumentation_Submit_Level
-              (Channel.Handle,
-               Raw'Access,
-               Result.Owner.Handle'Access,
-               D'Address,
-               D'Length,
-               Required'Access)
-           /= C.Success
-         then
-            raise Provider_Error with Message (D);
-         end if;
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Instrumentation_Submit_Level
+                (Channel.Handle,
+                 Raw'Access,
+                 Result.Owner.Handle'Access,
+                 D'Address,
+                 D'Length,
+                 Required'Access);
+         begin
+            Check_Submission (Code, Message (D));
+         end;
       end return;
    end Submit;
 
