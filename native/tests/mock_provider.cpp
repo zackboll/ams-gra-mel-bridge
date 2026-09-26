@@ -2532,9 +2532,26 @@ public:
         if (producer_.joinable()) producer_.join();
         record("instrumentation_channel_destroyed");
     }
-    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
-    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
-    { return {}; }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        return held_request(std::make_shared<Return>(Return::Success), 1);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (scenario_ == "comms-send-throw") throw std::runtime_error("mock comms send exception");
+        if (scenario_ == "comms-high-held" &&
+            (request.getCommandID() != 0x80000001U ||
+             request.getChannelID() != 0xf0000002U ||
+             request.getRequestID() != 0xe0000003U))
+            throw std::runtime_error("CommsTest request conversion mismatch");
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 2);
+    }
     Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
     { return Return::NotSupported; }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
@@ -2575,6 +2592,16 @@ public:
         if (scenario_ == "instr-register-fail") return Return::Fail;
         report_callback_ = std::move(cb);
         record("instrumentation_callback_registered");
+        if (scenario_ == "instr-common-metadata") {
+            producer_ = std::thread{[this] {
+                const char *base = std::getenv("AMS_MEL_TEST_INSTRUMENTATION_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                auto report = rich_instrumentation_report();
+                report_callback_(*this, &report);
+                record("instrumentation_callback_returned");
+            }};
+        }
         /* Synchronous emission from inside registration. */
         if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime") {
             auto value = rich_instrumentation_report();
@@ -3057,9 +3084,26 @@ public:
         if (preproc_producer_.joinable()) preproc_producer_.join();
         record("track_channel_destroyed");
     }
-    mel::RequestFor<Return> sendKeepAliveRep() override { return {}; }
-    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq) override
-    { return {}; }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        return held_request(std::make_shared<Return>(Return::Success), 1);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (scenario_ == "comms-send-throw") throw std::runtime_error("mock comms send exception");
+        if (scenario_ == "comms-high-held" &&
+            (request.getCommandID() != 0x80000001U ||
+             request.getChannelID() != 0xf0000002U ||
+             request.getRequestID() != 0xe0000003U))
+            throw std::runtime_error("CommsTest request conversion mismatch");
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 2);
+    }
     Return registerBuffer(std::shared_ptr<irmel::Buffer>) override
     { return Return::NotSupported; }
     Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override
@@ -3363,7 +3407,16 @@ public:
         if (scenario_ == "track-report-register-fail") return Return::Fail;
         if (!callback) return Return::Fail;
         report_callback_ = std::move(callback);
-        emit_synchronous_reports();
+        if (scenario_ == "track-common-metadata") {
+            request_producer_ = std::thread{[this] {
+                const char *base = std::getenv("AMS_MEL_TEST_TRACK_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                const auto report = rich_track_report();
+                report_callback_(*this, &report);
+                record("track_callback_returned");
+            }};
+        } else emit_synchronous_reports();
         return Return::Success;
     }
     /* The @Optional RequestSystemTrackData callback, positively implemented so

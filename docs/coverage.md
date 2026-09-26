@@ -1,5 +1,15 @@
 # Implementation coverage
 
+Task 032A4 adds test-only Instrumentation and Track common
+KeepAlive/Comms access for Attached and Enabled, with the existing family
+request counters and shared Session permit. Focused C11 tests cover weak idle,
+parent-first, finish-exception and detach-failure retention, mixed typed/common
+accounting including direct weak-observer counts after logical Close,
+metadata callback quiescence, Close-wins KeepAlive/Comms throws, four
+cross-family admission directions, and permanent post-send retention.
+Fresh GCC Debug/Release suites each have 151 tests and pass full repeat-50;
+see `task-032a4-common-access-instrumentation-track.md`.
+
 Task 032A3 adds test-only weak Health common access and request accounting:
 C11 evidence covers held KeepAlive/Comms, weak idle, Attached/Enabled deferred
 cleanup, pending-request callback quiescence and logical metadata stop,
@@ -60,7 +70,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Other Track optional/conditional surfaces | None remaining | Every published TrackChannel-specific surface is implemented; the Track API is complete in native C and safe Ada |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 90 C functions, including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 91 C functions, including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
 | Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 91-function private ctypes binding; no public Image metadata/Navigation/Instrumentation/Track methods |

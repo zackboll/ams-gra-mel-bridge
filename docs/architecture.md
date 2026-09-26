@@ -1,5 +1,14 @@
 # Architecture decisions
 
+Task 032A4 adds private weak common access for Instrumentation
+and Track using their existing single family request counters, Session admission
+and deferred cleanup. The view and conversion functions are test-only; no
+public common Channel API or capability query is introduced. Test-only weak
+observers prove closed-parent mixed counts without pinning either graph;
+callback quiescence and Session-wide admission are verified across the new
+common and existing typed requests. See
+`task-032a4-common-access-instrumentation-track.md`.
+
 Task 032A3: Health joins the private weak common access and
 shared Return/Comms completion engines. Health Close is logical first with
 pending common requests, immediately deactivates metadata, and defers physical
