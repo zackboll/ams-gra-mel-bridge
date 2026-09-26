@@ -545,8 +545,21 @@ bool finish_channel(const std::shared_ptr<ChannelState>& channel)
 /* The erased finish function is the only C2-specific part of the shared claim. */
 bool finish_c2_request(const std::shared_ptr<void>& erased) noexcept
 {
-    try { return finish_channel(std::static_pointer_cast<ChannelState>(erased)); }
-    catch (...) { return false; }
+    auto state = std::static_pointer_cast<ChannelState>(erased);
+    try {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *failure = std::getenv("AMS_MEL_TEST_C2_FINISH_FAILURE");
+            failure && std::strcmp(failure, "exception") == 0)
+            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+        return finish_channel(state);
+    } catch (...) {
+        /* The claim already relinquished its owner. Never drop the graph when
+         * cleanup cannot be proven, even if its mutex or another internal step
+         * threw before the normal cleanup retention path could run. */
+        retain_failed(state);
+        return false;
+    }
 }
 
 void complete(const std::shared_ptr<Completion>& state,

@@ -20,6 +20,15 @@ or destructor cannot decrement twice. Move assignment finishes its prior claim.
 The C2-only erased adapter in `ir_c2.cpp` casts back to `ChannelState` and calls
 the unchanged `finish_channel` path; a failed deferred cleanup still becomes
 ProviderFailure with `deferred C2 cleanup failed` on completed requests.
+Corrective: `finish()` has already moved the strong owner out of the claim when
+the adapter runs. An unexpected exception from `finish_channel` previously
+returned false without retaining the graph. The C2 adapter now retains the
+state allocation-free in its catch before returning false. Normal cleanup
+failure continues to retain through `cleanup(state, true)`. Test-build-only
+`AMS_MEL_TEST_C2_FINISH_FAILURE=exception` throws inside the adapter before
+cleanup, and isolated C11 Return and Comms tests verify one future get, failed
+Wait with the existing diagnostic, and no channel/control/manager destruction
+or library unload even after closing both public owners and the request.
 
 C2 reserves its existing request count under the lifecycle mutex after acquiring
 the existing Session admission slot. The provider send remains unlocked.
@@ -35,7 +44,8 @@ Mode retains its separate C2-specific engine unchanged.
 This changes no installed C header, export map, ABI version, binding, or
 production symbol. ABI remains 0.1 with 91 production exports. Existing C11
 C2 submission, stored exception, parent-first, admission, permanent retention,
-and cross-family completion probes exercise the extracted engines.
+and cross-family completion probes exercise the extracted engines. The new
+finish exception tests add no production export or public binding surface.
 
 032A2 will separately add weak `CommonChannelAccess`, family adapters, Health
 request accounting and deferred cleanup, and test-only five-family inherited
