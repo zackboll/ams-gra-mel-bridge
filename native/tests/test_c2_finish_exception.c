@@ -59,8 +59,7 @@ int main(int argc, char **argv)
         CHECK(ams_mel_ir_c2_submit_comms_test(channel, &command, &comms, NULL, 0, NULL) == AMS_MEL_OK);
         CHECK(comms != NULL);
     }
-    uint64_t before[6], after[6], sent = 0, released = 0;
-    CHECK(ams_mel_test_completion_snapshot(family, before));
+    uint64_t after[6], sent = 0, released = 0;
     CHECK(gate(0, 0, &sent, &released) && sent == 1U && released == 0U);
     CHECK(ams_mel_ir_c2_close(&channel, NULL, 0, NULL) == AMS_MEL_OK && channel == NULL);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK && session == NULL);
@@ -79,9 +78,10 @@ int main(int argc, char **argv)
     }
     CHECK(status == AMS_MEL_PROVIDER_FAILED);
     CHECK(strcmp(diagnostic, "deferred C2 cleanup failed") == 0);
-    CHECK(ams_mel_test_completion_wait(family, 0, before[4] + 1U));
+    CHECK(ams_mel_test_completion_wait(family, 3, 1U));
     CHECK(ams_mel_test_completion_snapshot(family, after));
-    CHECK(after[4] == before[4] + 1U && after[5] == before[5] + 1U);
+    CHECK(after[0] == 1U && after[1] == 0U && after[3] == 1U);
+    CHECK(after[4] == 1U && after[5] == 1U);
     const char *get = family == 1U ? "get_returned_1\n" : "get_returned_2\n";
     CHECK(occurrences(path, get) == 1U);
     if (ret) CHECK(ams_mel_ir_return_request_close(&ret, NULL, 0, NULL) == AMS_MEL_OK);
