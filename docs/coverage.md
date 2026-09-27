@@ -1,5 +1,23 @@
 # Implementation coverage
 
+Task 032B3 adds the **safe Rust** common Channel façade for the two families
+that already have safe Rust typed owners. `ControlChannel::channel_view` and
+`ImageStream::channel_view` create a weak `ChannelView` (`!Send`/`!Sync`, no
+borrow of its source) with KeepAlive (existing `ReturnRequest`), CommsTest
+(`CommsRequest`), a complete owned `ChannelCapability`, and idempotent Close.
+Summary:
+
+```text
+native C common Channel:               C2/Image/Health/Instrumentation/Track
+safe Ada common Channel:               C2/Image/Health/Instrumentation/Track
+safe Rust common Channel:              C2/Image
+safe Rust Health/Instrumentation/Track: no typed owners yet
+public Python common Channel:          not implemented
+```
+
+No native, sys, Ada, or Python change: ABI 0.1, exactly 100 production
+exports. See `task-032b3-safe-rust-common-channel.md`.
+
 Task 032B2 adds the **safe Ada** common Channel façade for all five families.
 `AMS.MEL.IR.Channel.View` is created only by `C2/Image/Health_Status/
 Instrumentation/Track.As_Channel`, and it supports KeepAlive, CommsTest,
@@ -10,7 +28,7 @@ Summary:
 native C common Channel:   C2/Image/Health/Instrumentation/Track complete
 safe Ada common Channel:   C2/Image/Health/Instrumentation/Track complete
 legacy Ada C2.Common:      preserved (spec, body and tests byte-identical)
-safe Rust:                 no generic Channel facade yet
+safe Rust:                 C2/Image only (Task 032B3)
 public Python:             no generic Channel facade yet
 ```
 
@@ -22,8 +40,8 @@ Task 032B1 promotes the proven 032A weak common Channel access into the
 five weak conversions plus KeepAlive, CommsTest, ChannelCapability and view
 Close. ABI stays 0.1; the production inventory is exactly **100** exports
 (+9). Raw Ada FFI, Rust sys and private Python ctypes declarations are
-synchronized. (Safe Ada followed in Task 032B2.) Safe Rust and public Python
-have no common Channel façade. See `task-032b1-public-common-channel-abi.md`.
+synchronized. (Safe Ada followed in Task 032B2; safe Rust C2/Image in 032B3.)
+Public Python has no common Channel façade. See `task-032b1-public-common-channel-abi.md`.
 
 Task 032A4 adds test-only Instrumentation and Track common
 KeepAlive/Comms access for Attached and Enabled, with the existing family
@@ -97,8 +115,8 @@ Track; see `task-032a2-common-access-image.md`.
 | Other Track optional/conditional surfaces | None remaining | Every published TrackChannel-specific surface is implemented; the Track API is complete in native C and safe Ada |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase |
 | OMS/UCI application integration | Not implemented | Separate project concern |
-| Rust sys binding | Complete for the current project C ABI | Exactly 100 C functions (Task 032B1 adds the opaque `AmsMelIrChannel` and nine raw common Channel declarations; no safe Rust common Channel API), including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
-| Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Typed Return values/results and reusable ReturnRequest; no payload-bearing BIT or additional C2/RF API |
+| Rust sys binding | Complete for the current project C ABI | Exactly 100 C functions (Task 032B1 adds the opaque `AmsMelIrChannel` and nine raw common Channel declarations; the safe C2/Image façade is Task 032B3, sys unchanged), including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
+| Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op + common Channel (C2/Image) implemented | Typed Return values/results and reusable ReturnRequest (C2 BIT and common KeepAlive); weak `ChannelView` from `ControlChannel`/`ImageStream` with CommsTest (`CommsRequest`) and a complete owned `ChannelCapability` (Task 032B3); no safe Health/Instrumentation/Track owners or views; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
 | Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 91-function private ctypes binding; no public Image metadata/Navigation/Instrumentation/Track methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |

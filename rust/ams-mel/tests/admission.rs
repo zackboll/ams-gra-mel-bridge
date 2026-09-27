@@ -1,11 +1,16 @@
 //! Separate test executable: retained mock DSO/flags cannot affect unload tests.
 use ams_mel::{
-    ComponentLocation, ControlConfig, ErrorKind, MelErrorCode, ModeResult, Session, SessionOptions,
-    UciId,
+    CommandReturn, CommsTestRequest, ComponentLocation, ControlConfig, ErrorKind, ImageConfig,
+    MelErrorCode, ModeResult, ReturnResult, Session, SessionOptions, UciId,
 };
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::sync::Mutex;
+
+/// The mock completion gate is process-global, so the tests in this
+/// executable run one at a time.
+static GATE: Mutex<()> = Mutex::new(());
 
 type Gate = unsafe extern "C" fn(u32, u64, *mut u64, *mut u64) -> c_int;
 
@@ -80,20 +85,134 @@ impl Drop for Mock {
     }
 }
 
-#[test]
-fn safe_admission_lifetime_and_provider_rejection() {
-    let provider = std::env::var_os("AMS_MEL_TEST_PROVIDER_DIR")
+fn provider_path() -> PathBuf {
+    std::env::var_os("AMS_MEL_TEST_PROVIDER_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../native/build-tests/test-providers")
         })
-        .join("libmock_ir_provider.so");
-    let mock = Mock::open(&provider);
-    let config = ControlConfig::new(
+        .join("libmock_ir_provider.so")
+}
+
+fn control_config() -> ControlConfig {
+    ControlConfig::new(
         UciId::new([0; 16], "admission").unwrap(),
         UciId::new([0; 16], "platform").unwrap(),
         ComponentLocation::new(1.25, -2.5, 3.75, "station-1", "mock-aircraft").unwrap(),
+    )
+}
+
+const RETURN_SUCCESS: ReturnResult = ReturnResult::Completed {
+    value: CommandReturn::Success,
+};
+
+/// Task 032B3: a ChannelView KeepAlive uses the same per-Session admission
+/// permit as typed C2 requests, in both directions, and the permit is returned
+/// only after FinalOwner reclamation. Uses only the existing completion gate.
+#[test]
+fn common_channel_view_shares_session_admission() {
+    let _gate = GATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let provider = provider_path();
+    let mock = Mock::open(&provider);
+    let session = Session::open_with_options(
+        &provider,
+        "completion-scale",
+        "",
+        SessionOptions {
+            max_async_requests: 1,
+        },
+    )
+    .unwrap();
+    let mut channel = session.open_control_channel(&control_config()).unwrap();
+    channel.enable().unwrap();
+    let mut view = channel.channel_view().unwrap();
+
+    // Common KeepAlive holds the only permit: typed BIT and Mode are refused.
+    let mut keepalive = view.send_keepalive().unwrap();
+    let error = channel.submit_bit_noop(10).unwrap_err();
+    assert_eq!(error.kind(), &ErrorKind::ResourceExhausted);
+    assert!(error.to_string().contains("async request limit reached"));
+    assert_eq!(
+        channel.submit_operate(11).unwrap_err().kind(),
+        &ErrorKind::ResourceExhausted
     );
+    assert_eq!(
+        view.submit_comms_test(CommsTestRequest {
+            command_id: 1,
+            channel_id: 2,
+            request_id: 3,
+        })
+        .unwrap_err()
+        .kind(),
+        &ErrorKind::ResourceExhausted
+    );
+    mock.control(2, 1);
+    assert_eq!(keepalive.wait(15_000).unwrap(), RETURN_SUCCESS);
+    mock.reclaimed();
+    keepalive.close().unwrap();
+
+    // Reverse: a typed BIT holds the permit and the common KeepAlive is refused.
+    let mut bit = channel.submit_bit_noop(12).unwrap();
+    let error = view.send_keepalive().unwrap_err();
+    assert_eq!(error.kind(), &ErrorKind::ResourceExhausted);
+    assert!(error.to_string().contains("async request limit reached"));
+    mock.control(2, 1);
+    assert_eq!(bit.wait(15_000).unwrap(), RETURN_SUCCESS);
+    mock.reclaimed();
+    bit.close().unwrap();
+
+    // After FinalOwner reclamation the common KeepAlive is admitted again.
+    let mut retry = view.send_keepalive().unwrap();
+    mock.control(2, 1);
+    assert_eq!(retry.wait(15_000).unwrap(), RETURN_SUCCESS);
+    mock.reclaimed();
+    retry.close().unwrap();
+
+    // Cross-family: a common Image KeepAlive on the same Session holds the
+    // permit and a typed C2 request is refused.
+    let image_config = ImageConfig::with_limits(
+        UciId::new([0; 16], "image").unwrap(),
+        UciId::new([0; 16], "platform").unwrap(),
+        ComponentLocation::new(0.0, 0.0, 0.0, "key", "system").unwrap(),
+        2,
+        64,
+        2,
+    )
+    .unwrap();
+    let stream = session.open_image_stream(&image_config).unwrap();
+    let mut image_view = stream.channel_view().unwrap();
+    let mut image_keepalive = image_view.send_keepalive().unwrap();
+    assert_eq!(
+        channel.submit_bit_noop(13).unwrap_err().kind(),
+        &ErrorKind::ResourceExhausted
+    );
+    assert_eq!(
+        view.send_keepalive().unwrap_err().kind(),
+        &ErrorKind::ResourceExhausted
+    );
+    mock.control(2, 1);
+    assert_eq!(image_keepalive.wait(15_000).unwrap(), RETURN_SUCCESS);
+    mock.reclaimed();
+    image_keepalive.close().unwrap();
+    let mut typed = channel.submit_bit_noop(14).unwrap();
+    mock.control(2, 1);
+    assert_eq!(typed.wait(15_000).unwrap(), RETURN_SUCCESS);
+    mock.reclaimed();
+    typed.close().unwrap();
+
+    image_view.close().unwrap();
+    view.close().unwrap();
+    stream.close().unwrap();
+    channel.close().unwrap();
+    session.close().unwrap();
+}
+
+#[test]
+fn safe_admission_lifetime_and_provider_rejection() {
+    let _gate = GATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let provider = provider_path();
+    let mock = Mock::open(&provider);
+    let config = control_config();
     assert_eq!(SessionOptions::default().max_async_requests, 0);
     for options in [
         None,
