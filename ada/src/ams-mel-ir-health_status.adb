@@ -116,6 +116,23 @@ package body AMS.MEL.IR.Health_Status is
    function Is_Open (Channel : Health_Channel) return Boolean
    is (Channel.Handle /= C.Null_Health);
 
+   function As_Channel (Channel : Health_Channel) return V.View is
+      D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_Health then
+         raise Provider_Error with "IR Health channel is closed";
+      end if;
+      return Result : V.View do
+         if C.IR_Channel_From_Health
+              (Channel.Handle, Result.Handle'Access, D'Address, D'Length, Required'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Message (D);
+         end if;
+      end return;
+   end As_Channel;
+
    procedure Enable (Channel : in out Health_Channel) is
       D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;

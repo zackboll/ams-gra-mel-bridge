@@ -80,6 +80,23 @@ package body AMS.MEL.IR.Track is
    function Is_Open (Channel : Track_Channel) return Boolean
    is (Channel.Handle /= C.Null_Track);
 
+   function As_Channel (Channel : Track_Channel) return V.View is
+      D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_Track then
+         raise Provider_Error with "IR Track channel is closed";
+      end if;
+      return Result : V.View do
+         if C.IR_Channel_From_Track
+              (Channel.Handle, Result.Handle'Access, D'Address, D'Length, Required'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Message (D);
+         end if;
+      end return;
+   end As_Channel;
+
    procedure Enable (Channel : in out Track_Channel) is
       D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;

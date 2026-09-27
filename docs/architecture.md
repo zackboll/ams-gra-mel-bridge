@@ -1,5 +1,18 @@
 # Architecture decisions
 
+Task 032B2 exposes the 032B1 public view in safe Ada. The controlled owner
+`AMS.MEL.IR.Channel_View` is declared limited private in the parent
+`AMS.MEL.IR`, with its native `Channel_Handle` in the parent's private part.
+Applications see it as `AMS.MEL.IR.Channel.View`. Because every typed family
+package is a child of `AMS.MEL.IR`, each family body can initialize the view
+from its own private handle (`C2/Image/Health_Status/Instrumentation/
+Track.As_Channel`) without any public raw-handle accessor. The View owns only
+the weak native view, never the family graph. `AMS.MEL.IR.Channel` now owns the
+canonical `Command_ID`; `C2.Command_ID` is a source-compatible subtype, which
+removes the old Channel -> C2 dependency. The common Return/Comms owners wrap
+the same native handles as the legacy C2 types, and `C2.Common` is unchanged.
+See `task-032b2-safe-ada-common-channel.md`.
+
 Task 032B1 publishes the 032A common access as the opaque public
 `ams_mel_ir_channel`: a weak view of one existing typed owner (C2, Image,
 Health, Instrumentation, Track). The view holds only a `weak_ptr<void>` and
@@ -9,9 +22,9 @@ weak state and runs a per-family helper shared with the typed
 `get_capabilities` export, preserving each family's lifecycle and locking
 policy (Image keeps its Stopping/Stopped/Failed rule and unlocked provider
 call). Legacy C2 inherited-service exports remain and do not route through a
-temporary view. Safe Ada/Rust/Python façades are deferred; the Ada move is
-Task 032B2 because `AMS.MEL.IR.Channel` currently depends on
-`AMS.MEL.IR.C2` for `Command_ID`. See `task-032b1-public-common-channel-abi.md`.
+temporary view. The safe Ada façade followed in Task 032B2; safe Rust and
+public Python façades remain deferred. See
+`task-032b1-public-common-channel-abi.md`.
 
 Task 032A4 adds private weak common access for Instrumentation
 and Track using their existing single family request counters, Session admission

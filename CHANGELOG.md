@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add the safe Ada common Channel façade (Task 032B2): `AMS.MEL.IR.Channel.View`,
+  a parent-private controlled owner of the weak native view, created by
+  `As_Channel` on C2, Image, Health, Instrumentation and Track owners, with
+  `Send_Keep_Alive`, `Submit_Comms_Test`, `Capabilities`, and idempotent
+  `Close`, plus their own Return/Comms request/result owners. Move the
+  canonical `Command_ID` into `AMS.MEL.IR.Channel`; `AMS.MEL.IR.C2.Command_ID`
+  stays as a source-compatible subtype, removing the Channel -> C2 dependency.
+  `C2.Common` is unchanged. Add test-only ready common mock scenarios
+  (`health-/instr-/track-ada-common`). No production native change: ABI 0.1,
+  100 exports. Safe Rust/public Python common Channel remain deferred.
 - Expose the common Channel C ABI (Task 032B1): opaque weak
   `ams_mel_ir_channel` views of C2, Image, Health, Instrumentation and Track
   owners, with KeepAlive, CommsTest, ChannelCapability and view Close. Requests

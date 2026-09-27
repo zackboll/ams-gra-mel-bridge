@@ -1,13 +1,29 @@
 # Implementation coverage
 
+Task 032B2 adds the **safe Ada** common Channel façade for all five families.
+`AMS.MEL.IR.Channel.View` is created only by `C2/Image/Health_Status/
+Instrumentation/Track.As_Channel`, and it supports KeepAlive, CommsTest,
+ChannelCapability, and weak view Close with no raw handle in the public API.
+Summary:
+
+```text
+native C common Channel:   C2/Image/Health/Instrumentation/Track complete
+safe Ada common Channel:   C2/Image/Health/Instrumentation/Track complete
+legacy Ada C2.Common:      preserved (spec, body and tests byte-identical)
+safe Rust:                 no generic Channel facade yet
+public Python:             no generic Channel facade yet
+```
+
+ABI stays 0.1 with exactly 100 production exports; only the test mock changed
+natively. See `task-032b2-safe-ada-common-channel.md`.
+
 Task 032B1 promotes the proven 032A weak common Channel access into the
 **native public C ABI** for C2, Image, Health, Instrumentation and Track:
 five weak conversions plus KeepAlive, CommsTest, ChannelCapability and view
 Close. ABI stays 0.1; the production inventory is exactly **100** exports
 (+9). Raw Ada FFI, Rust sys and private Python ctypes declarations are
-synchronized. Safe Ada still exposes common services only through
-`AMS.MEL.IR.C2.Common` until Task 032B2; safe Rust and public Python have no
-new common Channel façade. See `task-032b1-public-common-channel-abi.md`.
+synchronized. (Safe Ada followed in Task 032B2.) Safe Rust and public Python
+have no common Channel façade. See `task-032b1-public-common-channel-abi.md`.
 
 Task 032A4 adds test-only Instrumentation and Track common
 KeepAlive/Comms access for Attached and Enabled, with the existing family
@@ -68,8 +84,9 @@ Track; see `task-032a2-common-access-image.md`.
 | NavigationReport send | Implemented in native C and safe Ada | Complete published NavigationReport/all 18 covariance terms; async request/future, deferred teardown while pending, allocation-free emergency retention; ABI 0.1 now 59 exports |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | IR Instrumentation conditional surface | Complete in native C and safe Ada | send(InstrumentationLevelCmd) and InstrumentationReport callback plus Enable and ChannelCapability; positive behavior mock-validated; pinned Squall explicitly unsupported |
-| Public common Channel C ABI (Task 032B1) | Native public C: C2/Image/Health/Instrumentation/Track | Weak `ams_mel_ir_channel` view; KeepAlive, CommsTest and ChannelCapability through the shared 032A engines, Session admission and family accounting; view Close only drops the wrapper. C11 `test_public_common_channel` (46 cases). Generic Enable/Disable, buffer registration and common metadata callbacks are not exposed |
-| Instrumentation inherited generic Channel services | Native public C only (Task 032B1) | KeepAlive/CommsTest/ChannelCapability through `ams_mel_ir_channel_*`; no safe Ada/Rust/Python common façade yet; buffers not exposed |
+| Public common Channel C ABI (Task 032B1) | Native public C: C2/Image/Health/Instrumentation/Track; safe Ada in Task 032B2 | Weak `ams_mel_ir_channel` view; KeepAlive, CommsTest and ChannelCapability through the shared 032A engines, Session admission and family accounting; view Close only drops the wrapper. C11 `test_public_common_channel` (46 cases). Generic Enable/Disable, buffer registration and common metadata callbacks are not exposed |
+| Instrumentation inherited generic Channel services | Native public C (Task 032B1) and safe Ada (Task 032B2) | KeepAlive/CommsTest/ChannelCapability through `ams_mel_ir_channel_*` and `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel`; typed Submit remains Enabled-only; no safe Rust/public Python common façade yet; buffers not exposed |
+| Safe Ada common Channel façade (Task 032B2) | Complete: C2/Image/Health/Instrumentation/Track | `AMS.MEL.IR.Channel.View` (parent-private controlled owner of the weak native view, created only by five `As_Channel` conversions); `Send_Keep_Alive`/`Submit_Comms_Test`/`Capabilities`/`Close` with own Return/Comms request and result owners; canonical `Channel.Command_ID` with `C2.Command_ID` compatibility subtype; legacy `C2.Common` byte-identical. `AMS_MEL_IR_Channel_Tests` covers Attached/Enabled (Image Attached/Running), high-ID Comms, Return::Fail, long rejections, timeout/cached Wait, parent-first, weak/close-first/multiple views and snapshot lifetime |
 | Track channel foundation | Complete in native C and safe Ada | Open/Enable/ChannelCapability/Close; lifecycle, rollback, detach retry, and emergency retention mock-validated; pinned Squall validated only for clean unsupported-provider Open failure |
 | Track @RequiredIfTrack core | Channel lifecycle complete; `IRSTTrackReport` callback complete | Native C + safe Ada; positive behavior and complete report payload mock-validated; pinned Squall clean unsupported-provider behavior validated (C `AMS_MEL_FACTORY_FAILED`, Ada `Provider_Error`, both `attachChannel returned null`, same Session continues) — no positive Squall Track execution or Track-report evidence |
 | TrackDataUpdate `@RequiredIfTrackUpdate` | Complete in native C and safe Ada | `TrackChannel::send(TrackDataUpdate)` with complete field fidelity, including all 21 covariance terms, both epoch-second times, and the canonical Directional ECEF vectors; async request ownership, deferred Track cleanup, and provider-failure handling are mock-validated. Pinned Squall cannot attach Track, so it provides no positive TrackDataUpdate evidence. No safe Rust or public Python Track API |
@@ -96,14 +113,14 @@ Track; see `task-032a2-common-access-image.md`.
 |---|---|
 | C2 required sends | Complete |
 | C2-specific required metadata callbacks | Complete: BIT_Configuration, CommandStatus, BIT_Status |
-| Common inherited Channel services | C2 only (`AMS.MEL.IR.C2.Common`): KeepAlive, CommsTest send/reply/callback, complete ChannelCapability. The native generic Channel view for Image/Health/Instrumentation/Track is imported privately but has no safe Ada API until Task 032B2 |
+| Common inherited Channel services | Complete for all five families through `AMS.MEL.IR.Channel.View` (Task 032B2): KeepAlive, CommsTest, ChannelCapability, weak view Close. Legacy C2-specific `AMS.MEL.IR.C2.Common` (including the CommsTest callback via C2.Metadata) is preserved unchanged |
 | Explicit generic buffer management | Not application-exposed |
 | Image receive | Partial: host-memory Mono8 |
 | Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
 | Scheduling | Not implemented |
 | Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` bounded DROP-INCOMING queue for the `IRSTTrackReport` callback with a blocking receive/wait (timeout zero is the nonblocking poll case). `@RequiredIfTrackUpdate` `TrackDataUpdate` complete via `AMS.MEL.IR.Track.Updates`. Optional `SystemTrackDataResponse` complete via `AMS.MEL.IR.Track.System_Data`. Optional inbound `RequestSystemTrackData` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares the one bounded queue with `IRSTTrackReport`. Positive behavior/payload evidence is mock-only; pinned Squall is validated only as a clean unsupported provider (`Provider_Error: attachChannel returned null`). `@RequiredIfDetectCandidateObjects` `CandidateObjectMessage` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares that one bounded queue; its owned `Candidate_Object_Message` copies every hot region, every candidate object, and every scalar into Ada storage before the native event is closed, and its Track-facing value types are deliberately independent of `AMS.MEL.IR.Image`. The `@Optional` `CandidateObjectPreProcMessage` is likewise complete via `AMS.MEL.IR.Track.Metadata.Receive_Event` on that same queue; its owned `Candidate_Object_PreProc_Message` copies the header, the message-level inertial state, every hot region, every PreProc entry with all nine background samples and its own nested inertial state, and a safe `Edge : Boolean`, all into Ada storage before the native event is closed. Every published TrackChannel-specific surface is therefore represented and the safe Ada Track API is complete |
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
-| Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited generic Channel services are native public C only (032B1), no safe Ada API yet |
+| Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited KeepAlive/CommsTest/ChannelCapability through `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel` (032B2) |
 | StackedImage | Not implemented |
 | RF | Not implemented |
 

@@ -83,6 +83,23 @@ package body AMS.MEL.IR.Image is
             raise;
       end;
    end Capabilities;
+   function As_Channel (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.View is
+      use type C.Stream_Handle;
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      if Object.Handle = C.Null_Stream then
+         raise Provider_Error with "IR Image stream is closed";
+      end if;
+      return Result : AMS.MEL.IR.Channel.View do
+         if C.IR_Channel_From_Stream
+              (Object.Handle, Result.Handle'Access, D'Address, D'Length, R'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Message (D);
+         end if;
+      end return;
+   end As_Channel;
    function Direction (Value : C.IR_Directional_V1) return Directional
    is ((Long_Float (Value.X), Long_Float (Value.Y), Long_Float (Value.Z)));
    function Quaternion_Value (Value : C.IR_Quaternion_V1) return Quaternion

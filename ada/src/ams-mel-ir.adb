@@ -306,4 +306,16 @@ package body AMS.MEL.IR is
       when others =>
          Object.Handle := C.Null_Stream;
    end Finalize;
+
+   overriding
+   procedure Finalize (Object : in out Channel_View) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Idempotent: a NULL handle after explicit Close is accepted natively.
+      --  Destroys only the weak view; the typed owner is never affected.
+      Ignored := C.IR_Channel_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Channel;
+   end Finalize;
 end AMS.MEL.IR;

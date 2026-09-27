@@ -81,6 +81,13 @@ package AMS.MEL.IR is
    procedure Stop (Object : in out Image_Stream);
    procedure Close (Object : in out Image_Stream);
 
+   --  Controlled owner of exactly one native weak common Channel view
+   --  (ams_mel_ir_channel). Applications use it only through the subtype
+   --  AMS.MEL.IR.Channel.View; its operations live in AMS.MEL.IR.Channel and
+   --  the typed-family As_Channel conversions. It never owns the typed family
+   --  state, Session, provider Channel, Control, or provider library.
+   type Channel_View is limited private;
+
 private
    package US renames Ada.Strings.Unbounded;
    type UCI_ID is record
@@ -105,4 +112,13 @@ private
    end record;
    overriding
    procedure Finalize (Object : in out Image_Stream);
+
+   --  Visible only to descendants of AMS.MEL.IR (their private parts and
+   --  bodies), which lets each typed family initialize the native view from
+   --  its own private handle without any public raw-handle accessor.
+   type Channel_View is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Channel_Handle := AMS.MEL_C_API.Null_Channel;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Channel_View);
 end AMS.MEL.IR;

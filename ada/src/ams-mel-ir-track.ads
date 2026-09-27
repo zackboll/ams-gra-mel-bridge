@@ -39,6 +39,12 @@ package AMS.MEL.IR.Track is
    function Is_Open (Channel : Track_Channel) return Boolean;
    procedure Enable (Channel : in out Track_Channel);
    function Capabilities (Channel : Track_Channel) return IR.Channel.Channel_Capability;
+   --  Returns a new weak common Channel view of this open Track_Channel.
+   --  Inherited KeepAlive, CommsTest, and ChannelCapability are available
+   --  through AMS.MEL.IR.Channel while Attached or Enabled; typed Track sends
+   --  remain Enabled-only. Raises Provider_Error if the channel is closed. The
+   --  View does not own or keep this owner alive.
+   function As_Channel (Channel : Track_Channel) return IR.Channel.View;
    procedure Close (Channel : in out Track_Channel);
 
    --  Upstream IrstTrackState. The Idle literal is prefixed because

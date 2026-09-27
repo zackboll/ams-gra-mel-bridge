@@ -1,6 +1,7 @@
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 with Ada.Containers.Indefinite_Vectors;
+with AMS.MEL.IR.Channel;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.C2 is
@@ -17,7 +18,14 @@ package AMS.MEL.IR.C2 is
    --  rules are unchanged.
    procedure Enable (Channel : in out Control_Channel);
 
-   type Command_ID is mod 2**32 with Size => 32;
+   --  Returns a new weak common Channel view of this open Control_Channel.
+   --  Raises Provider_Error if the Control_Channel is closed; no open View
+   --  escapes on failure. The View does not own or keep this owner alive, and
+   --  closing the View does not close this owner. See AMS.MEL.IR.Channel.
+   function As_Channel (Channel : Control_Channel) return AMS.MEL.IR.Channel.View;
+
+   --  Source-compatible name for the canonical common command identifier.
+   subtype Command_ID is AMS.MEL.IR.Channel.Command_ID;
    type BIT_ID is mod 2**32 with Size => 32;
    type BIT_ID_Array is array (Positive range <>) of BIT_ID;
    package Fault_Code_Vectors is new
