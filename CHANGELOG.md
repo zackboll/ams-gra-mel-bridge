@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Pin the RF ProductRxEndpoint receive declaration closure and document the
+  callback/buffer/lifetime contract (Task 033C). Re-measured the
+  `DataMEL.h` + `ProductRxEndpoint.h` closure from the full pinned upstream
+  trees: GCC 537 / Clang 538 / union 539. Vendored exactly the delta of 16 RF
+  MEL headers, byte-identical to RF MEL `762ce84c…`, with 0 Common MEL, AMS
+  Math, AMS VITA, or Boost files and no new upstream revision. Added the
+  declaration-only `rf_product_rx_header_compile_probe` and the distinct
+  `check_rf_product_rx_header_closure`, which pins the exact RF header set and
+  rejects system leakage; the 033A check is unchanged. Recorded the exact
+  callback type, the absence of any callback unregister, the JobDataPointer
+  inventory, the ComplexINT16 element-wise copy model, the full
+  ProductRxMetadata inventory, and the fail-closed `std::any`/pointing/event
+  policy. Also recorded the async endpoint-creation design, the Squall
+  destructor/thread-join and buffer-reuse evidence, and a concrete 033D
+  boundary. **No receive support**: no production source, header, export, or
+  binding changed; ABI 0.1 keeps exactly 106 exports.
 - Add the RF DataMEL foundation (Task 033B). Six new production exports
   (ABI 0.1, 100 -> 106): `ams_mel_rf_data_open`,
   `ams_mel_rf_data_get_provider_version`, `ams_mel_rf_data_get_mfa_info`,

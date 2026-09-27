@@ -1,3 +1,22 @@
+# Task 033C RF ProductRxEndpoint closure note
+
+Task 033C adds **no new revision** and no new version entry. It extends the
+pinned RF declaration closure with the ProductRxEndpoint receive roots
+(`rfmel/data/DataMEL.h` + `rfmel/data/ProductRxEndpoint.h`), using only the
+existing Task 033A pins (RF MEL `762ce84c5555dd0f3ea66f36b321fecf8839b89f`, AMS
+VITA `8e12a4cd…`, Common MEL `f6908437…`, AMS Math `00be4519…`, Boost 1.83.0).
+The closure was measured against the full upstream trees: GCC 14.2.0 observes 537
+headers, Clang 19.1.7 observes 538, and the union is 539 (RF 25, Common MEL 23,
+AMS Math 5, AMS VITA 5, Boost 481). Relative to the 033A union (524), that is
++16 RF MEL headers and 0 Common MEL, AMS Math, AMS VITA, or Boost files. The
+16 headers are `data/ProductRxEndpoint.h`,
+`endpoints/BaseEndpoint.h`, `rfmeltypes/ProductRxMetadata.h`, and 13
+`jobs/*` headers. They were vendored under `native/vendor/rf-mel/include/rfmel/`
+byte-identical to their pinned blobs. No existing vendored file or checksum
+changed. The new `check_rf_product_rx_header_closure` target pins the exact
+25-file RF set and rejects any leakage outside `native/vendor`. Squall
+`b1015728…` remains evidence only. See `task-033c-rf-product-rx-contract.md`.
+
 # Task 033A RF MEL provenance
 
 Task 033A adds the first RF sources: only the compiler-observed declaration

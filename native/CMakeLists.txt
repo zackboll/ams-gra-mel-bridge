@@ -174,6 +174,28 @@ if(AMS_MEL_BUILD_TESTS)
             --expect rfmel --expect mel --expect math --expect boost --expect vita
         DEPENDS rf_data_header_compile_probe
         VERBATIM)
+
+    # Task 033C declaration-only probe: the pinned RF MEL ProductRxEndpoint
+    # receive contract (DataMEL.h + ProductRxEndpoint.h). It implements no RF
+    # API, links into nothing, and uses the same SYSTEM vendor roots. The 033A
+    # check above is unchanged; this distinct check additionally pins the exact
+    # measured RF header set.
+    add_library(rf_product_rx_header_compile_probe OBJECT
+        tests/rf_product_rx_header_compile_probe.cpp)
+    target_compile_features(rf_product_rx_header_compile_probe PRIVATE cxx_std_20)
+    target_include_directories(rf_product_rx_header_compile_probe SYSTEM PRIVATE
+        ${ams_mel_rf_data_vendor_roots})
+    set_target_properties(rf_product_rx_header_compile_probe PROPERTIES CXX_EXTENSIONS OFF)
+    ams_mel_warnings(rf_product_rx_header_compile_probe)
+    add_custom_target(check_rf_product_rx_header_closure ALL
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_rf_product_rx_closure.py
+            --compiler ${CMAKE_CXX_COMPILER}
+            --source ${CMAKE_CURRENT_SOURCE_DIR}/tests/rf_product_rx_header_compile_probe.cpp
+            --vendor-root ${CMAKE_CURRENT_SOURCE_DIR}/vendor
+            ${ams_mel_rf_data_isystem_args}
+        DEPENDS rf_product_rx_header_compile_probe
+        VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
 
     # Task 033B: dedicated mock RF provider (createDataMEL + TEST-only

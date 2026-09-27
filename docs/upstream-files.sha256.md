@@ -646,3 +646,24 @@ c007ca087235139e1be744e29150ca55a59cb01a666b239453590be9e6c2f6b2  native/vendor/
 fd4c3d43f07387649d16cbd835fba94e15317ff1387658e01ba7ae12b8c19c73  native/vendor/rf-mel/include/rfmel/rfmeltypes/RFMELTypes.h
 f88df0292bf883c9caac76ead0474bf9ceaae8dbd2487c769c935a7ca5734703  native/vendor/rf-mel/include/rfmel/rfmeltypes/ResourceUseAfterExpiredException.h
 ```
+
+Task 033C adds the exact GCC/Clang-union RF MEL ProductRxEndpoint receive declaration delta: 16 previously unvendored RF MEL headers from the same RF MEL pin (`762ce84c5555dd0f3ea66f36b321fecf8839b89f`). Zero Common MEL, AMS Math, AMS VITA, or Boost files are added. No existing entry changes:
+
+```text
+0ff757e6f5e71b77eb52e6fed6c27cab31f952e304f688472d41b6f3a6c0b615  native/vendor/rf-mel/include/rfmel/data/ProductRxEndpoint.h
+2acb69a8bbb91f8f1bc0ce9cb48c98f3b875e7204d914e5e8ce7cee0c7d1e996  native/vendor/rf-mel/include/rfmel/endpoints/BaseEndpoint.h
+94d0787cfb8762726f7548ee67205af186322feb4ad5f0a0c78d8a91fd808d9b  native/vendor/rf-mel/include/rfmel/jobs/CachedWaveform.h
+4096ee9a9f6d3dafa8df55821a88e76c76905cd671b5870b3ed8d7c2c502d68c  native/vendor/rf-mel/include/rfmel/jobs/CommonModulations.h
+2df0aa8e393a09e7643ad1dec4c537fc70118eb1351cb76504d4ead6e1c72607  native/vendor/rf-mel/include/rfmel/jobs/DataPipe.h
+0139b1a00fdba965a0b9de79a6d55e00fb42fff838865e6ba0c81bd9b5d75719  native/vendor/rf-mel/include/rfmel/jobs/ElementGroupToEndpointConnections.h
+715a15dc1b61111b12c43c12a7aa7104da7c7b66132b61b13957bda56ed8540a  native/vendor/rf-mel/include/rfmel/jobs/JobEvent.h
+403f4463a892f02a8d79585f8906a4b68abc2400db39af03b0e94be8701f7fa7  native/vendor/rf-mel/include/rfmel/jobs/JobInterval.h
+29c46b673824bcf65d1f52358590e39a590127ac15a3f472769d1a0f6a5a388f  native/vendor/rf-mel/include/rfmel/jobs/LocalFunctionCommand.h
+8b2fe7da96afe4b0df277b827fbc679b5ade203b9d264015b57d053dc17f86c8  native/vendor/rf-mel/include/rfmel/jobs/ModulationExtensionBase.h
+198ad64fc26286b9ed321544e3dea272d02ef3a842c1bb114aac51ec11022376  native/vendor/rf-mel/include/rfmel/jobs/Pointing.h
+4993b8ef6cd6d1bea9554b7683049115a21e9a3ba68076cd19af8d87dfb2736d  native/vendor/rf-mel/include/rfmel/jobs/ProductStreamParams.h
+c1fc6bed704cd54e4ca59023fae4c406ddd8a9afb3dbc83aa7fc3b69bdaa8a5f  native/vendor/rf-mel/include/rfmel/jobs/PulseDetectionSettings.h
+605132670fd4d70dc4a76268ef371238132dc4ce0b0324dd0a65a4cd35e79926  native/vendor/rf-mel/include/rfmel/jobs/WaveformStream.h
+11f80766f12e3d8f413d6c1977d58882855284712ea7cd5553701a6f3f963521  native/vendor/rf-mel/include/rfmel/jobs/Weights.h
+019b39b2795ad33382544903b6e5f430e78a9c0277418a1a033987b0ee490fcd  native/vendor/rf-mel/include/rfmel/rfmeltypes/ProductRxMetadata.h
+```
