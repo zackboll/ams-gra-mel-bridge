@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add the public Python common Channel façade for C2 and Image (Task 032B4):
+  `ControlChannel.channel_view()` / `ImageStream.channel_view()` return a weak
+  `ChannelView` that retains no Python source, Session, or provider object,
+  with `send_keepalive` (existing `ReturnRequest`), `submit_comms_test`
+  (`CommsTestRequest` -> `CommsRequest` -> `CommsCompleted`/`CommsRejected`),
+  a complete owned `ChannelCapability` (frozen dataclasses, tuples, and six
+  IntEnums that preserve unknown values as `UNKNOWN_0x...`), and idempotent
+  `close`, context manager, and non-raising finalizer. No native, mock,
+  `_native.py`, Rust, or Ada change: ABI 0.1, 100 exports, 100 private ctypes
+  bindings. Public Python Health/Instrumentation/Track remain deferred (no
+  typed owners).
 - Add the safe Rust common Channel façade for C2 and Image (Task 032B3):
   `ControlChannel::channel_view` / `ImageStream::channel_view` return a weak,
   `!Send`/`!Sync` `ChannelView` (no borrow of its source) with

@@ -1,5 +1,26 @@
 # Implementation coverage
 
+Task 032B4 adds the **public Python** common Channel façade for the two
+families that already have public Python typed owners.
+`ControlChannel.channel_view()` and `ImageStream.channel_view()` return a weak
+`ChannelView` that retains no Python source, Session, or provider object, with
+KeepAlive (existing `ReturnRequest`), CommsTest (`CommsRequest` ->
+`CommsCompleted`/`CommsRejected`), a complete owned `ChannelCapability`
+(frozen dataclasses, tuples, and six loss-aware IntEnums), and idempotent
+Close/context manager/finalizer. Final summary:
+
+```text
+native C common Channel:      C2/Image/Health/Instrumentation/Track
+safe Ada common Channel:      C2/Image/Health/Instrumentation/Track
+safe Rust common Channel:     C2/Image
+public Python common Channel: C2/Image
+safe Rust/Python Health/Instrumentation/Track: typed owners not implemented
+```
+
+Python surface only: no native, mock, `_native.py`, Rust, or Ada change. ABI
+0.1, exactly 100 production exports, and 100 private ctypes bindings. See
+`task-032b4-python-common-channel.md`.
+
 Task 032B3 adds the **safe Rust** common Channel façade for the two families
 that already have safe Rust typed owners. `ControlChannel::channel_view` and
 `ImageStream::channel_view` create a weak `ChannelView` (`!Send`/`!Sync`, no
@@ -118,7 +139,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Rust sys binding | Complete for the current project C ABI | Exactly 100 C functions (Task 032B1 adds the opaque `AmsMelIrChannel` and nine raw common Channel declarations; the safe C2/Image façade is Task 032B3, sys unchanged), including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op + common Channel (C2/Image) implemented | Typed Return values/results and reusable ReturnRequest (C2 BIT and common KeepAlive); weak `ChannelView` from `ControlChannel`/`ImageStream` with CommsTest (`CommsRequest`) and a complete owned `ChannelCapability` (Task 032B3); no safe Health/Instrumentation/Track owners or views; no payload-bearing BIT or additional C2/RF API |
 | Real Squall Rust validation | Implemented and passed | Same pinned Task-004 provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 frames, counters, and explicit teardown through safe API |
-| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op implemented | Complete current 91-function private ctypes binding; no public Image metadata/Navigation/Instrumentation/Track methods |
+| Python binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op + common Channel (C2/Image) implemented | Complete current 100-function private ctypes binding. Weak `ChannelView` from `ControlChannel`/`ImageStream` with KeepAlive (reused `ReturnRequest`), CommsTest (`CommsRequest`), and a complete owned `ChannelCapability` (Task 032B4); no public Health/Instrumentation/Track owners or views; no public Image metadata/Navigation/Instrumentation/Track methods |
 | Real Squall Python validation | Implemented and passed | Same pinned provider/runtime; BIT Success, TaskSched, parent-first close, both cached waits, real 320x200 Mono8 `bytes` frames, counters, and explicit teardown |
 | Additional Python C2/RF | Not implemented | No payload-bearing BIT, scan/config/camera commands, callbacks, or RF; no zero-copy/NumPy views |
 | Python packaging/publication | Not performed | `PYTHONPATH=python` development use only; no wheel or PyPI dependency |
