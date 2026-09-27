@@ -874,6 +874,33 @@ DataMEL/RFMFAInfo declaration closure, including the AMS VITA headers it
 reaches through `JobDataFormat.h`. It is a private native include that is not
 exported through the C ABI, and it adds no RF adapter.
 
+## Task 033B RF DataMEL foundation
+
+Task 033B adds the first RF adapter, confined to `native/src/rf_data.cpp`:
+
+```text
+ams_mel_rf_data --shared_ptr--> RfDataState { unique_ptr<SharedLibrary> library;
+                                              shared_ptr<rfmel::DataMEL> data; }
+ams_mel_rf_mfa_info            owned value copies only (no provider pointer)
+```
+
+The existing private `SharedLibrary` is reused (now in
+`internal/shared_library.hpp`). RF has its own state graph: no `SessionState`,
+no `API_Manager`/`Control`, no IR completion admission, and no aperture config.
+`createDataMEL` is called only from C++ with the exact pinned `fnDataMEL` type.
+Every path destroys the DataMEL before the DSO unloads. Close consumes the
+public owner before calling `shutdown()` exactly once. A throwing `shutdown()`
+permanently retains the whole graph through the established allocation-free
+emergency root, so process exit is the cleanup boundary and no retryable RF
+Close exists.
+
+The RFMFAInfo snapshot is point-in-time, because provider getters may perform
+live I/O. After publication it is immutable and independent of the provider.
+`quantizeDuration`, `getPhysicalData`, Tx power modes, endpoints, and every
+other RF family remain out of scope. IR and RF share only family-neutral
+helpers (`internal/provider_common.hpp`: diagnostics, UTF-8, and one
+VersionInfo publication path). See `task-033b-rf-datamel-foundation.md`.
+
 ## Task 029G CandidateObjectPreProcMessage and Track completion
 
 Task 029G implements the `@Optional` `CandidateObjectPreProcMessage`
@@ -1101,8 +1128,8 @@ spans, byte spans, packet views, device-memory descriptors, or explicit
 non-CPU-addressable handles, and the final "language-safe borrowed view" level
 of the chain simply does not exist for a non-CPU-addressable region.
 
-The opaque owner level is what makes that expressible at all. RF MEL runtime
-support, RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain
-unimplemented. Task 033A vendors only the measured RF DataMEL declaration
-closure. Pinned Squall's RF receive endpoint copies and decodes UDP payloads
+The opaque owner level is what makes that expressible at all. RF receive,
+RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain unimplemented. Task
+033B adds only the RF DataMEL foundation (load, version, owned RFMFAInfo
+snapshot, shutdown/Close) and no RF data plane. Pinned Squall's RF receive endpoint copies and decodes UDP payloads
 into its own IQ vector, so it provides no RF zero-copy evidence.

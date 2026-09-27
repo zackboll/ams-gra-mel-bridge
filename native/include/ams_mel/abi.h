@@ -2438,6 +2438,216 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_close(
     ams_mel_ir_channel **channel, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* ------------------------------------------------------------------------
+ * Task 033B RF DataMEL foundation.
+ *
+ * RF MEL is a provider family separate from the IR Session. An RF provider
+ * DSO exports createDataMEL(config) -> DataMEL; there is no API_Manager,
+ * Control, aperture configuration ID, or IR completion admission, and an
+ * ams_mel_rf_data is never an ams_mel_session. The pinned RF MEL source is
+ * open-arsenal RF MEL 762ce84c5555dd0f3ea66f36b321fecf8839b89f (Task 033A).
+ *
+ * This version exposes exactly: DataMEL load/Close (shutdown), VersionInfo,
+ * and an owned RFMFAInfo scalar/enum/frequency-range snapshot. It does NOT
+ * expose RFMFAInfo::quantizeDuration, getPhysicalData, either
+ * getTxPowerModeCharacteristics overload, ProductRxEndpoint/IQ receive,
+ * external/RDMA endpoints, or any RF C2/VirtualAperture/Job/Monitor/Admin/
+ * COSITE/DEA family.
+ *
+ * Threading: open shares no object. Version, MFA snapshot, and Close on ONE
+ * ams_mel_rf_data require external serialization (no internal lock is taken).
+ * View and Close on ONE ams_mel_rf_mfa_info require external serialization;
+ * independent snapshots may be read concurrently.
+ * ------------------------------------------------------------------------ */
+
+/* Unique public owner of one provider DataMEL and of the provider DSO that
+ * created it. */
+typedef struct ams_mel_rf_data ams_mel_rf_data;
+/* Fully owned, immutable RFMFAInfo snapshot. After creation it references no
+ * provider memory and is independent of the ams_mel_rf_data, the DataMEL, and
+ * the provider DSO: it stays valid after RF Close and provider unload. */
+typedef struct ams_mel_rf_mfa_info ams_mel_rf_mfa_info;
+
+/* Raw upstream rfmel::JobDataFormat value. The 14 currently published values
+ * are defined below; upstream publishes no MaxExclusive sentinel. Snapshot
+ * storage keeps the raw value, so an unknown future value is preserved and
+ * never dropped or rejected. */
+typedef uint32_t ams_mel_rf_job_data_format_t;
+#define AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8 UINT32_C(0)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16 UINT32_C(1)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 UINT32_C(2)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 UINT32_C(3)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL UINT32_C(4)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM UINT32_C(5)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE UINT32_C(6)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE UINT32_C(7)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1 UINT32_C(8)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2 UINT32_C(9)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3 UINT32_C(10)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1 UINT32_C(11)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2 UINT32_C(12)
+#define AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3 UINT32_C(13)
+
+/* Upstream FrequencyRange copied verbatim, in Hz: min_hz is
+ * getMinFrequency() and max_hz is getMaxFrequency(). Ranges are never
+ * normalized, merged, sorted, clamped, or unit-converted, so min_hz > max_hz
+ * is reported exactly as the provider produced it. */
+typedef struct ams_mel_rf_frequency_range_v1 {
+    double min_hz;
+    double max_hz;
+} ams_mel_rf_frequency_range_v1;
+
+/* Spans in RF snapshots: data may be NULL only when size is 0. */
+typedef struct ams_mel_rf_frequency_range_span_v1 {
+    const ams_mel_rf_frequency_range_v1 *data;
+    size_t size;
+} ams_mel_rf_frequency_range_span_v1;
+
+/* One face reported by RFMFAInfo::getFaceIDs(). Booleans are 0/1. Every *_fs
+ * field is the upstream ams::util::math::Femtoseconds count() (int64_t
+ * femtoseconds) with no unit conversion. Frequency ranges are, in order,
+ * getRxFrequencyRanges, getTxFrequencyRanges, and getSampleFrequencyRange for
+ * face_id. */
+typedef struct ams_mel_rf_face_info_v1 {
+    uint32_t face_id;
+
+    uint32_t supports_receive;
+    uint32_t supports_transmit;
+    uint32_t requires_endpoint_association;
+
+    int64_t agc_processing_time_fs;
+    int64_t min_job_request_lead_time_fs;
+    int64_t max_job_request_lead_time_fs;
+    int64_t min_job_detail_lead_time_fs;
+    int64_t tx_rx_switching_time_fs;
+    int64_t rx_tx_switching_time_fs;
+    int64_t tx_tx_switching_time_fs;
+    int64_t rx_rx_switching_time_fs;
+
+    ams_mel_rf_frequency_range_span_v1 rx_frequency_ranges;
+    ams_mel_rf_frequency_range_span_v1 tx_frequency_ranges;
+    ams_mel_rf_frequency_range_span_v1 sample_frequency_ranges;
+} ams_mel_rf_face_info_v1;
+
+typedef struct ams_mel_rf_face_info_span_v1 {
+    const ams_mel_rf_face_info_v1 *data;
+    size_t size;
+} ams_mel_rf_face_info_span_v1;
+
+/* Point-in-time RFMFAInfo snapshot.
+ *
+ * reported_num_faces is getNumFaces() verbatim. faces is built independently
+ * from getFaceIDs() in the provider's std::set order; face IDs are provider
+ * values and need not be 0..N-1. Upstream publishes no requirement that the
+ * two agree, so reported_num_faces and faces.size are both preserved and never
+ * forced equal. contains_open_additions is 0/1. scheduler_resolution_fs is the
+ * schedulerResolution() femtosecond count. max_user_defined_context_bytes is
+ * getMaxNumUserDefinedContextBytes(). supported_data_formats holds the raw
+ * JobDataFormat values of getSupportedDataFormats() in the provider's std::set
+ * order (the upstream enum's underlying order), including unknown values. */
+typedef struct ams_mel_rf_mfa_info_v1 {
+    uint64_t reported_num_faces;
+    uint32_t contains_open_additions;
+    int64_t scheduler_resolution_fs;
+    uint64_t max_user_defined_context_bytes;
+
+    ams_mel_u32_span_v1 supported_data_formats;
+    ams_mel_rf_face_info_span_v1 faces;
+} ams_mel_rf_mfa_info_v1;
+
+/* Opens library_path with the platform dynamic loader (RTLD_NOW |
+ * RTLD_LOCAL), resolves the pinned RF MEL createDataMEL export, and calls it
+ * exactly once from private C++ with configuration. configuration is a
+ * provider-specific, NUL-terminated UTF-8 string passed verbatim as
+ * std::string_view (same input conventions as ams_mel_session_open).
+ * library_path, configuration, and out_data must be non-NULL and *out_data
+ * must be NULL.
+ *
+ * Status: AMS_MEL_LIBRARY_LOAD_FAILED (dlopen), AMS_MEL_SYMBOL_NOT_FOUND (no
+ * createDataMEL), AMS_MEL_FACTORY_FAILED (factory returned null),
+ * AMS_MEL_INTERNAL_ERROR (std::bad_alloc), AMS_MEL_PROVIDER_EXCEPTION (any
+ * other factory exception). On every failure *out_data stays NULL and the
+ * provider DSO is unloaded. Diagnostics follow ams_mel_session_open. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_open(
+    const char *library_path,
+    const char *configuration,
+    ams_mel_rf_data **out_data,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Queries RFMEL::getVersionInfo with exactly the semantics of
+ * ams_mel_session_get_provider_version: caller-owned vendor/description
+ * buffers, *_required counts include the NUL, AMS_MEL_BUFFER_TOO_SMALL writes
+ * only the *_required fields, provider strings with invalid UTF-8 or an
+ * embedded NUL are AMS_MEL_PROVIDER_EXCEPTION, and provider exceptions are
+ * contained. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_provider_version(
+    const ams_mel_rf_data *data,
+    ams_mel_provider_version_v1 *out_version,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Takes a point-in-time RFMFAInfo snapshot (see ams_mel_rf_mfa_info_v1).
+ * Only these getters are called: getNumFaces, containsOpenAdditions,
+ * schedulerResolution, getMaxNumUserDefinedContextBytes,
+ * getSupportedDataFormats, getFaceIDs and, for each reported face ID only,
+ * supportsReceive, supportsTransmit, requiresEndpointAssociation,
+ * getAGCProcessingTime, min/maxJobRequestLeadTime, minJobDetailLeadTime, the
+ * four switching times, getRx/TxFrequencyRanges, and getSampleFrequencyRange.
+ *
+ * Some providers (including pinned Squall) answer frequency-range getters with
+ * live I/O, so two snapshots may legitimately differ. A returned snapshot is
+ * immutable. If any getter throws, the partial snapshot is discarded,
+ * *out_info stays NULL, and AMS_MEL_PROVIDER_EXCEPTION is returned
+ * (std::bad_alloc: AMS_MEL_INTERNAL_ERROR); the RF owner stays open. A size_t
+ * provider value not representable as uint64_t is AMS_MEL_PROVIDER_FAILED.
+ * out_info must be non-NULL and *out_info must be NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_mfa_info(
+    const ams_mel_rf_data *data,
+    ams_mel_rf_mfa_info **out_info,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Returns the snapshot record. No provider call is made. The record and every
+ * span it references stay valid and unchanged until
+ * ams_mel_rf_mfa_info_close, including after RF Close and provider unload. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_mfa_info_view(
+    const ams_mel_rf_mfa_info *info,
+    const ams_mel_rf_mfa_info_v1 **out_view,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Destroys the snapshot and sets *info to NULL. Idempotent for a NULL owner,
+ * makes no provider call, and is independent of RF DataMEL lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_mfa_info_close(
+    ams_mel_rf_mfa_info **info,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Logical Close. The owner is consumed: after Close returns, successfully or
+ * not, *data is NULL. Close calls DataMEL::shutdown() exactly once, then
+ * destroys the DataMEL, and only then unloads the provider DSO. Close on a
+ * NULL owner returns AMS_MEL_OK and never calls shutdown again. Upstream makes
+ * requests after shutdown undefined, so once Close starts no provider
+ * operation is initiated through this owner; callers must externally
+ * serialize every RF Data operation with Close.
+ *
+ * If shutdown() throws, Close returns AMS_MEL_PROVIDER_EXCEPTION with *data
+ * NULL, does NOT retry shutdown, and PERMANENTLY retains the DataMEL and the
+ * loaded provider DSO (allocation-free), because the provider graph has no
+ * proven shutdown boundary. Process exit is the cleanup boundary. There is no
+ * retryable RF Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_close(
+    ams_mel_rf_data **data,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 #ifdef __cplusplus
 }
 #endif

@@ -299,3 +299,34 @@ Pinned Squall validates clean unsupported-provider behavior only.
 Pinned Squall does NOT provide positive Track execution or Track-report
 evidence.
 ```
+
+## Task 033B real Squall RF DataMEL C smoke
+
+`make test-squall-rf-c` (with `SQUALL_SOURCE_DIR` set to the pinned checkout)
+runs `run-rf.sh`. This path is C-only and opt-in. It is not part of
+`make check`, ordinary CTest, or hosted CI, and it is separate from the IR
+`run.sh`. The runner:
+
+1. Verifies the same pinned checkout plus the RF MEL, AMS Math, and AMS VITA
+   submodules.
+2. Builds `libsquall_rf_mel.so` from that checkout through the E2E
+   `squall-rf-data-consumer` image target, never a registry `latest` image.
+3. Starts only `squall-rf` (`config/rf-simulated.toml`) and Couloir.
+4. Writes an RF-shaped profile (`face_id`, `va_definition_id`,
+   `va_instance_id`, `rx_element_group_label`, `rx_stream_id`).
+5. Waits a bounded time for `/ready` and the control port.
+
+`squall_rf_c_smoke.c` then requires:
+
+* version 1/1/`Squall`/`Squall Simulator RF MEL`;
+* one reported face with face IDs `{0}`;
+* receive-only, no endpoint association, no open additions;
+* supported formats exactly `{ComplexINT16}`;
+* scheduler resolution > 0;
+* nonempty Rx and sample ranges with min <= max, and empty Tx ranges.
+
+Live range values are printed but never hard-coded. The snapshot must stay
+readable after RF Close. The smoke creates no ProductRxEndpoint, receives no
+UDP IQ, requests no jobs, and touches no VADB.
+
+Override ports with `AMS_MEL_SQUALL_RF_{CONTROL,COULOIR_METRICS,HEALTH,METRICS,DATA}_PORT`.

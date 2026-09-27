@@ -1,5 +1,27 @@
 # Implementation coverage
 
+Task 033B adds the first production RF MEL slice: a native C RF DataMEL
+foundation (`createDataMEL` load, VersionInfo, an owned RFMFAInfo snapshot, and
+shutdown-once Close with DSO lifetime ordering). It adds exactly six exports:
+ABI 0.1, 100 -> **106** production exports. The raw Ada FFI, `ams-mel-sys`, and
+private Python ctypes are synchronized. There is no safe language RF API.
+
+```text
+RF DataMEL:                                   native C foundation complete
+RF version:                                   complete
+RF RFMFAInfo scalar/enum/range snapshot:      complete
+RF quantizeDuration:                          not implemented
+RF PhysicalData:                              not implemented
+RF Tx power modes:                            not implemented
+RF ProductRxEndpoint / IQ receive:            not implemented
+RF RDMA:                                      not implemented
+RF C2 / jobs:                                 not implemented
+safe Ada/Rust/Python RF:                      not implemented
+```
+
+The mock RF provider proves positive behavior, and the pinned Squall RF smoke
+passed (opt-in; not part of CI). See `task-033b-rf-datamel-foundation.md`.
+
 Task 033A pins the RF MEL upstream and vendors the measured declaration
 closure for the DataMEL + RFMFAInfo roots. It also inventories the pinned
 Squall RF provider contract. It adds **no** RF runtime behavior:
@@ -148,8 +170,16 @@ Track; see `task-032a2-common-access-image.md`.
 | CandidateObjectPreProcMessage `@Optional` | Complete in native C and safe Ada | Inbound metadata only: the pinned `TrackChannel` declares no `send(CandidateObjectPreProcMessage)` and no `RequestFor<CandidateObjectPreProcMessage>`, so it shares the one bounded DROP-INCOMING Track metadata queue, capacity, and counter set with the other three kinds as metadata kind 4, in deterministic four-kind FIFO order. All 17 published `CandidateObjectPreProc` getters plus all 3 message getters are mapped exactly once; the 3x3 `int16_t` background patch is carried as a fixed row-major nine-element record, each nested `SensorInertialState` is copied, `edge` is normalized to exactly 0/1, and nothing is clamped, normalized, or decoded (`candidateObjectQuality` is deliberately NOT clamped to 0..1). The upstream container is a `std::vector`, and no invariant tying it to `numberOfCOs` is published, so the header count is copied verbatim and the COMPLETE vector is copied at its actual size with no truncation and no mismatch rejection. A null payload or a `HotRegion` enum outside `0..3` is malformed. Because the callback itself is `@Optional`, `Return::NotSupported` is non-fatal and metadata open continues; `Fail`, `BadPointer`, `NotImplemented`, and any future value fail closed. Event-owned span storage survives provider channel destruction and library unload. The payload lives in the new `ams_mel_ir_track_metadata_event_v3` record, reachable only through the new `ams_mel_ir_track_metadata_event_view_v3` export: v1 and v2 are both frozen and their view operations are unchanged, so existing consumers need no recompilation. Positive evidence is mock-only; pinned Squall cannot attach Track. No safe Rust or public Python Track API |
 | Other Track optional/conditional surfaces | None remaining | Every published TrackChannel-specific surface is implemented; the Track API is complete in native C and safe Ada |
 | RF MEL declaration baseline | Task 033A pinned/measured | RF MEL `762ce84c` DataMEL/RFMFAInfo/RFMEL/RFCreateFunctions declaration closure vendored (GCC 522, Clang 523, union 524), plus the AMS VITA headers it reaches. Declaration-only probe and closure checker; no RF code in `ams_mel_c` |
-| RF production C API | Not implemented | Task 033B is the recommended DataMEL foundation (factory, VersionInfo, RFMFAInfo snapshot, shutdown/close). No RF exports |
-| RF safe Ada/Rust/Python | Not implemented | No RF binding surface |
+| RF DataMEL (Task 033B) | Native C foundation complete | `ams_mel_rf_data_open` (`createDataMEL`, exact pinned `fnDataMEL` type, exceptions contained, DSO never leaked), `ams_mel_rf_data_close` (owner consumed, `shutdown()` exactly once, DataMEL destroyed before DSO unload, throwing shutdown permanently retains the graph). Separate from the IR Session. Mock-proven; pinned Squall C smoke passed |
+| RF version (Task 033B) | Complete | `ams_mel_rf_data_get_provider_version` shares the IR VersionInfo helper; Squall reports 1/1/`Squall`/`Squall Simulator RF MEL` |
+| RF RFMFAInfo scalar/enum/range snapshot (Task 033B) | Complete | Owned, immutable, point-in-time `ams_mel_rf_mfa_info`, independent of provider lifetime: `getNumFaces` and `getFaceIDs` preserved separately, open additions, scheduler resolution (fs), context bytes, raw JobDataFormat set, and for each reported face the three booleans, eight femtosecond durations, and Rx/Tx/sample frequency ranges (Hz, verbatim) |
+| RF quantizeDuration | Not implemented | Live operation; deliberately excluded from the snapshot |
+| RF PhysicalData | Not implemented | Needs a new measured header and InstallationDetails mapping |
+| RF Tx power modes | Not implemented | Both `getTxPowerModeCharacteristics` overloads are transmit-only and return provider-owned references |
+| RF ProductRxEndpoint / IQ receive | Not implemented | Never called by 033B |
+| RF RDMA | Not implemented | `registerExternalRxEndpoint` never called |
+| RF C2 / jobs | Not implemented | No other RF MEL family |
+| RF safe Ada/Rust/Python | Not implemented | Raw private Ada FFI, `ams-mel-sys`, and private `_native.py` only (inventory 106) |
 | RF apertures/jobs/receive/VADB | Not implemented | Later phase. Squall evidence: ComplexINT16 `ProductRxEndpoint` receive exists but copies and decodes UDP payloads (no zero-copy claim); RDMA, cached waveform, and TX endpoints return `Unsupported` |
 | OMS/UCI application integration | Not implemented | Separate project concern |
 | Rust sys binding | Complete for the current project C ABI | Exactly 100 C functions (Task 032B1 adds the opaque `AmsMelIrChannel` and nine raw common Channel declarations; the safe C2/Image façade is Task 032B3, sys unchanged), including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
@@ -177,7 +207,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited KeepAlive/CommsTest/ChannelCapability through `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel` (032B2) |
 | StackedImage | Not implemented |
-| RF | Not implemented (Task 033A pinned/measured only the RF MEL declaration baseline) |
+| RF | Not implemented in safe Ada. Task 033B added only the private raw `AMS.MEL_C_API` RF DataMEL declarations; there is no `AMS.MEL.RF` |
 
 Implementation and verification are different. See `bootstrap-validation.md`
 for the commands actually executed when this starter archive was prepared.

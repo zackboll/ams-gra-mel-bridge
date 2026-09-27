@@ -119,10 +119,25 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_submit_comms_test",
                 "ams_mel_ir_channel_get_capabilities",
                 "ams_mel_ir_channel_close",
+                "ams_mel_rf_data_open",
+                "ams_mel_rf_data_get_provider_version",
+                "ams_mel_rf_data_get_mfa_info",
+                "ams_mel_rf_mfa_info_view",
+                "ams_mel_rf_mfa_info_close",
+                "ams_mel_rf_data_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 100)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 100)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 106)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 106)
+        repository = Path(__file__).resolve().parents[2]
+        exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
+        exported = sorted(
+            line.strip().rstrip(";")
+            for line in exports.splitlines()
+            if line.strip().startswith("ams_mel_")
+        )
+        self.assertEqual(len(exported), 106)
+        self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
@@ -183,6 +198,66 @@ class AbiTests(unittest.TestCase):
             "ams_mel_ir_channel_close",
         ):
             self.assertIs(getattr(_native, name).restype, ctypes.c_int32)
+
+    def test_private_rf_data_signatures_are_exact(self) -> None:
+        """Task 033B: private raw ctypes shapes of the six RF DataMEL exports."""
+        diagnostic = [
+            _native.CharPointer, ctypes.c_size_t, _native.SizePointer
+        ]
+        data = _native.RfDataHandle
+        info = _native.RfMfaInfoHandle
+        expected = {
+            "ams_mel_rf_data_open": [
+                ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(data)
+            ],
+            "ams_mel_rf_data_get_provider_version": [
+                data, ctypes.POINTER(_native.ProviderVersionV1)
+            ],
+            "ams_mel_rf_data_get_mfa_info": [data, ctypes.POINTER(info)],
+            "ams_mel_rf_mfa_info_view": [
+                info, ctypes.POINTER(ctypes.POINTER(_native.RfMfaInfoV1))
+            ],
+            "ams_mel_rf_mfa_info_close": [ctypes.POINTER(info)],
+            "ams_mel_rf_data_close": [ctypes.POINTER(data)],
+        }
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic], name)
+            self.assertIs(function.restype, ctypes.c_int32)
+        self.assertEqual(
+            [
+                getattr(_native, f"AMS_MEL_RF_JOB_DATA_FORMAT_{suffix}")
+                for suffix in (
+                    "DIRECT_INT8", "DIRECT_INT16", "COMPLEX_INT8", "COMPLEX_INT16",
+                    "AMS_VITA_SMALL", "AMS_VITA_MEDIUM", "AMS_VITA_LARGE",
+                    "AMS_VITA_EXTRA_LARGE", "PDW_TYPE1", "PDW_TYPE2", "PDW_TYPE3",
+                    "LF_TYPE1", "LF_TYPE2", "LF_TYPE3",
+                )
+            ],
+            list(range(14)),
+        )
+
+    def test_private_rf_data_null_preconditions(self) -> None:
+        data = _native.RfDataHandle()
+        info = _native.RfMfaInfoHandle()
+        self.assertEqual(
+            _native.ams_mel_rf_data_open(None, b"", ctypes.byref(data), None, 0, None),
+            _native.AMS_MEL_INVALID_ARGUMENT,
+        )
+        self.assertIsNone(data.value)
+        self.assertEqual(
+            _native.ams_mel_rf_data_get_mfa_info(None, ctypes.byref(info), None, 0, None),
+            _native.AMS_MEL_INVALID_ARGUMENT,
+        )
+        self.assertIsNone(info.value)
+        self.assertEqual(
+            _native.ams_mel_rf_mfa_info_close(ctypes.byref(info), None, 0, None),
+            _native.AMS_MEL_OK,
+        )
+        self.assertEqual(
+            _native.ams_mel_rf_data_close(ctypes.byref(data), None, 0, None),
+            _native.AMS_MEL_OK,
+        )
 
     def test_private_common_channel_null_preconditions(self) -> None:
         channel = _native.IrChannelHandle()
@@ -872,6 +947,44 @@ class AbiTests(unittest.TestCase):
         expected.extend(
             self._layout(
                 _native.IrTrackSystemResponseResultV1, 'status', 'error_code'
+            )
+        )
+        # Task 033B RF DataMEL.
+        for handle in (_native.RfDataHandle, _native.RfMfaInfoHandle, ctypes.c_uint32):
+            expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
+        expected.extend(range(14))
+        expected.extend(self._layout(_native.RfFrequencyRangeV1, 'min_hz', 'max_hz'))
+        expected.extend(self._layout(_native.RfFrequencyRangeSpanV1, 'data', 'size'))
+        expected.extend(
+            self._layout(
+                _native.RfFaceInfoV1,
+                'face_id',
+                'supports_receive',
+                'supports_transmit',
+                'requires_endpoint_association',
+                'agc_processing_time_fs',
+                'min_job_request_lead_time_fs',
+                'max_job_request_lead_time_fs',
+                'min_job_detail_lead_time_fs',
+                'tx_rx_switching_time_fs',
+                'rx_tx_switching_time_fs',
+                'tx_tx_switching_time_fs',
+                'rx_rx_switching_time_fs',
+                'rx_frequency_ranges',
+                'tx_frequency_ranges',
+                'sample_frequency_ranges',
+            )
+        )
+        expected.extend(self._layout(_native.RfFaceInfoSpanV1, 'data', 'size'))
+        expected.extend(
+            self._layout(
+                _native.RfMfaInfoV1,
+                'reported_num_faces',
+                'contains_open_additions',
+                'scheduler_resolution_fs',
+                'max_user_defined_context_bytes',
+                'supported_data_formats',
+                'faces',
             )
         )
         expected.extend(

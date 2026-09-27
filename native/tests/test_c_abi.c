@@ -31,6 +31,31 @@ _Static_assert(sizeof(ams_mel_ir_frame_snapshot *) == sizeof(void *), "snapshot 
 _Static_assert(offsetof(ams_mel_ir_frame_snapshot_v1, sensor_nav_states) >
                offsetof(ams_mel_ir_frame_snapshot_v1, sensor_inertial_states), "snapshot layout");
 
+/* Task 033B RF DataMEL: opaque owners and the value/span records. */
+_Static_assert(sizeof(ams_mel_rf_data *) == sizeof(void *), "RF Data owner pointer");
+_Static_assert(sizeof(ams_mel_rf_mfa_info *) == sizeof(void *), "RF MFA owner pointer");
+_Static_assert(sizeof(ams_mel_rf_job_data_format_t) == 4, "JobDataFormat width");
+_Static_assert(sizeof(ams_mel_rf_frequency_range_v1) == 16, "frequency range layout");
+_Static_assert(offsetof(ams_mel_rf_frequency_range_v1, max_hz) == 8, "max_hz offset");
+_Static_assert(offsetof(ams_mel_rf_frequency_range_span_v1, size) == sizeof(void *),
+               "range span layout");
+_Static_assert(offsetof(ams_mel_rf_face_info_span_v1, size) == sizeof(void *),
+               "face span layout");
+_Static_assert(offsetof(ams_mel_rf_face_info_v1, agc_processing_time_fs) == 16,
+               "face durations are 8-byte aligned after four uint32 fields");
+_Static_assert(offsetof(ams_mel_rf_face_info_v1, rx_rx_switching_time_fs) == 72,
+               "eight femtosecond fields");
+_Static_assert(offsetof(ams_mel_rf_face_info_v1, rx_frequency_ranges) == 80,
+               "range spans follow durations");
+_Static_assert(offsetof(ams_mel_rf_face_info_v1, sample_frequency_ranges) >
+               offsetof(ams_mel_rf_face_info_v1, tx_frequency_ranges), "face layout");
+_Static_assert(offsetof(ams_mel_rf_mfa_info_v1, contains_open_additions) == 8,
+               "MFA layout");
+_Static_assert(offsetof(ams_mel_rf_mfa_info_v1, scheduler_resolution_fs) == 16,
+               "MFA layout");
+_Static_assert(offsetof(ams_mel_rf_mfa_info_v1, faces) >
+               offsetof(ams_mel_rf_mfa_info_v1, supported_data_formats), "MFA layout");
+
 #define CHECK(condition) do { \
     if (!(condition)) { \
         fprintf(stderr, "FAIL at %s:%d: %s\n", __FILE__, __LINE__, #condition); \
@@ -220,6 +245,50 @@ int main(void)
     CHECK(channel_close(&channel, NULL, 0, NULL) == AMS_MEL_OK && !channel);
     (void)channel_from_stream; (void)channel_from_health; (void)channel_from_instrumentation;
     (void)channel_from_track; (void)channel_keepalive; (void)channel_comms; (void)channel_capability;
+    /* Task 033B: exact RF DataMEL declarations and JobDataFormat values. */
+    {
+        ams_mel_status_t (*rf_open)(const char *, const char *, ams_mel_rf_data **,
+            char *, size_t, size_t *) = ams_mel_rf_data_open;
+        ams_mel_status_t (*rf_version)(const ams_mel_rf_data *,
+            ams_mel_provider_version_v1 *, char *, size_t, size_t *) =
+            ams_mel_rf_data_get_provider_version;
+        ams_mel_status_t (*rf_mfa)(const ams_mel_rf_data *, ams_mel_rf_mfa_info **,
+            char *, size_t, size_t *) = ams_mel_rf_data_get_mfa_info;
+        ams_mel_status_t (*rf_view)(const ams_mel_rf_mfa_info *,
+            const ams_mel_rf_mfa_info_v1 **, char *, size_t, size_t *) =
+            ams_mel_rf_mfa_info_view;
+        ams_mel_status_t (*rf_info_close)(ams_mel_rf_mfa_info **, char *, size_t,
+            size_t *) = ams_mel_rf_mfa_info_close;
+        ams_mel_status_t (*rf_close)(ams_mel_rf_data **, char *, size_t, size_t *) =
+            ams_mel_rf_data_close;
+        ams_mel_rf_data *rf_data = NULL;
+        ams_mel_rf_mfa_info *rf_info = NULL;
+        const ams_mel_rf_job_data_format_t formats[] = {
+            AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8,
+            AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16,
+            AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8,
+            AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3,
+        };
+        CHECK(sizeof formats / sizeof formats[0] == 14U);
+        for (uint32_t index = 0; index < 14U; ++index) CHECK(formats[index] == index);
+        CHECK(rf_open(NULL, "", &rf_data, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rf_data == NULL);
+        CHECK(rf_version(NULL, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rf_mfa(NULL, &rf_info, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rf_view(NULL, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rf_info_close(&rf_info, NULL, 0, NULL) == AMS_MEL_OK && rf_info == NULL);
+        CHECK(rf_close(&rf_data, NULL, 0, NULL) == AMS_MEL_OK && rf_data == NULL);
+    }
     CHECK(ams_mel_get_abi_version(NULL) == AMS_MEL_INVALID_ARGUMENT);
     CHECK(ams_mel_get_abi_version(&version) == AMS_MEL_OK);
     CHECK(version.major == AMS_MEL_ABI_VERSION_MAJOR);

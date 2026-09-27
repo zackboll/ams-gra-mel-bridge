@@ -1584,6 +1584,90 @@ pub struct AmsMelIrTrackSystemResponseRequest {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 
+// Task 033B RF DataMEL foundation (raw only; no safe Rust RF API).
+
+/// Opaque unique owner of one RF provider `DataMEL` and its provider DSO.
+#[repr(C)]
+pub struct AmsMelRfData {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
+#[repr(C)]
+pub struct AmsMelRfMfaInfo {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+/// Raw upstream `rfmel::JobDataFormat`; unknown values are preserved.
+pub type AmsMelRfJobDataFormat = u32;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8: AmsMelRfJobDataFormat = 0;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16: AmsMelRfJobDataFormat = 1;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8: AmsMelRfJobDataFormat = 2;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16: AmsMelRfJobDataFormat = 3;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL: AmsMelRfJobDataFormat = 4;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM: AmsMelRfJobDataFormat = 5;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE: AmsMelRfJobDataFormat = 6;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE: AmsMelRfJobDataFormat = 7;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1: AmsMelRfJobDataFormat = 8;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2: AmsMelRfJobDataFormat = 9;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3: AmsMelRfJobDataFormat = 10;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1: AmsMelRfJobDataFormat = 11;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2: AmsMelRfJobDataFormat = 12;
+pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3: AmsMelRfJobDataFormat = 13;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AmsMelRfFrequencyRangeV1 {
+    pub min_hz: f64,
+    pub max_hz: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfFrequencyRangeSpanV1 {
+    pub data: *const AmsMelRfFrequencyRangeV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfFaceInfoV1 {
+    pub face_id: u32,
+    pub supports_receive: u32,
+    pub supports_transmit: u32,
+    pub requires_endpoint_association: u32,
+    pub agc_processing_time_fs: i64,
+    pub min_job_request_lead_time_fs: i64,
+    pub max_job_request_lead_time_fs: i64,
+    pub min_job_detail_lead_time_fs: i64,
+    pub tx_rx_switching_time_fs: i64,
+    pub rx_tx_switching_time_fs: i64,
+    pub tx_tx_switching_time_fs: i64,
+    pub rx_rx_switching_time_fs: i64,
+    pub rx_frequency_ranges: AmsMelRfFrequencyRangeSpanV1,
+    pub tx_frequency_ranges: AmsMelRfFrequencyRangeSpanV1,
+    pub sample_frequency_ranges: AmsMelRfFrequencyRangeSpanV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfFaceInfoSpanV1 {
+    pub data: *const AmsMelRfFaceInfoV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfMfaInfoV1 {
+    pub reported_num_faces: u64,
+    pub contains_open_additions: u32,
+    pub scheduler_resolution_fs: i64,
+    pub max_user_defined_context_bytes: u64,
+    pub supported_data_formats: AmsMelU32SpanV1,
+    pub faces: AmsMelRfFaceInfoSpanV1,
+}
+
 extern "C" {
     pub fn ams_mel_get_abi_version(out_version: *mut AmsMelAbiVersionV1) -> AmsMelStatus;
 
@@ -2305,6 +2389,48 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_channel_close(
         channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_rf_data_open(
+        library_path: *const c_char,
+        configuration: *const c_char,
+        out_data: *mut *mut AmsMelRfData,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_get_provider_version(
+        data: *const AmsMelRfData,
+        out_version: *mut AmsMelProviderVersionV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_get_mfa_info(
+        data: *const AmsMelRfData,
+        out_info: *mut *mut AmsMelRfMfaInfo,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_mfa_info_view(
+        info: *const AmsMelRfMfaInfo,
+        out_view: *mut *const AmsMelRfMfaInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_mfa_info_close(
+        info: *mut *mut AmsMelRfMfaInfo,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_close(
+        data: *mut *mut AmsMelRfData,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

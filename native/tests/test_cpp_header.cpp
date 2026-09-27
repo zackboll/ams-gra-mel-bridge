@@ -65,6 +65,34 @@ static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_get_capabilities),
                              channel_capability_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_close), channel_close_fn>);
 
+/* Task 033B RF DataMEL: exact C++ shapes, noexcept, standard layout. */
+static_assert(std::is_standard_layout_v<ams_mel_rf_frequency_range_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_frequency_range_span_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_face_info_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_face_info_span_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_mfa_info_v1>);
+static_assert(std::is_trivially_copyable_v<ams_mel_rf_mfa_info_v1>);
+static_assert(std::is_same_v<ams_mel_rf_job_data_format_t, uint32_t>);
+static_assert(AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3 == 13U);
+using rf_open_fn = ams_mel_status_t (*)(const char *, const char *, ams_mel_rf_data **,
+    char *, size_t, size_t *) noexcept;
+using rf_version_fn = ams_mel_status_t (*)(const ams_mel_rf_data *,
+    ams_mel_provider_version_v1 *, char *, size_t, size_t *) noexcept;
+using rf_mfa_fn = ams_mel_status_t (*)(const ams_mel_rf_data *, ams_mel_rf_mfa_info **,
+    char *, size_t, size_t *) noexcept;
+using rf_view_fn = ams_mel_status_t (*)(const ams_mel_rf_mfa_info *,
+    const ams_mel_rf_mfa_info_v1 **, char *, size_t, size_t *) noexcept;
+using rf_info_close_fn = ams_mel_status_t (*)(ams_mel_rf_mfa_info **, char *, size_t,
+    size_t *) noexcept;
+using rf_close_fn = ams_mel_status_t (*)(ams_mel_rf_data **, char *, size_t,
+    size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_rf_data_open), rf_open_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_data_get_provider_version), rf_version_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_data_get_mfa_info), rf_mfa_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_mfa_info_view), rf_view_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_mfa_info_close), rf_info_close_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_data_close), rf_close_fn>);
+
 int main()
 {
     ams_mel_abi_version_v1 version{};
