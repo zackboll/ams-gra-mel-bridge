@@ -931,11 +931,44 @@ that endpoint destruction makes callbacks quiescent. So:
   owner + completion worker + `wait(timeout)` model, not a blocking open.
 * Close is logical first: it stops public delivery under the callback-state
   mutex, then drops the provider endpoint outside every bridge mutex, then
-  drains the bridge's own in-flight callback count. Callback safety never
+  drains the bridge's own in-flight callback count. Bridge-state safety never
   depends on provider quiescence. Squall's receiver-thread join is
-  provider-specific evidence only.
-* The DSO stays loaded while any endpoint, create request, worker, or in-flight
-  bridge callback exists.
+  provider-specific evidence only and is never used to relax a production rule.
+* The DSO stays loaded while any endpoint, create request, or worker exists.
+  **Once a callback has been successfully registered**, or
+  `setDataReadyCallback` threw with unprovable registration state, a dedicated
+  provider-library pin keeps the DSO mapped for the rest of the process.
+  Endpoint destruction plus `in_flight == 0` proves only that no bridge
+  callback body is running *now*. It does not prove that a provider-held
+  `std::function` copy can never start a new invocation, which would run
+  through provider code (thread, call site, dispatch machinery). So it is **not**
+  a DSO-unload condition. This is deliberate fail-safe retention, not a leak.
+
+```text
+callback registered
+       |
+       +------------------------+
+       |                        |
+logical endpoint Close          |
+       |                        |
+endpoint destruction            |
+       |                        |
+bridge callback drain           |
+       |                        |
+bridge resources reclaimable    |
+(DataMEL may shut down normally |
+ once all children are gone)    |
+                                |
+                                v
+                       provider DSO pin retained
+                       for process lifetime
+```
+
+The pin applies until a generic, provider-independent quiescence mechanism
+exists. It retains only the library, not the DataMEL, the endpoint, the public
+owners, queued products, or callback state. A throwing `DataMEL::shutdown()`
+still retains the complete provider graph, as Task 033B specifies. See
+`task-033c-rf-product-rx-contract.md` → "DSO lifetime".
 
 ## Task 029G CandidateObjectPreProcMessage and Track completion
 

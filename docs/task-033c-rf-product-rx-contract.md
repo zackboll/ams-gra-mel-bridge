@@ -224,6 +224,13 @@ down the parent). 033D must not infer an unregister mechanism, and it must not
 re-register an empty `std::function` as a pseudo-unregister, because
 re-registration is not specified.
 
+Destroying the endpoint ends the bridge's **ownership** of it. It does not
+prove that the provider can never start another invocation of a callback it
+has copied. There is no unregister and no quiescence primitive, so generic RF
+MEL gives no proof that provider **code** is finished with a registered
+callback. That is why 033D must permanently pin the provider DSO after callback
+registration (see "Recommended 033D receive design" → "DSO lifetime").
+
 ## JobDataPointer inventory
 
 `JobDataFormat` has 14 enumerators. `JobDataPointer` is
@@ -600,10 +607,60 @@ the provider itself. That is a **language/implementation expectation**, not an
 RF MEL synchronization guarantee. It says nothing about callbacks held by other
 provider objects (for example a shared context or DSO-global thread), about a
 copy of the `std::function` already on another thread's stack, or about when
-destruction completes relative to an in-flight invocation. 033D therefore makes
-its own callback state safe **independently** of provider quiescence (see
-callback state ownership), and treats endpoint destruction as a quiescence point
-only where provider evidence exists.
+destruction completes relative to an in-flight invocation. Nothing stops a
+provider from legally copying the `std::function` into state that outlives the
+endpoint object and invoking that copy later. 033D therefore makes its own
+callback state safe **independently** of provider quiescence (see callback
+state ownership). It **never** treats endpoint destruction as a generic
+callback-quiescence point, including for providers that have their own
+evidence (Squall, below).
+
+### Three distinct lifetimes
+
+```text
+A. Bridge callback-state lifetime
+   The registered lambda captures shared_ptr<RfRxCallbackState>. Any
+   provider-held copy keeps that state alive, so a callback can never
+   use freed bridge memory (no bridge-state UAF).
+
+B. Provider endpoint object lifetime
+   Dropping the bridge's shared_ptr<ProductRxEndpoint> ends the bridge's
+   ownership of the endpoint object. That is all it proves.
+
+C. Provider DSO code lifetime
+   Neither A nor B proves that provider code will never start another
+   callback invocation. RF MEL publishes no provider-independent
+   callback-quiescence primitive. This third boundary is the missing
+   proof, and 033D closes it by retention, not by inference.
+```
+
+The problem is not only bridge-state UAF. The lambda **target** is compiled
+into `ams_mel_c`, but a delayed invocation is still started and driven by
+provider code. It may run on a provider-owned thread, from a provider call
+site, or through provider callback storage and dispatch machinery (for
+example, a `std::function` copy whose manager/invoker path and enclosing
+frames live in the provider DSO). If that code is unmapped while such a path
+can still run, the process crashes even when every bridge object is alive.
+
+### What `in_flight == 0` does and does not prove
+
+```text
+in_flight == 0   proves:          no bridge callback invocation is executing
+                                  over RfRxCallbackState NOW
+in_flight == 0   does NOT prove:  no provider-held copy of the registered
+                                  std::function can begin a NEW invocation later
+```
+
+So this sequence is **not** safe and must never be allowed by 033D:
+
+```text
+endpoint destruction returns
+in_flight observed == 0
+provider DSO unloaded
+provider-held callback copy invokes later      -> executes unmapped code
+```
+
+`in_flight == 0` is **not** a DSO-unload condition.
 
 ### Squall endpoint destruction (positive, provider-specific evidence)
 
@@ -628,8 +685,21 @@ Because the join completes in step 2, **before** `iq_buffer_`,
 `user_callback_`, and `callback_mutex_` are destroyed and before destruction
 returns, pinned Squall's receive thread is quiescent when endpoint destruction
 completes. Any callback it was executing has returned. (The receiver's
-`receiveLoop` catches callback exceptions and logs them.) This is Squall
-evidence, not a general RF MEL property.
+`receiveLoop` catches callback exceptions and logs them.) In summary:
+
+```text
+SquallProductRxEndpoint destruction
+    -> UdpDataReceiver destruction
+    -> stop flag, socket shutdown, receiver-thread join
+    -> receiver thread quiescent before endpoint destruction completes
+```
+
+This is positive **provider-specific** evidence about one pinned provider
+revision. It is **not** the generic RF MEL contract, and 033D does not use it to
+relax any production rule. The bridge must not branch on provider name,
+vendor, or version (for example "Squall ⇒ unload the DSO, others ⇒ retain").
+The generic rule is always "callback registered ⇒ provider DSO retained". Only
+a future provider-independent quiescence mechanism may relax it.
 
 ### Squall callback storage
 
@@ -693,13 +763,31 @@ Receiving --(provider teardown failure / emergency retention)--> Failed (retaine
   bridge mutex. Because there is no unregister, logical Close is what stops
   public delivery. A callback that arrives later sees `Closed`, counts
   `callbacks_after_close`, and returns without copying.
-* After the provider endpoint is destroyed, Close waits until the callback state's
-  `in_flight == 0`. It does not rely on provider quiescence. Only after that, and
-  after every endpoint and request is gone, may the parent RF DataMEL close
-  unload the DSO: the endpoint owner retains `RfDataState`. `RFMEL::shutdown()`
-  runs only once all child endpoints and create requests are gone; RF Data
-  Close with live children is rejected, or it defers physical teardown, following
-  the IR child pattern.
+* The logical Close step is, exactly:
+
+  ```text
+  lock callback state
+  lifecycle = Closed
+  discard queued public events
+  wake receivers
+  unlock
+  -- then, outside every bridge mutex --
+  drop the bridge's shared_ptr<ProductRxEndpoint>
+  ```
+
+  A callback that begins after logical Close increments `callbacks_received`,
+  observes `Closed`, increments `callbacks_after_close`, performs **no** sample
+  or metadata copy and **no** queue publication, and returns safely.
+* After the provider endpoint is destroyed, Close may wait for the callback
+  state's `in_flight == 0`. That proves only that no bridge callback body is
+  executing over `RfRxCallbackState` right now. It lets bridge-side resources
+  (queue storage, counters, the endpoint owner) become reclaimable. It is **not**
+  callback quiescence and does **not** authorize provider DSO unload (see
+  "DSO lifetime" below).
+* `RFMEL::shutdown()` runs only once all child endpoints and create requests
+  are gone. RF Data Close with live children is rejected, or it defers physical
+  teardown, following the IR child pattern. See "DataMEL parent/child
+  lifecycle" below for how this interacts with the DSO pin.
 * Close must not be called from inside the bridge callback (it cannot be, since
   application code never runs there) and never holds the last reference on a
   provider thread.
@@ -724,11 +812,138 @@ RfRxCallbackState
 ```
 
 `in_flight` is incremented at callback entry and decremented at exit, under the
-mutex, and the decrement notifies. It lets Close prove that no **bridge** code
-is still running over this state, independently of the provider. The provider's
-own quiescence stays provider-specific (Squall: the receiver join). DSO unload
-additionally requires that the provider endpoint has been destroyed; the
-`std::function` target code lives in the bridge, not in the provider.
+mutex, and the decrement notifies. 033D keeps it: it proves that no **bridge**
+callback body is executing over this state at the observed instant,
+independently of the provider. It is useful for reclaiming bridge-side state
+safely once all provider-held callback copies have disappeared (the last
+`shared_ptr<RfRxCallbackState>` drops). It proves nothing about whether a
+provider-held copy can start a **new** invocation later. The provider's own
+quiescence stays provider-specific (Squall: the receiver join).
+
+```text
+in_flight == 0 IS NOT a DSO-unload condition
+```
+
+Although the `std::function` target lambda is compiled into `ams_mel_c`, any
+later invocation is started by provider code: a provider thread, call site, or
+callback storage/dispatch machinery. Unloading provider code without a
+quiescence guarantee is therefore unsafe, independently of bridge-state
+lifetime.
+
+### DSO lifetime (generic 033D policy)
+
+> Once a ProductRxEndpoint callback has been successfully registered, generic
+> RF MEL does not provide enough evidence to prove that no provider-held
+> callback copy can invoke after endpoint destruction. Therefore the bridge
+> MUST keep that provider DSO mapped for the remainder of the process unless a
+> future provider-independent quiescence mechanism is established.
+
+Invariant for the generic 033D contract:
+
+```text
+successful setDataReadyCallback
+    =>
+provider DSO cannot subsequently become unmapped during process lifetime
+```
+
+This is deliberate fail-safe lifetime retention, **not** a leak bug. It is
+also deliberately narrow. The safety requirement is only that the **DSO stays
+mapped**. It is not a requirement to keep any of these alive forever:
+
+```text
+DataMEL object
+ProductRxEndpoint object
+public endpoint owner
+queued products
+callback bridge state
+```
+
+033D should be designed so that, after successful endpoint teardown, the
+`ProductRxEndpoint` may be destroyed, the DataMEL may reach its normal shutdown
+boundary, and bridge queues/callback state may become reclaimable when safe
+(callback state lives exactly as long as any provider-held copy). A
+**dedicated provider-library pin** is what stays process-lifetime.
+
+Acceptable implementation shapes (033D chooses and justifies one; it must not
+pick one only because it is easiest):
+
+```text
+A. a dedicated shared provider-library pin (for example a
+   shared_ptr<SharedLibrary> split out of RfDataState) moved into a
+   process-lifetime emergency root;
+B. another allocation-free permanent SharedLibrary retention root;
+C. an equivalent mechanism that retains the DSO without incorrectly keeping
+   public endpoint ownership, the DataMEL, or queued products alive.
+```
+
+The pin must be established **before** registration can be observed as
+successful by any path that could later drop the last library reference, and
+establishing it must not fail after registration succeeds. For example, reserve
+any pin storage before calling `setDataReadyCallback`, or use an
+allocation-free intrusive root as 033B does.
+
+#### Registration failure
+
+Permanent pinning is needed only once callback registration has **actually
+succeeded**. For example:
+
+```text
+endpoint future resolves
+assigned format validated
+setDataReadyCallback throws BEFORE registration succeeds
+```
+
+does not by itself establish the permanent callback-code hazard. But upstream
+does not say whether a throwing `setDataReadyCallback` may already have
+copied or installed the callback before throwing. **033D design question:**
+can registration state ever be proven after a throw? Strong recommendation:
+
+```text
+if setDataReadyCallback throws and registration state cannot be proven,
+retain the provider DSO rather than assume no callback copy escaped.
+```
+
+Under the generic contract registration state after a throw is never provable,
+so a throwing `setDataReadyCallback` pins the DSO exactly as a successful one
+does. It still reports failure and publishes no endpoint owner. Only the
+paths that never called `setDataReadyCallback` (for example a format mismatch or
+an unclaimed endpoint destroyed by the worker) avoid the pin.
+
+#### Shutdown exception remains stronger
+
+033B's rule is unchanged: if `DataMEL::shutdown()` throws, the **complete**
+unproven provider graph (`RfDataState`: DataMEL + library) is retained through
+the emergency root. It is not weakened to "library pin only". The two retention
+cases are distinct:
+
+```text
+successful endpoint teardown after callback registration:
+    retain the DSO, because future callback dispatch is not disproven
+shutdown() exception:
+    retain the entire DataMEL/provider graph, because the shutdown
+    boundary itself is unproven
+```
+
+### DataMEL parent/child lifecycle
+
+```text
+all endpoint/request children logically and physically gone
+    =>
+DataMEL may reach its normal shutdown()/destroy boundary
+
+BUT
+
+if any ProductRxEndpoint callback was ever successfully registered
+(or setDataReadyCallback threw with unprovable registration state):
+    provider DSO remains process-lifetime pinned
+```
+
+Child endpoints and create requests retain `RfDataState` while they exist, so
+the DataMEL is not shut down under them. DataMEL shutdown and destruction are
+therefore **not** gated on `in_flight == 0` or on any claimed callback
+quiescence, and DSO unload is never gated on them either. Unload happens only
+through the ordinary 033B path when no callback was ever registered on that
+provider instance's endpoints; otherwise the separate library pin prevents it.
 
 ### Buffer copy model (ComplexINT16)
 
@@ -856,6 +1071,139 @@ This loses no metadata silently. Squall (all defaults) passes the policy
 unchanged. A richer provider fails closed and visibly until the deferred
 PointingType/ReceiveEvent mapping exists.
 
+## Adversarial callback evidence required by 033D
+
+033D needs two distinct adversarial callback tests with the separate RF mock
+provider. Both are mandatory.
+
+### 1. Blocked mid-callback across Close
+
+A provider thread enters the bridge callback and is held **inside** it while
+Close runs. `ProductRxMetadata` getters and `MELComplex` accessors are
+non-virtual, so the mock cannot block inside them. 033D must define a
+deterministic hold point without sleeps, for example a private test-only hook
+in the bridge callback that is compiled only into test objects and never
+exported. The test proves:
+
+* logical Close takes effect;
+* there is no bridge UAF;
+* `in_flight` drains to 0 only after the held callback returns;
+* nothing the callback produced is published after Close.
+
+### 2. Late start after zero in-flight (REQUIRED, distinct from 1)
+
+This covers a callback that has **not started at all** when every bridge-side
+drain condition is already satisfied.
+
+```text
+1. Endpoint registers the bridge callback.
+2. Mock provider copies the std::function into independently retained
+   provider-controlled state (a DSO-global slot, not an endpoint member).
+3. Mock provider does NOT invoke the retained copy yet.
+4. Public endpoint Close begins: lifecycle -> Closed; bridge drops/destroys
+   the provider endpoint.
+5. Endpoint destruction returns.
+6. callback_state.in_flight is observed == 0.
+7. Public endpoint owner is gone (in the full variant, RF Data Close has also
+   run shutdown() and the DataMEL is destroyed).
+8. Only NOW does another provider-controlled thread invoke the retained copy.
+```
+
+Required results:
+
+```text
+no bridge UAF (also run under an ASan/UBSan build)
+callback observes Closed
+callbacks_received increments
+callbacks_after_close increments
+no sample/metadata copy and no allocation of sample payload
+no event queued
+no provider API call from the callback
+provider DSO is still mapped when the late callback runs and after it returns
+```
+
+#### Non-vacuity (deterministic ordering, no sleeps)
+
+* The mock creates the late thread during the "arm" call (step 2). The thread
+  records `rf_late_armed` in the lifetime log and then blocks in `read()` on a
+  pipe whose write end belongs to the test. It cannot reach the invocation
+  until the test writes a byte, and the test writes it only after it has
+  **observed** steps 4–7. Causality, not timing, proves "late start after
+  destruction and after an observed `in_flight == 0`".
+* Step 5 is observed through the `rf_endpoint_destroyed` lifetime-log record,
+  which the mock endpoint destructor writes, together with Close having
+  returned.
+* Step 6 is observed through Close's own contract (it returns only after the
+  drain) **and** through a non-exported, test-only internal observation of the
+  `RfRxCallbackState`. The native test links the private implementation
+  objects, so there is no production export and no ABI change. The public owner
+  no longer exists, so the same seam reads `callbacks_received`,
+  `callbacks_after_close`, the queue length, and `in_flight` after the late
+  callback. 033D must define this seam explicitly and must not add a production
+  export for it.
+* The late thread records `rf_late_invoke_begin` before it calls the retained
+  copy and `rf_late_invoke_returned` afterwards. It then writes one byte to a
+  second, test-owned pipe. The test blocks on that pipe. A watchdog bounds the
+  wait; if it fires, the test fails and it never counts as a pass. There are no
+  sleeps.
+* "No copy" is observable. The late invocation passes `count > 0` with a
+  ComplexINT16 pointer into an anonymous `PROT_NONE` mapping, so any sample
+  read faults. It also passes a **null** metadata `shared_ptr`. The
+  `ProductRxMetadata` getters are non-virtual, so metadata reads cannot be
+  logged. A bridge that checked `Closed` first counts `callbacks_after_close`
+  and leaves `malformed_or_unsupported`, `allocation_failures`, and the queue
+  unchanged. A bridge that validated or copied before the lifecycle check would
+  change those counters or fault.
+* "No provider call from callback" reuses the 033B `rf_forbidden_call` /
+  `rf_call_after_shutdown` records.
+* "DSO still mapped" is checked reference-neutrally: the mock's path is still
+  present in `/proc/self/maps` (or `dl_iterate_phdr`), **and** there is no
+  `library_unloaded` record from the mock's `UnloadRecorder`. Do not use
+  `dlopen(RTLD_NOLOAD)`, which is not reference-neutral (Task 031A).
+
+#### Test-owned DSO pin discipline
+
+The test's own `dlopen` of the mock may be used only while it calls TEST-only
+gate functions. It must never be what keeps the DSO mapped during the late
+callback:
+
+```text
+a. create the two pipes (provider-independent synchronization objects)
+b. open RF data, create + claim the endpoint (callback registered)
+c. dlsym + call mock_rf_arm_late_callback(release_read_fd, done_write_fd):
+   the LAST provider function the test calls. The mock copies the registered
+   std::function into its global slot and starts the blocked thread.
+d. clear every dlsym'd pointer, dlclose the test handle (must succeed), and
+   clear the handle. From here on the test holds no provider reference.
+e. Close the endpoint; observe rf_endpoint_destroyed and the drain (steps 4-6)
+f. Close RF data: shutdown() once, DataMEL destroyed (full variant)
+g. assert: no library_unloaded record, and the mock is still in /proc/self/maps
+h. write one byte to the release pipe (provider-independent release)
+i. read the done pipe, then inspect the lifetime log, the mapping, and the
+   internal callback-state observation. Never call a stale dlsym pointer
+   after (d).
+```
+
+After (d), only the bridge's own pin can keep the mock mapped. The test
+therefore proves the production bridge's DSO pin, not a test-owned one. This
+follows the Task 031A discipline: clear the gate pointer, call `dlclose`
+successfully, and make no further provider calls.
+
+#### Negative control (mandatory mutation)
+
+Temporarily remove the permanent DSO retention, for example by letting the
+library pin drop with `RfDataState`. The test handle is already closed at (d),
+so RF Data Close at (f) unloads the mock. Step (g) must then fail explicitly,
+because `library_unloaded` is recorded and the mapping is gone. Without that
+check, releasing the thread would execute unmapped code.
+
+Run the scenario in a forked child and let the parent assert a clean exit. The
+mutation's failure mode (explicit assertion or `SIGSEGV`) is then reported as a
+test failure and never takes down the runner. A run where the mock stayed
+mapped only because of a test-owned handle does not count. The 033D report
+lists this mutation next to the existing ones (033B style) and shows that the
+late-start test fails under it.
+
 ## Stop-condition review
 
 | Stop condition | Finding |
@@ -866,7 +1214,7 @@ PointingType/ReceiveEvent mapping exists.
 | ComplexINT16 cannot be copied without relying on undocumented layout | No. Element-wise copy through the public `real()`/`imag()`; no layout reliance |
 | ProductRxMetadata cannot be represented without silent loss and no fail-closed policy exists | No. A complete representable subset plus a fail-closed policy for the four non-representable fields |
 | Endpoint creation cannot be reconciled with a safe async ownership model | No. It fits the existing RequestFor request-owner/worker model |
-| Teardown requires assuming a nonexistent unregister | No. Logical Close + `shared_ptr` callback state + `in_flight` drain; no unregister is assumed |
+| Teardown requires assuming a nonexistent unregister | **Not for logical Close; yes, for generic DSO unload, which is resolved by retention.** Logical endpoint Close assumes no unregister: `lifecycle = Closed` under the callback-state mutex, then shared-state capture and the `in_flight` bridge drain. However, the absence of any unregister/quiescence primitive **does** prevent a generic proof that the provider DSO can be unloaded after callback registration. Endpoint destruction plus `in_flight == 0` does not prove that no provider-held callback copy can start later. Resolution: 033D permanently pins the provider DSO after callback registration (and after a `setDataReadyCallback` throw with unprovable registration state) |
 | Production API/runtime changes needed to finish the evidence task | No |
 | Final exports ≠ 106 | No (see validation) |
 
@@ -882,18 +1230,36 @@ Scope
   cancellation; idempotent nonblocking request close; an unclaimed endpoint is
   destroyed by the worker without callback registration. No RF admission bound.
 - DataMEL parent/child lifecycle: request and endpoint owners retain
-  RfDataState; the DSO never unloads while an endpoint, request, worker, or
-  in-flight bridge callback exists; RF Data Close with live children follows the
-  IR child pattern (reject or defer); shutdown() still exactly once.
+  RfDataState; RF Data Close with live children follows the IR child pattern
+  (reject or defer); shutdown() still exactly once. Once all endpoint/request
+  children are logically and physically gone, DataMEL may reach its normal
+  shutdown/destroy boundary. The library pin is retained separately.
+- Callback registration permanently pins the provider DSO for the process
+  lifetime unless future provider-independent quiescence evidence exists.
+  Invariant: successful setDataReadyCallback => the provider DSO cannot
+  subsequently become unmapped during process lifetime. A throwing
+  setDataReadyCallback whose registration state cannot be proven also pins.
+  The pin is a dedicated provider-library retention (process-lifetime
+  emergency root or equivalent allocation-free permanent SharedLibrary
+  root). It does not keep the DataMEL, ProductRxEndpoint, public owner,
+  queued products, or callback state alive. Deliberate fail-safe retention,
+  not a leak. No provider-name/vendor/version-based unload optimization
+  (not even for Squall).
+- Destroying ProductRxEndpoint and observing bridge in_flight == 0 do NOT
+  authorize provider DSO unload. in_flight is kept: it proves only that no
+  bridge callback body is executing now, for bridge-state reclamation.
+- shutdown() failure retains the full provider graph (RfDataState), as in
+  033B. That is not weakened to a library pin only.
 - Requested format = ComplexINT16 only (other formats: INVALID_ARGUMENT before
   any provider call).
 - createProductRxEndpoint(ComplexINT16, region_size_bytes, nullptr): provider-
   managed region; region_size_bytes is a caller-supplied pass-through.
 - Endpoint ID exposed (uint64_t); getAssignedDataFormat() must equal
   ComplexINT16, otherwise fail closed with no callback registered.
-- setDataReadyCallback called exactly once with a named std::function lvalue
-  capturing only shared_ptr<RfRxCallbackState> (mutex, cv, lifecycle, bounded
-  FIFO, in_flight, counters).
+- setDataReadyCallback called exactly once with a named std::function lvalue.
+  The callback captures only shared_ptr<RfRxCallbackState> (mutex, cv,
+  lifecycle, bounded FIFO, in_flight, counters), never the endpoint, the
+  endpoint owner, the DataMEL, or a provider pointer.
 - Callback: validate (metadata non-null, variant index 3, null-with-count>0,
   overflow and max-samples bound, metadata policy), copy each MELComplex<int16_t>
   element-by-element through real()/imag() into ams_mel_rf_complex_i16_v1, copy
@@ -904,8 +1270,12 @@ Scope
   callbacks_after_close.
 - Receive = immutable owned event snapshot (receive(timeout) -> event owner,
   view -> ams_mel_rf_product_rx_event_v1, close).
-- Logical Close before endpoint destruction; drop the provider endpoint outside
-  every bridge mutex; then drain in_flight to 0.
+- Endpoint Close remains logical-first: lock callback state; lifecycle =
+  Closed; discard queued events; wake receivers; unlock. Then drop the provider
+  endpoint outside every bridge mutex, and then drain in_flight to 0 for
+  bridge-state reclamation only. A callback that starts after Close increments
+  callbacks_received and callbacks_after_close, copies nothing, queues nothing,
+  and returns.
 - ProductRxMetadata policy (033C): copy the 7 uint32 IDs,
   phaseCoherenceWithPrior, firstReceiveEventStart (int64 s + int64 fs verbatim)
   and rxStreamIDs; reject as malformed any callback with non-empty
@@ -917,16 +1287,32 @@ Evidence
   count>0; count 0; assigned-format mismatch; delayed/never-ready create future;
   provider-owned buffer overwritten immediately after callback return (proves the
   copy); queue-full drops.
-- Adversarial callback quiescence: a mock whose callback thread outlives endpoint
-  destruction and keeps a std::function copy, blocked mid-callback across Close;
-  prove no bridge UAF, correct callbacks_after_close, in_flight drain, and DSO
-  kept until safe (TEST-only observation, as in 033B).
+- Adversarial callback, blocked mid-callback across Close: prove no bridge UAF,
+  correct callbacks_after_close, and that in_flight drains only after the held
+  callback returns.
+- MANDATORY late-start-after-zero-in-flight adversarial mock: the mock copies
+  the std::function into DSO-global state; Close, endpoint destruction,
+  observed in_flight == 0, public owner gone (and DataMEL shutdown/destroy)
+  all happen first; only then does a provider thread invoke the retained copy.
+  Require no bridge UAF, Closed observed, callbacks_received and
+  callbacks_after_close incremented, no payload copy/allocation, no event
+  queued, no provider call from the callback, and the provider DSO still mapped.
+  Ordering uses pipes/barriers (no sleeps). The test's own dlopen handle is
+  dlclosed right after the last TEST-only gate call, before Close, and before
+  the late release; no stale dlsym pointer is used afterwards. Mapping is
+  checked reference-neutrally (/proc/self/maps + no library_unloaded record).
+  Mandatory negative control: removing the permanent DSO pin must make the
+  test fail (forked child; explicit unload observation or crash).
 - Real Squall positive UDP/IQ evidence (opt-in): C2 job to activate reception,
   exact 10+20i, 30+40i, -5+6i values; endpoint destruction removes the data
-  destination.
+  destination. Squall's receiver-thread join is provider-specific evidence only
+  and does not relax the generic DSO pin.
 - C translation-unit tests; ABI 0.1 export delta listed explicitly.
 
 Out of scope
+- No provider DSO unload after callback registration, and no provider-specific
+  relaxation of that rule. Only a future provider-independent quiescence
+  mechanism, evidenced by its own task, may relax it.
 - No RDMA / getRDMAMemoryRegionParams / external endpoints / host buffers.
 - No jobs / C2 / VADB in the production API (the Squall runner may use C++ to
   activate a job, as test harness only).
@@ -935,9 +1321,12 @@ Out of scope
 - No safe Ada/Rust/Python RF receive API (raw FFI inventory sync only).
 ```
 
-The 033C evidence disproves none of the expected direction. The one refinement
-is that metadata is not deferred: 033D publishes the complete representable
-subset and fails closed on the rest.
+The 033C evidence disproves none of the expected direction. There are two
+refinements. First, metadata is not deferred: 033D publishes the complete
+representable subset and fails closed on the rest. Second, because there is no
+unregister and no quiescence primitive, callback registration permanently pins
+the provider DSO. Endpoint destruction plus a bridge `in_flight` drain is never
+treated as permission to unload provider code.
 
 ## Validation
 
