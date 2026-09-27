@@ -1,5 +1,18 @@
 # Implementation coverage
 
+Task 033A pins the RF MEL upstream and vendors the measured declaration
+closure for the DataMEL + RFMFAInfo roots. It also inventories the pinned
+Squall RF provider contract. It adds **no** RF runtime behavior:
+
+```text
+RF MEL declaration baseline:    Task 033A pinned/measured
+RF production C API:            not implemented
+RF safe Ada/Rust/Python:        not implemented
+```
+
+No production source, public header, or binding changed. ABI remains 0.1 with
+exactly 100 production exports. See `task-033a-rf-mel-source-closure.md`.
+
 Task 032B4 adds the **public Python** common Channel façade for the two
 families that already have public Python typed owners.
 `ControlChannel.channel_view()` and `ImageStream.channel_view()` return a weak
@@ -134,7 +147,10 @@ Track; see `task-032a2-common-access-image.md`.
 | CandidateObjectMessage `@RequiredIfDetectCandidateObjects` | Complete in native C and safe Ada | Inbound metadata only: the pinned `TrackChannel` declares no `send(CandidateObjectMessage)` and no `RequestFor<CandidateObjectMessage>`, so it shares the one bounded DROP-INCOMING Track metadata queue, capacity, and counter set with `IRSTTrackReport` and `RequestSystemTrackData`. Complete payload fidelity: the header including binary32 `CFAR` and the undecoded validity bitfield, the complete `HotRegion` vector in published order, the canonical `SensorInertialState`, and exactly `numberOfCOs` candidate objects from the upstream fixed 900-entry array. `numberOfCOs > 900` and a `HotRegion` enum outside `0..3` are malformed. Registered only when the channel advertises `ChannelMetadataCapabilityType::CandidateObjectMessage`; when advertised, any non-`Success` return including `NotSupported` fails the open closed. Event-owned span storage survives provider channel destruction and library unload. The payload lives in the new `ams_mel_ir_track_metadata_event_v2` record, reachable only through the new `ams_mel_ir_track_metadata_event_view_v2` export: `ams_mel_ir_track_metadata_event_v1` is frozen at `kind`/`track_report`/`request_system_track_data` and `ams_mel_ir_track_metadata_event_view` is unchanged, so existing v1 consumers need no recompilation. Positive evidence is mock-only; pinned Squall cannot attach Track. No safe Rust or public Python Track API |
 | CandidateObjectPreProcMessage `@Optional` | Complete in native C and safe Ada | Inbound metadata only: the pinned `TrackChannel` declares no `send(CandidateObjectPreProcMessage)` and no `RequestFor<CandidateObjectPreProcMessage>`, so it shares the one bounded DROP-INCOMING Track metadata queue, capacity, and counter set with the other three kinds as metadata kind 4, in deterministic four-kind FIFO order. All 17 published `CandidateObjectPreProc` getters plus all 3 message getters are mapped exactly once; the 3x3 `int16_t` background patch is carried as a fixed row-major nine-element record, each nested `SensorInertialState` is copied, `edge` is normalized to exactly 0/1, and nothing is clamped, normalized, or decoded (`candidateObjectQuality` is deliberately NOT clamped to 0..1). The upstream container is a `std::vector`, and no invariant tying it to `numberOfCOs` is published, so the header count is copied verbatim and the COMPLETE vector is copied at its actual size with no truncation and no mismatch rejection. A null payload or a `HotRegion` enum outside `0..3` is malformed. Because the callback itself is `@Optional`, `Return::NotSupported` is non-fatal and metadata open continues; `Fail`, `BadPointer`, `NotImplemented`, and any future value fail closed. Event-owned span storage survives provider channel destruction and library unload. The payload lives in the new `ams_mel_ir_track_metadata_event_v3` record, reachable only through the new `ams_mel_ir_track_metadata_event_view_v3` export: v1 and v2 are both frozen and their view operations are unchanged, so existing consumers need no recompilation. Positive evidence is mock-only; pinned Squall cannot attach Track. No safe Rust or public Python Track API |
 | Other Track optional/conditional surfaces | None remaining | Every published TrackChannel-specific surface is implemented; the Track API is complete in native C and safe Ada |
-| RF apertures/jobs/receive/VADB | Not implemented | Later phase |
+| RF MEL declaration baseline | Task 033A pinned/measured | RF MEL `762ce84c` DataMEL/RFMFAInfo/RFMEL/RFCreateFunctions declaration closure vendored (GCC 522, Clang 523, union 524), plus the AMS VITA headers it reaches. Declaration-only probe and closure checker; no RF code in `ams_mel_c` |
+| RF production C API | Not implemented | Task 033B is the recommended DataMEL foundation (factory, VersionInfo, RFMFAInfo snapshot, shutdown/close). No RF exports |
+| RF safe Ada/Rust/Python | Not implemented | No RF binding surface |
+| RF apertures/jobs/receive/VADB | Not implemented | Later phase. Squall evidence: ComplexINT16 `ProductRxEndpoint` receive exists but copies and decodes UDP payloads (no zero-copy claim); RDMA, cached waveform, and TX endpoints return `Unsupported` |
 | OMS/UCI application integration | Not implemented | Separate project concern |
 | Rust sys binding | Complete for the current project C ABI | Exactly 100 C functions (Task 032B1 adds the opaque `AmsMelIrChannel` and nine raw common Channel declarations; the safe C2/Image façade is Task 032B3, sys unchanged), including `ams_mel_ir_track_metadata_event_view` (frozen v1), `ams_mel_ir_track_metadata_event_view_v2` (frozen v2), and `ams_mel_ir_track_metadata_event_view_v3`; raw Instrumentation and complete Track declarations/constants synchronized, including the Track report/event layouts, the complete TrackDataUpdate/covariance/result layouts and update-request handle, and the complete SystemTrackDataResponse/result layouts and system-response-request handle; no safe Instrumentation or Track API |
 | Safe Rust binding | Session + IR Mono8 + C2 Operate/TaskSched + BIT no-op + common Channel (C2/Image) implemented | Typed Return values/results and reusable ReturnRequest (C2 BIT and common KeepAlive); weak `ChannelView` from `ControlChannel`/`ImageStream` with CommsTest (`CommsRequest`) and a complete owned `ChannelCapability` (Task 032B3); no safe Health/Instrumentation/Track owners or views; no payload-bearing BIT or additional C2/RF API |
@@ -161,7 +177,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited KeepAlive/CommsTest/ChannelCapability through `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel` (032B2) |
 | StackedImage | Not implemented |
-| RF | Not implemented |
+| RF | Not implemented (Task 033A pinned/measured only the RF MEL declaration baseline) |
 
 Implementation and verification are different. See `bootstrap-validation.md`
 for the commands actually executed when this starter archive was prepared.

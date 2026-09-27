@@ -852,6 +852,28 @@ Boost leakage. The presence of TrackDataUpdate declarations and Boost headers
 does not implement TrackDataUpdate; Task 029B is the earliest possible Track
 adapter task.
 
+## Task 033A RF is a distinct provider family
+
+RF MEL is its own provider family, with its own factories and object graph. It
+is not another IR Channel type:
+
+```text
+IR:  provider DSO -> Session -> Control -> attachChannel -> Channel
+RF:  provider DSO -> create*MEL(config) -> RF MEL object families
+                    (AdminMEL, C2MEL, COSITEMEL, DataMEL, DEAMEL, MonitorMEL)
+```
+
+Each RF factory has C linkage but a C++ signature (`std::shared_ptr<...>`
+result, `std::string_view` argument). A future RF adapter must therefore
+resolve it with `dlsym`, call it only from private C++, contain exceptions and
+ownership, and keep the DSO loaded until every provider-owned RF object has
+been destroyed. RF will not reuse the IR `Session`/`Control`/`Channel` handles.
+`RFMEL::shutdown()` makes later requests undefined, so RF owners need their
+own logical-close boundary. Task 033A vendors only the measured
+DataMEL/RFMFAInfo declaration closure, including the AMS VITA headers it
+reaches through `JobDataFormat.h`. It is a private native include that is not
+exported through the C ABI, and it adds no RF adapter.
+
 ## Task 029G CandidateObjectPreProcMessage and Track completion
 
 Task 029G implements the `@Optional` `CandidateObjectPreProcMessage`
@@ -1079,6 +1101,8 @@ spans, byte spans, packet views, device-memory descriptors, or explicit
 non-CPU-addressable handles, and the final "language-safe borrowed view" level
 of the chain simply does not exist for a non-CPU-addressable region.
 
-The opaque owner level is what makes that expressible at all. RF MEL, RF
-header vendoring, RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain
-unimplemented.
+The opaque owner level is what makes that expressible at all. RF MEL runtime
+support, RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain
+unimplemented. Task 033A vendors only the measured RF DataMEL declaration
+closure. Pinned Squall's RF receive endpoint copies and decodes UDP payloads
+into its own IQ vector, so it provides no RF zero-copy evidence.

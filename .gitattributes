@@ -3,3 +3,7 @@
 *.pdf binary
 # Immutable upstream Boost headers retain their original whitespace exactly.
 native/vendor/boost-1.83.0/** -whitespace
+# Immutable pinned RF MEL / AMS VITA headers (Task 033A) likewise retain their
+# original upstream whitespace exactly.
+native/vendor/rf-mel/** -whitespace
+native/vendor/ams-vita/** -whitespace

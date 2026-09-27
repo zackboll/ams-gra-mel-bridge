@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Pin the RF MEL declaration closure and inventory the provider contract
+  (Task 033A). Pin RF MEL `762ce84c5555dd0f3ea66f36b321fecf8839b89f` and
+  AMS VITA `8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8`, and reuse the existing
+  Common MEL, AMS Math, and Boost 1.83.0 pins. Vendor exactly the
+  GCC/Clang-union declaration closure of the DataMEL/RFMFAInfo roots
+  (12 RF MEL files, 7 AMS VITA files, 3 AMS Math headers, 1 Boost header,
+  0 Common MEL files), byte-identical to upstream. Add the declaration-only
+  `rf_data_header_compile_probe` target and the `check_rf_data_header_closure`
+  system-leakage check. Record the pinned Squall RF exports, the DataMEL
+  contract, the complete RFMFAInfo inventory, and the receive/RDMA/TX evidence
+  boundaries. No RF runtime support: no production source, public header, or
+  binding change. ABI 0.1, 100 exports.
 - Add the public Python common Channel façade for C2 and Image (Task 032B4):
   `ControlChannel.channel_view()` / `ImageStream.channel_view()` return a weak
   `ChannelView` that retains no Python source, Session, or provider object,

@@ -618,3 +618,31 @@ c9babe7d5bf2f7b6a711e226cb39af04ce3b7ba8fb18c2de71cf82a6a8960258  native/vendor/
 82ca441edd4f8c603b956b36c76f7db4b7b1287e4e9399e15b918ff64f480fcb  native/vendor/boost-1.83.0/boost/utility/enable_if.hpp
 a547ee7eddf1b96695027922345b471feba8bcba79a8572399d282247c02e4ab  native/vendor/boost-1.83.0/boost/version.hpp
 ```
+
+Task 033A adds the exact GCC/Clang-union RF MEL DataMEL declaration closure: 10 RF MEL headers plus LICENSE/INTENT.md, 5 AMS VITA headers plus LICENSE/INTENT.md, 3 previously unvendored AMS Math headers from the same AMS Math pin, and 1 previously unvendored Boost 1.83.0 header (`boost/numeric/ublas/blas.hpp`, reached through AMS Math `Geometry.h`). No existing entry changes:
+
+```text
+d0026741ddf5d8583545117897e43fec068db1a9b9fc9b1f9e120a753f2d70f7  native/vendor/ams-math/include/math/geometry/Geometry.h
+44f1ae27b984e4ba32e37f8e47b1064507430697a7b7f5bbe94c15ec5044a8a5  native/vendor/ams-math/include/math/geometry/LLAPoint.h
+7e0f77f8259bd7d8aeaa363060e0f608650e0683d4a217f65d9a436c71bc6c58  native/vendor/ams-math/include/math/units/UTCTime.h
+d27f3edaec6c975ecb5d55b12404be34926ad21bc24bf3bfcc852d6c67a49eaf  native/vendor/ams-vita/INTENT.md
+2f1aa718ddb1a34ed1581e3c57dddd1bb516fb7657a9c4076e8ff95b91d9844d  native/vendor/ams-vita/LICENSE
+1750b0eba43f8fff6e79510d7cd1e282efc4d8f2625034f647acd4138d9d9a45  native/vendor/ams-vita/include/ams/iface/vita/DataPacket.h
+9c15ba00d431edf5c5854b958e57a1723add5e58041fd80daa27b2d7fc963c1c  native/vendor/ams-vita/include/ams/iface/vita/DataPacketBase.h
+3eb3f2f12e3ac2c19eb5d20e0e846306acef68b4677544e5638f66ab1a2652e7  native/vendor/ams-vita/include/ams/iface/vita/FixedDataPacket.h
+6b0c281f10b5c5abebe1217730b4d34fdbfe2d7344a4e94025ec60061176c5de  native/vendor/ams-vita/include/ams/iface/vita/GeneratedMasks.h
+83cf2d55ebb2a35c7905866fb76c4f0653d4fcd4986d222699623722206f78eb  native/vendor/ams-vita/include/ams/iface/vita/Primitives.h
+6228c85db99c8a40ccbc7ce0504c4ba315185db2f8f35c3b7f4a587dfd21d698  native/vendor/boost-1.83.0/boost/numeric/ublas/blas.hpp
+d27f3edaec6c975ecb5d55b12404be34926ad21bc24bf3bfcc852d6c67a49eaf  native/vendor/rf-mel/INTENT.md
+2f1aa718ddb1a34ed1581e3c57dddd1bb516fb7657a9c4076e8ff95b91d9844d  native/vendor/rf-mel/LICENSE
+89d22a13f0dd429abdc920be4256c014e15c9ac19e9d6afa10e0021b698a8785  native/vendor/rf-mel/include/rfmel/data/DataMEL.h
+384fdcd3611ecab164c2ad34f3f8f23df3a9f50142d9586d922f98081094e8ad  native/vendor/rf-mel/include/rfmel/factory/RFCreateFunctions.h
+39ba609784ea346b809066de45dcfc08c99f26fb86cdd1fe9a3ce2bbaba8d0c7  native/vendor/rf-mel/include/rfmel/mfa/RFMFAInfo.h
+1549d0f6fe0277f3b825ee14996bff5af6c6f6048573ddcf359b6456047dc78d  native/vendor/rf-mel/include/rfmel/mfa/TxPowerModeData.h
+f3a6247543a873da87256ca8de837d9bc9a23809aa77798df1857f572dbbe2da  native/vendor/rf-mel/include/rfmel/rfmeltypes/InvalidTxPowerModeException.h
+7c7423dd7ea1bf23d7d759b128d054b6a6b5f345bf75b6b7a0b95fb2d8fbcffa  native/vendor/rf-mel/include/rfmel/rfmeltypes/JobDataFormat.h
+c007ca087235139e1be744e29150ca55a59cb01a666b239453590be9e6c2f6b2  native/vendor/rf-mel/include/rfmel/rfmeltypes/MELComplex.h
+8604022f8d2f227fbf351b06bd285eaf92cfa424714ccf3e7cddd9df27c2e778  native/vendor/rf-mel/include/rfmel/rfmeltypes/RFMEL.h
+fd4c3d43f07387649d16cbd835fba94e15317ff1387658e01ba7ae12b8c19c73  native/vendor/rf-mel/include/rfmel/rfmeltypes/RFMELTypes.h
+f88df0292bf883c9caac76ead0474bf9ceaae8dbd2487c769c935a7ca5734703  native/vendor/rf-mel/include/rfmel/rfmeltypes/ResourceUseAfterExpiredException.h
+```
