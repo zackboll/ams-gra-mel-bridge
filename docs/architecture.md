@@ -1,5 +1,27 @@
 # Architecture decisions
 
+Task 032B4 exposes the 032B1 public view in public Python for the two families
+that already have public Python typed owners. `ControlChannel.channel_view()`
+and `ImageStream.channel_view()` return a `ChannelView` that follows the
+existing owner style: a private ctypes handle, pointer-to-handle, and close
+function; explicit idempotent `close()`; a non-raising `__del__`; and an
+`is_open` property. It owns only the native weak `ams_mel_ir_channel` and holds
+no reference to its Python source, the Session, or any provider object, so a
+live View delays no teardown and a `weakref` to the source dies while the View
+lives. KeepAlive returns the existing `ReturnRequest`; CommsTest returns the
+new `CommsRequest` with `CommsCompleted`/`CommsRejected` results in the
+established Python style. The native request owners, not the View, own the
+admitted family graph. Capabilities are copied into a complete Python-owned
+`ChannelCapability` through one checked span helper while a private snapshot
+guard keeps the native record alive and always closes it. That helper validates
+pointer/size/alignment metadata before dereference but cannot prove that an
+arbitrary non-NULL address from a violated C ABI is mapped; the native ABI
+contract owns that. The GIL is not a thread-safety claim: operations and Close
+on one View, and Wait and Close on one request, require external
+serialization, and no Python lock is added. No native, `_native.py`, Rust, or
+Ada change. Public Python Health, Instrumentation, and Track owners (and their
+views) remain deferred; see `task-032b4-python-common-channel.md`.
+
 Task 032B3 exposes the 032B1 public view in safe Rust for the two families that
 already have safe Rust typed owners. `ControlChannel::channel_view` and
 `ImageStream::channel_view` return a `ChannelView` that owns only the native
@@ -38,7 +60,8 @@ weak state and runs a per-family helper shared with the typed
 policy (Image keeps its Stopping/Stopped/Failed rule and unlocked provider
 call). Legacy C2 inherited-service exports remain and do not route through a
 temporary view. The safe Ada façade followed in Task 032B2 and the safe Rust
-C2/Image façade in Task 032B3; the public Python façade remains deferred. See
+C2/Image façade in Task 032B3, and the public Python C2/Image façade in Task
+032B4. See
 `task-032b1-public-common-channel-abi.md`.
 
 Task 032A4 adds private weak common access for Instrumentation
