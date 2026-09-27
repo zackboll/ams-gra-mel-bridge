@@ -154,6 +154,29 @@ if(AMS_MEL_BUILD_TESTS)
 
     find_package(Threads REQUIRED)
     target_link_libraries(test_common_channel_view PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+
+    # Task 032B1: the installed public common Channel ABI, kept distinct from
+    # the 032A internal/test-only common-view suites above.
+    add_executable(test_public_common_channel tests/test_public_common_channel.c)
+    target_compile_features(test_public_common_channel PRIVATE c_std_11)
+    set_target_properties(test_public_common_channel PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_public_common_channel PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_public_common_channel PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_public_common_channel mock_ir_provider)
+    ams_mel_warnings(test_public_common_channel)
+    foreach(family IN ITEMS c2 image health instrumentation track)
+        foreach(case IN ITEMS lifecycle weak close-first pending multiple snapshot invalid allocation)
+            add_test(NAME public_channel_${family}_${case}
+                COMMAND test_public_common_channel ${family}-${case})
+            set_tests_properties(public_channel_${family}_${case} PROPERTIES TIMEOUT 60)
+        endforeach()
+    endforeach()
+    foreach(case IN ITEMS keepalive keepalive-fail keepalive-reject comms comms-reject refusal)
+        add_test(NAME public_channel_c2_legacy_${case}
+            COMMAND test_public_common_channel c2-legacy-${case})
+        set_tests_properties(public_channel_c2_legacy_${case} PROPERTIES TIMEOUT 60)
+    endforeach()
     add_executable(test_common_channel_health tests/test_common_channel_health.c)
     target_compile_features(test_common_channel_health PRIVATE c_std_11)
     set_target_properties(test_common_channel_health PROPERTIES C_EXTENSIONS OFF)

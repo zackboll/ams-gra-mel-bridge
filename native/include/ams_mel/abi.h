@@ -72,6 +72,11 @@ typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
 typedef struct ams_mel_ir_channel_comms_request ams_mel_ir_channel_comms_request;
 typedef struct ams_mel_ir_channel_capability ams_mel_ir_channel_capability;
+/* Task 032B1: a WEAK common Channel view of an existing typed family owner
+ * (C2, Image stream, Health, Instrumentation, or Track). It is not a provider
+ * Channel attachment, not a strong owner, and not a replacement for the typed
+ * owner. See ams_mel_ir_channel_from_c2. */
+typedef struct ams_mel_ir_channel ams_mel_ir_channel;
 typedef struct ams_mel_ir_c2_metadata ams_mel_ir_c2_metadata;
 typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 typedef struct ams_mel_ir_health ams_mel_ir_health;
@@ -2357,6 +2362,80 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_system_response_request_wait(
  * provider channel, and the provider library all survive. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_system_response_request_close(
     ams_mel_ir_track_system_response_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Task 032B1 public common Channel view.
+ *
+ * A Channel view is a WEAK view of one existing typed family owner. Creating
+ * one allocates the view only: no provider call, Session admission, family
+ * lock, or lifetime change occurs, and the typed owner stays the only owner of
+ * its provider Channel. The view never strongly owns typed family state, the
+ * Session, the provider Channel, Control, or the provider library, so it may
+ * outlive the typed owner and the Session without delaying teardown. After the
+ * underlying family state is gone, every view operation returns
+ * AMS_MEL_PROVIDER_FAILED with a NULL output.
+ *
+ * *out_channel must be NULL on entry and stays NULL on failure. Allocation
+ * failure returns AMS_MEL_INTERNAL_ERROR. The source is borrowed only for the
+ * duration of the call. Multiple independent views of one typed owner are
+ * allowed. Operations on ONE view and ams_mel_ir_channel_close of that same
+ * view must be externally serialized; distinct views need no serialization. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_c2(
+    const ams_mel_ir_c2 *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_stream(
+    const ams_mel_ir_stream *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_health(
+    const ams_mel_ir_health *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_instrumentation(
+    const ams_mel_ir_instrumentation *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_track(
+    const ams_mel_ir_track *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Inherited KeepAlive through the shared Return engine. Valid while the
+ * family's common request lifecycle admits requests (C2/Health/
+ * Instrumentation/Track: Attached or Enabled; Image: Attached or Running).
+ * Uses the same per-Session admission (AMS_MEL_RESOURCE_EXHAUSTED when full)
+ * and family request accounting as typed requests. Once admitted, the request
+ * owns the family graph; the view does not. Use ams_mel_ir_return_request_wait
+ * and ams_mel_ir_return_request_close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_send_keepalive(
+    const ams_mel_ir_channel *channel, ams_mel_ir_return_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Inherited CommsTest through the shared Comms engine. All three uint32 IDs
+ * are preserved exactly. Same lifecycle, admission, and ownership rules as
+ * KeepAlive. Use ams_mel_ir_channel_comms_request_wait/close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_submit_comms_test(
+    const ams_mel_ir_channel *channel,
+    const ams_mel_ir_channel_comms_test_request_v1 *request,
+    ams_mel_ir_channel_comms_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Temporarily locks the family state and applies exactly the corresponding
+ * typed get_capabilities lifecycle and status mapping (C2/Health/
+ * Instrumentation/Track: Attached or Enabled; Image: provider channel present
+ * and not Stopping, Stopped, or Failed). The returned snapshot is independent
+ * of the view, typed owner, Session, and provider library. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_get_capabilities(
+    const ams_mel_ir_channel *channel,
+    ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking. Destroys only the weak view and sets *channel to
+ * NULL. It does not close the typed owner, cancel pending requests, or enable,
+ * disable, or detach anything. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_close(
+    ams_mel_ir_channel **channel, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 #ifdef __cplusplus

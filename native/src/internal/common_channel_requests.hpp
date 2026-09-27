@@ -19,15 +19,23 @@ namespace ams_mel_common {
 
 class CommonRequestClaim;
 /* An idle view holds no provider or Session owner. Typed adapters live only in
- * their respective family translation units. */
+ * their respective family translation units. The view is exactly one weak
+ * family state plus static function pointers; it never strongly owns family
+ * state, a Session, the provider channel, Control, or the provider library. */
 class CommonChannelAccess {
 public:
     using AdmissionFunction = std::shared_ptr<CompletionAdmission> (*)(const std::shared_ptr<void>&) noexcept;
     using ClaimFunction = bool (*)(const std::shared_ptr<void>&,
         std::shared_ptr<ams::iface::irmel::Channel>&, CommonRequestClaim&);
+    /* Invoked only with a temporarily locked, live family state. It applies
+     * the family's own typed capability lifecycle, locking, and status
+     * mapping, and returns an independent capability snapshot. */
+    using CapabilityFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
+        ams_mel_ir_channel_capability **, char *, std::size_t, std::size_t *) noexcept;
     CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
-                        ClaimFunction claim) noexcept
-        : state_{std::move(state)}, admission_{admission}, claim_{claim} {}
+                        ClaimFunction claim, CapabilityFunction capability) noexcept
+        : state_{std::move(state)}, admission_{admission}, claim_{claim},
+          capability_{capability} {}
     bool expired() const noexcept { return state_.expired(); }
     std::shared_ptr<void> lock() const noexcept { return state_.lock(); }
     std::shared_ptr<CompletionAdmission> admission(const std::shared_ptr<void>& state) const noexcept
@@ -35,11 +43,17 @@ public:
     bool claim(const std::shared_ptr<void>& state,
                std::shared_ptr<ams::iface::irmel::Channel>& channel,
                CommonRequestClaim& request) const { return claim_(state, channel, request); }
+    ams_mel_status_t capability(const std::shared_ptr<void>& state,
+        ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+        std::size_t *required) const noexcept
+    { return capability_(state, output, out, capacity, required); }
 private:
     std::weak_ptr<void> state_;
     AdmissionFunction admission_;
     ClaimFunction claim_;
+    CapabilityFunction capability_;
 };
+static_assert(std::is_nothrow_move_constructible_v<CommonChannelAccess>);
 
 /* Construction is allocation-free after family accounting has been reserved.
  * The finish adapter must not throw. A failed cleanup may retain the graph

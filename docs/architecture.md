@@ -1,5 +1,18 @@
 # Architecture decisions
 
+Task 032B1 publishes the 032A common access as the opaque public
+`ams_mel_ir_channel`: a weak view of one existing typed owner (C2, Image,
+Health, Instrumentation, Track). The view holds only a `weak_ptr<void>` and
+static adapters, so it never delays teardown; an admitted KeepAlive/CommsTest
+request, not the view, owns the family graph. Capability temporarily locks the
+weak state and runs a per-family helper shared with the typed
+`get_capabilities` export, preserving each family's lifecycle and locking
+policy (Image keeps its Stopping/Stopped/Failed rule and unlocked provider
+call). Legacy C2 inherited-service exports remain and do not route through a
+temporary view. Safe Ada/Rust/Python façades are deferred; the Ada move is
+Task 032B2 because `AMS.MEL.IR.Channel` currently depends on
+`AMS.MEL.IR.C2` for `Command_ID`. See `task-032b1-public-common-channel-abi.md`.
+
 Task 032A4 adds private weak common access for Instrumentation
 and Track using their existing single family request counters, Session admission
 and deferred cleanup. The view and conversion functions are test-only; no

@@ -110,13 +110,96 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_submit_system_track_data_response",
                 "ams_mel_ir_track_system_response_request_wait",
                 "ams_mel_ir_track_system_response_request_close",
+                "ams_mel_ir_channel_from_c2",
+                "ams_mel_ir_channel_from_stream",
+                "ams_mel_ir_channel_from_health",
+                "ams_mel_ir_channel_from_instrumentation",
+                "ams_mel_ir_channel_from_track",
+                "ams_mel_ir_channel_send_keepalive",
+                "ams_mel_ir_channel_submit_comms_test",
+                "ams_mel_ir_channel_get_capabilities",
+                "ams_mel_ir_channel_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 91)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 100)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 100)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
             self.assertIsNotNone(function.argtypes)
             self.assertIs(function.restype, ctypes.c_int32)
+
+    def test_private_common_channel_signatures_are_exact(self) -> None:
+        """Task 032B1: private raw ctypes shapes of the nine Channel exports."""
+        diagnostic = [
+            _native.CharPointer, ctypes.c_size_t, _native.SizePointer
+        ]
+        handle = _native.IrChannelHandle
+        expected = {
+            "ams_mel_ir_channel_from_c2": [_native.IrC2Handle],
+            "ams_mel_ir_channel_from_stream": [_native.IrStreamHandle],
+            "ams_mel_ir_channel_from_health": [_native.IrHealthHandle],
+            "ams_mel_ir_channel_from_instrumentation": [
+                _native.IrInstrumentationHandle
+            ],
+            "ams_mel_ir_channel_from_track": [_native.IrTrackHandle],
+        }
+        for name, source in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(
+                function.argtypes,
+                [*source, ctypes.POINTER(handle), *diagnostic],
+                name,
+            )
+            self.assertIs(function.restype, ctypes.c_int32)
+        self.assertEqual(
+            _native.ams_mel_ir_channel_send_keepalive.argtypes,
+            [handle, ctypes.POINTER(_native.IrReturnRequestHandle), *diagnostic],
+        )
+        self.assertEqual(
+            _native.ams_mel_ir_channel_submit_comms_test.argtypes,
+            [
+                handle,
+                ctypes.POINTER(_native.IrChannelCommsTestRequestV1),
+                ctypes.POINTER(_native.IrChannelCommsRequestHandle),
+                *diagnostic,
+            ],
+        )
+        self.assertEqual(
+            _native.ams_mel_ir_channel_get_capabilities.argtypes,
+            [
+                handle,
+                ctypes.POINTER(_native.IrChannelCapabilityHandle),
+                *diagnostic,
+            ],
+        )
+        self.assertEqual(
+            _native.ams_mel_ir_channel_close.argtypes,
+            [ctypes.POINTER(handle), *diagnostic],
+        )
+        for name in (
+            "ams_mel_ir_channel_send_keepalive",
+            "ams_mel_ir_channel_submit_comms_test",
+            "ams_mel_ir_channel_get_capabilities",
+            "ams_mel_ir_channel_close",
+        ):
+            self.assertIs(getattr(_native, name).restype, ctypes.c_int32)
+
+    def test_private_common_channel_null_preconditions(self) -> None:
+        channel = _native.IrChannelHandle()
+        self.assertEqual(
+            _native.ams_mel_ir_channel_from_c2(
+                None, ctypes.byref(channel), None, 0, None
+            ),
+            _native.AMS_MEL_INVALID_ARGUMENT,
+        )
+        self.assertIsNone(channel.value)
+        self.assertEqual(
+            _native.ams_mel_ir_channel_close(
+                ctypes.byref(channel), None, 0, None
+            ),
+            _native.AMS_MEL_OK,
+        )
+        self.assertIsNone(channel.value)
 
     def test_ctypes_declarations_match_authoritative_c_header(self) -> None:
         repository = Path(__file__).resolve().parents[2]

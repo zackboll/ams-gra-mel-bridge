@@ -1054,3 +1054,33 @@ The host-memory-only constraint for the current profile is unchanged: device
 addresses must not be dereferenced as Ada arrays or Rust slices, and a future
 non-host memory kind must be expressed through the opaque owner rather than by
 publishing a span the language cannot legally address.
+
+## Task 032B1 public common Channel view
+
+ABI 0.1 adds exactly nine exports (91 -> 100):
+`ams_mel_ir_channel_from_{c2,stream,health,instrumentation,track}`,
+`ams_mel_ir_channel_send_keepalive`, `ams_mel_ir_channel_submit_comms_test`,
+`ams_mel_ir_channel_get_capabilities` and `ams_mel_ir_channel_close`, plus the
+opaque `ams_mel_ir_channel`. No existing declaration, record or status changes.
+
+`ams_mel_ir_channel` is a **weak** view of one typed owner. Conversion only
+allocates (no provider call, Session admission or family lock) and requires a
+non-NULL source, non-NULL output and `*out_channel == NULL`; allocation failure
+returns `AMS_MEL_INTERNAL_ERROR` with NULL output. The view never strongly owns
+family state, the Session, the provider Channel, Control or the provider
+library. After the family state is gone every operation returns
+`AMS_MEL_PROVIDER_FAILED` with NULL output. Operations on one view and Close of
+that view must be externally serialized; independent views need no
+serialization.
+
+KeepAlive and CommsTest reuse the one Return/Comms engine, per-Session
+admission (`AMS_MEL_RESOURCE_EXHAUSTED`) and the family's existing request
+accounting; results use the existing `ams_mel_ir_return_request_*` and
+`ams_mel_ir_channel_comms_request_*` operations. An admitted request owns the
+family graph; the view does not. ChannelCapability applies exactly the typed
+`get_capabilities` lifecycle, locking and status mapping for the family and
+returns the existing independent capability owner. Close deletes only the view,
+is idempotent and nulls the handle; it never closes the typed owner, cancels a
+request, or enables, disables or detaches anything. The legacy C2
+inherited-service exports are unchanged. `AMS_MEL_TEST_CHANNEL_VIEW_FAILURE` is
+a test-build-only failpoint and has no effect in production builds.

@@ -352,6 +352,143 @@ fn session_input_function_signatures_match_the_c_header() {
     ) -> AmsMelStatus = ams_mel_ir_track_system_response_request_close;
 }
 
+/// Task 032B1: exact raw shapes of the nine public common Channel functions.
+/// Coercion to an explicit `extern "C"` pointer type fails to compile on any
+/// constness, pointee, or arity mismatch; no layout of the opaque handle is
+/// assumed.
+#[test]
+fn common_channel_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrC2,
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_from_c2;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrStream,
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_from_stream;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrHealth,
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_from_health;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrInstrumentation,
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_from_instrumentation;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrTrack,
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_from_track;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannel,
+        *mut *mut AmsMelIrReturnRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_send_keepalive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannel,
+        *const AmsMelIrChannelCommsTestRequestV1,
+        *mut *mut AmsMelIrChannelCommsRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_submit_comms_test;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannel,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_get_capabilities;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrChannel,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_close;
+
+    // The opaque handle is only ever used behind a pointer.
+    assert_eq!(
+        size_of::<*mut AmsMelIrChannel>(),
+        size_of::<*mut std::ffi::c_void>()
+    );
+    let mut channel: *mut AmsMelIrChannel = std::ptr::null_mut();
+    // SAFETY: NULL source is a documented INVALID_ARGUMENT precondition, and
+    // closing a NULL handle through a valid pointer-to-handle is idempotent.
+    unsafe {
+        assert_eq!(
+            ams_mel_ir_channel_from_c2(
+                std::ptr::null(),
+                &mut channel,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut()
+            ),
+            AMS_MEL_INVALID_ARGUMENT
+        );
+        assert!(channel.is_null());
+        assert_eq!(
+            ams_mel_ir_channel_close(&mut channel, std::ptr::null_mut(), 0, std::ptr::null_mut()),
+            AMS_MEL_OK
+        );
+    }
+    assert!(channel.is_null());
+}
+
+/// The raw declaration inventory equals the production export map exactly.
+#[test]
+fn raw_inventory_matches_production_exports() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source = std::fs::read_to_string(manifest.join("src/lib.rs")).expect("sys source");
+    let exports = std::fs::read_to_string(manifest.join("../../native/src/exports.map"))
+        .expect("production export map");
+    let mut declared: Vec<&str> = source
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("pub fn "))
+        .filter_map(|rest| rest.split('(').next())
+        .filter(|name| name.starts_with("ams_mel_"))
+        .collect();
+    let mut exported: Vec<&str> = exports
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("ams_mel_"))
+        .map(|line| line.trim_end_matches(';'))
+        .collect();
+    declared.sort_unstable();
+    exported.sort_unstable();
+    assert_eq!(declared.len(), 100);
+    assert_eq!(exported.len(), 100);
+    assert_eq!(declared, exported);
+    for name in [
+        "ams_mel_ir_channel_from_c2",
+        "ams_mel_ir_channel_from_stream",
+        "ams_mel_ir_channel_from_health",
+        "ams_mel_ir_channel_from_instrumentation",
+        "ams_mel_ir_channel_from_track",
+        "ams_mel_ir_channel_send_keepalive",
+        "ams_mel_ir_channel_submit_comms_test",
+        "ams_mel_ir_channel_get_capabilities",
+        "ams_mel_ir_channel_close",
+    ] {
+        assert!(declared.binary_search(&name).is_ok(), "{name}");
+    }
+}
+
 #[test]
 fn declarations_match_the_c_header() {
     assert_eq!(AMS_MEL_RESOURCE_EXHAUSTED, 13);

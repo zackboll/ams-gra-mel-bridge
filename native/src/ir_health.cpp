@@ -296,6 +296,25 @@ struct ams_mel_ir_health { std::shared_ptr<HealthState> state; };
 struct ams_mel_ir_health_metadata { std::shared_ptr<MetadataState> state;std::weak_ptr<HealthState> channel; };
 struct ams_mel_ir_health_metadata_event { std::unique_ptr<EventData> data; };
 
+namespace {
+/* The one Health capability policy, shared by the typed export and the common
+ * Channel adapter: Attached or Enabled, provider call under the Health mutex. */
+ams_mel_status_t health_capability(const std::shared_ptr<HealthState>& state,
+    ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    try {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+            return AMS_MEL_PROVIDER_FAILED;
+        return ams_mel::internal::snapshot_capability(*state->health, output, out, capacity, required);
+    } catch (...) {
+        diagnostic("Health capability query failed", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+} // namespace
+
 namespace ams_mel_common {
 CommonChannelAccess common_from_health(const ams_mel_ir_health *owner)
 {
@@ -316,6 +335,11 @@ CommonChannelAccess common_from_health(const ams_mel_ir_health *owner)
                     return finish_health_request(std::static_pointer_cast<HealthState>(value));
                 }, "deferred Health cleanup failed"};
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_channel_capability **output,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            return health_capability(std::static_pointer_cast<HealthState>(erased),
+                                     output, out, capacity, required);
         }};
 }
 } // namespace ams_mel_common
@@ -348,7 +372,7 @@ extern "C" ams_mel_status_t ams_mel_ir_health_enable(ams_mel_ir_health* health,c
 {diagnostic("",out,capacity,required);if(!health||!health->state||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{std::lock_guard lock{health->state->mutex};if(health->state->lifecycle==Lifecycle::Enabled)return AMS_MEL_OK;if(health->state->lifecycle!=Lifecycle::Attached)return AMS_MEL_PROVIDER_FAILED;health->state->enable_attempted=true;if(health->state->channel->enable()!=irmel::Return::Success){health->state->lifecycle=Lifecycle::Failed;diagnostic("Health enable failed",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}health->state->lifecycle=Lifecycle::Enabled;return AMS_MEL_OK;}catch(...){health->state->lifecycle=Lifecycle::Failed;diagnostic("provider exception during Health enable",out,capacity,required);return AMS_MEL_PROVIDER_EXCEPTION;}}
 
 extern "C" ams_mel_status_t ams_mel_ir_health_get_capabilities(ams_mel_ir_health* health,ams_mel_ir_channel_capability** output,char* out,std::size_t capacity,std::size_t* required) noexcept
-{diagnostic("",out,capacity,required);if(!health||!health->state||!output||*output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{std::lock_guard lock{health->state->mutex};if(health->state->lifecycle!=Lifecycle::Attached&&health->state->lifecycle!=Lifecycle::Enabled)return AMS_MEL_PROVIDER_FAILED;return ams_mel::internal::snapshot_capability(*health->state->health,output,out,capacity,required);}catch(...){diagnostic("Health capability query failed",out,capacity,required);return AMS_MEL_PROVIDER_EXCEPTION;}}
+{diagnostic("",out,capacity,required);if(!health||!health->state||!output||*output||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;return health_capability(health->state,output,out,capacity,required);}
 
 extern "C" ams_mel_status_t ams_mel_ir_health_metadata_open(ams_mel_ir_health* health,std::size_t queue_capacity,ams_mel_ir_health_metadata** output,char* out,std::size_t capacity,std::size_t* required) noexcept
 {
