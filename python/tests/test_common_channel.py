@@ -1191,7 +1191,10 @@ class PublicSurfaceTests(unittest.TestCase):
         for leaked in ("_native", "IrChannelHandle", "IrChannelCapabilityHandle",
                        "IrChannelCapabilityV1"):
             self.assertNotIn(leaked, ams_mel.__all__)
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 100)
+        # Task 033B added six private raw RF bindings; no public RF API.
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 106)
+        for leaked in ("RfDataHandle", "RfMfaInfoHandle", "RfMfaInfoV1"):
+            self.assertNotIn(leaked, ams_mel.__all__)
         public_view_members = {name for name in dir(ChannelView) if not name.startswith("_")}
         self.assertEqual(
             public_view_members,

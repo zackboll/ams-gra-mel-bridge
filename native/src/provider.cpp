@@ -1,5 +1,6 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
+#include "internal/provider_common.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -42,7 +43,11 @@ using ManagerFactory = std::shared_ptr<API_Manager> (*)(const std::string&);
 using ControlFactory = std::shared_ptr<ams::iface::irmel::Control> (*)(
     std::string_view, std::shared_ptr<API_Manager>);
 
-bool valid_utf8(std::string_view value, bool reject_nul = true) noexcept;
+} // namespace
+
+/* Family-neutral helpers shared with RF DataMEL (internal/provider_common.hpp).
+ * Their bodies are unchanged from the IR-only versions. */
+namespace ams_mel::internal {
 
 void write_diagnostic(std::string_view message, char *buffer,
                       std::size_t capacity, std::size_t *required) noexcept
@@ -133,7 +138,74 @@ bool valid_utf8(std::string_view value, bool reject_nul) noexcept
     return true;
 }
 
-} // namespace
+bool valid_provider_version_output(
+    const ams_mel_provider_version_v1 *out_version) noexcept
+{
+    return out_version != nullptr &&
+           !(out_version->vendor == nullptr && out_version->vendor_capacity != 0U) &&
+           !(out_version->description == nullptr &&
+             out_version->description_capacity != 0U);
+}
+
+ams_mel_status_t publish_provider_version(
+    const ams::iface::mel::VersionInfo& value,
+    ams_mel_provider_version_v1 *out_version, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    const std::string& vendor = value.getVendor();
+    const std::string& description = value.getDescription();
+    if (!valid_utf8(vendor) || !valid_utf8(description)) {
+        write_diagnostic("provider version contains invalid UTF-8 or NUL",
+                         diagnostic, diagnostic_capacity,
+                         diagnostic_required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+    const std::size_t vendor_required = vendor.size() + 1U;
+    const std::size_t description_required = description.size() + 1U;
+    out_version->vendor_required = vendor_required;
+    out_version->description_required = description_required;
+    if (out_version->vendor == nullptr ||
+        out_version->vendor_capacity < vendor_required ||
+        out_version->description == nullptr ||
+        out_version->description_capacity < description_required) {
+        write_diagnostic("provider version buffer too small", diagnostic,
+                         diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_BUFFER_TOO_SMALL;
+    }
+
+    out_version->api_version = value.getAPIVersion();
+    out_version->library_version = value.getLibVersion();
+    std::memcpy(out_version->vendor, vendor.c_str(), vendor_required);
+    std::memcpy(out_version->description, description.c_str(),
+                description_required);
+    return AMS_MEL_OK;
+}
+
+ams_mel_status_t translate_provider_exception(
+    std::string_view fallback, std::string_view unknown_message,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    try {
+        throw;
+    } catch (const std::bad_alloc&) {
+        write_diagnostic("allocation failed", diagnostic, diagnostic_capacity,
+                         diagnostic_required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        write_exception_diagnostic(error, fallback, diagnostic,
+                                   diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        write_diagnostic(unknown_message, diagnostic, diagnostic_capacity,
+                         diagnostic_required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+} // namespace ams_mel::internal
+
+using namespace ams_mel::internal;
 
 static ams_mel_status_t open_session_impl(
     const char *library_path, const char *instance,
@@ -265,12 +337,9 @@ extern "C" ams_mel_status_t ams_mel_session_get_provider_version(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (session == nullptr || out_version == nullptr ||
+    if (session == nullptr ||
         (diagnostic == nullptr && diagnostic_capacity != 0U) ||
-        (out_version != nullptr &&
-         ((out_version->vendor == nullptr && out_version->vendor_capacity != 0U) ||
-          (out_version->description == nullptr &&
-           out_version->description_capacity != 0U)))) {
+        !valid_provider_version_output(out_version)) {
         write_diagnostic("invalid argument", diagnostic, diagnostic_capacity,
                          diagnostic_required);
         return AMS_MEL_INVALID_ARGUMENT;
@@ -279,45 +348,13 @@ extern "C" ams_mel_status_t ams_mel_session_get_provider_version(
     try {
         const ams::iface::mel::VersionInfo value =
             session->state->control->getVersionInfo();
-        const std::string& vendor = value.getVendor();
-        const std::string& description = value.getDescription();
-        if (!valid_utf8(vendor) || !valid_utf8(description)) {
-            write_diagnostic("provider version contains invalid UTF-8 or NUL",
-                             diagnostic, diagnostic_capacity,
-                             diagnostic_required);
-            return AMS_MEL_PROVIDER_EXCEPTION;
-        }
-        const std::size_t vendor_required = vendor.size() + 1U;
-        const std::size_t description_required = description.size() + 1U;
-        out_version->vendor_required = vendor_required;
-        out_version->description_required = description_required;
-        if (out_version->vendor == nullptr ||
-            out_version->vendor_capacity < vendor_required ||
-            out_version->description == nullptr ||
-            out_version->description_capacity < description_required) {
-            write_diagnostic("provider version buffer too small", diagnostic,
-                             diagnostic_capacity, diagnostic_required);
-            return AMS_MEL_BUFFER_TOO_SMALL;
-        }
-
-        out_version->api_version = value.getAPIVersion();
-        out_version->library_version = value.getLibVersion();
-        std::memcpy(out_version->vendor, vendor.c_str(), vendor_required);
-        std::memcpy(out_version->description, description.c_str(),
-                    description_required);
-        return AMS_MEL_OK;
-    } catch (const std::bad_alloc&) {
-        write_diagnostic("allocation failed", diagnostic, diagnostic_capacity,
-                         diagnostic_required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (const std::exception& error) {
-        write_exception_diagnostic(error, "provider exception", diagnostic,
-                                   diagnostic_capacity, diagnostic_required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        return publish_provider_version(value, out_version, diagnostic,
+                                        diagnostic_capacity,
+                                        diagnostic_required);
     } catch (...) {
-        write_diagnostic("unknown provider exception", diagnostic,
-                         diagnostic_capacity, diagnostic_required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        return translate_provider_exception(
+            "provider exception", "unknown provider exception", diagnostic,
+            diagnostic_capacity, diagnostic_required);
     }
 }
 

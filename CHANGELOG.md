@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Add the RF DataMEL foundation (Task 033B). Six new production exports
+  (ABI 0.1, 100 -> 106): `ams_mel_rf_data_open`,
+  `ams_mel_rf_data_get_provider_version`, `ams_mel_rf_data_get_mfa_info`,
+  `ams_mel_rf_mfa_info_view`, `ams_mel_rf_mfa_info_close`, and
+  `ams_mel_rf_data_close`. There are also new opaque owners `ams_mel_rf_data` and
+  `ams_mel_rf_mfa_info`, the 14-value `ams_mel_rf_job_data_format_t`, and
+  frequency-range, face, and MFA snapshot records.
+  - The RF owner graph is separate from the IR Session and reuses the existing
+    `SharedLibrary`. `createDataMEL` is called only from C++ with the exact
+    pinned type, and factory exceptions are contained.
+  - The DataMEL is always destroyed before the DSO unloads. Close consumes the
+    owner and calls `shutdown()` exactly once. A throwing `shutdown()`
+    permanently retains the provider graph.
+  - The owned, point-in-time RFMFAInfo snapshot copies scalars, femtosecond
+    counts, raw formats, and Hz frequency ranges verbatim, and survives
+    provider unload.
+  - The IR and RF version exports now share one VersionInfo helper; IR
+    behavior is unchanged.
+  - Adds a dedicated mock RF provider, 17 process-isolated `rf-data-*` CTest
+    cases, and the opt-in `make test-squall-rf-c` real Squall smoke, which
+    passed.
+  - The raw Ada FFI, `ams-mel-sys`, and private Python ctypes are synchronized
+    (inventory 106). There is no safe RF API.
+  - No vendored file changed. `quantizeDuration`, `PhysicalData`, Tx power
+    modes, endpoints/IQ, RDMA, and RF C2/jobs remain unimplemented.
 - Pin the RF MEL declaration closure and inventory the provider contract
   (Task 033A). Pin RF MEL `762ce84c5555dd0f3ea66f36b321fecf8839b89f` and
   AMS VITA `8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8`, and reuse the existing

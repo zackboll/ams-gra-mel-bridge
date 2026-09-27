@@ -2,6 +2,8 @@
 
 #include <irmel/library/irmel-types/Control.h>
 
+#include "internal/shared_library.hpp"
+
 #include <dlfcn.h>
 
 #include <atomic>
@@ -65,45 +67,6 @@ inline bool acquire_completion_permit(
     }
     return false;
 }
-
-class SharedLibrary {
-public:
-    explicit SharedLibrary(const char *path) : handle_{dlopen(path, RTLD_NOW | RTLD_LOCAL)}
-    {
-        if (handle_ == nullptr) {
-            const char *message = dlerror();
-            throw std::runtime_error(message == nullptr ? "dlopen failed" : message);
-        }
-    }
-
-    ~SharedLibrary()
-    {
-        if (handle_ != nullptr) {
-            (void)dlclose(handle_);
-        }
-    }
-
-    SharedLibrary(const SharedLibrary&) = delete;
-    SharedLibrary& operator=(const SharedLibrary&) = delete;
-
-    template<typename Function>
-    Function symbol(const char *name) const
-    {
-        dlerror();
-        void *address = dlsym(handle_, name);
-        const char *error = dlerror();
-        if (error != nullptr || address == nullptr) {
-            throw std::runtime_error(error == nullptr ? "symbol not found" : error);
-        }
-        Function function{};
-        static_assert(sizeof(function) == sizeof(address));
-        std::memcpy(&function, &address, sizeof(function));
-        return function;
-    }
-
-private:
-    void *handle_;
-};
 
 struct SessionState {
     std::shared_ptr<CompletionAdmission> admission;

@@ -450,6 +450,81 @@ fn common_channel_signatures_match_the_c_header() {
     assert!(channel.is_null());
 }
 
+/// Task 033B: exact raw shapes of the six RF DataMEL functions, plus the NULL
+/// preconditions that need no provider.
+#[test]
+fn rf_data_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *mut *mut AmsMelRfData,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_open;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        *mut AmsMelProviderVersionV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_get_provider_version;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        *mut *mut AmsMelRfMfaInfo,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_get_mfa_info;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfMfaInfo,
+        *mut *const AmsMelRfMfaInfoV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_mfa_info_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfMfaInfo,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_mfa_info_close;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfData,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_close;
+
+    let mut data: *mut AmsMelRfData = std::ptr::null_mut();
+    let mut info: *mut AmsMelRfMfaInfo = std::ptr::null_mut();
+    let text = std::ptr::null_mut::<std::ffi::c_char>;
+    let size = std::ptr::null_mut::<usize>;
+    // SAFETY: every call uses documented NULL/INVALID_ARGUMENT preconditions or
+    // closes a NULL owner through a valid pointer-to-owner (idempotent).
+    unsafe {
+        assert_eq!(
+            ams_mel_rf_data_open(std::ptr::null(), c"".as_ptr(), &mut data, text(), 0, size()),
+            AMS_MEL_INVALID_ARGUMENT
+        );
+        assert!(data.is_null());
+        assert_eq!(
+            ams_mel_rf_data_get_mfa_info(std::ptr::null(), &mut info, text(), 0, size()),
+            AMS_MEL_INVALID_ARGUMENT
+        );
+        assert!(info.is_null());
+        assert_eq!(
+            ams_mel_rf_mfa_info_close(&mut info, text(), 0, size()),
+            AMS_MEL_OK
+        );
+        assert_eq!(
+            ams_mel_rf_data_close(&mut data, text(), 0, size()),
+            AMS_MEL_OK
+        );
+    }
+    assert!(data.is_null() && info.is_null());
+}
+
 /// The raw declaration inventory equals the production export map exactly.
 #[test]
 fn raw_inventory_matches_production_exports() {
@@ -471,9 +546,19 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 100);
-    assert_eq!(exported.len(), 100);
+    assert_eq!(declared.len(), 106);
+    assert_eq!(exported.len(), 106);
     assert_eq!(declared, exported);
+    for name in [
+        "ams_mel_rf_data_open",
+        "ams_mel_rf_data_get_provider_version",
+        "ams_mel_rf_data_get_mfa_info",
+        "ams_mel_rf_mfa_info_view",
+        "ams_mel_rf_mfa_info_close",
+        "ams_mel_rf_data_close",
+    ] {
+        assert!(declared.binary_search(&name).is_ok(), "{name}");
+    }
     for name in [
         "ams_mel_ir_channel_from_c2",
         "ams_mel_ir_channel_from_stream",
@@ -1527,6 +1612,66 @@ fn declarations_match_the_c_header() {
         AmsMelIrTrackSystemResponseResultV1,
         status,
         error_code
+    );
+    // Task 033B RF DataMEL.
+    expected.extend([
+        size_of::<*mut AmsMelRfData>(),
+        align_of::<*mut AmsMelRfData>(),
+        size_of::<*mut AmsMelRfMfaInfo>(),
+        align_of::<*mut AmsMelRfMfaInfo>(),
+        size_of::<AmsMelRfJobDataFormat>(),
+        align_of::<AmsMelRfJobDataFormat>(),
+    ]);
+    expected.extend(
+        [
+            AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8,
+            AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16,
+            AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8,
+            AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE,
+            AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2,
+            AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2,
+            AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3,
+        ]
+        .map(|value| value as usize),
+    );
+    layout!(expected, AmsMelRfFrequencyRangeV1, min_hz, max_hz);
+    layout!(expected, AmsMelRfFrequencyRangeSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfFaceInfoV1,
+        face_id,
+        supports_receive,
+        supports_transmit,
+        requires_endpoint_association,
+        agc_processing_time_fs,
+        min_job_request_lead_time_fs,
+        max_job_request_lead_time_fs,
+        min_job_detail_lead_time_fs,
+        tx_rx_switching_time_fs,
+        rx_tx_switching_time_fs,
+        tx_tx_switching_time_fs,
+        rx_rx_switching_time_fs,
+        rx_frequency_ranges,
+        tx_frequency_ranges,
+        sample_frequency_ranges
+    );
+    layout!(expected, AmsMelRfFaceInfoSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfMfaInfoV1,
+        reported_num_faces,
+        contains_open_additions,
+        scheduler_resolution_fs,
+        max_user_defined_context_bytes,
+        supported_data_formats,
+        faces
     );
     expected.extend([
         AMS_MEL_OK as usize,

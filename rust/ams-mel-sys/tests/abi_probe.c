@@ -602,6 +602,66 @@ int main(void)
         FIELD(ams_mel_ir_track_system_response_result_v1,status);
         FIELD(ams_mel_ir_track_system_response_result_v1,error_code));
 
+    /* Task 033B RF DataMEL. */
+    LAYOUT(ams_mel_rf_data *);
+    LAYOUT(ams_mel_rf_mfa_info *);
+    LAYOUT(ams_mel_rf_job_data_format_t);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2);
+    VALUE(AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3);
+    RECORD(ams_mel_rf_frequency_range_v1,
+        FIELD(ams_mel_rf_frequency_range_v1,min_hz);
+        FIELD(ams_mel_rf_frequency_range_v1,max_hz));
+    RECORD(ams_mel_rf_frequency_range_span_v1,
+        FIELD(ams_mel_rf_frequency_range_span_v1,data);
+        FIELD(ams_mel_rf_frequency_range_span_v1,size));
+    RECORD(ams_mel_rf_face_info_v1,
+        FIELD(ams_mel_rf_face_info_v1,face_id);
+        FIELD(ams_mel_rf_face_info_v1,supports_receive);
+        FIELD(ams_mel_rf_face_info_v1,supports_transmit);
+        FIELD(ams_mel_rf_face_info_v1,requires_endpoint_association);
+        FIELD(ams_mel_rf_face_info_v1,agc_processing_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,min_job_request_lead_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,max_job_request_lead_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,min_job_detail_lead_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,tx_rx_switching_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,rx_tx_switching_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,tx_tx_switching_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,rx_rx_switching_time_fs);
+        FIELD(ams_mel_rf_face_info_v1,rx_frequency_ranges);
+        FIELD(ams_mel_rf_face_info_v1,tx_frequency_ranges);
+        FIELD(ams_mel_rf_face_info_v1,sample_frequency_ranges));
+    RECORD(ams_mel_rf_face_info_span_v1,
+        FIELD(ams_mel_rf_face_info_span_v1,data);
+        FIELD(ams_mel_rf_face_info_span_v1,size));
+    RECORD(ams_mel_rf_mfa_info_v1,
+        FIELD(ams_mel_rf_mfa_info_v1,reported_num_faces);
+        FIELD(ams_mel_rf_mfa_info_v1,contains_open_additions);
+        FIELD(ams_mel_rf_mfa_info_v1,scheduler_resolution_fs);
+        FIELD(ams_mel_rf_mfa_info_v1,max_user_defined_context_bytes);
+        FIELD(ams_mel_rf_mfa_info_v1,supported_data_formats);
+        FIELD(ams_mel_rf_mfa_info_v1,faces));
+    {
+        ams_mel_status_t (*rf_open)(const char *, const char *, ams_mel_rf_data **, char *, size_t, size_t *) = ams_mel_rf_data_open;
+        ams_mel_status_t (*rf_version)(const ams_mel_rf_data *, ams_mel_provider_version_v1 *, char *, size_t, size_t *) = ams_mel_rf_data_get_provider_version;
+        ams_mel_status_t (*rf_mfa)(const ams_mel_rf_data *, ams_mel_rf_mfa_info **, char *, size_t, size_t *) = ams_mel_rf_data_get_mfa_info;
+        ams_mel_status_t (*rf_view)(const ams_mel_rf_mfa_info *, const ams_mel_rf_mfa_info_v1 **, char *, size_t, size_t *) = ams_mel_rf_mfa_info_view;
+        ams_mel_status_t (*rf_info_close)(ams_mel_rf_mfa_info **, char *, size_t, size_t *) = ams_mel_rf_mfa_info_close;
+        ams_mel_status_t (*rf_close)(ams_mel_rf_data **, char *, size_t, size_t *) = ams_mel_rf_data_close;
+        (void)rf_open; (void)rf_version; (void)rf_mfa; (void)rf_view; (void)rf_info_close; (void)rf_close;
+    }
+
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);
     return 0;

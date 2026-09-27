@@ -1084,3 +1084,42 @@ is idempotent and nulls the handle; it never closes the typed owner, cancels a
 request, or enables, disables or detaches anything. The legacy C2
 inherited-service exports are unchanged. `AMS_MEL_TEST_CHANNEL_VIEW_FAILURE` is
 a test-build-only failpoint and has no effect in production builds.
+
+## Task 033B RF DataMEL foundation
+
+ABI 0.1 adds exactly six exports (100 -> 106): `ams_mel_rf_data_open`,
+`ams_mel_rf_data_get_provider_version`, `ams_mel_rf_data_get_mfa_info`,
+`ams_mel_rf_mfa_info_view`, `ams_mel_rf_mfa_info_close`, and
+`ams_mel_rf_data_close`. It also adds the opaque owners `ams_mel_rf_data` and
+`ams_mel_rf_mfa_info` and new `_v1` value records. No existing declaration,
+record, or status changes.
+
+RF owner rules:
+
+* `ams_mel_rf_data` is a unique owner, independent of `ams_mel_session`.
+* Open requires non-NULL path, configuration, and output, and
+  `*out_data == NULL`. On every failure the output stays NULL and the provider
+  DSO is unloaded.
+* Close always nulls the owner, including when it fails. It calls `shutdown()`
+  exactly once and is `AMS_MEL_OK` for an already-NULL owner.
+* A throwing `shutdown()` returns `AMS_MEL_PROVIDER_EXCEPTION` and permanently
+  retains the provider graph. There is no retry and no unload. This
+  intentionally differs from the retryable IR detach Close, because upstream
+  makes requests after shutdown undefined.
+* Operations on one RF owner and its Close require external serialization.
+
+The version export matches `ams_mel_session_get_provider_version` exactly,
+through one shared helper.
+
+The MFA snapshot owner:
+
+* copies scalars, raw enum values (unknown values preserved), `Femtoseconds`
+  as `int64_t` counts, `size_t` as checked `uint64_t`, and `FrequencyRange` as
+  verbatim Hz doubles;
+* preserves `getNumFaces()` independently of the `getFaceIDs()` face array;
+* references no provider memory, and is immutable and valid until snapshot
+  Close, including after RF Close.
+
+Snapshot view and Close are provider-free. Any getter exception discards the
+partial snapshot and leaves the output NULL. `AMS_MEL_TEST_RF_ALLOCATION_FAILURE`
+is a test-build-only failpoint and has no effect in production builds.

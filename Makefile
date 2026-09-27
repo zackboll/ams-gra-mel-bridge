@@ -1,4 +1,4 @@
-.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python
+.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python test-squall-rf-c
 
 TEST_TREE := $(CURDIR)/native/build-tests
 
@@ -17,7 +17,8 @@ help:
 	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \
 	  'make test-squall-ir-ada   Opt-in real Squall IR Ada integration' \
 	  'make test-squall-ir-rust  Opt-in real Squall IR Rust integration' \
-	  'make test-squall-ir-python Opt-in real Squall IR Python integration'
+	  'make test-squall-ir-python Opt-in real Squall IR Python integration' \
+	  'make test-squall-rf-c     Opt-in real Squall RF DataMEL C smoke'
 
 native:
 	@sh native/scripts/build.sh
@@ -71,3 +72,6 @@ test-squall-ir-rust:
 
 test-squall-ir-python:
 	@integration/squall/run.sh python
+
+test-squall-rf-c:
+	@integration/squall/run-rf.sh

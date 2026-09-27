@@ -1055,6 +1055,96 @@ ams_mel_ir_channel_close = _LIBRARY.ams_mel_ir_channel_close
 ams_mel_ir_channel_close.argtypes = [ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_close.restype = ctypes.c_int32
 
+# Task 033B: private raw RF DataMEL declarations. No public Python RF API.
+RfDataHandle = ctypes.c_void_p
+RfMfaInfoHandle = ctypes.c_void_p
+
+AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT8 = 0
+AMS_MEL_RF_JOB_DATA_FORMAT_DIRECT_INT16 = 1
+AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 = 2
+AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 = 3
+AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL = 4
+AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM = 5
+AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE = 6
+AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_EXTRA_LARGE = 7
+AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE1 = 8
+AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE2 = 9
+AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3 = 10
+AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1 = 11
+AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2 = 12
+AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3 = 13
+
+
+class RfFrequencyRangeV1(ctypes.Structure):
+    _fields_ = [("min_hz", ctypes.c_double), ("max_hz", ctypes.c_double)]
+
+
+class RfFrequencyRangeSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfFrequencyRangeV1)), ("size", ctypes.c_size_t)]
+
+
+class RfFaceInfoV1(ctypes.Structure):
+    _fields_ = [
+        ("face_id", ctypes.c_uint32),
+        ("supports_receive", ctypes.c_uint32),
+        ("supports_transmit", ctypes.c_uint32),
+        ("requires_endpoint_association", ctypes.c_uint32),
+        ("agc_processing_time_fs", ctypes.c_int64),
+        ("min_job_request_lead_time_fs", ctypes.c_int64),
+        ("max_job_request_lead_time_fs", ctypes.c_int64),
+        ("min_job_detail_lead_time_fs", ctypes.c_int64),
+        ("tx_rx_switching_time_fs", ctypes.c_int64),
+        ("rx_tx_switching_time_fs", ctypes.c_int64),
+        ("tx_tx_switching_time_fs", ctypes.c_int64),
+        ("rx_rx_switching_time_fs", ctypes.c_int64),
+        ("rx_frequency_ranges", RfFrequencyRangeSpanV1),
+        ("tx_frequency_ranges", RfFrequencyRangeSpanV1),
+        ("sample_frequency_ranges", RfFrequencyRangeSpanV1),
+    ]
+
+
+class RfFaceInfoSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfFaceInfoV1)), ("size", ctypes.c_size_t)]
+
+
+class RfMfaInfoV1(ctypes.Structure):
+    _fields_ = [
+        ("reported_num_faces", ctypes.c_uint64),
+        ("contains_open_additions", ctypes.c_uint32),
+        ("scheduler_resolution_fs", ctypes.c_int64),
+        ("max_user_defined_context_bytes", ctypes.c_uint64),
+        ("supported_data_formats", U32SpanV1),
+        ("faces", RfFaceInfoSpanV1),
+    ]
+
+
+ams_mel_rf_data_open = _LIBRARY.ams_mel_rf_data_open
+ams_mel_rf_data_open.argtypes = [
+    ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(RfDataHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_open.restype = ctypes.c_int32
+ams_mel_rf_data_get_provider_version = _LIBRARY.ams_mel_rf_data_get_provider_version
+ams_mel_rf_data_get_provider_version.argtypes = [
+    RfDataHandle, ctypes.POINTER(ProviderVersionV1), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_get_provider_version.restype = ctypes.c_int32
+ams_mel_rf_data_get_mfa_info = _LIBRARY.ams_mel_rf_data_get_mfa_info
+ams_mel_rf_data_get_mfa_info.argtypes = [
+    RfDataHandle, ctypes.POINTER(RfMfaInfoHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_get_mfa_info.restype = ctypes.c_int32
+ams_mel_rf_mfa_info_view = _LIBRARY.ams_mel_rf_mfa_info_view
+ams_mel_rf_mfa_info_view.argtypes = [
+    RfMfaInfoHandle, ctypes.POINTER(ctypes.POINTER(RfMfaInfoV1)), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_mfa_info_view.restype = ctypes.c_int32
+ams_mel_rf_mfa_info_close = _LIBRARY.ams_mel_rf_mfa_info_close
+ams_mel_rf_mfa_info_close.argtypes = [ctypes.POINTER(RfMfaInfoHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_mfa_info_close.restype = ctypes.c_int32
+ams_mel_rf_data_close = _LIBRARY.ams_mel_rf_data_close
+ams_mel_rf_data_close.argtypes = [ctypes.POINTER(RfDataHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_data_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -1156,4 +1246,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",
     "ams_mel_ir_channel_close",
+    "ams_mel_rf_data_open",
+    "ams_mel_rf_data_get_provider_version",
+    "ams_mel_rf_data_get_mfa_info",
+    "ams_mel_rf_mfa_info_view",
+    "ams_mel_rf_mfa_info_close",
+    "ams_mel_rf_data_close",
 )

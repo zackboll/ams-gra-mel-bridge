@@ -105,6 +105,14 @@ private package AMS.MEL_C_API is
    type Track_System_Response_Request_Handle is new System.Address;
    Null_Track_System_Response_Request : constant Track_System_Response_Request_Handle :=
      Track_System_Response_Request_Handle (System.Null_Address);
+   --  Task 033B: raw RF DataMEL owners. Private FFI only; there is no safe
+   --  Ada RF API (no AMS.MEL.RF) yet.
+   type RF_Data_Handle is new System.Address;
+   Null_RF_Data                       : constant RF_Data_Handle :=
+     RF_Data_Handle (System.Null_Address);
+   type RF_MFA_Info_Handle is new System.Address;
+   Null_RF_MFA_Info                   : constant RF_MFA_Info_Handle :=
+     RF_MFA_Info_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -1656,4 +1664,96 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_channel_close";
+
+   --  Task 033B RF DataMEL raw records. Spans are raw addresses; every
+   --  femtosecond value is the upstream int64 count.
+   RF_Job_Data_Format_Direct_INT8          : constant Interfaces.Unsigned_32 := 0;
+   RF_Job_Data_Format_Direct_INT16         : constant Interfaces.Unsigned_32 := 1;
+   RF_Job_Data_Format_Complex_INT8         : constant Interfaces.Unsigned_32 := 2;
+   RF_Job_Data_Format_Complex_INT16        : constant Interfaces.Unsigned_32 := 3;
+   RF_Job_Data_Format_AMS_Vita_Small       : constant Interfaces.Unsigned_32 := 4;
+   RF_Job_Data_Format_AMS_Vita_Medium      : constant Interfaces.Unsigned_32 := 5;
+   RF_Job_Data_Format_AMS_Vita_Large       : constant Interfaces.Unsigned_32 := 6;
+   RF_Job_Data_Format_AMS_Vita_Extra_Large : constant Interfaces.Unsigned_32 := 7;
+   RF_Job_Data_Format_PDW_Type1            : constant Interfaces.Unsigned_32 := 8;
+   RF_Job_Data_Format_PDW_Type2            : constant Interfaces.Unsigned_32 := 9;
+   RF_Job_Data_Format_PDW_Type3            : constant Interfaces.Unsigned_32 := 10;
+   RF_Job_Data_Format_LF_Type1             : constant Interfaces.Unsigned_32 := 11;
+   RF_Job_Data_Format_LF_Type2             : constant Interfaces.Unsigned_32 := 12;
+   RF_Job_Data_Format_LF_Type3             : constant Interfaces.Unsigned_32 := 13;
+
+   type RF_Frequency_Range_V1 is record
+      Min_Hz : Interfaces.C.double;
+      Max_Hz : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Face_Info_V1 is record
+      Face_ID                       : Interfaces.Unsigned_32;
+      Supports_Receive              : Interfaces.Unsigned_32;
+      Supports_Transmit             : Interfaces.Unsigned_32;
+      Requires_Endpoint_Association : Interfaces.Unsigned_32;
+      AGC_Processing_Time_FS        : Interfaces.Integer_64;
+      Min_Job_Request_Lead_Time_FS  : Interfaces.Integer_64;
+      Max_Job_Request_Lead_Time_FS  : Interfaces.Integer_64;
+      Min_Job_Detail_Lead_Time_FS   : Interfaces.Integer_64;
+      Tx_Rx_Switching_Time_FS       : Interfaces.Integer_64;
+      Rx_Tx_Switching_Time_FS       : Interfaces.Integer_64;
+      Tx_Tx_Switching_Time_FS       : Interfaces.Integer_64;
+      Rx_Rx_Switching_Time_FS       : Interfaces.Integer_64;
+      Rx_Frequency_Ranges           : Span_V1;
+      Tx_Frequency_Ranges           : Span_V1;
+      Sample_Frequency_Ranges       : Span_V1;
+   end record
+   with Convention => C;
+   type RF_MFA_Info_V1 is record
+      Reported_Num_Faces             : Interfaces.Unsigned_64;
+      Contains_Open_Additions        : Interfaces.Unsigned_32;
+      Scheduler_Resolution_FS        : Interfaces.Integer_64;
+      Max_User_Defined_Context_Bytes : Interfaces.Unsigned_64;
+      Supported_Data_Formats         : Span_V1;
+      Faces                          : Span_V1;
+   end record
+   with Convention => C;
+
+   function RF_Data_Open
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Configuration       : Interfaces.C.Strings.chars_ptr;
+      Output              : access RF_Data_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_open";
+   function RF_Data_Get_Provider_Version
+     (Handle              : RF_Data_Handle;
+      Output              : access Provider_Version_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_get_provider_version";
+   function RF_Data_Get_MFA_Info
+     (Handle              : RF_Data_Handle;
+      Output              : access RF_MFA_Info_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_get_mfa_info";
+   function RF_MFA_Info_View
+     (Handle              : RF_MFA_Info_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_mfa_info_view";
+   function RF_MFA_Info_Close
+     (Handle              : access RF_MFA_Info_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_mfa_info_close";
+   function RF_Data_Close
+     (Handle              : access RF_Data_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_close";
 end AMS.MEL_C_API;

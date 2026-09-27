@@ -12,7 +12,8 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
-    src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp)
+    src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
+    src/rf_data.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -25,6 +26,13 @@ target_include_directories(ams_mel_c PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include)
 target_include_directories(ams_mel_c SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
+# Task 033B: the pinned, byte-identical Task 033A RF DataMEL declaration
+# closure (RF MEL + the AMS VITA headers it reaches). SYSTEM because pinned
+# TxPowerModeData.h trips Clang -Wignored-qualifiers; first-party sources keep
+# the project warnings. Only src/rf_data.cpp includes RF headers.
+target_include_directories(ams_mel_c SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/rf-mel/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-vita/include)
 target_link_libraries(ams_mel_c PRIVATE ${CMAKE_DL_LIBS})
 if(UNIX AND NOT APPLE)
     set(ams_mel_export_map "${CMAKE_CURRENT_SOURCE_DIR}/src/exports.map")
@@ -167,6 +175,41 @@ if(AMS_MEL_BUILD_TESTS)
         DEPENDS rf_data_header_compile_probe
         VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
+
+    # Task 033B: dedicated mock RF provider (createDataMEL + TEST-only
+    # observations) and a loadable RF-shaped DSO without createDataMEL. Both
+    # use the pinned 033A closure; neither shares code with the IR mock.
+    foreach(rf_provider IN ITEMS mock_rf_provider missing_symbol_rf_provider)
+        add_library(${rf_provider} SHARED tests/${rf_provider}.cpp)
+        target_compile_features(${rf_provider} PRIVATE cxx_std_20)
+        target_include_directories(${rf_provider} SYSTEM PRIVATE
+            ${ams_mel_rf_data_vendor_roots})
+        set_target_properties(${rf_provider} PROPERTIES
+            CXX_EXTENSIONS OFF CXX_VISIBILITY_PRESET hidden
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-providers")
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${rf_provider} PRIVATE -fno-gnu-unique)
+        endif()
+        ams_mel_warnings(${rf_provider})
+    endforeach()
+
+    add_executable(test_rf_data tests/test_rf_data.c)
+    target_compile_features(test_rf_data PRIVATE c_std_11)
+    set_target_properties(test_rf_data PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_data PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>"
+        AMS_MEL_TEST_MISSING_SYMBOL_RF_PROVIDER="$<TARGET_FILE:missing_symbol_rf_provider>")
+    target_link_libraries(test_rf_data PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_rf_data mock_rf_provider missing_symbol_rf_provider)
+    ams_mel_warnings(test_rf_data)
+    # One process per case: lifetime/retention evidence cannot leak.
+    foreach(case IN ITEMS open version version-long snapshot two-snapshots
+            snapshot-independent snapshot-throw inconsistent-faces future-format
+            missing-symbol null-factory factory-throw close shutdown-throw
+            shutdown-throw-unknown invalid allocation)
+        add_test(NAME rf-data-${case} COMMAND test_rf_data ${case})
+        set_tests_properties(rf-data-${case} PROPERTIES TIMEOUT 30)
+    endforeach()
 
     add_executable(test_common_channel_view tests/test_common_channel_view.c)
     target_compile_features(test_common_channel_view PRIVATE c_std_11)
@@ -511,7 +554,7 @@ install(TARGETS ams_mel_c EXPORT ams_mel_cTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c)
-foreach(upstream IN ITEMS common-mel ir-mel ams-math)
+foreach(upstream IN ITEMS common-mel ir-mel ams-math rf-mel ams-vita)
     install(FILES vendor/${upstream}/LICENSE vendor/${upstream}/INTENT.md
         DESTINATION
         ${CMAKE_INSTALL_DATADIR}/licenses/ams_mel_c/upstream/${upstream})
