@@ -13,6 +13,11 @@ package AMS.MEL.IR.Health_Status is
    function Is_Open (Channel : Health_Channel) return Boolean;
    procedure Enable (Channel : in out Health_Channel);
    function Capabilities (Channel : Health_Channel) return IR.Channel.Channel_Capability;
+   --  Returns a new weak common Channel view of this open Health_Channel.
+   --  Raises Provider_Error if the channel is closed; no open View escapes on
+   --  failure. The View does not own or keep this owner alive, and closing the
+   --  View does not close this owner. See AMS.MEL.IR.Channel.
+   function As_Channel (Channel : Health_Channel) return IR.Channel.View;
    procedure Close (Channel : in out Health_Channel);
 
 private

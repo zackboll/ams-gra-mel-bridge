@@ -95,6 +95,27 @@ package body AMS.MEL.IR.C2 is
    function Is_Open (Channel : Control_Channel) return Boolean
    is (Channel.Handle /= C.Null_C2);
 
+   function As_Channel (Channel : Control_Channel) return AMS.MEL.IR.Channel.View is
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required   : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : AMS.MEL.IR.Channel.View do
+         if C.IR_Channel_From_C2
+              (Channel.Handle,
+               Result.Handle'Access,
+               Diagnostic'Address,
+               Diagnostic'Length,
+               Required'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Failure_Message (Diagnostic);
+         end if;
+      end return;
+   end As_Channel;
+
    procedure Enable (Channel : in out Control_Channel) is
       Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required   : aliased C.Size_T := 0;

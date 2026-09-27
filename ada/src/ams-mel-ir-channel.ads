@@ -1,12 +1,17 @@
 with Ada.Containers.Vectors;
-with AMS.MEL.IR.C2;
+private with Ada.Finalization;
+private with Ada.Strings.Unbounded;
+private with AMS.MEL_C_API;
 with Interfaces;
 
 package AMS.MEL.IR.Channel is
+   --  Canonical common command identifier. AMS.MEL.IR.C2.Command_ID is a
+   --  source-compatible subtype of this type.
+   type Command_ID is mod 2**32 with Size => 32;
    type Comms_Channel_ID is mod 2**32 with Size => 32;
    type Comms_Request_ID is mod 2**32 with Size => 32;
    type Comms_Test_Report is record
-      Command_ID : C2.Command_ID;
+      Command_ID : AMS.MEL.IR.Channel.Command_ID;
       Request_ID : Comms_Request_ID;
    end record;
 
@@ -144,7 +149,114 @@ package AMS.MEL.IR.Channel is
    function Nav_Frame_Count (Value : Channel_Capability) return Natural;
    function Nav_Frame_At
      (Value : Channel_Capability; Index : Positive) return Coordinate_System_Type;
+
+   --  Safe common Channel facade (Task 032B2).
+   --
+   --  A View is created only by a typed family's As_Channel conversion:
+   --  C2.As_Channel, Image.As_Channel, Health_Status.As_Channel,
+   --  Instrumentation.As_Channel, or Track.As_Channel. It is a controlled
+   --  owner of exactly one native weak common Channel view. It does NOT own
+   --  the typed family state, Session, provider Channel, Control, or provider
+   --  library: after the typed owner and its Session close, common operations
+   --  on a still-open View raise Provider_Error, while Close still succeeds.
+   --  Closing or finalizing a View never closes, enables, disables, or
+   --  detaches the typed source owner and never cancels pending requests.
+   --  Operations on one View and Close of that same View must be externally
+   --  serialized; distinct Views need no serialization.
+   subtype View is AMS.MEL.IR.Channel_View;
+   function Is_Open (Channel : View) return Boolean;
+   procedure Close (Channel : in out View);
+   --  Idempotent. Destroys only the weak native view.
+
+   type Outcome is (Success, Rejected);
+   type Error_Code is
+     (None,
+      Invalid_ID,
+      Invalid_State,
+      Invalid_Parameters,
+      Insufficient_Permissions,
+      Insufficient_Resources,
+      Insufficient_Local_Resources,
+      Insufficient_Remote_Resources,
+      Unsupported);
+   type Command_Return is (Return_Success, Bad_Pointer, Fail, Not_Supported, Not_Implemented);
+   --  Success means RequestFor<Return> completed with a Command_Return value;
+   --  that value may be Fail. Rejected represents upstream ErrorOr(Error).
+
+   --  Submissions are valid while the family's common lifecycle admits
+   --  requests (C2/Health/Instrumentation/Track: Attached or Enabled; Image:
+   --  Attached or Running). Session admission refusal raises
+   --  AMS.MEL.Resource_Exhausted; any other submission failure, including an
+   --  expired or closed View, raises Provider_Error. An admitted request owns
+   --  the native family graph independently of the View, typed owner, and
+   --  Session. Timeout_Error is inherited from AMS.MEL.IR; timeout never
+   --  cancels or consumes a request, and a later Wait returns the identical
+   --  cached terminal result. Close must not race Wait on the same request.
+   type Return_Request is limited private;
+   function Send_Keep_Alive (Channel : View) return Return_Request;
+   function Is_Open (Request : Return_Request) return Boolean;
+   type Return_Result is private;
+   function Status (Result : Return_Result) return Outcome;
+   function Value (Result : Return_Result) return Command_Return
+   with Pre => Status (Result) = Success;
+   function Rejection_Code (Result : Return_Result) return Error_Code
+   with Pre => Status (Result) = Rejected;
+   function Description (Result : Return_Result) return String
+   with Pre => Status (Result) = Rejected;
+   function Wait (Request : Return_Request; Timeout_Milliseconds : Natural) return Return_Result;
+   procedure Close (Request : in out Return_Request);
+
+   type Comms_Request is limited private;
+   function Submit_Comms_Test
+     (Channel    : View;
+      Channel_ID : Comms_Channel_ID;
+      Command_ID : AMS.MEL.IR.Channel.Command_ID;
+      Request_ID : Comms_Request_ID) return Comms_Request;
+   function Is_Open (Request : Comms_Request) return Boolean;
+   type Comms_Result is private;
+   function Status (Result : Comms_Result) return Outcome;
+   function Report (Result : Comms_Result) return Comms_Test_Report
+   with Pre => Status (Result) = Success;
+   function Rejection_Code (Result : Comms_Result) return Error_Code
+   with Pre => Status (Result) = Rejected;
+   function Description (Result : Comms_Result) return String
+   with Pre => Status (Result) = Rejected;
+   function Wait (Request : Comms_Request; Timeout_Milliseconds : Natural) return Comms_Result;
+   procedure Close (Request : in out Comms_Request);
+
+   --  Returns an owned snapshot that remains valid after View Close, typed
+   --  owner Close, Session Close, and provider unload.
+   function Capabilities (Channel : View) return Channel_Capability;
 private
+   package US renames Ada.Strings.Unbounded;
+   type Return_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Return_Request_Handle := AMS.MEL_C_API.Null_Return_Request;
+   end record;
+   overriding
+   procedure Finalize (Request : in out Return_Owner);
+   type Return_Request is limited record
+      Owner : Return_Owner;
+   end record;
+   type Return_Result is record
+      Result_Status : Outcome := Success;
+      Result_Value  : Command_Return := Return_Success;
+      Result_Code   : Error_Code := None;
+      Result_Text   : US.Unbounded_String;
+   end record;
+   type Comms_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Comms_Request_Handle := AMS.MEL_C_API.Null_Comms_Request;
+   end record;
+   overriding
+   procedure Finalize (Request : in out Comms_Owner);
+   type Comms_Request is limited record
+      Owner : Comms_Owner;
+   end record;
+   type Comms_Result is record
+      Result_Status : Outcome := Success;
+      Result_Report : Comms_Test_Report := (0, 0);
+      Result_Code   : Error_Code := None;
+      Result_Text   : US.Unbounded_String;
+   end record;
    type Channel_Capability is record
       ID, Platform                                            : UCI_ID;
       H, W, Depth, Pitch, Buffer, Image, Band_Count, Schedule : Interfaces.Unsigned_32;

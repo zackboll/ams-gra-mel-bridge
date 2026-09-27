@@ -133,6 +133,33 @@ mel::RequestFor<T> held_request(std::shared_ptr<T> result, unsigned family)
     return future;
 }
 
+/* Task 032B2 test-only ready common futures for the safe Ada Channel tests
+ * ("health-ada-common", "instr-ada-common", "track-ada-common"). These
+ * complete immediately so the Ada suite needs no dlsym provider gate. */
+template<class T>
+mel::RequestFor<T> ready_request(std::shared_ptr<T> result)
+{
+    std::promise<mel::ErrorOr<std::shared_ptr<T>>> promise;
+    auto future = promise.get_future();
+    promise.set_value(mel::ErrorOr<std::shared_ptr<T>>{std::move(result)});
+    return future;
+}
+
+bool ada_common_scenario(const std::string& scenario)
+{
+    return scenario == "health-ada-common" || scenario == "instr-ada-common" ||
+        scenario == "track-ada-common";
+}
+
+void require_ada_common_high_ids(const std::string& scenario,
+                                 const irmel::ChannelCommsTestReq& request)
+{
+    if (ada_common_scenario(scenario) &&
+        (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
+         request.getRequestID() != 0xe0000003U))
+        throw std::runtime_error("Ada common CommsTest request conversion mismatch");
+}
+
 extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
     unsigned operation, std::uint64_t amount, std::uint64_t *submitted,
     std::uint64_t *released)
@@ -2469,6 +2496,7 @@ public:
         c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "health-keepalive-throw") throw std::runtime_error("Health KeepAlive send failed");
+        if (scenario_ == "health-ada-common") return ready_request(std::make_shared<Return>(Return::Success));
         return held_request(std::make_shared<Return>(Return::Success), 1);
     }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
@@ -2479,6 +2507,9 @@ public:
         if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
             request.getRequestID() != 0xe0000003U)
             throw std::runtime_error("Health Comms IDs changed");
+        if (scenario_ == "health-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
         return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID()), 2);
     }
@@ -2537,6 +2568,7 @@ public:
         c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        if (scenario_ == "instr-ada-common") return ready_request(std::make_shared<Return>(Return::Success));
         return held_request(std::make_shared<Return>(Return::Success), 1);
     }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
@@ -2549,6 +2581,10 @@ public:
              request.getChannelID() != 0xf0000002U ||
              request.getRequestID() != 0xe0000003U))
             throw std::runtime_error("CommsTest request conversion mismatch");
+        require_ada_common_high_ids(scenario_, request);
+        if (scenario_ == "instr-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
         return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID()), 2);
     }
@@ -3089,6 +3125,7 @@ public:
         c2_send_boundary(1);
         record("keepalive_sent");
         if (scenario_ == "keepalive-send-throw") throw std::runtime_error("mock keepalive send exception");
+        if (scenario_ == "track-ada-common") return ready_request(std::make_shared<Return>(Return::Success));
         return held_request(std::make_shared<Return>(Return::Success), 1);
     }
     mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
@@ -3101,6 +3138,10 @@ public:
              request.getChannelID() != 0xf0000002U ||
              request.getRequestID() != 0xe0000003U))
             throw std::runtime_error("CommsTest request conversion mismatch");
+        require_ada_common_high_ids(scenario_, request);
+        if (scenario_ == "track-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
         return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID()), 2);
     }

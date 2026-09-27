@@ -59,6 +59,11 @@ package AMS.MEL.IR.Image is
    type Full_Frame is private;
    function Capabilities
      (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.Channel_Capability;
+   --  Returns a new weak common Channel view of this open Image_Stream.
+   --  Raises Provider_Error if the stream is closed; no open View escapes on
+   --  failure. The View does not own or keep the stream alive, and closing the
+   --  View does not stop or close the stream. See AMS.MEL.IR.Channel.
+   function As_Channel (Object : AMS.MEL.IR.Image_Stream) return AMS.MEL.IR.Channel.View;
    --  Owned-copy compatibility path. Receive copies the complete native frame
    --  snapshot, including the whole pixel payload, into Ada-owned storage and
    --  releases the native snapshot before returning. The result therefore has

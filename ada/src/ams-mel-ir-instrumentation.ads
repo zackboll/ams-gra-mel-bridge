@@ -30,6 +30,12 @@ package AMS.MEL.IR.Instrumentation is
    function Is_Open (Channel : Instrumentation_Channel) return Boolean;
    procedure Enable (Channel : in out Instrumentation_Channel);
    function Capabilities (Channel : Instrumentation_Channel) return IR.Channel.Channel_Capability;
+   --  Returns a new weak common Channel view of this open channel. Inherited
+   --  KeepAlive, CommsTest, and ChannelCapability are available through
+   --  AMS.MEL.IR.Channel while Attached or Enabled; the typed Submit below
+   --  still requires Enable. Raises Provider_Error if the channel is closed.
+   --  The View does not own or keep this owner alive.
+   function As_Channel (Channel : Instrumentation_Channel) return IR.Channel.View;
    procedure Close (Channel : in out Instrumentation_Channel);
 
    --  Upstream Priority is exactly Normal = 0 and Debug = 1; upstream defines
