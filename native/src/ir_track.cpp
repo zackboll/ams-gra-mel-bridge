@@ -2,6 +2,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/completion_probe.hpp"
+#include "internal/common_channel_requests.hpp"
 
 #include <irmel/library/irmel-types/CandidateObjectMessage.h>
 #include <irmel/library/irmel-types/CandidateObjectPreProcMessage.h>
@@ -23,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -589,6 +591,13 @@ void metadata_callback_impl(const std::shared_ptr<MetadataState>& state,
             if (state->lifecycle != MetadataLifecycle::Active) return;
         }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *base = std::getenv("AMS_MEL_TEST_TRACK_CALLBACK_BARRIER")) {
+            if (const char *log = std::getenv("AMS_MEL_TEST_LIFETIME_LOG"))
+                std::ofstream{log, std::ios::app} << "track_callback_entered\n";
+            std::ofstream{std::string{base} + ".entered"} << "entered\n";
+            while (!std::ifstream{std::string{base} + ".release"}.good())
+                std::this_thread::yield();
+        }
         if (const char *failure = std::getenv("AMS_MEL_TEST_TRACK_CALLBACK_FAILURE");
             failure && std::strcmp(failure, "allocation") == 0)
             throw std::bad_alloc{};
@@ -681,8 +690,8 @@ enum class Lifecycle { Attached, Enabled, Failed, Closed };
  * session, the attached Channel and its TrackChannel view, the callback-owned
  * metadata state, the channel lifecycle, and the one pending-request count.
  *
- * `requests` is the shared accounting domain for exactly the two RequestFor
- * send families (TrackDataUpdate and SystemTrackDataResponse). Inbound
+ * `requests` is shared by TrackDataUpdate, SystemTrackDataResponse and
+ * inherited common Channel requests. Inbound
  * metadata callbacks (IRSTTrackReport, RequestSystemTrackData,
  * CandidateObjectMessage, CandidateObjectPreProcMessage) never take part
  * in `requests`; their delivery is accounted for by the bounded metadata queue
@@ -698,7 +707,7 @@ struct TrackState {
     Lifecycle lifecycle{Lifecycle::Attached};
     /* The single pending-request accounting domain, shared by the
      * @RequiredIfTrackUpdate TrackDataUpdate requests and the @Optional
-     * SystemTrackDataResponse requests. There is deliberately no second
+     * SystemTrackDataResponse and inherited Channel requests. No second
      * counter: while this total is non-zero, physical provider teardown is
      * deferred to the final request completion of either family. */
     std::size_t requests{};
@@ -1035,7 +1044,61 @@ SubmitFailpoint submit_failpoint(const char *variable) noexcept
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
+namespace ams_mel_common {
+CommonChannelAccess common_from_track(const ams_mel_ir_track *owner)
+{
+    return {owner->state,
+        [](const std::shared_ptr<void>& value) noexcept {
+            return std::static_pointer_cast<TrackState>(value)->session->admission;
+        },
+        [](const std::shared_ptr<void>& value, std::shared_ptr<irmel::Channel>& channel,
+           CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<TrackState>(value);
+            std::lock_guard lock{state->mutex};
+            if ((state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+                || !state->channel || !state->track) return false;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& erased) noexcept {
+                    auto claimed = std::static_pointer_cast<TrackState>(erased);
+                    try {
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                        if (const char *failure = std::getenv("AMS_MEL_TEST_TRACK_COMMON_FINISH_FAILURE");
+                            failure && std::strcmp(failure, "exception") == 0)
+                            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+                        return finish_request(claimed);
+                    } catch (...) { retain_failed(claimed); return false; }
+                }, "deferred Track cleanup failed"};
+            return true;
+        }};
+}
+} // namespace ams_mel_common
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+struct ams_mel_test_track_observer { std::weak_ptr<TrackState> state; };
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_track_observer_from(
+    const ams_mel_ir_track *owner, ams_mel_test_track_observer **output) noexcept
+{
+    if (!owner || !output || *output) return 0;
+    try { *output = new ams_mel_test_track_observer{owner->state}; return 1; }
+    catch (...) { return 0; }
+}
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_track_observer_requests(
+    const ams_mel_test_track_observer *observer, std::size_t *requests) noexcept
+{
+    if (!observer || !requests) return 0;
+    try {
+        auto state = observer->state.lock();
+        if (!state) return 0;
+        std::lock_guard lock{state->mutex};
+        *requests = state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+extern "C" __attribute__((visibility("default"))) void ams_mel_test_track_observer_close(
+    ams_mel_test_track_observer **observer) noexcept
+{ if (observer) { delete *observer; *observer = nullptr; } }
 extern "C" __attribute__((visibility("default"))) int ams_mel_test_track_requests(
     const ams_mel_ir_track *owner, std::size_t *requests) noexcept
 {
@@ -1103,6 +1166,15 @@ struct ams_mel_ir_track_metadata {
     std::shared_ptr<MetadataState> state;
 };
 struct ams_mel_ir_track_metadata_event { std::unique_ptr<EventData> data; };
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_track_callbacks(
+    const ams_mel_ir_track_metadata *metadata, std::size_t *callbacks) noexcept
+{
+    if (!metadata || !callbacks) return 0;
+    *callbacks = metadata->state->callbacks_in_flight.load(std::memory_order_acquire);
+    return 1;
+}
+#endif
 
 extern "C" ams_mel_status_t ams_mel_ir_track_open(
     const ams_mel_session *session, const ams_mel_ir_track_config_v1 *config,

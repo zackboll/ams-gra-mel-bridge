@@ -32,9 +32,11 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -213,6 +215,36 @@ if(AMS_MEL_BUILD_TESTS)
     add_test(NAME completion_scalability COMMAND test_completion_scalability)
 
     add_executable(test_completion_cross_family tests/test_completion_cross_family.c)
+    add_executable(test_common_channel_instrumentation_track
+        tests/test_common_channel_instrumentation_track.c)
+    target_compile_features(test_common_channel_instrumentation_track PRIVATE c_std_11)
+    set_target_properties(test_common_channel_instrumentation_track PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_common_channel_instrumentation_track PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_common_channel_instrumentation_track
+        PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_common_channel_instrumentation_track mock_ir_provider)
+    ams_mel_warnings(test_common_channel_instrumentation_track)
+    foreach(family instrumentation track)
+        foreach(case weak observer-idle close-first attached-keepalive attached-comms
+                     enabled-keepalive enabled-comms enabled-parent attached-parent
+                     finish detach throw comms-throw shared-open shared-closed metadata-held
+                     close-wins post-return-allocation post-return-worker-launch
+                     post-comms-allocation post-comms-worker-launch)
+            add_test(NAME common_${family}_${case}
+                COMMAND test_common_channel_instrumentation_track ${family}-${case})
+            set_tests_properties(common_${family}_${case} PROPERTIES TIMEOUT 30)
+        endforeach()
+    endforeach()
+    add_test(NAME common_instrumentation_comms-close-wins
+        COMMAND test_common_channel_instrumentation_track instrumentation-comms-close-wins)
+    set_tests_properties(common_instrumentation_comms-close-wins PROPERTIES TIMEOUT 30)
+    foreach(case instrumentation-cross-common-first instrumentation-cross-typed-first
+                 track-cross-common-first track-cross-typed-first)
+        add_test(NAME common_${case}
+            COMMAND test_common_channel_instrumentation_track ${case})
+        set_tests_properties(common_${case} PROPERTIES TIMEOUT 30)
+    endforeach()
     target_compile_features(test_completion_cross_family PRIVATE c_std_11)
     set_target_properties(test_completion_cross_family PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_completion_cross_family PRIVATE

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add internal weak Instrumentation/Track inherited Channel access using the
+  existing family request counts and shared Return/Comms engines (032A4).
+  Test-only weak observers prove closed-parent counts, metadata quiescence,
+  cross-family admission and failure retention without changing the public ABI.
 - Add private Health common request accounting, weak test-only common access,
   and logical Close with deferred physical cleanup. C11 race, metadata,
   admission and retention tests; no public ABI change (Task 032A3).

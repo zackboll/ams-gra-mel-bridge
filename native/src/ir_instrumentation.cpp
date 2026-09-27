@@ -2,6 +2,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/completion_probe.hpp"
+#include "internal/common_channel_requests.hpp"
 
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
 
@@ -14,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -171,6 +173,13 @@ void metadata_callback(const std::shared_ptr<MetadataState>& state,
             if (state->lifecycle != MetadataLifecycle::Active) return;
         }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (const char *base = std::getenv("AMS_MEL_TEST_INSTRUMENTATION_CALLBACK_BARRIER")) {
+            if (const char *log = std::getenv("AMS_MEL_TEST_LIFETIME_LOG"))
+                std::ofstream{log, std::ios::app} << "instrumentation_callback_entered\n";
+            std::ofstream{std::string{base} + ".entered"} << "entered\n";
+            while (!std::ifstream{std::string{base} + ".release"}.good())
+                std::this_thread::yield();
+        }
         if (const char *failure =
                 std::getenv("AMS_MEL_TEST_INSTRUMENTATION_CALLBACK_FAILURE");
             failure && std::strcmp(failure, "allocation") == 0)
@@ -448,7 +457,61 @@ SubmitFailpoint submit_failpoint() noexcept
 } // namespace
 
 struct ams_mel_ir_instrumentation { std::shared_ptr<ChannelState> state; };
+namespace ams_mel_common {
+CommonChannelAccess common_from_instrumentation(const ams_mel_ir_instrumentation *owner)
+{
+    return {owner->state,
+        [](const std::shared_ptr<void>& value) noexcept {
+            return std::static_pointer_cast<ChannelState>(value)->session->admission;
+        },
+        [](const std::shared_ptr<void>& value, std::shared_ptr<irmel::Channel>& channel,
+           CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<ChannelState>(value);
+            std::lock_guard lock{state->mutex};
+            if ((state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+                || !state->channel || !state->instrumentation) return false;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& erased) noexcept {
+                    auto claimed = std::static_pointer_cast<ChannelState>(erased);
+                    try {
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                        if (const char *failure = std::getenv("AMS_MEL_TEST_INSTRUMENTATION_COMMON_FINISH_FAILURE");
+                            failure && std::strcmp(failure, "exception") == 0)
+                            throw std::system_error{std::make_error_code(std::errc::resource_unavailable_try_again)};
+#endif
+                        return finish_channel(claimed);
+                    } catch (...) { retain_failed(claimed); return false; }
+                }, "deferred Instrumentation cleanup failed"};
+            return true;
+        }};
+}
+} // namespace ams_mel_common
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+struct ams_mel_test_instrumentation_observer { std::weak_ptr<ChannelState> state; };
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_instrumentation_observer_from(
+    const ams_mel_ir_instrumentation *owner, ams_mel_test_instrumentation_observer **output) noexcept
+{
+    if (!owner || !output || *output) return 0;
+    try { *output = new ams_mel_test_instrumentation_observer{owner->state}; return 1; }
+    catch (...) { return 0; }
+}
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_instrumentation_observer_requests(
+    const ams_mel_test_instrumentation_observer *observer, std::size_t *requests) noexcept
+{
+    if (!observer || !requests) return 0;
+    try {
+        auto state = observer->state.lock();
+        if (!state) return 0;
+        std::lock_guard lock{state->mutex};
+        *requests = state->requests;
+        return 1;
+    } catch (...) { return 0; }
+}
+extern "C" __attribute__((visibility("default"))) void ams_mel_test_instrumentation_observer_close(
+    ams_mel_test_instrumentation_observer **observer) noexcept
+{ if (observer) { delete *observer; *observer = nullptr; } }
 extern "C" __attribute__((visibility("default"))) int ams_mel_test_instrumentation_requests(
     const ams_mel_ir_instrumentation *owner, std::size_t *requests) noexcept
 {
@@ -467,6 +530,15 @@ struct ams_mel_ir_instrumentation_metadata {
     std::weak_ptr<ChannelState> channel;
 };
 struct ams_mel_ir_instrumentation_metadata_event { std::unique_ptr<EventData> data; };
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_instrumentation_callbacks(
+    const ams_mel_ir_instrumentation_metadata *metadata, std::size_t *callbacks) noexcept
+{
+    if (!metadata || !callbacks) return 0;
+    *callbacks = metadata->state->callbacks.load(std::memory_order_acquire);
+    return 1;
+}
+#endif
 
 extern "C" ams_mel_status_t ams_mel_ir_instrumentation_open(
     const ams_mel_session *session,
