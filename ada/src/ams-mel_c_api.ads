@@ -48,6 +48,11 @@ private package AMS.MEL_C_API is
    type Capability_Handle is new System.Address;
    Null_Capability                    : constant Capability_Handle :=
      Capability_Handle (System.Null_Address);
+   --  Task 032B1: raw weak common Channel view. Private FFI only; no safe
+   --  Ada Channel operations use it yet (Task 032B2).
+   type Channel_Handle is new System.Address;
+   Null_Channel                       : constant Channel_Handle :=
+     Channel_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
    Null_Metadata                      : constant Metadata_Handle :=
      Metadata_Handle (System.Null_Address);
@@ -1586,4 +1591,69 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_system_response_request_close";
+
+   --  Task 032B1 public common Channel C ABI (private raw imports only).
+   function IR_Channel_From_C2
+     (Source              : C2_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_c2";
+   function IR_Channel_From_Stream
+     (Source              : Stream_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_stream";
+   function IR_Channel_From_Health
+     (Source              : Health_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_health";
+   function IR_Channel_From_Instrumentation
+     (Source              : Instrumentation_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_instrumentation";
+   function IR_Channel_From_Track
+     (Source              : Track_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_track";
+   function IR_Channel_Send_Keepalive
+     (Handle              : Channel_Handle;
+      Output              : access Return_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_send_keepalive";
+   function IR_Channel_Submit_Comms_Test
+     (Handle              : Channel_Handle;
+      Request             : access IR_Channel_Comms_Test_Request_V1;
+      Output              : access Comms_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_submit_comms_test";
+   function IR_Channel_Get_Capabilities
+     (Handle              : Channel_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_get_capabilities";
+   function IR_Channel_Close
+     (Handle              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_close";
 end AMS.MEL_C_API;

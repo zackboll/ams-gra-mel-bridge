@@ -661,6 +661,38 @@ SubmitFailpoint submit_failpoint() noexcept
 
 struct ams_mel_ir_c2 { std::shared_ptr<ChannelState> state; };
 
+namespace {
+/* The one C2 capability policy, shared by the typed export and the common
+ * Channel adapter: Attached or Enabled, provider call under the C2 mutex. */
+ams_mel_status_t c2_capability(const std::shared_ptr<ChannelState>& state,
+    ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    try {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle != C2Lifecycle::Attached &&
+            state->lifecycle != C2Lifecycle::Enabled) {
+            diagnostic("C2 channel is not available", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        return ams_mel::internal::snapshot_capability(
+            *state->c2, output, out, capacity, required);
+    } catch (const std::bad_alloc&) {
+        diagnostic("capability snapshot allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider capability exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        diagnostic("unknown provider capability exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+} // namespace
+
 namespace ams_mel_common {
 using namespace ams::iface;
 CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
@@ -679,6 +711,11 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
             ++state->requests;
             claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_channel_capability **output,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            return c2_capability(std::static_pointer_cast<ChannelState>(erased),
+                                 output, out, capacity, required);
         }};
 }
 } // namespace ams_mel_common
@@ -1283,28 +1320,7 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_get_capabilities(
     diagnostic("", out, capacity, required);
     if (!c2 || !c2->state || !output || *output || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::lock_guard lock{c2->state->mutex};
-        if (c2->state->lifecycle != C2Lifecycle::Attached &&
-            c2->state->lifecycle != C2Lifecycle::Enabled) {
-            diagnostic("C2 channel is not available", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-        return ams_mel::internal::snapshot_capability(
-            *c2->state->c2, output, out, capacity, required);
-    } catch (const std::bad_alloc&) {
-        diagnostic("capability snapshot allocation failed", out, capacity, required);
-        return AMS_MEL_INTERNAL_ERROR;
-    } catch (const std::exception& error) {
-        const char *what = error.what();
-        const std::string_view text = what ? std::string_view{what} : std::string_view{};
-        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider capability exception",
-                   out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
-    } catch (...) {
-        diagnostic("unknown provider capability exception", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
-    }
+    return c2_capability(c2->state, output, out, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_open(

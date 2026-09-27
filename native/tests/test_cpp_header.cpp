@@ -32,10 +32,47 @@ using snapshot_receive_fn = ams_mel_status_t (*)(ams_mel_ir_stream *, uint32_t,
     ams_mel_ir_frame_snapshot **, char *, size_t, size_t *) noexcept;
 static_assert(std::is_same_v<decltype(&ams_mel_ir_stream_receive_snapshot), snapshot_receive_fn>);
 
+/* Task 032B1 public common Channel view: exact C++ shapes, noexcept. */
+static_assert(noexcept(ams_mel_ir_channel_close(nullptr, nullptr, 0, nullptr)));
+using channel_from_c2_fn = ams_mel_status_t (*)(const ams_mel_ir_c2 *, ams_mel_ir_channel **,
+    char *, size_t, size_t *) noexcept;
+using channel_from_stream_fn = ams_mel_status_t (*)(const ams_mel_ir_stream *,
+    ams_mel_ir_channel **, char *, size_t, size_t *) noexcept;
+using channel_from_health_fn = ams_mel_status_t (*)(const ams_mel_ir_health *,
+    ams_mel_ir_channel **, char *, size_t, size_t *) noexcept;
+using channel_from_instrumentation_fn = ams_mel_status_t (*)(const ams_mel_ir_instrumentation *,
+    ams_mel_ir_channel **, char *, size_t, size_t *) noexcept;
+using channel_from_track_fn = ams_mel_status_t (*)(const ams_mel_ir_track *,
+    ams_mel_ir_channel **, char *, size_t, size_t *) noexcept;
+using channel_keepalive_fn = ams_mel_status_t (*)(const ams_mel_ir_channel *,
+    ams_mel_ir_return_request **, char *, size_t, size_t *) noexcept;
+using channel_comms_fn = ams_mel_status_t (*)(const ams_mel_ir_channel *,
+    const ams_mel_ir_channel_comms_test_request_v1 *, ams_mel_ir_channel_comms_request **,
+    char *, size_t, size_t *) noexcept;
+using channel_capability_fn = ams_mel_status_t (*)(const ams_mel_ir_channel *,
+    ams_mel_ir_channel_capability **, char *, size_t, size_t *) noexcept;
+using channel_close_fn = ams_mel_status_t (*)(ams_mel_ir_channel **, char *, size_t,
+    size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_c2), channel_from_c2_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_stream), channel_from_stream_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_health), channel_from_health_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_instrumentation),
+                             channel_from_instrumentation_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_track), channel_from_track_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_send_keepalive), channel_keepalive_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_submit_comms_test), channel_comms_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_get_capabilities),
+                             channel_capability_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_close), channel_close_fn>);
+
 int main()
 {
     ams_mel_abi_version_v1 version{};
     if (ams_mel_get_abi_version(&version) != AMS_MEL_OK) {
+        return 1;
+    }
+    ams_mel_ir_channel *channel = nullptr;
+    if (ams_mel_ir_channel_close(&channel, nullptr, 0, nullptr) != AMS_MEL_OK || channel) {
         return 1;
     }
     return version.major == AMS_MEL_ABI_VERSION_MAJOR &&

@@ -259,6 +259,18 @@ int main(void)
     ams_mel_status_t (*track_caps)(ams_mel_ir_track *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_track_get_capabilities;
     ams_mel_status_t (*track_close)(ams_mel_ir_track **, char *, size_t, size_t *) = ams_mel_ir_track_close;
     (void)track_open; (void)track_enable; (void)track_caps; (void)track_close;
+    /* Task 032B1: the nine public common Channel functions (no output). */
+    ams_mel_status_t (*channel_from_c2)(const ams_mel_ir_c2 *, ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_from_c2;
+    ams_mel_status_t (*channel_from_stream)(const ams_mel_ir_stream *, ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_from_stream;
+    ams_mel_status_t (*channel_from_health)(const ams_mel_ir_health *, ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_from_health;
+    ams_mel_status_t (*channel_from_instr)(const ams_mel_ir_instrumentation *, ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_from_instrumentation;
+    ams_mel_status_t (*channel_from_track)(const ams_mel_ir_track *, ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_from_track;
+    ams_mel_status_t (*channel_keepalive)(const ams_mel_ir_channel *, ams_mel_ir_return_request **, char *, size_t, size_t *) = ams_mel_ir_channel_send_keepalive;
+    ams_mel_status_t (*channel_comms)(const ams_mel_ir_channel *, const ams_mel_ir_channel_comms_test_request_v1 *, ams_mel_ir_channel_comms_request **, char *, size_t, size_t *) = ams_mel_ir_channel_submit_comms_test;
+    ams_mel_status_t (*channel_caps)(const ams_mel_ir_channel *, ams_mel_ir_channel_capability **, char *, size_t, size_t *) = ams_mel_ir_channel_get_capabilities;
+    ams_mel_status_t (*channel_close)(ams_mel_ir_channel **, char *, size_t, size_t *) = ams_mel_ir_channel_close;
+    (void)channel_from_c2; (void)channel_from_stream; (void)channel_from_health; (void)channel_from_instr;
+    (void)channel_from_track; (void)channel_keepalive; (void)channel_comms; (void)channel_caps; (void)channel_close;
     ams_mel_status_t (*track_meta_open)(ams_mel_ir_track *, size_t, ams_mel_ir_track_metadata **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_open;
     ams_mel_status_t (*track_meta_recv)(ams_mel_ir_track_metadata *, uint32_t, ams_mel_ir_track_metadata_event **, char *, size_t, size_t *) = ams_mel_ir_track_metadata_receive;
     ams_mel_status_t (*track_meta_counters)(const ams_mel_ir_track_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_track_metadata_get_counters;

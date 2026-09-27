@@ -1481,6 +1481,13 @@ pub struct AmsMelIrChannelCapability {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+/// Opaque weak common Channel view (`ams_mel_ir_channel`, Task 032B1). Raw
+/// declarations only; no safe Rust common Channel API is provided yet.
+#[repr(C)]
+pub struct AmsMelIrChannel {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 #[repr(C)]
 pub struct AmsMelIrC2Metadata {
     _private: [u8; 0],
@@ -2235,6 +2242,69 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_track_system_response_request_close(
         request: *mut *mut AmsMelIrTrackSystemResponseRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_c2(
+        source: *const AmsMelIrC2,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_stream(
+        source: *const AmsMelIrStream,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_health(
+        source: *const AmsMelIrHealth,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_instrumentation(
+        source: *const AmsMelIrInstrumentation,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_track(
+        source: *const AmsMelIrTrack,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_send_keepalive(
+        channel: *const AmsMelIrChannel,
+        out_request: *mut *mut AmsMelIrReturnRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_submit_comms_test(
+        channel: *const AmsMelIrChannel,
+        request: *const AmsMelIrChannelCommsTestRequestV1,
+        out_request: *mut *mut AmsMelIrChannelCommsRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_get_capabilities(
+        channel: *const AmsMelIrChannel,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_close(
+        channel: *mut *mut AmsMelIrChannel,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

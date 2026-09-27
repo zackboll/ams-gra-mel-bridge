@@ -1298,6 +1298,35 @@ bool finish_image_request(const std::shared_ptr<ImageStreamState>& stream,
     }
 }
 
+namespace {
+/* The one Image capability policy, shared by the typed export and the common
+ * Channel adapter: the provider image channel must exist and the lifecycle must
+ * not be Stopping, Stopped, or Failed. The channel is copied under the callback
+ * mutex and the provider is called unlocked, exactly as before. */
+ams_mel_status_t image_capability(const std::shared_ptr<ImageStreamState>& state,
+    ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    try {
+        std::shared_ptr<irmel::ImageChannel> image_channel;
+        {
+            std::lock_guard lock{state->callback->mutex};
+            if (!state->image_channel ||
+                state->callback->lifecycle == Lifecycle::Stopping ||
+                state->callback->lifecycle == Lifecycle::Stopped ||
+                state->callback->lifecycle == Lifecycle::Failed)
+                return AMS_MEL_PROVIDER_FAILED;
+            image_channel = state->image_channel;
+        }
+        return ams_mel::internal::snapshot_capability(*image_channel, output,
+                                                       out, capacity, required);
+    } catch (...) {
+        diagnostic("Image capability query failed", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+} // namespace
+
 namespace ams_mel_common {
 using namespace ams::iface;
 CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
@@ -1325,6 +1354,11 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
 #endif
                 }, "deferred Image cleanup failed"};
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_channel_capability **output,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            return image_capability(std::static_pointer_cast<ImageStreamState>(erased),
+                                    output, out, capacity, required);
         }};
 }
 } // namespace ams_mel_common
@@ -2516,23 +2550,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_get_capabilities(
     diagnostic("", out, capacity, required);
     if (!stream || !output || *output || (!out && capacity != 0U))
         return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::shared_ptr<irmel::ImageChannel> image_channel;
-        {
-            std::lock_guard lock{stream->state->callback->mutex};
-            if (!stream->state->image_channel ||
-                stream->state->callback->lifecycle == Lifecycle::Stopping ||
-                stream->state->callback->lifecycle == Lifecycle::Stopped ||
-                stream->state->callback->lifecycle == Lifecycle::Failed)
-                return AMS_MEL_PROVIDER_FAILED;
-            image_channel = stream->state->image_channel;
-        }
-        return ams_mel::internal::snapshot_capability(*image_channel, output,
-                                                       out, capacity, required);
-    } catch (...) {
-        diagnostic("Image capability query failed", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
-    }
+    return image_capability(stream->state, output, out, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_stream_stop(

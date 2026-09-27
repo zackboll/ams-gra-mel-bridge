@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Expose the common Channel C ABI (Task 032B1): opaque weak
+  `ams_mel_ir_channel` views of C2, Image, Health, Instrumentation and Track
+  owners, with KeepAlive, CommsTest, ChannelCapability and view Close. Requests
+  reuse the 032A engines, Session admission and family accounting; capability
+  shares one helper per family with the typed export. Exactly nine new exports
+  (91 -> 100), ABI still 0.1. Raw Ada FFI, Rust sys and private Python ctypes
+  synchronized; no safe-language common Channel façade yet (032B2). Legacy C2
+  inherited-service exports are unchanged.
 - Add internal weak Instrumentation/Track inherited Channel access using the
   existing family request counts and shared Return/Comms engines (032A4).
   Test-only weak observers prove closed-parent counts, metadata quiescence,

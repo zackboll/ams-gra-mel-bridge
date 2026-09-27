@@ -229,6 +229,131 @@ ams_mel_status_t submit_common_comms(const CommonChannelAccess& access,
 }
 } // namespace ams_mel_common
 
+/* Task 032B1 public weak common Channel view. It owns exactly one
+ * CommonChannelAccess: a weak family state plus static adapters. It never
+ * strongly owns typed family state, the Session, the provider channel,
+ * Control, or the provider library. */
+struct ams_mel_ir_channel {
+    explicit ams_mel_ir_channel(ams_mel_common::CommonChannelAccess value) noexcept
+        : access{std::move(value)} {}
+    ams_mel_common::CommonChannelAccess access;
+};
+static_assert(sizeof(ams_mel_ir_channel) == sizeof(ams_mel_common::CommonChannelAccess));
+
+namespace {
+bool view_allocation_failpoint() noexcept
+{
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    const char *value = std::getenv("AMS_MEL_TEST_CHANNEL_VIEW_FAILURE");
+    return value && std::strcmp(value, "allocation") == 0;
+#else
+    return false;
+#endif
+}
+
+/* Conversion is allocation plus a weak adapter only; no provider call, no
+ * family lock, no Session admission, and no lifetime change. */
+template<typename Source>
+ams_mel_status_t channel_from(const Source *source,
+    ams_mel_common::CommonChannelAccess (*convert)(const Source *),
+    ams_mel_ir_channel **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!source || !output || *output || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        if (view_allocation_failpoint()) throw std::bad_alloc{};
+        *output = new ams_mel_ir_channel{convert(source)};
+        return AMS_MEL_OK;
+    } catch (...) {
+        diagnostic("Channel view allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_c2(
+    const ams_mel_ir_c2 *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{ return channel_from(source, ams_mel_common::common_from_c2, out_channel, out, capacity, required); }
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_stream(
+    const ams_mel_ir_stream *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{ return channel_from(source, ams_mel_common::common_from_stream, out_channel, out, capacity, required); }
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_health(
+    const ams_mel_ir_health *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{ return channel_from(source, ams_mel_common::common_from_health, out_channel, out, capacity, required); }
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_instrumentation(
+    const ams_mel_ir_instrumentation *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return channel_from(source, ams_mel_common::common_from_instrumentation,
+                        out_channel, out, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_track(
+    const ams_mel_ir_track *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{ return channel_from(source, ams_mel_common::common_from_track, out_channel, out, capacity, required); }
+
+/* Delegates directly to the one 032A Return engine: preallocation, weak lock,
+ * Session CompletionPermit, family claim, provider send, shared worker. */
+extern "C" ams_mel_status_t ams_mel_ir_channel_send_keepalive(
+    const ams_mel_ir_channel *channel, ams_mel_ir_return_request **out_request,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!channel) return AMS_MEL_INVALID_ARGUMENT;
+    return ams_mel_common::submit_common_keepalive(channel->access, out_request,
+                                                   out, capacity, required);
+}
+
+/* Delegates directly to the one 032A Comms engine. */
+extern "C" ams_mel_status_t ams_mel_ir_channel_submit_comms_test(
+    const ams_mel_ir_channel *channel,
+    const ams_mel_ir_channel_comms_test_request_v1 *request,
+    ams_mel_ir_channel_comms_request **out_request, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!channel) return AMS_MEL_INVALID_ARGUMENT;
+    return ams_mel_common::submit_common_comms(channel->access, request, out_request,
+                                               out, capacity, required);
+}
+
+/* Temporarily strong-locks the weak family state only for the duration of the
+ * family's own typed capability policy; the snapshot is independent. */
+extern "C" ams_mel_status_t ams_mel_ir_channel_get_capabilities(
+    const ams_mel_ir_channel *channel, ams_mel_ir_channel_capability **out_capability,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!channel || !out_capability || *out_capability || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    const auto state = channel->access.lock();
+    if (!state) {
+        diagnostic("common channel is no longer available", out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    return channel->access.capability(state, out_capability, out, capacity, required);
+}
+
+/* Deletes only the weak wrapper: no typed Close, no cancellation, no
+ * enable/disable/detach, and no provider call. */
+extern "C" ams_mel_status_t ams_mel_ir_channel_close(
+    ams_mel_ir_channel **channel, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!channel || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*channel, nullptr);
+    return AMS_MEL_OK;
+}
+
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 using namespace ams_mel_common;
 extern "C" __attribute__((visibility("default"))) ams_mel_status_t

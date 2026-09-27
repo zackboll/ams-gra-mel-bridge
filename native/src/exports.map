@@ -91,6 +91,15 @@ AMS_MEL_0.1 {
         ams_mel_ir_track_submit_system_track_data_response;
         ams_mel_ir_track_system_response_request_wait;
         ams_mel_ir_track_system_response_request_close;
+        ams_mel_ir_channel_from_c2;
+        ams_mel_ir_channel_from_stream;
+        ams_mel_ir_channel_from_health;
+        ams_mel_ir_channel_from_instrumentation;
+        ams_mel_ir_channel_from_track;
+        ams_mel_ir_channel_send_keepalive;
+        ams_mel_ir_channel_submit_comms_test;
+        ams_mel_ir_channel_get_capabilities;
+        ams_mel_ir_channel_close;
     local:
         *;
 };

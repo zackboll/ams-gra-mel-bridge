@@ -1044,6 +1044,27 @@ SubmitFailpoint submit_failpoint(const char *variable) noexcept
 } // namespace
 
 struct ams_mel_ir_track { std::shared_ptr<TrackState> state; };
+namespace {
+/* The one Track capability policy, shared by the typed export and the common
+ * Channel adapter: Attached or Enabled, provider call under the Track mutex. */
+ams_mel_status_t track_capability(const std::shared_ptr<TrackState>& state,
+    ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    try {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle != Lifecycle::Attached &&
+            state->lifecycle != Lifecycle::Enabled)
+            return AMS_MEL_PROVIDER_FAILED;
+        /* Reuses the one shared native ChannelCapability snapshot. */
+        return ams_mel::internal::snapshot_capability(
+            *state->track, output, out, capacity, required);
+    } catch (...) {
+        diagnostic("Track capability query failed", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+} // namespace
 namespace ams_mel_common {
 CommonChannelAccess common_from_track(const ams_mel_ir_track *owner)
 {
@@ -1072,6 +1093,11 @@ CommonChannelAccess common_from_track(const ams_mel_ir_track *owner)
                     } catch (...) { retain_failed(claimed); return false; }
                 }, "deferred Track cleanup failed"};
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_channel_capability **output,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            return track_capability(std::static_pointer_cast<TrackState>(erased),
+                                    output, out, capacity, required);
         }};
 }
 } // namespace ams_mel_common
@@ -1314,18 +1340,7 @@ extern "C" ams_mel_status_t ams_mel_ir_track_get_capabilities(
     diagnostic("", out, capacity, required);
     if (!track || !track->state || !output || *output || (!out && capacity))
         return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::lock_guard lock{track->state->mutex};
-        if (track->state->lifecycle != Lifecycle::Attached &&
-            track->state->lifecycle != Lifecycle::Enabled)
-            return AMS_MEL_PROVIDER_FAILED;
-        /* Reuses the one shared native ChannelCapability snapshot. */
-        return ams_mel::internal::snapshot_capability(
-            *track->state->track, output, out, capacity, required);
-    } catch (...) {
-        diagnostic("Track capability query failed", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
-    }
+    return track_capability(track->state, output, out, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_track_metadata_open(

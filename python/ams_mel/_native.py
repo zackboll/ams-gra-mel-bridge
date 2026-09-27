@@ -559,6 +559,9 @@ IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
 IrChannelCommsRequestHandle = ctypes.c_void_p
 IrChannelCapabilityHandle = ctypes.c_void_p
+# Task 032B1: private raw weak common Channel view (ams_mel_ir_channel *).
+# No public Python Channel API uses it yet.
+IrChannelHandle = ctypes.c_void_p
 IrC2MetadataHandle = ctypes.c_void_p
 IrC2MetadataEventHandle = ctypes.c_void_p
 IrHealthHandle = ctypes.c_void_p
@@ -1022,6 +1025,36 @@ ams_mel_ir_track_system_response_request_close = _LIBRARY.ams_mel_ir_track_syste
 ams_mel_ir_track_system_response_request_close.argtypes = [ctypes.POINTER(IrTrackSystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_system_response_request_close.restype = ctypes.c_int32
 
+# Task 032B1 public common Channel C ABI: private raw declarations only.
+_CHANNEL_DIAGNOSTIC = [CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_channel_from_c2 = _LIBRARY.ams_mel_ir_channel_from_c2
+ams_mel_ir_channel_from_c2.argtypes = [IrC2Handle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_c2.restype = ctypes.c_int32
+ams_mel_ir_channel_from_stream = _LIBRARY.ams_mel_ir_channel_from_stream
+ams_mel_ir_channel_from_stream.argtypes = [IrStreamHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_stream.restype = ctypes.c_int32
+ams_mel_ir_channel_from_health = _LIBRARY.ams_mel_ir_channel_from_health
+ams_mel_ir_channel_from_health.argtypes = [IrHealthHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_health.restype = ctypes.c_int32
+ams_mel_ir_channel_from_instrumentation = _LIBRARY.ams_mel_ir_channel_from_instrumentation
+ams_mel_ir_channel_from_instrumentation.argtypes = [IrInstrumentationHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_instrumentation.restype = ctypes.c_int32
+ams_mel_ir_channel_from_track = _LIBRARY.ams_mel_ir_channel_from_track
+ams_mel_ir_channel_from_track.argtypes = [IrTrackHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_track.restype = ctypes.c_int32
+ams_mel_ir_channel_send_keepalive = _LIBRARY.ams_mel_ir_channel_send_keepalive
+ams_mel_ir_channel_send_keepalive.argtypes = [IrChannelHandle, ctypes.POINTER(IrReturnRequestHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_send_keepalive.restype = ctypes.c_int32
+ams_mel_ir_channel_submit_comms_test = _LIBRARY.ams_mel_ir_channel_submit_comms_test
+ams_mel_ir_channel_submit_comms_test.argtypes = [IrChannelHandle, ctypes.POINTER(IrChannelCommsTestRequestV1), ctypes.POINTER(IrChannelCommsRequestHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_submit_comms_test.restype = ctypes.c_int32
+ams_mel_ir_channel_get_capabilities = _LIBRARY.ams_mel_ir_channel_get_capabilities
+ams_mel_ir_channel_get_capabilities.argtypes = [IrChannelHandle, ctypes.POINTER(IrChannelCapabilityHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_channel_close = _LIBRARY.ams_mel_ir_channel_close
+ams_mel_ir_channel_close.argtypes = [ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -1114,4 +1147,13 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_submit_system_track_data_response",
     "ams_mel_ir_track_system_response_request_wait",
     "ams_mel_ir_track_system_response_request_close",
+    "ams_mel_ir_channel_from_c2",
+    "ams_mel_ir_channel_from_stream",
+    "ams_mel_ir_channel_from_health",
+    "ams_mel_ir_channel_from_instrumentation",
+    "ams_mel_ir_channel_from_track",
+    "ams_mel_ir_channel_send_keepalive",
+    "ams_mel_ir_channel_submit_comms_test",
+    "ams_mel_ir_channel_get_capabilities",
+    "ams_mel_ir_channel_close",
 )

@@ -457,6 +457,28 @@ SubmitFailpoint submit_failpoint() noexcept
 } // namespace
 
 struct ams_mel_ir_instrumentation { std::shared_ptr<ChannelState> state; };
+namespace {
+/* The one Instrumentation capability policy, shared by the typed export and
+ * the common Channel adapter: Attached or Enabled, provider call under the
+ * family mutex. */
+ams_mel_status_t instrumentation_capability(const std::shared_ptr<ChannelState>& state,
+    ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    try {
+        std::lock_guard lock{state->mutex};
+        if (state->lifecycle != Lifecycle::Attached &&
+            state->lifecycle != Lifecycle::Enabled)
+            return AMS_MEL_PROVIDER_FAILED;
+        /* Reuses the one shared native ChannelCapability snapshot. */
+        return ams_mel::internal::snapshot_capability(
+            *state->instrumentation, output, out, capacity, required);
+    } catch (...) {
+        diagnostic("Instrumentation capability query failed", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+} // namespace
 namespace ams_mel_common {
 CommonChannelAccess common_from_instrumentation(const ams_mel_ir_instrumentation *owner)
 {
@@ -485,6 +507,11 @@ CommonChannelAccess common_from_instrumentation(const ams_mel_ir_instrumentation
                     } catch (...) { retain_failed(claimed); return false; }
                 }, "deferred Instrumentation cleanup failed"};
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_channel_capability **output,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            return instrumentation_capability(std::static_pointer_cast<ChannelState>(erased),
+                                              output, out, capacity, required);
         }};
 }
 } // namespace ams_mel_common
@@ -649,18 +676,7 @@ extern "C" ams_mel_status_t ams_mel_ir_instrumentation_get_capabilities(
     diagnostic("", out, capacity, required);
     if (!instrumentation || !instrumentation->state || !output || *output ||
         (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
-    try {
-        std::lock_guard lock{instrumentation->state->mutex};
-        if (instrumentation->state->lifecycle != Lifecycle::Attached &&
-            instrumentation->state->lifecycle != Lifecycle::Enabled)
-            return AMS_MEL_PROVIDER_FAILED;
-        /* Reuses the one shared native ChannelCapability snapshot. */
-        return ams_mel::internal::snapshot_capability(
-            *instrumentation->state->instrumentation, output, out, capacity, required);
-    } catch (...) {
-        diagnostic("Instrumentation capability query failed", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
-    }
+    return instrumentation_capability(instrumentation->state, output, out, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_instrumentation_submit_level(
