@@ -1,3 +1,39 @@
+# Task 033A RF MEL provenance
+
+Task 033A adds the first RF sources: only the compiler-observed declaration
+closure for the DataMEL + RFMFAInfo roots. No RF runtime code is added. See
+`task-033a-rf-mel-source-closure.md` for measurement details.
+
+| Role | Repository | Commit | Tree |
+|---|---|---|---|
+| RF MEL (new) | `open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel` | `762ce84c5555dd0f3ea66f36b321fecf8839b89f` (`Release 2026.06.01`) | `f5b9d4a8601cae5639785bad7d3d2f1f8b3d9ae8` |
+| AMS VITA (new) | `open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita` | `8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8` (`Release 2026.06.01`) | `cc5287c816e82b8166923945e322a4915feaf10c` |
+| Common MEL (reused) | `open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel` | `f6908437d8fd2f7fb69896f9eb9cfd272d10c439` | `f1f146d79f03a2ca0a59412aaf3d2c6d7dfba40f` |
+| AMS Math (reused) | `open-arsenal/ams-gra-hello-world-sk-libraries-ams-math` | `00be45190f0e47d268cece8b8c2f8fb58b5418d2` | `7101189c30017cc25f277db39866156e4ab5cf38` |
+| Boost (reused) | Boost 1.83.0, source commit `564e2ac16907019696cdaba8a93e3588ec596062` | archive SHA-256 `6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e` | — |
+| Squall (evidence only, not vendored) | `open-arsenal/ams-gra-hello-world-sk-sensors-squall` | `b1015728f904c799fa0c07489fce48e78f67845f` | `588f4999916db86c0278e3785a16e4dce60ecbdf` |
+
+**Upstream full-project dependency graph.** RF MEL's `CMakeLists.txt` links
+`ams_vita` and `ams_math`, and AMS Math requires Boost. Common MEL is not
+named in that CMake file, but RF MEL headers include it directly.
+
+**033A compiler-observed declaration closure.** A single translation unit
+including `rfmel/factory/RFCreateFunctions.h`, `rfmel/rfmeltypes/RFMEL.h`,
+`rfmel/mfa/RFMFAInfo.h`, and `rfmel/data/DataMEL.h` observes 522 upstream
+headers with GCC 14.2.0 and 523 with Clang 19.1.7. Their union is 524: RF 10,
+Common MEL 23, AMS Math 5, AMS VITA 5, and Boost 481. AMS VITA is actually
+reached (via `JobDataFormat.h -> ams/iface/vita/FixedDataPacket.h`), so only
+those five headers are vendored, not the whole library. Newly vendored:
+12 RF MEL files, including `LICENSE` and `INTENT.md`, under
+`native/vendor/rf-mel/`; 7 AMS VITA files, including `LICENSE` and
+`INTENT.md`, under `native/vendor/ams-vita/`; 3 AMS Math headers from the same
+AMS Math pin (`Geometry.h`, `LLAPoint.h`, `UTCTime.h`); 1 Boost 1.83.0 header
+(`boost/numeric/ublas/blas.hpp`); and 0 Common MEL files. Each file is
+byte-identical to its pinned blob or archive member. No existing vendored file
+or checksum changed. The `check_rf_data_header_closure` build target rejects
+any RF, Common MEL, AMS Math, AMS VITA, or Boost header that resolves outside
+`native/vendor`.
+
 # Task 029B3 review note
 
 Task 029B3 adds no upstream files and changes no vendored content: the vendor

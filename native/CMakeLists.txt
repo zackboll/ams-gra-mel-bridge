@@ -134,6 +134,38 @@ if(AMS_MEL_BUILD_TESTS)
             --include ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include
         DEPENDS track_header_compile_probe
         VERBATIM)
+
+    # Task 033A declaration-only probe: the pinned RF MEL DataMEL/RFMFAInfo
+    # declaration closure. It implements no RF API and links into nothing.
+    # Upstream RF headers stay byte-identical, so every vendored root is a
+    # SYSTEM include (pinned TxPowerModeData.h trips Clang -Wignored-qualifiers);
+    # the first-party probe itself still compiles with the project warnings.
+    set(ams_mel_rf_data_vendor_roots
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/rf-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/common-mel/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-math/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-vita/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/boost-1.83.0)
+    add_library(rf_data_header_compile_probe OBJECT tests/rf_data_header_compile_probe.cpp)
+    target_compile_features(rf_data_header_compile_probe PRIVATE cxx_std_20)
+    target_include_directories(rf_data_header_compile_probe SYSTEM PRIVATE
+        ${ams_mel_rf_data_vendor_roots})
+    set_target_properties(rf_data_header_compile_probe PROPERTIES CXX_EXTENSIONS OFF)
+    ams_mel_warnings(rf_data_header_compile_probe)
+    set(ams_mel_rf_data_isystem_args)
+    foreach(root IN LISTS ams_mel_rf_data_vendor_roots)
+        list(APPEND ams_mel_rf_data_isystem_args --isystem ${root})
+    endforeach()
+    add_custom_target(check_rf_data_header_closure ALL
+        COMMAND ${CMAKE_COMMAND} -E env PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_rf_data_closure.py
+            --compiler ${CMAKE_CXX_COMPILER}
+            --source ${CMAKE_CURRENT_SOURCE_DIR}/tests/rf_data_header_compile_probe.cpp
+            --vendor-root ${CMAKE_CURRENT_SOURCE_DIR}/vendor
+            ${ams_mel_rf_data_isystem_args}
+            --expect rfmel --expect mel --expect math --expect boost --expect vita
+        DEPENDS rf_data_header_compile_probe
+        VERBATIM)
     add_test(NAME c_abi COMMAND test_c_abi)
 
     add_executable(test_common_channel_view tests/test_common_channel_view.c)
