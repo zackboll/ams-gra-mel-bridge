@@ -1,5 +1,20 @@
 # Architecture decisions
 
+Task 032B3 exposes the 032B1 public view in safe Rust for the two families that
+already have safe Rust typed owners. `ControlChannel::channel_view` and
+`ImageStream::channel_view` return a `ChannelView` that owns only the native
+weak `ams_mel_ir_channel`: it has no lifetime parameter or borrow of its
+source, retains no Session/provider object, and is `!Send`/`!Sync` through the
+crate's `Rc<()>` marker, with every operation taking `&mut self` so one View's
+operations and Close are statically serialized. KeepAlive returns the existing
+`ReturnRequest`; CommsTest returns the new `CommsRequest`; both native request
+owners, not the View, own the admitted family graph. Capabilities are copied
+into a complete Rust-owned `ChannelCapability` through a single checked span
+helper while a private RAII guard keeps the native snapshot alive and always
+closes it. No native, sys, Ada, or Python change. Safe Rust Health,
+Instrumentation, and Track owners (and their views) remain deferred; see
+`task-032b3-safe-rust-common-channel.md`.
+
 Task 032B2 exposes the 032B1 public view in safe Ada. The controlled owner
 `AMS.MEL.IR.Channel_View` is declared limited private in the parent
 `AMS.MEL.IR`, with its native `Channel_Handle` in the parent's private part.
@@ -22,8 +37,8 @@ weak state and runs a per-family helper shared with the typed
 `get_capabilities` export, preserving each family's lifecycle and locking
 policy (Image keeps its Stopping/Stopped/Failed rule and unlocked provider
 call). Legacy C2 inherited-service exports remain and do not route through a
-temporary view. The safe Ada façade followed in Task 032B2; safe Rust and
-public Python façades remain deferred. See
+temporary view. The safe Ada façade followed in Task 032B2 and the safe Rust
+C2/Image façade in Task 032B3; the public Python façade remains deferred. See
 `task-032b1-public-common-channel-abi.md`.
 
 Task 032A4 adds private weak common access for Instrumentation

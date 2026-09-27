@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add the safe Rust common Channel façade for C2 and Image (Task 032B3):
+  `ControlChannel::channel_view` / `ImageStream::channel_view` return a weak,
+  `!Send`/`!Sync` `ChannelView` (no borrow of its source) with
+  `send_keepalive` (existing `ReturnRequest`), `submit_comms_test`
+  (`CommsTestRequest` -> `CommsRequest` -> `CommsTestResult`), a complete owned
+  `ChannelCapability` model with loss-aware `Unknown(u32)` enums, and
+  idempotent `close`/`Drop`. Add read-only `UciId` and `ComponentLocation`
+  accessors. No native, sys, Ada, or Python change: ABI 0.1, 100 exports. Safe
+  Rust Health/Instrumentation/Track remain deferred (no typed owners).
 - Add the safe Ada common Channel façade (Task 032B2): `AMS.MEL.IR.Channel.View`,
   a parent-private controlled owner of the weak native view, created by
   `As_Channel` on C2, Image, Health, Instrumentation and Track owners, with

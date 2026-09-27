@@ -1,17 +1,30 @@
-//! Safe Rust provider sessions, IR Mono8 frames, and IR C2 through `ams_mel_c`.
+//! Safe Rust provider sessions, IR Mono8 frames, IR C2, and the common Channel
+//! façade for C2 and Image through `ams_mel_c`.
 //!
-//! [`Session`], [`ImageStream`], [`ControlChannel`], [`ModeRequest`], and
-//! [`ReturnRequest`] are intentionally neither `Send` nor `Sync`. A zero receive
-//! or request timeout polls. Request timeout and request close or drop do not
-//! cancel provider work. BIT support is limited to the empty/no-op profile;
-//! payload-bearing BIT is not exposed.
+//! [`Session`], [`ImageStream`], [`ControlChannel`], [`ModeRequest`],
+//! [`ReturnRequest`], [`ChannelView`], and [`CommsRequest`] are intentionally
+//! neither `Send` nor `Sync`. A zero receive or request timeout polls. Request
+//! timeout and request close or drop do not cancel provider work. BIT support is
+//! limited to the empty/no-op profile; payload-bearing BIT is not exposed.
+//!
+//! Common Channel coverage (Task 032B3):
+//!
+//! ```text
+//! safe Rust common Channel:      C2 + Image
+//! native C / safe Ada common:    C2/Image/Health/Instrumentation/Track
+//! ```
+//!
+//! Safe Rust has no typed Health, Instrumentation, or Track owners, so no
+//! common Channel view of those families is offered here.
 
 use std::error;
 use std::ffi::{c_char, CString};
 use std::fmt;
+use std::mem;
 use std::path::Path;
 use std::ptr;
 use std::rc::Rc;
+use std::slice;
 
 use ams_mel_sys as sys;
 
@@ -67,6 +80,14 @@ impl UciId {
             descriptive_label,
         })
     }
+
+    pub fn uuid(&self) -> &[u8; 16] {
+        &self.uuid
+    }
+
+    pub fn descriptive_label(&self) -> &str {
+        &self.descriptive_label
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -97,6 +118,26 @@ impl ComponentLocation {
             key,
             system_name,
         })
+    }
+
+    pub fn offset_x_m(&self) -> f64 {
+        self.offset_x_m
+    }
+
+    pub fn offset_y_m(&self) -> f64 {
+        self.offset_y_m
+    }
+
+    pub fn offset_z_m(&self) -> f64 {
+        self.offset_z_m
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn system_name(&self) -> &str {
+        &self.system_name
     }
 }
 
@@ -238,6 +279,187 @@ pub enum ReturnResult {
         code: MelErrorCode,
         description: String,
     },
+}
+
+/// Outbound inherited `ChannelCommsTestReq`. Named fields prevent accidental
+/// Command/Channel/Request ID ordering mistakes. All 32 bits are preserved.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CommsTestRequest {
+    pub command_id: u32,
+    pub channel_id: u32,
+    pub request_id: u32,
+}
+
+/// Inherited `ChannelCommsTestRep`. The upstream reply carries no Channel ID,
+/// so none is reported.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CommsTestReport {
+    pub command_id: u32,
+    pub request_id: u32,
+}
+
+/// Terminal CommsTest outcome. MEL command rejection is a normal terminal
+/// result, not a Rust `Err`, matching [`ModeResult`] and [`ReturnResult`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CommsTestResult {
+    Completed {
+        report: CommsTestReport,
+    },
+    Rejected {
+        code: MelErrorCode,
+        description: String,
+    },
+}
+
+/// `ams_mel_ir_pixel_format_t`. Future raw values are preserved as `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum PixelFormat {
+    Mono,
+    Rgb,
+    Bayer,
+    Unknown(u32),
+}
+
+/// `ams_mel_ir_sensor_type_t`. Future raw values are preserved as `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum SensorType {
+    Unspecified,
+    GimbalHorizontal,
+    GimbalVertical,
+    GimbalRotation,
+    StepStare,
+    Unknown(u32),
+}
+
+/// `ams_mel_ir_channel_type_t`. Future raw values are preserved as `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ChannelType {
+    IrstTrack,
+    IrstImage,
+    CommandAndControl,
+    Scheduling,
+    HealthAndStatus,
+    Instrumentation,
+    StackedImage,
+    Reserved1,
+    Reserved2,
+    Unknown(u32),
+}
+
+/// `ams_mel_ir_channel_metadata_capability_t`. Future raw values are preserved
+/// as `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum MetadataCapability {
+    BadPixelList,
+    OpticalDistortionMap,
+    LfStatus,
+    LineOfSightReport,
+    LineOfSightQuaternion,
+    LineOfSightEuler,
+    MfaStatus,
+    MfaStatusDetailed,
+    BitConfiguration,
+    CommandStatus,
+    BitStatus,
+    CandidateObjectMessage,
+    TaskExecutingRep,
+    SubsystemStatusResp,
+    ExecuteTaskAck,
+    SchedCreatedRep,
+    IrstTrackReport,
+    ChannelCommsTestRep,
+    CameraCommandResp,
+    CameraProtectCmdResp,
+    InstrumentationReport,
+    NavigationReportResp,
+    RequestSystemTrackData,
+    UpdateTrackListResponse,
+    Los3dKinematicsType,
+    CandidateObjectPreprocMessage,
+    TaskEvents,
+    ScanPerformanceReport,
+    Reserved3,
+    Reserved5,
+    Reserved9,
+    Reserved10,
+    Unknown(u32),
+}
+
+/// `ams_mel_ir_band_type_t`. Future raw values are preserved as `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum BandType {
+    Invalid,
+    Multiband,
+    IrFar,
+    IrNear,
+    IrLongwave,
+    IrMidwave,
+    IrShortwave,
+    VisibleWhite,
+    VisibleRed,
+    VisibleGreen,
+    VisibleBlue,
+    Uva,
+    Uvb,
+    Uvc,
+    UvVacuum,
+    Unknown(u32),
+}
+
+/// `ams_mel_ir_coordinate_system_type_t`. Future raw values are preserved as
+/// `Unknown`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CoordinateSystem {
+    Lla,
+    Ecef,
+    NedPlatform,
+    NedSensor,
+    Unknown(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BandInfo {
+    pub kind: BandType,
+    pub min_wavelength_m: f64,
+    pub max_wavelength_m: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageBand {
+    pub band_index: u32,
+    pub bands: Vec<BandInfo>,
+}
+
+/// Complete, fully Rust-owned copy of `ams_mel_ir_channel_capability_v1`. No
+/// native pointer survives [`ChannelView::capabilities`]; the value remains
+/// valid after the View, typed owner, Session, and provider library are gone.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChannelCapability {
+    pub channel_id: UciId,
+    pub height: u32,
+    pub width: u32,
+    pub bit_depth: u32,
+    pub row_pitch: u32,
+    pub buffer_size: u32,
+    pub image_size: u32,
+    pub number_of_bands: u32,
+    pub pixel_format: PixelFormat,
+    pub sensor_types: Vec<SensorType>,
+    pub platform_id: UciId,
+    pub sensor_location: ComponentLocation,
+    pub channel_types: Vec<ChannelType>,
+    pub task_schedule_depth: u32,
+    pub odc_available: bool,
+    pub nuc_available: bool,
+    pub metadata_capabilities: Vec<MetadataCapability>,
+    pub image_bands: Vec<ImageBand>,
+    pub nav_frames: Vec<CoordinateSystem>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -635,6 +857,32 @@ impl ImageStream {
         })
     }
 
+    /// Creates an independent weak common [`ChannelView`] of this Image stream.
+    ///
+    /// The View does not borrow or retain this `ImageStream`, its Session, or
+    /// any provider object, and it does not alter Start/Stop/Close, frame
+    /// receive, or provider lifetime.
+    pub fn channel_view(&self) -> Result<ChannelView, Error> {
+        if self.raw.is_null() {
+            return Err(Error::new(
+                ErrorKind::ProviderFailed,
+                "image stream is closed",
+            ));
+        }
+        let source = self.raw;
+        channel_view_from(
+            |out, diagnostic, capacity, required| {
+                // SAFETY: `source` is this wrapper's live stream owner, borrowed
+                // only for the duration of the call; `out` is an initially null
+                // writable view owner.
+                unsafe {
+                    sys::ams_mel_ir_channel_from_stream(source, out, diagnostic, capacity, required)
+                }
+            },
+            "Image",
+        )
+    }
+
     pub fn close(mut self) -> Result<(), Error> {
         self.close_inner()
     }
@@ -724,6 +972,32 @@ impl ControlChannel {
         })
     }
 
+    /// Creates an independent weak common [`ChannelView`] of this C2 owner.
+    ///
+    /// The View does not borrow or retain this `ControlChannel`, its Session,
+    /// or any provider object. A closed owner yields `ProviderFailed` without
+    /// calling native code.
+    pub fn channel_view(&self) -> Result<ChannelView, Error> {
+        if self.raw.is_null() {
+            return Err(Error::new(
+                ErrorKind::ProviderFailed,
+                "C2 channel is closed",
+            ));
+        }
+        let source = self.raw;
+        channel_view_from(
+            |out, diagnostic, capacity, required| {
+                // SAFETY: `source` is this wrapper's live C2 owner, borrowed only
+                // for the duration of the call; `out` is an initially null
+                // writable view owner.
+                unsafe {
+                    sys::ams_mel_ir_channel_from_c2(source, out, diagnostic, capacity, required)
+                }
+            },
+            "C2",
+        )
+    }
+
     /// Closes this owner. A detach failure can leave it open for an explicit retry.
     pub fn close(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
@@ -778,6 +1052,18 @@ impl Drop for ModeRequest {
     }
 }
 
+/// Safe owner of one public asynchronous `RequestFor<Return>` outcome
+/// (`ams_mel_ir_return_request *`).
+///
+/// It currently owns requests produced by:
+///
+/// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op profile), and
+/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2 or Image).
+///
+/// The native request owns its admitted family graph independently of the
+/// View, typed owner, and Session that created it. Wait is cached; timeout is
+/// not cancellation; `Return::Fail` is a normal completion; MEL rejection is
+/// [`ReturnResult::Rejected`]. Close/Drop never cancel provider work.
 #[derive(Debug)]
 pub struct ReturnRequest {
     raw: *mut sys::AmsMelIrReturnRequest,
@@ -808,6 +1094,326 @@ impl Drop for ReturnRequest {
             best_effort_close_return_request(&mut self.raw);
         }
     }
+}
+
+/// Weak common Channel view of one safe typed owner ([`ControlChannel`] or
+/// [`ImageStream`]).
+///
+/// Ownership model:
+///
+/// ```text
+/// ChannelView
+///     owns native ams_mel_ir_channel only
+///
+/// native ams_mel_ir_channel
+///     owns only weak family state
+/// ```
+///
+/// A `ChannelView` therefore retains no `ControlChannel`, `ImageStream`,
+/// `Session`, provider Channel, Control, or provider library, and it has no
+/// Rust lifetime tied to its source. Keeping a View alive never delays
+/// provider teardown. After the typed owner is gone, every operation returns
+/// [`ErrorKind::ProviderFailed`].
+///
+/// Requests created through a View ([`ReturnRequest`], [`CommsRequest`]) own
+/// their admitted native family graph; closing or dropping the View does not
+/// cancel or invalidate them.
+///
+/// The View is intentionally neither `Send` nor `Sync`, and every operation
+/// takes `&mut self`, which statically serializes operations and Close on one
+/// View as the native contract requires.
+///
+/// ```compile_fail
+/// fn require_send<T: Send>() {}
+/// require_send::<ams_mel::ChannelView>();
+/// ```
+///
+/// ```compile_fail
+/// fn require_sync<T: Sync>() {}
+/// require_sync::<ams_mel::ChannelView>();
+/// ```
+#[derive(Debug)]
+pub struct ChannelView {
+    raw: *mut sys::AmsMelIrChannel,
+    _not_send_sync: Rc<()>,
+}
+
+impl ChannelView {
+    /// Returns whether this Rust wrapper still owns a native weak view.
+    ///
+    /// This does NOT report whether the underlying typed family still exists:
+    /// after typed owner teardown `is_open()` can remain `true` while
+    /// operations return [`ErrorKind::ProviderFailed`].
+    pub fn is_open(&self) -> bool {
+        !self.raw.is_null()
+    }
+
+    /// Submits inherited `sendKeepAliveRep` and returns the existing public
+    /// [`ReturnRequest`] owner.
+    pub fn send_keepalive(&mut self) -> Result<ReturnRequest, Error> {
+        let channel = self.live("send_keepalive")?;
+        let mut raw = ptr::null_mut();
+        let result = call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `channel` is this wrapper's live weak view, exclusively
+            // used through `&mut self`; `raw` is an initially null request owner.
+            unsafe {
+                sys::ams_mel_ir_channel_send_keepalive(
+                    channel, &mut raw, diagnostic, capacity, required,
+                )
+            }
+        });
+        if let Err(error) = result {
+            if !raw.is_null() {
+                best_effort_close_return_request(&mut raw);
+            }
+            return Err(error);
+        }
+        if raw.is_null() {
+            return Err(protocol(
+                "KeepAlive submit succeeded without a request owner",
+            ));
+        }
+        Ok(ReturnRequest {
+            raw,
+            _not_send_sync: Rc::new(()),
+        })
+    }
+
+    /// Submits inherited `ChannelCommsTestReq` with all three IDs preserved.
+    pub fn submit_comms_test(&mut self, request: CommsTestRequest) -> Result<CommsRequest, Error> {
+        let channel = self.live("submit_comms_test")?;
+        let raw_request = sys::AmsMelIrChannelCommsTestRequestV1 {
+            command_id: request.command_id,
+            channel_id: request.channel_id,
+            request_id: request.request_id,
+        };
+        let mut raw = ptr::null_mut();
+        let result = call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `channel` is this wrapper's live weak view, exclusively
+            // used through `&mut self`; the request record lives through the
+            // call and `raw` is an initially null request owner.
+            unsafe {
+                sys::ams_mel_ir_channel_submit_comms_test(
+                    channel,
+                    &raw_request,
+                    &mut raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        });
+        if let Err(error) = result {
+            if !raw.is_null() {
+                best_effort_close_comms_request(&mut raw);
+            }
+            return Err(error);
+        }
+        if raw.is_null() {
+            return Err(protocol(
+                "CommsTest submit succeeded without a request owner",
+            ));
+        }
+        Ok(CommsRequest {
+            raw,
+            _not_send_sync: Rc::new(()),
+        })
+    }
+
+    /// Returns a complete, fully Rust-owned ChannelCapability snapshot. The
+    /// native snapshot is converted while alive and then closed; no native
+    /// pointer survives this call.
+    pub fn capabilities(&mut self) -> Result<ChannelCapability, Error> {
+        let channel = self.live("capabilities")?;
+        let mut owner = CapabilityOwner {
+            raw: ptr::null_mut(),
+        };
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `channel` is this wrapper's live weak view, exclusively
+            // used through `&mut self`; `owner.raw` is an initially null owner
+            // which the guard closes on every return path.
+            unsafe {
+                sys::ams_mel_ir_channel_get_capabilities(
+                    channel,
+                    &mut owner.raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        })?;
+        if owner.raw.is_null() {
+            return Err(protocol(
+                "capability query succeeded without a capability owner",
+            ));
+        }
+        let mut view: *const sys::AmsMelIrChannelCapabilityV1 = ptr::null();
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `owner.raw` is a live capability owner and `view` is
+            // writable storage for the borrowed record pointer.
+            unsafe {
+                sys::ams_mel_ir_channel_capability_view(
+                    owner.raw, &mut view, diagnostic, capacity, required,
+                )
+            }
+        })?;
+        if view.is_null() {
+            return Err(protocol(
+                "capability view succeeded without a capability record",
+            ));
+        }
+        // SAFETY: `view` is non-null and points to a record owned by the live
+        // `owner`; it is copied before `owner` is closed.
+        let raw = unsafe { *view };
+        let value = capability_from_raw(&raw)?;
+        owner.close()?;
+        Ok(value)
+    }
+
+    /// Destroys only the weak native view. Idempotent; it never closes the
+    /// typed owner, cancels requests, or changes the family lifecycle.
+    pub fn close(&mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `raw` is this wrapper's unique weak view owner, or null,
+            // which native Close accepts idempotently; native clears it.
+            unsafe { sys::ams_mel_ir_channel_close(&mut self.raw, diagnostic, capacity, required) }
+        })?;
+        if !self.raw.is_null() {
+            return Err(protocol(
+                "channel view close succeeded without clearing the owner",
+            ));
+        }
+        Ok(())
+    }
+
+    fn live(&self, operation: &str) -> Result<*mut sys::AmsMelIrChannel, Error> {
+        if self.raw.is_null() {
+            Err(Error::new(
+                ErrorKind::ProviderFailed,
+                format!("{operation} on a closed channel view"),
+            ))
+        } else {
+            Ok(self.raw)
+        }
+    }
+}
+
+impl Drop for ChannelView {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_channel_view(&mut self.raw);
+        }
+    }
+}
+
+/// Safe owner of one public asynchronous inherited CommsTest outcome
+/// (`ams_mel_ir_channel_comms_request *`).
+///
+/// The native request owns its admitted family graph independently of the
+/// View, typed owner, and Session. Wait is cached and timeout is not
+/// cancellation. Close and Drop are non-cancelling: pending provider work
+/// survives public request Drop. It is intentionally neither `Send` nor `Sync`.
+///
+/// ```compile_fail
+/// fn require_send<T: Send>() {}
+/// require_send::<ams_mel::CommsRequest>();
+/// ```
+///
+/// ```compile_fail
+/// fn require_sync<T: Sync>() {}
+/// require_sync::<ams_mel::CommsRequest>();
+/// ```
+#[derive(Debug)]
+pub struct CommsRequest {
+    raw: *mut sys::AmsMelIrChannelCommsRequest,
+    _not_send_sync: Rc<()>,
+}
+
+impl CommsRequest {
+    /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    pub fn wait(&mut self, timeout_ms: u32) -> Result<CommsTestResult, Error> {
+        wait_for_comms(self.raw, timeout_ms)
+    }
+
+    /// Drops only the public request owner; pending provider work is not cancelled.
+    pub fn close(mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: this wrapper uniquely owns the request and no wait can race
+            // this consuming close through the safe API.
+            unsafe {
+                sys::ams_mel_ir_channel_comms_request_close(
+                    &mut self.raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        })
+    }
+}
+
+impl Drop for CommsRequest {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_comms_request(&mut self.raw);
+        }
+    }
+}
+
+/// Private RAII owner of one native capability snapshot. Drop closes the
+/// native owner on every early return, including conversion/UTF-8 failures.
+struct CapabilityOwner {
+    raw: *mut sys::AmsMelIrChannelCapability,
+}
+
+impl CapabilityOwner {
+    fn close(&mut self) -> Result<(), Error> {
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            // SAFETY: `raw` is this guard's unique capability owner; no borrowed
+            // record from it is used after this call.
+            unsafe {
+                sys::ams_mel_ir_channel_capability_close(
+                    &mut self.raw,
+                    diagnostic,
+                    capacity,
+                    required,
+                )
+            }
+        })
+    }
+}
+
+impl Drop for CapabilityOwner {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            best_effort_close_capability(&mut self.raw);
+        }
+    }
+}
+
+fn channel_view_from(
+    convert: impl FnOnce(*mut *mut sys::AmsMelIrChannel, *mut c_char, usize, *mut usize) -> i32,
+    family: &str,
+) -> Result<ChannelView, Error> {
+    let mut raw = ptr::null_mut();
+    let result = call_with_diagnostic(|diagnostic, capacity, required| {
+        convert(&mut raw, diagnostic, capacity, required)
+    });
+    if let Err(error) = result {
+        if !raw.is_null() {
+            best_effort_close_channel_view(&mut raw);
+        }
+        return Err(error);
+    }
+    if raw.is_null() {
+        return Err(protocol(&format!(
+            "{family} channel view conversion succeeded without a view owner"
+        )));
+    }
+    Ok(ChannelView {
+        raw,
+        _not_send_sync: Rc::new(()),
+    })
 }
 
 impl Drop for Session {
@@ -1112,6 +1718,390 @@ fn wait_for_return(
     }
 }
 
+fn raw_comms_wait(
+    request: *mut sys::AmsMelIrChannelCommsRequest,
+    timeout_ms: u32,
+    result: &mut sys::AmsMelIrChannelCommsTestResultV1,
+    diagnostic: &mut [u8],
+    required: &mut usize,
+) -> i32 {
+    // SAFETY: the request is live and exclusively accessed through `&mut self`;
+    // result and diagnostic storage are writable for their advertised sizes.
+    unsafe {
+        sys::ams_mel_ir_channel_comms_request_wait(
+            request,
+            timeout_ms,
+            result,
+            diagnostic.as_mut_ptr().cast::<c_char>(),
+            diagnostic.len(),
+            required,
+        )
+    }
+}
+
+fn same_comms_result(
+    first: &sys::AmsMelIrChannelCommsTestResultV1,
+    second: &sys::AmsMelIrChannelCommsTestResultV1,
+) -> bool {
+    first.command_id == second.command_id
+        && first.request_id == second.request_id
+        && first.error_code == second.error_code
+}
+
+fn wait_for_comms(
+    request: *mut sys::AmsMelIrChannelCommsRequest,
+    timeout_ms: u32,
+) -> Result<CommsTestResult, Error> {
+    let mut result = sys::AmsMelIrChannelCommsTestResultV1::default();
+    let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
+    let mut required = 0_usize;
+    let status = raw_comms_wait(
+        request,
+        timeout_ms,
+        &mut result,
+        &mut diagnostic,
+        &mut required,
+    );
+    if required == 0 {
+        return Err(protocol("native wait returned an invalid diagnostic size"));
+    }
+    if status == sys::AMS_MEL_TIMEOUT {
+        return if required <= diagnostic.len() {
+            let message = decode_diagnostic(&diagnostic[..required])?;
+            Err(error_from_status(status, Some(message), Some(required)))
+        } else {
+            Err(error_from_status(status, None, Some(required)))
+        };
+    }
+
+    let message = if required <= diagnostic.len() {
+        decode_diagnostic(&diagnostic[..required])?
+    } else {
+        let first_result = result;
+        let first_required = required;
+        let mut complete = Vec::new();
+        complete.try_reserve_exact(first_required).map_err(|_| {
+            Error::new(
+                ErrorKind::InternalError,
+                "unable to allocate complete wait diagnostic storage",
+            )
+        })?;
+        complete.resize(first_required, 0);
+        let mut retry_result = sys::AmsMelIrChannelCommsTestResultV1::default();
+        let mut retry_required = 0_usize;
+        // Terminal results are cached and repeatable, so the same live request
+        // is polled again with exact diagnostic storage.
+        let retry_status = raw_comms_wait(
+            request,
+            0,
+            &mut retry_result,
+            &mut complete,
+            &mut retry_required,
+        );
+        if retry_status != status
+            || !same_comms_result(&retry_result, &first_result)
+            || retry_required != first_required
+        {
+            return Err(protocol(
+                "native terminal wait changed during diagnostic retry",
+            ));
+        }
+        result = retry_result;
+        decode_diagnostic(&complete)?
+    };
+
+    match status {
+        sys::AMS_MEL_OK => {
+            if required != 1 || !message.is_empty() {
+                return Err(protocol("successful native wait returned a diagnostic"));
+            }
+            if result.error_code != sys::AMS_MEL_ERROR_NONE {
+                return Err(protocol("successful native wait returned an error code"));
+            }
+            Ok(CommsTestResult::Completed {
+                report: CommsTestReport {
+                    command_id: result.command_id,
+                    request_id: result.request_id,
+                },
+            })
+        }
+        sys::AMS_MEL_COMMAND_REJECTED => Ok(CommsTestResult::Rejected {
+            code: mel_error_code(result.error_code),
+            description: message,
+        }),
+        _ => Err(error_from_status(status, Some(message), Some(required))),
+    }
+}
+
+/// Borrows a checked C span as a Rust slice. This is the only place a native
+/// capability span or string view becomes a slice.
+///
+/// `size == 0` is empty whether `data` is null or not. `size > 0` requires a
+/// non-null, aligned pointer and a length within the Rust slice bound
+/// (`isize::MAX / size_of::<T>()`). Malformed spans are
+/// `ProtocolInconsistency`.
+///
+/// # Safety
+///
+/// For a non-empty, well-formed span, `data` must point to `size` initialized
+/// `T` values that remain valid and unmodified for `'a`.
+unsafe fn checked_span<'a, T>(data: *const T, size: usize, field: &str) -> Result<&'a [T], Error> {
+    if size == 0 {
+        return Ok(&[]);
+    }
+    if data.is_null() {
+        return Err(protocol(&format!(
+            "native {field} span has a null pointer with nonzero size"
+        )));
+    }
+    if !(data as usize).is_multiple_of(mem::align_of::<T>()) {
+        return Err(protocol(&format!("native {field} span is misaligned")));
+    }
+    if size > isize::MAX as usize / mem::size_of::<T>().max(1) {
+        return Err(protocol(&format!(
+            "native {field} span length is too large"
+        )));
+    }
+    // SAFETY: non-null, aligned, and within the Rust slice size bound; the
+    // caller guarantees `size` initialized elements live for `'a`.
+    Ok(unsafe { slice::from_raw_parts(data, size) })
+}
+
+fn reserve_owned<U>(size: usize, field: &str) -> Result<Vec<U>, Error> {
+    let mut values = Vec::new();
+    values.try_reserve_exact(size).map_err(|_| {
+        Error::new(
+            ErrorKind::InternalError,
+            format!("unable to allocate owned {field} storage"),
+        )
+    })?;
+    Ok(values)
+}
+
+fn copy_mapped<T, U>(
+    values: &[T],
+    field: &str,
+    mut map: impl FnMut(&T) -> Result<U, Error>,
+) -> Result<Vec<U>, Error> {
+    let mut owned = reserve_owned(values.len(), field)?;
+    for value in values {
+        owned.push(map(value)?);
+    }
+    Ok(owned)
+}
+
+/// Copies a native string view into owned UTF-8 text. Embedded NUL is rejected
+/// to keep the safe `UciId`/`ComponentLocation` text invariant.
+fn owned_text(view: sys::AmsMelStringViewV1, field: &str) -> Result<String, Error> {
+    // SAFETY: the view belongs to a native record kept alive by the caller.
+    let bytes = unsafe { checked_span(view.data.cast::<u8>(), view.size, field)? };
+    if bytes.contains(&0) {
+        return Err(protocol(&format!(
+            "native provider returned embedded NUL in {field}"
+        )));
+    }
+    let mut owned = reserve_owned(bytes.len(), field)?;
+    owned.extend_from_slice(bytes);
+    String::from_utf8(owned).map_err(|_| {
+        Error::new(
+            ErrorKind::InvalidUtf8,
+            format!("native provider returned invalid UTF-8 in {field}"),
+        )
+    })
+}
+
+fn owned_uci_id(raw: &sys::AmsMelUciIdV1, field: &str) -> Result<UciId, Error> {
+    Ok(UciId {
+        uuid: raw.uuid,
+        descriptive_label: owned_text(raw.descriptive_label, field)?,
+    })
+}
+
+fn owned_location(raw: &sys::AmsMelComponentLocationV1) -> Result<ComponentLocation, Error> {
+    Ok(ComponentLocation {
+        offset_x_m: raw.offset_x_m,
+        offset_y_m: raw.offset_y_m,
+        offset_z_m: raw.offset_z_m,
+        key: owned_text(raw.key, "sensor_location.key")?,
+        system_name: owned_text(raw.system_name, "sensor_location.system_name")?,
+    })
+}
+
+fn checked_bool(value: u32, field: &str) -> Result<bool, Error> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        other => Err(protocol(&format!(
+            "native {field} has invalid boolean value {other}"
+        ))),
+    }
+}
+
+fn owned_u32_mapped<U>(
+    span: sys::AmsMelU32SpanV1,
+    field: &str,
+    map: impl Fn(u32) -> U,
+) -> Result<Vec<U>, Error> {
+    // SAFETY: the span belongs to a native record kept alive by the caller.
+    let values = unsafe { checked_span(span.data, span.size, field)? };
+    copy_mapped(values, field, |value| Ok(map(*value)))
+}
+
+fn owned_image_band(raw: &sys::AmsMelIrImageBandV1) -> Result<ImageBand, Error> {
+    // SAFETY: the nested span belongs to a native record kept alive by the caller.
+    let bands = unsafe { checked_span(raw.bands.data, raw.bands.size, "image_bands.bands")? };
+    Ok(ImageBand {
+        band_index: raw.band_index,
+        bands: copy_mapped(bands, "image_bands.bands", |band| {
+            Ok(BandInfo {
+                kind: band_type(band.kind),
+                min_wavelength_m: band.min_wavelength_m,
+                max_wavelength_m: band.max_wavelength_m,
+            })
+        })?,
+    })
+}
+
+/// Converts a complete native capability record into fully owned Rust data.
+/// Every span and string is validated and copied; no native pointer escapes.
+fn capability_from_raw(raw: &sys::AmsMelIrChannelCapabilityV1) -> Result<ChannelCapability, Error> {
+    // SAFETY: the span belongs to a native record kept alive by the caller.
+    let image_bands =
+        unsafe { checked_span(raw.image_bands.data, raw.image_bands.size, "image_bands")? };
+    Ok(ChannelCapability {
+        channel_id: owned_uci_id(&raw.channel_id, "channel_id")?,
+        height: raw.height,
+        width: raw.width,
+        bit_depth: raw.bit_depth,
+        row_pitch: raw.row_pitch,
+        buffer_size: raw.buffer_size,
+        image_size: raw.image_size,
+        number_of_bands: raw.number_of_bands,
+        pixel_format: pixel_format(raw.pixel_format),
+        sensor_types: owned_u32_mapped(raw.sensor_types, "sensor_types", sensor_type)?,
+        platform_id: owned_uci_id(&raw.platform_id, "platform_id")?,
+        sensor_location: owned_location(&raw.sensor_location)?,
+        channel_types: owned_u32_mapped(raw.channel_types, "channel_types", channel_type)?,
+        task_schedule_depth: raw.task_schedule_depth,
+        odc_available: checked_bool(raw.odc_available, "odc_available")?,
+        nuc_available: checked_bool(raw.nuc_available, "nuc_available")?,
+        metadata_capabilities: owned_u32_mapped(
+            raw.metadata_capabilities,
+            "metadata_capabilities",
+            metadata_capability,
+        )?,
+        image_bands: copy_mapped(image_bands, "image_bands", owned_image_band)?,
+        nav_frames: owned_u32_mapped(raw.nav_frames, "nav_frames", coordinate_system)?,
+    })
+}
+
+fn pixel_format(value: u32) -> PixelFormat {
+    match value {
+        sys::AMS_MEL_IR_PIXEL_MONO => PixelFormat::Mono,
+        sys::AMS_MEL_IR_PIXEL_RGB => PixelFormat::Rgb,
+        sys::AMS_MEL_IR_PIXEL_BAYER => PixelFormat::Bayer,
+        unknown => PixelFormat::Unknown(unknown),
+    }
+}
+
+fn sensor_type(value: u32) -> SensorType {
+    match value {
+        sys::AMS_MEL_IR_SENSOR_UNSPECIFIED => SensorType::Unspecified,
+        sys::AMS_MEL_IR_SENSOR_GIMBAL_HORIZONTAL => SensorType::GimbalHorizontal,
+        sys::AMS_MEL_IR_SENSOR_GIMBAL_VERTICAL => SensorType::GimbalVertical,
+        sys::AMS_MEL_IR_SENSOR_GIMBAL_ROTATION => SensorType::GimbalRotation,
+        sys::AMS_MEL_IR_SENSOR_STEP_STARE => SensorType::StepStare,
+        unknown => SensorType::Unknown(unknown),
+    }
+}
+
+fn channel_type(value: u32) -> ChannelType {
+    match value {
+        sys::AMS_MEL_IR_CHANNEL_IRST_TRACK => ChannelType::IrstTrack,
+        sys::AMS_MEL_IR_CHANNEL_IRST_IMAGE => ChannelType::IrstImage,
+        sys::AMS_MEL_IR_CHANNEL_COMMAND_AND_CONTROL => ChannelType::CommandAndControl,
+        sys::AMS_MEL_IR_CHANNEL_SCHEDULING => ChannelType::Scheduling,
+        sys::AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS => ChannelType::HealthAndStatus,
+        sys::AMS_MEL_IR_CHANNEL_INSTRUMENTATION => ChannelType::Instrumentation,
+        sys::AMS_MEL_IR_CHANNEL_STACKED_IMAGE => ChannelType::StackedImage,
+        sys::AMS_MEL_IR_CHANNEL_RESERVED_1 => ChannelType::Reserved1,
+        sys::AMS_MEL_IR_CHANNEL_RESERVED_2 => ChannelType::Reserved2,
+        unknown => ChannelType::Unknown(unknown),
+    }
+}
+
+fn band_type(value: u32) -> BandType {
+    match value {
+        sys::AMS_MEL_IR_BAND_INVALID => BandType::Invalid,
+        sys::AMS_MEL_IR_BAND_MULTIBAND => BandType::Multiband,
+        sys::AMS_MEL_IR_BAND_IR_FAR => BandType::IrFar,
+        sys::AMS_MEL_IR_BAND_IR_NEAR => BandType::IrNear,
+        sys::AMS_MEL_IR_BAND_IR_LONGWAVE => BandType::IrLongwave,
+        sys::AMS_MEL_IR_BAND_IR_MIDWAVE => BandType::IrMidwave,
+        sys::AMS_MEL_IR_BAND_IR_SHORTWAVE => BandType::IrShortwave,
+        sys::AMS_MEL_IR_BAND_VISIBLE_WHITE => BandType::VisibleWhite,
+        sys::AMS_MEL_IR_BAND_VISIBLE_RED => BandType::VisibleRed,
+        sys::AMS_MEL_IR_BAND_VISIBLE_GREEN => BandType::VisibleGreen,
+        sys::AMS_MEL_IR_BAND_VISIBLE_BLUE => BandType::VisibleBlue,
+        sys::AMS_MEL_IR_BAND_UVA => BandType::Uva,
+        sys::AMS_MEL_IR_BAND_UVB => BandType::Uvb,
+        sys::AMS_MEL_IR_BAND_UVC => BandType::Uvc,
+        sys::AMS_MEL_IR_BAND_UV_VACUUM => BandType::UvVacuum,
+        unknown => BandType::Unknown(unknown),
+    }
+}
+
+fn coordinate_system(value: u32) -> CoordinateSystem {
+    match value {
+        sys::AMS_MEL_IR_COORDINATE_LLA => CoordinateSystem::Lla,
+        sys::AMS_MEL_IR_COORDINATE_ECEF => CoordinateSystem::Ecef,
+        sys::AMS_MEL_IR_COORDINATE_NED_PLATFORM => CoordinateSystem::NedPlatform,
+        sys::AMS_MEL_IR_COORDINATE_NED_SENSOR => CoordinateSystem::NedSensor,
+        unknown => CoordinateSystem::Unknown(unknown),
+    }
+}
+
+fn metadata_capability(value: u32) -> MetadataCapability {
+    use MetadataCapability as M;
+    match value {
+        sys::AMS_MEL_IR_METADATA_BAD_PIXEL_LIST => M::BadPixelList,
+        sys::AMS_MEL_IR_METADATA_OPTICAL_DISTORTION_MAP => M::OpticalDistortionMap,
+        sys::AMS_MEL_IR_METADATA_LF_STATUS => M::LfStatus,
+        sys::AMS_MEL_IR_METADATA_LINE_OF_SIGHT_REPORT => M::LineOfSightReport,
+        sys::AMS_MEL_IR_METADATA_LINE_OF_SIGHT_QUATERNION => M::LineOfSightQuaternion,
+        sys::AMS_MEL_IR_METADATA_LINE_OF_SIGHT_EULER => M::LineOfSightEuler,
+        sys::AMS_MEL_IR_METADATA_MFA_STATUS => M::MfaStatus,
+        sys::AMS_MEL_IR_METADATA_MFA_STATUS_DETAILED => M::MfaStatusDetailed,
+        sys::AMS_MEL_IR_METADATA_BIT_CONFIGURATION => M::BitConfiguration,
+        sys::AMS_MEL_IR_METADATA_COMMAND_STATUS => M::CommandStatus,
+        sys::AMS_MEL_IR_METADATA_BIT_STATUS => M::BitStatus,
+        sys::AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_MESSAGE => M::CandidateObjectMessage,
+        sys::AMS_MEL_IR_METADATA_TASK_EXECUTING_REP => M::TaskExecutingRep,
+        sys::AMS_MEL_IR_METADATA_SUBSYSTEM_STATUS_RESP => M::SubsystemStatusResp,
+        sys::AMS_MEL_IR_METADATA_EXECUTE_TASK_ACK => M::ExecuteTaskAck,
+        sys::AMS_MEL_IR_METADATA_SCHED_CREATED_REP => M::SchedCreatedRep,
+        sys::AMS_MEL_IR_METADATA_IRST_TRACK_REPORT => M::IrstTrackReport,
+        sys::AMS_MEL_IR_METADATA_CHANNEL_COMMS_TEST_REP => M::ChannelCommsTestRep,
+        sys::AMS_MEL_IR_METADATA_CAMERA_COMMAND_RESP => M::CameraCommandResp,
+        sys::AMS_MEL_IR_METADATA_CAMERA_PROTECT_CMD_RESP => M::CameraProtectCmdResp,
+        sys::AMS_MEL_IR_METADATA_INSTRUMENTATION_REPORT => M::InstrumentationReport,
+        sys::AMS_MEL_IR_METADATA_NAVIGATION_REPORT_RESP => M::NavigationReportResp,
+        sys::AMS_MEL_IR_METADATA_REQUEST_SYSTEM_TRACK_DATA => M::RequestSystemTrackData,
+        sys::AMS_MEL_IR_METADATA_UPDATE_TRACK_LIST_RESPONSE => M::UpdateTrackListResponse,
+        sys::AMS_MEL_IR_METADATA_LOS_3D_KINEMATICS_TYPE => M::Los3dKinematicsType,
+        sys::AMS_MEL_IR_METADATA_CANDIDATE_OBJECT_PREPROC_MESSAGE => {
+            M::CandidateObjectPreprocMessage
+        }
+        sys::AMS_MEL_IR_METADATA_TASK_EVENTS => M::TaskEvents,
+        sys::AMS_MEL_IR_METADATA_SCAN_PERFORMANCE_REPORT => M::ScanPerformanceReport,
+        sys::AMS_MEL_IR_METADATA_RESERVED_3 => M::Reserved3,
+        sys::AMS_MEL_IR_METADATA_RESERVED_5 => M::Reserved5,
+        sys::AMS_MEL_IR_METADATA_RESERVED_9 => M::Reserved9,
+        sys::AMS_MEL_IR_METADATA_RESERVED_10 => M::Reserved10,
+        unknown => M::Unknown(unknown),
+    }
+}
+
 fn command_return(value: u32) -> Result<CommandReturn, Error> {
     match value {
         sys::AMS_MEL_IR_RETURN_SUCCESS => Ok(CommandReturn::Success),
@@ -1360,6 +2350,29 @@ fn best_effort_close_return_request(raw: &mut *mut sys::AmsMelIrReturnRequest) {
         unsafe { sys::ams_mel_ir_return_request_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
 }
 
+fn best_effort_close_channel_view(raw: &mut *mut sys::AmsMelIrChannel) {
+    // SAFETY: called only for this wrapper's unique weak view owner. View Close
+    // is idempotent and nonblocking; it never touches the typed owner or
+    // cancels requests. The result is ignored because Drop cannot report it.
+    let _ = unsafe { sys::ams_mel_ir_channel_close(raw, ptr::null_mut(), 0, ptr::null_mut()) };
+}
+
+fn best_effort_close_comms_request(raw: &mut *mut sys::AmsMelIrChannelCommsRequest) {
+    // SAFETY: called only for this wrapper's unique request owner. Public request
+    // close is nonblocking and does not cancel pending provider work.
+    let _ = unsafe {
+        sys::ams_mel_ir_channel_comms_request_close(raw, ptr::null_mut(), 0, ptr::null_mut())
+    };
+}
+
+fn best_effort_close_capability(raw: &mut *mut sys::AmsMelIrChannelCapability) {
+    // SAFETY: called only for a unique capability snapshot owner. Null
+    // diagnostics are supported and the result cannot be reported here.
+    let _ = unsafe {
+        sys::ams_mel_ir_channel_capability_close(raw, ptr::null_mut(), 0, ptr::null_mut())
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1389,5 +2402,286 @@ mod tests {
         assert!(error
             .diagnostic()
             .is_some_and(|message| message.contains("4294967295")));
+    }
+
+    fn view(bytes: &[u8]) -> sys::AmsMelStringViewV1 {
+        sys::AmsMelStringViewV1 {
+            data: bytes.as_ptr().cast::<c_char>(),
+            size: bytes.len(),
+        }
+    }
+
+    fn u32_span(values: &[u32]) -> sys::AmsMelU32SpanV1 {
+        sys::AmsMelU32SpanV1 {
+            data: values.as_ptr(),
+            size: values.len(),
+        }
+    }
+
+    fn null_u32_span(size: usize) -> sys::AmsMelU32SpanV1 {
+        sys::AmsMelU32SpanV1 {
+            data: ptr::null(),
+            size,
+        }
+    }
+
+    const LABEL: &[u8] = b"label";
+    const KEY: &[u8] = b"key";
+    const SYSTEM: &[u8] = b"system";
+    const SENSORS: &[u32] = &[sys::AMS_MEL_IR_SENSOR_STEP_STARE, 77];
+    const CHANNELS: &[u32] = &[sys::AMS_MEL_IR_CHANNEL_IRST_IMAGE, 1234];
+    const METADATA: &[u32] = &[sys::AMS_MEL_IR_METADATA_RESERVED_10, 32];
+    const NAV: &[u32] = &[sys::AMS_MEL_IR_COORDINATE_LLA, 4];
+    const BANDS: &[sys::AmsMelIrBandInfoV1] = &[sys::AmsMelIrBandInfoV1 {
+        kind: 15,
+        min_wavelength_m: 1.0,
+        max_wavelength_m: 2.0,
+    }];
+
+    fn raw_capability(
+        image_bands: &[sys::AmsMelIrImageBandV1],
+    ) -> sys::AmsMelIrChannelCapabilityV1 {
+        let id = sys::AmsMelUciIdV1 {
+            uuid: [7; 16],
+            descriptive_label: view(LABEL),
+        };
+        sys::AmsMelIrChannelCapabilityV1 {
+            channel_id: id,
+            height: u32::MAX,
+            width: 2,
+            bit_depth: 3,
+            row_pitch: 4,
+            buffer_size: 5,
+            image_size: 6,
+            number_of_bands: 7,
+            pixel_format: 99,
+            sensor_types: u32_span(SENSORS),
+            platform_id: id,
+            sensor_location: sys::AmsMelComponentLocationV1 {
+                offset_x_m: 1.5,
+                offset_y_m: -2.5,
+                offset_z_m: 3.5,
+                key: view(KEY),
+                system_name: view(SYSTEM),
+            },
+            channel_types: u32_span(CHANNELS),
+            task_schedule_depth: 8,
+            odc_available: 1,
+            nuc_available: 0,
+            metadata_capabilities: u32_span(METADATA),
+            image_bands: sys::AmsMelIrImageBandSpanV1 {
+                data: image_bands.as_ptr(),
+                size: image_bands.len(),
+            },
+            nav_frames: u32_span(NAV),
+        }
+    }
+
+    fn one_band() -> [sys::AmsMelIrImageBandV1; 1] {
+        [sys::AmsMelIrImageBandV1 {
+            band_index: 0xffff_fff0,
+            bands: sys::AmsMelIrBandInfoSpanV1 {
+                data: BANDS.as_ptr(),
+                size: BANDS.len(),
+            },
+        }]
+    }
+
+    #[test]
+    fn converts_complete_capability_and_preserves_unknown_enums() {
+        let bands = one_band();
+        let value = capability_from_raw(&raw_capability(&bands)).expect("valid capability");
+        assert_eq!(value.channel_id.uuid(), &[7; 16]);
+        assert_eq!(value.channel_id.descriptive_label(), "label");
+        assert_eq!(value.platform_id.descriptive_label(), "label");
+        assert_eq!(value.height, u32::MAX);
+        assert_eq!((value.width, value.bit_depth, value.row_pitch), (2, 3, 4));
+        assert_eq!(
+            (value.buffer_size, value.image_size, value.number_of_bands),
+            (5, 6, 7)
+        );
+        assert_eq!(value.pixel_format, PixelFormat::Unknown(99));
+        assert_eq!(
+            value.sensor_types,
+            vec![SensorType::StepStare, SensorType::Unknown(77)]
+        );
+        assert_eq!(
+            value.channel_types,
+            vec![ChannelType::IrstImage, ChannelType::Unknown(1234)]
+        );
+        assert_eq!(
+            value.metadata_capabilities,
+            vec![
+                MetadataCapability::Reserved10,
+                MetadataCapability::Unknown(32)
+            ]
+        );
+        assert_eq!(
+            value.nav_frames,
+            vec![CoordinateSystem::Lla, CoordinateSystem::Unknown(4)]
+        );
+        assert_eq!(value.sensor_location.offset_x_m(), 1.5);
+        assert_eq!(value.sensor_location.offset_y_m(), -2.5);
+        assert_eq!(value.sensor_location.offset_z_m(), 3.5);
+        assert_eq!(value.sensor_location.key(), "key");
+        assert_eq!(value.sensor_location.system_name(), "system");
+        assert_eq!(value.task_schedule_depth, 8);
+        assert!(value.odc_available);
+        assert!(!value.nuc_available);
+        assert_eq!(
+            value.image_bands,
+            vec![ImageBand {
+                band_index: 0xffff_fff0,
+                bands: vec![BandInfo {
+                    kind: BandType::Unknown(15),
+                    min_wavelength_m: 1.0,
+                    max_wavelength_m: 2.0,
+                }],
+            }]
+        );
+    }
+
+    #[test]
+    fn maps_every_published_enum_constant() {
+        for raw in 0..=2 {
+            assert!(!matches!(pixel_format(raw), PixelFormat::Unknown(_)));
+        }
+        assert_eq!(pixel_format(3), PixelFormat::Unknown(3));
+        for raw in 0..=4 {
+            assert!(!matches!(sensor_type(raw), SensorType::Unknown(_)));
+        }
+        assert_eq!(sensor_type(5), SensorType::Unknown(5));
+        for raw in 0..=8 {
+            assert!(!matches!(channel_type(raw), ChannelType::Unknown(_)));
+        }
+        assert_eq!(channel_type(9), ChannelType::Unknown(9));
+        for raw in 0..=31 {
+            assert!(!matches!(
+                metadata_capability(raw),
+                MetadataCapability::Unknown(_)
+            ));
+        }
+        assert_eq!(metadata_capability(32), MetadataCapability::Unknown(32));
+        for raw in 0..=14 {
+            assert!(!matches!(band_type(raw), BandType::Unknown(_)));
+        }
+        assert_eq!(band_type(u32::MAX), BandType::Unknown(u32::MAX));
+        for raw in 0..=3 {
+            assert!(!matches!(
+                coordinate_system(raw),
+                CoordinateSystem::Unknown(_)
+            ));
+        }
+        assert_eq!(coordinate_system(4), CoordinateSystem::Unknown(4));
+    }
+
+    #[test]
+    fn empty_spans_with_null_or_non_null_data_are_empty() {
+        let mut raw = raw_capability(&[]);
+        raw.sensor_types = null_u32_span(0);
+        raw.channel_types = u32_span(&[]);
+        raw.metadata_capabilities = null_u32_span(0);
+        raw.nav_frames = null_u32_span(0);
+        raw.image_bands = sys::AmsMelIrImageBandSpanV1 {
+            data: ptr::null(),
+            size: 0,
+        };
+        raw.channel_id.descriptive_label = sys::AmsMelStringViewV1 {
+            data: ptr::null(),
+            size: 0,
+        };
+        let value = capability_from_raw(&raw).expect("empty spans");
+        assert!(value.sensor_types.is_empty() && value.channel_types.is_empty());
+        assert!(value.metadata_capabilities.is_empty() && value.nav_frames.is_empty());
+        assert!(value.image_bands.is_empty());
+        assert_eq!(value.channel_id.descriptive_label(), "");
+    }
+
+    #[test]
+    fn nonzero_span_with_null_pointer_is_protocol_inconsistency() {
+        let bands = one_band();
+        let mut cases = Vec::new();
+        let mut raw = raw_capability(&bands);
+        raw.sensor_types = null_u32_span(1);
+        cases.push(raw);
+        let mut raw = raw_capability(&bands);
+        raw.nav_frames = null_u32_span(usize::MAX);
+        cases.push(raw);
+        let mut raw = raw_capability(&bands);
+        raw.image_bands = sys::AmsMelIrImageBandSpanV1 {
+            data: ptr::null(),
+            size: 2,
+        };
+        cases.push(raw);
+        let mut raw = raw_capability(&bands);
+        raw.sensor_location.key = sys::AmsMelStringViewV1 {
+            data: ptr::null(),
+            size: 3,
+        };
+        cases.push(raw);
+        let null_nested = [sys::AmsMelIrImageBandV1 {
+            band_index: 1,
+            bands: sys::AmsMelIrBandInfoSpanV1 {
+                data: ptr::null(),
+                size: 1,
+            },
+        }];
+        cases.push(raw_capability(&null_nested));
+        for raw in cases {
+            assert_eq!(
+                capability_from_raw(&raw)
+                    .expect_err("malformed span")
+                    .kind(),
+                &ErrorKind::ProtocolInconsistency
+            );
+        }
+    }
+
+    #[test]
+    fn oversized_span_length_is_rejected_before_slicing() {
+        let values = [1_u32];
+        // SAFETY: the helper rejects this length before forming a slice; no
+        // memory beyond `values` is read.
+        let error = unsafe { checked_span(values.as_ptr(), usize::MAX / 2, "test") }
+            .expect_err("length beyond isize::MAX bytes");
+        assert_eq!(error.kind(), &ErrorKind::ProtocolInconsistency);
+    }
+
+    #[test]
+    fn invalid_utf8_and_embedded_nul_are_rejected() {
+        const BAD_UTF8: &[u8] = b"bad\xC3\x28";
+        const WITH_NUL: &[u8] = b"a\0b";
+        let mut raw = raw_capability(&[]);
+        raw.platform_id.descriptive_label = view(BAD_UTF8);
+        assert_eq!(
+            capability_from_raw(&raw).expect_err("invalid UTF-8").kind(),
+            &ErrorKind::InvalidUtf8
+        );
+        let mut raw = raw_capability(&[]);
+        raw.sensor_location.system_name = view(WITH_NUL);
+        assert_eq!(
+            capability_from_raw(&raw).expect_err("embedded NUL").kind(),
+            &ErrorKind::ProtocolInconsistency
+        );
+    }
+
+    #[test]
+    fn booleans_accept_exactly_zero_or_one() {
+        for (odc, nuc) in [(2, 0), (0, 2), (u32::MAX, 1)] {
+            let mut raw = raw_capability(&[]);
+            raw.odc_available = odc;
+            raw.nuc_available = nuc;
+            assert_eq!(
+                capability_from_raw(&raw)
+                    .expect_err("invalid boolean")
+                    .kind(),
+                &ErrorKind::ProtocolInconsistency
+            );
+        }
+        let mut raw = raw_capability(&[]);
+        raw.odc_available = 0;
+        raw.nuc_available = 1;
+        let value = capability_from_raw(&raw).expect("valid booleans");
+        assert!(!value.odc_available && value.nuc_available);
     }
 }
