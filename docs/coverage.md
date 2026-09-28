@@ -1,5 +1,25 @@
 # Implementation coverage
 
+Task 033C pins the RF ProductRxEndpoint receive declaration closure and records
+the callback/buffer/lifetime contract. It is an evidence task only: 16
+byte-identical RF MEL headers, a declaration-only compile probe, and the
+`check_rf_product_rx_header_closure` check. There is **no** runtime receive
+support. ABI 0.1 keeps exactly **106** production exports, and no Ada, Rust, or
+Python surface changed.
+
+```text
+RF DataMEL foundation:                          complete (033B)
+RF ProductRxEndpoint declaration closure:       pinned / measured (033C)
+RF ProductRxEndpoint callback/lifetime contract: analyzed (033C)
+RF ProductRxEndpoint runtime:                   not implemented
+RF ComplexINT16 receive:                        not implemented
+RF ProductRxMetadata mapping:                   not implemented (033D policy decided)
+RF PointingType / ReceiveEvent mapping:         not implemented (fail closed in 033D)
+RF RDMA / external endpoints:                   not implemented
+```
+
+See `task-033c-rf-product-rx-contract.md`.
+
 Task 033B adds the first production RF MEL slice: a native C RF DataMEL
 foundation (`createDataMEL` load, VersionInfo, an owned RFMFAInfo snapshot, and
 shutdown-once Close with DSO lifetime ordering). It adds exactly six exports:
@@ -13,7 +33,7 @@ RF RFMFAInfo scalar/enum/range snapshot:      complete
 RF quantizeDuration:                          not implemented
 RF PhysicalData:                              not implemented
 RF Tx power modes:                            not implemented
-RF ProductRxEndpoint / IQ receive:            not implemented
+RF ProductRxEndpoint / IQ receive:            not implemented (033C: contract pinned only)
 RF RDMA:                                      not implemented
 RF C2 / jobs:                                 not implemented
 safe Ada/Rust/Python RF:                      not implemented

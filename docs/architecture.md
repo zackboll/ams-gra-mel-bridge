@@ -901,6 +901,75 @@ other RF family remain out of scope. IR and RF share only family-neutral
 helpers (`internal/provider_common.hpp`: diagnostics, UTF-8, and one
 VersionInfo publication path). See `task-033b-rf-datamel-foundation.md`.
 
+## Task 033C RF receive ownership model (design note — NOT IMPLEMENTED)
+
+Task 033C only pins the `ProductRxEndpoint` declaration closure and records its
+contract. The model below is the planned 033D direction. **None of it exists in
+the library yet.**
+
+```text
+provider ProductRxEndpoint callback          (provider thread)
+          |
+          | provider-scoped sample pointer: JobDataPointer + element count
+          | (valid only until the callback returns; Squall reuses the buffer)
+          v
+bridge callback  -- captures only shared_ptr<RfRxCallbackState>
+          |
+          | validate; immediate element-wise copy via real()/imag();
+          | fail closed on non-representable metadata
+          v
+bounded bridge queue (DROP-INCOMING) of immutable owned events
+          |
+          v
+C receive API (receive(timeout) -> owned event -> view/close)
+```
+
+The published interface has **no callback unregister** and does **not** state
+that endpoint destruction makes callbacks quiescent. So:
+
+* Endpoint creation is a `RequestFor` future and follows the existing request
+  owner + completion worker + `wait(timeout)` model, not a blocking open.
+* Close is logical first: it stops public delivery under the callback-state
+  mutex, then drops the provider endpoint outside every bridge mutex, then
+  drains the bridge's own in-flight callback count. Bridge-state safety never
+  depends on provider quiescence. Squall's receiver-thread join is
+  provider-specific evidence only and is never used to relax a production rule.
+* The DSO stays loaded while any endpoint, create request, or worker exists.
+  **Once a callback has been successfully registered**, or
+  `setDataReadyCallback` threw with unprovable registration state, a dedicated
+  provider-library pin keeps the DSO mapped for the rest of the process.
+  Endpoint destruction plus `in_flight == 0` proves only that no bridge
+  callback body is running *now*. It does not prove that a provider-held
+  `std::function` copy can never start a new invocation, which would run
+  through provider code (thread, call site, dispatch machinery). So it is **not**
+  a DSO-unload condition. This is deliberate fail-safe retention, not a leak.
+
+```text
+callback registered
+       |
+       +------------------------+
+       |                        |
+logical endpoint Close          |
+       |                        |
+endpoint destruction            |
+       |                        |
+bridge callback drain           |
+       |                        |
+bridge resources reclaimable    |
+(DataMEL may shut down normally |
+ once all children are gone)    |
+                                |
+                                v
+                       provider DSO pin retained
+                       for process lifetime
+```
+
+The pin applies until a generic, provider-independent quiescence mechanism
+exists. It retains only the library, not the DataMEL, the endpoint, the public
+owners, queued products, or callback state. A throwing `DataMEL::shutdown()`
+still retains the complete provider graph, as Task 033B specifies. See
+`task-033c-rf-product-rx-contract.md` → "DSO lifetime".
+
 ## Task 029G CandidateObjectPreProcMessage and Track completion
 
 Task 029G implements the `@Optional` `CandidateObjectPreProcMessage`
@@ -1133,3 +1202,7 @@ RDMA, GPU/CUDA, FPGA mappings, and Stacked Image remain unimplemented. Task
 033B adds only the RF DataMEL foundation (load, version, owned RFMFAInfo
 snapshot, shutdown/Close) and no RF data plane. Pinned Squall's RF receive endpoint copies and decodes UDP payloads
 into its own IQ vector, so it provides no RF zero-copy evidence.
+Task 033C confirms this from the published contract: the ProductRxEndpoint
+callback buffer is callback-scoped, and Squall reuses it for every later
+datagram. The first RF receive slice therefore copies. See the Task 033C
+design note above.
