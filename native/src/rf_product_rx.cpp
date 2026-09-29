@@ -48,6 +48,8 @@
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 #include <cerrno>
+#include <cstdlib>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -84,6 +86,7 @@ struct RfRxCallbackState {
     std::size_t max_samples_per_event{};
     std::size_t in_flight{};
     std::size_t waiters{}; /* Receive calls currently blocked (observation only) */
+    std::size_t drain_waiters{}; /* Close/cleanup blocked in the drain (observation only) */
     ams_mel_rf_product_rx_counters_v1 counters{};
     std::uint64_t endpoint_id{};
 };
@@ -117,7 +120,10 @@ void retain_registration_forever(PermanentRxRegistration *registration) noexcept
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 /* Test-only seams; none is reachable from a production build. */
 enum : unsigned { FailEvent = 1U, FailStreamIds = 2U, FailWorkerLaunch = 3U };
-enum : unsigned { ControlNone = 0U, ControlNoLibraryPin = 1U, ControlNoExactLvalue = 2U };
+enum : unsigned {
+    ControlNone = 0U, ControlNoLibraryPin = 1U, ControlNoExactLvalue = 2U,
+    ControlOldCloseOrder = 3U
+};
 std::atomic<unsigned> test_failpoint{};
 std::atomic<unsigned> test_negative_control{};
 std::atomic<int> test_hold_notify{-1};
@@ -129,16 +135,37 @@ bool take_failpoint(unsigned which) noexcept
     return test_failpoint.compare_exchange_strong(expected, 0U);
 }
 
-/* One-shot deterministic hold after in_flight was incremented. */
-void test_hold() noexcept
+/* Appends one line to AMS_MEL_TEST_LIFETIME_LOG (opened without O_CREAT). */
+void test_record(const char *event) noexcept
+{
+    const char *const path = std::getenv("AMS_MEL_TEST_LIFETIME_LOG");
+    if (path == nullptr) return;
+    const int fd = open(path, O_WRONLY | O_APPEND | O_CLOEXEC);
+    if (fd < 0) return;
+    char line[128];
+    const std::size_t size = std::strlen(event);
+    if (size + 1U <= sizeof line) {
+        std::memcpy(line, event, size);
+        line[size] = '\n';
+        ssize_t written;
+        do { written = write(fd, line, size + 1U); } while (written < 0 && errno == EINTR);
+    }
+    (void)close(fd);
+}
+
+/* One-shot deterministic hold after in_flight was incremented and Receiving
+ * was observed. Returns true if THIS callback was the held one. */
+bool test_hold() noexcept
 {
     const int notify = test_hold_notify.exchange(-1);
-    if (notify < 0) return;
+    if (notify < 0) return false;
     const int release = test_hold_release.exchange(-1);
     char byte = 'h';
     ssize_t result;
     do { result = write(notify, &byte, 1U); } while (result < 0 && errno == EINTR);
     do { result = read(release, &byte, 1U); } while (result < 0 && errno == EINTR);
+    test_record("rf_rx_held_callback_released");
+    return true;
 }
 #endif
 
@@ -239,9 +266,12 @@ void on_data_ready(RfRxCallbackState& state,
         }
     }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
-    test_hold();
+    const bool held = test_hold();
 #endif
-    /* Validation and copy allocation run outside the queue mutex. */
+    /* Validation and copy allocation run outside the queue mutex. This is
+     * where callback-scoped provider data (metadata, JobDataPointer samples,
+     * possibly ProductRxEndpoint-owned storage) is read, so Close must drain
+     * this body BEFORE it destroys the ProductRxEndpoint. */
     std::unique_ptr<ams_mel_rf_product_rx_event> event;
     BuildOutcome outcome;
     try {
@@ -278,10 +308,69 @@ void on_data_ready(RfRxCallbackState& state,
                 discarded = std::move(event);
             }
         }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        /* Recorded under the state mutex, so it precedes the drain's return
+         * and therefore any post-drain ProductRxEndpoint destruction. */
+        if (held) test_record("rf_rx_held_callback_left_in_flight");
+#endif
         if (--state.in_flight == 0U) state.drained.notify_all();
     }
     /* `discarded` and `metadata` are released after the lock: owned plain
      * copies and the provider's shared_ptr only. */
+}
+
+/* Logical Close followed by a drain of CURRENT bridge callback bodies.
+ *
+ * Shared by endpoint Close and by registration-throw cleanup. It never
+ * destroys the ProductRxEndpoint, never releases the child claim, and never
+ * calls the provider: the caller does those only after this returns true.
+ *
+ * Why drain BEFORE endpoint destruction: a callback admitted while the
+ * endpoint was Receiving may still be reading callback-scoped provider data
+ * (JobDataPointer samples, ProductRxMetadata) that a provider is allowed to
+ * back with ProductRxEndpoint-owned storage. Returning true proves only that
+ * no such callback is still inside the bridge body. It is NOT provider
+ * callback quiescence and never authorizes a DSO unload: later callbacks may
+ * still start, and they take the Closed fast path before touching any
+ * payload (the permanent registration keeps callback, state, and DSO).
+ *
+ * Returns false if Closed + drained could not be established; the caller
+ * must then retain the endpoint and child claim forever.
+ *
+ * `endpoint` is untouched in production. Only the TEST-build destructive
+ * negative control drops it between the two phases (the old unsafe order). */
+bool logical_close_and_drain(RfRxCallbackState& state,
+                             [[maybe_unused]] std::shared_ptr<rfmel::ProductRxEndpoint>& endpoint)
+    noexcept
+{
+    /* 1. Logical close: Closed, queued products discarded (so permanent
+     *    callback-state retention never retains payloads), Receive woken. */
+    std::deque<std::unique_ptr<ams_mel_rf_product_rx_event>> discarded;
+    try {
+        std::lock_guard lock{state.mutex};
+        state.lifecycle = RxLifecycle::Closed;
+        discarded.swap(state.queue);
+        state.ready.notify_all();
+    } catch (...) {
+        return false;
+    }
+    discarded.clear(); /* facade events only, outside the lock */
+
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    if (test_negative_control.load() == ControlOldCloseOrder)
+        endpoint.reset(); /* NEGATIVE CONTROL (destructive): destroy, then drain */
+#endif
+
+    /* 2. Drain every CURRENT bridge callback body. */
+    try {
+        std::unique_lock lock{state.mutex};
+        ++state.drain_waiters;
+        while (state.in_flight != 0U) state.drained.wait(lock);
+        --state.drain_waiters;
+    } catch (...) {
+        return false;
+    }
+    return true;
 }
 
 /* ------------------------------------------------------------ create path */
@@ -786,17 +875,13 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_claim(
         return AMS_MEL_OK;
     }
 
-    /* Registration threw: no public endpoint. Close the callback state so a
-     * retained late callback publishes nothing, destroy the provider
-     * endpoint on this caller outside every bridge mutex, cache the failure,
-     * then release the child claim (possibly the deferred parent shutdown). */
-    {
-        std::lock_guard lock{state->mutex};
-        state->lifecycle = RxLifecycle::Closed;
-        state->queue.clear();
-        state->ready.notify_all();
-    }
-    endpoint.reset();
+    /* Registration threw: no public endpoint. Same order as endpoint Close:
+     * Closed (a retained late callback publishes nothing), drain CURRENT
+     * callbacks (a provider may have started one that is still reading
+     * endpoint-owned data before it threw), only then destroy the provider
+     * endpoint on this caller outside every bridge mutex, then release the
+     * child claim (possibly the deferred parent shutdown). */
+    const bool drained = logical_close_and_drain(*state, endpoint);
     if (failure == AMS_MEL_OK) failure = AMS_MEL_PROVIDER_EXCEPTION;
     {
         std::lock_guard lock{completion.mutex};
@@ -806,10 +891,17 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_claim(
         write_diagnostic(completion.claim_message, diagnostic, diagnostic_capacity,
                          diagnostic_required);
     }
-    {
-        std::unique_lock lock{state->mutex};
-        while (state->in_flight != 0U) state->drained.wait(lock);
+    if (!drained) {
+        /* The callback-data boundary is unproven: keep the provider endpoint
+         * and the child claim forever, so neither it nor the parent
+         * DataMEL/provider graph can be destroyed across it. */
+        owner->endpoint = std::move(endpoint);
+        (void)owner.release();
+        write_diagnostic("RF ProductRx registration cleanup failed; endpoint retained",
+                         diagnostic, diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
+    endpoint.reset();
     const RfShutdownOutcome shutdown = owner->claim.release();
     if (shutdown.status != AMS_MEL_OK) {
         write_diagnostic(shutdown.message, diagnostic, diagnostic_capacity, diagnostic_required);
@@ -914,38 +1006,23 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_close(
     std::unique_ptr<ams_mel_rf_product_rx> owner{owned};
     const std::shared_ptr<RfRxCallbackState> state = owner->state;
 
-    /* 1. Logical close: Closed, queued products discarded (so permanent
-     *    callback-state retention never retains payloads), Receive woken. */
-    std::deque<std::unique_ptr<ams_mel_rf_product_rx_event>> discarded;
-    try {
-        std::lock_guard lock{state->mutex};
-        state->lifecycle = RxLifecycle::Closed;
-        discarded.swap(state->queue);
-        state->ready.notify_all();
-    } catch (...) {
-        /* Lifecycle could not be recorded. Keep the endpoint AND its child
-         * claim forever: the parent can then never be shut down. */
+    /* 1+2. Logical Close, then drain CURRENT bridge callback bodies: a
+     *      callback admitted while Receiving may still borrow
+     *      ProductRxEndpoint-owned provider data. Not provider quiescence;
+     *      never authorizes a DSO unload. */
+    if (!logical_close_and_drain(*state, owner->endpoint)) {
+        /* Closed + drained could not be established. Keep the endpoint AND
+         * its child claim forever: neither the endpoint nor the parent can
+         * be destroyed across an unproven callback-data boundary. */
         (void)owner.release();
         write_diagnostic("RF ProductRx close failed; endpoint retained", diagnostic,
                          diagnostic_capacity, diagnostic_required);
         return AMS_MEL_INTERNAL_ERROR;
     }
-    discarded.clear();
 
-    /* 2. Drop the provider ProductRxEndpoint outside every bridge mutex. */
+    /* 3. Only now drop the provider ProductRxEndpoint, outside every bridge
+     *    mutex. */
     owner->endpoint.reset();
-
-    /* 3. Drain CURRENT bridge callback bodies. This is not provider
-     *    quiescence and never authorizes a DSO unload. */
-    try {
-        std::unique_lock lock{state->mutex};
-        while (state->in_flight != 0U) state->drained.wait(lock);
-    } catch (...) {
-        (void)owner.release();
-        write_diagnostic("RF ProductRx callback drain failed; endpoint claim retained",
-                         diagnostic, diagnostic_capacity, diagnostic_required);
-        return AMS_MEL_INTERNAL_ERROR;
-    }
 
     /* 4. Release the child claim: possibly the deferred parent shutdown. */
     const RfShutdownOutcome shutdown = owner->claim.release();
@@ -1044,6 +1121,18 @@ extern "C" __attribute__((visibility("default"))) int ams_mel_test_rf_rx_waiters
     } catch (...) { return 0; }
 }
 
+/* Close/cleanup calls currently blocked in the current-callback drain. */
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_rf_rx_drain_waiters(
+    const ams_mel_test_rf_rx_observer *observer, std::size_t *waiters) noexcept
+{
+    if (observer == nullptr || !observer->state || waiters == nullptr) return 0;
+    try {
+        std::lock_guard lock{observer->state->mutex};
+        *waiters = observer->state->drain_waiters;
+        return 1;
+    } catch (...) { return 0; }
+}
+
 /* Presets every counter so saturation at UINT64_MAX is observable. */
 extern "C" __attribute__((visibility("default"))) int ams_mel_test_rf_rx_preset_counters(
     const ams_mel_test_rf_rx_observer *observer, std::uint64_t value) noexcept
@@ -1070,7 +1159,8 @@ extern "C" __attribute__((visibility("default"))) void ams_mel_test_rf_rx_failpo
 { test_failpoint.store(which); }
 
 /* Destructive negative controls: 1 no provider-library pin in the permanent
- * registration, 2 register a stack-local copy instead of the exact lvalue. */
+ * registration, 2 register a stack-local copy instead of the exact lvalue,
+ * 3 old unsafe order (Closed, destroy ProductRxEndpoint, then drain). */
 extern "C" __attribute__((visibility("default"))) void ams_mel_test_rf_rx_negative_control(
     unsigned which) noexcept
 { test_negative_control.store(which); }

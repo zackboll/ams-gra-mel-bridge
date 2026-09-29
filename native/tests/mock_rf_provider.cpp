@@ -270,15 +270,52 @@ std::shared_ptr<rfmel::ProductRxMetadata> rich_metadata()
     return metadata;
 }
 
+/* ENDPOINT-OWNED sample storage (modes "owned" and "throw-active"): one
+ * mmap() page holding constructed MELComplex<int16_t> objects, owned by the
+ * MockProductRxEndpoint. The destructor revokes it with PROT_NONE, so any
+ * read after endpoint destruction faults deterministically (no reliance on
+ * heap reuse). The mapping itself is intentionally never unmapped: the
+ * tests are process-isolated. */
+constexpr std::size_t owned_page_size = 4096U;
+constexpr std::size_t owned_samples = 6U;
+
+void fill_rich(ComplexI16 *samples) noexcept
+{
+    const std::int16_t values[owned_samples][2] = {{10, 20}, {30, 40}, {-5, 6},
+        {INT16_MIN, INT16_MAX}, {INT16_MAX, INT16_MIN}, {-1, 0}};
+    for (std::size_t index = 0; index < owned_samples; ++index)
+        samples[index] = ComplexI16{values[index][0], values[index][1]};
+}
+
 class MockProductRxEndpoint final : public rfmel::ProductRxEndpoint {
 public:
     MockProductRxEndpoint(std::uint64_t id, JobDataFormat format, std::string mode)
-        : id_{id}, format_{format}, mode_{std::move(mode)} {}
+        : id_{id}, format_{format}, mode_{std::move(mode)}
+    {
+        if (mode_ == "owned" || mode_ == "throw-active") {
+            void *const page = mmap(nullptr, owned_page_size, PROT_READ | PROT_WRITE,
+                                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (page == MAP_FAILED) throw std::bad_alloc{};
+            static_assert(owned_samples * sizeof(ComplexI16) <= owned_page_size);
+            owned_ = static_cast<ComplexI16 *>(page);
+            for (std::size_t index = 0; index < owned_samples; ++index)
+                new (owned_ + index) ComplexI16{};
+            fill_rich(owned_);
+        }
+    }
     ~MockProductRxEndpoint() override
     {
         endpoints_destroyed.fetch_add(1U);
+        if (owned_ != nullptr) {
+            /* Stale reads of endpoint-owned storage now fault. */
+            if (mprotect(owned_, owned_page_size, PROT_NONE) != 0) std::abort();
+            record("rf_rx_endpoint_buffer_revoked");
+        }
         record("rf_rx_endpoint_destroyed");
     }
+
+    /* Endpoint-owned samples (valid only while this endpoint lives). */
+    ComplexI16 *owned_samples_page() const noexcept { return owned_; }
 
     rfmel::EndpointID getEndpointID() const override
     {
@@ -320,6 +357,7 @@ private:
     std::uint64_t id_;
     JobDataFormat format_;
     std::string mode_;
+    ComplexI16 *owned_{};
     mutable std::mutex mutex_;
     std::shared_ptr<RetainedCallback> retained_;
 };
@@ -343,6 +381,15 @@ void remember(std::uint64_t id, const std::shared_ptr<RetainedCallback>& held)
 }
 
 
+/* "throw-active" gate: setDataReadyCallback starts a provider callback
+ * thread on the endpoint-owned page, then blocks reading one byte from
+ * active_gate_fd before throwing. The thread writes 'K' to active_done_fd
+ * after the callback returns. */
+std::atomic<int> active_gate_fd{-1};
+std::atomic<int> active_done_fd{-1};
+
+void write_byte(int fd, char byte) noexcept;
+
 void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
 {
     registrations.fetch_add(1U);
@@ -359,6 +406,23 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
     remember(id_, held);
     if (mode_ == "throw-after")
         throw std::runtime_error("mock registration exception after retaining a reference");
+    if (mode_ == "throw-active") {
+        const int gate = active_gate_fd.exchange(-1);
+        const int done = active_done_fd.exchange(-1);
+        if (gate < 0 || done < 0) forbidden("throw-active without a configured gate");
+        /* The provider thread holds ONLY the retained callback and a raw
+         * pointer to endpoint-owned storage: never the endpoint itself. */
+        ComplexI16 *const samples = owned_;
+        std::thread{[held, samples, done]() {
+            DataReadyCallback& target = held->reference ? *held->reference : held->copy;
+            target(rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
+            write_byte(done, 'K');
+        }}.detach();
+        char byte;
+        ssize_t result;
+        do { result = read(gate, &byte, 1U); } while (result < 0 && errno == EINTR);
+        throw std::runtime_error("mock registration exception with an active callback");
+    }
     if (mode_ == "sync") {
         ComplexI16 samples[2] = {ComplexI16{77, -77}, ComplexI16{-1, 1}};
         invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
@@ -744,4 +808,31 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_arm_late(
         return 0;
     }
     return 1;
+}
+
+/* Invokes endpoint `id`'s retained callback with its ENDPOINT-OWNED sample
+ * page. The temporary endpoint shared_ptr is dropped BEFORE the invocation,
+ * so during the callback the bridge endpoint owner is the only thing keeping
+ * the endpoint, and therefore the page, alive. */
+extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit_owned(std::uint64_t id)
+{
+    std::shared_ptr<RetainedCallback> held;
+    ComplexI16 *samples = nullptr;
+    {
+        auto endpoint = find_endpoint(id);
+        if (!endpoint || !(held = endpoint->retained())) return 0;
+        samples = endpoint->owned_samples_page();
+        endpoint.reset();
+    }
+    if (samples == nullptr) return 0;
+    invoke_held(held, rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
+    return 1;
+}
+
+/* Configures the next "throw-active" registration's gate and done pipes. */
+extern "C" __attribute__((visibility("default"))) void mock_rf_rx_set_active_throw(
+    int gate_fd, int done_fd)
+{
+    active_done_fd.store(done_fd);
+    active_gate_fd.store(gate_fd);
 }

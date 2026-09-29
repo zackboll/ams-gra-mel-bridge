@@ -2855,14 +2855,18 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_get_counters(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
-/* Idempotent; sets *endpoint to NULL. Logical first: Closed, queued events
- * discarded, Receive woken. Then the provider ProductRxEndpoint is dropped
- * outside every bridge lock, then Close waits until no bridge callback body
- * is executing (current in_flight == 0). That drain is NOT provider callback
- * quiescence and never authorizes DSO unload; a later provider callback only
- * counts callbacks_after_close and reads no payload. Finally the RF child
- * claim is released; if it was the last child of a closed ams_mel_rf_data,
- * the deferred DataMEL::shutdown() runs here (a throwing shutdown returns
+/* Idempotent; sets *endpoint to NULL. Order: (1) logical Close: Closed,
+ * queued events discarded, Receive woken; (2) wait until no bridge callback
+ * body is executing (current in_flight == 0); (3) only then drop the
+ * provider ProductRxEndpoint, outside every bridge lock; (4) release the RF
+ * child claim. The drain precedes endpoint destruction because a callback
+ * already admitted while Receiving may still be consuming callback-scoped
+ * provider memory (samples, metadata) that the provider may own through the
+ * ProductRxEndpoint. That drain is NOT provider callback quiescence and does
+ * not relax the permanent callback-registration/DSO retention rule; a later
+ * provider callback only counts callbacks_after_close and reads no payload.
+ * If the released child was the last child of a closed ams_mel_rf_data, the
+ * deferred DataMEL::shutdown() runs here (a throwing shutdown returns
  * AMS_MEL_PROVIDER_EXCEPTION and retains the complete DataMEL graph). */
 AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_close(
     ams_mel_rf_product_rx **endpoint,

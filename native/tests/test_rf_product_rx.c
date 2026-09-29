@@ -52,6 +52,7 @@ extern int ams_mel_test_rf_rx_observer_from_last_registration(ams_mel_test_rf_rx
 extern int ams_mel_test_rf_rx_observe(const ams_mel_test_rf_rx_observer *, size_t *,
                                       uint64_t *, uint64_t *, size_t *, int *);
 extern int ams_mel_test_rf_rx_waiters(const ams_mel_test_rf_rx_observer *, size_t *);
+extern int ams_mel_test_rf_rx_drain_waiters(const ams_mel_test_rf_rx_observer *, size_t *);
 extern int ams_mel_test_rf_rx_preset_counters(const ams_mel_test_rf_rx_observer *, uint64_t);
 extern void ams_mel_test_rf_rx_observer_close(ams_mel_test_rf_rx_observer **);
 extern void ams_mel_test_rf_rx_failpoint(unsigned);
@@ -98,6 +99,30 @@ static unsigned occurrences(const char *line)
     return count;
 }
 
+/* 1-based line number of the first `line` in the lifetime log, 0 if absent.
+ * Used for ordering evidence between bridge and provider records. */
+static unsigned position(const char *line)
+{
+    char contents[16384];
+    const size_t length = strlen(line);
+    unsigned number = 0;
+    size_t size;
+    const char *cursor;
+    FILE *file = fopen(log_path, "rb");
+    CHECK(file != NULL);
+    size = fread(contents, 1, sizeof contents - 1U, file);
+    CHECK(!ferror(file) && fclose(file) == 0);
+    contents[size] = '\0';
+    for (cursor = contents; *cursor != '\0';) {
+        const char *end = strchr(cursor, '\n');
+        const size_t item = end ? (size_t)(end - cursor) : strlen(cursor);
+        ++number;
+        if (item == length && strncmp(cursor, line, length) == 0) return number;
+        cursor += item + (end ? 1U : 0U);
+    }
+    return 0U;
+}
+
 /* Reference-neutral: reads /proc/self/maps, never touches the loader. */
 static int provider_mapped(void)
 {
@@ -127,6 +152,8 @@ typedef size_t (*size_fn)(void);
 typedef uint64_t (*u64_fn)(void);
 typedef int (*emit_fn)(uint64_t, int, size_t);
 typedef int (*arm_fn)(uint64_t, int, int);
+typedef int (*emit_owned_fn)(uint64_t);
+typedef void (*active_throw_fn)(int, int);
 
 typedef struct pin {
     void *handle;
@@ -136,6 +163,8 @@ typedef struct pin {
     u64_fn last_endpoint_id;
     emit_fn emit;
     arm_fn arm_late;
+    emit_owned_fn emit_owned;
+    active_throw_fn set_active_throw;
 } pin;
 
 #define RESOLVE(field, name) do { \
@@ -162,6 +191,8 @@ static pin take_pin(void)
     RESOLVE(last_endpoint_id, "mock_rf_rx_last_endpoint_id");
     RESOLVE(emit, "mock_rf_rx_emit");
     RESOLVE(arm_late, "mock_rf_rx_arm_late");
+    RESOLVE(emit_owned, "mock_rf_rx_emit_owned");
+    RESOLVE(set_active_throw, "mock_rf_rx_set_active_throw");
     return value;
 }
 
@@ -948,36 +979,52 @@ static void *close_thread(void *raw)
 typedef struct emit_args {
     pin *p;
     uint64_t id;
-    int kind;
 } emit_args;
 
-static void *emit_thread(void *raw)
+static void *emit_owned_thread(void *raw)
 {
     emit_args *args = (emit_args *)raw;
-    CHECK(args->p->emit(args->id, args->kind, 0U) == 1);
+    CHECK(args->p->emit_owned(args->id) == 1);
     return NULL;
 }
 
-static int observed_closed(void *observer)
+/* Bounded wait for a STATE (a Close/cleanup thread blocked in the drain);
+ * never ordering evidence by itself. */
+static int one_drain_waiter(void *observer)
 {
-    size_t in_flight, queue;
-    uint64_t received, after;
-    int closed = 0;
-    CHECK(ams_mel_test_rf_rx_observe((ams_mel_test_rf_rx_observer *)observer, &in_flight,
-                                     &received, &after, &queue, &closed) == 1);
-    return closed;
+    size_t waiters = 0;
+    CHECK(ams_mel_test_rf_rx_drain_waiters((ams_mel_test_rf_rx_observer *)observer,
+                                           &waiters) == 1);
+    return waiters == 1U;
 }
 
-static void test_mid_callback_close(void)
+static void expect_order(const char *first, const char *second)
 {
-    ams_mel_rf_data *data = open_rx("rx:ok");
+    const unsigned a = position(first), b = position(second);
+    if (a == 0U || b == 0U || a >= b)
+        fprintf(stderr, "order: %s@%u must precede %s@%u\n", first, a, second, b);
+    CHECK(a != 0U && b != 0U && a < b);
+}
+
+enum { MID_PASS = 0, MID_REVOKED_EARLY = 20 };
+
+/* The defining drain-before-destroy test. A provider thread invokes the
+ * callback with ENDPOINT-OWNED samples after dropping its own endpoint
+ * reference, so only the bridge endpoint owner keeps that page valid. The
+ * bridge holds the callback after it observed Receiving and before any
+ * sample read. Returns MID_REVOKED_EARLY (without releasing the callback
+ * into a PROT_NONE page) if the endpoint-owned storage was revoked while
+ * that callback was still in flight: the old, unsafe Close order. */
+static int run_mid_callback(void)
+{
+    ams_mel_rf_data *data = open_rx("rx:ok:owned");
     pin p = take_pin();
     ams_mel_rf_product_rx_info_v1 info;
     ams_mel_rf_product_rx *endpoint = open_endpoint(data, 4U, 16U, &info);
     ams_mel_test_rf_rx_observer *observer = NULL;
     int entered[2], release[2], closed_pipe[2];
     pthread_t emitter, closer;
-    emit_args emit = {NULL, 0U, EMIT_RICH};
+    emit_args emit = {NULL, 0U};
     close_args closing;
     char byte;
     size_t in_flight, queue;
@@ -988,43 +1035,191 @@ static void test_mid_callback_close(void)
     ams_mel_test_rf_rx_hold_next(entered[1], release[0]);
     emit.p = &p;
     emit.id = info.endpoint_id;
-    CHECK(pthread_create(&emitter, NULL, emit_thread, &emit) == 0);
-    CHECK(read(entered[0], &byte, 1U) == 1); /* callback is in_flight */
+    CHECK(pthread_create(&emitter, NULL, emit_owned_thread, &emit) == 0);
+    /* 4. The callback is in_flight, observed Receiving, and is held before
+     *    build_event reads the endpoint-owned samples. */
+    CHECK(read(entered[0], &byte, 1U) == 1);
     CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
                                      &closed) == 1);
     CHECK(in_flight == 1U && received == 1U && closed == 0);
 
+    /* 5-6. Close: Closed, Receive woken, then waiting in the drain. */
     closing.endpoint = endpoint;
     closing.done_fd = closed_pipe[1];
     closing.status = AMS_MEL_INTERNAL_ERROR;
     endpoint = NULL;
     CHECK(pthread_create(&closer, NULL, close_thread, &closing) == 0);
-    /* Logical Close and provider endpoint destruction happen immediately... */
-    CHECK(eventually(observed_closed, observer));
-    CHECK(eventually(endpoint_destroyed, &p));
-    CHECK(eventually(log_has, "rf_rx_endpoint_destroyed"));
-    /* ...but Close has NOT returned while the held callback is in flight.
-     * poll() only bounds how long non-return is observed; correctness does
-     * not depend on it (the callback cannot leave before the release byte). */
-    {
-        struct pollfd pending = {0, POLLIN, 0};
-        pending.fd = closed_pipe[0];
-        CHECK(poll(&pending, 1U, 100) == 0);
-        CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
-                                         &closed) == 1);
-        CHECK(in_flight == 1U && closed == 1);
-    }
+    CHECK(eventually(one_drain_waiter, observer));
+
+    /* 7. Close is blocked in the drain while the callback is held. Everything
+     *    Close does before the drain has already happened, so under the old
+     *    order the endpoint-owned page is already revoked here. */
+    CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
+                                     &closed) == 1);
+    CHECK(in_flight == 1U && closed == 1 && queue == 0U);
+    CHECK(occurrences("rf_rx_held_callback_released") == 0U);
+    if (occurrences("rf_rx_endpoint_buffer_revoked") != 0U ||
+        occurrences("rf_rx_endpoint_destroyed") != 0U)
+        return MID_REVOKED_EARLY; /* the held callback is never released */
+    CHECK(p.endpoints_destroyed() == 0U);
+
+    /* 8-13. Release: the callback copies from the still-valid page, sees
+     *       Closed, publishes nothing, leaves in_flight; only then is the
+     *       endpoint destroyed and its page revoked; then Close returns. */
     CHECK(write(release[1], "r", 1U) == 1);
     CHECK(read(closed_pipe[0], &byte, 1U) == 1);
     CHECK(pthread_join(closer, NULL) == 0 && pthread_join(emitter, NULL) == 0);
     CHECK(closing.status == AMS_MEL_OK && closing.endpoint == NULL);
     CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
                                      &closed) == 1);
-    /* The held callback published nothing after Close. */
-    CHECK(in_flight == 0U && queue == 0U && received == 1U && after == 1U);
+    CHECK(in_flight == 0U && queue == 0U && received == 1U && after == 1U && closed == 1);
+    CHECK(occurrences("rf_rx_endpoint_buffer_revoked") == 1U);
+    CHECK(occurrences("rf_rx_endpoint_destroyed") == 1U && p.endpoints_destroyed() == 1U);
+    expect_order("rf_rx_held_callback_released", "rf_rx_held_callback_left_in_flight");
+    expect_order("rf_rx_held_callback_left_in_flight", "rf_rx_endpoint_buffer_revoked");
+    expect_order("rf_rx_endpoint_buffer_revoked", "rf_rx_endpoint_destroyed");
     ams_mel_test_rf_rx_observer_close(&observer);
     close_data(&data);
+    CHECK(occurrences("rf_data_destroyed") == 1U);
+    check_no_forbidden(&p);
     drop_pin(&p);
+    CHECK(provider_mapped() && occurrences("library_unloaded") == 0U);
+    return MID_PASS;
+}
+
+static void test_mid_callback_close(void) { CHECK(run_mid_callback() == MID_PASS); }
+
+/* TEST-build destructive control 3 restores the old order (Closed, destroy
+ * ProductRxEndpoint, then drain) in a forked child. The child must detect
+ * endpoint-owned storage revoked while the held pre-Close callback is still
+ * in flight and before its release. */
+static void test_negative_old_close_order(void)
+{
+    pid_t child;
+    int status = 0;
+    fflush(NULL);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        ams_mel_test_rf_rx_negative_control(3U);
+        _exit(run_mid_callback());
+    }
+    CHECK(waitpid(child, &status, 0) == child);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != MID_REVOKED_EARLY)
+        fprintf(stderr, "negative control 3: exited=%d code=%d signaled=%d signal=%d\n",
+                WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+                WIFSIGNALED(status), WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == MID_REVOKED_EARLY);
+    CHECK(occurrences("rf_rx_endpoint_buffer_revoked") == 1U);
+    CHECK(occurrences("rf_rx_endpoint_destroyed") == 1U);
+    CHECK(occurrences("rf_rx_held_callback_released") == 0U);
+    CHECK(occurrences("rf_rx_held_callback_left_in_flight") == 0U);
+    printf("negative control 3 detected: endpoint-owned provider storage revoked while "
+           "a pre-Close callback was still in flight\n");
+}
+
+/* Registration throws while a provider-started callback is inside the
+ * bridge Receiving body reading ENDPOINT-OWNED samples. */
+typedef struct claim_args {
+    ams_mel_rf_product_rx_request *request;
+    ams_mel_rf_product_rx *endpoint;
+    ams_mel_rf_product_rx_info_v1 info;
+    char diagnostic[128];
+    ams_mel_status_t status;
+    int done_fd;
+} claim_args;
+
+static void *claim_thread(void *raw)
+{
+    claim_args *args = (claim_args *)raw;
+    args->status = ams_mel_rf_product_rx_request_claim(args->request, &args->endpoint,
+                                                       &args->info, args->diagnostic,
+                                                       sizeof args->diagnostic, NULL);
+    CHECK(write(args->done_fd, "c", 1U) == 1);
+    return NULL;
+}
+
+static int one_registration(void *unused)
+{
+    (void)unused;
+    return ams_mel_test_rf_rx_permanent_registrations() == 1U;
+}
+
+static void test_registration_throw_active(void)
+{
+    ams_mel_rf_data *data = open_rx("rx:ok:throw-active");
+    pin p = take_pin();
+    ams_mel_rf_product_rx_request *request = submit(data, 4U, 16U);
+    ams_mel_test_rf_rx_observer *observer = NULL;
+    int entered[2], release[2], gate[2], done[2], claimed[2], late_gate[2], late_done[2];
+    pthread_t claimer;
+    claim_args args;
+    char byte = 0;
+    size_t in_flight, queue;
+    uint64_t received, after;
+    int closed;
+    uint64_t id;
+    wait_ok(request);
+    id = p.last_endpoint_id();
+    CHECK(pipe(entered) == 0 && pipe(release) == 0 && pipe(gate) == 0 && pipe(done) == 0);
+    CHECK(pipe(claimed) == 0 && pipe(late_gate) == 0 && pipe(late_done) == 0);
+    ams_mel_test_rf_rx_hold_next(entered[1], release[0]);
+    p.set_active_throw(gate[0], done[1]);
+    memset(&args, 0, sizeof args);
+    args.request = request;
+    args.info.endpoint_id = 5U;
+    args.status = AMS_MEL_OK;
+    args.done_fd = claimed[1];
+    CHECK(pthread_create(&claimer, NULL, claim_thread, &args) == 0);
+
+    /* The provider callback is inside the bridge (in_flight, saw Receiving)
+     * and held before reading the endpoint-owned samples. */
+    CHECK(read(entered[0], &byte, 1U) == 1);
+    /* Only now does setDataReadyCallback throw. */
+    CHECK(write(gate[1], "t", 1U) == 1);
+    CHECK(eventually(one_registration, NULL));
+    CHECK(ams_mel_test_rf_rx_observer_from_last_registration(&observer) == 1);
+    CHECK(eventually(one_drain_waiter, observer));
+    CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
+                                     &closed) == 1);
+    CHECK(in_flight == 1U && received == 1U && closed == 1 && queue == 0U);
+    /* The provider endpoint is NOT destroyed while the callback is held. */
+    CHECK(occurrences("rf_rx_endpoint_buffer_revoked") == 0U);
+    CHECK(occurrences("rf_rx_endpoint_destroyed") == 0U && p.endpoints_destroyed() == 0U);
+
+    CHECK(write(release[1], "r", 1U) == 1);
+    CHECK(read(done[0], &byte, 1U) == 1 && byte == 'K'); /* provider callback returned */
+    CHECK(read(claimed[0], &byte, 1U) == 1);
+    CHECK(pthread_join(claimer, NULL) == 0);
+    CHECK(args.status == AMS_MEL_PROVIDER_EXCEPTION);
+    CHECK(args.endpoint == NULL && args.info.endpoint_id == 5U);
+    CHECK(strstr(args.diagnostic, "mock registration exception with an active callback") !=
+          NULL);
+    CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
+                                     &closed) == 1);
+    CHECK(in_flight == 0U && received == 1U && after == 1U && queue == 0U && closed == 1);
+    CHECK(occurrences("rf_rx_endpoint_buffer_revoked") == 1U && p.endpoints_destroyed() == 1U);
+    expect_order("rf_rx_held_callback_released", "rf_rx_held_callback_left_in_flight");
+    expect_order("rf_rx_held_callback_left_in_flight", "rf_rx_endpoint_buffer_revoked");
+    expect_order("rf_rx_endpoint_buffer_revoked", "rf_rx_endpoint_destroyed");
+    CHECK(p.registrations() == 1U && ams_mel_test_rf_rx_permanent_registrations() == 1U);
+
+    /* The child claim was released: the parent closes normally. */
+    CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+    close_data(&data);
+    CHECK(p.shutdown_calls() == 1U && occurrences("rf_data_destroyed") == 1U);
+
+    /* A late callback after endpoint AND DataMEL destruction takes the
+     * Closed fast path (metadata NULL, PROT_NONE samples, never read). */
+    CHECK(p.arm_late(id, late_gate[0], late_done[1]) == 1);
+    drop_pin(&p);
+    CHECK(write(late_gate[1], "g", 1U) == 1);
+    CHECK(read(late_done[0], &byte, 1U) == 1 && byte == 'K');
+    CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue,
+                                     &closed) == 1);
+    CHECK(in_flight == 0U && received == 2U && after == 2U && queue == 0U && closed == 1);
+    ams_mel_test_rf_rx_observer_close(&observer);
+    CHECK(provider_mapped() && occurrences("library_unloaded") == 0U);
 }
 
 /* ---------------------------------------------------------- late start */
@@ -1440,7 +1635,9 @@ int main(int argc, char **argv)
         test_registration_throw("rx:ok:throw-before");
     else if (strcmp(name, "registration-throw-after") == 0)
         test_registration_throw("rx:ok:throw-after");
+    else if (strcmp(name, "registration-throw-active") == 0) test_registration_throw_active();
     else if (strcmp(name, "mid-callback-close") == 0) test_mid_callback_close();
+    else if (strcmp(name, "negative-old-close-order") == 0) test_negative_old_close_order();
     else if (strcmp(name, "late-copy") == 0) test_late("rx:ok:copy");
     else if (strcmp(name, "late-reference") == 0) test_late("rx:ok:reference");
     else if (strcmp(name, "late-move") == 0) test_late("rx:ok:move");

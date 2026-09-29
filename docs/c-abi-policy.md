@@ -1174,9 +1174,11 @@ changes.
   and wakes it (`AMS_MEL_STREAM_STOPPED`). `get_counters` may run during
   callbacks but must be externally serialized with endpoint Close.
 * **Endpoint Close.** Logical first (Closed, queue discarded, Receive woken),
-  then the provider endpoint is dropped outside every bridge mutex, then Close
-  waits for current `in_flight == 0`. That drain is not provider quiescence and
-  never authorizes DSO unload. The final child release may run the deferred
+  then Close waits for current `in_flight == 0`, and only then is the provider
+  endpoint dropped outside every bridge mutex: a callback admitted while
+  Receiving may still borrow endpoint-owned provider data. A throwing
+  registration's cleanup uses the same order. That drain is not provider
+  quiescence and never authorizes DSO unload. The final child release may run the deferred
   `DataMEL::shutdown()`; a throw there returns `AMS_MEL_PROVIDER_EXCEPTION`.
 * **Event.** Owns only copies; view and Close are provider-free. It stays
   readable after endpoint Close, RF Data Close, DataMEL destruction, and

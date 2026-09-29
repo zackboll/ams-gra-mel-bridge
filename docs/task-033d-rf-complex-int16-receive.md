@@ -188,12 +188,51 @@ failure, and any other exception counts as malformed. Counters saturate at
 Endpoint Close runs in four steps:
 
 1. Logical close: set Closed, swap out the queue, and wake Receive.
-2. Drop the provider endpoint outside every mutex.
-3. Wait until the current `in_flight == 0`.
+2. Wait until the current `in_flight == 0`.
+3. Only then drop the provider endpoint, outside every mutex.
 4. Release the child claim, which may run the deferred shutdown.
 
-The drain in step 3 is not provider quiescence and never authorizes a DSO
-unload.
+Steps 1-2 are one private helper, `logical_close_and_drain`, shared by
+endpoint Close and throwing-registration cleanup. It never destroys the
+endpoint, releases the claim, or calls the provider. If it cannot establish
+Closed + drained, the endpoint and child claim are retained forever.
+
+### Corrective: drain before endpoint destruction
+
+**Root cause.** The first 033D head closed in the order Closed, destroy
+ProductRxEndpoint, drain, release claim. A callback that had already
+incremented `in_flight` and observed Receiving could still be reading its
+`JobDataPointer` samples or `ProductRxMetadata`. Task 033C classifies both as
+callback-scoped provider data, which a provider may back with
+ProductRxEndpoint-owned storage. Destroying the endpoint first could therefore
+free that storage under a running callback. The permanent registration and DSO
+pin keep the callback object, its state, and provider code alive, but they
+cannot keep endpoint-owned storage alive once the endpoint is destroyed.
+
+**Correction.** The order is now Closed, drain, destroy ProductRxEndpoint,
+release claim, both for endpoint Close and for cleanup after
+`setDataReadyCallback` throws. A provider may start a callback asynchronously
+and then throw, and that callback may still be reading endpoint-owned data.
+
+**What the drain proves.** No callback that entered while the endpoint was
+Receiving is still reading callback-scoped provider data when endpoint
+destruction begins. It does **not** prove provider callback quiescence and does
+not authorize a DSO unload. Callbacks that start later (after the drain, or
+during or after endpoint or DataMEL destruction) increment `in_flight`, see
+Closed before any metadata, payload, or allocation access, count
+`callbacks_after_close`, and return. They need no endpoint-owned storage. The
+permanent exact-lvalue/state/DSO retention is unchanged.
+
+**Corrective validation (local).** GCC Debug and Release: 246/246, and
+`--parallel 4 --repeat until-fail:50` PASS. Clang 19 Debug and Release:
+246/246. The ten high-risk cases (`mid-callback-close`,
+`registration-throw-active`, `late-copy`, `late-reference`, `late-move`, the
+three negative controls, `parent-first`, `pending-parent-first`) pass
+`--repeat until-fail:100`. The 32 `rf-product-rx-*` cases pass under TSan and
+ASan/UBSan (LeakSanitizer off: permanent registrations are intentionally never
+freed). Real Squall `make test-squall-rf-rx` and `make test-squall-rf-c` PASS.
+ABI 0.1, with 115 production exports byte-identical to the previous head. No
+vendor, closure, Ada, Rust, or Python source changes.
 
 ## Mock provider implementation closure delta
 
@@ -220,7 +259,7 @@ Common MEL, AMS Math, AMS VITA, and Boost sets are unchanged.
 * **Forbidden in production.** The mock's `getRDMAMemoryRegionParams()` counts
   calls and records `rf_forbidden_call`, and every contract case asserts zero.
 
-## Deterministic evidence (mock provider, 30 `rf-product-rx-*` cases)
+## Deterministic evidence (mock provider, 32 `rf-product-rx-*` cases)
 
 Rich metadata used by `receive`:
 
@@ -244,7 +283,9 @@ Rich metadata used by `receive`:
 | `unclaimed`, `unclaimed-parent-first`, `never-ready` | The worker destroys the endpoint with zero registrations, and the DSO unloads. A never-ready future stays retained, with no shutdown and no unload. |
 | `sync-callback` | A callback delivered inside `setDataReadyCallback` is queued and received right after Claim. |
 | `registration-throw-before`, `-after` | Both are retained permanently, no endpoint is published, and the failure is cached. A later retained-reference callback is safe (Closed, `callbacks_after_close` +1). |
-| `mid-callback-close` | A pipe holds a callback inside the bridge (`in_flight` 1). Close sets Closed and destroys the provider endpoint immediately, but has not returned (poll-bounded observation). After release, Close returns and the held callback has published nothing. |
+| `registration-throw-active` | `setDataReadyCallback` starts a provider callback on the endpoint-owned page, which is held inside the bridge (`in_flight` 1, saw Receiving). Only then does registration throw. Claim's cleanup blocks in the drain with Closed and **no** endpoint destruction or page revoke. After release, the callback copies from the valid page and publishes nothing. The log orders release, then leaving `in_flight`, then page revoke, then endpoint destruction. Claim returns `PROVIDER_EXCEPTION`, publishes no endpoint, keeps one permanent registration, and releases the child claim (parent Close shuts down normally). A later late callback takes the Closed fast path. |
+| `mid-callback-close` | Defining drain-before-destroy test, using the endpoint-owned page (below). |
+| `negative-old-close-order` | Forked destructive control (below). |
 | `late-copy`, `late-reference`, `late-move` | The defining late-start test (below). |
 | `negative-no-library-pin`, `negative-no-exact-lvalue` | Destructive controls in forked children (below). |
 | `no-callback-unload` | 033B regression: open, snapshot, Close destroys the DataMEL and unloads the DSO, with zero registrations. |
@@ -252,6 +293,42 @@ Rich metadata used by `receive`:
 | `concurrent` | Deterministic overlap (A held while B completes), plus 4 unserialized threads x 500 callbacks. Counters are exact (2000/2000) and every event is independent. |
 | `receive-close` | Close wakes a blocked Receive (`STREAM_STOPPED`) and discards queued products. |
 | `saturation`, `deferred-shutdown-throw`, `worker-shutdown-throw`, `worker-launch-failure` | Counters saturate. A throwing deferred shutdown on the public Close (`PROVIDER_EXCEPTION`) or on the worker retains the full graph, with no destroy and no unload. A failed worker launch publishes nothing and pins. |
+
+### Endpoint-owned buffer (`mid-callback-close`)
+
+In modes `owned` and `throw-active`, the mock `ProductRxEndpoint` owns one
+`mmap` page of constructed `MELComplex<int16_t>` samples. Its destructor
+`mprotect`s the page `PROT_NONE` and records `rf_rx_endpoint_buffer_revoked`,
+then `rf_rx_endpoint_destroyed`. The page is never unmapped (the test is
+process-isolated), so a stale read faults deterministically and never depends
+on heap reuse. `mock_rf_rx_emit_owned` takes the retained callback and the page
+pointer, then drops its temporary endpoint `shared_ptr` **before** invoking.
+During the callback, only the bridge endpoint owner keeps the page valid. The
+old DSO-global `reuse_buffer` never dies with an endpoint, so it cannot prove
+this.
+
+Sequence, with ordering taken from pipes, observers, and log positions (not
+sleeps):
+
+1. Hold-next is armed, and the provider emits on the endpoint-owned page.
+2. The callback is `in_flight` 1, has observed Receiving, and is held before
+   `build_event`.
+3. Close runs on a thread and blocks in the drain (observed via the test-only
+   `ams_mel_test_rf_rx_drain_waiters == 1`; a bounded poll awaits only this
+   state). At that point: Closed, `in_flight` 1, no
+   `rf_rx_held_callback_released`, and **zero** `rf_rx_endpoint_destroyed`
+   and `rf_rx_endpoint_buffer_revoked`.
+4. The release lets the callback copy from the still-valid page, see Closed,
+   queue nothing (`callbacks_after_close` +1, `products_queued` unchanged),
+   and leave `in_flight`.
+5. Only then is the endpoint destroyed and the page revoked, and then Close
+   returns `OK`.
+
+Log order is required exactly: `rf_rx_held_callback_released` <
+`rf_rx_held_callback_left_in_flight` (written under the state mutex before the
+decrement) < `rf_rx_endpoint_buffer_revoked` < `rf_rx_endpoint_destroyed`.
+The two `rf_rx_held_*` records are written by the bridge only in
+`AMS_MEL_ENABLE_TEST_FAILPOINTS` builds.
 
 ### Late-start after zero in-flight (`late-copy`, `late-reference`, `late-move`)
 
@@ -290,6 +367,17 @@ lifetime proof.
   and `rf_data_destroyed` came first. `library_unloaded` is recorded inside
   `dlclose` before `munmap`, and a pinned run never unmaps, so this path
   cannot pass vacuously.
+* **`negative-old-close-order`.** Test-build control 3 restores the old order
+  inside `logical_close_and_drain` (Closed, destroy endpoint, then drain). A
+  forked child runs the `mid-callback-close` sequence. While the callback is
+  still held (`in_flight` 1, before its release signal), it detects
+  `rf_rx_endpoint_buffer_revoked` and exits 20 without releasing the callback
+  into the PROT_NONE page, so a crash is never the oracle. The parent requires
+  exit 20, one revoke, one destruction, and no `rf_rx_held_callback_*`
+  record. Applied to production directly (mutation: destroy the endpoint
+  before the drain), the same drop makes `mid-callback-close` and
+  `registration-throw-active` fail. This was verified locally, and the
+  mutation was reverted.
 * **`negative-no-exact-lvalue`.** The DSO and callback state stay retained,
   but the provider is handed a temporary copy that is destroyed after
   registration (its storage is scrubbed and never freed). The

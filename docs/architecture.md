@@ -955,6 +955,46 @@ ams_mel_rf_product_rx_event -----> owned sample/stream-ID vectors only
   distinct from the Task 033B full `RfDataState` emergency retention, which
   happens only when `shutdown()` throws.
 
+* **Drain current callbacks BEFORE endpoint destruction.** Callback-scoped
+  provider data (`JobDataPointer` samples, `ProductRxMetadata`) may be backed
+  by storage the ProductRxEndpoint owns. The permanent registration keeps the
+  callback object, its state, and provider machine code alive, but not that
+  storage. Endpoint Close and throwing-registration cleanup therefore share
+  one private `logical_close_and_drain` step and then destroy the endpoint:
+
+```text
+provider callback that saw Receiving
+              |
+              | may borrow provider data
+              v
+          in_flight > 0
+
+Endpoint Close:
+    Closed
+      |
+      v
+drain CURRENT callbacks
+      |
+      | no pre-Close callback still borrows provider payload
+      v
+destroy ProductRxEndpoint
+      |
+      v
+release child claim
+
+Late callbacks may still start
+      |
+      v
+Closed fast-path only
+(no provider payload access)
+
+Permanent callback + state + DSO retention remains
+```
+
+  The drain is not provider callback quiescence and never authorizes DSO
+  unload. If Closed + drained cannot be established, the endpoint and child
+  claim are retained forever.
+
 The Task 033C design note below is preserved as the historical record. Where it
 says the pin "retains only the library", 033D implementation evidence proves
 the stronger rule above: the exact callback lvalue and its callback state are
@@ -989,15 +1029,15 @@ that endpoint destruction makes callbacks quiescent. So:
 * Endpoint creation is a `RequestFor` future and follows the existing request
   owner + completion worker + `wait(timeout)` model, not a blocking open.
 * Close is logical first: it stops public delivery under the callback-state
-  mutex, then drops the provider endpoint outside every bridge mutex, then
-  drains the bridge's own in-flight callback count. Bridge-state safety never
-  depends on provider quiescence. Squall's receiver-thread join is
+  mutex, then drains the bridge's own in-flight callback count, and only then
+  drops the provider endpoint outside every bridge mutex (033D corrective; see
+  below). Bridge-state safety never depends on provider quiescence. Squall's receiver-thread join is
   provider-specific evidence only and is never used to relax a production rule.
 * The DSO stays loaded while any endpoint, create request, or worker exists.
   **Once a callback has been successfully registered**, or
   `setDataReadyCallback` threw with unprovable registration state, a dedicated
   provider-library pin keeps the DSO mapped for the rest of the process.
-  Endpoint destruction plus `in_flight == 0` proves only that no bridge
+  `in_flight == 0` plus endpoint destruction proves only that no bridge
   callback body is running *now*. It does not prove that a provider-held
   `std::function` copy can never start a new invocation, which would run
   through provider code (thread, call site, dispatch machinery). So it is **not**
@@ -1010,9 +1050,9 @@ callback registered
        |                        |
 logical endpoint Close          |
        |                        |
-endpoint destruction            |
-       |                        |
 bridge callback drain           |
+       |                        |
+endpoint destruction            |
        |                        |
 bridge resources reclaimable    |
 (DataMEL may shut down normally |

@@ -20,6 +20,11 @@
   - Element-wise ComplexINT16 copies, a fixed lossless metadata subset with
     fail-closed `std::any`/stab-point/receive-event/association handling, a
     bounded DROP-INCOMING queue, and six saturating counters.
+  - Endpoint Close and throwing-registration cleanup set Closed, drain the
+    current bridge callbacks, and only then destroy the provider
+    ProductRxEndpoint and release the child claim: a callback admitted while
+    Receiving may still borrow endpoint-owned provider data. The drain is not
+    provider quiescence and does not relax the permanent retention.
   - Parent-first DataMEL lifetime: `RfDataState` counts children, and the
     final child runs the deferred `shutdown()` exactly once.
     `RfDataState::library` is now `shared_ptr<SharedLibrary>`, and 033B
@@ -29,9 +34,10 @@
     test-provider implementation support. The 033C consumer closure check still
     pins 25 RF headers / 539 union. Production never calls
     `getRDMAMemoryRegionParams()`.
-  - 30 process-isolated `rf-product-rx-*` C11 cases, including the late-start
-    callback with a PROT_NONE payload trap, copy/reference/move retention, and
-    two forked destructive negative controls. Adds the opt-in
+  - 32 process-isolated `rf-product-rx-*` C11 cases, including the late-start
+    callback with a PROT_NONE payload trap, copy/reference/move retention, an
+    endpoint-owned (revoked-on-destruction) sample page for mid-callback Close
+    and registration-throw, and three forked destructive negative controls. Adds the opt-in
     `make test-squall-rf-rx` real Squall receive, which uses a test-only job
     helper.
   - Raw Ada FFI, `ams-mel-sys`, and private Python ctypes are synchronized
