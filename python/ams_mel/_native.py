@@ -1145,6 +1145,123 @@ ams_mel_rf_data_close = _LIBRARY.ams_mel_rf_data_close
 ams_mel_rf_data_close.argtypes = [ctypes.POINTER(RfDataHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_data_close.restype = ctypes.c_int32
 
+# Task 033D: private raw RF ProductRxEndpoint ComplexINT16 receive
+# declarations. No public Python RF API.
+RfProductRxRequestHandle = ctypes.c_void_p
+RfProductRxHandle = ctypes.c_void_p
+RfProductRxEventHandle = ctypes.c_void_p
+
+
+class RfProductRxConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("data_format", ctypes.c_uint32),
+        ("region_size_bytes", ctypes.c_uint64),
+        ("queue_capacity", ctypes.c_size_t),
+        ("max_samples_per_event", ctypes.c_size_t),
+    ]
+
+
+class RfComplexI16V1(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_int16), ("imag", ctypes.c_int16)]
+
+
+class RfComplexI16SpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfComplexI16V1)), ("size", ctypes.c_size_t)]
+
+
+class RfProductRxMetadataV1(ctypes.Structure):
+    _fields_ = [
+        ("mel_protocol_version_id", ctypes.c_uint32),
+        ("va_definition_id", ctypes.c_uint32),
+        ("va_instance_id", ctypes.c_uint32),
+        ("job_details_id", ctypes.c_uint32),
+        ("job_interval_id", ctypes.c_uint32),
+        ("lf_type_id", ctypes.c_uint32),
+        ("lf_instance_id", ctypes.c_uint32),
+        ("phase_coherence_with_prior", ctypes.c_uint32),
+        ("first_rx_event_start_s", ctypes.c_int64),
+        ("first_rx_event_start_fs", ctypes.c_int64),
+        ("rx_stream_ids", U32SpanV1),
+    ]
+
+
+class RfProductRxEventV1(ctypes.Structure):
+    _fields_ = [
+        ("endpoint_id", ctypes.c_uint64),
+        ("data_format", ctypes.c_uint32),
+        ("samples", RfComplexI16SpanV1),
+        ("metadata", RfProductRxMetadataV1),
+    ]
+
+
+class RfProductRxInfoV1(ctypes.Structure):
+    _fields_ = [("endpoint_id", ctypes.c_uint64), ("assigned_data_format", ctypes.c_uint32)]
+
+
+class RfProductRxRequestResultV1(ctypes.Structure):
+    _fields_ = [("error_code", ctypes.c_uint32)]
+
+
+class RfProductRxCountersV1(ctypes.Structure):
+    _fields_ = [
+        ("callbacks_received", ctypes.c_uint64),
+        ("products_queued", ctypes.c_uint64),
+        ("products_dropped_queue_full", ctypes.c_uint64),
+        ("malformed_or_unsupported", ctypes.c_uint64),
+        ("allocation_failures", ctypes.c_uint64),
+        ("callbacks_after_close", ctypes.c_uint64),
+    ]
+
+
+ams_mel_rf_data_submit_product_rx = _LIBRARY.ams_mel_rf_data_submit_product_rx
+ams_mel_rf_data_submit_product_rx.argtypes = [
+    RfDataHandle, ctypes.POINTER(RfProductRxConfigV1),
+    ctypes.POINTER(RfProductRxRequestHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_submit_product_rx.restype = ctypes.c_int32
+ams_mel_rf_product_rx_request_wait = _LIBRARY.ams_mel_rf_product_rx_request_wait
+ams_mel_rf_product_rx_request_wait.argtypes = [
+    RfProductRxRequestHandle, ctypes.c_uint32, ctypes.POINTER(RfProductRxRequestResultV1),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_request_wait.restype = ctypes.c_int32
+ams_mel_rf_product_rx_request_claim = _LIBRARY.ams_mel_rf_product_rx_request_claim
+ams_mel_rf_product_rx_request_claim.argtypes = [
+    RfProductRxRequestHandle, ctypes.POINTER(RfProductRxHandle),
+    ctypes.POINTER(RfProductRxInfoV1), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_request_claim.restype = ctypes.c_int32
+ams_mel_rf_product_rx_request_close = _LIBRARY.ams_mel_rf_product_rx_request_close
+ams_mel_rf_product_rx_request_close.argtypes = [
+    ctypes.POINTER(RfProductRxRequestHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_request_close.restype = ctypes.c_int32
+ams_mel_rf_product_rx_receive = _LIBRARY.ams_mel_rf_product_rx_receive
+ams_mel_rf_product_rx_receive.argtypes = [
+    RfProductRxHandle, ctypes.c_uint32, ctypes.POINTER(RfProductRxEventHandle),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_receive.restype = ctypes.c_int32
+ams_mel_rf_product_rx_get_counters = _LIBRARY.ams_mel_rf_product_rx_get_counters
+ams_mel_rf_product_rx_get_counters.argtypes = [
+    RfProductRxHandle, ctypes.POINTER(RfProductRxCountersV1), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_get_counters.restype = ctypes.c_int32
+ams_mel_rf_product_rx_close = _LIBRARY.ams_mel_rf_product_rx_close
+ams_mel_rf_product_rx_close.argtypes = [ctypes.POINTER(RfProductRxHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_product_rx_close.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_view = _LIBRARY.ams_mel_rf_product_rx_event_view
+ams_mel_rf_product_rx_event_view.argtypes = [
+    RfProductRxEventHandle, ctypes.POINTER(ctypes.POINTER(RfProductRxEventV1)),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_view.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_close = _LIBRARY.ams_mel_rf_product_rx_event_close
+ams_mel_rf_product_rx_event_close.argtypes = [
+    ctypes.POINTER(RfProductRxEventHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -1252,4 +1369,13 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_mfa_info_view",
     "ams_mel_rf_mfa_info_close",
     "ams_mel_rf_data_close",
+    "ams_mel_rf_data_submit_product_rx",
+    "ams_mel_rf_product_rx_request_wait",
+    "ams_mel_rf_product_rx_request_claim",
+    "ams_mel_rf_product_rx_request_close",
+    "ams_mel_rf_product_rx_receive",
+    "ams_mel_rf_product_rx_get_counters",
+    "ams_mel_rf_product_rx_close",
+    "ams_mel_rf_product_rx_event_view",
+    "ams_mel_rf_product_rx_event_close",
 )

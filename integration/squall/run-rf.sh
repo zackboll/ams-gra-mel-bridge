@@ -5,7 +5,18 @@
 # image), starts only squall-rf (simulated rf_environment) and Couloir, and
 # runs integration/squall/squall_rf_c_smoke.c against the production facade.
 # No ProductRxEndpoint, UDP IQ, jobs, or VADB are involved.
+#
+# Task 033D: `run-rf.sh rx` (make test-squall-rf-rx) instead runs
+# integration/squall/squall_rf_rx_c.c: a real ComplexINT16 ProductRxEndpoint
+# receive through the production facade. Pinned Squall drops ProductRx data
+# unless an RX job is active, so this mode also builds the TEST-ONLY
+# squall_rf_job_helper.cpp inside the pinned Squall builder stage (same
+# toolchain and exact pinned headers as the provider) and loads it with dlopen.
+# The default mode (no argument) is the unchanged Task 033B smoke.
 set -eu
+
+mode=${1:-smoke}
+case "$mode" in smoke|rx) ;; *) printf 'usage: %s [smoke|rx]\n' "$0" >&2; exit 2 ;; esac
 
 expected_commit=b1015728f904c799fa0c07489fce48e78f67845f
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -18,11 +29,14 @@ build_dir=${AMS_MEL_SQUALL_BUILD_DIR:-"$root/build/squall"}
 case "$build_dir" in /*) ;; *) build_dir="$root/$build_dir" ;; esac
 project="ams-mel-task033b-$$"
 provider_image="localhost/${project}-provider:latest"
+builder_image="localhost/${project}-builder:latest"
+builder_image_present=0
 rf_image="localhost/${project}-rf:latest"
 couloir_image="localhost/${project}-couloir:latest"
 temp_dir="$build_dir/tmp/$project"
 profile="$temp_dir/squall-rf-profile.json"
 couloir_config="$temp_dir/couloir.toml"
+rf_config="$temp_dir/rf.toml"
 runtime_override="$temp_dir/runtime.compose.override.yaml"
 runtime_compose="$temp_dir/runtime.compose.yaml"
 provider_container=
@@ -87,6 +101,7 @@ cleanup() {
   trap - EXIT INT TERM
   test -z "$provider_container" || "$runtime" rm -f "$provider_container" >/dev/null 2>&1 || true
   test "$provider_image_present" != 1 || "$runtime" image rm "$provider_image" >/dev/null 2>&1 || true
+  test "$builder_image_present" != 1 || "$runtime" image rm "$builder_image" >/dev/null 2>&1 || true
   if test "$started" = 1; then
     if test "$status" -ne 0; then
       (cd "$SQUALL_SOURCE_DIR" && compose -p "$project" -f "$runtime_compose" logs) >&2 2>&1 || true
@@ -96,7 +111,7 @@ cleanup() {
   fi
   test "$runtime_images_present" != 1 ||
     "$runtime" image rm "$rf_image" "$couloir_image" >/dev/null 2>&1 || true
-  rm -f "$profile" "$couloir_config" "$runtime_override" "$runtime_compose"
+  rm -f "$profile" "$couloir_config" "$rf_config" "$runtime_override" "$runtime_compose"
   rmdir "$temp_dir" "$build_dir/tmp" >/dev/null 2>&1 || true
   exit "$status"
 }
@@ -139,12 +154,62 @@ readelf -d "$provider" | sed -n '/NEEDED/p'
 # Production facade and the C-only client; never installed or added to CTest.
 cmake -S "$root/native" -B "$root/native/build" -DAMS_MEL_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build "$root/native/build" --parallel 2
+if test "$mode" = rx; then
+  client=squall_rf_rx_c
+else
+  client=squall_rf_c_smoke
+fi
 cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
-  -I"$root/native/include" "$root/integration/squall/squall_rf_c_smoke.c" \
+  -I"$root/native/include" "$root/integration/squall/$client.c" \
   -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c -ldl \
-  -o "$build_dir/bin/squall_rf_c_smoke"
-if readelf -d "$build_dir/bin/squall_rf_c_smoke" | grep -q 'libsquall_rf_mel'; then
-  fail "RF smoke client directly links Squall"
+  -o "$build_dir/bin/$client"
+if readelf -d "$build_dir/bin/$client" | grep -q 'libsquall_rf_mel'; then
+  fail "RF client directly links Squall"
+fi
+
+helper="$build_dir/provider/libsquall_rf_job_helper.so"
+if test "$mode" = rx; then
+  # TEST-ONLY job helper, compiled in the pinned builder stage (the provider's
+  # own toolchain, boost-devel, and the exact verified checkout headers).
+  builder_image_present=1
+  "$runtime" build -f "$SQUALL_SOURCE_DIR/Containerfile" --target builder \
+    -t "$builder_image" "$SQUALL_SOURCE_DIR"
+  rm -f "$helper"
+  "$runtime" run --rm --network none \
+    -v "$root/integration/squall:/task033d:ro,Z" -v "$build_dir/provider:/out:Z" \
+    "$builder_image" c++ -std=c++20 -O2 -shared -fPIC -Wall -Wextra -Werror \
+    -isystem /build/ams-interfaces/rf-mel/include \
+    -isystem /build/ams-interfaces/common-mel/include \
+    -isystem /build/ams-interfaces/rf-mel/ams-math/include \
+    -isystem /build/ams-interfaces/rf-mel/ams-vita/include \
+    /task033d/squall_rf_job_helper.cpp -o /out/libsquall_rf_job_helper.so
+  "$runtime" image rm "$builder_image" >/dev/null
+  builder_image_present=0
+  test -s "$helper" || fail "TEST-ONLY RF job helper was not built"
+  if readelf -d "$root/native/build/lib/libams_mel_c.so" | grep -q 'squall_rf_job_helper'; then
+    fail "production facade links the test-only job helper"
+  fi
+  if nm -D --defined-only "$root/native/build/lib/libams_mel_c.so" | grep -q 'squall_rf_test_job'; then
+    fail "production facade exports test-only job helper symbols"
+  fi
+fi
+
+# The smoke mounts pinned config/rf-simulated.toml unchanged. Its emitters are
+# DIS-driven and it has zero floor and zero noise, so without DIS traffic every
+# IQ sample is 0. For receive evidence that cannot pass vacuously, rx mode
+# derives a copy that changes ONLY noise_std_dev (Gaussian AWGN, so values are
+# random and never asserted). Every other key stays pinned.
+cp "$SQUALL_SOURCE_DIR/config/rf-simulated.toml" "$rf_config"
+if test "$mode" = rx; then
+  python3 - "$rf_config" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+text, count = re.subn(r"(?m)^noise_std_dev = .*$", "noise_std_dev = 0.05", text)
+if count != 1:
+    raise SystemExit("ERROR: pinned rf-simulated.toml has no unique noise_std_dev")
+open(path, "w", encoding="utf-8").write(text)
+PY
 fi
 
 # Only the simulated RF MFA (rf_environment) and Couloir, host networking.
@@ -175,7 +240,7 @@ services:
       SQUALL_RF_DATA_PORT: "$rf_data_port"
     volumes:
       - backend-sockets:/sockets
-      - $SQUALL_SOURCE_DIR/config/rf-simulated.toml:/task033b/rf.toml:ro,Z
+      - $rf_config:/task033b/rf.toml:ro,Z
 EOF
 (cd "$SQUALL_SOURCE_DIR" && compose -p "$project" -f compose.yaml -f compose.build.yaml \
   -f "$runtime_override" config) >"$runtime_compose"
@@ -228,11 +293,23 @@ repeat=${AMS_MEL_SQUALL_REPEAT:-1}
 case "$repeat" in ''|*[!0-9]*|0) fail "AMS_MEL_SQUALL_REPEAT must be a positive integer" ;; esac
 iteration=1
 while test "$iteration" -le "$repeat"; do
-  printf '\nTask-033B RF iteration %s/%s\n' "$iteration" "$repeat"
-  LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-    "$build_dir/bin/squall_rf_c_smoke" "$provider" "$profile" ||
-    fail "RF C smoke failed; see runtime logs and profile"
+  printf '\nTask-033%s RF iteration %s/%s\n' "$(test "$mode" = rx && echo D || echo B)" \
+    "$iteration" "$repeat"
+  if test "$mode" = rx; then
+    LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$build_dir/bin/$client" "$provider" "$profile" "$helper" ||
+      fail "RF ProductRx receive failed; see runtime logs and profile"
+  else
+    LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$build_dir/bin/$client" "$provider" "$profile" ||
+      fail "RF C smoke failed; see runtime logs and profile"
+  fi
   iteration=$((iteration + 1))
 done
-printf '\nPASS: Squall RF DataMEL C integration (%s iteration(s), Squall %s)\n' \
-  "$repeat" "$expected_commit"
+if test "$mode" = rx; then
+  printf '\nPASS: Squall RF ProductRxEndpoint ComplexINT16 receive (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+else
+  printf '\nPASS: Squall RF DataMEL C integration (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+fi

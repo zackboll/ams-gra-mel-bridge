@@ -2648,6 +2648,244 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_data_close(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* ------------------------------------------------------------------------
+ * Task 033D RF ProductRxEndpoint ComplexINT16 receive.
+ *
+ * DataMEL::createProductRxEndpoint(ComplexINT16, region_size_bytes, nullptr)
+ * is submitted asynchronously. The claimed endpoint receives provider
+ * data-ready callbacks; each accepted callback is copied immediately into an
+ * immutable, fully owned event on a bounded DROP-INCOMING queue. Only
+ * ComplexINT16 is supported. No RDMA, external/host buffer,
+ * getRDMAMemoryRegionParams, other JobDataFormat, RF C2, or Job API is used.
+ *
+ * Parent-first lifetime: every create request and claimed endpoint is a
+ * child of its ams_mel_rf_data. ams_mel_rf_data_close with live children
+ * consumes the public owner and returns AMS_MEL_OK; DataMEL::shutdown() runs
+ * exactly once, when the final child is released.
+ *
+ * Provider-code lifetime: pinned RF MEL has no unregister and no callback-
+ * quiescence primitive, and setDataReadyCallback takes a non-const lvalue
+ * reference that a provider may copy, move from, or keep a reference to.
+ * Once setDataReadyCallback has been called (and returned, or threw with
+ * unprovable registration state) the bridge PERMANENTLY retains the exact
+ * registered std::function object, its callback state, and the provider DSO.
+ * It does not retain the DataMEL, the ProductRxEndpoint, the public endpoint
+ * owner, or any event. This is deliberate fail-safe retention, not a leak.
+ * ------------------------------------------------------------------------ */
+
+/* Owns one asynchronous createProductRxEndpoint completion until the created
+ * endpoint is claimed or the request is closed. */
+typedef struct ams_mel_rf_product_rx_request ams_mel_rf_product_rx_request;
+/* Owns one claimed ProductRxEndpoint lifecycle. */
+typedef struct ams_mel_rf_product_rx ams_mel_rf_product_rx;
+/* Owns one immutable copied callback product. It retains no provider object,
+ * provider memory, endpoint, or DataMEL, and stays readable after endpoint
+ * Close, RF Data Close, DataMEL destruction, and provider unload. */
+typedef struct ams_mel_rf_product_rx_event ams_mel_rf_product_rx_event;
+
+/* data_format must be AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16; anything else
+ * is AMS_MEL_INVALID_ARGUMENT before any provider call. region_size_bytes is
+ * passed to the provider verbatim (it must fit size_t); the bridge assigns no
+ * meaning to any value, including 0. queue_capacity and
+ * max_samples_per_event must be nonzero. */
+typedef struct ams_mel_rf_product_rx_config_v1 {
+    ams_mel_rf_job_data_format_t data_format;
+    uint64_t region_size_bytes;
+    size_t queue_capacity;
+    size_t max_samples_per_event;
+} ams_mel_rf_product_rx_config_v1;
+
+/* The facade's own ComplexINT16 value. It makes NO layout-compatibility claim
+ * with rfmel::MELComplex<int16_t> (not trivially copyable); every sample is
+ * copied element-wise as real = source.real(), imag = source.imag(). */
+typedef struct ams_mel_rf_complex_i16_v1 {
+    int16_t real;
+    int16_t imag;
+} ams_mel_rf_complex_i16_v1;
+
+/* data may be NULL only when size is 0. size is an ELEMENT count. */
+typedef struct ams_mel_rf_complex_i16_span_v1 {
+    const ams_mel_rf_complex_i16_v1 *data;
+    size_t size;
+} ams_mel_rf_complex_i16_span_v1;
+
+/* The fixed representable ProductRxMetadata subset, copied verbatim.
+ * phase_coherence_with_prior is exactly 0 or 1. first_rx_event_start_s is
+ * UTCTime::getIntegralSeconds().count() and first_rx_event_start_fs is
+ * UTCTime::getFractionalFemtoseconds().count(); neither is converted or
+ * normalized. rx_stream_ids is getRxStreamIDs() in provider order.
+ *
+ * Fail closed: a callback whose metadata has userDefinedData, any stabPoint,
+ * any receiveEvent, or a present and NON-empty receiveEventAssociations is
+ * rejected whole (malformed_or_unsupported) and never truncated. Absent or
+ * present-but-empty associations are accepted and carry no data. */
+typedef struct ams_mel_rf_product_rx_metadata_v1 {
+    uint32_t mel_protocol_version_id;
+    uint32_t va_definition_id;
+    uint32_t va_instance_id;
+    uint32_t job_details_id;
+    uint32_t job_interval_id;
+    uint32_t lf_type_id;
+    uint32_t lf_instance_id;
+    uint32_t phase_coherence_with_prior;
+    int64_t first_rx_event_start_s;
+    int64_t first_rx_event_start_fs;
+    ams_mel_u32_span_v1 rx_stream_ids;
+} ams_mel_rf_product_rx_metadata_v1;
+
+/* One received product. data_format is always COMPLEX_INT16 in this version
+ * and samples.size is the provider callback element count (not bytes). */
+typedef struct ams_mel_rf_product_rx_event_v1 {
+    uint64_t endpoint_id;
+    ams_mel_rf_job_data_format_t data_format;
+    ams_mel_rf_complex_i16_span_v1 samples;
+    ams_mel_rf_product_rx_metadata_v1 metadata;
+} ams_mel_rf_product_rx_event_v1;
+
+/* getEndpointID() and getAssignedDataFormat(), each read exactly once after
+ * the create future succeeded. assigned_data_format is always COMPLEX_INT16. */
+typedef struct ams_mel_rf_product_rx_info_v1 {
+    uint64_t endpoint_id;
+    ams_mel_rf_job_data_format_t assigned_data_format;
+} ams_mel_rf_product_rx_info_v1;
+
+/* Written only for AMS_MEL_OK (error_code AMS_MEL_ERROR_NONE) and
+ * AMS_MEL_PROVIDER_FAILED (the mapped MEL ErrorCode for an ErrorOr error;
+ * AMS_MEL_ERROR_NONE for any other provider failure). */
+typedef struct ams_mel_rf_product_rx_request_result_v1 {
+    ams_mel_error_code_t error_code;
+} ams_mel_rf_product_rx_request_result_v1;
+
+/* Saturating (UINT64_MAX) counters. Every provider callback increments
+ * callbacks_received once and, unless queued, exactly one other counter. */
+typedef struct ams_mel_rf_product_rx_counters_v1 {
+    uint64_t callbacks_received;
+    uint64_t products_queued;
+    uint64_t products_dropped_queue_full;
+    uint64_t malformed_or_unsupported;
+    uint64_t allocation_failures;
+    uint64_t callbacks_after_close;
+} ams_mel_rf_product_rx_counters_v1;
+
+/* Admits one child create operation, then calls
+ * createProductRxEndpoint(ComplexINT16, region_size_bytes, nullptr) outside
+ * every bridge lock; one worker thread is the only future.get() caller.
+ * *out_request must be NULL. A synchronous provider exception is contained
+ * (AMS_MEL_PROVIDER_EXCEPTION; std::bad_alloc: AMS_MEL_INTERNAL_ERROR) and an
+ * invalid (future.valid() == false) future is AMS_MEL_PROVIDER_FAILED; then
+ * no request is published. Externally serialize with the other operations on
+ * the same ams_mel_rf_data. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx(
+    ams_mel_rf_data *data,
+    const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Waits up to timeout_ms (0 polls; a timeout never cancels). The terminal
+ * outcome is cached, and every later Wait returns the same status, result,
+ * and diagnostic:
+ *   AMS_MEL_OK                 created; assigned format validated
+ *   AMS_MEL_PROVIDER_FAILED    ErrorOr error (diagnostic = its description),
+ *                              unknown ErrorCode, null endpoint, or assigned
+ *                              format != ComplexINT16
+ *   AMS_MEL_PROVIDER_EXCEPTION future.get() or an endpoint getter threw
+ *   AMS_MEL_INTERNAL_ERROR     bridge-owned completion failure
+ *   AMS_MEL_TIMEOUT            still pending
+ * out_result is untouched for TIMEOUT, PROVIDER_EXCEPTION and INTERNAL_ERROR.
+ * Wait and Close on one request must not race. A request stays valid after
+ * its ams_mel_rf_data is closed. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_request_wait(
+    const ams_mel_rf_product_rx_request *request,
+    uint32_t timeout_ms,
+    ams_mel_rf_product_rx_request_result_v1 *out_result,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Uniquely claims the created endpoint without blocking: AMS_MEL_TIMEOUT if
+ * pending; the cached failure status if creation failed. The first successful
+ * claim registers the data-ready callback exactly once (all callback state
+ * exists first, so a callback delivered synchronously during registration is
+ * queued) and transfers the provider endpoint, its RF child claim, and the
+ * cached endpoint ID and format into *out_endpoint. A later claim returns
+ * AMS_MEL_PROVIDER_FAILED "RF ProductRx endpoint already claimed".
+ *
+ * If setDataReadyCallback throws, *out_endpoint stays NULL, the registration
+ * is retained permanently (its state is unprovable), the provider endpoint is
+ * destroyed, and the failure is cached; registration is never retried.
+ * out_endpoint and out_info must be non-NULL and *out_endpoint NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_request_claim(
+    ams_mel_rf_product_rx_request *request,
+    ams_mel_rf_product_rx **out_endpoint,
+    ams_mel_rf_product_rx_info_v1 *out_info,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Idempotent, nonblocking, and NOT cancellation; sets *request to NULL. An
+ * endpoint that was created but never claimed is destroyed by the completion
+ * worker (never the caller), without callback registration, and its RF child
+ * claim is released. A pending future stays owned by its worker. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_request_close(
+    ams_mel_rf_product_rx_request **request,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Moves the oldest queued event into *out_event (which must be NULL) and
+ * returns AMS_MEL_OK. Empty and receiving: waits up to timeout_ms (0 polls),
+ * then AMS_MEL_TIMEOUT. Closed: AMS_MEL_STREAM_STOPPED. At most one Receive
+ * may run per endpoint; endpoint Close may race it and wakes it. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_receive(
+    ams_mel_rf_product_rx *endpoint,
+    uint32_t timeout_ms,
+    ams_mel_rf_product_rx_event **out_event,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Consistent counter snapshot; may run concurrently with provider callbacks.
+ * Externally serialize with ams_mel_rf_product_rx_close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_get_counters(
+    const ams_mel_rf_product_rx *endpoint,
+    ams_mel_rf_product_rx_counters_v1 *out_counters,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Idempotent; sets *endpoint to NULL. Logical first: Closed, queued events
+ * discarded, Receive woken. Then the provider ProductRxEndpoint is dropped
+ * outside every bridge lock, then Close waits until no bridge callback body
+ * is executing (current in_flight == 0). That drain is NOT provider callback
+ * quiescence and never authorizes DSO unload; a later provider callback only
+ * counts callbacks_after_close and reads no payload. Finally the RF child
+ * claim is released; if it was the last child of a closed ams_mel_rf_data,
+ * the deferred DataMEL::shutdown() runs here (a throwing shutdown returns
+ * AMS_MEL_PROVIDER_EXCEPTION and retains the complete DataMEL graph). */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_close(
+    ams_mel_rf_product_rx **endpoint,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Returns the event record without any provider call. Every pointer stays
+ * valid and unchanged until ams_mel_rf_product_rx_event_close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v1 **out_view,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Idempotent and provider-independent; sets *event to NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_close(
+    ams_mel_rf_product_rx_event **event,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 #ifdef __cplusplus
 }
 #endif

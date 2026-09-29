@@ -662,6 +662,64 @@ int main(void)
         (void)rf_open; (void)rf_version; (void)rf_mfa; (void)rf_view; (void)rf_info_close; (void)rf_close;
     }
 
+    /* Task 033D RF ProductRxEndpoint ComplexINT16 receive. */
+    LAYOUT(ams_mel_rf_product_rx_request *);
+    LAYOUT(ams_mel_rf_product_rx *);
+    LAYOUT(ams_mel_rf_product_rx_event *);
+    RECORD(ams_mel_rf_product_rx_config_v1,
+        FIELD(ams_mel_rf_product_rx_config_v1,data_format);
+        FIELD(ams_mel_rf_product_rx_config_v1,region_size_bytes);
+        FIELD(ams_mel_rf_product_rx_config_v1,queue_capacity);
+        FIELD(ams_mel_rf_product_rx_config_v1,max_samples_per_event));
+    RECORD(ams_mel_rf_complex_i16_v1,
+        FIELD(ams_mel_rf_complex_i16_v1,real);
+        FIELD(ams_mel_rf_complex_i16_v1,imag));
+    RECORD(ams_mel_rf_complex_i16_span_v1,
+        FIELD(ams_mel_rf_complex_i16_span_v1,data);
+        FIELD(ams_mel_rf_complex_i16_span_v1,size));
+    RECORD(ams_mel_rf_product_rx_metadata_v1,
+        FIELD(ams_mel_rf_product_rx_metadata_v1,mel_protocol_version_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,va_definition_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,va_instance_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,job_details_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,job_interval_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,lf_type_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,lf_instance_id);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,phase_coherence_with_prior);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,first_rx_event_start_s);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,first_rx_event_start_fs);
+        FIELD(ams_mel_rf_product_rx_metadata_v1,rx_stream_ids));
+    RECORD(ams_mel_rf_product_rx_event_v1,
+        FIELD(ams_mel_rf_product_rx_event_v1,endpoint_id);
+        FIELD(ams_mel_rf_product_rx_event_v1,data_format);
+        FIELD(ams_mel_rf_product_rx_event_v1,samples);
+        FIELD(ams_mel_rf_product_rx_event_v1,metadata));
+    RECORD(ams_mel_rf_product_rx_info_v1,
+        FIELD(ams_mel_rf_product_rx_info_v1,endpoint_id);
+        FIELD(ams_mel_rf_product_rx_info_v1,assigned_data_format));
+    RECORD(ams_mel_rf_product_rx_request_result_v1,
+        FIELD(ams_mel_rf_product_rx_request_result_v1,error_code));
+    RECORD(ams_mel_rf_product_rx_counters_v1,
+        FIELD(ams_mel_rf_product_rx_counters_v1,callbacks_received);
+        FIELD(ams_mel_rf_product_rx_counters_v1,products_queued);
+        FIELD(ams_mel_rf_product_rx_counters_v1,products_dropped_queue_full);
+        FIELD(ams_mel_rf_product_rx_counters_v1,malformed_or_unsupported);
+        FIELD(ams_mel_rf_product_rx_counters_v1,allocation_failures);
+        FIELD(ams_mel_rf_product_rx_counters_v1,callbacks_after_close));
+    {
+        ams_mel_status_t (*rx_submit)(ams_mel_rf_data *, const ams_mel_rf_product_rx_config_v1 *, ams_mel_rf_product_rx_request **, char *, size_t, size_t *) = ams_mel_rf_data_submit_product_rx;
+        ams_mel_status_t (*rx_wait)(const ams_mel_rf_product_rx_request *, uint32_t, ams_mel_rf_product_rx_request_result_v1 *, char *, size_t, size_t *) = ams_mel_rf_product_rx_request_wait;
+        ams_mel_status_t (*rx_claim)(ams_mel_rf_product_rx_request *, ams_mel_rf_product_rx **, ams_mel_rf_product_rx_info_v1 *, char *, size_t, size_t *) = ams_mel_rf_product_rx_request_claim;
+        ams_mel_status_t (*rx_request_close)(ams_mel_rf_product_rx_request **, char *, size_t, size_t *) = ams_mel_rf_product_rx_request_close;
+        ams_mel_status_t (*rx_receive)(ams_mel_rf_product_rx *, uint32_t, ams_mel_rf_product_rx_event **, char *, size_t, size_t *) = ams_mel_rf_product_rx_receive;
+        ams_mel_status_t (*rx_counters)(const ams_mel_rf_product_rx *, ams_mel_rf_product_rx_counters_v1 *, char *, size_t, size_t *) = ams_mel_rf_product_rx_get_counters;
+        ams_mel_status_t (*rx_close)(ams_mel_rf_product_rx **, char *, size_t, size_t *) = ams_mel_rf_product_rx_close;
+        ams_mel_status_t (*rx_view)(const ams_mel_rf_product_rx_event *, const ams_mel_rf_product_rx_event_v1 **, char *, size_t, size_t *) = ams_mel_rf_product_rx_event_view;
+        ams_mel_status_t (*rx_event_close)(ams_mel_rf_product_rx_event **, char *, size_t, size_t *) = ams_mel_rf_product_rx_event_close;
+        (void)rx_submit; (void)rx_wait; (void)rx_claim; (void)rx_request_close; (void)rx_receive;
+        (void)rx_counters; (void)rx_close; (void)rx_view; (void)rx_event_close;
+    }
+
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);
     return 0;
