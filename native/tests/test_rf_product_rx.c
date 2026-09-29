@@ -1110,6 +1110,20 @@ static void test_negative_control(unsigned control, const char *scenario, int ex
         fprintf(stderr, "negative control %u: exited=%d code=%d signaled=%d signal=%d\n",
                 control, WIFEXITED(status), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
                 WIFSIGNALED(status), WIFSIGNALED(status) ? WTERMSIG(status) : -1);
+    if (expected == LATE_UNMAPPED && WIFSIGNALED(status) &&
+        (WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS)) {
+        /* Without the pin the DSO is unmapped under the provider's own late
+         * thread, which may still be executing provider code between the arm
+         * handshake and its blocking read(). That crash IS the defect
+         * (section 58A: "DSO unmapped / library_unloaded / child crash"). It
+         * counts only if the log proves the unload happened first
+         * (library_unloaded is recorded inside dlclose, before munmap). */
+        CHECK(occurrences("library_unloaded") == 1U);
+        CHECK(occurrences("rf_data_destroyed") == 1U);
+        printf("negative control %u detected: child crashed (signal %d) after the provider "
+               "DSO was unloaded (library_unloaded)\n", control, WTERMSIG(status));
+        return;
+    }
     /* Non-vacuous: the child reached the lifetime check and detected exactly
      * the defect the control introduces. */
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == expected);

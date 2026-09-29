@@ -277,9 +277,19 @@ lifetime proof.
 ### Negative controls (forked, destructive, non-vacuous)
 
 * **`negative-no-library-pin`.** The permanent registration drops its
-  `SharedLibrary`. The child detects "provider DSO unmapped
+  `SharedLibrary`. The child normally detects "provider DSO unmapped
   (library_unloaded) before the late callback" (exit code 10), and the parent
   sees `library_unloaded`.
+
+  On slower hosts (first seen on hosted CI) the child may instead crash with
+  SIGSEGV or SIGBUS. The arm handshake guarantees only that the provider's
+  late thread has started, not that it is already parked in `read()`, so the
+  unpinned DSO can be unmapped while that thread is still executing provider
+  code. That crash *is* the defect ("DSO unmapped / library_unloaded / child
+  crash"). It is accepted only when the log proves that `library_unloaded`
+  and `rf_data_destroyed` came first. `library_unloaded` is recorded inside
+  `dlclose` before `munmap`, and a pinned run never unmaps, so this path
+  cannot pass vacuously.
 * **`negative-no-exact-lvalue`.** The DSO and callback state stay retained,
   but the provider is handed a temporary copy that is destroyed after
   registration (its storage is scrubbed and never freed). The
