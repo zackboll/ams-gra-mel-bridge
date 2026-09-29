@@ -113,6 +113,16 @@ private package AMS.MEL_C_API is
    type RF_MFA_Info_Handle is new System.Address;
    Null_RF_MFA_Info                   : constant RF_MFA_Info_Handle :=
      RF_MFA_Info_Handle (System.Null_Address);
+   --  Task 033D: raw RF ProductRxEndpoint owners. Private FFI only.
+   type RF_Product_Rx_Request_Handle is new System.Address;
+   Null_RF_Product_Rx_Request         : constant RF_Product_Rx_Request_Handle :=
+     RF_Product_Rx_Request_Handle (System.Null_Address);
+   type RF_Product_Rx_Handle is new System.Address;
+   Null_RF_Product_Rx                 : constant RF_Product_Rx_Handle :=
+     RF_Product_Rx_Handle (System.Null_Address);
+   type RF_Product_Rx_Event_Handle is new System.Address;
+   Null_RF_Product_Rx_Event           : constant RF_Product_Rx_Event_Handle :=
+     RF_Product_Rx_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
    type String_View_V1 is record
@@ -1756,4 +1766,123 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_data_close";
+
+   --  Task 033D RF ProductRxEndpoint ComplexINT16 raw records. Spans are raw
+   --  addresses; sample counts are element counts; UTCTime components are the
+   --  verbatim upstream int64 seconds and femtoseconds.
+   type RF_Product_Rx_Config_V1 is record
+      Data_Format           : Interfaces.Unsigned_32;
+      Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Size_T;
+      Max_Samples_Per_Event : Size_T;
+   end record
+   with Convention => C;
+   type RF_Complex_I16_V1 is record
+      Real : Interfaces.Integer_16;
+      Imag : Interfaces.Integer_16;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Metadata_V1 is record
+      MEL_Protocol_Version_ID    : Interfaces.Unsigned_32;
+      VA_Definition_ID           : Interfaces.Unsigned_32;
+      VA_Instance_ID             : Interfaces.Unsigned_32;
+      Job_Details_ID             : Interfaces.Unsigned_32;
+      Job_Interval_ID            : Interfaces.Unsigned_32;
+      LF_Type_ID                 : Interfaces.Unsigned_32;
+      LF_Instance_ID             : Interfaces.Unsigned_32;
+      Phase_Coherence_With_Prior : Interfaces.Unsigned_32;
+      First_Rx_Event_Start_S     : Interfaces.Integer_64;
+      First_Rx_Event_Start_FS    : Interfaces.Integer_64;
+      Rx_Stream_IDs              : U32_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Event_V1 is record
+      Endpoint_ID : Interfaces.Unsigned_64;
+      Data_Format : Interfaces.Unsigned_32;
+      Samples     : Span_V1;
+      Metadata    : RF_Product_Rx_Metadata_V1;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Info_V1 is record
+      Endpoint_ID          : Interfaces.Unsigned_64;
+      Assigned_Data_Format : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Request_Result_V1 is record
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Counters_V1 is record
+      Callbacks_Received          : Interfaces.Unsigned_64;
+      Products_Queued             : Interfaces.Unsigned_64;
+      Products_Dropped_Queue_Full : Interfaces.Unsigned_64;
+      Malformed_Or_Unsupported    : Interfaces.Unsigned_64;
+      Allocation_Failures         : Interfaces.Unsigned_64;
+      Callbacks_After_Close       : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   function RF_Data_Submit_Product_Rx
+     (Handle              : RF_Data_Handle;
+      Config              : access constant RF_Product_Rx_Config_V1;
+      Output              : access RF_Product_Rx_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_submit_product_rx";
+   function RF_Product_Rx_Request_Wait
+     (Handle              : RF_Product_Rx_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access RF_Product_Rx_Request_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_request_wait";
+   function RF_Product_Rx_Request_Claim
+     (Handle              : RF_Product_Rx_Request_Handle;
+      Output              : access RF_Product_Rx_Handle;
+      Info                : access RF_Product_Rx_Info_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_request_claim";
+   function RF_Product_Rx_Request_Close
+     (Handle              : access RF_Product_Rx_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_request_close";
+   function RF_Product_Rx_Receive
+     (Handle              : RF_Product_Rx_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access RF_Product_Rx_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_receive";
+   function RF_Product_Rx_Get_Counters
+     (Handle              : RF_Product_Rx_Handle;
+      Output              : access RF_Product_Rx_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_get_counters";
+   function RF_Product_Rx_Close
+     (Handle              : access RF_Product_Rx_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_close";
+   function RF_Product_Rx_Event_View
+     (Handle              : RF_Product_Rx_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_view";
+   function RF_Product_Rx_Event_Close
+     (Handle              : access RF_Product_Rx_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_close";
 end AMS.MEL_C_API;

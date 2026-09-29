@@ -13,7 +13,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
-    src/rf_data.cpp)
+    src/rf_data.cpp src/rf_product_rx.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -29,7 +29,8 @@ target_include_directories(ams_mel_c SYSTEM PRIVATE
 # Task 033B: the pinned, byte-identical Task 033A RF DataMEL declaration
 # closure (RF MEL + the AMS VITA headers it reaches). SYSTEM because pinned
 # TxPowerModeData.h trips Clang -Wignored-qualifiers; first-party sources keep
-# the project warnings. Only src/rf_data.cpp includes RF headers.
+# the project warnings. Only src/rf_data.cpp and src/rf_product_rx.cpp
+# include RF headers.
 target_include_directories(ams_mel_c SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/rf-mel/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/ams-vita/include)
@@ -45,6 +46,8 @@ if(UNIX AND NOT APPLE)
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_rx_observer_from;\n        ams_mel_test_rf_rx_observer_from_last_registration;\n        ams_mel_test_rf_rx_observe;\n        ams_mel_test_rf_rx_waiters;\n        ams_mel_test_rf_rx_drain_waiters;\n        ams_mel_test_rf_rx_preset_counters;\n        ams_mel_test_rf_rx_observer_close;\n        ams_mel_test_rf_rx_failpoint;\n        ams_mel_test_rf_rx_negative_control;\n        ams_mel_test_rf_rx_hold_next;\n        ams_mel_test_rf_rx_permanent_registrations;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         set(ams_mel_export_map "${CMAKE_CURRENT_BINARY_DIR}/test-exports.map")
         file(WRITE "${ams_mel_export_map}" "${ams_mel_test_exports}")
@@ -231,6 +234,31 @@ if(AMS_MEL_BUILD_TESTS)
             shutdown-throw-unknown invalid allocation)
         add_test(NAME rf-data-${case} COMMAND test_rf_data ${case})
         set_tests_properties(rf-data-${case} PROPERTIES TIMEOUT 30)
+    endforeach()
+
+    # Task 033D RF ProductRxEndpoint ComplexINT16 receive (C11). One process
+    # per case: permanent callback-registration retention and lifetime
+    # evidence cannot leak between cases. Negative controls fork.
+    add_executable(test_rf_product_rx tests/test_rf_product_rx.c)
+    target_compile_features(test_rf_product_rx PRIVATE c_std_11)
+    set_target_properties(test_rf_product_rx PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_product_rx PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    find_package(Threads REQUIRED)
+    target_link_libraries(test_rf_product_rx PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS}
+        Threads::Threads)
+    add_dependencies(test_rf_product_rx mock_rf_provider)
+    ams_mel_warnings(test_rf_product_rx)
+    foreach(case IN ITEMS receive fail-closed malformed queue-full create-failures
+            long-diagnostic invalid claim-unique parent-first pending-parent-first unclaimed
+            unclaimed-parent-first never-ready sync-callback registration-throw-before
+            registration-throw-after registration-throw-active mid-callback-close
+            late-copy late-reference late-move negative-no-library-pin
+            negative-no-exact-lvalue negative-old-close-order no-callback-unload
+            multiple-endpoints concurrent receive-close saturation deferred-shutdown-throw
+            worker-shutdown-throw worker-launch-failure)
+        add_test(NAME rf-product-rx-${case} COMMAND test_rf_product_rx ${case})
+        set_tests_properties(rf-product-rx-${case} PROPERTIES TIMEOUT 60)
     endforeach()
 
     add_executable(test_common_channel_view tests/test_common_channel_view.c)

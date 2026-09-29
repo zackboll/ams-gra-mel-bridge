@@ -901,11 +901,110 @@ other RF family remain out of scope. IR and RF share only family-neutral
 helpers (`internal/provider_common.hpp`: diagnostics, UTF-8, and one
 VersionInfo publication path). See `task-033b-rf-datamel-foundation.md`.
 
-## Task 033C RF receive ownership model (design note — NOT IMPLEMENTED)
+## Task 033D RF ComplexINT16 receive (implemented)
 
-Task 033C only pins the `ProductRxEndpoint` declaration closure and records its
-contract. The model below is the planned 033D direction. **None of it exists in
-the library yet.**
+Task 033D implements the model below in `native/src/rf_product_rx.cpp`, with
+shared private RF owner state in `native/src/internal/rf_product_rx.hpp`. No RF
+callback lifecycle code lives in IR sources.
+
+```text
+ams_mel_rf_data ------------------+
+RfChildClaim (request/endpoint) --+--> RfDataState { shared_ptr<SharedLibrary>,
+                                   |                 DataMEL, children, close_requested }
+ams_mel_rf_product_rx_request --> CreateCompletion <-- detached worker (sole future.get())
+ams_mel_rf_product_rx ---------> provider endpoint + the SAME RfChildClaim
+PermanentRxRegistration (never freed) { exact std::function, callback state, SharedLibrary }
+ams_mel_rf_product_rx_event -----> owned sample/stream-ID vectors only
+```
+
+* **Children and parent-first lifetime.** One admitted create operation holds
+  exactly one move-only `RfChildClaim` for its whole life: pending future,
+  cached-but-unclaimed endpoint, then claimed endpoint. It is never counted
+  twice. RF Data Close with live children consumes the owner and defers
+  `DataMEL::shutdown()`. The release of the final child runs it exactly once,
+  then destroys the DataMEL, then drops `RfDataState`'s library reference. A
+  throwing shutdown retains the complete `RfDataState` graph permanently, as
+  in Task 033B. It reports `AMS_MEL_PROVIDER_EXCEPTION` on a public caller and
+  is retained silently on a worker.
+* **`SharedLibrary` is shared, not duplicated.** `RfDataState::library` is now
+  `shared_ptr<SharedLibrary>`. The DSO unloads when the last reference drops.
+  With no callback registration, `RfDataState`'s reference is the only one, so
+  Task 033B's open, snapshot, Close, destroy, unload sequence is unchanged. There
+  is still exactly one dynamic loader abstraction.
+* **Registration only at Claim.** Future success does not mean a callback is
+  registered. The worker validates the endpoint (non-null, ID and format read
+  once, format ComplexINT16), caches it, then waits for Claim or request
+  Close. Only Claim calls `setDataReadyCallback`. An abandoned endpoint is
+  destroyed by the worker without registration, so it never creates the
+  permanent pin.
+* **The exact callback lvalue is retained (stronger than the 033C note).**
+  `setDataReadyCallback(DataReadyCallback&)` takes a non-const lvalue
+  reference, and upstream does not promise that a provider copies it. A
+  provider may copy it, move from it, or keep a reference to the exact object.
+  The bridge therefore passes `registration->callback`, a member of a
+  heap-stable `PermanentRxRegistration`. Once the call begins, whether it
+  returns or throws, that registration is linked into an allocation-free
+  intrusive root and never freed. The holder separately retains the callback
+  state and the provider `SharedLibrary`, so safety does not depend on the
+  `std::function` keeping its capture (the moved-from case).
+* **Permanent registration holder vs. emergency retention.** The registration
+  holder retains only the exact `std::function`, its small callback state, and
+  the provider DSO. It does not retain the DataMEL, the endpoint, the public
+  owner, or any event: endpoint Close swaps the queue out, so it holds no
+  payload. This is deliberate fail-safe registration retention. It is
+  distinct from the Task 033B full `RfDataState` emergency retention, which
+  happens only when `shutdown()` throws.
+
+* **Drain current callbacks BEFORE endpoint destruction.** Callback-scoped
+  provider data (`JobDataPointer` samples, `ProductRxMetadata`) may be backed
+  by storage the ProductRxEndpoint owns. The permanent registration keeps the
+  callback object, its state, and provider machine code alive, but not that
+  storage. Endpoint Close and throwing-registration cleanup therefore share
+  one private `logical_close_and_drain` step and then destroy the endpoint:
+
+```text
+provider callback that saw Receiving
+              |
+              | may borrow provider data
+              v
+          in_flight > 0
+
+Endpoint Close:
+    Closed
+      |
+      v
+drain CURRENT callbacks
+      |
+      | no pre-Close callback still borrows provider payload
+      v
+destroy ProductRxEndpoint
+      |
+      v
+release child claim
+
+Late callbacks may still start
+      |
+      v
+Closed fast-path only
+(no provider payload access)
+
+Permanent callback + state + DSO retention remains
+```
+
+  The drain is not provider callback quiescence and never authorizes DSO
+  unload. If Closed + drained cannot be established, the endpoint and child
+  claim are retained forever.
+
+The Task 033C design note below is preserved as the historical record. Where it
+says the pin "retains only the library", 033D implementation evidence proves
+the stronger rule above: the exact callback lvalue and its callback state are
+also retained for the process lifetime.
+
+## Task 033C RF receive ownership model (design note — implemented by 033D)
+
+Task 033C pinned the `ProductRxEndpoint` declaration closure and recorded its
+contract. The model below was the planned 033D direction and is now implemented
+(see above), with the stronger exact-callback-lvalue rule.
 
 ```text
 provider ProductRxEndpoint callback          (provider thread)
@@ -930,15 +1029,15 @@ that endpoint destruction makes callbacks quiescent. So:
 * Endpoint creation is a `RequestFor` future and follows the existing request
   owner + completion worker + `wait(timeout)` model, not a blocking open.
 * Close is logical first: it stops public delivery under the callback-state
-  mutex, then drops the provider endpoint outside every bridge mutex, then
-  drains the bridge's own in-flight callback count. Bridge-state safety never
-  depends on provider quiescence. Squall's receiver-thread join is
+  mutex, then drains the bridge's own in-flight callback count, and only then
+  drops the provider endpoint outside every bridge mutex (033D corrective; see
+  below). Bridge-state safety never depends on provider quiescence. Squall's receiver-thread join is
   provider-specific evidence only and is never used to relax a production rule.
 * The DSO stays loaded while any endpoint, create request, or worker exists.
   **Once a callback has been successfully registered**, or
   `setDataReadyCallback` threw with unprovable registration state, a dedicated
   provider-library pin keeps the DSO mapped for the rest of the process.
-  Endpoint destruction plus `in_flight == 0` proves only that no bridge
+  `in_flight == 0` plus endpoint destruction proves only that no bridge
   callback body is running *now*. It does not prove that a provider-held
   `std::function` copy can never start a new invocation, which would run
   through provider code (thread, call site, dispatch machinery). So it is **not**
@@ -951,9 +1050,9 @@ callback registered
        |                        |
 logical endpoint Close          |
        |                        |
-endpoint destruction            |
-       |                        |
 bridge callback drain           |
+       |                        |
+endpoint destruction            |
        |                        |
 bridge resources reclaimable    |
 (DataMEL may shut down normally |

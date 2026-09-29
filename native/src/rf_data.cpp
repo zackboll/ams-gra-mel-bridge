@@ -1,17 +1,22 @@
-/* Task 033B RF DataMEL foundation.
+/* Task 033B RF DataMEL foundation (parent lifecycle extended by Task 033D).
  *
  * RF owner graph (deliberately independent of the IR Session graph):
  *
- *     ams_mel_rf_data --shared_ptr--> RfDataState
- *                                       library : unique_ptr<SharedLibrary>
- *                                       data    : shared_ptr<rfmel::DataMEL>
+ *     ams_mel_rf_data ---------+
+ *     RfChildClaim (033D) -----+--shared_ptr--> RfDataState
+ *                                                 library : shared_ptr<SharedLibrary>
+ *                                                 data    : shared_ptr<rfmel::DataMEL>
  *
- * The provider DSO is unloaded only by destroying `library`, and only after
- * `data` (the DataMEL, its provider-owned control block and deleter) is gone.
+ * The DataMEL is always destroyed before RfDataState drops its SharedLibrary
+ * reference. With no data-ready callback ever registered that reference is the
+ * last one, so behavior is exactly Task 033B's: shutdown, destroy DataMEL,
+ * unload DSO. A Task 033D permanent callback registration holds an additional
+ * SharedLibrary reference for the process lifetime.
  * An ams_mel_rf_mfa_info snapshot owns plain copies only and references no
  * RfDataState, provider object, or provider memory. */
 #include <ams_mel/abi.h>
 #include "internal/provider_common.hpp"
+#include "internal/rf_product_rx.hpp"
 #include "internal/shared_library.hpp"
 
 #include <rfmel/data/DataMEL.h>
@@ -41,26 +46,6 @@ namespace {
 using RfDataFactory =
     std::shared_ptr<rfmel::DataMEL> (*)(std::string_view);
 static_assert(std::is_same_v<RfDataFactory, rfmel::fnDataMEL>);
-
-struct RfDataState {
-    RfDataState() = default;
-    RfDataState(const RfDataState&) = delete;
-    RfDataState& operator=(const RfDataState&) = delete;
-    /* Never calls shutdown(). Destroys the DataMEL before the library
-     * independently of member declaration order. */
-    ~RfDataState()
-    {
-        data.reset();
-        library.reset();
-    }
-
-    std::unique_ptr<SharedLibrary> library;
-    std::shared_ptr<rfmel::DataMEL> data;
-    /* Allocation-free permanent retention after a throwing shutdown(). */
-    std::shared_ptr<RfDataState> emergency_self;
-    RfDataState *emergency_next{};
-    std::atomic<bool> emergency_retained{};
-};
 
 /* shutdown() threw, so the DataMEL has no proven shutdown boundary: it may not
  * be destroyed and its DSO may not be unloaded. Keep the graph for the process
@@ -146,9 +131,83 @@ bool invalid_diagnostic(const char *diagnostic, std::size_t capacity) noexcept
 
 } // namespace
 
-struct ams_mel_rf_data {
-    std::shared_ptr<RfDataState> state;
-};
+namespace ams_mel::internal {
+
+RfShutdownOutcome rf_finish_shutdown(const std::shared_ptr<RfDataState>& state) noexcept
+{
+    RfShutdownOutcome outcome;
+    if (!state->data) return outcome;
+    try {
+        state->data->shutdown();
+    } catch (...) {
+        /* No retry, no DataMEL destruction, no DSO unload. Retention is
+         * published before any diagnostic text is produced. */
+        retain_forever(state);
+        outcome.status = AMS_MEL_PROVIDER_EXCEPTION;
+        try {
+            throw;
+        } catch (const std::exception& error) {
+            const char *const what = error.what();
+            const std::string_view text = what == nullptr ? std::string_view{}
+                                                          : std::string_view{what};
+            try {
+                outcome.message = !text.empty() && valid_utf8(text)
+                    ? std::string{text} : std::string{"provider shutdown exception"};
+            } catch (...) { outcome.message.clear(); }
+        } catch (...) {
+            try { outcome.message = "unknown provider shutdown exception"; }
+            catch (...) { outcome.message.clear(); }
+        }
+        return outcome;
+    }
+    /* shutdown() returned: destroy the DataMEL (its provider control block and
+     * deleter run while the DSO is still loaded), then drop this state's
+     * library reference. Destructors are not expected to throw; were one to,
+     * this noexcept function terminates rather than unloading code under a
+     * live graph. */
+    state->data.reset();
+    state->library.reset();
+    return outcome;
+}
+
+bool RfChildClaim::acquire(const std::shared_ptr<RfDataState>& state,
+                           RfChildClaim& output) noexcept
+{
+    if (!state || output.held()) return false;
+    try {
+        std::lock_guard lock{state->mutex};
+        if (state->close_requested || state->shutdown_started) return false;
+        ++state->children;
+    } catch (...) {
+        return false;
+    }
+    output.state_ = state;
+    return true;
+}
+
+RfShutdownOutcome RfChildClaim::release() noexcept
+{
+    std::shared_ptr<RfDataState> state = std::move(state_);
+    if (!state) return {};
+    bool now = false;
+    try {
+        std::lock_guard lock{state->mutex};
+        --state->children;
+        if (state->children == 0U && state->close_requested && !state->shutdown_started) {
+            state->shutdown_started = true;
+            now = true;
+        }
+    } catch (...) {
+        /* The child count could not be decremented, so the graph can never
+         * reach a proven shutdown boundary: retain it permanently. */
+        retain_forever(state);
+        return {AMS_MEL_INTERNAL_ERROR, {}};
+    }
+    if (!now) return {};
+    return rf_finish_shutdown(state);
+}
+
+} // namespace ams_mel::internal
 
 /* Owns every byte reachable from `view`. The view is wired exactly once after
  * all vectors are final, and nothing is mutated afterwards. */
@@ -173,9 +232,11 @@ extern "C" ams_mel_status_t ams_mel_rf_data_open(
         return AMS_MEL_INVALID_ARGUMENT;
     }
 
-    std::unique_ptr<SharedLibrary> library;
+    /* Shared so a Task 033D permanent callback registration can hold its own
+     * reference; with no registration this is the only reference. */
+    std::shared_ptr<SharedLibrary> library;
     try {
-        library = std::make_unique<SharedLibrary>(library_path);
+        library = std::make_shared<SharedLibrary>(library_path);
     } catch (const std::bad_alloc&) {
         write_diagnostic("allocation failed", diagnostic, diagnostic_capacity,
                          diagnostic_required);
@@ -417,30 +478,33 @@ extern "C" ams_mel_status_t ams_mel_rf_data_close(
     delete owned;
     if (!state || !state->data) return AMS_MEL_OK;
 
+    /* Task 033D parent-first lifetime. With live create-request/endpoint
+     * children, Close only records the request: the final child release runs
+     * the single deferred shutdown. Without children this is exactly 033B. */
+    bool now = false;
     try {
-        state->data->shutdown();
-    } catch (...) {
-        /* No retry, no DataMEL destruction, no DSO unload. Retention is
-         * published before the diagnostic is written. */
-        retain_forever(state);
-        try {
-            throw;
-        } catch (const std::exception& error) {
-            write_exception_diagnostic(error, "provider shutdown exception",
-                                       diagnostic, diagnostic_capacity,
-                                       diagnostic_required);
-        } catch (...) {
-            write_diagnostic("unknown provider shutdown exception", diagnostic,
-                             diagnostic_capacity, diagnostic_required);
+        std::lock_guard lock{state->mutex};
+        state->close_requested = true;
+        if (state->children == 0U && !state->shutdown_started) {
+            state->shutdown_started = true;
+            now = true;
         }
-        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        /* The lifecycle could not be recorded, so no shutdown boundary can
+         * ever be proven: retain the complete graph. */
+        retain_forever(state);
+        write_diagnostic("RF Data close lifecycle failure; provider graph retained",
+                         diagnostic, diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INTERNAL_ERROR;
     }
+    if (!now) return AMS_MEL_OK;
 
-    /* shutdown() returned: destroy the DataMEL (its provider control block
-     * and deleter run while the DSO is still loaded), then unload the DSO.
-     * Destructors are not expected to throw; were one to, this noexcept
-     * function terminates rather than unloading code under a live graph. */
-    state->data.reset();
-    state->library.reset();
-    return AMS_MEL_OK;
+    const RfShutdownOutcome outcome = rf_finish_shutdown(state);
+    if (outcome.status != AMS_MEL_OK) {
+        write_diagnostic(outcome.message.empty()
+                             ? std::string_view{"unknown provider shutdown exception"}
+                             : std::string_view{outcome.message},
+                         diagnostic, diagnostic_capacity, diagnostic_required);
+    }
+    return outcome.status;
 }

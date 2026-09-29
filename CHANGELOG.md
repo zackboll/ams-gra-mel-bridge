@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+- Add RF ComplexINT16 receive (Task 033D). Nine new production exports (ABI
+  0.1, 106 -> 115): `ams_mel_rf_data_submit_product_rx`,
+  `ams_mel_rf_product_rx_request_wait`, `ams_mel_rf_product_rx_request_claim`,
+  `ams_mel_rf_product_rx_request_close`, `ams_mel_rf_product_rx_receive`,
+  `ams_mel_rf_product_rx_get_counters`, `ams_mel_rf_product_rx_close`,
+  `ams_mel_rf_product_rx_event_view`, and `ams_mel_rf_product_rx_event_close`,
+  plus three opaque owners and eight `_v1` records.
+  - Asynchronous `createProductRxEndpoint(ComplexINT16, size, nullptr)` with
+    one worker per future, `future.valid()` checking, cached terminal
+    results, `ErrorOr` mapping, unique nonblocking claim, and a nonblocking,
+    non-cancelling request Close. The worker destroys unclaimed endpoints.
+  - The callback is registered only at Claim. The exact `std::function`
+    lvalue, its callback state, and the provider DSO are retained in a
+    permanent registration holder (also after a throwing registration),
+    because the non-const-reference signature does not promise a copy.
+  - Element-wise ComplexINT16 copies, a fixed lossless metadata subset with
+    fail-closed `std::any`/stab-point/receive-event/association handling, a
+    bounded DROP-INCOMING queue, and six saturating counters.
+  - Endpoint Close and throwing-registration cleanup set Closed, drain the
+    current bridge callbacks, and only then destroy the provider
+    ProductRxEndpoint and release the child claim: a callback admitted while
+    Receiving may still borrow endpoint-owned provider data. The drain is not
+    provider quiescence and does not relax the permanent retention.
+  - Parent-first DataMEL lifetime: `RfDataState` counts children, and the
+    final child runs the deferred `shutdown()` exactly once.
+    `RfDataState::library` is now `shared_ptr<SharedLibrary>`, and 033B
+    behavior is unchanged when no callback is registered.
+  - Vendored exactly one more byte-identical RF MEL header,
+    `rfmel/endpoints/RDMAMemoryRegionParams.h` (627 -> 628 checksums), as
+    test-provider implementation support. The 033C consumer closure check still
+    pins 25 RF headers / 539 union. Production never calls
+    `getRDMAMemoryRegionParams()`.
+  - 32 process-isolated `rf-product-rx-*` C11 cases, including the late-start
+    callback with a PROT_NONE payload trap, copy/reference/move retention, an
+    endpoint-owned (revoked-on-destruction) sample page for mid-callback Close
+    and registration-throw, and three forked destructive negative controls. Adds the opt-in
+    `make test-squall-rf-rx` real Squall receive, which uses a test-only job
+    helper.
+  - Raw Ada FFI, `ams-mel-sys`, and private Python ctypes are synchronized
+    (inventory 115); there is no safe RF API.
 - Pin the RF ProductRxEndpoint receive declaration closure and document the
   callback/buffer/lifetime contract (Task 033C). Re-measured the
   `DataMEL.h` + `ProductRxEndpoint.h` closure from the full pinned upstream

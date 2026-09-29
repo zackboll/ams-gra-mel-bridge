@@ -450,6 +450,120 @@ fn common_channel_signatures_match_the_c_header() {
     assert!(channel.is_null());
 }
 
+/// Task 033D: exact raw shapes of the nine RF ProductRx functions, plus the
+/// NULL preconditions that need no provider.
+#[test]
+fn rf_product_rx_signatures_match_the_c_header() {
+    type Text = *mut std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfData,
+        *const AmsMelRfProductRxConfigV1,
+        *mut *mut AmsMelRfProductRxRequest,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_submit_product_rx;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfProductRxRequest,
+        u32,
+        *mut AmsMelRfProductRxRequestResultV1,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfProductRxRequest,
+        *mut *mut AmsMelRfProductRxEndpoint,
+        *mut AmsMelRfProductRxInfoV1,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_request_claim;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfProductRxRequest,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_request_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfProductRxEndpoint,
+        u32,
+        *mut *mut AmsMelRfProductRxEvent,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfProductRxEndpoint,
+        *mut AmsMelRfProductRxCountersV1,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfProductRxEndpoint,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfProductRxEvent,
+        *mut *const AmsMelRfProductRxEventV1,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_event_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfProductRxEvent,
+        Text,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_event_close;
+
+    let config = AmsMelRfProductRxConfigV1 {
+        data_format: AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16,
+        region_size_bytes: 4096,
+        queue_capacity: 4,
+        max_samples_per_event: 64,
+    };
+    let mut request: *mut AmsMelRfProductRxRequest = std::ptr::null_mut();
+    let mut endpoint: *mut AmsMelRfProductRxEndpoint = std::ptr::null_mut();
+    let mut event: *mut AmsMelRfProductRxEvent = std::ptr::null_mut();
+    let text = std::ptr::null_mut::<std::ffi::c_char>;
+    let none = std::ptr::null_mut::<usize>;
+    unsafe {
+        assert_eq!(
+            ams_mel_rf_data_submit_product_rx(
+                std::ptr::null_mut(),
+                &config,
+                &mut request,
+                text(),
+                0,
+                none()
+            ),
+            AMS_MEL_INVALID_ARGUMENT
+        );
+        assert!(request.is_null());
+        assert_eq!(
+            ams_mel_rf_product_rx_receive(std::ptr::null_mut(), 0, &mut event, text(), 0, none()),
+            AMS_MEL_INVALID_ARGUMENT
+        );
+        assert!(event.is_null());
+        assert_eq!(
+            ams_mel_rf_product_rx_request_close(&mut request, text(), 0, none()),
+            AMS_MEL_OK
+        );
+        assert_eq!(
+            ams_mel_rf_product_rx_close(&mut endpoint, text(), 0, none()),
+            AMS_MEL_OK
+        );
+        assert_eq!(
+            ams_mel_rf_product_rx_event_close(&mut event, text(), 0, none()),
+            AMS_MEL_OK
+        );
+    }
+}
+
 /// Task 033B: exact raw shapes of the six RF DataMEL functions, plus the NULL
 /// preconditions that need no provider.
 #[test]
@@ -546,8 +660,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 106);
-    assert_eq!(exported.len(), 106);
+    assert_eq!(declared.len(), 115);
+    assert_eq!(exported.len(), 115);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -556,6 +670,15 @@ fn raw_inventory_matches_production_exports() {
         "ams_mel_rf_mfa_info_view",
         "ams_mel_rf_mfa_info_close",
         "ams_mel_rf_data_close",
+        "ams_mel_rf_data_submit_product_rx",
+        "ams_mel_rf_product_rx_request_wait",
+        "ams_mel_rf_product_rx_request_claim",
+        "ams_mel_rf_product_rx_request_close",
+        "ams_mel_rf_product_rx_receive",
+        "ams_mel_rf_product_rx_get_counters",
+        "ams_mel_rf_product_rx_close",
+        "ams_mel_rf_product_rx_event_view",
+        "ams_mel_rf_product_rx_event_close",
     ] {
         assert!(declared.binary_search(&name).is_ok(), "{name}");
     }
@@ -1672,6 +1795,65 @@ fn declarations_match_the_c_header() {
         max_user_defined_context_bytes,
         supported_data_formats,
         faces
+    );
+    // Task 033D RF ProductRxEndpoint ComplexINT16 receive.
+    expected.extend([
+        size_of::<*mut AmsMelRfProductRxRequest>(),
+        align_of::<*mut AmsMelRfProductRxRequest>(),
+        size_of::<*mut AmsMelRfProductRxEndpoint>(),
+        align_of::<*mut AmsMelRfProductRxEndpoint>(),
+        size_of::<*mut AmsMelRfProductRxEvent>(),
+        align_of::<*mut AmsMelRfProductRxEvent>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfProductRxConfigV1,
+        data_format,
+        region_size_bytes,
+        queue_capacity,
+        max_samples_per_event
+    );
+    layout!(expected, AmsMelRfComplexI16V1, real, imag);
+    layout!(expected, AmsMelRfComplexI16SpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfProductRxMetadataV1,
+        mel_protocol_version_id,
+        va_definition_id,
+        va_instance_id,
+        job_details_id,
+        job_interval_id,
+        lf_type_id,
+        lf_instance_id,
+        phase_coherence_with_prior,
+        first_rx_event_start_s,
+        first_rx_event_start_fs,
+        rx_stream_ids
+    );
+    layout!(
+        expected,
+        AmsMelRfProductRxEventV1,
+        endpoint_id,
+        data_format,
+        samples,
+        metadata
+    );
+    layout!(
+        expected,
+        AmsMelRfProductRxInfoV1,
+        endpoint_id,
+        assigned_data_format
+    );
+    layout!(expected, AmsMelRfProductRxRequestResultV1, error_code);
+    layout!(
+        expected,
+        AmsMelRfProductRxCountersV1,
+        callbacks_received,
+        products_queued,
+        products_dropped_queue_full,
+        malformed_or_unsupported,
+        allocation_failures,
+        callbacks_after_close
     );
     expected.extend([
         AMS_MEL_OK as usize,

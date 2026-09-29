@@ -1,5 +1,31 @@
 # Implementation coverage
 
+Task 033D implements the first RF MEL data-plane path. Native C now covers
+asynchronous `ProductRxEndpoint` creation, ComplexINT16 receive into owned,
+immutable events, a fixed representable `ProductRxMetadata` subset, a bounded
+DROP-INCOMING queue, parent-first DataMEL lifetime, and a permanent
+callback-registration holder. ABI 0.1 adds exactly nine exports (106 -> 115).
+The raw private Ada FFI, `ams-mel-sys`, and private Python ctypes are
+synchronized. There is no safe language RF API.
+
+```text
+RF DataMEL foundation:                          complete
+RF RFMFAInfo scalar/enum/range snapshot:        complete
+RF ProductRxEndpoint ComplexINT16 receive:      complete in native C
+RF ProductRxMetadata:                           fixed representable subset complete;
+                                                richer Pointing/ReceiveEvent/std::any
+                                                profiles fail closed
+RF ProductRxEndpoint other formats:             not implemented
+RF RDMA:                                        not implemented
+RF C2 / Jobs:                                   not implemented in production API
+safe Ada/Rust/Python RF:                        not implemented
+```
+
+The mock RF provider proves fidelity, fail-closed metadata, callback-lifetime,
+and DSO-retention behavior, with destructive negative controls. The opt-in
+`make test-squall-rf-rx` real Squall receive passed. See
+`task-033d-rf-complex-int16-receive.md`.
+
 Task 033C pins the RF ProductRxEndpoint receive declaration closure and records
 the callback/buffer/lifetime contract. It is an evidence task only: 16
 byte-identical RF MEL headers, a declaration-only compile probe, and the
@@ -11,8 +37,8 @@ Python surface changed.
 RF DataMEL foundation:                          complete (033B)
 RF ProductRxEndpoint declaration closure:       pinned / measured (033C)
 RF ProductRxEndpoint callback/lifetime contract: analyzed (033C)
-RF ProductRxEndpoint runtime:                   not implemented
-RF ComplexINT16 receive:                        not implemented
+RF ProductRxEndpoint runtime:                   not implemented (implemented by 033D)
+RF ComplexINT16 receive:                        not implemented (implemented by 033D)
 RF ProductRxMetadata mapping:                   not implemented (033D policy decided)
 RF PointingType / ReceiveEvent mapping:         not implemented (fail closed in 033D)
 RF RDMA / external endpoints:                   not implemented
@@ -33,7 +59,8 @@ RF RFMFAInfo scalar/enum/range snapshot:      complete
 RF quantizeDuration:                          not implemented
 RF PhysicalData:                              not implemented
 RF Tx power modes:                            not implemented
-RF ProductRxEndpoint / IQ receive:            not implemented (033C: contract pinned only)
+RF ProductRxEndpoint / IQ receive:            not implemented (033C: contract pinned only;
+                                              superseded by 033D above)
 RF RDMA:                                      not implemented
 RF C2 / jobs:                                 not implemented
 safe Ada/Rust/Python RF:                      not implemented

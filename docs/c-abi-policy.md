@@ -1123,3 +1123,70 @@ The MFA snapshot owner:
 Snapshot view and Close are provider-free. Any getter exception discards the
 partial snapshot and leaves the output NULL. `AMS_MEL_TEST_RF_ALLOCATION_FAILURE`
 is a test-build-only failpoint and has no effect in production builds.
+
+## Task 033D RF ProductRxEndpoint ComplexINT16 receive
+
+ABI 0.1 adds exactly nine exports (106 -> 115):
+`ams_mel_rf_data_submit_product_rx`, `ams_mel_rf_product_rx_request_wait`,
+`ams_mel_rf_product_rx_request_claim`, `ams_mel_rf_product_rx_request_close`,
+`ams_mel_rf_product_rx_receive`, `ams_mel_rf_product_rx_get_counters`,
+`ams_mel_rf_product_rx_close`, `ams_mel_rf_product_rx_event_view`, and
+`ams_mel_rf_product_rx_event_close`. It also adds the opaque owners
+`ams_mel_rf_product_rx_request`, `ams_mel_rf_product_rx`, and
+`ams_mel_rf_product_rx_event`, and the `_v1` records `config`,
+`complex_i16`, `complex_i16_span`, `metadata`, `event`, `info`,
+`request_result`, and `counters`. No existing declaration, record, or status
+changes.
+
+* **Format.** Only `AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16`. Any other value
+  returns `AMS_MEL_INVALID_ARGUMENT` before any provider call. The provider is
+  always called as `createProductRxEndpoint(ComplexINT16, region_size, nullptr)`.
+  `region_size_bytes` is passed verbatim after a `SIZE_MAX` check, and the
+  facade gives 0 no meaning of its own.
+* **Sample value.** `ams_mel_rf_complex_i16_v1` is the facade's own value. It
+  makes no layout claim with `MELComplex<int16_t>`, which is not trivially
+  copyable. Each element is copied as `real()`/`imag()`, never with `memcpy`.
+  `samples.size` is an element count.
+* **Metadata subset.** The 7 IDs, phase coherence (exactly 0/1), UTCTime as the
+  verbatim `int64` integral seconds and fractional femtoseconds (no ns
+  conversion or renormalization), and `rxStreamIDs`. A callback is rejected
+  whole (`malformed_or_unsupported`, nothing queued) when `userDefinedData`
+  has a value, when `stabPoints` or `receiveEvents` is nonempty, or when
+  `receiveEventAssociations` is present and nonempty. Absent or
+  present-but-empty associations are accepted. Nothing is silently discarded.
+* **Request.** One worker per future is the only `future.get()` caller. An
+  invalid future is `AMS_MEL_PROVIDER_FAILED`, and no worker is launched. Wait:
+  0 polls; a timeout never cancels; the terminal status, result, and
+  diagnostic are cached. An `ErrorOr` error is `AMS_MEL_PROVIDER_FAILED` with
+  the mapped MEL `ErrorCode` and the provider description; an unknown
+  `ErrorCode` is `AMS_MEL_PROVIDER_FAILED` with a malformed-provider
+  diagnostic. Resource-creation rejection is never
+  `AMS_MEL_COMMAND_REJECTED`. Close is idempotent, nonblocking, and not
+  cancellation. Wait and Close on one request must not race.
+* **Claim.** Unique and nonblocking (`AMS_MEL_TIMEOUT` while pending). The
+  first claim registers the callback exactly once and transfers the provider
+  endpoint, the child claim, and the cached ID/format. A later claim returns
+  `AMS_MEL_PROVIDER_FAILED` "RF ProductRx endpoint already claimed". A
+  throwing registration is cached and never retried; its registration is
+  retained permanently and no endpoint is published.
+* **Receive/queue.** A bounded DROP-INCOMING queue with six saturating
+  counters. At most one Receive per endpoint. Endpoint Close may race Receive
+  and wakes it (`AMS_MEL_STREAM_STOPPED`). `get_counters` may run during
+  callbacks but must be externally serialized with endpoint Close.
+* **Endpoint Close.** Logical first (Closed, queue discarded, Receive woken),
+  then Close waits for current `in_flight == 0`, and only then is the provider
+  endpoint dropped outside every bridge mutex: a callback admitted while
+  Receiving may still borrow endpoint-owned provider data. A throwing
+  registration's cleanup uses the same order. That drain is not provider
+  quiescence and never authorizes DSO unload. The final child release may run the deferred
+  `DataMEL::shutdown()`; a throw there returns `AMS_MEL_PROVIDER_EXCEPTION`.
+* **Event.** Owns only copies; view and Close are provider-free. It stays
+  readable after endpoint Close, RF Data Close, DataMEL destruction, and
+  regardless of provider DSO lifetime.
+* **Permanent registration.** After `setDataReadyCallback` begins, the exact
+  `std::function` lvalue, its callback state, and the provider DSO are retained
+  for the process lifetime. This is deliberate fail-safe retention.
+
+Test-only observers and controls (`ams_mel_test_rf_rx_*`) exist only in the
+generated `test-exports.map` of `AMS_MEL_BUILD_TESTS` builds. They are never in
+`exports.map` and never declared in an installed header.

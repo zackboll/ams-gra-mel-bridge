@@ -125,10 +125,19 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_mfa_info_view",
                 "ams_mel_rf_mfa_info_close",
                 "ams_mel_rf_data_close",
+                "ams_mel_rf_data_submit_product_rx",
+                "ams_mel_rf_product_rx_request_wait",
+                "ams_mel_rf_product_rx_request_claim",
+                "ams_mel_rf_product_rx_request_close",
+                "ams_mel_rf_product_rx_receive",
+                "ams_mel_rf_product_rx_get_counters",
+                "ams_mel_rf_product_rx_close",
+                "ams_mel_rf_product_rx_event_view",
+                "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 106)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 106)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 115)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 115)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -136,7 +145,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 106)
+        self.assertEqual(len(exported), 115)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -236,6 +245,69 @@ class AbiTests(unittest.TestCase):
             ],
             list(range(14)),
         )
+
+    def test_private_rf_product_rx_signatures_are_exact(self) -> None:
+        """Task 033D: private raw ctypes shapes of the nine ProductRx exports."""
+        diagnostic = [
+            _native.CharPointer, ctypes.c_size_t, _native.SizePointer
+        ]
+        data = _native.RfDataHandle
+        request = _native.RfProductRxRequestHandle
+        endpoint = _native.RfProductRxHandle
+        event = _native.RfProductRxEventHandle
+        expected = {
+            "ams_mel_rf_data_submit_product_rx": [
+                data, ctypes.POINTER(_native.RfProductRxConfigV1), ctypes.POINTER(request)
+            ],
+            "ams_mel_rf_product_rx_request_wait": [
+                request, ctypes.c_uint32, ctypes.POINTER(_native.RfProductRxRequestResultV1)
+            ],
+            "ams_mel_rf_product_rx_request_claim": [
+                request, ctypes.POINTER(endpoint), ctypes.POINTER(_native.RfProductRxInfoV1)
+            ],
+            "ams_mel_rf_product_rx_request_close": [ctypes.POINTER(request)],
+            "ams_mel_rf_product_rx_receive": [
+                endpoint, ctypes.c_uint32, ctypes.POINTER(event)
+            ],
+            "ams_mel_rf_product_rx_get_counters": [
+                endpoint, ctypes.POINTER(_native.RfProductRxCountersV1)
+            ],
+            "ams_mel_rf_product_rx_close": [ctypes.POINTER(endpoint)],
+            "ams_mel_rf_product_rx_event_view": [
+                event, ctypes.POINTER(ctypes.POINTER(_native.RfProductRxEventV1))
+            ],
+            "ams_mel_rf_product_rx_event_close": [ctypes.POINTER(event)],
+        }
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic], name)
+            self.assertIs(function.restype, ctypes.c_int32)
+
+    def test_private_rf_product_rx_null_preconditions(self) -> None:
+        request = _native.RfProductRxRequestHandle()
+        endpoint = _native.RfProductRxHandle()
+        event = _native.RfProductRxEventHandle()
+        config = _native.RfProductRxConfigV1(
+            _native.AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16, 4096, 4, 64
+        )
+        self.assertEqual(
+            _native.ams_mel_rf_data_submit_product_rx(
+                None, ctypes.byref(config), ctypes.byref(request), None, 0, None
+            ),
+            _native.AMS_MEL_INVALID_ARGUMENT,
+        )
+        self.assertIsNone(request.value)
+        self.assertEqual(
+            _native.ams_mel_rf_product_rx_receive(None, 0, ctypes.byref(event), None, 0, None),
+            _native.AMS_MEL_INVALID_ARGUMENT,
+        )
+        self.assertIsNone(event.value)
+        for close in (
+            (_native.ams_mel_rf_product_rx_request_close, request),
+            (_native.ams_mel_rf_product_rx_close, endpoint),
+            (_native.ams_mel_rf_product_rx_event_close, event),
+        ):
+            self.assertEqual(close[0](ctypes.byref(close[1]), None, 0, None), _native.AMS_MEL_OK)
 
     def test_private_rf_data_null_preconditions(self) -> None:
         data = _native.RfDataHandle()
@@ -985,6 +1057,60 @@ class AbiTests(unittest.TestCase):
                 'max_user_defined_context_bytes',
                 'supported_data_formats',
                 'faces',
+            )
+        )
+        # Task 033D RF ProductRxEndpoint ComplexINT16 receive.
+        for handle in (
+            _native.RfProductRxRequestHandle,
+            _native.RfProductRxHandle,
+            _native.RfProductRxEventHandle,
+        ):
+            expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
+        expected.extend(
+            self._layout(
+                _native.RfProductRxConfigV1,
+                'data_format',
+                'region_size_bytes',
+                'queue_capacity',
+                'max_samples_per_event',
+            )
+        )
+        expected.extend(self._layout(_native.RfComplexI16V1, 'real', 'imag'))
+        expected.extend(self._layout(_native.RfComplexI16SpanV1, 'data', 'size'))
+        expected.extend(
+            self._layout(
+                _native.RfProductRxMetadataV1,
+                'mel_protocol_version_id',
+                'va_definition_id',
+                'va_instance_id',
+                'job_details_id',
+                'job_interval_id',
+                'lf_type_id',
+                'lf_instance_id',
+                'phase_coherence_with_prior',
+                'first_rx_event_start_s',
+                'first_rx_event_start_fs',
+                'rx_stream_ids',
+            )
+        )
+        expected.extend(
+            self._layout(
+                _native.RfProductRxEventV1, 'endpoint_id', 'data_format', 'samples', 'metadata'
+            )
+        )
+        expected.extend(
+            self._layout(_native.RfProductRxInfoV1, 'endpoint_id', 'assigned_data_format')
+        )
+        expected.extend(self._layout(_native.RfProductRxRequestResultV1, 'error_code'))
+        expected.extend(
+            self._layout(
+                _native.RfProductRxCountersV1,
+                'callbacks_received',
+                'products_queued',
+                'products_dropped_queue_full',
+                'malformed_or_unsupported',
+                'allocation_failures',
+                'callbacks_after_close',
             )
         )
         expected.extend(

@@ -106,6 +106,15 @@ AMS_MEL_0.1 {
         ams_mel_rf_mfa_info_view;
         ams_mel_rf_mfa_info_close;
         ams_mel_rf_data_close;
+        ams_mel_rf_data_submit_product_rx;
+        ams_mel_rf_product_rx_request_wait;
+        ams_mel_rf_product_rx_request_claim;
+        ams_mel_rf_product_rx_request_close;
+        ams_mel_rf_product_rx_receive;
+        ams_mel_rf_product_rx_get_counters;
+        ams_mel_rf_product_rx_close;
+        ams_mel_rf_product_rx_event_view;
+        ams_mel_rf_product_rx_event_close;
     local:
         *;
 };

@@ -667,3 +667,9 @@ c1fc6bed704cd54e4ca59023fae4c406ddd8a9afb3dbc83aa7fc3b69bdaa8a5f  native/vendor/
 11f80766f12e3d8f413d6c1977d58882855284712ea7cd5553701a6f3f963521  native/vendor/rf-mel/include/rfmel/jobs/Weights.h
 019b39b2795ad33382544903b6e5f430e78a9c0277418a1a033987b0ee490fcd  native/vendor/rf-mel/include/rfmel/rfmeltypes/ProductRxMetadata.h
 ```
+
+Task 033D adds exactly one RF MEL header from the same RF MEL pin (`762ce84c5555dd0f3ea66f36b321fecf8839b89f`, git blob `5e15b157a13e266cde0c5fd3411ee22b8cd094b0`). It is TEST-PROVIDER IMPLEMENTATION support only: a concrete mock `ProductRxEndpoint` must define the pure virtual `getRDMAMemoryRegionParams()`, whose return type the consumer closure only forward-declares. It is not part of the Task 033C consumer declaration closure, production never includes it, and no existing entry changes:
+
+```text
+ca775ff07944f5f48f99ae6bf996f6f9a3eca9e0e94bc58c662a69f6469d32d2  native/vendor/rf-mel/include/rfmel/endpoints/RDMAMemoryRegionParams.h
+```

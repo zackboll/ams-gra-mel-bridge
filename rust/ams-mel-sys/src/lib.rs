@@ -1668,6 +1668,98 @@ pub struct AmsMelRfMfaInfoV1 {
     pub faces: AmsMelRfFaceInfoSpanV1,
 }
 
+/// Task 033D: opaque asynchronous createProductRxEndpoint completion.
+#[repr(C)]
+pub struct AmsMelRfProductRxRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Task 033D: opaque claimed ProductRxEndpoint lifecycle.
+#[repr(C)]
+pub struct AmsMelRfProductRxEndpoint {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Task 033D: opaque immutable copied callback product.
+#[repr(C)]
+pub struct AmsMelRfProductRxEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfProductRxConfigV1 {
+    pub data_format: AmsMelRfJobDataFormat,
+    pub region_size_bytes: u64,
+    pub queue_capacity: usize,
+    pub max_samples_per_event: usize,
+}
+
+/// The facade's own ComplexINT16 value (no MELComplex layout claim).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfComplexI16V1 {
+    pub real: i16,
+    pub imag: i16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfComplexI16SpanV1 {
+    pub data: *const AmsMelRfComplexI16V1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductRxMetadataV1 {
+    pub mel_protocol_version_id: u32,
+    pub va_definition_id: u32,
+    pub va_instance_id: u32,
+    pub job_details_id: u32,
+    pub job_interval_id: u32,
+    pub lf_type_id: u32,
+    pub lf_instance_id: u32,
+    pub phase_coherence_with_prior: u32,
+    pub first_rx_event_start_s: i64,
+    pub first_rx_event_start_fs: i64,
+    pub rx_stream_ids: AmsMelU32SpanV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductRxEventV1 {
+    pub endpoint_id: u64,
+    pub data_format: AmsMelRfJobDataFormat,
+    pub samples: AmsMelRfComplexI16SpanV1,
+    pub metadata: AmsMelRfProductRxMetadataV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfProductRxInfoV1 {
+    pub endpoint_id: u64,
+    pub assigned_data_format: AmsMelRfJobDataFormat,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfProductRxRequestResultV1 {
+    pub error_code: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfProductRxCountersV1 {
+    pub callbacks_received: u64,
+    pub products_queued: u64,
+    pub products_dropped_queue_full: u64,
+    pub malformed_or_unsupported: u64,
+    pub allocation_failures: u64,
+    pub callbacks_after_close: u64,
+}
+
 extern "C" {
     pub fn ams_mel_get_abi_version(out_version: *mut AmsMelAbiVersionV1) -> AmsMelStatus;
 
@@ -2431,6 +2523,71 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_rf_data_close(
         data: *mut *mut AmsMelRfData,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_rf_data_submit_product_rx(
+        data: *mut AmsMelRfData,
+        config: *const AmsMelRfProductRxConfigV1,
+        out_request: *mut *mut AmsMelRfProductRxRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_request_wait(
+        request: *const AmsMelRfProductRxRequest,
+        timeout_ms: u32,
+        out_result: *mut AmsMelRfProductRxRequestResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_request_claim(
+        request: *mut AmsMelRfProductRxRequest,
+        out_endpoint: *mut *mut AmsMelRfProductRxEndpoint,
+        out_info: *mut AmsMelRfProductRxInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_request_close(
+        request: *mut *mut AmsMelRfProductRxRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_receive(
+        endpoint: *mut AmsMelRfProductRxEndpoint,
+        timeout_ms: u32,
+        out_event: *mut *mut AmsMelRfProductRxEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_get_counters(
+        endpoint: *const AmsMelRfProductRxEndpoint,
+        out_counters: *mut AmsMelRfProductRxCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_close(
+        endpoint: *mut *mut AmsMelRfProductRxEndpoint,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_event_view(
+        event: *const AmsMelRfProductRxEvent,
+        out_view: *mut *const AmsMelRfProductRxEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_event_close(
+        event: *mut *mut AmsMelRfProductRxEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

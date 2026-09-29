@@ -289,6 +289,64 @@ int main(void)
         CHECK(rf_info_close(&rf_info, NULL, 0, NULL) == AMS_MEL_OK && rf_info == NULL);
         CHECK(rf_close(&rf_data, NULL, 0, NULL) == AMS_MEL_OK && rf_data == NULL);
     }
+    {
+        /* Task 033D RF ProductRxEndpoint receive: exact C11 shapes and the
+         * NULL preconditions that need no provider. */
+        ams_mel_status_t (*rx_submit)(ams_mel_rf_data *, const ams_mel_rf_product_rx_config_v1 *,
+            ams_mel_rf_product_rx_request **, char *, size_t, size_t *) =
+            ams_mel_rf_data_submit_product_rx;
+        ams_mel_status_t (*rx_wait)(const ams_mel_rf_product_rx_request *, uint32_t,
+            ams_mel_rf_product_rx_request_result_v1 *, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_request_wait;
+        ams_mel_status_t (*rx_claim)(ams_mel_rf_product_rx_request *, ams_mel_rf_product_rx **,
+            ams_mel_rf_product_rx_info_v1 *, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_request_claim;
+        ams_mel_status_t (*rx_request_close)(ams_mel_rf_product_rx_request **, char *, size_t,
+            size_t *) = ams_mel_rf_product_rx_request_close;
+        ams_mel_status_t (*rx_receive)(ams_mel_rf_product_rx *, uint32_t,
+            ams_mel_rf_product_rx_event **, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_receive;
+        ams_mel_status_t (*rx_counters)(const ams_mel_rf_product_rx *,
+            ams_mel_rf_product_rx_counters_v1 *, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_get_counters;
+        ams_mel_status_t (*rx_close)(ams_mel_rf_product_rx **, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_close;
+        ams_mel_status_t (*rx_view)(const ams_mel_rf_product_rx_event *,
+            const ams_mel_rf_product_rx_event_v1 **, char *, size_t, size_t *) =
+            ams_mel_rf_product_rx_event_view;
+        ams_mel_status_t (*rx_event_close)(ams_mel_rf_product_rx_event **, char *, size_t,
+            size_t *) = ams_mel_rf_product_rx_event_close;
+        ams_mel_rf_product_rx_config_v1 config = {AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16,
+                                                  4096U, 4U, 64U};
+        ams_mel_rf_product_rx_request *rx_request = NULL;
+        ams_mel_rf_product_rx *rx_endpoint = NULL;
+        ams_mel_rf_product_rx_event *rx_event = NULL;
+        ams_mel_rf_product_rx_request_result_v1 rx_result = {0};
+        ams_mel_rf_product_rx_info_v1 rx_info = {0, 0};
+        ams_mel_rf_product_rx_counters_v1 rx_count = {0, 0, 0, 0, 0, 0};
+        const ams_mel_rf_product_rx_event_v1 *rx_record = NULL;
+        ams_mel_rf_complex_i16_v1 sample = {INT16_MIN, INT16_MAX};
+        ams_mel_rf_complex_i16_span_v1 samples = {&sample, 1U};
+        CHECK(sizeof(ams_mel_rf_complex_i16_v1) == 4U);
+        CHECK(samples.data[0].real == INT16_MIN && samples.data[0].imag == INT16_MAX);
+        CHECK(sizeof(ams_mel_rf_product_rx_counters_v1) == 6U * sizeof(uint64_t));
+        CHECK(rx_submit(NULL, &config, &rx_request, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_request == NULL);
+        CHECK(rx_wait(NULL, 0U, &rx_result, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_claim(NULL, &rx_endpoint, &rx_info, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_endpoint == NULL);
+        CHECK(rx_receive(NULL, 0U, &rx_event, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_event == NULL);
+        CHECK(rx_counters(NULL, &rx_count, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_view(NULL, &rx_record, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_record == NULL);
+        CHECK(rx_request_close(&rx_request, NULL, 0, NULL) == AMS_MEL_OK && rx_request == NULL);
+        CHECK(rx_close(&rx_endpoint, NULL, 0, NULL) == AMS_MEL_OK && rx_endpoint == NULL);
+        CHECK(rx_event_close(&rx_event, NULL, 0, NULL) == AMS_MEL_OK && rx_event == NULL);
+        CHECK(rx_request_close(NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_close(NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rx_event_close(NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    }
     CHECK(ams_mel_get_abi_version(NULL) == AMS_MEL_INVALID_ARGUMENT);
     CHECK(ams_mel_get_abi_version(&version) == AMS_MEL_OK);
     CHECK(version.major == AMS_MEL_ABI_VERSION_MAJOR);

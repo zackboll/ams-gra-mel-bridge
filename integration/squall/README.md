@@ -330,3 +330,35 @@ readable after RF Close. The smoke creates no ProductRxEndpoint, receives no
 UDP IQ, requests no jobs, and touches no VADB.
 
 Override ports with `AMS_MEL_SQUALL_RF_{CONTROL,COULOIR_METRICS,HEALTH,METRICS,DATA}_PORT`.
+
+## Task 033D real Squall RF ComplexINT16 ProductRx receive
+
+`make test-squall-rf-rx` (with `SQUALL_SOURCE_DIR` set to the pinned checkout)
+runs `run-rf.sh rx`. It is opt-in and C-only. It is not part of `make check`,
+ordinary CTest, or hosted CI, and the 033B smoke above is unchanged.
+
+1. It performs the same checkout verification, provider extraction, and
+   `squall-rf` + Couloir start as the smoke.
+2. Pinned Squall drops ProductRx data unless an RX job is active, and the
+   production facade has no RF C2/Jobs. The script therefore builds the
+   **test-only** `squall_rf_job_helper.cpp` inside the pinned Squall `builder`
+   stage (the provider's own toolchain and the exact pinned RF MEL headers).
+   The helper runs AdminMEL `commandState(OperateRxOnly)`, then C2MEL virtual
+   aperture, `requestJob`, and `finalize`. It is loaded with `dlopen` and never
+   linked into `ams_mel_c`; the script checks that no helper symbol leaks.
+3. It runs `squall_rf_rx_c.c` against the production facade: create, wait,
+   claim, and 8 receives. It then checks sparse default metadata, zero
+   malformed callbacks, and zero overflow, and re-reads event A after the
+   later callbacks, after endpoint Close, and after DataMEL Close.
+
+Pinned `rf-simulated.toml` produces all-zero IQ without DIS traffic, which
+would make the buffer-reuse check vacuous. The rx mode therefore mounts a
+derived copy that changes **only** `noise_std_dev` to 0.05 (Gaussian AWGN).
+The client then requires nonzero samples in event A and requires every later
+event to differ from A. Sample values are never asserted; exact I/Q fidelity
+is proven by the mock provider.
+
+After callback registration the provider DSO intentionally stays mapped for
+the rest of the process. This is generic bridge policy (the permanent
+registration holder), not a Squall leak. See
+`docs/task-033d-rf-complex-int16-receive.md`.

@@ -93,6 +93,50 @@ static_assert(std::is_same_v<decltype(&ams_mel_rf_mfa_info_view), rf_view_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_rf_mfa_info_close), rf_info_close_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_rf_data_close), rf_close_fn>);
 
+/* Task 033D RF ProductRxEndpoint receive: exact C++ shapes, noexcept, and
+ * standard-layout, trivially copyable records. */
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_config_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_complex_i16_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_complex_i16_span_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_metadata_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_event_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_info_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_request_result_v1>);
+static_assert(std::is_standard_layout_v<ams_mel_rf_product_rx_counters_v1>);
+static_assert(std::is_trivially_copyable_v<ams_mel_rf_product_rx_event_v1>);
+static_assert(std::is_trivially_copyable_v<ams_mel_rf_complex_i16_v1>);
+static_assert(sizeof(ams_mel_rf_complex_i16_v1) == 4U);
+using rx_submit_fn = ams_mel_status_t (*)(ams_mel_rf_data *,
+    const ams_mel_rf_product_rx_config_v1 *, ams_mel_rf_product_rx_request **, char *, size_t,
+    size_t *) noexcept;
+using rx_wait_fn = ams_mel_status_t (*)(const ams_mel_rf_product_rx_request *, uint32_t,
+    ams_mel_rf_product_rx_request_result_v1 *, char *, size_t, size_t *) noexcept;
+using rx_claim_fn = ams_mel_status_t (*)(ams_mel_rf_product_rx_request *,
+    ams_mel_rf_product_rx **, ams_mel_rf_product_rx_info_v1 *, char *, size_t,
+    size_t *) noexcept;
+using rx_request_close_fn = ams_mel_status_t (*)(ams_mel_rf_product_rx_request **, char *,
+    size_t, size_t *) noexcept;
+using rx_receive_fn = ams_mel_status_t (*)(ams_mel_rf_product_rx *, uint32_t,
+    ams_mel_rf_product_rx_event **, char *, size_t, size_t *) noexcept;
+using rx_counters_fn = ams_mel_status_t (*)(const ams_mel_rf_product_rx *,
+    ams_mel_rf_product_rx_counters_v1 *, char *, size_t, size_t *) noexcept;
+using rx_close_fn = ams_mel_status_t (*)(ams_mel_rf_product_rx **, char *, size_t,
+    size_t *) noexcept;
+using rx_view_fn = ams_mel_status_t (*)(const ams_mel_rf_product_rx_event *,
+    const ams_mel_rf_product_rx_event_v1 **, char *, size_t, size_t *) noexcept;
+using rx_event_close_fn = ams_mel_status_t (*)(ams_mel_rf_product_rx_event **, char *, size_t,
+    size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_rf_data_submit_product_rx), rx_submit_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_request_wait), rx_wait_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_request_claim), rx_claim_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_request_close),
+                             rx_request_close_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_receive), rx_receive_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_get_counters), rx_counters_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_close), rx_close_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_event_view), rx_view_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_rf_product_rx_event_close), rx_event_close_fn>);
+
 int main()
 {
     ams_mel_abi_version_v1 version{};
