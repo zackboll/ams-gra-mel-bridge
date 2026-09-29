@@ -1,12 +1,35 @@
 # Implementation coverage
 
+Task 034A adds safe Ada `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx` on the
+unchanged native ABI 0.1 (115 production exports). Safe Ada covers the complete
+**current native RF slice**, not the complete published RF MEL standard.
+
+```text
+RF DataMEL native C:                          complete current foundation
+RF DataMEL safe Ada:                          complete current foundation
+RF RFMFAInfo scalar/enum/range snapshot:      native C + safe Ada
+RF ComplexINT16 ProductRx:                   native C + safe Ada
+RF ProductRx safe Ada sample access:         native event lease; no additional
+                                               bulk copy in With_Samples
+RF other sample formats:                     not implemented
+RF richer ProductRxMetadata:                 not implemented; native fail closed
+RF RDMA:                                     not implemented
+RF C2 / jobs / VADB:                         not implemented
+safe Rust RF:                                not implemented
+public Python RF:                            not implemented
+```
+
+Historical Task 033D coverage below describes the starting state, not the
+post-034A safe Ada API. See `task-034a-safe-ada-rf.md`.
+
 Task 033D implements the first RF MEL data-plane path. Native C now covers
 asynchronous `ProductRxEndpoint` creation, ComplexINT16 receive into owned,
 immutable events, a fixed representable `ProductRxMetadata` subset, a bounded
 DROP-INCOMING queue, parent-first DataMEL lifetime, and a permanent
 callback-registration holder. ABI 0.1 adds exactly nine exports (106 -> 115).
 The raw private Ada FFI, `ams-mel-sys`, and private Python ctypes are
-synchronized. There is no safe language RF API.
+synchronized. At the Task 033D baseline there was no safe language RF API;
+Task 034A adds safe Ada support as described above.
 
 ```text
 RF DataMEL foundation:                          complete
@@ -18,7 +41,7 @@ RF ProductRxMetadata:                           fixed representable subset compl
 RF ProductRxEndpoint other formats:             not implemented
 RF RDMA:                                        not implemented
 RF C2 / Jobs:                                   not implemented in production API
-safe Ada/Rust/Python RF:                        not implemented
+safe Ada/Rust/Python RF at 033D:                not implemented (Ada added by 034A)
 ```
 
 The mock RF provider proves fidelity, fail-closed metadata, callback-lifetime,
@@ -254,7 +277,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited KeepAlive/CommsTest/ChannelCapability through `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel` (032B2) |
 | StackedImage | Not implemented |
-| RF | Not implemented in safe Ada. Task 033B added only the private raw `AMS.MEL_C_API` RF DataMEL declarations; there is no `AMS.MEL.RF` |
+| RF | Task 034A: `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx` implement the complete current native RF DataMEL/MFA snapshot and ComplexINT16 ProductRx slice; other formats, richer metadata, RDMA and jobs/C2 remain outside the generic library |
 
 Implementation and verification are different. See `bootstrap-validation.md`
 for the commands actually executed when this starter archive was prepared.

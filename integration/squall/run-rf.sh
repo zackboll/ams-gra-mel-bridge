@@ -16,7 +16,7 @@
 set -eu
 
 mode=${1:-smoke}
-case "$mode" in smoke|rx) ;; *) printf 'usage: %s [smoke|rx]\n' "$0" >&2; exit 2 ;; esac
+case "$mode" in smoke|rx|ada) ;; *) printf 'usage: %s [smoke|rx|ada]\n' "$0" >&2; exit 2 ;; esac
 
 expected_commit=b1015728f904c799fa0c07489fce48e78f67845f
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -151,24 +151,43 @@ readelf --dyn-syms --wide "$provider" | grep -q ' createDataMEL$' ||
 printf '%s\n' "Squall RF provider: $provider" 'Provider runtime dependencies:'
 readelf -d "$provider" | sed -n '/NEEDED/p'
 
-# Production facade and the C-only client; never installed or added to CTest.
+# Production facade and the selected integration client; never installed or added to CTest.
 cmake -S "$root/native" -B "$root/native/build" -DAMS_MEL_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build "$root/native/build" --parallel 2
-if test "$mode" = rx; then
+if test "$mode" = rx || test "$mode" = ada; then
   client=squall_rf_rx_c
 else
   client=squall_rf_c_smoke
 fi
-cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
-  -I"$root/native/include" "$root/integration/squall/$client.c" \
-  -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c -ldl \
-  -o "$build_dir/bin/$client"
+if test "$mode" = ada; then
+  if command -v gprbuild >/dev/null 2>&1; then
+    GPR_PROJECT_PATH="$root/native:$root/ada${GPR_PROJECT_PATH:+:$GPR_PROJECT_PATH}" \
+      AMS_MEL_SQUALL_ADA_BUILD_DIR="$build_dir" \
+      gprbuild -p -P "$root/integration/squall/ams_mel_squall_rf.gpr"
+  else
+    need alr
+    AMS_MEL_SQUALL_ADA_BUILD_DIR="$build_dir" \
+      alr -C "$root/ada" exec -- gprbuild -p \
+        -P "$root/integration/squall/ams_mel_squall_rf.gpr"
+  fi
+  client=ams_mel_squall_rf
+else
+  cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
+    -I"$root/native/include" "$root/integration/squall/$client.c" \
+    -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c -ldl \
+    -o "$build_dir/bin/$client"
+fi
+readelf -h "$build_dir/bin/$client" | grep -Eq 'Type:.*(EXEC|DYN)' || fail "RF client is not ELF"
+readelf -d "$build_dir/bin/$client" | grep -q 'libams_mel_c' || fail "RF client does not link facade"
 if readelf -d "$build_dir/bin/$client" | grep -q 'libsquall_rf_mel'; then
   fail "RF client directly links Squall"
 fi
+if readelf -d "$build_dir/bin/$client" | grep -q 'libmock_'; then
+  fail "RF client directly links mock provider"
+fi
 
 helper="$build_dir/provider/libsquall_rf_job_helper.so"
-if test "$mode" = rx; then
+if test "$mode" = rx || test "$mode" = ada; then
   # TEST-ONLY job helper, compiled in the pinned builder stage (the provider's
   # own toolchain, boost-devel, and the exact verified checkout headers).
   builder_image_present=1
@@ -183,8 +202,16 @@ if test "$mode" = rx; then
     -isystem /build/ams-interfaces/rf-mel/ams-math/include \
     -isystem /build/ams-interfaces/rf-mel/ams-vita/include \
     /task033d/squall_rf_job_helper.cpp -o /out/libsquall_rf_job_helper.so
-  "$runtime" image rm "$builder_image" >/dev/null
-  builder_image_present=0
+  if test "$mode" = ada; then
+    # Podman may still be removing its transient --rm helper container. The
+    # EXIT trap retries removal; never force-remove an image in use.
+    if "$runtime" image rm "$builder_image" >/dev/null 2>&1; then
+      builder_image_present=0
+    fi
+  else
+    "$runtime" image rm "$builder_image" >/dev/null
+    builder_image_present=0
+  fi
   test -s "$helper" || fail "TEST-ONLY RF job helper was not built"
   if readelf -d "$root/native/build/lib/libams_mel_c.so" | grep -q 'squall_rf_job_helper'; then
     fail "production facade links the test-only job helper"
@@ -200,7 +227,7 @@ fi
 # derives a copy that changes ONLY noise_std_dev (Gaussian AWGN, so values are
 # random and never asserted). Every other key stays pinned.
 cp "$SQUALL_SOURCE_DIR/config/rf-simulated.toml" "$rf_config"
-if test "$mode" = rx; then
+if test "$mode" = rx || test "$mode" = ada; then
   python3 - "$rf_config" <<'PY'
 import re, sys
 path = sys.argv[1]
@@ -293,9 +320,13 @@ repeat=${AMS_MEL_SQUALL_REPEAT:-1}
 case "$repeat" in ''|*[!0-9]*|0) fail "AMS_MEL_SQUALL_REPEAT must be a positive integer" ;; esac
 iteration=1
 while test "$iteration" -le "$repeat"; do
-  printf '\nTask-033%s RF iteration %s/%s\n' "$(test "$mode" = rx && echo D || echo B)" \
-    "$iteration" "$repeat"
-  if test "$mode" = rx; then
+  if test "$mode" = ada; then
+    printf '\nTask-034A safe Ada RF iteration %s/%s\n' "$iteration" "$repeat"
+  else
+    printf '\nTask-033%s RF iteration %s/%s\n' "$(test "$mode" = rx && echo D || echo B)" \
+      "$iteration" "$repeat"
+  fi
+  if test "$mode" = rx || test "$mode" = ada; then
     LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
       "$build_dir/bin/$client" "$provider" "$profile" "$helper" ||
       fail "RF ProductRx receive failed; see runtime logs and profile"
@@ -306,7 +337,10 @@ while test "$iteration" -le "$repeat"; do
   fi
   iteration=$((iteration + 1))
 done
-if test "$mode" = rx; then
+if test "$mode" = ada; then
+  printf '\nPASS: Squall safe Ada RF ProductRx ComplexINT16 receive (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+elif test "$mode" = rx; then
   printf '\nPASS: Squall RF ProductRxEndpoint ComplexINT16 receive (%s iteration(s), Squall %s)\n' \
     "$repeat" "$expected_commit"
 else

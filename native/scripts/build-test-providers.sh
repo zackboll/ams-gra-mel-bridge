@@ -6,4 +6,4 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ams_mel_select_tree tests
 sh "$root/scripts/configure-build.sh" tests
 env -u LD_RUN_PATH cmake --build "$ams_mel_build_dir" --parallel 2 --target \
-    ams_mel_c mock_ir_provider missing_symbol_ir_provider
+    ams_mel_c mock_ir_provider missing_symbol_ir_provider mock_rf_provider

@@ -17,6 +17,16 @@ C++ MEL interface directly. `ams_mel_c` exists to make that same provider
 ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
+**Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`
+cover the complete **current native RF slice**: owned DataMEL, provider
+version, wholly Ada-owned RFMFAInfo snapshots (including unknown format values),
+asynchronous ComplexINT16 ProductRx creation, counters, and leased receive
+events. `With_Samples` borrows the native event's C-ABI sample array without
+an additional Ada payload copy; `Copy_Samples` makes an explicit Ada copy.
+The native bridge itself already copies the provider callback buffer. RF
+RDMA, other sample formats, richer metadata, jobs/C2, and safe Rust/public
+Python RF remain outside this slice. See `docs/task-034a-safe-ada-rf.md`.
+
 > **Current status:** C and Ada support provider Session lifecycle, IR host-memory
 > Mono8 reception, and all three required C2 command sends: general ModeCmd with
 > complete ScanParam, BIT, and ConfigSet, plus all three required C2-specific
