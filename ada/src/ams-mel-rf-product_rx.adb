@@ -147,7 +147,7 @@ package body AMS.MEL.RF.Product_Rx is
             raise Provider_Error with "invalid successful RF creation result";
          end if;
          return (State => Created, Code => None, Text => US.Null_Unbounded_String);
-      elsif Status = 11 then
+      elsif Status = C.Provider_Failed then
          if Raw.Error_Code > Create_Error_Code'Enum_Rep (Unsupported) then
             raise Provider_Error with Message (D);
          end if;

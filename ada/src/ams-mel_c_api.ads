@@ -16,6 +16,7 @@ private package AMS.MEL_C_API is
    Buffer_Too_Small   : constant Interfaces.Integer_32 := 7;
    Timeout            : constant Interfaces.Integer_32 := 9;
    Stream_Stopped     : constant Interfaces.Integer_32 := 10;
+   Provider_Failed    : constant Interfaces.Integer_32 := 11;
    Command_Rejected   : constant Interfaces.Integer_32 := 12;
    Resource_Exhausted : constant Interfaces.Integer_32 := 13;
 
