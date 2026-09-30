@@ -1,3 +1,31 @@
+# Task 034B1 RF Admin/C2/VA declaration closure
+
+The starting `main` is `c4faea0999d38b785c62271a2222535e7a4c1c14`.
+Six roots (`rfmel/factory/RFCreateFunctions.h`, `rfmel/admin/{AdminMEL,UCI_Control,StatusControl}.h`,
+`rfmel/c2/{C2MEL,VirtualAperture}.h`) were measured using GCC 14.2 and
+Clang 19.1 against the **full** pinned RF MEL, Common MEL, AMS Math, AMS VITA,
+and Boost 1.83.0 source trees. The previously measured combined Admin/C2/Job
+roots reached GCC 711, Clang 712, union 713 headers. The narrower 034B1 roots
+reach GCC **710** (RF 51, Common 24, Math 5, VITA 5, Boost 625), Clang **711**
+(RF 51, Common 24, Math 5, VITA 5, Boost 626), union **712** (RF 51, Common 24,
+Math 5, VITA 5, Boost 627). Their exact family-relative dependency lists and
+compiler-specific SHA-256 identities are pinned by
+`native/scripts/check_rf_admin_c2_closure.py`. The compiler probe verifies
+the exact lists through their length and SHA-256, not merely family counts.
+
+Relative to the existing vendored tree, the union adds exactly **28 RF MEL**
+headers from commit `762ce84c5555dd0f3ea66f36b321fecf8839b89f` and **146
+Boost** headers from Boost 1.83.0 (source commit
+`564e2ac16907019696cdaba8a93e3588ec596062`); there are **zero** new
+Common MEL (`f6908437d8fd2f7fb69896f9eb9cfd272d10c439`), AMS Math
+(`00be45190f0e47d268cece8b8c2f8fb58b5418d2`), or AMS VITA
+(`8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8`) files. The 174 exact
+new filename and SHA-256 pairs are appended to `upstream-files.sha256.md`.
+All 628 pre-existing vendor blobs remain byte-identical. Squall
+`b1015728f904c799fa0c07489fce48e78f67845f` is evidence only, not a
+build dependency. The new always-built independent compiler probe rejects
+unpinned/system headers without weakening the 033A and 033C checks.
+
 # Task 033C RF ProductRxEndpoint closure note
 
 Task 033C adds **no new revision** and no new version entry. It extends the
