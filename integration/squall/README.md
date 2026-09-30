@@ -333,6 +333,19 @@ Override ports with `AMS_MEL_SQUALL_RF_{CONTROL,COULOIR_METRICS,HEALTH,METRICS,D
 
 ## Task 033D real Squall RF ComplexINT16 ProductRx receive
 
+`make test-squall-rf-ada` is the additional opt-in Task 034A **safe Ada**
+client. It uses the same pinned Squall RF runtime, copied noise override,
+and test-only job helper as `make test-squall-rf-rx`; the original C target is
+unchanged. The Ada client consumes only `AMS.MEL.RF` and
+`AMS.MEL.RF.Product_Rx`, loading the helper through integration-only
+`dlopen`/`dlsym` imports. Production Ada and `libams_mel_c` never link to the
+helper or provider. The script checks the client's ELF dynamic dependencies.
+The safe client verifies version/MFA, eight nonempty nontrivial ComplexINT16
+events, zero malformed/overflow counters, and event A after later receives
+and both parent closures. Set `SQUALL_SOURCE_DIR` to the pinned checkout.
+It is not part of ordinary builds or `make check` and does not replace the C
+target. It uses the local Alire GPR toolchain when bare `gprbuild` is absent.
+
 `make test-squall-rf-rx` (with `SQUALL_SOURCE_DIR` set to the pinned checkout)
 runs `run-rf.sh rx`. It is opt-in and C-only. It is not part of `make check`,
 ordinary CTest, or hosted CI, and the 033B smoke above is unchanged.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add safe Ada RF DataMEL, owned RFMFAInfo snapshot, and ComplexINT16 ProductRx
+  request/endpoint/event API (Task 034A), including parent-first lifetime and
+  borrowed sample access. The existing C ABI remains 0.1 with 115 exports;
+  this adds no native RF functionality.
+
 - Add RF ComplexINT16 receive (Task 033D). Nine new production exports (ABI
   0.1, 106 -> 115): `ams_mel_rf_data_submit_product_rx`,
   `ams_mel_rf_product_rx_request_wait`, `ams_mel_rf_product_rx_request_claim`,
@@ -41,7 +46,8 @@
     `make test-squall-rf-rx` real Squall receive, which uses a test-only job
     helper.
   - Raw Ada FFI, `ams-mel-sys`, and private Python ctypes are synchronized
-    (inventory 115); there is no safe RF API.
+    (inventory 115); at this baseline there was no safe RF API (added for
+    Ada by Task 034A above).
 - Pin the RF ProductRxEndpoint receive declaration closure and document the
   callback/buffer/lifetime contract (Task 033C). Re-measured the
   `DataMEL.h` + `ProductRxEndpoint.h` closure from the full pinned upstream

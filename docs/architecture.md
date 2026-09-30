@@ -1,5 +1,23 @@
 # Architecture decisions
 
+Task 034A places the complete **current** native RF foundation behind two
+safe Ada packages, `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`, distinct from
+IR. Limited controlled DataMEL, create request, endpoint, and event owners
+hold one private raw handle apiece; neither request nor endpoint retains the
+parent Ada object. Native Task 033D owns deferred parent shutdown and callback
+drain. The MFA snapshot copies each checked native span into Ada vectors and
+releases the native owner even if conversion raises. Unknown raw format values
+survive in a 32-bit modular type, and reported face count is distinct from the
+actual (non-contiguous-ID) face vector. A ProductRx event owns a native copied
+payload and Ada-owned small metadata: `With_Samples` imports the C-ABI array
+at the native event sample address for the duration of a callback, without a
+second bulk copy; `Copy_Samples` explicitly copies. The native bridge has
+already copied provider callback samples, so this is not end-to-end zero-copy.
+The test-only child `AMS.MEL.RF.Product_Rx.Testing` observes the address for
+alias verification and is not part of the production library. See
+`task-034a-safe-ada-rf.md`. No C ABI change (ABI 0.1, 115 exports), no generic
+jobs/C2, RDMA, other RF formats, or richer ProductRxMetadata.
+
 Task 032B4 exposes the 032B1 public view in public Python for the two families
 that already have public Python typed owners. `ControlChannel.channel_view()`
 and `ImageStream.channel_view()` return a `ChannelView` that follows the
