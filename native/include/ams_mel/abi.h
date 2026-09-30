@@ -2565,6 +2565,19 @@ typedef struct ams_mel_rf_mfa_info_v1 {
  * an exception. State 0..14 maps directly to Common MEL MFA_State, while
  * MAX_EXCLUSIVE and all larger values are invalid. */
 typedef struct ams_mel_rf_admin ams_mel_rf_admin;
+/* Distinct createC2MEL factory owner. Open takes NUL-terminated UTF-8 C
+ * strings (as RF Admin); out_c2 must point to NULL. Close consumes the owner,
+ * shuts down once and destroys C2 before unloading the provider. A throwing
+ * shutdown retains the uncertain C2/DSO graph permanently. Calls on one owner
+ * must be externally serialized. No VA or job operations are exposed. */
+typedef struct ams_mel_rf_c2 ams_mel_rf_c2;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_open(
+    const char *library_path, const char *configuration,
+    ams_mel_rf_c2 **out_c2, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_close(
+    ams_mel_rf_c2 **c2, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_admin_open(
     const char *library_path, const char *configuration,
     ams_mel_rf_admin **out_admin, char *diagnostic,

@@ -1,5 +1,19 @@
 # Implementation coverage
 
+Task 034B1B1 adds RF C2 lifecycle in native C and safe Ada. ABI 0.1 now has
+120 production exports. The 034B1A/034A/033D sections below are historical
+baselines. See `task-034b1b1-safe-ada-rf-c2-owner.md`.
+
+```text
+RF DataMEL:              native C + safe Ada
+RF ProductRx:            native C + safe Ada
+RF Admin commandState:   native C + safe Ada
+RF C2 lifecycle:         native C + safe Ada
+RF VirtualAperture:      not implemented (034B1B2)
+RF Jobs:                 not implemented (034B2)
+safe Rust / public Python RF: not implemented
+```
+
 Task 034B1A adds RF Admin state command in native C and safe Ada, using the
 previously committed 034B1 closure. ABI 0.1 now has 118 production exports.
 The Task 034A and 033D statements below describe their historical baselines.

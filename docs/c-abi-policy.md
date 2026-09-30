@@ -4,6 +4,15 @@ The current ABI is 0.1, not yet stable. Header version macros describe this
 facade only. Provider API, upstream source, architecture, and package versions
 must remain distinct.
 
+Task 034B1B1 adds exactly `ams_mel_rf_c2_open` and `ams_mel_rf_c2_close`
+(118 → 120 production exports). C2 is a separate `createC2MEL` factory,
+not an Admin or Data alias. Inputs are NUL-terminated UTF-8 as for the RF
+factory owners. Close consumes the opaque owner; it synchronously shuts down,
+destroys C2 before releasing the DSO, and is idempotent for a null owner.
+If shutdown throws, the uncertain C2 and DSO are permanently retained and
+shutdown is never retried. No VA request/child, future, or Job ABI exists in
+this checkpoint. ABI version remains 0.1.
+
 The provider-buffer zero-copy path internally enforces one release executor per
 stream, independent of whether its current `Buffer` pointer is empty. Temporary
 contention is backpressure: an

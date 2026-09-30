@@ -1191,9 +1191,9 @@ class PublicSurfaceTests(unittest.TestCase):
         for leaked in ("_native", "IrChannelHandle", "IrChannelCapabilityHandle",
                        "IrChannelCapabilityV1"):
             self.assertNotIn(leaked, ams_mel.__all__)
-        # Task 034B1A adds three private raw Admin bindings; no public RF API.
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 118)
-        for leaked in ("RfAdminHandle", "RfDataHandle", "RfMfaInfoHandle", "RfMfaInfoV1",
+        # Task 034B1B1 adds two private raw C2 lifecycle bindings; no public RF API.
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 120)
+        for leaked in ("RfAdminHandle", "RfC2Handle", "RfDataHandle", "RfMfaInfoHandle", "RfMfaInfoV1",
                        "RfProductRxRequestHandle", "RfProductRxHandle",
                        "RfProductRxEventHandle", "RfProductRxEventV1",
                        "RfProductRxConfigV1", "RfComplexI16V1"):

@@ -104,6 +104,8 @@ AMS_MEL_0.1 {
         ams_mel_rf_admin_open;
         ams_mel_rf_admin_command_state;
         ams_mel_rf_admin_close;
+        ams_mel_rf_c2_open;
+        ams_mel_rf_c2_close;
         ams_mel_rf_data_get_provider_version;
         ams_mel_rf_data_get_mfa_info;
         ams_mel_rf_mfa_info_view;

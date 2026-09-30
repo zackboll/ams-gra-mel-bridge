@@ -106,10 +106,11 @@ private package AMS.MEL_C_API is
    type Track_System_Response_Request_Handle is new System.Address;
    Null_Track_System_Response_Request : constant Track_System_Response_Request_Handle :=
      Track_System_Response_Request_Handle (System.Null_Address);
-   --  Task 033B: raw RF DataMEL owners. Private FFI only; there is no safe
-   --  Ada RF API (no AMS.MEL.RF) yet.
+   --  Private raw RF handles; safe Ada ownership lives in AMS.MEL.RF children.
    type RF_Data_Handle is new System.Address;
    type RF_Admin_Handle is new System.Address;
+   type RF_C2_Handle is new System.Address;
+   Null_RF_C2                         : constant RF_C2_Handle := RF_C2_Handle (System.Null_Address);
    Null_RF_Admin                      : constant RF_Admin_Handle :=
      RF_Admin_Handle (System.Null_Address);
    Null_RF_Data                       : constant RF_Data_Handle :=
@@ -1728,6 +1729,22 @@ private package AMS.MEL_C_API is
       Faces                          : Span_V1;
    end record
    with Convention => C;
+
+   --  RF C2 lifecycle (no request or VA operations in this checkpoint).
+   function RF_C2_Open
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Configuration       : Interfaces.C.Strings.chars_ptr;
+      Output              : access RF_C2_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_c2_open";
+   function RF_C2_Close
+     (Handle              : access RF_C2_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_c2_close";
 
    function RF_Admin_Open
      (Library_Path        : Interfaces.C.Strings.chars_ptr;

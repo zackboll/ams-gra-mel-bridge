@@ -600,6 +600,7 @@ int main(void)
 
     /* Task 033B RF DataMEL. */
     LAYOUT(ams_mel_rf_admin *);
+    LAYOUT(ams_mel_rf_c2 *);
     LAYOUT(ams_mel_rf_mfa_state_t);
     LAYOUT(ams_mel_rf_data *);
     LAYOUT(ams_mel_rf_mfa_info *);

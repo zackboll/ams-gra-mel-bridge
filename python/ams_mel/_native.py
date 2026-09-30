@@ -1057,6 +1057,7 @@ ams_mel_ir_channel_close.restype = ctypes.c_int32
 
 # Task 033B: private raw RF DataMEL declarations. No public Python RF API.
 RfAdminHandle = ctypes.c_void_p
+RfC2Handle = ctypes.c_void_p
 RfDataHandle = ctypes.c_void_p
 RfMfaInfoHandle = ctypes.c_void_p
 
@@ -1132,6 +1133,14 @@ ams_mel_rf_admin_command_state.restype = ctypes.c_int32
 ams_mel_rf_admin_close = _LIBRARY.ams_mel_rf_admin_close
 ams_mel_rf_admin_close.argtypes = [ctypes.POINTER(RfAdminHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_admin_close.restype = ctypes.c_int32
+ams_mel_rf_c2_open = _LIBRARY.ams_mel_rf_c2_open
+ams_mel_rf_c2_open.argtypes = [
+    ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(RfC2Handle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_c2_open.restype = ctypes.c_int32
+ams_mel_rf_c2_close = _LIBRARY.ams_mel_rf_c2_close
+ams_mel_rf_c2_close.argtypes = [ctypes.POINTER(RfC2Handle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_c2_close.restype = ctypes.c_int32
 
 ams_mel_rf_data_open = _LIBRARY.ams_mel_rf_data_open
 ams_mel_rf_data_open.argtypes = [
@@ -1381,6 +1390,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_admin_open",
     "ams_mel_rf_admin_command_state",
     "ams_mel_rf_admin_close",
+    "ams_mel_rf_c2_open",
+    "ams_mel_rf_c2_close",
     "ams_mel_rf_data_open",
     "ams_mel_rf_data_get_provider_version",
     "ams_mel_rf_data_get_mfa_info",

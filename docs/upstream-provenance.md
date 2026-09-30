@@ -1,5 +1,8 @@
 # Task 034B1 RF Admin/C2/VA declaration closure
 
+Task 034B1B1 reuses the same union for the distinct `createC2MEL`
+lifecycle owner; there are no new vendor files or changed original blobs.
+
 Task 034B1A consumes this previously pinned closure for the Admin factory and
 state-command path. It adds no vendored source and changes no existing checksum.
 The symbolic ProductRx provider-failed status cleanup is behavior-neutral.

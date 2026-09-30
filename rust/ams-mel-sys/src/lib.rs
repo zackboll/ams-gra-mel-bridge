@@ -1598,6 +1598,12 @@ pub struct AmsMelRfAdmin {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+/// Raw RF C2 lifecycle owner; no safe Rust RF API.
+#[repr(C)]
+pub struct AmsMelRfC2 {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 pub type AmsMelRfMfaState = u32;
 /// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
 #[repr(C)]
@@ -2497,6 +2503,20 @@ extern "C" {
         library_path: *const c_char,
         configuration: *const c_char,
         out_admin: *mut *mut AmsMelRfAdmin,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_c2_open(
+        library_path: *const c_char,
+        configuration: *const c_char,
+        out_c2: *mut *mut AmsMelRfC2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_c2_close(
+        c2: *mut *mut AmsMelRfC2,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

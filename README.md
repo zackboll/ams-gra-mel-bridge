@@ -22,8 +22,14 @@ for the distinct published `createAdminMEL` factory. `Command_State` accepts
 the canonical `AMS.MEL.Status.MFA_State` and returns the provider's Boolean
 acceptance without treating `False` as an exception. The native bridge shuts
 down Admin before releasing its DSO and retains the graph if shutdown throws.
-`make test-squall-rf-ada-admin` is an opt-in real-provider check. RF C2/VA
-and production job activation are deferred to 034B1B and 034B2 respectively.
+`make test-squall-rf-ada-admin` is an opt-in real-provider check.
+
+**RF C2 owner (Task 034B1B1):** `AMS.MEL.RF.C2` owns the distinct
+`createC2MEL` factory through the same C facade. Its only operations are
+`Open`, `Is_Open` and `Close`; shutdown destroys C2 before provider unload,
+while a throwing shutdown permanently retains the uncertain graph. The opt-in
+real-provider check is `make test-squall-rf-ada-c2`. VirtualAperture requests
+are deferred to 034B1B2, and Job control to 034B2.
 
 **Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`
 cover the complete **current native RF slice**: owned DataMEL, provider

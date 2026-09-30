@@ -1,4 +1,4 @@
-.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python test-squall-rf-c test-squall-rf-rx test-squall-rf-ada test-squall-rf-ada-admin
+.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python test-squall-rf-c test-squall-rf-rx test-squall-rf-ada test-squall-rf-ada-admin test-squall-rf-ada-c2
 
 TEST_TREE := $(CURDIR)/native/build-tests
 
@@ -22,6 +22,7 @@ help:
 	  'make test-squall-rf-rx    Opt-in real Squall RF ComplexINT16 ProductRx receive'
 	@printf '%s\n' 'make test-squall-rf-ada   Opt-in safe Ada Squall RF ComplexINT16 receive'
 	@printf '%s\n' 'make test-squall-rf-ada-admin Opt-in safe Ada Squall RF Admin control'
+	@printf '%s\n' 'make test-squall-rf-ada-c2 Opt-in safe Ada Squall RF C2 lifecycle'
 
 native:
 	@sh native/scripts/build.sh
@@ -87,3 +88,6 @@ test-squall-rf-ada:
 
 test-squall-rf-ada-admin:
 	@integration/squall/run-rf.sh admin
+
+test-squall-rf-ada-c2:
+	@integration/squall/run-rf.sh c2

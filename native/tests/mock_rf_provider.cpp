@@ -1,5 +1,5 @@
-/* Task 033B/033D/034B1A deterministic mock RF MEL provider. It exports
- * createDataMEL and createAdminMEL plus TEST-only observation/control functions, and is
+/* Task 033B/033D/034B1A/034B1B1 deterministic mock RF MEL provider. It exports
+ * createDataMEL, createAdminMEL and createC2MEL plus TEST-only observation/control functions, and is
  * deliberately separate from the IR mock provider.
  *
  * Task 033D adds a CONCRETE ProductRxEndpoint. Being concrete, it must define
@@ -17,6 +17,7 @@
 #include <rfmel/data/DataMEL.h>
 #include <rfmel/admin/AdminMEL.h>
 #include <rfmel/admin/StatusControl.h>
+#include <rfmel/c2/C2MEL.h>
 #include <rfmel/data/ProductRxEndpoint.h>
 #include <rfmel/endpoints/RDMAMemoryRegionParams.h>
 #include <rfmel/factory/RFCreateFunctions.h>
@@ -696,6 +697,41 @@ private:
     std::shared_ptr<Scenario> scenario_;
 };
 
+std::atomic<unsigned> c2_factory_calls{};
+std::atomic<unsigned> c2_shutdown_calls{};
+
+class MockC2MEL final : public rfmel::C2MEL {
+public:
+    explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)} {}
+    ~MockC2MEL() override { record("rf_c2_destroyed"); }
+    mel::RequestFor<rfmel::VirtualAperture> requestVirtualAperture(
+        rfmel::VirtualApertureDefinitionID, rfmel::Priority,
+        const std::vector<std::string>&, const std::string&,
+        const std::vector<mel::UCI_ID>&) override
+    { forbidden("C2MEL::requestVirtualAperture"); }
+    mel::RequestFor<rfmel::CachedWaveform> requestCachedWaveform(
+        rfmel::Priority, const std::vector<std::complex<double>>&, rfmel::Frequency) override
+    { forbidden("C2MEL::requestCachedWaveform"); }
+    mel::RequestFor<rfmel::WaveformTxEndpoint> createWaveformTxEndpoint(
+        rfmel::JobDataFormat, std::size_t, char *) override
+    { forbidden("C2MEL::createWaveformTxEndpoint"); }
+    mel::RequestFor<rfmel::ExternalEndpoint> registerExternalTxEndpoint(
+        rfmel::JobDataFormat, const rfmel::RDMAExternalEndpointParams&) override
+    { forbidden("C2MEL::registerExternalTxEndpoint"); }
+    const rfmel::RFMFAInfo& getRFMFAInfo() const override
+    { forbidden("C2MEL::getRFMFAInfo"); }
+    mel::VersionInfo getVersionInfo() const override { return {1, 1, "mock", "C2"}; }
+    void shutdown() override
+    {
+        c2_shutdown_calls.fetch_add(1U);
+        record("rf_c2_shutdown");
+        if (configuration_ == "c2:shutdown-throw")
+            throw std::runtime_error("mock C2 shutdown exception");
+    }
+private:
+    std::string configuration_;
+};
+
 } // namespace
 
 /* The one production RF symbol: C linkage, C++ signature (rfmel::fnDataMEL).
@@ -749,6 +785,33 @@ std::shared_ptr<ams::iface::rfmel::AdminMEL> createAdminMEL(std::string_view con
     return std::make_shared<MockAdminMEL>(std::move(scenario));
 }
 static_assert(std::is_same_v<decltype(&createAdminMEL), rfmel::fnAdminMEL>);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
+extern "C" __attribute__((visibility("default")))
+std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configuration);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configuration)
+{
+    c2_factory_calls.fetch_add(1U);
+    record("rf_c2_factory_called");
+    if (configuration == "c2:factory-null") return {};
+    if (configuration == "c2:factory-throw") throw FactoryFailure{};
+    if (configuration == "c2:factory-throw-unknown") throw 5;
+    if (configuration != "c2:ok" && configuration != "c2:shutdown-throw")
+        throw std::invalid_argument("mock C2 received unexpected configuration");
+    return std::make_shared<MockC2MEL>(std::string{configuration});
+}
+static_assert(std::is_same_v<decltype(&createC2MEL), rfmel::fnC2MEL>);
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_factory_calls(void)
+{ return c2_factory_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_shutdown_calls(void)
+{ return c2_shutdown_calls.load(); }
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_admin_shutdown_calls(void)
 { return admin_shutdown_calls.load(); }

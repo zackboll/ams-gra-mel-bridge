@@ -564,6 +564,32 @@ fn rf_product_rx_signatures_match_the_c_header() {
     }
 }
 
+/// Task 034B1B1: exact raw RF C2 lifecycle signatures without a provider.
+#[test]
+fn rf_c2_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *mut *mut AmsMelRfC2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_c2_open;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfC2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_c2_close;
+    unsafe {
+        let mut c2 = std::ptr::null_mut();
+        assert_eq!(
+            ams_mel_rf_c2_close(&mut c2, std::ptr::null_mut(), 0, std::ptr::null_mut()),
+            AMS_MEL_OK
+        );
+    }
+}
+
 /// Task 034B1A: exact raw RF Admin signatures without a provider.
 #[test]
 fn rf_admin_signatures_match_the_c_header() {
@@ -687,8 +713,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 118);
-    assert_eq!(exported.len(), 118);
+    assert_eq!(declared.len(), 120);
+    assert_eq!(exported.len(), 120);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1767,6 +1793,8 @@ fn declarations_match_the_c_header() {
     expected.extend([
         size_of::<*mut AmsMelRfAdmin>(),
         align_of::<*mut AmsMelRfAdmin>(),
+        size_of::<*mut AmsMelRfC2>(),
+        align_of::<*mut AmsMelRfC2>(),
         size_of::<AmsMelRfMfaState>(),
         align_of::<AmsMelRfMfaState>(),
         size_of::<*mut AmsMelRfData>(),
