@@ -1,5 +1,6 @@
 with Ada.Environment_Variables;
 with Ada.Text_IO;
+with AMS_MEL_RF_Admin_Tests;
 with AMS_MEL_RF_Product_Rx_Tests;
 with AMS_MEL_RF_Tests;
 
@@ -12,6 +13,7 @@ procedure AMS_MEL_RF_Smoke is
    Provider  : constant String := Directory & "/libmock_rf_provider.so";
 begin
    AMS_MEL_RF_Tests.Run (Provider);
+   AMS_MEL_RF_Admin_Tests.Run (Provider);
    AMS_MEL_RF_Product_Rx_Tests.Run (Provider);
-   Ada.Text_IO.Put_Line ("PASS: safe Ada RF DataMEL/MFA/ProductRx contract");
+   Ada.Text_IO.Put_Line ("PASS: safe Ada RF DataMEL/MFA/ProductRx/Admin contract");
 end AMS_MEL_RF_Smoke;

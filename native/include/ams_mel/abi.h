@@ -128,6 +128,8 @@ typedef uint32_t ams_mel_ir_mfa_mode_t;
 #define AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED UINT32_C(2)
 #define AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED UINT32_C(3)
 typedef uint32_t ams_mel_ir_mfa_state_t;
+/* RF Admin uses the identical published Common MEL MFA_State domain. */
+typedef ams_mel_ir_mfa_state_t ams_mel_rf_mfa_state_t;
 #define AMS_MEL_IR_MFA_STATE_NOT_SET UINT32_C(0)
 #define AMS_MEL_IR_MFA_STATE_UNKNOWN UINT32_C(1)
 #define AMS_MEL_IR_MFA_STATE_NOT_INSTALLED UINT32_C(2)
@@ -2554,6 +2556,26 @@ typedef struct ams_mel_rf_mfa_info_v1 {
     ams_mel_u32_span_v1 supported_data_formats;
     ams_mel_rf_face_info_span_v1 faces;
 } ams_mel_rf_mfa_info_v1;
+
+/* RF Admin is a distinct createAdminMEL factory owner; no DataMEL is involved.
+ * C strings use the RF Data open conventions (NUL-terminated UTF-8, no embedded
+ * NUL). out_admin must be non-NULL and initially NULL. Close consumes the owner
+ * even if shutdown throws. Operations on one owner must be externally serialized.
+ * The provider's false commandState result is OK with *accepted=0; it is not
+ * an exception. State 0..14 maps directly to Common MEL MFA_State, while
+ * MAX_EXCLUSIVE and all larger values are invalid. */
+typedef struct ams_mel_rf_admin ams_mel_rf_admin;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_admin_open(
+    const char *library_path, const char *configuration,
+    ams_mel_rf_admin **out_admin, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_admin_command_state(
+    ams_mel_rf_admin *admin, ams_mel_rf_mfa_state_t state,
+    uint32_t *accepted, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_admin_close(
+    ams_mel_rf_admin **admin, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Opens library_path with the platform dynamic loader (RTLD_NOW |
  * RTLD_LOCAL), resolves the pinned RF MEL createDataMEL export, and calls it

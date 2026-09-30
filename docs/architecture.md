@@ -1,5 +1,14 @@
 # Architecture decisions
 
+Task 034B1A adds an independent AdminMEL factory owner (not DataMEL) behind
+the same C ABI and `AMS.MEL.RF.Admin`. Every state command obtains fresh UCI and
+StatusControl shared owners, and preserves the upstream Boolean rejection as a
+normal result. Close consumes the public handle, shuts down once, destroys
+Admin before dropping its DSO, and permanently retains the whole graph on a
+throwing shutdown. The committed 034B1 Admin/C2/VA declaration closure is
+reused; C2 and VA are still unimplemented. See
+`task-034b1a-safe-ada-rf-admin.md`.
+
 Task 034A places the complete **current** native RF foundation behind two
 safe Ada packages, `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`, distinct from
 IR. Limited controlled DataMEL, create request, endpoint, and event owners

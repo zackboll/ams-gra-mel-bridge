@@ -119,6 +119,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_submit_comms_test",
                 "ams_mel_ir_channel_get_capabilities",
                 "ams_mel_ir_channel_close",
+                "ams_mel_rf_admin_open",
+                "ams_mel_rf_admin_command_state",
+                "ams_mel_rf_admin_close",
                 "ams_mel_rf_data_open",
                 "ams_mel_rf_data_get_provider_version",
                 "ams_mel_rf_data_get_mfa_info",
@@ -136,8 +139,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 115)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 115)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 118)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 118)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -145,7 +148,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 115)
+        self.assertEqual(len(exported), 118)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -207,6 +210,21 @@ class AbiTests(unittest.TestCase):
             "ams_mel_ir_channel_close",
         ):
             self.assertIs(getattr(_native, name).restype, ctypes.c_int32)
+
+    def test_private_rf_admin_signatures_are_exact(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, _native.SizePointer]
+        handle = _native.RfAdminHandle
+        expected = {
+            "ams_mel_rf_admin_open": [ctypes.c_char_p, ctypes.c_char_p,
+                                        ctypes.POINTER(handle)],
+            "ams_mel_rf_admin_command_state": [handle, ctypes.c_uint32,
+                                                 ctypes.POINTER(ctypes.c_uint32)],
+            "ams_mel_rf_admin_close": [ctypes.POINTER(handle)],
+        }
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic], name)
+            self.assertIs(function.restype, ctypes.c_int32)
 
     def test_private_rf_data_signatures_are_exact(self) -> None:
         """Task 033B: private raw ctypes shapes of the six RF DataMEL exports."""
@@ -1021,8 +1039,9 @@ class AbiTests(unittest.TestCase):
                 _native.IrTrackSystemResponseResultV1, 'status', 'error_code'
             )
         )
-        # Task 033B RF DataMEL.
-        for handle in (_native.RfDataHandle, _native.RfMfaInfoHandle, ctypes.c_uint32):
+        # Task 034B1A RF Admin alias and owner, then Task 033B RF DataMEL.
+        for handle in (_native.RfAdminHandle, ctypes.c_uint32,
+                       _native.RfDataHandle, _native.RfMfaInfoHandle, ctypes.c_uint32):
             expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
         expected.extend(range(14))
         expected.extend(self._layout(_native.RfFrequencyRangeV1, 'min_hz', 'max_hz'))

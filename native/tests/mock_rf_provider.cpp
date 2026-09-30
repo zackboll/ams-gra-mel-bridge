@@ -1,5 +1,5 @@
-/* Task 033B/033D deterministic mock RF MEL provider. It exports exactly
- * createDataMEL plus TEST-only observation/control functions, and is
+/* Task 033B/033D/034B1A deterministic mock RF MEL provider. It exports
+ * createDataMEL and createAdminMEL plus TEST-only observation/control functions, and is
  * deliberately separate from the IR mock provider.
  *
  * Task 033D adds a CONCRETE ProductRxEndpoint. Being concrete, it must define
@@ -15,6 +15,8 @@
  *   library_unloaded, and rf_forbidden_call / rf_call_after_shutdown /
  *   rf_unknown_face for any out-of-scope or invalid provider use. */
 #include <rfmel/data/DataMEL.h>
+#include <rfmel/admin/AdminMEL.h>
+#include <rfmel/admin/StatusControl.h>
 #include <rfmel/data/ProductRxEndpoint.h>
 #include <rfmel/endpoints/RDMAMemoryRegionParams.h>
 #include <rfmel/factory/RFCreateFunctions.h>
@@ -607,6 +609,93 @@ public:
     const char *what() const noexcept override { return "mock RF factory exception"; }
 };
 
+std::atomic<unsigned> admin_shutdown_calls{};
+std::atomic<unsigned> admin_command_calls{};
+std::atomic<std::uint32_t> admin_last_state{UINT32_MAX};
+
+class MockStatusControl final : public rfmel::StatusControl {
+public:
+    explicit MockStatusControl(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    bool commandState(mel::MFA_State state) override
+    {
+        admin_last_state.store(static_cast<std::uint32_t>(state));
+        admin_command_calls.fetch_add(1U);
+        record("rf_admin_command");
+        if (state == mel::MFA_State::Standby) record("rf_admin_state_6");
+        if (state == mel::MFA_State::OperateRxOnly) record("rf_admin_state_8");
+        if (state == mel::MFA_State::Degraded) record("rf_admin_state_14");
+        if (scenario_->name == "admin:command-throw")
+            throw std::runtime_error("mock Admin command exception");
+        return scenario_->name != "admin:reject";
+    }
+    bool commandErase() override { forbidden("StatusControl::commandErase"); }
+    mel::MFA_Status getStatus() const override { forbidden("StatusBase::getStatus"); }
+    void setCallback(std::function<void(const mel::MFA_Status &)>) override
+    { forbidden("StatusBase::setCallback(MFA_Status)"); }
+    mel::MFA_StatusDetailed getStatusDetailed() const override
+    { forbidden("StatusBase::getStatusDetailed"); }
+    void setCallback(std::function<void(const mel::MFA_StatusDetailed &)>) override
+    { forbidden("StatusBase::setCallback(MFA_StatusDetailed)"); }
+    rfmel::AntennaStatus getAntennaStatus() const override
+    { forbidden("StatusBase::getAntennaStatus"); }
+    void setCallback(std::function<void(const rfmel::AntennaStatus &)>) override
+    { forbidden("StatusBase::setCallback(AntennaStatus)"); }
+    mel::DiscreteStatus getDiscreteStatus() const override
+    { forbidden("StatusBase::getDiscreteStatus"); }
+    void setCallback(std::function<void(const mel::DiscreteStatus &)>) override
+    { forbidden("StatusBase::setCallback(DiscreteStatus)"); }
+    rfmel::SubsystemConfiguration getSubsystemConfiguration() const override
+    { forbidden("StatusBase::getSubsystemConfiguration"); }
+    void setCallback(std::function<void(const rfmel::SubsystemConfiguration &)>) override
+    { forbidden("StatusBase::setCallback(SubsystemConfiguration)"); }
+    mel::MFA_SecurityAuditRecord getSecurityAuditRecord() const override
+    { forbidden("StatusBase::getSecurityAuditRecord"); }
+    void setCallback(std::function<void(const mel::MFA_SecurityAuditRecord &)>) override
+    { forbidden("StatusBase::setCallback(MFA_SecurityAuditRecord)"); }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
+class MockUCIControl final : public rfmel::UCI_Control {
+public:
+    explicit MockUCIControl(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    std::shared_ptr<rfmel::StatusControl> getStatusControl() override
+    {
+        if (scenario_->name == "admin:no-status") return {};
+        return std::make_shared<MockStatusControl>(scenario_);
+    }
+    std::shared_ptr<rfmel::BIT_Control> getBITControl() override { return {}; }
+    std::shared_ptr<rfmel::CalibrationControl> getCalibrationControl() override { return {}; }
+    std::shared_ptr<rfmel::SettingsControl> getSettingsControl() override { return {}; }
+    std::shared_ptr<rfmel::PNT_Control> getPNTControl() override { return {}; }
+    std::shared_ptr<rfmel::EMCON_Control> getEMCONControl() override { return {}; }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
+class MockAdminMEL final : public rfmel::AdminMEL {
+public:
+    explicit MockAdminMEL(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    ~MockAdminMEL() override { record("rf_admin_destroyed"); }
+    std::shared_ptr<rfmel::UCI_Control> getUCIControl() override
+    {
+        if (scenario_->name == "admin:no-uci") return {};
+        return std::make_shared<MockUCIControl>(scenario_);
+    }
+    mel::RequestFor<rfmel::SubsystemConfiguration> requestSubsystemConfiguration() override
+    { forbidden("AdminMEL::requestSubsystemConfiguration"); }
+    mel::VersionInfo getVersionInfo() const override { return {1, 1, "mock", "Admin"}; }
+    void shutdown() override
+    {
+        admin_shutdown_calls.fetch_add(1U);
+        record("rf_admin_shutdown");
+        if (scenario_->name == "admin:shutdown-throw")
+            throw std::runtime_error("mock Admin shutdown exception");
+    }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
 } // namespace
 
 /* The one production RF symbol: C linkage, C++ signature (rfmel::fnDataMEL).
@@ -639,6 +728,34 @@ std::shared_ptr<ams::iface::rfmel::DataMEL> createDataMEL(std::string_view confi
 }
 
 static_assert(std::is_same_v<decltype(&createDataMEL), ams::iface::rfmel::fnDataMEL>);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
+extern "C" __attribute__((visibility("default")))
+std::shared_ptr<ams::iface::rfmel::AdminMEL> createAdminMEL(std::string_view configuration);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+std::shared_ptr<ams::iface::rfmel::AdminMEL> createAdminMEL(std::string_view configuration)
+{
+    record("rf_admin_factory_called");
+    if (configuration == "admin:factory-null") return {};
+    if (configuration == "admin:factory-throw") throw FactoryFailure{};
+    if (configuration == "admin:factory-throw-unknown") throw 5;
+    auto scenario = std::make_shared<Scenario>();
+    scenario->name = std::string{configuration};
+    return std::make_shared<MockAdminMEL>(std::move(scenario));
+}
+static_assert(std::is_same_v<decltype(&createAdminMEL), rfmel::fnAdminMEL>);
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_admin_shutdown_calls(void)
+{ return admin_shutdown_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_admin_command_calls(void)
+{ return admin_command_calls.load(); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_admin_last_state(void)
+{ return admin_last_state.load(); }
 
 /* TEST-only observations; not part of any MEL interface. */
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_shutdown_calls(void)

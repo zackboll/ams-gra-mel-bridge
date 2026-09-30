@@ -13,7 +13,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
-    src/rf_data.cpp src/rf_product_rx.cpp)
+    src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -29,7 +29,7 @@ target_include_directories(ams_mel_c SYSTEM PRIVATE
 # Task 033B: the pinned, byte-identical Task 033A RF DataMEL declaration
 # closure (RF MEL + the AMS VITA headers it reaches). SYSTEM because pinned
 # TxPowerModeData.h trips Clang -Wignored-qualifiers; first-party sources keep
-# the project warnings. Only src/rf_data.cpp and src/rf_product_rx.cpp
+# the project warnings. Only RF adapter sources
 # include RF headers.
 target_include_directories(ams_mel_c SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/rf-mel/include
@@ -245,6 +245,16 @@ if(AMS_MEL_BUILD_TESTS)
     target_link_libraries(test_rf_data PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
     add_dependencies(test_rf_data mock_rf_provider missing_symbol_rf_provider)
     ams_mel_warnings(test_rf_data)
+    add_executable(test_rf_admin tests/test_rf_admin.c)
+    target_compile_features(test_rf_admin PRIVATE c_std_11)
+    set_target_properties(test_rf_admin PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_admin PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>"
+        AMS_MEL_TEST_MISSING_SYMBOL_RF_PROVIDER="$<TARGET_FILE:missing_symbol_rf_provider>")
+    target_link_libraries(test_rf_admin PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_rf_admin mock_rf_provider missing_symbol_rf_provider)
+    ams_mel_warnings(test_rf_admin)
+    add_test(NAME rf-admin COMMAND test_rf_admin)
     # One process per case: lifetime/retention evidence cannot leak.
     foreach(case IN ITEMS open version version-long snapshot two-snapshots
             snapshot-independent snapshot-throw inconsistent-faces future-format

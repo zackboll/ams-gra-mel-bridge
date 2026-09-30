@@ -1,5 +1,19 @@
 # Implementation coverage
 
+Task 034B1A adds RF Admin state command in native C and safe Ada, using the
+previously committed 034B1 closure. ABI 0.1 now has 118 production exports.
+The Task 034A and 033D statements below describe their historical baselines.
+
+```text
+RF DataMEL:              native C + safe Ada
+RF ProductRx:            native C + safe Ada
+RF Admin state command:  native C + safe Ada
+RF C2/VirtualAperture:   not yet implemented (034B1B)
+RF receive job control:  not yet implemented (034B2)
+safe Rust / public Python RF: not implemented
+```
+See `task-034b1a-safe-ada-rf-admin.md`.
+
 Task 034A adds safe Ada `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx` on the
 unchanged native ABI 0.1 (115 production exports). Safe Ada covers the complete
 **current native RF slice**, not the complete published RF MEL standard.

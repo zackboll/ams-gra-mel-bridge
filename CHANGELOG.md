@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 034B1A adds native and safe Ada RF Admin state control through the
+  published `createAdminMEL` / UCI / StatusControl path. ABI 0.1 grows from
+  115 to 118 exports; C2/VA and job control remain unimplemented. The
+  ProductRx provider-failed status constant replaces a literal without
+  changing behavior. The earlier 034B1 declaration closure is reused unchanged.
+
 - Add safe Ada RF DataMEL, owned RFMFAInfo snapshot, and ComplexINT16 ProductRx
   request/endpoint/event API (Task 034A), including parent-first lifetime and
   borrowed sample access. The existing C ABI remains 0.1 with 115 exports;

@@ -1592,6 +1592,13 @@ pub struct AmsMelRfData {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+/// Raw RF AdminMEL owner; state commands use the canonical Common MEL values.
+#[repr(C)]
+pub struct AmsMelRfAdmin {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+pub type AmsMelRfMfaState = u32;
 /// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
 #[repr(C)]
 pub struct AmsMelRfMfaInfo {
@@ -2481,6 +2488,29 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_channel_close(
         channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_rf_admin_open(
+        library_path: *const c_char,
+        configuration: *const c_char,
+        out_admin: *mut *mut AmsMelRfAdmin,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_admin_command_state(
+        admin: *mut AmsMelRfAdmin,
+        state: AmsMelRfMfaState,
+        accepted: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_admin_close(
+        admin: *mut *mut AmsMelRfAdmin,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

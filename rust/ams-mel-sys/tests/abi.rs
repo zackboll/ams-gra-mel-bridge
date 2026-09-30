@@ -564,6 +564,33 @@ fn rf_product_rx_signatures_match_the_c_header() {
     }
 }
 
+/// Task 034B1A: exact raw RF Admin signatures without a provider.
+#[test]
+fn rf_admin_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *mut *mut AmsMelRfAdmin,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfAdmin,
+        AmsMelRfMfaState,
+        *mut u32,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_command_state;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfAdmin,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_close;
+}
+
 /// Task 033B: exact raw shapes of the six RF DataMEL functions, plus the NULL
 /// preconditions that need no provider.
 #[test]
@@ -660,8 +687,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 115);
-    assert_eq!(exported.len(), 115);
+    assert_eq!(declared.len(), 118);
+    assert_eq!(exported.len(), 118);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1738,6 +1765,10 @@ fn declarations_match_the_c_header() {
     );
     // Task 033B RF DataMEL.
     expected.extend([
+        size_of::<*mut AmsMelRfAdmin>(),
+        align_of::<*mut AmsMelRfAdmin>(),
+        size_of::<AmsMelRfMfaState>(),
+        align_of::<AmsMelRfMfaState>(),
         size_of::<*mut AmsMelRfData>(),
         align_of::<*mut AmsMelRfData>(),
         size_of::<*mut AmsMelRfMfaInfo>(),

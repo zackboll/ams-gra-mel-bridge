@@ -17,6 +17,14 @@ C++ MEL interface directly. `ams_mel_c` exists to make that same provider
 ecosystem practical for languages that should not have to model the C++ ABI
 themselves.
 
+**RF Admin (Task 034B1A):** `AMS.MEL.RF.Admin` is a limited safe Ada owner
+for the distinct published `createAdminMEL` factory. `Command_State` accepts
+the canonical `AMS.MEL.Status.MFA_State` and returns the provider's Boolean
+acceptance without treating `False` as an exception. The native bridge shuts
+down Admin before releasing its DSO and retains the graph if shutdown throws.
+`make test-squall-rf-ada-admin` is an opt-in real-provider check. RF C2/VA
+and production job activation are deferred to 034B1B and 034B2 respectively.
+
 **Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`
 cover the complete **current native RF slice**: owned DataMEL, provider
 version, wholly Ada-owned RFMFAInfo snapshots (including unknown format values),

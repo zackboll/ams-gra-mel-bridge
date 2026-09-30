@@ -101,6 +101,9 @@ AMS_MEL_0.1 {
         ams_mel_ir_channel_get_capabilities;
         ams_mel_ir_channel_close;
         ams_mel_rf_data_open;
+        ams_mel_rf_admin_open;
+        ams_mel_rf_admin_command_state;
+        ams_mel_rf_admin_close;
         ams_mel_rf_data_get_provider_version;
         ams_mel_rf_data_get_mfa_info;
         ams_mel_rf_mfa_info_view;

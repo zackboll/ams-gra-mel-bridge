@@ -109,6 +109,9 @@ private package AMS.MEL_C_API is
    --  Task 033B: raw RF DataMEL owners. Private FFI only; there is no safe
    --  Ada RF API (no AMS.MEL.RF) yet.
    type RF_Data_Handle is new System.Address;
+   type RF_Admin_Handle is new System.Address;
+   Null_RF_Admin                      : constant RF_Admin_Handle :=
+     RF_Admin_Handle (System.Null_Address);
    Null_RF_Data                       : constant RF_Data_Handle :=
      RF_Data_Handle (System.Null_Address);
    type RF_MFA_Info_Handle is new System.Address;
@@ -1725,6 +1728,29 @@ private package AMS.MEL_C_API is
       Faces                          : Span_V1;
    end record
    with Convention => C;
+
+   function RF_Admin_Open
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Configuration       : Interfaces.C.Strings.chars_ptr;
+      Output              : access RF_Admin_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_open";
+   function RF_Admin_Command_State
+     (Handle              : RF_Admin_Handle;
+      State               : Interfaces.Unsigned_32;
+      Accepted            : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_command_state";
+   function RF_Admin_Close
+     (Handle              : access RF_Admin_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_close";
 
    function RF_Data_Open
      (Library_Path        : Interfaces.C.Strings.chars_ptr;

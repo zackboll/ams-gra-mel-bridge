@@ -1,5 +1,9 @@
 # Task 034B1 RF Admin/C2/VA declaration closure
 
+Task 034B1A consumes this previously pinned closure for the Admin factory and
+state-command path. It adds no vendored source and changes no existing checksum.
+The symbolic ProductRx provider-failed status cleanup is behavior-neutral.
+
 The starting `main` is `c4faea0999d38b785c62271a2222535e7a4c1c14`.
 Six roots (`rfmel/factory/RFCreateFunctions.h`, `rfmel/admin/{AdminMEL,UCI_Control,StatusControl}.h`,
 `rfmel/c2/{C2MEL,VirtualAperture}.h`) were measured using GCC 14.2 and

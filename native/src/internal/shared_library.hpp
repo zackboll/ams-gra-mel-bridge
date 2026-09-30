@@ -1,8 +1,8 @@
 #pragma once
 
 /* The single private dynamic-loader wrapper shared by every provider family
- * (IR Session and RF DataMEL). Destroying it is the only place a provider DSO
- * is unloaded, so owners must destroy every provider object first. */
+ * (IR Session, RF DataMEL, RF AdminMEL). Destroying it is the only place a
+ * provider DSO is unloaded; owners must destroy provider objects first. */
 
 #include <dlfcn.h>
 
