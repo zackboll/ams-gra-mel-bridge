@@ -15,6 +15,15 @@ package body AMS.MEL.RF.Product_Rx is
    type Diagnostic is array (C.Size_T range <>) of aliased Interfaces.C.char with Convention => C;
    subtype Fixed_Diagnostic is Diagnostic (0 .. 511);
 
+   procedure Check_Complex_I16_Representation is
+   begin
+      --  The C type's alignment is not static on every GNAT toolchain.
+      --  Check at elaboration, before any native sample span can be borrowed.
+      if Complex_I16'Alignment /= C.RF_Complex_I16_V1'Alignment then
+         raise Program_Error with "Complex_I16 alignment does not match the C ABI";
+      end if;
+   end Check_Complex_I16_Representation;
+
    function Checked_Count (Span : C.Span_V1) return Natural is
    begin
       if Interfaces.Unsigned_64 (Span.Size) > Interfaces.Unsigned_64 (Natural'Last)
@@ -404,4 +413,6 @@ package body AMS.MEL.RF.Product_Rx is
    function Rx_Stream_ID_At
      (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32
    is (Value.Stream_IDs (Index));
+begin
+   Check_Complex_I16_Representation;
 end AMS.MEL.RF.Product_Rx;

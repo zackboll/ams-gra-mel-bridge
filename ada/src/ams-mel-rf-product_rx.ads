@@ -105,9 +105,8 @@ private
    pragma
      Compile_Time_Error
        (Complex_I16'Size /= AMS.MEL_C_API.RF_Complex_I16_V1'Size
-          or else Complex_I16'Object_Size /= AMS.MEL_C_API.RF_Complex_I16_V1'Object_Size
-          or else Complex_I16'Alignment /= AMS.MEL_C_API.RF_Complex_I16_V1'Alignment,
-        "Complex_I16 must match the C ABI");
+          or else Complex_I16'Object_Size /= AMS.MEL_C_API.RF_Complex_I16_V1'Object_Size,
+        "Complex_I16 must match the C ABI size");
    package ID_Vectors is new Ada.Containers.Vectors (Positive, Interfaces.Unsigned_32);
    type Config is record
       Region         : Interfaces.Unsigned_64;

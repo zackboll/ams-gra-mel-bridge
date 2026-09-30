@@ -136,6 +136,7 @@ package body AMS_MEL_RF_Product_Rx_Tests is
       Request : RX.Create_Request := RX.Submit (Parent, Config);
       Ignored : Interfaces.C.int;
    begin
+      RX.Testing.Check_Representation;
       Interfaces.C.Strings.Free (Path);
       Interfaces.C.Strings.Free (Symbol);
       if Library = System.Null_Address or else Emit = null then
