@@ -17,8 +17,11 @@ package body AMS.MEL.RF.Product_Rx is
 
    procedure Check_Complex_I16_Representation is
    begin
-      --  The C type's alignment is not static on every GNAT toolchain.
-      --  Check at elaboration, before any native sample span can be borrowed.
+      --  Imported C type Object_Size and Alignment are not compile-time static
+      --  on every supported GNAT. Check before any native span can be borrowed.
+      if Complex_I16'Object_Size /= C.RF_Complex_I16_V1'Object_Size then
+         raise Program_Error with "Complex_I16 object size does not match the C ABI";
+      end if;
       if Complex_I16'Alignment /= C.RF_Complex_I16_V1'Alignment then
          raise Program_Error with "Complex_I16 alignment does not match the C ABI";
       end if;

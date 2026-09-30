@@ -33,12 +33,14 @@ Ada metadata and stream IDs. `With_Samples` imports the array directly at the
 native event span address only while the callback executes; zero-length events
 call the callback with a valid empty array. The test-only child under
 `ada/tests/src` verifies `Samples'Address` equals the event's native sample
-address. Compile-time Size and Object_Size checks compare the safe Ada record
-against the **public C ABI** `RF_Complex_I16_V1`, not the provider's C++
-layout. Because GNAT does not treat the imported C type's Alignment as static
-on every toolchain, a package-elaboration check raises `Program_Error` before
-any sample access if the alignments differ. The Ada RF test also checks all
-three attributes directly. `Copy_Samples` explicitly performs an Ada-owned copy.
+address. A compile-time Size check compares the safe Ada record against the
+**public C ABI** `RF_Complex_I16_V1`, not the provider's C++ layout. Imported
+C type Object_Size and Alignment are not consistently compile-time-static
+across supported GNAT versions; package elaboration checks both and raises
+`Program_Error` with a property-specific diagnostic on mismatch, before the
+ProductRx API can expose a borrowed native sample span. The Ada RF test also
+checks Size, Object_Size, and Alignment directly. `Copy_Samples` explicitly
+performs an Ada-owned copy.
 The native bridge has already copied the provider callback payload, so this
 is no second Ada bulk copy, **not** end-to-end zero-copy. Events remain valid
 after later callbacks, endpoint close, and DataMEL close. Explicit Close
@@ -85,14 +87,18 @@ report that optional C integration rerun as passed.
 
 ## Hosted Ada representation-check correction
 
-Hosted direct GPR compilation rejected the original compile-time Alignment
-comparison because the imported C record's Alignment is not a GNAT-static
-expression there. Size and Object_Size remain checked by
-`Compile_Time_Error`. ProductRx package elaboration checks Alignment without
-assertions and raises `Program_Error` before any event/sample API can run if
-the C ABI representation differs. The test-only child checks all three
-attributes explicitly; `With_Samples` and its sample-address alias test are
-unchanged. Local Ada format, Alire build/tests, focused RF repeat-50,
-`make test-native` (246/246), build isolation, Rust, and Python passed. An
-existing Clang 19 Release test tree passed `ir_stream_contract` 100/100
-isolated repetitions; no unrelated IR/native corrective was made.
+The first hosted Ubuntu 24.04 direct-GPR compilation rejected the original
+compile-time Alignment comparison: the imported C record's Alignment was not
+considered compile-time static. After moving Alignment to package elaboration,
+the hosted GNAT 13.3 job at head `37381c697c3f500f6adcdf1f1f93a7a937704581`
+rejected the remaining combined Size / Object_Size `Compile_Time_Error` at
+`ams-mel-rf-product_rx.ads:108`. Splitting the condition and running `make
+test-ada` with distro GNAT 13.3 and gprbuild in an Ubuntu 24.04 container
+confirmed that standalone imported-type Size compiles. Thus Size remains a
+`Compile_Time_Error`; Object_Size joins Alignment in the package-elaboration
+check. Imported C representation attributes are not consistently compile-time
+static across supported GNAT versions. The elaboration check raises
+`Program_Error` on either mismatch before ProductRx can expose a borrowed
+native sample span. The test-only child still compares Size, Object_Size, and
+Alignment explicitly; `With_Samples` and its sample-address alias proof are
+unchanged.
