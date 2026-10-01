@@ -1,4 +1,4 @@
-.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python test-squall-rf-c test-squall-rf-rx test-squall-rf-ada test-squall-rf-ada-admin test-squall-rf-ada-c2 test-squall-rf-ada-va
+.PHONY: help native test-native test-build-isolation test-ada test-rust test-python format-ada check-ada-format check test-squall-ir test-squall-ir-c test-squall-ir-ada test-squall-ir-rust test-squall-ir-python test-squall-rf-c test-squall-rf-rx test-squall-rf-ada test-squall-rf-ada-admin test-squall-rf-ada-c2 test-squall-rf-ada-va test-squall-rf-ada-job
 
 TEST_TREE := $(CURDIR)/native/build-tests
 
@@ -24,6 +24,7 @@ help:
 	@printf '%s\n' 'make test-squall-rf-ada-admin Opt-in safe Ada Squall RF Admin control'
 	@printf '%s\n' 'make test-squall-rf-ada-c2 Opt-in safe Ada Squall RF C2 lifecycle'
 	@printf '%s\n' 'make test-squall-rf-ada-va Opt-in safe Ada Squall RF VA snapshot'
+	@printf '%s\n' 'make test-squall-rf-ada-job Opt-in safe Ada Squall RF Job request'
 
 native:
 	@sh native/scripts/build.sh
@@ -95,3 +96,6 @@ test-squall-rf-ada-c2:
 
 test-squall-rf-ada-va:
 	@integration/squall/run-rf.sh va
+
+test-squall-rf-ada-job:
+	@integration/squall/run-rf.sh job

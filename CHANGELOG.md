@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Task 034B2A2 adds safe Ada single-RX-group Job configuration, asynchronous
+  request ownership, unique Claim, and Ada-owned JobDetail snapshots. Pinned
+  Squall accepts a second Job after closing the first and retains the claimed
+  snapshot across VA/C2 Close. ABI remains 0.1 with 132 exports; finalize,
+  cancel and ProductRx helper removal are deferred.
+
 - Task 034B2A1 adds native C RX Job request/JobDetail ownership and immutable
   snapshot, with a provider-created single RX element group, sibling C2 claim,
   and six ABI 0.1 exports (126 to 132). Raw Ada/Rust/Python bindings are in

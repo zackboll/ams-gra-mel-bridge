@@ -1,5 +1,12 @@
 # Architecture decisions
 
+Task 034B2A2 adds Ada-owned RX group/Job configuration and immutable Job
+snapshots to `AMS.MEL.RF.C2`. Limited request/Job owners wrap the existing
+native C ABI, retaining no public raw addresses. The native Job retains its
+provider VA and sibling C2 claim after public parent Close. Only the
+single-RX-group request/snapshot slice is covered; finalize/cancel and helper
+removal remain deferred. See `task-034b2a2-safe-ada-rf-job.md`.
+
 Task 034B2A1 adds the native-only single-RX-group Job request and owned
 JobDetail snapshot. A new sibling C2 claim and a strong provider VA reference
 outlive the public VA/C2 and follow the one asynchronous future into the
