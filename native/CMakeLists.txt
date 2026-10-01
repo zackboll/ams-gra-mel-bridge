@@ -288,7 +288,7 @@ if(AMS_MEL_BUILD_TESTS)
     foreach(case IN ITEMS open version version-long snapshot two-snapshots
             snapshot-independent snapshot-throw inconsistent-faces future-format
             missing-symbol null-factory factory-throw close shutdown-throw
-            shutdown-throw-unknown invalid allocation)
+            shutdown-throw-unknown invalid allocation quantize quantize-failure)
         add_test(NAME rf-data-${case} COMMAND test_rf_data ${case})
         set_tests_properties(rf-data-${case} PROPERTIES TIMEOUT 30)
     endforeach()

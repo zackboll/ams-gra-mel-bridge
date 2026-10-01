@@ -67,6 +67,16 @@ begin
          Version : constant AMS.MEL.Provider_Version := RF.Query_Provider_Version (Data);
          MFA     : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
       begin
+         declare
+            Inputs : constant array (Positive range 1 .. 4) of Interfaces.Integer_64 :=
+              [0, 1, 123_456_789, -123_456_789];
+         begin
+            for Input of Inputs loop
+               if RF.Quantize_Duration (Data, Input) /= Input then
+                  raise Program_Error with "pinned Squall RF quantization is not identity";
+               end if;
+            end loop;
+         end;
          if AMS.MEL.API_Version (Version) /= 1
            or else AMS.MEL.Library_Version (Version) /= 1
            or else AMS.MEL.Vendor (Version) /= "Squall"

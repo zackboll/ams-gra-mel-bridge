@@ -123,6 +123,16 @@ int main(int argc, char **argv)
     status = ams_mel_rf_data_open(argv[1], argv[2], &data, diagnostic,
                                   sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("ams_mel_rf_data_open", status, diagnostic);
+    {
+        const int64_t inputs[] = {0, 1, INT64_C(123456789), -INT64_C(123456789)};
+        for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; ++i) {
+            int64_t output = 0;
+            status = ams_mel_rf_data_quantize_duration(data, inputs[i], &output,
+                                                       diagnostic, sizeof diagnostic, NULL);
+            if (status != AMS_MEL_OK) return failed("quantize_duration", status, diagnostic);
+            REQUIRE(output == inputs[i]); /* Pinned Squall identity, not bridge policy. */
+        }
+    }
 
     status = ams_mel_rf_data_get_provider_version(data, &version, diagnostic,
                                                   sizeof diagnostic, NULL);

@@ -62,6 +62,7 @@ using Femtoseconds = ams::util::math::Femtoseconds;
 std::atomic<unsigned> shutdown_calls{};
 std::atomic<unsigned> forbidden_calls{};
 std::atomic<unsigned> getter_calls{};
+std::atomic<unsigned> quantize_calls{};
 
 void record(const char *event) noexcept
 {
@@ -137,9 +138,18 @@ public:
         return scenario_->name == "inconsistent-faces" ? 5U : 2U;
     }
     Femtoseconds schedulerResolution() const override
-    { enter(); return Femtoseconds{12345}; }
-    Femtoseconds quantizeDuration(Femtoseconds) const override
-    { forbidden("RFMFAInfo::quantizeDuration"); }
+    { enter(); return Femtoseconds{scenario_->name == "quantize" ? 10 : 12345}; }
+    Femtoseconds quantizeDuration(Femtoseconds input) const override
+    {
+        enter();
+        quantize_calls.fetch_add(1U);
+        if (scenario_->name == "quantize-throw")
+            throw std::runtime_error{"mock RF quantize exception"};
+        if (scenario_->name == "quantize-unknown") throw 42;
+        if (scenario_->name == "quantize-alloc") throw std::bad_alloc{};
+        // Provider-only rule: signed integer division truncates toward zero.
+        return Femtoseconds{(input.count() / 10) * 10};
+    }
     Femtoseconds minJobRequestLeadTime(FaceID face) const override
     { return Femtoseconds{face_value(face, 1002, 42001)}; }
     Femtoseconds maxJobRequestLeadTime(FaceID face) const override
@@ -1209,6 +1219,8 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_forbidden_cal
 { return forbidden_calls.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_getter_calls(void)
 { return getter_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_quantize_calls(void)
+{ return quantize_calls.load(); }
 
 /* ---------------------------------------------------------------------------
  * Task 033D TEST-only mock controls. Not part of any MEL interface.

@@ -41,6 +41,11 @@ using namespace ams_mel::internal;
 
 namespace {
 
+using Femtoseconds = ams::util::math::Femtoseconds;
+static_assert(std::is_same_v<Femtoseconds::rep, std::int64_t>);
+static_assert(std::is_integral_v<Femtoseconds::rep> && std::is_signed_v<Femtoseconds::rep>);
+static_assert(sizeof(Femtoseconds::rep) == sizeof(std::int64_t));
+
 /* The exact pinned rfmel::fnDataMEL type: C linkage, C++ signature. It is
  * called only from this translation unit and never exposed through C. */
 using RfDataFactory =
@@ -330,6 +335,31 @@ extern "C" ams_mel_status_t ams_mel_rf_data_get_provider_version(
         return translate_provider_exception(
             "provider exception", "unknown provider exception", diagnostic,
             diagnostic_capacity, diagnostic_required);
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_data_quantize_duration(
+    const ams_mel_rf_data *data, std::int64_t unquantized_femtoseconds,
+    std::int64_t *out_quantized_femtoseconds, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (data == nullptr || !data->state || !data->state->data ||
+        out_quantized_femtoseconds == nullptr ||
+        invalid_diagnostic(diagnostic, diagnostic_capacity)) {
+        write_diagnostic("invalid argument", diagnostic, diagnostic_capacity,
+                         diagnostic_required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    try {
+        const rfmel::RFMFAInfo& info = data->state->data->getRFMFAInfo();
+        const Femtoseconds result = info.quantizeDuration(Femtoseconds{unquantized_femtoseconds});
+        *out_quantized_femtoseconds = result.count();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception(
+            "provider quantizeDuration exception", "unknown provider quantizeDuration exception",
+            diagnostic, diagnostic_capacity, diagnostic_required);
     }
 }
 

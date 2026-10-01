@@ -1,5 +1,12 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+RF duration quantization is available as the live C
+`ams_mel_rf_data_quantize_duration` query and safe Ada
+`AMS.MEL.RF.Quantize_Duration`, preserving signed 64-bit femtoseconds exactly.
+The provider determines the result; this is a prerequisite timing primitive for
+future JobInterval support, not JobInterval itself. See
+`docs/task-034c1-rf-duration-quantization.md`.
+
 Task 034B2B2: safe Ada RF Job `Finalize_Job`, `Wait_Job_Status`, and
 `Cancel_Job` wrap the existing native lifecycle. Both Squall ProductRx
 integrations use production Job APIs rather than the former test-only C++

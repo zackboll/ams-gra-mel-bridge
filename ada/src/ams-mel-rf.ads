@@ -10,6 +10,8 @@ package AMS.MEL.RF is
    function Is_Open (Object : Data_MEL) return Boolean;
    procedure Close (Object : in out Data_MEL);
    function Query_Provider_Version (Object : Data_MEL) return AMS.MEL.Provider_Version;
+   function Quantize_Duration
+     (Data : Data_MEL; Femtoseconds : Interfaces.Integer_64) return Interfaces.Integer_64;
 
    type Job_Data_Format is mod 2**32 with Size => 32;
    Direct_INT8          : constant Job_Data_Format := 0;

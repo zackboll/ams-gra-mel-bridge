@@ -2454,14 +2454,12 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_close(
  * ams_mel_rf_data is never an ams_mel_session. The pinned RF MEL source is
  * open-arsenal RF MEL 762ce84c5555dd0f3ea66f36b321fecf8839b89f (Task 033A).
  *
- * This version exposes exactly: DataMEL load/Close (shutdown), VersionInfo,
- * and an owned RFMFAInfo scalar/enum/frequency-range snapshot. It does NOT
- * expose RFMFAInfo::quantizeDuration, getPhysicalData, either
- * getTxPowerModeCharacteristics overload, ProductRxEndpoint/IQ receive,
- * external/RDMA endpoints, or any RF C2/VirtualAperture/Job/Monitor/Admin/
- * COSITE/DEA family.
+ * The RF DataMEL surface includes live duration quantization as well as the
+ * point-in-time MFA snapshot. getPhysicalData, Tx power characteristics and
+ * external/RDMA endpoints remain outside this RF slice; see docs/coverage.md
+ * for the separately added ProductRx, Admin, C2, VA and Job surfaces.
  *
- * Threading: open shares no object. Version, MFA snapshot, and Close on ONE
+ * Threading: open shares no object. Version, MFA snapshot, quantization and Close on ONE
  * ams_mel_rf_data require external serialization (no internal lock is taken).
  * View and Close on ONE ams_mel_rf_mfa_info require external serialization;
  * independent snapshots may be read concurrently.
@@ -2766,6 +2764,18 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_data_open(
 AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_provider_version(
     const ams_mel_rf_data *data,
     ams_mel_provider_version_v1 *out_version,
+    char *diagnostic,
+    size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Live RFMFAInfo::quantizeDuration query. Both input and output are exact signed
+ * int64 femtosecond counts; no unit conversion or snapshot is involved. On any
+ * failure the output is untouched. Callers must externally serialize this call
+ * with DataMEL Close and other operations on the same public owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_quantize_duration(
+    const ams_mel_rf_data *data,
+    int64_t unquantized_femtoseconds,
+    int64_t *out_quantized_femtoseconds,
     char *diagnostic,
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
