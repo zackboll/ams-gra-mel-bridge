@@ -28,11 +28,17 @@ BOOST = {
 
 
 def verify(observed, vendor_root, compiler):
-    version = subprocess.check_output([compiler, "--version"], text=True).lower()
-    family = ("clang" if "clang" in version else
-              "gcc" if "gcc" in version or "g++" in version or "debian" in version else None)
+    # Driver banners are distribution-specific (Ubuntu's /usr/bin/c++ banner
+    # does not contain "gcc" or "g++"). Query the same compiler's predefined
+    # macros instead; do not infer an unmeasured family's dependency closure.
+    macros = subprocess.check_output(
+        [compiler, "-dM", "-E", "-x", "c++", "-"], input="", text=True)
+    names = {line.split()[1] for line in macros.splitlines() if line.startswith("#define ")}
+    family = ("clang" if "__clang__" in names else
+              "gcc" if "__GNUC__" in names else None)
     if family is None:
-        raise RuntimeError("unmeasured compiler family: " + version.splitlines()[0])
+        raise RuntimeError("unmeasured compiler family: " +
+                           subprocess.check_output([compiler, "--version"], text=True).splitlines()[0])
     expected = dict(EXPECTED, boost=BOOST[family])
     for name, _, relative_root in base.FAMILIES:
         root = (vendor_root / relative_root).resolve()
