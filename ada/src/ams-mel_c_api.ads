@@ -116,6 +116,12 @@ private package AMS.MEL_C_API is
      RF_VA_Request_Handle (System.Null_Address);
    type RF_VA_Handle is new System.Address;
    Null_RF_VA                         : constant RF_VA_Handle := RF_VA_Handle (System.Null_Address);
+   type RF_Job_Request_Handle is new System.Address;
+   Null_RF_Job_Request                : constant RF_Job_Request_Handle :=
+     RF_Job_Request_Handle (System.Null_Address);
+   type RF_Job_Handle is new System.Address;
+   Null_RF_Job                        : constant RF_Job_Handle :=
+     RF_Job_Handle (System.Null_Address);
    Null_RF_Admin                      : constant RF_Admin_Handle :=
      RF_Admin_Handle (System.Null_Address);
    Null_RF_Data                       : constant RF_Data_Handle :=
@@ -729,6 +735,11 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type U32_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type U64_Span_V1 is record
       Data : System.Address;
       Size : Size_T;
    end record
@@ -1725,6 +1736,44 @@ private package AMS.MEL_C_API is
       Max_Hz : Interfaces.C.double;
    end record
    with Convention => C;
+   type RF_Frequency_Range_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_RX_Element_Group_Config_V1 is record
+      Label                       : String_View_V1;
+      Desired_Duty_Factor         : Interfaces.C.double;
+      Expected_Center_Frequencies : RF_Frequency_Range_Span_V1;
+      Endpoint_IDs                : U64_Span_V1;
+      Data_Pipe_Label             : String_View_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Request_Config_V1 is record
+      Request_ID                 : Interfaces.Unsigned_32;
+      Priority                   : Interfaces.Unsigned_32;
+      Precedence_Within_Priority : Interfaces.Unsigned_32;
+      Is_Interruptable           : Interfaces.Unsigned_32;
+      Instance_Selection         : U32_Span_V1;
+      RX_Group                   : RF_RX_Element_Group_Config_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Result_V1 is record
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Job_Info_V1 is record
+      Actual_Start_Seconds            : Interfaces.Integer_64;
+      Actual_Start_Femtoseconds       : Interfaces.Integer_64;
+      Total_Job_Duration_Femtoseconds : Interfaces.Integer_64;
+      VA_Instance_ID                  : Interfaces.Unsigned_32;
+      VA_Definition_ID                : Interfaces.Unsigned_32;
+      Job_Details_ID                  : Interfaces.Unsigned_32;
+      Job_Request_ID                  : Interfaces.Unsigned_32;
+      Lookahead_Femtoseconds          : Interfaces.Integer_64;
+      RX_Stream_IDs                   : U32_Span_V1;
+   end record
+   with Convention => C;
    type RF_Face_Info_V1 is record
       Face_ID                       : Interfaces.Unsigned_32;
       Supports_Receive              : Interfaces.Unsigned_32;
@@ -1810,6 +1859,48 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_close";
+   function RF_VA_Submit_Job
+     (Handle              : RF_VA_Handle;
+      Config              : access constant RF_Job_Request_Config_V1;
+      Output              : access RF_Job_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job";
+   function RF_Job_Request_Wait
+     (Handle              : RF_Job_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Result              : access RF_Job_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_request_wait";
+   function RF_Job_Request_Claim
+     (Handle              : RF_Job_Request_Handle;
+      Output              : access RF_Job_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_request_claim";
+   function RF_Job_Request_Close
+     (Handle              : access RF_Job_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_request_close";
+   function RF_Job_View
+     (Handle              : RF_Job_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_view";
+   function RF_Job_Close
+     (Handle              : access RF_Job_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_close";
 
    function RF_Admin_Open
      (Library_Path        : Interfaces.C.Strings.chars_ptr;

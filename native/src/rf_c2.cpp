@@ -76,6 +76,9 @@ bool RfC2ChildClaim::acquire(const std::shared_ptr<RfC2State>& parent, RfC2Child
     } catch (...) { return false; }
 }
 
+bool RfC2ChildClaim::acquire_sibling(RfC2ChildClaim& output) const noexcept
+{ return acquire(state_, output); }
+
 C2ShutdownOutcome RfC2ChildClaim::release() noexcept
 {
     auto parent = std::move(state_);

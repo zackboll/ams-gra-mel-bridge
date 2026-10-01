@@ -20,6 +20,7 @@ with AMS_MEL_IR_Track_Update_Tests;
 with AMS_MEL_IR_Track_System_Data_Tests;
 with AMS_MEL_RF_Tests;
 with AMS_MEL_RF_C2_Tests;
+with AMS_MEL_RF_Job_Tests;
 with AMS_MEL_RF_Admin_Tests;
 with AMS_MEL_RF_Product_Rx_Tests;
 with GNAT.OS_Lib;
@@ -246,6 +247,7 @@ begin
    AMS_MEL_IR_Channel_Tests.Run (Provider_Path);
    AMS_MEL_RF_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_C2_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
+   AMS_MEL_RF_Job_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Admin_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Product_Rx_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    Cleanup_Lifetime_Log;

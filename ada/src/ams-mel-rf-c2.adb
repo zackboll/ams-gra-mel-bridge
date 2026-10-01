@@ -12,6 +12,8 @@ package body AMS.MEL.RF.C2 is
    use type C.RF_C2_Handle;
    use type C.RF_VA_Request_Handle;
    use type C.RF_VA_Handle;
+   use type C.RF_Job_Request_Handle;
+   use type C.RF_Job_Handle;
    use type C.Size_T;
    use type Interfaces.Unsigned_64;
    use type Interfaces.Unsigned_32;
@@ -406,4 +408,296 @@ package body AMS.MEL.RF.C2 is
       when others =>
          Object.Handle := C.Null_RF_VA;
    end Finalize;
+
+   function Finite (Value : Long_Float) return Boolean
+   is (Value <= Long_Float'Last and then Value >= Long_Float'First);
+
+   function Create_RX_Element_Group
+     (Label               : String;
+      Desired_Duty_Factor : Long_Float := 1.0;
+      Data_Pipe_Label     : String := "default") return RX_Element_Group_Config is
+   begin
+      if not Valid_String (Label)
+        or else not Valid_String (Data_Pipe_Label)
+        or else not Finite (Desired_Duty_Factor)
+        or else Desired_Duty_Factor <= 0.0
+        or else Desired_Duty_Factor > 1.0
+      then
+         raise Constraint_Error with "invalid RX group";
+      end if;
+      return
+        (Label       => US.To_Unbounded_String (Label),
+         Pipe        => US.To_Unbounded_String (Data_Pipe_Label),
+         Duty        => Desired_Duty_Factor,
+         Frequencies => <>,
+         Endpoints   => <>);
+   end Create_RX_Element_Group;
+   procedure Append_Expected_Center_Frequency
+     (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float) is
+   begin
+      if not Finite (Min_Hz) or else not Finite (Max_Hz) or else Min_Hz > Max_Hz then
+         raise Constraint_Error with "invalid frequency range";
+      end if;
+      Group.Frequencies.Append (Frequency_Range'(Min_Hz, Max_Hz));
+   end Append_Expected_Center_Frequency;
+   procedure Append_Endpoint_ID
+     (Group : in out RX_Element_Group_Config; ID : Interfaces.Unsigned_64) is
+   begin
+      for Existing of Group.Endpoints loop
+         if Existing = ID then
+            raise Constraint_Error with "duplicate endpoint ID";
+         end if;
+      end loop;
+      Group.Endpoints.Append (ID);
+   end Append_Endpoint_ID;
+   function Create_Job_Config
+     (Request_ID, Priority       : Interfaces.Unsigned_32;
+      Group                      : RX_Element_Group_Config;
+      Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
+      Interruptable              : Boolean := False) return Job_Config is
+   begin
+      return
+        (ID            => Request_ID,
+         Priority      => Priority,
+         Precedence    => Precedence_Within_Priority,
+         Interruptable => Interruptable,
+         Group         => Group,
+         Instances     => <>);
+   end Create_Job_Config;
+   procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32) is
+   begin
+      Config.Instances.Append (ID);
+   end Append_Instance_Selection;
+   function Submit_Job (VA : Virtual_Aperture'Class; Config : Job_Config) return Job_Request is
+      function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
+      Label       : String_Owner;
+      Pipe        : String_Owner;
+      Label_Text  : constant String := US.To_String (Config.Group.Label);
+      Pipe_Text   : constant String := US.To_String (Config.Group.Pipe);
+      type Raw_Frequencies is array (Positive range <>) of aliased C.RF_Frequency_Range_V1
+      with Convention => C;
+      type Raw_Endpoints is array (Positive range <>) of aliased Interfaces.Unsigned_64
+      with Convention => C;
+      type Raw_Instances is array (Positive range <>) of aliased Interfaces.Unsigned_32
+      with Convention => C;
+      Frequencies : Raw_Frequencies (1 .. Natural (Config.Group.Frequencies.Length));
+      Endpoints   : Raw_Endpoints (1 .. Natural (Config.Group.Endpoints.Length));
+      Instances   : Raw_Instances (1 .. Natural (Config.Instances.Length));
+      D           : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R           : aliased C.Size_T := 0;
+   begin
+      if not Is_Open (VA) then
+         raise Provider_Error with "VirtualAperture is closed";
+      end if;
+      Label.Value := CS.New_String (Label_Text);
+      Pipe.Value := CS.New_String (Pipe_Text);
+      for I in Frequencies'Range loop
+         Frequencies (I) :=
+           (Interfaces.C.double (Config.Group.Frequencies (I).Min_Hz),
+            Interfaces.C.double (Config.Group.Frequencies (I).Max_Hz));
+      end loop;
+      for I in Endpoints'Range loop
+         Endpoints (I) := Config.Group.Endpoints (I);
+      end loop;
+      for I in Instances'Range loop
+         Instances (I) := Config.Instances (I);
+      end loop;
+      declare
+         Raw : aliased constant C.RF_Job_Request_Config_V1 :=
+           (Request_ID                 => Config.ID,
+            Priority                   => Config.Priority,
+            Precedence_Within_Priority => Config.Precedence,
+            Is_Interruptable           => (if Config.Interruptable then 1 else 0),
+            Instance_Selection         =>
+              (Data =>
+                 (if Instances'Length = 0
+                  then System.Null_Address
+                  else Instances (Instances'First)'Address),
+               Size => Instances'Length),
+            RX_Group                   =>
+              (Label                       => (Pointer_Address (Label.Value), Label_Text'Length),
+               Desired_Duty_Factor         => Interfaces.C.double (Config.Group.Duty),
+               Expected_Center_Frequencies =>
+                 (Data =>
+                    (if Frequencies'Length = 0
+                     then System.Null_Address
+                     else Frequencies (Frequencies'First)'Address),
+                  Size => Frequencies'Length),
+               Endpoint_IDs                =>
+                 (Data =>
+                    (if Endpoints'Length = 0
+                     then System.Null_Address
+                     else Endpoints (Endpoints'First)'Address),
+                  Size => Endpoints'Length),
+               Data_Pipe_Label             => (Pointer_Address (Pipe.Value), Pipe_Text'Length)));
+      begin
+         return Result : Job_Request do
+            Check
+              (C.RF_VA_Submit_Job
+                 (VA.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         end return;
+      end;
+   end Submit_Job;
+
+   function Is_Open (Request : Job_Request) return Boolean
+   is (Request.Handle /= C.Null_RF_Job_Request);
+   procedure Close (Request : in out Job_Request) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_Job_Request_Close (Request.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+   overriding
+   procedure Finalize (Request : in out Job_Request) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.RF_Job_Request_Close (Request.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Request.Handle := C.Null_RF_Job_Request;
+   end Finalize;
+   function Outcome (Result : Job_Result) return Request_Outcome
+   is (Result.State);
+   function Error_Code (Result : Job_Result) return Request_Error_Code
+   is (Result.Code);
+   function Description (Result : Job_Result) return String
+   is (US.To_String (Result.Text));
+   function Wait (Request : Job_Request; Timeout_Milliseconds : Natural) return Job_Result is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Raw    : aliased C.RF_Job_Result_V1 := (Error_Code => 0);
+      Status : Interfaces.Integer_32;
+   begin
+      Status :=
+        C.RF_Job_Request_Wait
+          (Request.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Raw'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+      if Status = C.Timeout then
+         raise Timeout_Error;
+      end if;
+      if Status = C.Success then
+         if Raw.Error_Code /= 0 then
+            raise Provider_Error with "invalid successful Job result";
+         end if;
+         return (State => Created, Code => None, Text => US.Null_Unbounded_String);
+      elsif Status = C.Provider_Failed then
+         if Raw.Error_Code > 8 then
+            raise Provider_Error with Message (D);
+         end if;
+         if R = 0 or else Interfaces.Unsigned_64 (R) > Interfaces.Unsigned_64 (Natural'Last) then
+            raise Provider_Error with "invalid Job diagnostic size";
+         end if;
+         if R > D'Length then
+            declare
+               Full  : aliased Diagnostic (0 .. R - 1) := [others => Interfaces.C.nul];
+               Again : aliased C.RF_Job_Result_V1 := (Error_Code => 0);
+               Need  : aliased C.Size_T := 0;
+               Retry : constant Interfaces.Integer_32 :=
+                 C.RF_Job_Request_Wait
+                   (Request.Handle, 0, Again'Access, Full'Address, Full'Length, Need'Access);
+            begin
+               if Retry /= Status or else Again.Error_Code /= Raw.Error_Code or else Need /= R then
+                  raise Provider_Error with "Job terminal result changed";
+               end if;
+               return
+                 (State => Failed,
+                  Code  => Request_Error_Code'Enum_Val (Raw.Error_Code),
+                  Text  => US.To_Unbounded_String (Message (Full)));
+            end;
+         end if;
+         return
+           (State => Failed,
+            Code  => Request_Error_Code'Enum_Val (Raw.Error_Code),
+            Text  => US.To_Unbounded_String (Message (D)));
+      end if;
+      raise Provider_Error with Message (D);
+   end Wait;
+
+   type Job_Info_Access is access all C.RF_Job_Info_V1;
+   function To_Job_Info is new Ada.Unchecked_Conversion (System.Address, Job_Info_Access);
+   function Claim (Request : Job_Request'Class) return Job is
+      D       : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Address : aliased System.Address := System.Null_Address;
+   begin
+      return Result : Job do
+         Check
+           (C.RF_Job_Request_Claim
+              (Request.Handle, Result.Handle'Access, D'Address, D'Length, R'Access),
+            D);
+         Check (C.RF_Job_View (Result.Handle, Address'Access, D'Address, D'Length, R'Access), D);
+         if Address = System.Null_Address then
+            raise Provider_Error with "null Job snapshot";
+         end if;
+         declare
+            Info : constant C.RF_Job_Info_V1 := To_Job_Info (Address).all;
+         begin
+            if (Info.RX_Stream_IDs.Size > 0 and then Info.RX_Stream_IDs.Data = System.Null_Address)
+              or else Interfaces.Unsigned_64 (Info.RX_Stream_IDs.Size)
+                      > Interfaces.Unsigned_64
+                          (Natural'Last
+                           / (Interfaces.Unsigned_32'Object_Size / System.Storage_Unit))
+            then
+               raise Provider_Error with "invalid Job stream span";
+            end if;
+            Result.Start_Seconds := Info.Actual_Start_Seconds;
+            Result.Start_Femtoseconds := Info.Actual_Start_Femtoseconds;
+            Result.Duration_Femtoseconds := Info.Total_Job_Duration_Femtoseconds;
+            Result.Instance_ID := Info.VA_Instance_ID;
+            Result.Definition_ID := Info.VA_Definition_ID;
+            Result.Details_ID := Info.Job_Details_ID;
+            Result.Request_ID := Info.Job_Request_ID;
+            Result.Lookahead := Info.Lookahead_Femtoseconds;
+            for I in 1 .. Natural (Info.RX_Stream_IDs.Size) loop
+               Result.Streams.Append
+                 (To_U32
+                    (Info.RX_Stream_IDs.Data
+                     + Storage_Offset
+                         ((I - 1) * Interfaces.Unsigned_32'Object_Size / System.Storage_Unit)).all);
+            end loop;
+         end;
+      end return;
+   end Claim;
+   function Is_Open (Object : Job) return Boolean
+   is (Object.Handle /= C.Null_RF_Job);
+   procedure Close (Object : in out Job) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_Job_Close (Object.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+   overriding
+   procedure Finalize (Object : in out Job) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.RF_Job_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_RF_Job;
+   end Finalize;
+   function Actual_Start_Seconds (Object : Job) return Interfaces.Integer_64
+   is (Object.Start_Seconds);
+   function Actual_Start_Femtoseconds (Object : Job) return Interfaces.Integer_64
+   is (Object.Start_Femtoseconds);
+   function Total_Job_Duration_Femtoseconds (Object : Job) return Interfaces.Integer_64
+   is (Object.Duration_Femtoseconds);
+   function VA_Instance_ID (Object : Job) return Interfaces.Unsigned_32
+   is (Object.Instance_ID);
+   function VA_Definition_ID (Object : Job) return Interfaces.Unsigned_32
+   is (Object.Definition_ID);
+   function Job_Details_ID (Object : Job) return Interfaces.Unsigned_32
+   is (Object.Details_ID);
+   function Job_Request_ID (Object : Job) return Interfaces.Unsigned_32
+   is (Object.Request_ID);
+   function Lookahead_Femtoseconds (Object : Job) return Interfaces.Integer_64
+   is (Object.Lookahead);
+   function RX_Stream_ID_Count (Object : Job) return Natural
+   is (Natural (Object.Streams.Length));
+   function RX_Stream_ID_At (Object : Job; Index : Positive) return Interfaces.Unsigned_32
+   is (Object.Streams (Index));
 end AMS.MEL.RF.C2;

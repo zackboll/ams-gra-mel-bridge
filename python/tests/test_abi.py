@@ -130,6 +130,12 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_virtual_aperture_request_close",
                 "ams_mel_rf_virtual_aperture_view",
                 "ams_mel_rf_virtual_aperture_close",
+                "ams_mel_rf_virtual_aperture_submit_job",
+                "ams_mel_rf_job_request_wait",
+                "ams_mel_rf_job_request_claim",
+                "ams_mel_rf_job_request_close",
+                "ams_mel_rf_job_view",
+                "ams_mel_rf_job_close",
                 "ams_mel_rf_data_open",
                 "ams_mel_rf_data_get_provider_version",
                 "ams_mel_rf_data_get_mfa_info",
@@ -147,8 +153,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 126)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 126)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 132)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 132)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -156,7 +162,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 126)
+        self.assertEqual(len(exported), 132)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -260,6 +266,24 @@ class AbiTests(unittest.TestCase):
             "ams_mel_rf_virtual_aperture_request_close": [ctypes.POINTER(request)],
             "ams_mel_rf_virtual_aperture_view": [va, ctypes.POINTER(ctypes.POINTER(_native.RfVaInfoV1))],
             "ams_mel_rf_virtual_aperture_close": [ctypes.POINTER(va)],
+        }
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic], name)
+            self.assertIs(function.restype, ctypes.c_int32)
+
+    def test_private_rf_job_signatures_are_exact(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, _native.SizePointer]
+        request, job = _native.RfJobRequestHandle, _native.RfJobHandle
+        expected = {
+            "ams_mel_rf_virtual_aperture_submit_job": [_native.RfVaHandle,
+                ctypes.POINTER(_native.RfJobRequestConfigV1), ctypes.POINTER(request)],
+            "ams_mel_rf_job_request_wait": [request, ctypes.c_uint32,
+                ctypes.POINTER(_native.RfJobResultV1)],
+            "ams_mel_rf_job_request_claim": [request, ctypes.POINTER(job)],
+            "ams_mel_rf_job_request_close": [ctypes.POINTER(request)],
+            "ams_mel_rf_job_view": [job, ctypes.POINTER(ctypes.POINTER(_native.RfJobInfoV1))],
+            "ams_mel_rf_job_close": [ctypes.POINTER(job)],
         }
         for name, prefix in expected.items():
             function = getattr(_native, name)
@@ -1088,6 +1112,21 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfVaResultV1, 'error_code'))
         expected.extend(self._layout(_native.RfVaInfoV1, 'va_instance_ids', 'element_group_labels',
                                      'is_single_group'))
+        for handle in (_native.RfJobRequestHandle, _native.RfJobHandle):
+            expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
+        expected.extend(self._layout(_native.U64SpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfRxElementGroupConfigV1,
+                                     'label', 'desired_duty_factor', 'expected_center_frequencies',
+                                     'endpoint_ids', 'data_pipe_label'))
+        expected.extend(self._layout(_native.RfJobRequestConfigV1,
+                                     'request_id', 'priority', 'precedence_within_priority',
+                                     'is_interruptable', 'instance_selection', 'rx_group'))
+        expected.extend(self._layout(_native.RfJobResultV1, 'error_code'))
+        expected.extend(self._layout(_native.RfJobInfoV1,
+                                     'actual_start_seconds', 'actual_start_femtoseconds',
+                                     'total_job_duration_femtoseconds', 'va_instance_id',
+                                     'va_definition_id', 'job_details_id', 'job_request_id',
+                                     'lookahead_femtoseconds', 'rx_stream_ids'))
         for handle in (ctypes.c_uint32, _native.RfDataHandle, _native.RfMfaInfoHandle,
                        ctypes.c_uint32):
             expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])

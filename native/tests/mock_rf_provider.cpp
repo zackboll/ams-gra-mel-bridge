@@ -18,6 +18,7 @@
 #include <rfmel/admin/AdminMEL.h>
 #include <rfmel/admin/StatusControl.h>
 #include <rfmel/c2/C2MEL.h>
+#include <rfmel/c2/JobDetail.h>
 #include <rfmel/data/ProductRxEndpoint.h>
 #include <rfmel/endpoints/RDMAMemoryRegionParams.h>
 #include <rfmel/factory/RFCreateFunctions.h>
@@ -27,6 +28,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -702,10 +704,83 @@ std::atomic<unsigned> c2_shutdown_calls{};
 std::mutex va_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>> va_pending;
 std::atomic<unsigned> va_get_calls{};
+std::mutex job_gate_mutex;
+std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>> job_pending;
+std::atomic<unsigned> job_get_calls{};
+std::mutex job_cleanup_mutex;
+std::condition_variable job_cleanup_changed;
+unsigned job_cleanup_shutdowns{};
+
+class MockRxCommand final : public rfmel::ElementGroupCommand {
+public:
+    explicit MockRxCommand(std::string label, bool tx, bool throws)
+        : label_{std::move(label)}, tx_{tx}, throws_{throws} {}
+    rfmel::ElementGroupLabel getElementGroupLabel() const override { return label_; }
+    rfmel::Mode getMode() const override
+    { record("rf_job_mode_checked"); return tx_ ? rfmel::Mode::TX : rfmel::Mode::RX; }
+    std::vector<rfmel::FrequencyRange> getExpectedCenterFrequencies() const override { return frequencies_; }
+    std::vector<rfmel::FrequencyRange>& getRefExpectedCenterFrequencies() override { return frequencies_; }
+    rfmel::TxPowerLevel getTxPower() const override { forbidden("Job::getTxPower"); }
+    rfmel::DutyFactor getDesiredDutyFactor() const override { return duty_; }
+    rfmel::DataPipeConnections getEndpointIDs() const override { return connections_; }
+    rfmel::DataPipeConnections& getRefEndpointIDs() override { return connections_; }
+    void addExpectedCenterFrequencies(rfmel::FrequencyRange range) override
+    { frequencies_.push_back(range); }
+    void setTxPower(rfmel::TxPowerLevel) override { forbidden("Job::setTxPower"); }
+    void setDesiredDutyFactor(rfmel::DutyFactor duty) override
+    { if (throws_) throw std::runtime_error("mock Job setter exception"); duty_ = duty; }
+    void addEndpointIDs(const std::set<rfmel::EndpointID>& ids, rfmel::DataPipeLabel pipe) override
+    { connections_.insert_or_assign(pipe, ids); }
+    std::vector<rfmel::PointingType> getExpectedPointingAngles() override { return {}; }
+    void addExpectedPointingAngle(const rfmel::PointingType&) override { forbidden("Job::addPointing"); }
+    std::vector<rfmel::PointingType>& getRefExpectedPointingAngles() override { return pointing_; }
+private:
+    std::string label_;
+    bool tx_, throws_;
+    double duty_{1.0};
+    std::vector<rfmel::FrequencyRange> frequencies_;
+    rfmel::DataPipeConnections connections_;
+    std::vector<rfmel::PointingType> pointing_;
+};
+
+class MockJobDetail final : public rfmel::JobDetail {
+public:
+    explicit MockJobDetail(bool throws) : throws_{throws} {}
+    ~MockJobDetail() override { record("rf_job_destroyed"); }
+    ams::util::math::UTCTime actualStartTime() const override
+    {
+        job_get_calls.fetch_add(1U);
+        if (throws_) throw std::runtime_error("mock Job getter exception");
+        return {std::chrono::seconds{-123456789}, Femtoseconds{999999999999999}};
+    }
+    const std::function<void(rfmel::JobIntervalStatus)>& getJobIntervalStatusCallback() const override
+    { forbidden("Job::getJobIntervalStatusCallback"); }
+    Femtoseconds totalJobDuration() const override { return Femtoseconds{7654321098765LL}; }
+    rfmel::VirtualApertureInstanceID getVAInstanceID() const override { return 42; }
+    rfmel::VirtualApertureDefinitionID getVADefinitionID() const override { return 0xABCDEF01U; }
+    uint32_t getJobDetailsID() const override { return 0x10203040U; }
+    std::future<rfmel::JobStatus> finalize() override { forbidden("Job::finalize"); }
+    void flush() override { forbidden("Job::flush"); }
+    void registerJobIntervalStatusCallback(const std::function<void(rfmel::JobIntervalStatus)>&) override
+    { forbidden("Job::registerStatus"); }
+    void addJobIntervals(const std::vector<rfmel::JobInterval>&) override
+    { forbidden("Job::addIntervals"); }
+    void cancelRemainingJobIntervals() override { forbidden("Job::cancelIntervals"); }
+    rfmel::CancelStatus cancelJob() override { forbidden("Job::cancelJob"); }
+    void extendJobEvent(uint32_t, rfmel::JobEventID, Femtoseconds) override
+    { forbidden("Job::extendJobEvent"); }
+    std::vector<rfmel::StreamID> getRxStreamIDs(size_t group) const override
+    { if (group != 0) forbidden("Job::getRxStreamIDs(nonzero)"); return {0, 3, UINT32_MAX}; }
+    uint32_t getJobRequestId() const override { return 0xFEDCBA98U; }
+    Femtoseconds getLookAheadTime() const override { return Femtoseconds{-12345}; }
+private:
+    bool throws_;
+};
 
 class MockVirtualAperture final : public rfmel::VirtualAperture {
 public:
-    explicit MockVirtualAperture(bool fail_getter) : fail_getter_{fail_getter} {}
+    explicit MockVirtualAperture(bool fail_getter, std::string scenario = {})
+        : fail_getter_{fail_getter}, scenario_{std::move(scenario)} {}
     ~MockVirtualAperture() override { record("rf_va_destroyed"); }
     rfmel::VirtualApertureDefinitionID getID() const override { return 0; }
     std::size_t addStatusCallback(const std::function<void(rfmel::BaseVirtualAperture&)>&) override
@@ -727,8 +802,58 @@ public:
         if (fail_getter_) throw std::runtime_error("mock VA getter exception");
         return {9, 0, 3};
     }
-    mel::RequestFor<rfmel::JobDetail> requestJob(rfmel::JobRequest&) override
-    { forbidden("VA::requestJob"); }
+    mel::RequestFor<rfmel::JobDetail> requestJob(rfmel::JobRequest& request) override
+    {
+        record("rf_job_requested");
+        if (scenario_ == "c2:job-submit-throw") throw std::runtime_error("mock Job submit exception");
+        const auto& groups = request.getElementGroups();
+        if (groups.size() != 1 || groups[0]->getMode() != rfmel::Mode::RX ||
+            groups[0]->getElementGroupLabel() != "rx/µ-main" ||
+            groups[0]->getDesiredDutyFactor() != 0.625 ||
+            request.getRequestId() != 0xFEDCBA98U || request.getPriority() != 0x80000001U ||
+            request.getPrecedenceWithinPriority() != 0x7FFFFFFEU ||
+            !request.getIsInterruptable() ||
+            request.getInstanceSelection() != std::vector<uint32_t>{0, 42, UINT32_MAX} ||
+            request.getTxPowerModeIDs() != std::set<rfmel::TxPowerModeID>{0} ||
+            request.getCapabilityId() != std::vector<uint8_t>{0} ||
+            request.getActivityId() != std::vector<uint8_t>{0} ||
+            request.getDuration().count() != 0 || request.getLookAheadTime().count() != 0 ||
+            request.getNumJIBs() != 0 || request.getSendNextJIBatchCallback() ||
+            request.getRequestRejectedCallback())
+            throw std::runtime_error("Job request fields mismatched");
+        const auto frequencies = groups[0]->getExpectedCenterFrequencies();
+        if (frequencies.size() != 2 ||
+            frequencies[0].getMinFrequency() != 1000000.25 ||
+            frequencies[0].getMaxFrequency() != 2000000.5 ||
+            frequencies[1].getMinFrequency() != 987654321.125 ||
+            frequencies[1].getMaxFrequency() != 987654322.875)
+            throw std::runtime_error("Job frequencies mismatched");
+        const auto pipes = groups[0]->getEndpointIDs();
+        auto it = pipes.begin();
+        if (pipes.size() != 1 || it->first != "products/β" ||
+            it->second != std::set<rfmel::EndpointID>{0, UINT64_C(0x8000000000000000), UINT64_MAX})
+            throw std::runtime_error("Job endpoint association mismatched");
+        if (scenario_ == "c2:job-invalid-future") return {};
+        auto gate = std::make_shared<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>();
+        auto future = gate->get_future();
+        if (scenario_ == "c2:job-delayed" || scenario_ == "c2:job-shutdown-throw") {
+            std::lock_guard lock{job_gate_mutex};
+            job_pending.push_back(std::move(gate));
+        } else if (scenario_ == "c2:job-future-throw")
+            gate->set_exception(std::make_exception_ptr(std::runtime_error("mock Job future exception")));
+        else if (scenario_ == "c2:job-future-unknown")
+            gate->set_exception(std::make_exception_ptr(17));
+        else if (scenario_ == "c2:job-failure" || scenario_ == "c2:job-long-failure" ||
+                 scenario_ == "c2:job-unknown-error")
+            gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
+                mel::Error{scenario_ == "c2:job-unknown-error" ? static_cast<mel::ErrorCode>(99) :
+                    mel::ErrorCode::InvalidParameters, scenario_ == "c2:job-long-failure" ?
+                    std::string(800, 'X') + "µ end" : "mock Job rejected"}});
+        else gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
+            scenario_ == "c2:job-null" ? std::shared_ptr<rfmel::JobDetail>{} :
+            std::make_shared<MockJobDetail>(scenario_ == "c2:job-getter-throw")});
+        return future;
+    }
     rfmel::ElementGroupDescriptorLookupMap getElementGroups() const override
     { forbidden("VA::getElementGroups"); }
     std::vector<rfmel::ElementGroupLabel> getElementGroupLabels() const override
@@ -736,9 +861,15 @@ public:
     rfmel::ElementGroupConnections getDataPipes() override { forbidden("VA::getDataPipes"); }
     std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(
         std::shared_ptr<rfmel::ElementGroupDescriptor>) override
-    { forbidden("VA::createElementGroupCommand"); }
-    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(rfmel::ElementGroupLabel) override
-    { forbidden("VA::createElementGroupCommand"); }
+    { forbidden("VA::createElementGroupCommand(descriptor)"); }
+    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(rfmel::ElementGroupLabel label) override
+    {
+        record("rf_job_command_created");
+        if (scenario_ == "c2:job-command-throw") throw std::runtime_error("mock Job command exception");
+        if (scenario_ == "c2:job-command-null") return {};
+        return std::make_shared<MockRxCommand>(std::move(label), scenario_ == "c2:job-command-tx",
+                                               scenario_ == "c2:job-setter-throw");
+    }
     bool isCachedWaveformSupported() const override { forbidden("VA::isCachedWaveformSupported"); }
     std::shared_ptr<rfmel::Weights> getStaticWeights(const std::string&) const override
     { forbidden("VA::getStaticWeights"); }
@@ -764,6 +895,7 @@ public:
     { forbidden("VA::getLocalFunctionStatus"); }
 private:
     bool fail_getter_{};
+    std::string scenario_;
 };
 
 class MockC2MEL final : public rfmel::C2MEL {
@@ -821,7 +953,7 @@ public:
             promise.set_exception(std::make_exception_ptr(17));
         else
             promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
-                std::make_shared<MockVirtualAperture>(configuration_ == "c2:va-getter-throw")});
+                std::make_shared<MockVirtualAperture>(configuration_ == "c2:va-getter-throw", configuration_)});
         return future;
     }
     mel::RequestFor<rfmel::CachedWaveform> requestCachedWaveform(
@@ -840,7 +972,13 @@ public:
     {
         c2_shutdown_calls.fetch_add(1U);
         record("rf_c2_shutdown");
-        if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw")
+        {
+            std::lock_guard lock{job_cleanup_mutex};
+            ++job_cleanup_shutdowns;
+        }
+        job_cleanup_changed.notify_all();
+        if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw" ||
+            configuration_ == "c2:job-shutdown-throw")
             throw std::runtime_error("mock C2 shutdown exception");
     }
 private:
@@ -924,7 +1062,15 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
         configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
         configuration != "c2:va-unknown-error" &&
         configuration != "c2:va-invalid-future" && configuration != "c2:va-getter-throw" &&
-        configuration != "c2:va-shutdown-throw")
+        configuration != "c2:va-shutdown-throw" &&
+        configuration != "c2:job-ok" && configuration != "c2:job-delayed" &&
+        configuration != "c2:job-shutdown-throw" && configuration != "c2:job-failure" &&
+        configuration != "c2:job-long-failure" && configuration != "c2:job-unknown-error" &&
+        configuration != "c2:job-future-throw" && configuration != "c2:job-future-unknown" &&
+        configuration != "c2:job-invalid-future" && configuration != "c2:job-null" &&
+        configuration != "c2:job-getter-throw" && configuration != "c2:job-command-null" &&
+        configuration != "c2:job-command-throw" && configuration != "c2:job-command-tx" &&
+        configuration != "c2:job-setter-throw" && configuration != "c2:job-submit-throw")
         throw std::invalid_argument("mock C2 received unexpected configuration");
     return std::make_shared<MockC2MEL>(std::string{configuration});
 }
@@ -945,6 +1091,32 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_release_on
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_get_calls(void)
 { return va_get_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_release_one(void)
+{
+    std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>> gate;
+    {
+        std::lock_guard lock{job_gate_mutex};
+        if (job_pending.empty()) return 0;
+        gate = std::move(job_pending.back());
+        job_pending.pop_back();
+    }
+    gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
+        std::make_shared<MockJobDetail>(false)});
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_get_calls(void)
+{ return job_get_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_shutdown_count(void)
+{
+    std::lock_guard lock{job_cleanup_mutex};
+    return job_cleanup_shutdowns;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_wait_shutdown_after(unsigned baseline)
+{
+    std::unique_lock lock{job_cleanup_mutex};
+    return job_cleanup_changed.wait_for(lock, std::chrono::seconds{3},
+        [&] { return job_cleanup_shutdowns > baseline; }) ? 1U : 0U;
+}
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_factory_calls(void)
 { return c2_factory_calls.load(); }

@@ -1,5 +1,36 @@
 # Implementation coverage
 
+Task 034B2A2: ABI 0.1 remains at 132 exports; vendor 803/803 is unchanged.
+Current scope (the 034B2A1 section below is its historical native checkpoint):
+
+```text
+RF DataMEL / ProductRx / Admin: native C + safe Ada
+RF C2 / VirtualAperture:       native C + safe Ada
+RF RX Job request:            native C + safe Ada, one RX group
+RF JobDetail snapshot:        native C + safe Ada
+RF Job finalize/cancel:       not implemented
+RF ProductRx helper removal:  not performed
+safe Rust / public Python RF: not implemented
+```
+
+See `task-034b2a2-safe-ada-rf-job.md`.
+
+Task 034B2A1: ABI 0.1 has 132 exports; existing 126 remain unchanged.
+The following describes the *current* native checkpoint (historical coverage
+sections below retain their own starting baselines).
+
+```text
+RF DataMEL / ProductRx / Admin: native C + safe Ada
+RF C2 / VirtualAperture:       native C + safe Ada
+RF RX Job request:            native C only, exactly one RX group
+RF JobDetail snapshot:        native C only
+RF Job finalize/cancel:       not implemented (034B2B)
+safe Ada RF Job API:          not implemented (034B2A2)
+safe Rust / public Python RF: not implemented
+```
+
+See `task-034b2a1-native-rf-job-request.md`.
+
 Task 034B1B2 extends the C ABI 0.1 to 126 production exports. The 034B1B1
 section below is the historical starting baseline. See
 `task-034b1b2-safe-ada-rf-virtual-aperture.md`.

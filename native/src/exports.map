@@ -112,6 +112,12 @@ AMS_MEL_0.1 {
         ams_mel_rf_virtual_aperture_request_close;
         ams_mel_rf_virtual_aperture_view;
         ams_mel_rf_virtual_aperture_close;
+        ams_mel_rf_virtual_aperture_submit_job;
+        ams_mel_rf_job_request_wait;
+        ams_mel_rf_job_request_claim;
+        ams_mel_rf_job_request_close;
+        ams_mel_rf_job_view;
+        ams_mel_rf_job_close;
         ams_mel_rf_data_get_provider_version;
         ams_mel_rf_data_get_mfa_info;
         ams_mel_rf_mfa_info_view;

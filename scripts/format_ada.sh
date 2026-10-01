@@ -27,3 +27,4 @@ run_gnatformat() {
 
 run_gnatformat -P "$root/ada/ams_mel.gpr" -U --no-subprojects --charset=utf-8 $check_option
 run_gnatformat -P "$root/ada/tests/ams_mel_tests.gpr" -U --no-subprojects --charset=utf-8 $check_option
+run_gnatformat -P "$root/ada/tests/ams_mel_rf_job_tests.gpr" -U --no-subprojects --charset=utf-8 $check_option

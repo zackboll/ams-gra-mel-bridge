@@ -315,6 +315,12 @@ pub struct AmsMelU32SpanV1 {
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+pub struct AmsMelU64SpanV1 {
+    pub data: *const u64,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct AmsMelU8SpanV1 {
     pub data: *const u8,
     pub size: usize,
@@ -1632,6 +1638,53 @@ pub struct AmsMelRfVaInfoV1 {
     pub element_group_labels: AmsMelStringViewSpanV1,
     pub is_single_group: u32,
 }
+#[repr(C)]
+pub struct AmsMelRfJobRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelRfJob {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxElementGroupConfigV1 {
+    pub label: AmsMelStringViewV1,
+    pub desired_duty_factor: f64,
+    pub expected_center_frequencies: AmsMelRfFrequencyRangeSpanV1,
+    pub endpoint_ids: AmsMelU64SpanV1,
+    pub data_pipe_label: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobRequestConfigV1 {
+    pub request_id: u32,
+    pub priority: u32,
+    pub precedence_within_priority: u32,
+    pub is_interruptable: u32,
+    pub instance_selection: AmsMelU32SpanV1,
+    pub rx_group: AmsMelRfRxElementGroupConfigV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobResultV1 {
+    pub error_code: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobInfoV1 {
+    pub actual_start_seconds: i64,
+    pub actual_start_femtoseconds: i64,
+    pub total_job_duration_femtoseconds: i64,
+    pub va_instance_id: u32,
+    pub va_definition_id: u32,
+    pub job_details_id: u32,
+    pub job_request_id: u32,
+    pub lookahead_femtoseconds: i64,
+    pub rx_stream_ids: AmsMelU32SpanV1,
+}
 pub type AmsMelRfMfaState = u32;
 /// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
 #[repr(C)]
@@ -2587,6 +2640,48 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_rf_virtual_aperture_close(
         va: *mut *mut AmsMelRfVa,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_submit_job(
+        va: *mut AmsMelRfVa,
+        config: *const AmsMelRfJobRequestConfigV1,
+        out_request: *mut *mut AmsMelRfJobRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_request_wait(
+        request: *const AmsMelRfJobRequest,
+        timeout_ms: u32,
+        result: *mut AmsMelRfJobResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_request_claim(
+        request: *mut AmsMelRfJobRequest,
+        out_job: *mut *mut AmsMelRfJob,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_request_close(
+        request: *mut *mut AmsMelRfJobRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_view(
+        job: *const AmsMelRfJob,
+        out_info: *mut *const AmsMelRfJobInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_close(
+        job: *mut *mut AmsMelRfJob,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

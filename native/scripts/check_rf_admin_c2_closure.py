@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin the Task 034B1 Admin/C2/VA declaration closure to vendored sources.
+"""Pin the Task 034B1/034B2A Admin/C2/VA/JobDetail closure to vendored sources.
 
 The exact family-relative dependency lists were measured against the full pinned
 upstream trees. GCC and Clang see different Boost configuration headers; all
@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_rf_data_closure as base  # noqa: E402
 
 EXPECTED = {
-    "rfmel": (51, "aa349e2cf9228e06fe694c073ec5c44964a37115de5674c18a3f0174af29052b"),
+    "rfmel": (52, "93b635b8699eb4ee51f40b8a21a9f73c9178460d66aeee3ff16dd845fe3bb932"),
     "mel": (24, "5c4f6d22873567ef21a40368d8dc2f79b627c4a8f32ef60aba5828bc94a13c9e"),
     "math": (5, "fcc04a579ab4389560ee0a3832757363a8e2a1f5afe09b6e26e84f720e977f51"),
     "vita": (5, "e2d9ba42f49a4f34f62550fa59841e71295bb452abf03bb2ae72ae2815340aef"),
@@ -68,8 +68,10 @@ def main():
     observed, violations = base.classify(paths, root)
     if violations:
         raise RuntimeError("unpinned Admin/C2 dependency:\n  " + "\n  ".join(violations))
+    if (root / "rf-mel/include/rfmel/c2/JobDetail.h").resolve() not in observed["rfmel"]:
+        raise RuntimeError("JobDetail.h is missing from the observed vendored closure")
     count = verify(observed, root, args.compiler)
-    print(f"RF Admin/C2/VA closure: {count} pinned upstream headers under {root}")
+    print(f"RF Admin/C2/VA/JobDetail closure: {count} pinned upstream headers under {root}")
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ package AMS.MEL.RF.C2 is
    function Wait
      (Request : Virtual_Aperture_Request; Timeout_Milliseconds : Natural)
       return Virtual_Aperture_Result;
-   type Virtual_Aperture is limited private;
+   type Virtual_Aperture is tagged limited private;
    function Claim (Request : Virtual_Aperture_Request'Class) return Virtual_Aperture;
    function Is_Open (Object : Virtual_Aperture) return Boolean;
    function VA_Instance_ID_Count (Object : Virtual_Aperture) return Natural;
@@ -62,6 +62,45 @@ package AMS.MEL.RF.C2 is
    function Element_Group_Label_At (Object : Virtual_Aperture; Index : Positive) return String;
    function Is_Single_Group (Object : Virtual_Aperture) return Boolean;
    procedure Close (Object : in out Virtual_Aperture);
+   type RX_Element_Group_Config is private;
+   function Create_RX_Element_Group
+     (Label               : String;
+      Desired_Duty_Factor : Long_Float := 1.0;
+      Data_Pipe_Label     : String := "default") return RX_Element_Group_Config;
+   procedure Append_Expected_Center_Frequency
+     (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float);
+   procedure Append_Endpoint_ID
+     (Group : in out RX_Element_Group_Config; ID : Interfaces.Unsigned_64);
+   type Job_Config is private;
+   function Create_Job_Config
+     (Request_ID, Priority       : Interfaces.Unsigned_32;
+      Group                      : RX_Element_Group_Config;
+      Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
+      Interruptable              : Boolean := False) return Job_Config;
+   procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32);
+   type Job_Request is tagged limited private;
+   function Submit_Job (VA : Virtual_Aperture'Class; Config : Job_Config) return Job_Request;
+   function Is_Open (Request : Job_Request) return Boolean;
+   procedure Close (Request : in out Job_Request);
+   type Job_Result is private;
+   function Outcome (Result : Job_Result) return Request_Outcome;
+   function Error_Code (Result : Job_Result) return Request_Error_Code;
+   function Description (Result : Job_Result) return String;
+   function Wait (Request : Job_Request; Timeout_Milliseconds : Natural) return Job_Result;
+   type Job is limited private;
+   function Claim (Request : Job_Request'Class) return Job;
+   function Is_Open (Object : Job) return Boolean;
+   procedure Close (Object : in out Job);
+   function Actual_Start_Seconds (Object : Job) return Interfaces.Integer_64;
+   function Actual_Start_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   function Total_Job_Duration_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   function VA_Instance_ID (Object : Job) return Interfaces.Unsigned_32;
+   function VA_Definition_ID (Object : Job) return Interfaces.Unsigned_32;
+   function Job_Details_ID (Object : Job) return Interfaces.Unsigned_32;
+   function Job_Request_ID (Object : Job) return Interfaces.Unsigned_32;
+   function Lookahead_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   function RX_Stream_ID_Count (Object : Job) return Natural;
+   function RX_Stream_ID_At (Object : Job; Index : Positive) return Interfaces.Unsigned_32;
 private
    package Text_Vectors is new
      Ada.Containers.Vectors
@@ -71,6 +110,44 @@ private
    package UCI_Vectors is new Ada.Containers.Vectors (Positive, AMS.MEL.IR.UCI_ID, AMS.MEL.IR."=");
    package ID_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Unsigned_32, Interfaces."=");
+   package Endpoint_Vectors is new
+     Ada.Containers.Vectors (Positive, Interfaces.Unsigned_64, Interfaces."=");
+   type Frequency_Range is record
+      Min_Hz, Max_Hz : Long_Float;
+   end record;
+   package Frequency_Vectors is new Ada.Containers.Vectors (Positive, Frequency_Range);
+   type RX_Element_Group_Config is record
+      Label, Pipe : Ada.Strings.Unbounded.Unbounded_String;
+      Duty        : Long_Float;
+      Frequencies : Frequency_Vectors.Vector;
+      Endpoints   : Endpoint_Vectors.Vector;
+   end record;
+   type Job_Config is record
+      ID, Priority, Precedence : Interfaces.Unsigned_32;
+      Interruptable            : Boolean;
+      Group                    : RX_Element_Group_Config;
+      Instances                : ID_Vectors.Vector;
+   end record;
+   type Job_Result is record
+      State : Request_Outcome := Created;
+      Code  : Request_Error_Code := None;
+      Text  : Ada.Strings.Unbounded.Unbounded_String;
+   end record;
+   type Job_Request is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.RF_Job_Request_Handle := AMS.MEL_C_API.Null_RF_Job_Request;
+   end record;
+   overriding
+   procedure Finalize (Request : in out Job_Request);
+   type Job is new Ada.Finalization.Limited_Controlled with record
+      Handle                                                   :
+        aliased AMS.MEL_C_API.RF_Job_Handle := AMS.MEL_C_API.Null_RF_Job;
+      Start_Seconds, Start_Femtoseconds, Duration_Femtoseconds : Interfaces.Integer_64 := 0;
+      Instance_ID, Definition_ID, Details_ID, Request_ID       : Interfaces.Unsigned_32 := 0;
+      Lookahead                                                : Interfaces.Integer_64 := 0;
+      Streams                                                  : ID_Vectors.Vector;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Job);
    type Virtual_Aperture_Config is record
       ID, Priority : Interfaces.Unsigned_32;
       File_Info    : Ada.Strings.Unbounded.Unbounded_String;

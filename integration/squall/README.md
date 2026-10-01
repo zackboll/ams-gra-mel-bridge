@@ -1,5 +1,13 @@
 # Real Squall IR MEL integration
 
+Task 034B2A2 adds `make test-squall-rf-ada-job`, a separate, opt-in,
+production-facade safe Ada single-RX-group Job test. It requests two
+sequential Jobs and verifies the second snapshot after VA/C2 Close. This new
+Job client never loads `squall_rf_job_helper.cpp`; existing ProductRx tests
+may continue using the test-only helper. No finalize/cancel/interval support
+is implied. Runtime ports use the existing `AMS_MEL_SQUALL_RF_*_PORT`
+per-run overrides.
+
 This opt-in integration validates the public C, Ada, safe Rust, and safe Python façades
 against the real Squall IR MEL provider at commit
 `b1015728f904c799fa0c07489fce48e78f67845f`. It uses Squall's hardware-free

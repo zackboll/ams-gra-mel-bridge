@@ -404,6 +404,11 @@ typedef struct ams_mel_u32_span_v1 {
     size_t size;
 } ams_mel_u32_span_v1;
 
+typedef struct ams_mel_u64_span_v1 {
+    const uint64_t *data;
+    size_t size;
+} ams_mel_u64_span_v1;
+
 typedef struct ams_mel_u8_span_v1 {
     const uint8_t *data;
     size_t size;
@@ -2505,6 +2510,39 @@ typedef struct ams_mel_rf_frequency_range_span_v1 {
     size_t size;
 } ams_mel_rf_frequency_range_span_v1;
 
+/* All input spans and strings are borrowed only during submission. Exactly
+ * one provider-created RX element group is included in each Job request. */
+typedef struct ams_mel_rf_rx_element_group_config_v1 {
+    ams_mel_string_view_v1 label;
+    double desired_duty_factor;
+    ams_mel_rf_frequency_range_span_v1 expected_center_frequencies;
+    ams_mel_u64_span_v1 endpoint_ids;
+    ams_mel_string_view_v1 data_pipe_label;
+} ams_mel_rf_rx_element_group_config_v1;
+typedef struct ams_mel_rf_job_request_config_v1 {
+    uint32_t request_id;
+    uint32_t priority;
+    uint32_t precedence_within_priority;
+    uint32_t is_interruptable; /* exactly 0 or 1 */
+    ams_mel_u32_span_v1 instance_selection;
+    ams_mel_rf_rx_element_group_config_v1 rx_group;
+} ams_mel_rf_job_request_config_v1;
+typedef struct ams_mel_rf_job_result_v1 {
+    ams_mel_error_code_t error_code;
+} ams_mel_rf_job_result_v1;
+/* Immutable bridge-owned snapshot; pointers remain valid until Job Close. */
+typedef struct ams_mel_rf_job_info_v1 {
+    int64_t actual_start_seconds;
+    int64_t actual_start_femtoseconds;
+    int64_t total_job_duration_femtoseconds;
+    uint32_t va_instance_id;
+    uint32_t va_definition_id;
+    uint32_t job_details_id;
+    uint32_t job_request_id;
+    int64_t lookahead_femtoseconds;
+    ams_mel_u32_span_v1 rx_stream_ids;
+} ams_mel_rf_job_info_v1;
+
 /* One face reported by RFMFAInfo::getFaceIDs(). Booleans are 0/1. Every *_fs
  * field is the upstream ams::util::math::Femtoseconds count() (int64_t
  * femtoseconds) with no unit conversion. Frequency ranges are, in order,
@@ -2573,6 +2611,8 @@ typedef struct ams_mel_rf_admin ams_mel_rf_admin;
 typedef struct ams_mel_rf_c2 ams_mel_rf_c2;
 typedef struct ams_mel_rf_virtual_aperture_request ams_mel_rf_virtual_aperture_request;
 typedef struct ams_mel_rf_virtual_aperture ams_mel_rf_virtual_aperture;
+typedef struct ams_mel_rf_job_request ams_mel_rf_job_request;
+typedef struct ams_mel_rf_job ams_mel_rf_job;
 /* All views and spans are borrowed only during Submit; the adapter copies
  * every string and UCI ID before calling the provider. A successful Submit
  * returns an owned request. Wait(0) polls, positive timeouts wait at most that
@@ -2624,6 +2664,30 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_close(
     ams_mel_rf_virtual_aperture **va, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same-owner calls (including VA Close) must be externally serialized.
+ * Wait timeout is not cancellation. Request Close is nonblocking abandonment.
+ * Claim is unique; Job Close does not call finalize or cancelJob. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v1 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_wait(
+    const ams_mel_rf_job_request *request, uint32_t timeout_ms,
+    ams_mel_rf_job_result_v1 *result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_claim(
+    ams_mel_rf_job_request *request, ams_mel_rf_job **out_job, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_close(
+    ams_mel_rf_job_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_view(
+    const ams_mel_rf_job *job, const ams_mel_rf_job_info_v1 **out_info,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_close(
+    ams_mel_rf_job **job, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_open(
     const char *library_path, const char *configuration,
