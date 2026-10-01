@@ -1056,6 +1056,8 @@ ams_mel_ir_channel_close.argtypes = [ctypes.POINTER(IrChannelHandle), *_CHANNEL_
 ams_mel_ir_channel_close.restype = ctypes.c_int32
 
 # Task 033B: private raw RF DataMEL declarations. No public Python RF API.
+RfAdminHandle = ctypes.c_void_p
+RfC2Handle = ctypes.c_void_p
 RfDataHandle = ctypes.c_void_p
 RfMfaInfoHandle = ctypes.c_void_p
 
@@ -1117,6 +1119,72 @@ class RfMfaInfoV1(ctypes.Structure):
         ("faces", RfFaceInfoSpanV1),
     ]
 
+
+ams_mel_rf_admin_open = _LIBRARY.ams_mel_rf_admin_open
+ams_mel_rf_admin_open.argtypes = [
+    ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(RfAdminHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_admin_open.restype = ctypes.c_int32
+ams_mel_rf_admin_command_state = _LIBRARY.ams_mel_rf_admin_command_state
+ams_mel_rf_admin_command_state.argtypes = [
+    RfAdminHandle, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_admin_command_state.restype = ctypes.c_int32
+ams_mel_rf_admin_close = _LIBRARY.ams_mel_rf_admin_close
+ams_mel_rf_admin_close.argtypes = [ctypes.POINTER(RfAdminHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_admin_close.restype = ctypes.c_int32
+ams_mel_rf_c2_open = _LIBRARY.ams_mel_rf_c2_open
+ams_mel_rf_c2_open.argtypes = [
+    ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(RfC2Handle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_c2_open.restype = ctypes.c_int32
+ams_mel_rf_c2_close = _LIBRARY.ams_mel_rf_c2_close
+ams_mel_rf_c2_close.argtypes = [ctypes.POINTER(RfC2Handle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_c2_close.restype = ctypes.c_int32
+RfVaRequestHandle = ctypes.c_void_p
+RfVaHandle = ctypes.c_void_p
+
+
+class RfVaConfigV1(ctypes.Structure):
+    _fields_ = [("va_definition_id", ctypes.c_uint32), ("priority", ctypes.c_uint32),
+                ("local_function_info", StringViewSpanV1),
+                ("va_definition_file_info", StringViewV1),
+                ("capability_ids", UciIdSpanV1)]
+
+
+class RfVaResultV1(ctypes.Structure):
+    _fields_ = [("error_code", ctypes.c_uint32)]
+
+
+class RfVaInfoV1(ctypes.Structure):
+    _fields_ = [("va_instance_ids", U32SpanV1),
+                ("element_group_labels", StringViewSpanV1),
+                ("is_single_group", ctypes.c_uint32)]
+
+
+ams_mel_rf_c2_submit_virtual_aperture = _LIBRARY.ams_mel_rf_c2_submit_virtual_aperture
+ams_mel_rf_c2_submit_virtual_aperture.argtypes = [
+    RfC2Handle, ctypes.POINTER(RfVaConfigV1), ctypes.POINTER(RfVaRequestHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_c2_submit_virtual_aperture.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_request_wait = _LIBRARY.ams_mel_rf_virtual_aperture_request_wait
+ams_mel_rf_virtual_aperture_request_wait.argtypes = [
+    RfVaRequestHandle, ctypes.c_uint32, ctypes.POINTER(RfVaResultV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_request_wait.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_request_claim = _LIBRARY.ams_mel_rf_virtual_aperture_request_claim
+ams_mel_rf_virtual_aperture_request_claim.argtypes = [
+    RfVaRequestHandle, ctypes.POINTER(RfVaHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_request_claim.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_request_close = _LIBRARY.ams_mel_rf_virtual_aperture_request_close
+ams_mel_rf_virtual_aperture_request_close.argtypes = [
+    ctypes.POINTER(RfVaRequestHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_request_close.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_view = _LIBRARY.ams_mel_rf_virtual_aperture_view
+ams_mel_rf_virtual_aperture_view.argtypes = [
+    RfVaHandle, ctypes.POINTER(ctypes.POINTER(RfVaInfoV1)), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_view.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_close = _LIBRARY.ams_mel_rf_virtual_aperture_close
+ams_mel_rf_virtual_aperture_close.argtypes = [ctypes.POINTER(RfVaHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_close.restype = ctypes.c_int32
 
 ams_mel_rf_data_open = _LIBRARY.ams_mel_rf_data_open
 ams_mel_rf_data_open.argtypes = [
@@ -1363,6 +1431,17 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",
     "ams_mel_ir_channel_close",
+    "ams_mel_rf_admin_open",
+    "ams_mel_rf_admin_command_state",
+    "ams_mel_rf_admin_close",
+    "ams_mel_rf_c2_open",
+    "ams_mel_rf_c2_close",
+    "ams_mel_rf_c2_submit_virtual_aperture",
+    "ams_mel_rf_virtual_aperture_request_wait",
+    "ams_mel_rf_virtual_aperture_request_claim",
+    "ams_mel_rf_virtual_aperture_request_close",
+    "ams_mel_rf_virtual_aperture_view",
+    "ams_mel_rf_virtual_aperture_close",
     "ams_mel_rf_data_open",
     "ams_mel_rf_data_get_provider_version",
     "ams_mel_rf_data_get_mfa_info",

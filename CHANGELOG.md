@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Task 034B1B2 adds asynchronous RF `requestVirtualAperture`, unique VA Claim,
+  parent-first C2 child ownership and an immutable VA snapshot in native C and
+  safe Ada. Six new ABI 0.1 exports (120 to 126). Jobs remain unimplemented.
+
+- Task 034B1B1 adds the distinct RF `createC2MEL` lifecycle in native C and
+  safe Ada (`AMS.MEL.RF.C2`). ABI 0.1 adds only `ams_mel_rf_c2_open` and
+  `ams_mel_rf_c2_close` (118 to 120 exports); VA requests and Jobs remain
+  deferred. The committed declaration closure and vendor inventory are unchanged.
+
+- Task 034B1A adds native and safe Ada RF Admin state control through the
+  published `createAdminMEL` / UCI / StatusControl path. ABI 0.1 grows from
+  115 to 118 exports; C2/VA and job control remain unimplemented. The
+  ProductRx provider-failed status constant replaces a literal without
+  changing behavior. The earlier 034B1 declaration closure is reused unchanged.
+
 - Add safe Ada RF DataMEL, owned RFMFAInfo snapshot, and ComplexINT16 ProductRx
   request/endpoint/event API (Task 034A), including parent-first lifetime and
   borrowed sample access. The existing C ABI remains 0.1 with 115 exports;

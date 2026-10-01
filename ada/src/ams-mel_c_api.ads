@@ -16,6 +16,7 @@ private package AMS.MEL_C_API is
    Buffer_Too_Small   : constant Interfaces.Integer_32 := 7;
    Timeout            : constant Interfaces.Integer_32 := 9;
    Stream_Stopped     : constant Interfaces.Integer_32 := 10;
+   Provider_Failed    : constant Interfaces.Integer_32 := 11;
    Command_Rejected   : constant Interfaces.Integer_32 := 12;
    Resource_Exhausted : constant Interfaces.Integer_32 := 13;
 
@@ -105,9 +106,18 @@ private package AMS.MEL_C_API is
    type Track_System_Response_Request_Handle is new System.Address;
    Null_Track_System_Response_Request : constant Track_System_Response_Request_Handle :=
      Track_System_Response_Request_Handle (System.Null_Address);
-   --  Task 033B: raw RF DataMEL owners. Private FFI only; there is no safe
-   --  Ada RF API (no AMS.MEL.RF) yet.
+   --  Private raw RF handles; safe Ada ownership lives in AMS.MEL.RF children.
    type RF_Data_Handle is new System.Address;
+   type RF_Admin_Handle is new System.Address;
+   type RF_C2_Handle is new System.Address;
+   Null_RF_C2                         : constant RF_C2_Handle := RF_C2_Handle (System.Null_Address);
+   type RF_VA_Request_Handle is new System.Address;
+   Null_RF_VA_Request                 : constant RF_VA_Request_Handle :=
+     RF_VA_Request_Handle (System.Null_Address);
+   type RF_VA_Handle is new System.Address;
+   Null_RF_VA                         : constant RF_VA_Handle := RF_VA_Handle (System.Null_Address);
+   Null_RF_Admin                      : constant RF_Admin_Handle :=
+     RF_Admin_Handle (System.Null_Address);
    Null_RF_Data                       : constant RF_Data_Handle :=
      RF_Data_Handle (System.Null_Address);
    type RF_MFA_Info_Handle is new System.Address;
@@ -728,6 +738,24 @@ private package AMS.MEL_C_API is
    type String_View_Span_V1 is record
       Data : System.Address;
       Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_VA_Config_V1 is record
+      VA_Definition_ID        : Interfaces.Unsigned_32;
+      Priority                : Interfaces.Unsigned_32;
+      Local_Function_Info     : String_View_Span_V1;
+      VA_Definition_File_Info : String_View_V1;
+      Capability_IDs          : Span_V1;
+   end record
+   with Convention => C;
+   type RF_VA_Result_V1 is record
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_VA_Info_V1 is record
+      VA_Instance_IDs      : Span_V1;
+      Element_Group_Labels : String_View_Span_V1;
+      Is_Single_Group      : Interfaces.Unsigned_32;
    end record
    with Convention => C;
    type IR_Scan_Type_V1 is record
@@ -1724,6 +1752,87 @@ private package AMS.MEL_C_API is
       Faces                          : Span_V1;
    end record
    with Convention => C;
+
+   --  RF C2 lifecycle (no request or VA operations in this checkpoint).
+   function RF_C2_Open
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Configuration       : Interfaces.C.Strings.chars_ptr;
+      Output              : access RF_C2_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_c2_open";
+   function RF_C2_Close
+     (Handle              : access RF_C2_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_c2_close";
+   function RF_C2_Submit_VA
+     (Handle              : RF_C2_Handle;
+      Config              : access constant RF_VA_Config_V1;
+      Output              : access RF_VA_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_c2_submit_virtual_aperture";
+   function RF_VA_Request_Wait
+     (Handle              : RF_VA_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Result              : access RF_VA_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_request_wait";
+   function RF_VA_Request_Claim
+     (Handle              : RF_VA_Request_Handle;
+      Output              : access RF_VA_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_request_claim";
+   function RF_VA_Request_Close
+     (Handle              : access RF_VA_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_request_close";
+   function RF_VA_View
+     (Handle              : RF_VA_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_view";
+   function RF_VA_Close
+     (Handle              : access RF_VA_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_close";
+
+   function RF_Admin_Open
+     (Library_Path        : Interfaces.C.Strings.chars_ptr;
+      Configuration       : Interfaces.C.Strings.chars_ptr;
+      Output              : access RF_Admin_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_open";
+   function RF_Admin_Command_State
+     (Handle              : RF_Admin_Handle;
+      State               : Interfaces.Unsigned_32;
+      Accepted            : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_command_state";
+   function RF_Admin_Close
+     (Handle              : access RF_Admin_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_admin_close";
 
    function RF_Data_Open
      (Library_Path        : Interfaces.C.Strings.chars_ptr;

@@ -1,5 +1,5 @@
-/* Task 033B/033D deterministic mock RF MEL provider. It exports exactly
- * createDataMEL plus TEST-only observation/control functions, and is
+/* Task 033B/033D/034B1A/034B1B1 deterministic mock RF MEL provider. It exports
+ * createDataMEL, createAdminMEL and createC2MEL plus TEST-only observation/control functions, and is
  * deliberately separate from the IR mock provider.
  *
  * Task 033D adds a CONCRETE ProductRxEndpoint. Being concrete, it must define
@@ -15,6 +15,9 @@
  *   library_unloaded, and rf_forbidden_call / rf_call_after_shutdown /
  *   rf_unknown_face for any out-of-scope or invalid provider use. */
 #include <rfmel/data/DataMEL.h>
+#include <rfmel/admin/AdminMEL.h>
+#include <rfmel/admin/StatusControl.h>
+#include <rfmel/c2/C2MEL.h>
 #include <rfmel/data/ProductRxEndpoint.h>
 #include <rfmel/endpoints/RDMAMemoryRegionParams.h>
 #include <rfmel/factory/RFCreateFunctions.h>
@@ -607,6 +610,243 @@ public:
     const char *what() const noexcept override { return "mock RF factory exception"; }
 };
 
+std::atomic<unsigned> admin_shutdown_calls{};
+std::atomic<unsigned> admin_command_calls{};
+std::atomic<std::uint32_t> admin_last_state{UINT32_MAX};
+
+class MockStatusControl final : public rfmel::StatusControl {
+public:
+    explicit MockStatusControl(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    bool commandState(mel::MFA_State state) override
+    {
+        admin_last_state.store(static_cast<std::uint32_t>(state));
+        admin_command_calls.fetch_add(1U);
+        record("rf_admin_command");
+        if (state == mel::MFA_State::Standby) record("rf_admin_state_6");
+        if (state == mel::MFA_State::OperateRxOnly) record("rf_admin_state_8");
+        if (state == mel::MFA_State::Degraded) record("rf_admin_state_14");
+        if (scenario_->name == "admin:command-throw")
+            throw std::runtime_error("mock Admin command exception");
+        return scenario_->name != "admin:reject";
+    }
+    bool commandErase() override { forbidden("StatusControl::commandErase"); }
+    mel::MFA_Status getStatus() const override { forbidden("StatusBase::getStatus"); }
+    void setCallback(std::function<void(const mel::MFA_Status &)>) override
+    { forbidden("StatusBase::setCallback(MFA_Status)"); }
+    mel::MFA_StatusDetailed getStatusDetailed() const override
+    { forbidden("StatusBase::getStatusDetailed"); }
+    void setCallback(std::function<void(const mel::MFA_StatusDetailed &)>) override
+    { forbidden("StatusBase::setCallback(MFA_StatusDetailed)"); }
+    rfmel::AntennaStatus getAntennaStatus() const override
+    { forbidden("StatusBase::getAntennaStatus"); }
+    void setCallback(std::function<void(const rfmel::AntennaStatus &)>) override
+    { forbidden("StatusBase::setCallback(AntennaStatus)"); }
+    mel::DiscreteStatus getDiscreteStatus() const override
+    { forbidden("StatusBase::getDiscreteStatus"); }
+    void setCallback(std::function<void(const mel::DiscreteStatus &)>) override
+    { forbidden("StatusBase::setCallback(DiscreteStatus)"); }
+    rfmel::SubsystemConfiguration getSubsystemConfiguration() const override
+    { forbidden("StatusBase::getSubsystemConfiguration"); }
+    void setCallback(std::function<void(const rfmel::SubsystemConfiguration &)>) override
+    { forbidden("StatusBase::setCallback(SubsystemConfiguration)"); }
+    mel::MFA_SecurityAuditRecord getSecurityAuditRecord() const override
+    { forbidden("StatusBase::getSecurityAuditRecord"); }
+    void setCallback(std::function<void(const mel::MFA_SecurityAuditRecord &)>) override
+    { forbidden("StatusBase::setCallback(MFA_SecurityAuditRecord)"); }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
+class MockUCIControl final : public rfmel::UCI_Control {
+public:
+    explicit MockUCIControl(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    std::shared_ptr<rfmel::StatusControl> getStatusControl() override
+    {
+        if (scenario_->name == "admin:no-status") return {};
+        return std::make_shared<MockStatusControl>(scenario_);
+    }
+    std::shared_ptr<rfmel::BIT_Control> getBITControl() override { return {}; }
+    std::shared_ptr<rfmel::CalibrationControl> getCalibrationControl() override { return {}; }
+    std::shared_ptr<rfmel::SettingsControl> getSettingsControl() override { return {}; }
+    std::shared_ptr<rfmel::PNT_Control> getPNTControl() override { return {}; }
+    std::shared_ptr<rfmel::EMCON_Control> getEMCONControl() override { return {}; }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
+class MockAdminMEL final : public rfmel::AdminMEL {
+public:
+    explicit MockAdminMEL(std::shared_ptr<Scenario> scenario) : scenario_{std::move(scenario)} {}
+    ~MockAdminMEL() override { record("rf_admin_destroyed"); }
+    std::shared_ptr<rfmel::UCI_Control> getUCIControl() override
+    {
+        if (scenario_->name == "admin:no-uci") return {};
+        return std::make_shared<MockUCIControl>(scenario_);
+    }
+    mel::RequestFor<rfmel::SubsystemConfiguration> requestSubsystemConfiguration() override
+    { forbidden("AdminMEL::requestSubsystemConfiguration"); }
+    mel::VersionInfo getVersionInfo() const override { return {1, 1, "mock", "Admin"}; }
+    void shutdown() override
+    {
+        admin_shutdown_calls.fetch_add(1U);
+        record("rf_admin_shutdown");
+        if (scenario_->name == "admin:shutdown-throw")
+            throw std::runtime_error("mock Admin shutdown exception");
+    }
+private:
+    std::shared_ptr<Scenario> scenario_;
+};
+
+std::atomic<unsigned> c2_factory_calls{};
+std::atomic<unsigned> c2_shutdown_calls{};
+std::mutex va_gate_mutex;
+std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>> va_pending;
+std::atomic<unsigned> va_get_calls{};
+
+class MockVirtualAperture final : public rfmel::VirtualAperture {
+public:
+    explicit MockVirtualAperture(bool fail_getter) : fail_getter_{fail_getter} {}
+    ~MockVirtualAperture() override { record("rf_va_destroyed"); }
+    rfmel::VirtualApertureDefinitionID getID() const override { return 0; }
+    std::size_t addStatusCallback(const std::function<void(rfmel::BaseVirtualAperture&)>&) override
+    { forbidden("VA::addStatusCallback"); }
+    void removeStatusCallback(std::size_t) override { forbidden("VA::removeStatusCallback"); }
+    rfmel::VirtualApertureStatus getStatus() const override { forbidden("VA::getStatus"); }
+    rfmel::VirtualApertureStatus getInstanceStatus(rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getInstanceStatus"); }
+    std::vector<rfmel::VirtualApertureInstanceID> getAllInstances() const override
+    { forbidden("VA::getAllInstances"); }
+    std::vector<rfmel::VirtualApertureInstanceID> getInstances(rfmel::FaceID) const override
+    { forbidden("VA::getInstances"); }
+    rfmel::VirtualApertureInstanceStatusReport getInstanceStatusReport(rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getInstanceStatusReport"); }
+    std::set<rfmel::VirtualApertureInstanceID> getVAInstanceIDs() const override
+    {
+        va_get_calls.fetch_add(1U);
+        record("rf_va_get_ids");
+        if (fail_getter_) throw std::runtime_error("mock VA getter exception");
+        return {9, 0, 3};
+    }
+    mel::RequestFor<rfmel::JobDetail> requestJob(rfmel::JobRequest&) override
+    { forbidden("VA::requestJob"); }
+    rfmel::ElementGroupDescriptorLookupMap getElementGroups() const override
+    { forbidden("VA::getElementGroups"); }
+    std::vector<rfmel::ElementGroupLabel> getElementGroupLabels() const override
+    { record("rf_va_get_labels"); return {"group/β", "", "0"}; }
+    rfmel::ElementGroupConnections getDataPipes() override { forbidden("VA::getDataPipes"); }
+    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(
+        std::shared_ptr<rfmel::ElementGroupDescriptor>) override
+    { forbidden("VA::createElementGroupCommand"); }
+    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(rfmel::ElementGroupLabel) override
+    { forbidden("VA::createElementGroupCommand"); }
+    bool isCachedWaveformSupported() const override { forbidden("VA::isCachedWaveformSupported"); }
+    std::shared_ptr<rfmel::Weights> getStaticWeights(const std::string&) const override
+    { forbidden("VA::getStaticWeights"); }
+    bool dynamicWeightsSupported() const override { forbidden("VA::dynamicWeightsSupported"); }
+    std::shared_ptr<rfmel::Weights> createWeights(const std::string&, rfmel::WeightType) override
+    { forbidden("VA::createWeights"); }
+    bool isSingleGroup() const override { record("rf_va_is_single"); return true; }
+    double getTxRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, rfmel::WeightType,
+        double, rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxRadiatedPower"); }
+    double getTxPeakRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, double,
+        rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxPeakRadiatedPower"); }
+    double getTxApertureGain(std::size_t, rfmel::TxPowerModeID, rfmel::WeightType, double,
+        rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxApertureGain"); }
+    double getMaxTxAttenuation(std::size_t, rfmel::TxPowerModeID, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getMaxTxAttenuation"); }
+    std::map<rfmel::LocalFunctionTypeID, std::size_t> getLocalFunctions() const override
+    { forbidden("VA::getLocalFunctions"); }
+    std::vector<rfmel::VirtualApertureStatus> getLocalFunctionStatus(
+        rfmel::VirtualApertureInstanceID, rfmel::LocalFunctionTypeID) const override
+    { forbidden("VA::getLocalFunctionStatus"); }
+private:
+    bool fail_getter_{};
+};
+
+class MockC2MEL final : public rfmel::C2MEL {
+public:
+    explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)} {}
+    ~MockC2MEL() override { record("rf_c2_destroyed"); }
+    mel::RequestFor<rfmel::VirtualAperture> requestVirtualAperture(
+        rfmel::VirtualApertureDefinitionID id, rfmel::Priority priority,
+        const std::vector<std::string>& local, const std::string& file,
+        const std::vector<mel::UCI_ID>& capabilities) override
+    {
+        record("rf_va_requested");
+        if (id != 0xFEDCBA98U || priority != 0x80000001U ||
+            local != std::vector<std::string>{"alpha", "µ-local", ""} ||
+            file != "definition/β.json" || capabilities.size() != 3U)
+            throw std::runtime_error("VA input mismatch");
+        std::array<std::uint8_t, mel::UUID_SIZE> first_expected{};
+        std::array<std::uint8_t, mel::UUID_SIZE> second_expected{};
+        std::array<std::uint8_t, mel::UUID_SIZE> third_expected{};
+        first_expected[1] = 0x80U;
+        first_expected[2] = 0xffU;
+        second_expected[0] = 0xffU;
+        third_expected[15] = 0x80U;
+        if (capabilities[0].getUUID() != first_expected ||
+            capabilities[1].getUUID() != second_expected ||
+            capabilities[2].getUUID() != third_expected ||
+            capabilities[0].getDescriptiveLabel() != "first" ||
+            capabilities[1].getDescriptiveLabel() != "" ||
+            capabilities[2].getDescriptiveLabel() != "µ-third")
+            throw std::runtime_error("VA capability mismatch");
+        if (configuration_ == "c2:va-invalid-future") return {};
+        if (configuration_ == "c2:va-delayed") {
+            auto gate = std::make_shared<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>();
+            auto future = gate->get_future();
+            std::lock_guard lock{va_gate_mutex};
+            va_pending.push_back(std::move(gate));
+            return future;
+        }
+        if (configuration_ == "c2:va-submit-throw") throw std::runtime_error("mock VA submit exception");
+        std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>> promise;
+        auto future = promise.get_future();
+        if (configuration_ == "c2:va-failure" || configuration_ == "c2:va-long-failure" ||
+            configuration_ == "c2:va-unknown-error")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                mel::Error{configuration_ == "c2:va-unknown-error" ?
+                    static_cast<mel::ErrorCode>(99) : mel::ErrorCode::InvalidParameters,
+                    configuration_ == "c2:va-long-failure" ?
+                    std::string(800, 'X') + "µ end" : "mock VA rejected"}});
+        else if (configuration_ == "c2:va-null")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                std::shared_ptr<rfmel::VirtualAperture>{}});
+        else if (configuration_ == "c2:va-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error("mock VA future exception")));
+        else if (configuration_ == "c2:va-future-unknown")
+            promise.set_exception(std::make_exception_ptr(17));
+        else
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                std::make_shared<MockVirtualAperture>(configuration_ == "c2:va-getter-throw")});
+        return future;
+    }
+    mel::RequestFor<rfmel::CachedWaveform> requestCachedWaveform(
+        rfmel::Priority, const std::vector<std::complex<double>>&, rfmel::Frequency) override
+    { forbidden("C2MEL::requestCachedWaveform"); }
+    mel::RequestFor<rfmel::WaveformTxEndpoint> createWaveformTxEndpoint(
+        rfmel::JobDataFormat, std::size_t, char *) override
+    { forbidden("C2MEL::createWaveformTxEndpoint"); }
+    mel::RequestFor<rfmel::ExternalEndpoint> registerExternalTxEndpoint(
+        rfmel::JobDataFormat, const rfmel::RDMAExternalEndpointParams&) override
+    { forbidden("C2MEL::registerExternalTxEndpoint"); }
+    const rfmel::RFMFAInfo& getRFMFAInfo() const override
+    { forbidden("C2MEL::getRFMFAInfo"); }
+    mel::VersionInfo getVersionInfo() const override { return {1, 1, "mock", "C2"}; }
+    void shutdown() override
+    {
+        c2_shutdown_calls.fetch_add(1U);
+        record("rf_c2_shutdown");
+        if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw")
+            throw std::runtime_error("mock C2 shutdown exception");
+    }
+private:
+    std::string configuration_;
+};
+
 } // namespace
 
 /* The one production RF symbol: C linkage, C++ signature (rfmel::fnDataMEL).
@@ -639,6 +879,84 @@ std::shared_ptr<ams::iface::rfmel::DataMEL> createDataMEL(std::string_view confi
 }
 
 static_assert(std::is_same_v<decltype(&createDataMEL), ams::iface::rfmel::fnDataMEL>);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
+extern "C" __attribute__((visibility("default")))
+std::shared_ptr<ams::iface::rfmel::AdminMEL> createAdminMEL(std::string_view configuration);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+std::shared_ptr<ams::iface::rfmel::AdminMEL> createAdminMEL(std::string_view configuration)
+{
+    record("rf_admin_factory_called");
+    if (configuration == "admin:factory-null") return {};
+    if (configuration == "admin:factory-throw") throw FactoryFailure{};
+    if (configuration == "admin:factory-throw-unknown") throw 5;
+    auto scenario = std::make_shared<Scenario>();
+    scenario->name = std::string{configuration};
+    return std::make_shared<MockAdminMEL>(std::move(scenario));
+}
+static_assert(std::is_same_v<decltype(&createAdminMEL), rfmel::fnAdminMEL>);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
+extern "C" __attribute__((visibility("default")))
+std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configuration);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configuration)
+{
+    c2_factory_calls.fetch_add(1U);
+    record("rf_c2_factory_called");
+    if (configuration == "c2:factory-null") return {};
+    if (configuration == "c2:factory-throw") throw FactoryFailure{};
+    if (configuration == "c2:factory-throw-unknown") throw 5;
+    if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
+        configuration != "c2:va-ok" && configuration != "c2:va-failure" &&
+        configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
+        configuration != "c2:va-future-unknown" && configuration != "c2:va-submit-throw" &&
+        configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
+        configuration != "c2:va-unknown-error" &&
+        configuration != "c2:va-invalid-future" && configuration != "c2:va-getter-throw" &&
+        configuration != "c2:va-shutdown-throw")
+        throw std::invalid_argument("mock C2 received unexpected configuration");
+    return std::make_shared<MockC2MEL>(std::string{configuration});
+}
+static_assert(std::is_same_v<decltype(&createC2MEL), rfmel::fnC2MEL>);
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_release_one(void)
+{
+    std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>> gate;
+    {
+        std::lock_guard lock{va_gate_mutex};
+        if (va_pending.empty()) return 0;
+        gate = std::move(va_pending.back());
+        va_pending.pop_back();
+    }
+    gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+        std::make_shared<MockVirtualAperture>(false)});
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_get_calls(void)
+{ return va_get_calls.load(); }
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_factory_calls(void)
+{ return c2_factory_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_shutdown_calls(void)
+{ return c2_shutdown_calls.load(); }
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_admin_shutdown_calls(void)
+{ return admin_shutdown_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_admin_command_calls(void)
+{ return admin_command_calls.load(); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_admin_last_state(void)
+{ return admin_last_state.load(); }
 
 /* TEST-only observations; not part of any MEL interface. */
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_shutdown_calls(void)

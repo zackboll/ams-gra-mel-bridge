@@ -1,5 +1,34 @@
 # Architecture decisions
 
+Task 034B1B2 extends the native RF C2 state with counted child claims.
+Exactly one claim moves from the pending VA future through cached success to
+the claimed VA. A detached worker alone consumes the future. C2 Close with
+children defers shutdown until the final claim releases; uncertain throwing
+shutdown retains the complete provider/DSO graph. Successful Claim snapshots
+sorted VA instance IDs, ordered labels and single-group status into bridge
+storage before publishing an owner; safe Ada copies these into its own vectors.
+Timed Wait does not cancel. See `task-034b1b2-safe-ada-rf-virtual-aperture.md`.
+RF Jobs are still outside the generic library.
+
+Task 034B1B1 adds an independent `createC2MEL` owner and the limited
+`AMS.MEL.RF.C2` Ada lifecycle facade. The private C2 state pins both the C2
+object and its SharedLibrary: Close invokes shutdown once, destroys C2 before
+dropping the DSO reference, and permanently retains the complete state if
+shutdown throws. No children exist in this checkpoint; 034B1B2 will extend
+the state with child admission and deferred shutdown before exposing VA
+requests. No async workers, VA, or Jobs exist yet. See
+`task-034b1b1-safe-ada-rf-c2-owner.md`.
+
+Task 034B1A adds an independent AdminMEL factory owner (not DataMEL) behind
+the same C ABI and `AMS.MEL.RF.Admin`. Every state command obtains fresh UCI and
+StatusControl shared owners, and preserves the upstream Boolean rejection as a
+normal result. Close consumes the public handle, shuts down once, destroys
+Admin before dropping its DSO, and permanently retains the whole graph on a
+throwing shutdown. The committed 034B1 Admin/C2/VA declaration closure is
+reused; this historical 034B1A snapshot predates the C2 lifecycle owner.
+VA remains unimplemented. See
+`task-034b1a-safe-ada-rf-admin.md`.
+
 Task 034A places the complete **current** native RF foundation behind two
 safe Ada packages, `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`, distinct from
 IR. Limited controlled DataMEL, create request, endpoint, and event owners

@@ -599,6 +599,23 @@ int main(void)
         FIELD(ams_mel_ir_track_system_response_result_v1,error_code));
 
     /* Task 033B RF DataMEL. */
+    LAYOUT(ams_mel_rf_admin *);
+    LAYOUT(ams_mel_rf_c2 *);
+    LAYOUT(ams_mel_rf_virtual_aperture_request *);
+    LAYOUT(ams_mel_rf_virtual_aperture *);
+    RECORD(ams_mel_rf_virtual_aperture_config_v1,
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,va_definition_id);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,priority);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,local_function_info);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,va_definition_file_info);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,capability_ids));
+    RECORD(ams_mel_rf_virtual_aperture_result_v1,
+        FIELD(ams_mel_rf_virtual_aperture_result_v1,error_code));
+    RECORD(ams_mel_rf_virtual_aperture_info_v1,
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,va_instance_ids);
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,element_group_labels);
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,is_single_group));
+    LAYOUT(ams_mel_rf_mfa_state_t);
     LAYOUT(ams_mel_rf_data *);
     LAYOUT(ams_mel_rf_mfa_info *);
     LAYOUT(ams_mel_rf_job_data_format_t);
@@ -649,6 +666,10 @@ int main(void)
         FIELD(ams_mel_rf_mfa_info_v1,supported_data_formats);
         FIELD(ams_mel_rf_mfa_info_v1,faces));
     {
+        ams_mel_status_t (*admin_open)(const char *, const char *, ams_mel_rf_admin **, char *, size_t, size_t *) = ams_mel_rf_admin_open;
+        ams_mel_status_t (*admin_command)(ams_mel_rf_admin *, ams_mel_rf_mfa_state_t, uint32_t *, char *, size_t, size_t *) = ams_mel_rf_admin_command_state;
+        ams_mel_status_t (*admin_close)(ams_mel_rf_admin **, char *, size_t, size_t *) = ams_mel_rf_admin_close;
+        (void)admin_open; (void)admin_command; (void)admin_close;
         ams_mel_status_t (*rf_open)(const char *, const char *, ams_mel_rf_data **, char *, size_t, size_t *) = ams_mel_rf_data_open;
         ams_mel_status_t (*rf_version)(const ams_mel_rf_data *, ams_mel_provider_version_v1 *, char *, size_t, size_t *) = ams_mel_rf_data_get_provider_version;
         ams_mel_status_t (*rf_mfa)(const ams_mel_rf_data *, ams_mel_rf_mfa_info **, char *, size_t, size_t *) = ams_mel_rf_data_get_mfa_info;

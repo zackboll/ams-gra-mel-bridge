@@ -564,6 +564,106 @@ fn rf_product_rx_signatures_match_the_c_header() {
     }
 }
 
+/// Task 034B1B1: exact raw RF C2 lifecycle signatures without a provider.
+#[test]
+fn rf_c2_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *mut *mut AmsMelRfC2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_c2_open;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfC2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_c2_close;
+    unsafe {
+        let mut c2 = std::ptr::null_mut();
+        assert_eq!(
+            ams_mel_rf_c2_close(&mut c2, std::ptr::null_mut(), 0, std::ptr::null_mut()),
+            AMS_MEL_OK
+        );
+    }
+}
+
+#[test]
+fn rf_va_signatures_match_the_c_header() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfC2,
+        *const AmsMelRfVaConfigV1,
+        *mut *mut AmsMelRfVaRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_c2_submit_virtual_aperture;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaRequest,
+        u32,
+        *mut AmsMelRfVaResultV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVaRequest,
+        *mut *mut AmsMelRfVa,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_request_claim;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_request_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut *const AmsMelRfVaInfoV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVa,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_close;
+}
+
+/// Task 034B1A: exact raw RF Admin signatures without a provider.
+#[test]
+fn rf_admin_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *const std::ffi::c_char,
+        *const std::ffi::c_char,
+        *mut *mut AmsMelRfAdmin,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfAdmin,
+        AmsMelRfMfaState,
+        *mut u32,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_command_state;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfAdmin,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_admin_close;
+}
+
 /// Task 033B: exact raw shapes of the six RF DataMEL functions, plus the NULL
 /// preconditions that need no provider.
 #[test]
@@ -660,8 +760,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 115);
-    assert_eq!(exported.len(), 115);
+    assert_eq!(declared.len(), 126);
+    assert_eq!(exported.len(), 126);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1738,6 +1838,35 @@ fn declarations_match_the_c_header() {
     );
     // Task 033B RF DataMEL.
     expected.extend([
+        size_of::<*mut AmsMelRfAdmin>(),
+        align_of::<*mut AmsMelRfAdmin>(),
+        size_of::<*mut AmsMelRfC2>(),
+        align_of::<*mut AmsMelRfC2>(),
+        size_of::<*mut AmsMelRfVaRequest>(),
+        align_of::<*mut AmsMelRfVaRequest>(),
+        size_of::<*mut AmsMelRfVa>(),
+        align_of::<*mut AmsMelRfVa>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfVaConfigV1,
+        va_definition_id,
+        priority,
+        local_function_info,
+        va_definition_file_info,
+        capability_ids
+    );
+    layout!(expected, AmsMelRfVaResultV1, error_code);
+    layout!(
+        expected,
+        AmsMelRfVaInfoV1,
+        va_instance_ids,
+        element_group_labels,
+        is_single_group
+    );
+    expected.extend([
+        size_of::<AmsMelRfMfaState>(),
+        align_of::<AmsMelRfMfaState>(),
         size_of::<*mut AmsMelRfData>(),
         align_of::<*mut AmsMelRfData>(),
         size_of::<*mut AmsMelRfMfaInfo>(),

@@ -1,8 +1,24 @@
 # Experimental C ABI policy
 
+Task 034B1B2 adds six RF VA exports under ABI 0.1. Submission copies every
+borrowed string/span/UUID before invoking the provider. Wait is cached and a
+timeout neither cancels nor consumes. One C2 child claim follows the future
+into exactly one claimed VA. C2 shutdown waits for the final child, and
+uncertain shutdown retains the entire provider graph. The VA view borrows
+only bridge-owned immutable storage, valid until VA Close.
+
 The current ABI is 0.1, not yet stable. Header version macros describe this
 facade only. Provider API, upstream source, architecture, and package versions
 must remain distinct.
+
+Task 034B1B1 adds exactly `ams_mel_rf_c2_open` and `ams_mel_rf_c2_close`
+(118 → 120 production exports). C2 is a separate `createC2MEL` factory,
+not an Admin or Data alias. Inputs are NUL-terminated UTF-8 as for the RF
+factory owners. Close consumes the opaque owner; it synchronously shuts down,
+destroys C2 before releasing the DSO, and is idempotent for a null owner.
+If shutdown throws, the uncertain C2 and DSO are permanently retained and
+shutdown is never retried. No VA request/child, future, or Job ABI exists in
+this checkpoint. ABI version remains 0.1.
 
 The provider-buffer zero-copy path internally enforces one release executor per
 stream, independent of whether its current `Buffer` pointer is empty. Temporary

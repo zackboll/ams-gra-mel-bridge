@@ -16,7 +16,7 @@
 set -eu
 
 mode=${1:-smoke}
-case "$mode" in smoke|rx|ada) ;; *) printf 'usage: %s [smoke|rx|ada]\n' "$0" >&2; exit 2 ;; esac
+case "$mode" in smoke|rx|ada|admin|c2|va) ;; *) printf 'usage: %s [smoke|rx|ada|admin|c2|va]\n' "$0" >&2; exit 2 ;; esac
 
 expected_commit=b1015728f904c799fa0c07489fce48e78f67845f
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -148,6 +148,14 @@ provider_image_present=0
 test -s "$provider" || fail "extracted Squall RF MEL library is empty"
 readelf --dyn-syms --wide "$provider" | grep -q ' createDataMEL$' ||
   fail "extracted provider does not export createDataMEL"
+if test "$mode" = admin; then
+  readelf --dyn-syms --wide "$provider" | grep -q ' createAdminMEL$' ||
+    fail "extracted provider does not export createAdminMEL"
+fi
+if test "$mode" = c2 || test "$mode" = va; then
+  readelf --dyn-syms --wide "$provider" | grep -q ' createC2MEL$' ||
+    fail "extracted provider does not export createC2MEL"
+fi
 printf '%s\n' "Squall RF provider: $provider" 'Provider runtime dependencies:'
 readelf -d "$provider" | sed -n '/NEEDED/p'
 
@@ -156,21 +164,31 @@ cmake -S "$root/native" -B "$root/native/build" -DAMS_MEL_BUILD_TESTS=OFF -DCMAK
 cmake --build "$root/native/build" --parallel 2
 if test "$mode" = rx || test "$mode" = ada; then
   client=squall_rf_rx_c
+elif test "$mode" = admin; then
+  client=ams_mel_squall_rf_admin
+elif test "$mode" = c2; then
+  client=ams_mel_squall_rf_c2
+elif test "$mode" = va; then
+  client=ams_mel_squall_rf_va
 else
   client=squall_rf_c_smoke
 fi
-if test "$mode" = ada; then
+if test "$mode" = ada || test "$mode" = admin || test "$mode" = c2 || test "$mode" = va; then
+  project_file="$root/integration/squall/ams_mel_squall_rf.gpr"
+  if test "$mode" = admin; then project_file="$root/integration/squall/ams_mel_squall_rf_admin.gpr"; fi
+  if test "$mode" = c2; then project_file="$root/integration/squall/ams_mel_squall_rf_c2.gpr"; fi
+  if test "$mode" = va; then project_file="$root/integration/squall/ams_mel_squall_rf_va.gpr"; fi
   if command -v gprbuild >/dev/null 2>&1; then
     GPR_PROJECT_PATH="$root/native:$root/ada${GPR_PROJECT_PATH:+:$GPR_PROJECT_PATH}" \
       AMS_MEL_SQUALL_ADA_BUILD_DIR="$build_dir" \
-      gprbuild -p -P "$root/integration/squall/ams_mel_squall_rf.gpr"
+      gprbuild -p -P "$project_file"
   else
     need alr
     AMS_MEL_SQUALL_ADA_BUILD_DIR="$build_dir" \
       alr -C "$root/ada" exec -- gprbuild -p \
-        -P "$root/integration/squall/ams_mel_squall_rf.gpr"
+        -P "$project_file"
   fi
-  client=ams_mel_squall_rf
+  if test "$mode" = ada; then client=ams_mel_squall_rf; fi
 else
   cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
     -I"$root/native/include" "$root/integration/squall/$client.c" \
@@ -184,6 +202,10 @@ if readelf -d "$build_dir/bin/$client" | grep -q 'libsquall_rf_mel'; then
 fi
 if readelf -d "$build_dir/bin/$client" | grep -q 'libmock_'; then
   fail "RF client directly links mock provider"
+fi
+if { test "$mode" = admin || test "$mode" = c2 || test "$mode" = va; } &&
+    readelf -d "$build_dir/bin/$client" | grep -q 'squall_rf_job_helper'; then
+  fail "RF control client links job helper"
 fi
 
 helper="$build_dir/provider/libsquall_rf_job_helper.so"
@@ -227,9 +249,10 @@ fi
 # derives a copy that changes ONLY noise_std_dev (Gaussian AWGN, so values are
 # random and never asserted). Every other key stays pinned.
 cp "$SQUALL_SOURCE_DIR/config/rf-simulated.toml" "$rf_config"
-if test "$mode" = rx || test "$mode" = ada; then
-  python3 - "$rf_config" <<'PY'
+python3 - "$rf_config" "$mode" <<'PY'
 import re, sys
+if sys.argv[2] not in ("rx", "ada"):
+    sys.exit(0)
 path = sys.argv[1]
 text = open(path, encoding="utf-8").read()
 text, count = re.subn(r"(?m)^noise_std_dev = .*$", "noise_std_dev = 0.05", text)
@@ -237,7 +260,6 @@ if count != 1:
     raise SystemExit("ERROR: pinned rf-simulated.toml has no unique noise_std_dev")
 open(path, "w", encoding="utf-8").write(text)
 PY
-fi
 
 # Only the simulated RF MFA (rf_environment) and Couloir, host networking.
 cat >"$couloir_config" <<EOF
@@ -320,7 +342,13 @@ repeat=${AMS_MEL_SQUALL_REPEAT:-1}
 case "$repeat" in ''|*[!0-9]*|0) fail "AMS_MEL_SQUALL_REPEAT must be a positive integer" ;; esac
 iteration=1
 while test "$iteration" -le "$repeat"; do
-  if test "$mode" = ada; then
+  if test "$mode" = admin; then
+    printf '\nTask-034B1A safe Ada RF Admin iteration %s/%s\n' "$iteration" "$repeat"
+  elif test "$mode" = c2; then
+    printf '\nTask-034B1B1 safe Ada RF C2 iteration %s/%s\n' "$iteration" "$repeat"
+  elif test "$mode" = va; then
+    printf '\nTask-034B1B2 safe Ada RF VA iteration %s/%s\n' "$iteration" "$repeat"
+  elif test "$mode" = ada; then
     printf '\nTask-034A safe Ada RF iteration %s/%s\n' "$iteration" "$repeat"
   else
     printf '\nTask-033%s RF iteration %s/%s\n' "$(test "$mode" = rx && echo D || echo B)" \
@@ -330,6 +358,10 @@ while test "$iteration" -le "$repeat"; do
     LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
       "$build_dir/bin/$client" "$provider" "$profile" "$helper" ||
       fail "RF ProductRx receive failed; see runtime logs and profile"
+  elif test "$mode" = admin || test "$mode" = c2 || test "$mode" = va; then
+    LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$build_dir/bin/$client" "$provider" "$profile" ||
+      fail "RF control lifecycle failed; see runtime logs and profile"
   else
     LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
       "$build_dir/bin/$client" "$provider" "$profile" ||
@@ -337,7 +369,16 @@ while test "$iteration" -le "$repeat"; do
   fi
   iteration=$((iteration + 1))
 done
-if test "$mode" = ada; then
+if test "$mode" = admin; then
+  printf '\nPASS: Squall safe Ada RF Admin state control (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+elif test "$mode" = c2; then
+  printf '\nPASS: Squall safe Ada RF C2 lifecycle (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+elif test "$mode" = va; then
+  printf '\nPASS: Squall safe Ada RF VA snapshot (%s iteration(s), Squall %s)\n' \
+    "$repeat" "$expected_commit"
+elif test "$mode" = ada; then
   printf '\nPASS: Squall safe Ada RF ProductRx ComplexINT16 receive (%s iteration(s), Squall %s)\n' \
     "$repeat" "$expected_commit"
 elif test "$mode" = rx; then

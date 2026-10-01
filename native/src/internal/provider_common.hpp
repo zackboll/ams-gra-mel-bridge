@@ -1,7 +1,7 @@
 #pragma once
 
-/* Provider-family-neutral façade helpers shared by the IR Session and RF
- * DataMEL entry points. Defined in provider.cpp. */
+/* Provider-family-neutral façade helpers shared by IR Session, RF DataMEL,
+ * and RF AdminMEL entry points. Defined in provider.cpp. */
 
 #include <ams_mel/abi.h>
 
