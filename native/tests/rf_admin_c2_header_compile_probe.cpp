@@ -1,4 +1,4 @@
-// Task 034B1: declaration-only probe of the published Admin/C2/VA roots.
+// Task 034B1/034B2A: declaration-only probe of the published Admin/C2/VA/JobDetail roots.
 // No provider object is constructed and no job operation is invoked.
 #include <rfmel/factory/RFCreateFunctions.h>
 #include <rfmel/admin/AdminMEL.h>
@@ -6,6 +6,7 @@
 #include <rfmel/admin/StatusControl.h>
 #include <rfmel/c2/C2MEL.h>
 #include <rfmel/c2/VirtualAperture.h>
+#include <rfmel/c2/JobDetail.h>
 
 #include <memory>
 #include <string_view>
@@ -20,6 +21,7 @@ static_assert(std::is_same_v<rfmel::fnC2MEL,
 static_assert(std::is_abstract_v<rfmel::AdminMEL>);
 static_assert(std::is_abstract_v<rfmel::C2MEL>);
 static_assert(std::is_abstract_v<rfmel::VirtualAperture>);
+static_assert(std::is_abstract_v<rfmel::JobDetail>);
 
 int rf_admin_c2_header_compile_probe()
 {

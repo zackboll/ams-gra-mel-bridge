@@ -199,7 +199,7 @@ if(AMS_MEL_BUILD_TESTS)
             ${ams_mel_rf_data_isystem_args}
         DEPENDS rf_product_rx_header_compile_probe
         VERBATIM)
-    # Task 034B1: distinct published Admin/C2/VA roots. Keep the earlier
+    # Task 034B1/034B2A: distinct published Admin/C2/VA/JobDetail roots. Keep the earlier
     # Data and ProductRx closure gates unchanged.
     add_library(rf_admin_c2_header_compile_probe OBJECT
         tests/rf_admin_c2_header_compile_probe.cpp)

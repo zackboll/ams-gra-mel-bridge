@@ -830,6 +830,7 @@ ec15c3a4574335e3f24f855e716913ad08a45a94feaa497f7ce59f3aba5d4a4d  native/vendor/
 95892627e81df1f460af91af5387eabec2ad04a1c3f35be36d7702a600c9d20b  native/vendor/rf-mel/include/rfmel/c2/ElementGroupConnections.h
 7d356b6f8e44729e2413d9386cfcc1b126e3c42a230b7c4c52540f19b89677f7  native/vendor/rf-mel/include/rfmel/c2/ElementGroupDescriptor.h
 fc370e3404c8f8327fa30f1e8dab465fb070e524d548ba69dc2589329197ce3a  native/vendor/rf-mel/include/rfmel/c2/ElementGroupDescriptorLookupMap.h
+5e1cee67b1cda60f2c3cf26a1cb964b59775e9938c471aaf46aa1b10734db6d4  native/vendor/rf-mel/include/rfmel/c2/JobDetail.h
 d246bfa00b46786c97a4dee417d668ebff73908eb55cae1ca801daa4c83d4957  native/vendor/rf-mel/include/rfmel/c2/JobIntervalStatus.h
 1757e0b96a911085c9fbe84a66d0f6c6a2fea6b3b5bb1488e19b09e6013f3784  native/vendor/rf-mel/include/rfmel/c2/JobRequest.h
 c610d0ce2aa2fa7f06505519bd3770306fa929e66a6d7d56fc2ae674a04ce461  native/vendor/rf-mel/include/rfmel/c2/VirtualAperture.h

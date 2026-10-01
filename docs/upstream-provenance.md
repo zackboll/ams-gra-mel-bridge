@@ -1,4 +1,25 @@
-# Task 034B1 RF Admin/C2/VA declaration closure
+# Task 034B2A RF JobDetail declaration closure
+
+Starting main: `087d96978ca7812941f8a826ef5f8ef341b3ea4c`.
+Task 034B1 needed `JobDetail` only as an incomplete type inside
+`RequestFor<JobDetail>`; 034B2A calls its virtual getters and requires the
+complete published declaration. A focused `-M` probe of
+`include/rfmel/c2/JobDetail.h` at RF MEL
+`762ce84c5555dd0f3ea66f36b321fecf8839b89f` observed 33 project headers
+with GCC and 33 with Clang 19 (RF MEL 5, Common MEL 23, Math 5, VITA 0,
+Boost 0 for each compiler). The four project families were resolved against
+their full pinned upstream include trees; Boost was resolved against the pinned
+vendored Boost 1.83.0 closure (the focused root reaches no Boost header).
+The exact union missing from the committed 802-file inventory is only
+`native/vendor/rf-mel/include/rfmel/c2/JobDetail.h`, copied byte-identically
+from the pinned RF MEL checkout. No pre-existing vendor blob changes; the new
+inventory contains 803 files. The existing Admin/C2 probe now explicitly
+includes this root and checks the expanded path set and hashes: GCC 711
+(RF 52, Common 24, Math 5, VITA 5, Boost 625), Clang 712
+(RF 52, Common 24, Math 5, VITA 5, Boost 626), union 713. Its path
+classification rejects fallback to system or unpinned project headers.
+
+# Task 034B1 RF Admin/C2/VA declaration closure (historical baseline)
 
 Task 034B1B1 reuses the same union for the distinct `createC2MEL`
 lifecycle owner; there are no new vendor files or changed original blobs.
