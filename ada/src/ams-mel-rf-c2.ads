@@ -90,6 +90,23 @@ package AMS.MEL.RF.C2 is
    type Job is limited private;
    function Claim (Request : Job_Request'Class) return Job;
    function Is_Open (Object : Job) return Boolean;
+   type Job_Status is
+     (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);
+   for Job_Status use
+     (None                 => 0,
+      In_Progress          => 1,
+      Complete             => 2,
+      Failed_Invalid_ID    => 3,
+      Failed_Interrupted   => 4,
+      Failed_Invalid_State => 5);
+   type Cancel_Error is (None);
+   for Cancel_Error use (None => 0);
+   type Cancel_Result is private;
+   function Cancelled (Result : Cancel_Result) return Boolean;
+   function Error_Code (Result : Cancel_Result) return Cancel_Error;
+   procedure Finalize_Job (Object : in out Job);
+   function Wait_Job_Status (Object : Job; Timeout_Milliseconds : Natural) return Job_Status;
+   function Cancel_Job (Object : in out Job) return Cancel_Result;
    procedure Close (Object : in out Job);
    function Actual_Start_Seconds (Object : Job) return Interfaces.Integer_64;
    function Actual_Start_Femtoseconds (Object : Job) return Interfaces.Integer_64;
@@ -102,6 +119,19 @@ package AMS.MEL.RF.C2 is
    function RX_Stream_ID_Count (Object : Job) return Natural;
    function RX_Stream_ID_At (Object : Job; Index : Positive) return Interfaces.Unsigned_32;
 private
+   pragma
+     Compile_Time_Error
+       (Job_Status'Enum_Rep (Failed_Invalid_State)
+          /= Integer (AMS.MEL_C_API.RF_Job_Status_Failed_Invalid_State),
+        "RF Job status representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Cancel_Error'Enum_Rep (None) /= Integer (AMS.MEL_C_API.RF_Cancel_Error_None),
+        "RF CancelError representation mismatch");
+   type Cancel_Result is record
+      Was_Cancelled : Boolean := False;
+      Code          : Cancel_Error := None;
+   end record;
    package Text_Vectors is new
      Ada.Containers.Vectors
        (Positive,
