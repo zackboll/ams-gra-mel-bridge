@@ -1,5 +1,11 @@
 # Architecture decisions
 
+Task 034B2B2 completes safe Ada RF Job finalize/status/cancel over the existing
+135-export ABI. Both opt-in pinned-Squall ProductRx clients now activate their
+Jobs via the production facade and close VA/C2 before cancellation. The former
+test-only C++ job helper was removed. The historical B2B1 description below
+records its native-only checkpoint. See `task-034b2b2-safe-ada-rf-job-lifecycle.md`.
+
 Task 034B2B1 introduces a native-only RF Job lifecycle. The public Job wrapper
 owns shared JobState, while the sole finalize-future worker holds that same
 state through completion. JobState retains JobDetail, provider VA, and a sibling

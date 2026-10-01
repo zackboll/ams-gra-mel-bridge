@@ -2639,7 +2639,7 @@ typedef struct ams_mel_rf_job ams_mel_rf_job;
  * shutdown until its last request/VA child is destroyed. VA Close consumes its
  * owner and reports a deferred shutdown failure; finalizers may ignore that
  * failure without unloading uncertain provider code. Access to the same owner
- * must be externally serialized. No Job operations are exposed. */
+ * must be externally serialized. Job operations use the separate Job API. */
 typedef struct ams_mel_rf_virtual_aperture_config_v1 {
     uint32_t va_definition_id;
     uint32_t priority;

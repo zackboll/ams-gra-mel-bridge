@@ -10,6 +10,8 @@ procedure AMS_MEL_Squall_RF_Job is
    package C2 renames AMS.MEL.RF.C2;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
+   use type C2.Job_Status;
+   use type C2.Cancel_Error;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Integer_64;
    procedure Verify (Object : C2.Job; ID : Interfaces.Unsigned_32) is
@@ -77,8 +79,28 @@ begin
                      C2.Close (Request);
                      Verify (Object, ID);
                      if Sequence = 1 then
+                        C2.Finalize_Job (Object);
+                        begin
+                           declare
+                              Pending : constant C2.Job_Status := C2.Wait_Job_Status (Object, 0);
+                           begin
+                              raise Program_Error with "Squall Job unexpectedly completed" & Pending'Image;
+                           end;
+                        exception
+                           when C2.Timeout_Error => null;
+                        end;
                         C2.Close (VA);
                         C2.Close (Parent);
+                        declare
+                           Result : constant C2.Cancel_Result := C2.Cancel_Job (Object);
+                        begin
+                           if not C2.Cancelled (Result) or else C2.Error_Code (Result) not in C2.None then
+                              raise Program_Error with "Squall Job cancellation failed";
+                           end if;
+                        end;
+                        if C2.Wait_Job_Status (Object, 10_000) /= C2.Complete then
+                           raise Program_Error with "Squall Job did not complete";
+                        end if;
                         Verify (Object, ID);
                      end if;
                      C2.Close (Object);
@@ -89,5 +111,5 @@ begin
       end;
       Admin.Close (Control);
    end;
-   Ada.Text_IO.Put_Line ("PASS: safe Ada Squall RF two Jobs and parent-first snapshot");
+    Ada.Text_IO.Put_Line ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle");
 end AMS_MEL_Squall_RF_Job;

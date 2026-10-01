@@ -1,12 +1,18 @@
 # Real Squall IR MEL integration
 
+Task 034B2B2: Both ProductRx clients activate and cancel the real receive Job
+through the production C facade or safe Ada facade. The former test-only C++
+Job helper has been removed. Pinned Squall confirms Finalize -> pending poll ->
+ProductRx events -> Cancel -> Complete, including parent-first VA/C2 Close.
+These opt-in checks do not implement JobInterval, flush, or interval callbacks.
+The historical Task 033D instructions below describe the former helper-based
+checkpoint, not the current build or runtime.
+
 Task 034B2A2 adds `make test-squall-rf-ada-job`, a separate, opt-in,
 production-facade safe Ada single-RX-group Job test. It requests two
 sequential Jobs and verifies the second snapshot after VA/C2 Close. This new
-Job client never loads `squall_rf_job_helper.cpp`; existing ProductRx tests
-may continue using the test-only helper. No finalize/cancel/interval support
-is implied. Runtime ports use the existing `AMS_MEL_SQUALL_RF_*_PORT`
-per-run overrides.
+Job client used no helper; ProductRx now uses production Job APIs too. Runtime
+ports use the existing `AMS_MEL_SQUALL_RF_*_PORT` per-run overrides.
 
 This opt-in integration validates the public C, Ada, safe Rust, and safe Python façades
 against the real Squall IR MEL provider at commit
@@ -343,11 +349,9 @@ Override ports with `AMS_MEL_SQUALL_RF_{CONTROL,COULOIR_METRICS,HEALTH,METRICS,D
 
 `make test-squall-rf-ada` is the additional opt-in Task 034A **safe Ada**
 client. It uses the same pinned Squall RF runtime, copied noise override,
-and test-only job helper as `make test-squall-rf-rx`; the original C target is
-unchanged. The Ada client consumes only `AMS.MEL.RF` and
-`AMS.MEL.RF.Product_Rx`, loading the helper through integration-only
-`dlopen`/`dlsym` imports. Production Ada and `libams_mel_c` never link to the
-helper or provider. The script checks the client's ELF dynamic dependencies.
+as `make test-squall-rf-rx`. Both clients now use production Job operations:
+the Ada client consumes `AMS.MEL.RF`, `Product_Rx`, `Admin`, `C2`, and `Status`.
+Neither client links the provider directly; the script checks ELF dependencies.
 The safe client verifies version/MFA, eight nonempty nontrivial ComplexINT16
 events, zero malformed/overflow counters, and event A after later receives
 and both parent closures. Set `SQUALL_SOURCE_DIR` to the pinned checkout.
@@ -360,13 +364,9 @@ ordinary CTest, or hosted CI, and the 033B smoke above is unchanged.
 
 1. It performs the same checkout verification, provider extraction, and
    `squall-rf` + Couloir start as the smoke.
-2. Pinned Squall drops ProductRx data unless an RX job is active, and the
-   production facade has no RF C2/Jobs. The script therefore builds the
-   **test-only** `squall_rf_job_helper.cpp` inside the pinned Squall `builder`
-   stage (the provider's own toolchain and the exact pinned RF MEL headers).
-   The helper runs AdminMEL `commandState(OperateRxOnly)`, then C2MEL virtual
-   aperture, `requestJob`, and `finalize`. It is loaded with `dlopen` and never
-   linked into `ams_mel_c`; the script checks that no helper symbol leaks.
+2. Pinned Squall drops ProductRx data unless an RX job is active. The C
+   client uses the production Admin/C2/VA/Job facade to finalize a receive
+   Job, polls pending, then cancels and waits for Complete after receiving.
 3. It runs `squall_rf_rx_c.c` against the production facade: create, wait,
    claim, and 8 receives. It then checks sparse default metadata, zero
    malformed callbacks, and zero overflow, and re-reads event A after the
