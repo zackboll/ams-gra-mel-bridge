@@ -605,6 +605,20 @@ int main(void)
     /* Task 033B RF DataMEL. */
     LAYOUT(ams_mel_rf_admin *);
     LAYOUT(ams_mel_rf_c2 *);
+    LAYOUT(ams_mel_rf_virtual_aperture_request *);
+    LAYOUT(ams_mel_rf_virtual_aperture *);
+    RECORD(ams_mel_rf_virtual_aperture_config_v1,
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,va_definition_id);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,priority);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,local_function_info);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,va_definition_file_info);
+        FIELD(ams_mel_rf_virtual_aperture_config_v1,capability_ids));
+    RECORD(ams_mel_rf_virtual_aperture_result_v1,
+        FIELD(ams_mel_rf_virtual_aperture_result_v1,error_code));
+    RECORD(ams_mel_rf_virtual_aperture_info_v1,
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,va_instance_ids);
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,element_group_labels);
+        FIELD(ams_mel_rf_virtual_aperture_info_v1,is_single_group));
     LAYOUT(ams_mel_rf_mfa_state_t);
     LAYOUT(ams_mel_rf_data *);
     LAYOUT(ams_mel_rf_mfa_info *);

@@ -1,5 +1,15 @@
 # Architecture decisions
 
+Task 034B1B2 extends the native RF C2 state with counted child claims.
+Exactly one claim moves from the pending VA future through cached success to
+the claimed VA. A detached worker alone consumes the future. C2 Close with
+children defers shutdown until the final claim releases; uncertain throwing
+shutdown retains the complete provider/DSO graph. Successful Claim snapshots
+sorted VA instance IDs, ordered labels and single-group status into bridge
+storage before publishing an owner; safe Ada copies these into its own vectors.
+Timed Wait does not cancel. See `task-034b1b2-safe-ada-rf-virtual-aperture.md`.
+RF Jobs are still outside the generic library.
+
 Task 034B1B1 adds an independent `createC2MEL` owner and the limited
 `AMS.MEL.RF.C2` Ada lifecycle facade. The private C2 state pins both the C2
 object and its SharedLibrary: Close invokes shutdown once, destroys C2 before

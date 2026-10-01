@@ -2569,8 +2569,62 @@ typedef struct ams_mel_rf_admin ams_mel_rf_admin;
  * strings (as RF Admin); out_c2 must point to NULL. Close consumes the owner,
  * shuts down once and destroys C2 before unloading the provider. A throwing
  * shutdown retains the uncertain C2/DSO graph permanently. Calls on one owner
- * must be externally serialized. No VA or job operations are exposed. */
+ * must be externally serialized. VA requests are supported below; Jobs are not. */
 typedef struct ams_mel_rf_c2 ams_mel_rf_c2;
+typedef struct ams_mel_rf_virtual_aperture_request ams_mel_rf_virtual_aperture_request;
+typedef struct ams_mel_rf_virtual_aperture ams_mel_rf_virtual_aperture;
+/* All views and spans are borrowed only during Submit; the adapter copies
+ * every string and UCI ID before calling the provider. A successful Submit
+ * returns an owned request. Wait(0) polls, positive timeouts wait at most that
+ * many milliseconds, and TIMEOUT does not cancel or consume the request or
+ * modify the result. Terminal Wait results are cached; the diagnostic's
+ * required size includes its NUL, even when the caller buffer is too small.
+ * Claim uniquely transfers the C2 child to an owned VA after copying its
+ * immutable snapshot; a second Claim fails. Request Close abandons an unclaimed
+ * VA without blocking on its future. C2 Close consumes its owner and defers
+ * shutdown until its last request/VA child is destroyed. VA Close consumes its
+ * owner and reports a deferred shutdown failure; finalizers may ignore that
+ * failure without unloading uncertain provider code. Access to the same owner
+ * must be externally serialized. No Job operations are exposed. */
+typedef struct ams_mel_rf_virtual_aperture_config_v1 {
+    uint32_t va_definition_id;
+    uint32_t priority;
+    ams_mel_string_view_span_v1 local_function_info;
+    ams_mel_string_view_v1 va_definition_file_info;
+    ams_mel_uci_id_span_v1 capability_ids;
+} ams_mel_rf_virtual_aperture_config_v1;
+typedef struct ams_mel_rf_virtual_aperture_result_v1 {
+    ams_mel_error_code_t error_code;
+} ams_mel_rf_virtual_aperture_result_v1;
+/* Immutable borrowed view until VA Close; IDs iterate the provider set in
+ * ascending order. Labels retain the provider vector's order. */
+typedef struct ams_mel_rf_virtual_aperture_info_v1 {
+    ams_mel_u32_span_v1 va_instance_ids;
+    ams_mel_string_view_span_v1 element_group_labels;
+    uint32_t is_single_group;
+} ams_mel_rf_virtual_aperture_info_v1;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_submit_virtual_aperture(
+    ams_mel_rf_c2 *c2, const ams_mel_rf_virtual_aperture_config_v1 *config,
+    ams_mel_rf_virtual_aperture_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_request_wait(
+    const ams_mel_rf_virtual_aperture_request *request, uint32_t timeout_ms,
+    ams_mel_rf_virtual_aperture_result_v1 *result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_request_claim(
+    ams_mel_rf_virtual_aperture_request *request,
+    ams_mel_rf_virtual_aperture **out_va, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_request_close(
+    ams_mel_rf_virtual_aperture_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_view(
+    const ams_mel_rf_virtual_aperture *va,
+    const ams_mel_rf_virtual_aperture_info_v1 **out_info, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_close(
+    ams_mel_rf_virtual_aperture **va, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_open(
     const char *library_path, const char *configuration,
     ams_mel_rf_c2 **out_c2, char *diagnostic,

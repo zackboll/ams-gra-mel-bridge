@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Task 034B1B2 adds asynchronous RF `requestVirtualAperture`, unique VA Claim,
+  parent-first C2 child ownership and an immutable VA snapshot in native C and
+  safe Ada. Six new ABI 0.1 exports (120 to 126). Jobs remain unimplemented.
+
 - Task 034B1B1 adds the distinct RF `createC2MEL` lifecycle in native C and
   safe Ada (`AMS.MEL.RF.C2`). ABI 0.1 adds only `ams_mel_rf_c2_open` and
   `ams_mel_rf_c2_close` (118 to 120 exports); VA requests and Jobs remain

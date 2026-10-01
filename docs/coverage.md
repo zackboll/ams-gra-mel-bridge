@@ -1,5 +1,20 @@
 # Implementation coverage
 
+Task 034B1B2 extends the C ABI 0.1 to 126 production exports. The 034B1B1
+section below is the historical starting baseline. See
+`task-034b1b2-safe-ada-rf-virtual-aperture.md`.
+
+```text
+RF DataMEL:                  native C + safe Ada
+RF ProductRx:                native C + safe Ada
+RF Admin commandState:       native C + safe Ada
+RF C2 lifecycle:             native C + safe Ada
+RF requestVirtualAperture:   native C + safe Ada
+RF VirtualAperture snapshot: native C + safe Ada
+RF Jobs:                     not implemented (034B2)
+safe Rust / public Python RF: not implemented
+```
+
 Task 034B1B1 adds RF C2 lifecycle in native C and safe Ada. ABI 0.1 now has
 120 production exports. The 034B1A/034A/033D sections below are historical
 baselines. See `task-034b1b1-safe-ada-rf-c2-owner.md`.

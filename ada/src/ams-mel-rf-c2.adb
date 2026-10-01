@@ -1,13 +1,23 @@
-with Interfaces;
 with Interfaces.C;
 with Interfaces.C.Strings;
+with Ada.Containers;
+with Ada.Unchecked_Conversion;
 with System;
+with System.Storage_Elements;
 
 package body AMS.MEL.RF.C2 is
    package C renames AMS.MEL_C_API;
    package CS renames Interfaces.C.Strings;
    use type Interfaces.Integer_32;
    use type C.RF_C2_Handle;
+   use type C.RF_VA_Request_Handle;
+   use type C.RF_VA_Handle;
+   use type C.Size_T;
+   use type Interfaces.Unsigned_64;
+   use type Interfaces.Unsigned_32;
+   use type System.Address;
+   use System.Storage_Elements;
+   package US renames Ada.Strings.Unbounded;
    use type Interfaces.C.char;
 
    type Diagnostic is array (C.Size_T range <>) of aliased Interfaces.C.char with Convention => C;
@@ -20,6 +30,37 @@ package body AMS.MEL.RF.C2 is
    begin
       CS.Free (Value.Value);
    end Finalize;
+
+   function Valid_String (Value : String) return Boolean is
+   begin
+      for Item of Value loop
+         if Item = Character'Val (0) then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Valid_String;
+
+   function Copy_String (Value : C.String_View_V1) return String is
+      type Char_Access is access all Interfaces.C.char;
+      function To_Char is new Ada.Unchecked_Conversion (System.Address, Char_Access);
+   begin
+      if (Value.Size > 0 and then Value.Data = System.Null_Address)
+        or else Interfaces.Unsigned_64 (Value.Size) > Interfaces.Unsigned_64 (Natural'Last)
+      then
+         raise Provider_Error with "invalid VA label span";
+      end if;
+      declare
+         Result : String (1 .. Natural (Value.Size));
+      begin
+         for I in Result'Range loop
+            Result (I) :=
+              Character'Val
+                (Interfaces.C.char'Pos (To_Char (Value.Data + Storage_Offset (I - 1)).all));
+         end loop;
+         return Result;
+      end;
+   end Copy_String;
 
    function Message (Buffer : Diagnostic) return String is
       Last : Natural := 0;
@@ -92,5 +133,277 @@ package body AMS.MEL.RF.C2 is
    exception
       when others =>
          Object.Handle := C.Null_RF_C2;
+   end Finalize;
+   function Create_Virtual_Aperture_Config
+     (VA_Definition_ID        : Interfaces.Unsigned_32;
+      Priority                : Interfaces.Unsigned_32;
+      VA_Definition_File_Info : String) return Virtual_Aperture_Config is
+   begin
+      if not Valid_String (VA_Definition_File_Info) then
+         raise Constraint_Error with "invalid VA definition file info";
+      end if;
+      return
+        (ID           => VA_Definition_ID,
+         Priority     => Priority,
+         File_Info    => US.To_Unbounded_String (VA_Definition_File_Info),
+         Local        => Text_Vectors.Empty_Vector,
+         Capabilities => UCI_Vectors.Empty_Vector);
+   end Create_Virtual_Aperture_Config;
+
+   procedure Append_Local_Function_Info (Config : in out Virtual_Aperture_Config; Value : String) is
+   begin
+      if not Valid_String (Value) then
+         raise Constraint_Error with "invalid local function info";
+      end if;
+      Config.Local.Append (US.To_Unbounded_String (Value));
+   end Append_Local_Function_Info;
+
+   procedure Append_Capability_ID
+     (Config : in out Virtual_Aperture_Config; Value : AMS.MEL.IR.UCI_ID) is
+   begin
+      if not Valid_String (AMS.MEL.IR.Descriptive_Label (Value)) then
+         raise Constraint_Error with "invalid capability label";
+      end if;
+      Config.Capabilities.Append (Value);
+   end Append_Capability_ID;
+
+   function To_View (Value : String) return C.String_View_V1 is
+   begin
+      return
+        (Data => (if Value'Length = 0 then System.Null_Address else Value'Address),
+         Size => C.Size_T (Value'Length));
+   end To_View;
+
+   function Submit_Virtual_Aperture
+     (Parent : C2_MEL'Class; Config : Virtual_Aperture_Config) return Virtual_Aperture_Request
+   is
+      type String_Owners is array (Positive range <>) of String_Owner;
+      type Raw_IDs is array (Positive range <>) of aliased C.UCI_ID_V1 with Convention => C;
+      function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
+      Local_Values     : String_Owners (1 .. Natural (Config.Local.Length));
+      Labels           : String_Owners (1 .. Natural (Config.Capabilities.Length));
+      Raw_Local        : C.String_View_Array (1 .. Natural (Config.Local.Length));
+      Raw_Capabilities : Raw_IDs (1 .. Natural (Config.Capabilities.Length));
+      File_Value       : constant String := US.To_String (Config.File_Info);
+      D                : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R                : aliased C.Size_T := 0;
+   begin
+      for I in Local_Values'Range loop
+         declare
+            Value : constant String := US.To_String (Config.Local (I));
+         begin
+            Local_Values (I).Value := CS.New_String (Value);
+            Raw_Local (I) := (Pointer_Address (Local_Values (I).Value), C.Size_T (Value'Length));
+         end;
+      end loop;
+      for I in Labels'Range loop
+         declare
+            Bytes : constant AMS.MEL.IR.UUID := AMS.MEL.IR.UUID_Value (Config.Capabilities (I));
+         begin
+            declare
+               Label : constant String := AMS.MEL.IR.Descriptive_Label (Config.Capabilities (I));
+            begin
+               Labels (I).Value := CS.New_String (Label);
+               Raw_Capabilities (I).Descriptive_Label :=
+                 (Pointer_Address (Labels (I).Value), C.Size_T (Label'Length));
+            end;
+            for B in Bytes'Range loop
+               Raw_Capabilities (I).UUID (B) := Bytes (B);
+            end loop;
+         end;
+      end loop;
+      declare
+         Raw : aliased constant C.RF_VA_Config_V1 :=
+           (VA_Definition_ID        => Config.ID,
+            Priority                => Config.Priority,
+            Local_Function_Info     =>
+              (Data =>
+                 (if Raw_Local'Length = 0
+                  then System.Null_Address
+                  else Raw_Local (Raw_Local'First)'Address),
+               Size => C.Size_T (Raw_Local'Length)),
+            VA_Definition_File_Info => To_View (File_Value),
+            Capability_IDs          =>
+              (Data =>
+                 (if Raw_Capabilities'Length = 0
+                  then System.Null_Address
+                  else Raw_Capabilities (Raw_Capabilities'First)'Address),
+               Size => C.Size_T (Raw_Capabilities'Length)));
+      begin
+         return Result : Virtual_Aperture_Request do
+            Check
+              (C.RF_C2_Submit_VA
+                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         end return;
+      end;
+   end Submit_Virtual_Aperture;
+
+   function Is_Open (Request : Virtual_Aperture_Request) return Boolean
+   is (Request.Handle /= C.Null_RF_VA_Request);
+   procedure Close (Request : in out Virtual_Aperture_Request) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_VA_Request_Close (Request.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+   overriding
+   procedure Finalize (Request : in out Virtual_Aperture_Request) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.RF_VA_Request_Close (Request.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Request.Handle := C.Null_RF_VA_Request;
+   end Finalize;
+   function Outcome (Result : Virtual_Aperture_Result) return Request_Outcome
+   is (Result.State);
+   function Error_Code (Result : Virtual_Aperture_Result) return Request_Error_Code
+   is (Result.Code);
+   function Description (Result : Virtual_Aperture_Result) return String
+   is (US.To_String (Result.Text));
+
+   function Wait
+     (Request : Virtual_Aperture_Request; Timeout_Milliseconds : Natural)
+      return Virtual_Aperture_Result
+   is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Raw    : aliased C.RF_VA_Result_V1 := (Error_Code => 0);
+      Status : Interfaces.Integer_32;
+   begin
+      Status :=
+        C.RF_VA_Request_Wait
+          (Request.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Raw'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+      if Status = C.Timeout then
+         raise Timeout_Error;
+      end if;
+      if Status = C.Success then
+         if Raw.Error_Code /= 0 then
+            raise Provider_Error with "invalid successful VA result";
+         end if;
+         return (State => Created, Code => None, Text => US.Null_Unbounded_String);
+      elsif Status = C.Provider_Failed then
+         if Raw.Error_Code > 8 then
+            raise Provider_Error with Message (D);
+         end if;
+         if R = 0 or else Interfaces.Unsigned_64 (R) > Interfaces.Unsigned_64 (Natural'Last) then
+            raise Provider_Error with "invalid VA diagnostic size";
+         end if;
+         if R > D'Length then
+            declare
+               Full  : aliased Diagnostic (0 .. R - 1) := [others => Interfaces.C.nul];
+               Again : aliased C.RF_VA_Result_V1 := (Error_Code => 0);
+               Need  : aliased C.Size_T := 0;
+               Retry : constant Interfaces.Integer_32 :=
+                 C.RF_VA_Request_Wait
+                   (Request.Handle, 0, Again'Access, Full'Address, Full'Length, Need'Access);
+            begin
+               if Retry /= Status or else Again.Error_Code /= Raw.Error_Code or else Need /= R then
+                  raise Provider_Error with "VA terminal result changed";
+               end if;
+               return
+                 (State => Failed,
+                  Code  => Request_Error_Code'Enum_Val (Raw.Error_Code),
+                  Text  => US.To_Unbounded_String (Message (Full)));
+            end;
+         end if;
+         return
+           (State => Failed,
+            Code  => Request_Error_Code'Enum_Val (Raw.Error_Code),
+            Text  => US.To_Unbounded_String (Message (D)));
+      end if;
+      raise Provider_Error with Message (D);
+   end Wait;
+
+   type Info_Access is access all C.RF_VA_Info_V1;
+   function To_Info is new Ada.Unchecked_Conversion (System.Address, Info_Access);
+   type U32_Access is access all Interfaces.Unsigned_32;
+   function To_U32 is new Ada.Unchecked_Conversion (System.Address, U32_Access);
+   type String_Access is access all C.String_View_V1;
+   function To_String_View is new Ada.Unchecked_Conversion (System.Address, String_Access);
+   function Claim (Request : Virtual_Aperture_Request'Class) return Virtual_Aperture is
+      D       : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Address : aliased System.Address := System.Null_Address;
+   begin
+      return Result : Virtual_Aperture do
+         Check
+           (C.RF_VA_Request_Claim
+              (Request.Handle, Result.Handle'Access, D'Address, D'Length, R'Access),
+            D);
+         Check (C.RF_VA_View (Result.Handle, Address'Access, D'Address, D'Length, R'Access), D);
+         if Address = System.Null_Address then
+            raise Provider_Error with "null VA snapshot";
+         end if;
+         declare
+            Info : constant C.RF_VA_Info_V1 := To_Info (Address).all;
+         begin
+            if (Info.VA_Instance_IDs.Size > 0
+                and then Info.VA_Instance_IDs.Data = System.Null_Address)
+              or else (Info.Element_Group_Labels.Size > 0
+                       and then Info.Element_Group_Labels.Data = System.Null_Address)
+              or else Interfaces.Unsigned_64 (Info.VA_Instance_IDs.Size)
+                      > Interfaces.Unsigned_64 (Natural'Last)
+              or else Interfaces.Unsigned_64 (Info.Element_Group_Labels.Size)
+                      > Interfaces.Unsigned_64 (Natural'Last)
+              or else Info.Is_Single_Group > 1
+            then
+               raise Provider_Error with "invalid VA snapshot";
+            end if;
+            Result.Single := Info.Is_Single_Group = 1;
+            for I in 1 .. Natural (Info.VA_Instance_IDs.Size) loop
+               Result.IDs.Append
+                 (To_U32
+                    (Info.VA_Instance_IDs.Data
+                     + Storage_Offset
+                         ((I - 1) * Interfaces.Unsigned_32'Object_Size / System.Storage_Unit)).all);
+            end loop;
+            for I in 1 .. Natural (Info.Element_Group_Labels.Size) loop
+               declare
+                  Raw : constant C.String_View_V1 :=
+                    To_String_View
+                      (Info.Element_Group_Labels.Data
+                       + Storage_Offset
+                           ((I - 1) * C.String_View_V1'Object_Size / System.Storage_Unit)).all;
+               begin
+                  Result.Labels.Append (US.To_Unbounded_String (Copy_String (Raw)));
+               end;
+            end loop;
+         end;
+      end return;
+   end Claim;
+   function Is_Open (Object : Virtual_Aperture) return Boolean
+   is (Object.Handle /= C.Null_RF_VA);
+   function VA_Instance_ID_Count (Object : Virtual_Aperture) return Natural
+   is (Natural (Object.IDs.Length));
+   function VA_Instance_ID_At
+     (Object : Virtual_Aperture; Index : Positive) return Interfaces.Unsigned_32
+   is (Object.IDs (Index));
+   function Element_Group_Label_Count (Object : Virtual_Aperture) return Natural
+   is (Natural (Object.Labels.Length));
+   function Element_Group_Label_At (Object : Virtual_Aperture; Index : Positive) return String
+   is (US.To_String (Object.Labels (Index)));
+   function Is_Single_Group (Object : Virtual_Aperture) return Boolean
+   is (Object.Single);
+   procedure Close (Object : in out Virtual_Aperture) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_VA_Close (Object.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+   overriding
+   procedure Finalize (Object : in out Virtual_Aperture) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.RF_VA_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_RF_VA;
    end Finalize;
 end AMS.MEL.RF.C2;

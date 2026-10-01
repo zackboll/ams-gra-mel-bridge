@@ -26,10 +26,18 @@ down Admin before releasing its DSO and retains the graph if shutdown throws.
 
 **RF C2 owner (Task 034B1B1):** `AMS.MEL.RF.C2` owns the distinct
 `createC2MEL` factory through the same C facade. Its only operations are
-`Open`, `Is_Open` and `Close`; shutdown destroys C2 before provider unload,
+`Open`, `Is_Open` and `Close` at the 034B1B1 checkpoint; shutdown destroys C2 before provider unload,
 while a throwing shutdown permanently retains the uncertain graph. The opt-in
 real-provider check is `make test-squall-rf-ada-c2`. VirtualAperture requests
-are deferred to 034B1B2, and Job control to 034B2.
+were deferred to 034B1B2. Job control remains deferred to 034B2.
+
+**RF VirtualAperture (Task 034B1B2):** Safe Ada `AMS.MEL.RF.C2` now submits
+all five published VA request arguments, polls a cached asynchronous result,
+uniquely claims a VA and exposes Ada-owned snapshots of instance IDs, element
+group labels and single-group status. One native C2 child claim transfers from
+the request to the VA; parent-first Close delays C2 shutdown until the last
+child is released. `make test-squall-rf-ada-va` exercises this through pinned
+Squall. VA job methods and RF Job control are **not** implemented.
 
 **Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`
 cover the complete **current native RF slice**: owned DataMEL, provider

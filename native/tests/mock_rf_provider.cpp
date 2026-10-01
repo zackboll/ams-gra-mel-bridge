@@ -699,16 +699,131 @@ private:
 
 std::atomic<unsigned> c2_factory_calls{};
 std::atomic<unsigned> c2_shutdown_calls{};
+std::mutex va_gate_mutex;
+std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>> va_pending;
+std::atomic<unsigned> va_get_calls{};
+
+class MockVirtualAperture final : public rfmel::VirtualAperture {
+public:
+    explicit MockVirtualAperture(bool fail_getter) : fail_getter_{fail_getter} {}
+    ~MockVirtualAperture() override { record("rf_va_destroyed"); }
+    rfmel::VirtualApertureDefinitionID getID() const override { return 0; }
+    std::size_t addStatusCallback(const std::function<void(rfmel::BaseVirtualAperture&)>&) override
+    { forbidden("VA::addStatusCallback"); }
+    void removeStatusCallback(std::size_t) override { forbidden("VA::removeStatusCallback"); }
+    rfmel::VirtualApertureStatus getStatus() const override { forbidden("VA::getStatus"); }
+    rfmel::VirtualApertureStatus getInstanceStatus(rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getInstanceStatus"); }
+    std::vector<rfmel::VirtualApertureInstanceID> getAllInstances() const override
+    { forbidden("VA::getAllInstances"); }
+    std::vector<rfmel::VirtualApertureInstanceID> getInstances(rfmel::FaceID) const override
+    { forbidden("VA::getInstances"); }
+    rfmel::VirtualApertureInstanceStatusReport getInstanceStatusReport(rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getInstanceStatusReport"); }
+    std::set<rfmel::VirtualApertureInstanceID> getVAInstanceIDs() const override
+    {
+        va_get_calls.fetch_add(1U);
+        record("rf_va_get_ids");
+        if (fail_getter_) throw std::runtime_error("mock VA getter exception");
+        return {9, 0, 3};
+    }
+    mel::RequestFor<rfmel::JobDetail> requestJob(rfmel::JobRequest&) override
+    { forbidden("VA::requestJob"); }
+    rfmel::ElementGroupDescriptorLookupMap getElementGroups() const override
+    { forbidden("VA::getElementGroups"); }
+    std::vector<rfmel::ElementGroupLabel> getElementGroupLabels() const override
+    { record("rf_va_get_labels"); return {"group/β", "", "0"}; }
+    rfmel::ElementGroupConnections getDataPipes() override { forbidden("VA::getDataPipes"); }
+    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(
+        std::shared_ptr<rfmel::ElementGroupDescriptor>) override
+    { forbidden("VA::createElementGroupCommand"); }
+    std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(rfmel::ElementGroupLabel) override
+    { forbidden("VA::createElementGroupCommand"); }
+    bool isCachedWaveformSupported() const override { forbidden("VA::isCachedWaveformSupported"); }
+    std::shared_ptr<rfmel::Weights> getStaticWeights(const std::string&) const override
+    { forbidden("VA::getStaticWeights"); }
+    bool dynamicWeightsSupported() const override { forbidden("VA::dynamicWeightsSupported"); }
+    std::shared_ptr<rfmel::Weights> createWeights(const std::string&, rfmel::WeightType) override
+    { forbidden("VA::createWeights"); }
+    bool isSingleGroup() const override { record("rf_va_is_single"); return true; }
+    double getTxRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, rfmel::WeightType,
+        double, rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxRadiatedPower"); }
+    double getTxPeakRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, double,
+        rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxPeakRadiatedPower"); }
+    double getTxApertureGain(std::size_t, rfmel::TxPowerModeID, rfmel::WeightType, double,
+        rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getTxApertureGain"); }
+    double getMaxTxAttenuation(std::size_t, rfmel::TxPowerModeID, rfmel::VirtualApertureInstanceID) const override
+    { forbidden("VA::getMaxTxAttenuation"); }
+    std::map<rfmel::LocalFunctionTypeID, std::size_t> getLocalFunctions() const override
+    { forbidden("VA::getLocalFunctions"); }
+    std::vector<rfmel::VirtualApertureStatus> getLocalFunctionStatus(
+        rfmel::VirtualApertureInstanceID, rfmel::LocalFunctionTypeID) const override
+    { forbidden("VA::getLocalFunctionStatus"); }
+private:
+    bool fail_getter_{};
+};
 
 class MockC2MEL final : public rfmel::C2MEL {
 public:
     explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)} {}
     ~MockC2MEL() override { record("rf_c2_destroyed"); }
     mel::RequestFor<rfmel::VirtualAperture> requestVirtualAperture(
-        rfmel::VirtualApertureDefinitionID, rfmel::Priority,
-        const std::vector<std::string>&, const std::string&,
-        const std::vector<mel::UCI_ID>&) override
-    { forbidden("C2MEL::requestVirtualAperture"); }
+        rfmel::VirtualApertureDefinitionID id, rfmel::Priority priority,
+        const std::vector<std::string>& local, const std::string& file,
+        const std::vector<mel::UCI_ID>& capabilities) override
+    {
+        record("rf_va_requested");
+        if (id != 0xFEDCBA98U || priority != 0x80000001U ||
+            local != std::vector<std::string>{"alpha", "µ-local", ""} ||
+            file != "definition/β.json" || capabilities.size() != 3U)
+            throw std::runtime_error("VA input mismatch");
+        std::array<std::uint8_t, mel::UUID_SIZE> first_expected{};
+        std::array<std::uint8_t, mel::UUID_SIZE> second_expected{};
+        std::array<std::uint8_t, mel::UUID_SIZE> third_expected{};
+        first_expected[1] = 0x80U;
+        first_expected[2] = 0xffU;
+        second_expected[0] = 0xffU;
+        third_expected[15] = 0x80U;
+        if (capabilities[0].getUUID() != first_expected ||
+            capabilities[1].getUUID() != second_expected ||
+            capabilities[2].getUUID() != third_expected ||
+            capabilities[0].getDescriptiveLabel() != "first" ||
+            capabilities[1].getDescriptiveLabel() != "" ||
+            capabilities[2].getDescriptiveLabel() != "µ-third")
+            throw std::runtime_error("VA capability mismatch");
+        if (configuration_ == "c2:va-invalid-future") return {};
+        if (configuration_ == "c2:va-delayed") {
+            auto gate = std::make_shared<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>();
+            auto future = gate->get_future();
+            std::lock_guard lock{va_gate_mutex};
+            va_pending.push_back(std::move(gate));
+            return future;
+        }
+        if (configuration_ == "c2:va-submit-throw") throw std::runtime_error("mock VA submit exception");
+        std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>> promise;
+        auto future = promise.get_future();
+        if (configuration_ == "c2:va-failure" || configuration_ == "c2:va-long-failure" ||
+            configuration_ == "c2:va-unknown-error")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                mel::Error{configuration_ == "c2:va-unknown-error" ?
+                    static_cast<mel::ErrorCode>(99) : mel::ErrorCode::InvalidParameters,
+                    configuration_ == "c2:va-long-failure" ?
+                    std::string(800, 'X') + "µ end" : "mock VA rejected"}});
+        else if (configuration_ == "c2:va-null")
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                std::shared_ptr<rfmel::VirtualAperture>{}});
+        else if (configuration_ == "c2:va-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error("mock VA future exception")));
+        else if (configuration_ == "c2:va-future-unknown")
+            promise.set_exception(std::make_exception_ptr(17));
+        else
+            promise.set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+                std::make_shared<MockVirtualAperture>(configuration_ == "c2:va-getter-throw")});
+        return future;
+    }
     mel::RequestFor<rfmel::CachedWaveform> requestCachedWaveform(
         rfmel::Priority, const std::vector<std::complex<double>>&, rfmel::Frequency) override
     { forbidden("C2MEL::requestCachedWaveform"); }
@@ -725,7 +840,7 @@ public:
     {
         c2_shutdown_calls.fetch_add(1U);
         record("rf_c2_shutdown");
-        if (configuration_ == "c2:shutdown-throw")
+        if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw")
             throw std::runtime_error("mock C2 shutdown exception");
     }
 private:
@@ -802,11 +917,34 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration == "c2:factory-null") return {};
     if (configuration == "c2:factory-throw") throw FactoryFailure{};
     if (configuration == "c2:factory-throw-unknown") throw 5;
-    if (configuration != "c2:ok" && configuration != "c2:shutdown-throw")
+    if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
+        configuration != "c2:va-ok" && configuration != "c2:va-failure" &&
+        configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
+        configuration != "c2:va-future-unknown" && configuration != "c2:va-submit-throw" &&
+        configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
+        configuration != "c2:va-unknown-error" &&
+        configuration != "c2:va-invalid-future" && configuration != "c2:va-getter-throw" &&
+        configuration != "c2:va-shutdown-throw")
         throw std::invalid_argument("mock C2 received unexpected configuration");
     return std::make_shared<MockC2MEL>(std::string{configuration});
 }
 static_assert(std::is_same_v<decltype(&createC2MEL), rfmel::fnC2MEL>);
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_release_one(void)
+{
+    std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>> gate;
+    {
+        std::lock_guard lock{va_gate_mutex};
+        if (va_pending.empty()) return 0;
+        gate = std::move(va_pending.back());
+        va_pending.pop_back();
+    }
+    gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>{
+        std::make_shared<MockVirtualAperture>(false)});
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_get_calls(void)
+{ return va_get_calls.load(); }
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_factory_calls(void)
 { return c2_factory_calls.load(); }

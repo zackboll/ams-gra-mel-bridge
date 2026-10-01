@@ -1604,6 +1604,34 @@ pub struct AmsMelRfC2 {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelRfVaRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelRfVa {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelRfVaConfigV1 {
+    pub va_definition_id: u32,
+    pub priority: u32,
+    pub local_function_info: AmsMelStringViewSpanV1,
+    pub va_definition_file_info: AmsMelStringViewV1,
+    pub capability_ids: AmsMelUciIdSpanV1,
+}
+#[repr(C)]
+pub struct AmsMelRfVaResultV1 {
+    pub error_code: u32,
+}
+#[repr(C)]
+pub struct AmsMelRfVaInfoV1 {
+    pub va_instance_ids: AmsMelU32SpanV1,
+    pub element_group_labels: AmsMelStringViewSpanV1,
+    pub is_single_group: u32,
+}
 pub type AmsMelRfMfaState = u32;
 /// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
 #[repr(C)]
@@ -2517,6 +2545,48 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_rf_c2_close(
         c2: *mut *mut AmsMelRfC2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_c2_submit_virtual_aperture(
+        c2: *mut AmsMelRfC2,
+        config: *const AmsMelRfVaConfigV1,
+        out_request: *mut *mut AmsMelRfVaRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_request_wait(
+        request: *const AmsMelRfVaRequest,
+        timeout_ms: u32,
+        result: *mut AmsMelRfVaResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_request_claim(
+        request: *mut AmsMelRfVaRequest,
+        out_va: *mut *mut AmsMelRfVa,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_request_close(
+        request: *mut *mut AmsMelRfVaRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_view(
+        va: *const AmsMelRfVa,
+        out_info: *mut *const AmsMelRfVaInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_close(
+        va: *mut *mut AmsMelRfVa,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

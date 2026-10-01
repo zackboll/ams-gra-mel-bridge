@@ -1,5 +1,12 @@
 # Experimental C ABI policy
 
+Task 034B1B2 adds six RF VA exports under ABI 0.1. Submission copies every
+borrowed string/span/UUID before invoking the provider. Wait is cached and a
+timeout neither cancels nor consumes. One C2 child claim follows the future
+into exactly one claimed VA. C2 shutdown waits for the final child, and
+uncertain shutdown retains the entire provider graph. The VA view borrows
+only bridge-owned immutable storage, valid until VA Close.
+
 The current ABI is 0.1, not yet stable. Header version macros describe this
 facade only. Provider API, upstream source, architecture, and package versions
 must remain distinct.
