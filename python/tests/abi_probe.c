@@ -615,6 +615,36 @@ int main(void)
         FIELD(ams_mel_rf_virtual_aperture_info_v1,va_instance_ids);
         FIELD(ams_mel_rf_virtual_aperture_info_v1,element_group_labels);
         FIELD(ams_mel_rf_virtual_aperture_info_v1,is_single_group));
+    LAYOUT(ams_mel_rf_job_request *);
+    LAYOUT(ams_mel_rf_job *);
+    RECORD(ams_mel_u64_span_v1,
+        FIELD(ams_mel_u64_span_v1,data);
+        FIELD(ams_mel_u64_span_v1,size));
+    RECORD(ams_mel_rf_rx_element_group_config_v1,
+        FIELD(ams_mel_rf_rx_element_group_config_v1,label);
+        FIELD(ams_mel_rf_rx_element_group_config_v1,desired_duty_factor);
+        FIELD(ams_mel_rf_rx_element_group_config_v1,expected_center_frequencies);
+        FIELD(ams_mel_rf_rx_element_group_config_v1,endpoint_ids);
+        FIELD(ams_mel_rf_rx_element_group_config_v1,data_pipe_label));
+    RECORD(ams_mel_rf_job_request_config_v1,
+        FIELD(ams_mel_rf_job_request_config_v1,request_id);
+        FIELD(ams_mel_rf_job_request_config_v1,priority);
+        FIELD(ams_mel_rf_job_request_config_v1,precedence_within_priority);
+        FIELD(ams_mel_rf_job_request_config_v1,is_interruptable);
+        FIELD(ams_mel_rf_job_request_config_v1,instance_selection);
+        FIELD(ams_mel_rf_job_request_config_v1,rx_group));
+    RECORD(ams_mel_rf_job_result_v1,
+        FIELD(ams_mel_rf_job_result_v1,error_code));
+    RECORD(ams_mel_rf_job_info_v1,
+        FIELD(ams_mel_rf_job_info_v1,actual_start_seconds);
+        FIELD(ams_mel_rf_job_info_v1,actual_start_femtoseconds);
+        FIELD(ams_mel_rf_job_info_v1,total_job_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_info_v1,va_instance_id);
+        FIELD(ams_mel_rf_job_info_v1,va_definition_id);
+        FIELD(ams_mel_rf_job_info_v1,job_details_id);
+        FIELD(ams_mel_rf_job_info_v1,job_request_id);
+        FIELD(ams_mel_rf_job_info_v1,lookahead_femtoseconds);
+        FIELD(ams_mel_rf_job_info_v1,rx_stream_ids));
     LAYOUT(ams_mel_rf_mfa_state_t);
     LAYOUT(ams_mel_rf_data *);
     LAYOUT(ams_mel_rf_mfa_info *);

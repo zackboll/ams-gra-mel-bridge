@@ -637,6 +637,53 @@ fn rf_va_signatures_match_the_c_header() {
     ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_close;
 }
 
+#[test]
+fn rf_job_signatures_match_the_c_header() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
+        *const AmsMelRfJobRequestConfigV1,
+        *mut *mut AmsMelRfJobRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_submit_job;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfJobRequest,
+        u32,
+        *mut AmsMelRfJobResultV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_request_wait;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJobRequest,
+        *mut *mut AmsMelRfJob,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_request_claim;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfJobRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_request_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfJob,
+        *mut *const AmsMelRfJobInfoV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfJob,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_close;
+}
+
 /// Task 034B1A: exact raw RF Admin signatures without a provider.
 #[test]
 fn rf_admin_signatures_match_the_c_header() {
@@ -760,8 +807,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 126);
-    assert_eq!(exported.len(), 126);
+    assert_eq!(declared.len(), 132);
+    assert_eq!(exported.len(), 132);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1863,6 +1910,46 @@ fn declarations_match_the_c_header() {
         va_instance_ids,
         element_group_labels,
         is_single_group
+    );
+    expected.extend([
+        size_of::<*mut AmsMelRfJobRequest>(),
+        align_of::<*mut AmsMelRfJobRequest>(),
+        size_of::<*mut AmsMelRfJob>(),
+        align_of::<*mut AmsMelRfJob>(),
+    ]);
+    layout!(expected, AmsMelU64SpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfRxElementGroupConfigV1,
+        label,
+        desired_duty_factor,
+        expected_center_frequencies,
+        endpoint_ids,
+        data_pipe_label
+    );
+    layout!(
+        expected,
+        AmsMelRfJobRequestConfigV1,
+        request_id,
+        priority,
+        precedence_within_priority,
+        is_interruptable,
+        instance_selection,
+        rx_group
+    );
+    layout!(expected, AmsMelRfJobResultV1, error_code);
+    layout!(
+        expected,
+        AmsMelRfJobInfoV1,
+        actual_start_seconds,
+        actual_start_femtoseconds,
+        total_job_duration_femtoseconds,
+        va_instance_id,
+        va_definition_id,
+        job_details_id,
+        job_request_id,
+        lookahead_femtoseconds,
+        rx_stream_ids
     );
     expected.extend([
         size_of::<AmsMelRfMfaState>(),

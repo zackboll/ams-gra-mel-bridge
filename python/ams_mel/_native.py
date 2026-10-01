@@ -177,6 +177,8 @@ class StringViewV1(ctypes.Structure):
 
 class U32SpanV1(ctypes.Structure):
     _fields_ = [("data", ctypes.POINTER(ctypes.c_uint32)), ("size", ctypes.c_size_t)]
+class U64SpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(ctypes.c_uint64)), ("size", ctypes.c_size_t)]
 class StringViewSpanV1(ctypes.Structure):
     _fields_ = [("data", ctypes.POINTER(StringViewV1)), ("size", ctypes.c_size_t)]
 class IrScanTypeV1(ctypes.Structure):
@@ -1162,6 +1164,39 @@ class RfVaInfoV1(ctypes.Structure):
                 ("is_single_group", ctypes.c_uint32)]
 
 
+RfJobRequestHandle = ctypes.c_void_p
+RfJobHandle = ctypes.c_void_p
+
+
+class RfRxElementGroupConfigV1(ctypes.Structure):
+    _fields_ = [("label", StringViewV1), ("desired_duty_factor", ctypes.c_double),
+                ("expected_center_frequencies", RfFrequencyRangeSpanV1),
+                ("endpoint_ids", U64SpanV1), ("data_pipe_label", StringViewV1)]
+
+
+class RfJobRequestConfigV1(ctypes.Structure):
+    _fields_ = [("request_id", ctypes.c_uint32), ("priority", ctypes.c_uint32),
+                ("precedence_within_priority", ctypes.c_uint32),
+                ("is_interruptable", ctypes.c_uint32),
+                ("instance_selection", U32SpanV1), ("rx_group", RfRxElementGroupConfigV1)]
+
+
+class RfJobResultV1(ctypes.Structure):
+    _fields_ = [("error_code", ctypes.c_uint32)]
+
+
+class RfJobInfoV1(ctypes.Structure):
+    _fields_ = [("actual_start_seconds", ctypes.c_int64),
+                ("actual_start_femtoseconds", ctypes.c_int64),
+                ("total_job_duration_femtoseconds", ctypes.c_int64),
+                ("va_instance_id", ctypes.c_uint32),
+                ("va_definition_id", ctypes.c_uint32),
+                ("job_details_id", ctypes.c_uint32),
+                ("job_request_id", ctypes.c_uint32),
+                ("lookahead_femtoseconds", ctypes.c_int64),
+                ("rx_stream_ids", U32SpanV1)]
+
+
 ams_mel_rf_c2_submit_virtual_aperture = _LIBRARY.ams_mel_rf_c2_submit_virtual_aperture
 ams_mel_rf_c2_submit_virtual_aperture.argtypes = [
     RfC2Handle, ctypes.POINTER(RfVaConfigV1), ctypes.POINTER(RfVaRequestHandle), *_CHANNEL_DIAGNOSTIC]
@@ -1185,6 +1220,30 @@ ams_mel_rf_virtual_aperture_view.restype = ctypes.c_int32
 ams_mel_rf_virtual_aperture_close = _LIBRARY.ams_mel_rf_virtual_aperture_close
 ams_mel_rf_virtual_aperture_close.argtypes = [ctypes.POINTER(RfVaHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_virtual_aperture_close.restype = ctypes.c_int32
+
+ams_mel_rf_virtual_aperture_submit_job = _LIBRARY.ams_mel_rf_virtual_aperture_submit_job
+ams_mel_rf_virtual_aperture_submit_job.argtypes = [
+    RfVaHandle, ctypes.POINTER(RfJobRequestConfigV1), ctypes.POINTER(RfJobRequestHandle),
+    *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_submit_job.restype = ctypes.c_int32
+ams_mel_rf_job_request_wait = _LIBRARY.ams_mel_rf_job_request_wait
+ams_mel_rf_job_request_wait.argtypes = [
+    RfJobRequestHandle, ctypes.c_uint32, ctypes.POINTER(RfJobResultV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_request_wait.restype = ctypes.c_int32
+ams_mel_rf_job_request_claim = _LIBRARY.ams_mel_rf_job_request_claim
+ams_mel_rf_job_request_claim.argtypes = [
+    RfJobRequestHandle, ctypes.POINTER(RfJobHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_request_claim.restype = ctypes.c_int32
+ams_mel_rf_job_request_close = _LIBRARY.ams_mel_rf_job_request_close
+ams_mel_rf_job_request_close.argtypes = [ctypes.POINTER(RfJobRequestHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_request_close.restype = ctypes.c_int32
+ams_mel_rf_job_view = _LIBRARY.ams_mel_rf_job_view
+ams_mel_rf_job_view.argtypes = [RfJobHandle, ctypes.POINTER(ctypes.POINTER(RfJobInfoV1)),
+                                *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_view.restype = ctypes.c_int32
+ams_mel_rf_job_close = _LIBRARY.ams_mel_rf_job_close
+ams_mel_rf_job_close.argtypes = [ctypes.POINTER(RfJobHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_close.restype = ctypes.c_int32
 
 ams_mel_rf_data_open = _LIBRARY.ams_mel_rf_data_open
 ams_mel_rf_data_open.argtypes = [
@@ -1442,6 +1501,12 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_virtual_aperture_request_close",
     "ams_mel_rf_virtual_aperture_view",
     "ams_mel_rf_virtual_aperture_close",
+    "ams_mel_rf_virtual_aperture_submit_job",
+    "ams_mel_rf_job_request_wait",
+    "ams_mel_rf_job_request_claim",
+    "ams_mel_rf_job_request_close",
+    "ams_mel_rf_job_view",
+    "ams_mel_rf_job_close",
     "ams_mel_rf_data_open",
     "ams_mel_rf_data_get_provider_version",
     "ams_mel_rf_data_get_mfa_info",

@@ -1,5 +1,11 @@
 # Architecture decisions
 
+Task 034B2A1 adds the native-only single-RX-group Job request and owned
+JobDetail snapshot. A new sibling C2 claim and a strong provider VA reference
+outlive the public VA/C2 and follow the one asynchronous future into the
+claimed Job. No finalize/cancel or safe Ada Job API yet. See
+`task-034b2a1-native-rf-job-request.md`.
+
 Task 034B1B2 extends the native RF C2 state with counted child claims.
 Exactly one claim moves from the pending VA future through cached success to
 the claimed VA. A detached worker alone consumes the future. C2 Close with

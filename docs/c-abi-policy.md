@@ -1,5 +1,15 @@
 # Experimental C ABI policy
 
+Task 034B2A1 adds six native RF Job operations under ABI 0.1. The bounded
+single-RX-group configuration is borrowed only for Submit, and rejects
+duplicate endpoint IDs before translating them into a provider set. A Job
+request holds a new sibling C2 claim and a strong provider VA reference;
+timeout does not cancel, Close abandons without blocking, and Claim uniquely
+transfers both parents with the JobDetail. The immutable Job view contains
+only bridge-owned snapshot storage. Job Close does not call finalize/cancel.
+The native-only scope and upstream defaults are recorded in
+`task-034b2a1-native-rf-job-request.md`.
+
 Task 034B1B2 adds six RF VA exports under ABI 0.1. Submission copies every
 borrowed string/span/UUID before invoking the provider. Wait is cached and a
 timeout neither cancels nor consumes. One C2 child claim follows the future

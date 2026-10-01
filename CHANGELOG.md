@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Task 034B2A1 adds native C RX Job request/JobDetail ownership and immutable
+  snapshot, with a provider-created single RX element group, sibling C2 claim,
+  and six ABI 0.1 exports (126 to 132). Raw Ada/Rust/Python bindings are in
+  sync; safe Ada Job control and real-provider validation remain deferred.
+
 - Task 034B1B2 adds asynchronous RF `requestVirtualAperture`, unique VA Claim,
   parent-first C2 child ownership and an immutable VA snapshot in native C and
   safe Ada. Six new ABI 0.1 exports (120 to 126). Jobs remain unimplemented.

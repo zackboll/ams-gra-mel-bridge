@@ -2,6 +2,7 @@
 #include <ams_mel/abi.h>
 #include "internal/provider_common.hpp"
 #include "internal/rf_c2.hpp"
+#include "internal/rf_va_job_parent.hpp"
 
 #include <algorithm>
 #include <array>
@@ -216,6 +217,14 @@ struct ams_mel_rf_virtual_aperture {
     std::vector<ams_mel_string_view_v1> views;
     ams_mel_rf_virtual_aperture_info_v1 info{};
 };
+
+bool rf_va_acquire_job_parent(const ams_mel_rf_virtual_aperture *owner,
+    std::shared_ptr<rfmel::VirtualAperture>& provider, RfC2ChildClaim& claim) noexcept
+{
+    if (!owner || !owner->va || provider || !owner->claim.acquire_sibling(claim)) return false;
+    provider = owner->va;
+    return true;
+}
 
 extern "C" ams_mel_status_t ams_mel_rf_c2_submit_virtual_aperture(
     ams_mel_rf_c2 *c2, const ams_mel_rf_virtual_aperture_config_v1 *config,
