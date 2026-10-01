@@ -665,6 +665,85 @@ package body AMS.MEL.RF.C2 is
    end Claim;
    function Is_Open (Object : Job) return Boolean
    is (Object.Handle /= C.Null_RF_Job);
+   function Cancelled (Result : Cancel_Result) return Boolean
+   is (Result.Was_Cancelled);
+   function Error_Code (Result : Cancel_Result) return Cancel_Error
+   is (Result.Code);
+   procedure Finalize_Job (Object : in out Job) is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Result : Interfaces.Integer_32;
+   begin
+      Result := C.RF_Job_Finalize (Object.Handle, D'Address, D'Length, R'Access);
+      if Result /= C.Success and then R > D'Length then
+         declare
+            Full : aliased Diagnostic (0 .. R - 1) := [others => Interfaces.C.nul];
+         begin
+            Check (C.RF_Job_Finalize (Object.Handle, Full'Address, Full'Length, null), Full);
+         end;
+      end if;
+      Check (Result, D);
+   end Finalize_Job;
+   function Wait_Job_Status (Object : Job; Timeout_Milliseconds : Natural) return Job_Status is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Value  : aliased Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
+      Result : Interfaces.Integer_32;
+   begin
+      if Natural'Size > Interfaces.Unsigned_32'Size
+        and then Timeout_Milliseconds > Natural (Interfaces.Unsigned_32'Last)
+      then
+         raise Constraint_Error with "Job wait timeout exceeds native range";
+      end if;
+      Result :=
+        C.RF_Job_Wait_Status
+          (Object.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Value'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+      if Result = C.Timeout then
+         raise Timeout_Error with "Job status pending";
+      end if;
+      if Result /= C.Success and then R > D'Length then
+         declare
+            Full : aliased Diagnostic (0 .. R - 1) := [others => Interfaces.C.nul];
+         begin
+            Check
+              (C.RF_Job_Wait_Status
+                 (Object.Handle, 0, Value'Access, Full'Address, Full'Length, null),
+               Full);
+         end;
+      end if;
+      Check (Result, D);
+      if Value > C.RF_Job_Status_Failed_Invalid_State then
+         raise Provider_Error with "invalid native Job status";
+      end if;
+      return Job_Status'Val (Integer (Value));
+   end Wait_Job_Status;
+   function Cancel_Job (Object : in out Job) return Cancel_Result is
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Result : aliased C.RF_Job_Cancel_Result_V1 := (others => 0);
+      Code   : Interfaces.Integer_32;
+   begin
+      Code := C.RF_Job_Cancel (Object.Handle, Result'Access, D'Address, D'Length, R'Access);
+      if Code /= C.Success and then R > D'Length then
+         declare
+            Full : aliased Diagnostic (0 .. R - 1) := [others => Interfaces.C.nul];
+         begin
+            Check
+              (C.RF_Job_Cancel (Object.Handle, Result'Access, Full'Address, Full'Length, null),
+               Full);
+         end;
+      end if;
+      Check (Code, D);
+      if Result.Cancelled > 1 or else Result.Error_Code /= C.RF_Cancel_Error_None then
+         raise Provider_Error with "invalid native Job cancellation result";
+      end if;
+      return (Was_Cancelled => Result.Cancelled = 1, Code => None);
+   end Cancel_Job;
    procedure Close (Object : in out Job) is
       D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       R : aliased C.Size_T := 0;

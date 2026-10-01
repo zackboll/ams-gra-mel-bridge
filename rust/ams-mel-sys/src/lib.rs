@@ -1709,6 +1709,21 @@ pub const AMS_MEL_RF_JOB_DATA_FORMAT_PDW_TYPE3: AmsMelRfJobDataFormat = 10;
 pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE1: AmsMelRfJobDataFormat = 11;
 pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE2: AmsMelRfJobDataFormat = 12;
 pub const AMS_MEL_RF_JOB_DATA_FORMAT_LF_TYPE3: AmsMelRfJobDataFormat = 13;
+pub type AmsMelRfJobStatus = u32;
+pub const AMS_MEL_RF_JOB_STATUS_NONE: AmsMelRfJobStatus = 0;
+pub const AMS_MEL_RF_JOB_STATUS_IN_PROGRESS: AmsMelRfJobStatus = 1;
+pub const AMS_MEL_RF_JOB_STATUS_COMPLETE: AmsMelRfJobStatus = 2;
+pub const AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID: AmsMelRfJobStatus = 3;
+pub const AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED: AmsMelRfJobStatus = 4;
+pub const AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE: AmsMelRfJobStatus = 5;
+pub type AmsMelRfCancelError = u32;
+pub const AMS_MEL_RF_CANCEL_ERROR_NONE: AmsMelRfCancelError = 0;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AmsMelRfJobCancelResultV1 {
+    pub cancelled: u32,
+    pub error_code: AmsMelRfCancelError,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -2676,6 +2691,27 @@ extern "C" {
     pub fn ams_mel_rf_job_view(
         job: *const AmsMelRfJob,
         out_info: *mut *const AmsMelRfJobInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_finalize(
+        job: *mut AmsMelRfJob,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_wait_status(
+        job: *const AmsMelRfJob,
+        timeout_ms: u32,
+        out_status: *mut AmsMelRfJobStatus,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_cancel(
+        job: *mut AmsMelRfJob,
+        out_result: *mut AmsMelRfJobCancelResultV1,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

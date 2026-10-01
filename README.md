@@ -1,8 +1,17 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034B2B2: safe Ada RF Job `Finalize_Job`, `Wait_Job_Status`, and
+`Cancel_Job` wrap the existing native lifecycle. Both Squall ProductRx
+integrations use production Job APIs rather than the former test-only C++
+helper. JobInterval and interval callbacks remain deferred.
+
 An independent, experimental **consumer-side language binding** for the
 Agile Mission Suite Government Reference Architecture (**AMS GRA**)
 Multi-Function Aperture Encapsulation Layer (**MEL**) interfaces.
+
+Native C and safe Ada support one-shot RF Job Finalize, finite status Wait/poll,
+and cached Cancel. Both ProductRx clients activate Jobs without a C++ helper.
+See `docs/task-034b2b2-safe-ada-rf-job-lifecycle.md`.
 
 The project preserves the published **C++ MEL provider boundary**, isolates
 non-C++ interoperability inside a native adapter, exposes a small **C ABI**, and
@@ -39,9 +48,9 @@ group labels and single-group status. One native C2 child claim transfers from
 the request to the VA; parent-first Close delays C2 shutdown until the last
 child is released. `make test-squall-rf-ada-va` exercises this through pinned
 Squall. Native C and safe Ada RX Job request/JobDetail snapshots are
-implemented. Job finalize/cancel, JobIntervals, and ProductRx helper removal
-are **not** implemented. The opt-in `make test-squall-rf-ada-job` checks two
-sequential Jobs and parent-first lifetime against pinned Squall.
+implemented. Job finalize/status/cancel is available in native C and safe Ada;
+JobIntervals remain unimplemented. The opt-in `make test-squall-rf-ada-job`
+checks two sequential Jobs and parent-first lifecycle against pinned Squall.
 
 **Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`
 cover the complete **current native RF slice**: owned DataMEL, provider

@@ -395,19 +395,19 @@ This target is opt-in. `SQUALL_SOURCE_DIR` must name the exact pinned checkout
 The 033B smoke `make test-squall-rf-c` (`run-rf.sh` with no argument) is
 unchanged.
 
-### Test-only job activation
+### Historical test-only job activation (removed in Task 034B2B2)
 
-Pinned Squall drops ProductRx data unless an RX job is active, and production
-has no RF C2 or Jobs. The harness therefore builds a **test-only**
+At this historical checkpoint pinned Squall dropped ProductRx data unless an
+RX job was active, and production had no RF C2 or Jobs. The harness built a **test-only**
 `integration/squall/squall_rf_job_helper.cpp`:
 
-* It is compiled inside the pinned Squall builder stage, using the provider's
+* It was compiled inside the pinned Squall builder stage, using the provider's
   own toolchain and the exact pinned RF MEL C++ headers.
-* It runs AdminMEL `commandState(OperateRxOnly)`, then the C2MEL virtual
+* It ran AdminMEL `commandState(OperateRxOnly)`, then the C2MEL virtual
   aperture, `requestJob`, and `finalize`.
-* It is loaded with `dlopen`. It is never compiled into `ams_mel_c`, and the
-  script asserts that it is not linked and that none of its symbols are
-  exported. It is never exposed through C.
+* It was loaded with `dlopen`, never compiled into `ams_mel_c`, and never
+  exposed through C. Task 034B2B2 deleted it; both current clients use the
+  production Job API instead.
 
 The endpoint and every assertion go through the production facade
 (`integration/squall/squall_rf_rx_c.c`, C11).

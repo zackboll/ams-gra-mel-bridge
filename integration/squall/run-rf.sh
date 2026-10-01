@@ -9,9 +9,8 @@
 # Task 033D: `run-rf.sh rx` (make test-squall-rf-rx) instead runs
 # integration/squall/squall_rf_rx_c.c: a real ComplexINT16 ProductRxEndpoint
 # receive through the production facade. Pinned Squall drops ProductRx data
-# unless an RX job is active, so this mode also builds the TEST-ONLY
-# squall_rf_job_helper.cpp inside the pinned Squall builder stage (same
-# toolchain and exact pinned headers as the provider) and loads it with dlopen.
+# unless an RX job is active; both receive clients activate it through the
+# production C facade (and safe Ada facade, respectively).
 # The default mode (no argument) is the unchanged Task 033B smoke.
 set -eu
 
@@ -29,8 +28,6 @@ build_dir=${AMS_MEL_SQUALL_BUILD_DIR:-"$root/build/squall"}
 case "$build_dir" in /*) ;; *) build_dir="$root/$build_dir" ;; esac
 project="ams-mel-task033b-$$"
 provider_image="localhost/${project}-provider:latest"
-builder_image="localhost/${project}-builder:latest"
-builder_image_present=0
 rf_image="localhost/${project}-rf:latest"
 couloir_image="localhost/${project}-couloir:latest"
 temp_dir="$build_dir/tmp/$project"
@@ -101,7 +98,6 @@ cleanup() {
   trap - EXIT INT TERM
   test -z "$provider_container" || "$runtime" rm -f "$provider_container" >/dev/null 2>&1 || true
   test "$provider_image_present" != 1 || "$runtime" image rm "$provider_image" >/dev/null 2>&1 || true
-  test "$builder_image_present" != 1 || "$runtime" image rm "$builder_image" >/dev/null 2>&1 || true
   if test "$started" = 1; then
     if test "$status" -ne 0; then
       (cd "$SQUALL_SOURCE_DIR" && compose -p "$project" -f "$runtime_compose" logs) >&2 2>&1 || true
@@ -152,7 +148,8 @@ if test "$mode" = admin; then
   readelf --dyn-syms --wide "$provider" | grep -q ' createAdminMEL$' ||
     fail "extracted provider does not export createAdminMEL"
 fi
-if test "$mode" = c2 || test "$mode" = va || test "$mode" = job; then
+if test "$mode" = c2 || test "$mode" = va || test "$mode" = job ||
+   test "$mode" = rx || test "$mode" = ada; then
   readelf --dyn-syms --wide "$provider" | grep -q ' createC2MEL$' ||
     fail "extracted provider does not export createC2MEL"
 fi
@@ -195,55 +192,16 @@ if test "$mode" = ada || test "$mode" = admin || test "$mode" = c2 || test "$mod
 else
   cc -std=c11 -pedantic-errors -Wall -Wextra -Werror \
     -I"$root/native/include" "$root/integration/squall/$client.c" \
-    -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c -ldl \
+    -L"$root/native/build/lib" -Wl,-rpath,"$root/native/build/lib" -lams_mel_c \
     -o "$build_dir/bin/$client"
 fi
 readelf -h "$build_dir/bin/$client" | grep -Eq 'Type:.*(EXEC|DYN)' || fail "RF client is not ELF"
 readelf -d "$build_dir/bin/$client" | grep -q 'libams_mel_c' || fail "RF client does not link facade"
-if readelf -d "$build_dir/bin/$client" | grep -q 'libsquall_rf_mel'; then
+if readelf -d "$build_dir/bin/$client" | grep -q -E 'libsquall_rf_mel|lib(rfmel|common_mel)'; then
   fail "RF client directly links Squall"
 fi
 if readelf -d "$build_dir/bin/$client" | grep -q 'libmock_'; then
   fail "RF client directly links mock provider"
-fi
-if { test "$mode" = admin || test "$mode" = c2 || test "$mode" = va || test "$mode" = job; } &&
-    readelf -d "$build_dir/bin/$client" | grep -q 'squall_rf_job_helper'; then
-  fail "RF control client links job helper"
-fi
-
-helper="$build_dir/provider/libsquall_rf_job_helper.so"
-if test "$mode" = rx || test "$mode" = ada; then
-  # TEST-ONLY job helper, compiled in the pinned builder stage (the provider's
-  # own toolchain, boost-devel, and the exact verified checkout headers).
-  builder_image_present=1
-  "$runtime" build -f "$SQUALL_SOURCE_DIR/Containerfile" --target builder \
-    -t "$builder_image" "$SQUALL_SOURCE_DIR"
-  rm -f "$helper"
-  "$runtime" run --rm --network none \
-    -v "$root/integration/squall:/task033d:ro,Z" -v "$build_dir/provider:/out:Z" \
-    "$builder_image" c++ -std=c++20 -O2 -shared -fPIC -Wall -Wextra -Werror \
-    -isystem /build/ams-interfaces/rf-mel/include \
-    -isystem /build/ams-interfaces/common-mel/include \
-    -isystem /build/ams-interfaces/rf-mel/ams-math/include \
-    -isystem /build/ams-interfaces/rf-mel/ams-vita/include \
-    /task033d/squall_rf_job_helper.cpp -o /out/libsquall_rf_job_helper.so
-  if test "$mode" = ada; then
-    # Podman may still be removing its transient --rm helper container. The
-    # EXIT trap retries removal; never force-remove an image in use.
-    if "$runtime" image rm "$builder_image" >/dev/null 2>&1; then
-      builder_image_present=0
-    fi
-  else
-    "$runtime" image rm "$builder_image" >/dev/null
-    builder_image_present=0
-  fi
-  test -s "$helper" || fail "TEST-ONLY RF job helper was not built"
-  if readelf -d "$root/native/build/lib/libams_mel_c.so" | grep -q 'squall_rf_job_helper'; then
-    fail "production facade links the test-only job helper"
-  fi
-  if nm -D --defined-only "$root/native/build/lib/libams_mel_c.so" | grep -q 'squall_rf_test_job'; then
-    fail "production facade exports test-only job helper symbols"
-  fi
 fi
 
 # The smoke mounts pinned config/rf-simulated.toml unchanged. Its emitters are
@@ -361,7 +319,7 @@ while test "$iteration" -le "$repeat"; do
   fi
   if test "$mode" = rx || test "$mode" = ada; then
     LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-      "$build_dir/bin/$client" "$provider" "$profile" "$helper" ||
+      "$build_dir/bin/$client" "$provider" "$profile" ||
       fail "RF ProductRx receive failed; see runtime logs and profile"
   elif test "$mode" = admin || test "$mode" = c2 || test "$mode" = va || test "$mode" = job; then
     LD_LIBRARY_PATH="$root/native/build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \

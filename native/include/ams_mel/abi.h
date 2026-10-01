@@ -2542,6 +2542,20 @@ typedef struct ams_mel_rf_job_info_v1 {
     int64_t lookahead_femtoseconds;
     ams_mel_u32_span_v1 rx_stream_ids;
 } ams_mel_rf_job_info_v1;
+/* Published JobStatus is result data, including Failed* and InProgress. */
+typedef uint32_t ams_mel_rf_job_status_t;
+#define AMS_MEL_RF_JOB_STATUS_NONE UINT32_C(0)
+#define AMS_MEL_RF_JOB_STATUS_IN_PROGRESS UINT32_C(1)
+#define AMS_MEL_RF_JOB_STATUS_COMPLETE UINT32_C(2)
+#define AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID UINT32_C(3)
+#define AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED UINT32_C(4)
+#define AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE UINT32_C(5)
+typedef uint32_t ams_mel_rf_cancel_error_t;
+#define AMS_MEL_RF_CANCEL_ERROR_NONE UINT32_C(0)
+typedef struct ams_mel_rf_job_cancel_result_v1 {
+    uint32_t cancelled; /* exactly 0 or 1, independent of error_code */
+    ams_mel_rf_cancel_error_t error_code;
+} ams_mel_rf_job_cancel_result_v1;
 
 /* One face reported by RFMFAInfo::getFaceIDs(). Booleans are 0/1. Every *_fs
  * field is the upstream ams::util::math::Femtoseconds count() (int64_t
@@ -2625,7 +2639,7 @@ typedef struct ams_mel_rf_job ams_mel_rf_job;
  * shutdown until its last request/VA child is destroyed. VA Close consumes its
  * owner and reports a deferred shutdown failure; finalizers may ignore that
  * failure without unloading uncertain provider code. Access to the same owner
- * must be externally serialized. No Job operations are exposed. */
+ * must be externally serialized. Job operations use the separate Job API. */
 typedef struct ams_mel_rf_virtual_aperture_config_v1 {
     uint32_t va_definition_id;
     uint32_t priority;
@@ -2684,6 +2698,20 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_close(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_view(
     const ams_mel_rf_job *job, const ams_mel_rf_job_info_v1 **out_info,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Serialize calls on the same public owner with Close. Finalize and Cancel are
+ * independently one-shot; Cancel attempted first prohibits Finalize. A pending
+ * Wait never modifies out_status. Close does not cancel or wait for the worker. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_finalize(
+    ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_wait_status(
+    const ams_mel_rf_job *job, uint32_t timeout_ms,
+    ams_mel_rf_job_status_t *out_status, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_cancel(
+    ams_mel_rf_job *job, ams_mel_rf_job_cancel_result_v1 *out_result,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_close(
