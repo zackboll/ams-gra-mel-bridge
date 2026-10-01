@@ -4,6 +4,11 @@ An independent, experimental **consumer-side language binding** for the
 Agile Mission Suite Government Reference Architecture (**AMS GRA**)
 Multi-Function Aperture Encapsulation Layer (**MEL**) interfaces.
 
+Native C now supports one-shot RF Job Finalize, finite status Wait/poll, and
+cached Cancel. Safe Ada lifecycle and ProductRx activation via safe Jobs are
+deferred to 034B2B2; the test-only C++ Job helper remains. See
+`docs/task-034b2b1-native-rf-job-lifecycle.md`.
+
 The project preserves the published **C++ MEL provider boundary**, isolates
 non-C++ interoperability inside a native adapter, exposes a small **C ABI**, and
 builds idiomatic Ada, Rust, and Python interfaces above that ABI. The Ada API

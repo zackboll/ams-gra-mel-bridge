@@ -677,6 +677,27 @@ fn rf_job_signatures_match_the_c_header() {
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_job_view;
     let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_finalize;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfJob,
+        u32,
+        *mut AmsMelRfJobStatus,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_wait_status;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        *mut AmsMelRfJobCancelResultV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_cancel;
+    let _: unsafe extern "C" fn(
         *mut *mut AmsMelRfJob,
         *mut c_char,
         usize,
@@ -807,8 +828,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 132);
-    assert_eq!(exported.len(), 132);
+    assert_eq!(declared.len(), 135);
+    assert_eq!(exported.len(), 135);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1951,6 +1972,20 @@ fn declarations_match_the_c_header() {
         lookahead_femtoseconds,
         rx_stream_ids
     );
+    expected.extend([
+        size_of::<AmsMelRfJobStatus>(),
+        align_of::<AmsMelRfJobStatus>(),
+        size_of::<AmsMelRfCancelError>(),
+        align_of::<AmsMelRfCancelError>(),
+        AMS_MEL_RF_JOB_STATUS_NONE as usize,
+        AMS_MEL_RF_JOB_STATUS_IN_PROGRESS as usize,
+        AMS_MEL_RF_JOB_STATUS_COMPLETE as usize,
+        AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID as usize,
+        AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED as usize,
+        AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE as usize,
+        AMS_MEL_RF_CANCEL_ERROR_NONE as usize,
+    ]);
+    layout!(expected, AmsMelRfJobCancelResultV1, cancelled, error_code);
     expected.extend([
         size_of::<AmsMelRfMfaState>(),
         align_of::<AmsMelRfMfaState>(),

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Task 034B2B1 adds native C RF Job finalize/status/cancel with one worker
+  consuming the finalize future, cached one-shot results, and parent-first
+  provider lifetime. Private raw Ada, Rust sys, and Python ABI parity is added;
+  safe lifecycle and ProductRx helper removal remain deferred.
+
 - Task 034B2A2 adds safe Ada single-RX-group Job configuration, asynchronous
   request ownership, unique Claim, and Ada-owned JobDetail snapshots. Pinned
   Squall accepts a second Job after closing the first and retains the claimed

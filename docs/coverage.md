@@ -1,5 +1,11 @@
 # Implementation coverage
 
+Task 034B2B1: ABI 0.1 has 135 native production exports; vendor 803/803.
+RF RX Job request/snapshot: native C + safe Ada. RF Job finalize/status/cancel:
+native C only; safe Ada lifecycle deferred to 034B2B2. ProductRx activation
+through a safe Ada Job is not implemented, and the test-only C++ job helper
+is still present. See `task-034b2b1-native-rf-job-lifecycle.md`.
+
 Task 034B2A2: ABI 0.1 remains at 132 exports; vendor 803/803 is unchanged.
 Current scope (the 034B2A1 section below is its historical native checkpoint):
 

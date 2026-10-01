@@ -707,6 +707,10 @@ std::atomic<unsigned> va_get_calls{};
 std::mutex job_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>> job_pending;
 std::atomic<unsigned> job_get_calls{};
+std::atomic<unsigned> job_finalize_calls{};
+std::atomic<unsigned> job_cancel_calls{};
+std::mutex finalize_gate_mutex;
+std::vector<std::shared_ptr<std::promise<rfmel::JobStatus>>> finalize_pending;
 std::mutex job_cleanup_mutex;
 std::condition_variable job_cleanup_changed;
 unsigned job_cleanup_shutdowns{};
@@ -745,7 +749,8 @@ private:
 
 class MockJobDetail final : public rfmel::JobDetail {
 public:
-    explicit MockJobDetail(bool throws) : throws_{throws} {}
+    explicit MockJobDetail(bool throws, std::string scenario = {})
+        : throws_{throws}, scenario_{std::move(scenario)} {}
     ~MockJobDetail() override { record("rf_job_destroyed"); }
     ams::util::math::UTCTime actualStartTime() const override
     {
@@ -759,14 +764,61 @@ public:
     rfmel::VirtualApertureInstanceID getVAInstanceID() const override { return 42; }
     rfmel::VirtualApertureDefinitionID getVADefinitionID() const override { return 0xABCDEF01U; }
     uint32_t getJobDetailsID() const override { return 0x10203040U; }
-    std::future<rfmel::JobStatus> finalize() override { forbidden("Job::finalize"); }
+    std::future<rfmel::JobStatus> finalize() override
+    {
+        job_finalize_calls.fetch_add(1U);
+        record("rf_job_finalize");
+        if (scenario_ == "c2:finalize-throw") throw std::runtime_error("mock finalize exception");
+        if (scenario_ == "c2:finalize-unknown-throw") throw 17;
+        if (scenario_ == "c2:finalize-invalid") return {};
+        auto gate = std::make_shared<std::promise<rfmel::JobStatus>>();
+        auto future = gate->get_future();
+        if (scenario_ == "c2:finalize-delayed" || scenario_ == "c2:finalize-cancel" ||
+            scenario_ == "c2:finalize-abandon" || scenario_ == "c2:finalize-shutdown-throw") {
+            std::lock_guard lock{finalize_gate_mutex};
+            finalize_pending.push_back(std::move(gate));
+        } else if (scenario_ == "c2:finalize-future-throw")
+            gate->set_exception(std::make_exception_ptr(std::runtime_error("mock finalize future exception")));
+        else if (scenario_ == "c2:finalize-future-unknown")
+            gate->set_exception(std::make_exception_ptr(17));
+        else if (scenario_ == "c2:finalize-unknown")
+            gate->set_value(static_cast<rfmel::JobStatus>(77));
+        else if (scenario_ == "c2:finalize-none") gate->set_value(rfmel::JobStatus::None);
+        else if (scenario_ == "c2:finalize-progress") gate->set_value(rfmel::JobStatus::InProgress);
+        else if (scenario_ == "c2:finalize-invalid-id") gate->set_value(rfmel::JobStatus::FailedInvalidID);
+        else if (scenario_ == "c2:finalize-interrupted") gate->set_value(rfmel::JobStatus::FailedInterrupted);
+        else if (scenario_ == "c2:finalize-invalid-state") gate->set_value(rfmel::JobStatus::FailedInvalidState);
+        else gate->set_value(rfmel::JobStatus::Complete);
+        return future;
+    }
     void flush() override { forbidden("Job::flush"); }
     void registerJobIntervalStatusCallback(const std::function<void(rfmel::JobIntervalStatus)>&) override
     { forbidden("Job::registerStatus"); }
     void addJobIntervals(const std::vector<rfmel::JobInterval>&) override
     { forbidden("Job::addIntervals"); }
     void cancelRemainingJobIntervals() override { forbidden("Job::cancelIntervals"); }
-    rfmel::CancelStatus cancelJob() override { forbidden("Job::cancelJob"); }
+    rfmel::CancelStatus cancelJob() override
+    {
+        job_cancel_calls.fetch_add(1U);
+        record("rf_job_cancel");
+        if (scenario_ == "c2:cancel-throw") throw std::runtime_error("mock cancel exception");
+        if (scenario_ == "c2:cancel-unknown-throw") throw 17;
+        if (scenario_ == "c2:cancel-unknown")
+            return rfmel::CancelStatus{static_cast<rfmel::CancelError>(77)};
+        if (scenario_ == "c2:finalize-cancel" || scenario_ == "c2:finalize-shutdown-throw") {
+            std::shared_ptr<std::promise<rfmel::JobStatus>> gate;
+            {
+                std::lock_guard lock{finalize_gate_mutex};
+                if (!finalize_pending.empty()) {
+                    gate = std::move(finalize_pending.back());
+                    finalize_pending.pop_back();
+                }
+            }
+            if (gate) gate->set_value(rfmel::JobStatus::Complete);
+        }
+        if (scenario_ == "c2:cancel-false") return rfmel::CancelStatus{rfmel::CancelError::None};
+        return {};
+    }
     void extendJobEvent(uint32_t, rfmel::JobEventID, Femtoseconds) override
     { forbidden("Job::extendJobEvent"); }
     std::vector<rfmel::StreamID> getRxStreamIDs(size_t group) const override
@@ -775,6 +827,7 @@ public:
     Femtoseconds getLookAheadTime() const override { return Femtoseconds{-12345}; }
 private:
     bool throws_;
+    std::string scenario_;
 };
 
 class MockVirtualAperture final : public rfmel::VirtualAperture {
@@ -851,7 +904,7 @@ public:
                     std::string(800, 'X') + "µ end" : "mock Job rejected"}});
         else gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
             scenario_ == "c2:job-null" ? std::shared_ptr<rfmel::JobDetail>{} :
-            std::make_shared<MockJobDetail>(scenario_ == "c2:job-getter-throw")});
+            std::make_shared<MockJobDetail>(scenario_ == "c2:job-getter-throw", scenario_)});
         return future;
     }
     rfmel::ElementGroupDescriptorLookupMap getElementGroups() const override
@@ -978,7 +1031,8 @@ public:
         }
         job_cleanup_changed.notify_all();
         if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw" ||
-            configuration_ == "c2:job-shutdown-throw")
+            configuration_ == "c2:job-shutdown-throw" ||
+            configuration_ == "c2:finalize-shutdown-throw")
             throw std::runtime_error("mock C2 shutdown exception");
     }
 private:
@@ -1064,6 +1118,8 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
         configuration != "c2:va-invalid-future" && configuration != "c2:va-getter-throw" &&
         configuration != "c2:va-shutdown-throw" &&
         configuration != "c2:job-ok" && configuration != "c2:job-delayed" &&
+        configuration.substr(0, 12) != "c2:finalize-" &&
+        configuration.substr(0, 10) != "c2:cancel-" &&
         configuration != "c2:job-shutdown-throw" && configuration != "c2:job-failure" &&
         configuration != "c2:job-long-failure" && configuration != "c2:job-unknown-error" &&
         configuration != "c2:job-future-throw" && configuration != "c2:job-future-unknown" &&
@@ -1106,6 +1162,22 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_release_o
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_get_calls(void)
 { return job_get_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_finalize_calls(void)
+{ return job_finalize_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_cancel_calls(void)
+{ return job_cancel_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_resolve_finalize(void)
+{
+    std::shared_ptr<std::promise<rfmel::JobStatus>> gate;
+    {
+        std::lock_guard lock{finalize_gate_mutex};
+        if (finalize_pending.empty()) return 0;
+        gate = std::move(finalize_pending.back());
+        finalize_pending.pop_back();
+    }
+    gate->set_value(rfmel::JobStatus::Complete);
+    return 1;
+}
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_shutdown_count(void)
 {
     std::lock_guard lock{job_cleanup_mutex};

@@ -1,5 +1,11 @@
 # Experimental C ABI policy
 
+Task 034B2B1 adds three native RF Job lifecycle exports under ABI 0.1 without
+changing `ams_mel_rf_job_info_v1`. Fixed-width JobStatus is result data, not a
+bridge failure. CancelStatus semantic bool and known error enum are returned
+independently; each operation is one-shot. A pending Wait neither cancels nor
+modifies its output. A pending worker keeps the provider graph after Job Close.
+
 Task 034B2A1 adds six native RF Job operations under ABI 0.1. The bounded
 single-RX-group configuration is borrowed only for Submit, and rejects
 duplicate endpoint IDs before translating them into a provider set. A Job

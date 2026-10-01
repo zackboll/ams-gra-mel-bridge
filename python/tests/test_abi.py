@@ -135,6 +135,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_job_request_claim",
                 "ams_mel_rf_job_request_close",
                 "ams_mel_rf_job_view",
+                "ams_mel_rf_job_finalize",
+                "ams_mel_rf_job_wait_status",
+                "ams_mel_rf_job_cancel",
                 "ams_mel_rf_job_close",
                 "ams_mel_rf_data_open",
                 "ams_mel_rf_data_get_provider_version",
@@ -153,8 +156,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 132)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 132)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 135)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 135)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -162,7 +165,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 132)
+        self.assertEqual(len(exported), 135)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -283,6 +286,9 @@ class AbiTests(unittest.TestCase):
             "ams_mel_rf_job_request_claim": [request, ctypes.POINTER(job)],
             "ams_mel_rf_job_request_close": [ctypes.POINTER(request)],
             "ams_mel_rf_job_view": [job, ctypes.POINTER(ctypes.POINTER(_native.RfJobInfoV1))],
+            "ams_mel_rf_job_finalize": [job],
+            "ams_mel_rf_job_wait_status": [job, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)],
+            "ams_mel_rf_job_cancel": [job, ctypes.POINTER(_native.RfJobCancelResultV1)],
             "ams_mel_rf_job_close": [ctypes.POINTER(job)],
         }
         for name, prefix in expected.items():
@@ -1127,6 +1133,10 @@ class AbiTests(unittest.TestCase):
                                      'total_job_duration_femtoseconds', 'va_instance_id',
                                      'va_definition_id', 'job_details_id', 'job_request_id',
                                      'lookahead_femtoseconds', 'rx_stream_ids'))
+        expected.extend([ctypes.sizeof(ctypes.c_uint32), ctypes.alignment(ctypes.c_uint32)] * 2)
+        expected.extend(range(6))
+        expected.append(_native.AMS_MEL_RF_CANCEL_ERROR_NONE)
+        expected.extend(self._layout(_native.RfJobCancelResultV1, 'cancelled', 'error_code'))
         for handle in (ctypes.c_uint32, _native.RfDataHandle, _native.RfMfaInfoHandle,
                        ctypes.c_uint32):
             expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])

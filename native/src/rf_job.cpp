@@ -3,6 +3,7 @@
 #include "internal/provider_common.hpp"
 #include "internal/rf_va_job_parent.hpp"
 #include <rfmel/c2/ElementGroupCommand.h>
+#include <rfmel/c2/CancelStatus.h>
 #include <rfmel/c2/JobDetail.h>
 #include <rfmel/c2/JobRequest.h>
 
@@ -212,12 +213,103 @@ void run_worker(std::shared_ptr<WorkerInput> input) noexcept
 } // namespace
 
 struct ams_mel_rf_job_request { std::shared_ptr<Completion> completion; };
-struct ams_mel_rf_job {
+namespace {
+static_assert(static_cast<int>(rfmel::JobStatus::None) == AMS_MEL_RF_JOB_STATUS_NONE);
+static_assert(static_cast<int>(rfmel::JobStatus::InProgress) == AMS_MEL_RF_JOB_STATUS_IN_PROGRESS);
+static_assert(static_cast<int>(rfmel::JobStatus::Complete) == AMS_MEL_RF_JOB_STATUS_COMPLETE);
+static_assert(static_cast<int>(rfmel::JobStatus::FailedInvalidID) == AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID);
+static_assert(static_cast<int>(rfmel::JobStatus::FailedInterrupted) == AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED);
+static_assert(static_cast<int>(rfmel::JobStatus::FailedInvalidState) == AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE);
+static_assert(static_cast<int>(rfmel::CancelError::None) == AMS_MEL_RF_CANCEL_ERROR_NONE);
+
+struct JobState {
     std::shared_ptr<rfmel::JobDetail> detail;
     std::shared_ptr<rfmel::VirtualAperture> va;
     RfC2ChildClaim claim;
     std::vector<std::uint32_t> streams;
     ams_mel_rf_job_info_v1 info{};
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool finalize_attempted{};
+    bool finalize_running{};
+    ams_mel_status_t finalize_result{AMS_MEL_OK};
+    std::string finalize_message;
+    bool terminal{};
+    ams_mel_status_t terminal_result{AMS_MEL_OK};
+    ams_mel_rf_job_status_t published_status{};
+    std::string terminal_message;
+    bool cancel_attempted{};
+    bool cancel_running{};
+    ams_mel_status_t cancel_result{AMS_MEL_OK};
+    ams_mel_rf_job_cancel_result_v1 cancelled{};
+    std::string cancel_message;
+    /* Explicit Close releases the claim itself so a deferred shutdown error
+     * can be returned to that caller. Worker-only cleanup uses this fallback. */
+    ~JobState() { detail.reset(); va.reset(); (void)claim.release(); }
+};
+struct FinalizeInput {
+    std::shared_ptr<JobState> state;
+    std::future<rfmel::JobStatus> future;
+    std::shared_ptr<FinalizeInput> emergency_self;
+    FinalizeInput *next{};
+    std::atomic<bool> retained{};
+    std::atomic<unsigned> launch_state{};
+};
+void retain_finalize(const std::shared_ptr<FinalizeInput>& input) noexcept
+{
+    static std::atomic<FinalizeInput *> root{};
+    bool expected = false;
+    if (!input->retained.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) return;
+    input->emergency_self = input;
+    auto *head = root.load(std::memory_order_relaxed);
+    do { input->next = head; }
+    while (!root.compare_exchange_weak(head, input.get(), std::memory_order_release,
+                                       std::memory_order_relaxed));
+}
+void finalize_worker(std::shared_ptr<FinalizeInput> input) noexcept
+{
+    unsigned launch = input->launch_state.load(std::memory_order_acquire);
+    while (launch == 0U) {
+        std::this_thread::yield();
+        launch = input->launch_state.load(std::memory_order_acquire);
+    }
+    if (launch == 2U) return;
+    ams_mel_status_t result = AMS_MEL_OK;
+    ams_mel_rf_job_status_t value{};
+    std::string message;
+    try {
+        /* Sole production Job-finalize future.get(): never on the C caller. */
+        const auto published = input->future.get();
+        if (published != rfmel::JobStatus::None && published != rfmel::JobStatus::InProgress &&
+            published != rfmel::JobStatus::Complete && published != rfmel::JobStatus::FailedInvalidID &&
+            published != rfmel::JobStatus::FailedInterrupted &&
+            published != rfmel::JobStatus::FailedInvalidState) {
+            result = AMS_MEL_PROVIDER_FAILED;
+            message = "unknown provider JobStatus";
+        } else value = static_cast<ams_mel_rf_job_status_t>(published);
+    } catch (const std::bad_alloc&) {
+        result = AMS_MEL_INTERNAL_ERROR;
+        try { message = "Job finalize completion allocation failed"; } catch (...) {}
+    } catch (...) {
+        result = AMS_MEL_PROVIDER_EXCEPTION;
+        try { message = exception_text("provider Job finalize future exception",
+                                       "unknown provider Job finalize future exception"); } catch (...) {}
+    }
+    /* Release the consumed provider future before publishing terminal status.
+     * Do not destroy provider objects under a live future. */
+    input->future = {};
+    try {
+        std::lock_guard lock{input->state->mutex};
+        input->state->terminal_result = result;
+        input->state->published_status = value;
+        input->state->terminal_message.swap(message);
+        input->state->terminal = true;
+        input->state->changed.notify_all();
+    } catch (...) { retain_finalize(input); }
+}
+} // namespace
+struct ams_mel_rf_job {
+    std::shared_ptr<JobState> state;
 };
 
 extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
@@ -386,22 +478,24 @@ extern "C" ams_mel_status_t ams_mel_rf_job_request_claim(
         try {
             if (failpoint("job-owner")) throw std::bad_alloc{};
             owner = std::make_unique<ams_mel_rf_job>();
+            owner->state = std::make_shared<JobState>();
+            auto& state = *owner->state;
             getter_started = true;
             const auto time = completion.job->actualStartTime();
-            owner->info.actual_start_seconds = time.getIntegralSeconds().count();
-            owner->info.actual_start_femtoseconds = time.getFractionalFemtoseconds().count();
-            owner->info.total_job_duration_femtoseconds = completion.job->totalJobDuration().count();
-            owner->info.va_instance_id = completion.job->getVAInstanceID();
-            owner->info.va_definition_id = completion.job->getVADefinitionID();
-            owner->info.job_details_id = completion.job->getJobDetailsID();
-            owner->streams = completion.job->getRxStreamIDs(0);
-            owner->info.job_request_id = completion.job->getJobRequestId();
-            owner->info.lookahead_femtoseconds = completion.job->getLookAheadTime().count();
+            state.info.actual_start_seconds = time.getIntegralSeconds().count();
+            state.info.actual_start_femtoseconds = time.getFractionalFemtoseconds().count();
+            state.info.total_job_duration_femtoseconds = completion.job->totalJobDuration().count();
+            state.info.va_instance_id = completion.job->getVAInstanceID();
+            state.info.va_definition_id = completion.job->getVADefinitionID();
+            state.info.job_details_id = completion.job->getJobDetailsID();
+            state.streams = completion.job->getRxStreamIDs(0);
+            state.info.job_request_id = completion.job->getJobRequestId();
+            state.info.lookahead_femtoseconds = completion.job->getLookAheadTime().count();
             if (failpoint("job-snapshot")) throw std::bad_alloc{};
-            owner->info.rx_stream_ids = {owner->streams.empty() ? nullptr : owner->streams.data(), owner->streams.size()};
-            owner->detail = std::move(completion.job);
-            owner->va = std::move(completion.va);
-            owner->claim = std::move(completion.claim);
+            state.info.rx_stream_ids = {state.streams.empty() ? nullptr : state.streams.data(), state.streams.size()};
+            state.detail = std::move(completion.job);
+            state.va = std::move(completion.va);
+            state.claim = std::move(completion.claim);
             completion.claimed = true;
             completion.changed.notify_all();
             *out_job = owner.release();
@@ -469,10 +563,154 @@ extern "C" ams_mel_status_t ams_mel_rf_job_view(
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 {
     clear_diagnostic(diagnostic, capacity, required);
-    if (!job || !job->detail || !out_info || *out_info || bad_diag(diagnostic, capacity))
+    if (!job || !job->state || !job->state->detail || !out_info || *out_info || bad_diag(diagnostic, capacity))
         return AMS_MEL_INVALID_ARGUMENT;
-    *out_info = &job->info;
+    *out_info = &job->state->info;
     return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_finalize(
+    ams_mel_rf_job *job, char *diagnostic, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    auto state = job->state;
+    try {
+        std::unique_lock lock{state->mutex};
+        if (state->finalize_attempted) {
+            state->changed.wait(lock, [&] { return !state->finalize_running; });
+            write_diagnostic(state->finalize_message, diagnostic, capacity, required);
+            return state->finalize_result;
+        }
+        if (state->cancel_attempted) {
+            write_diagnostic("cancellation was already attempted", diagnostic, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        auto input = std::make_shared<FinalizeInput>();
+        input->state = state;
+        /* Every bridge allocation needed to publish a post-provider launch
+         * failure is completed before invoking finalize(). */
+        std::string message;
+        message.reserve(256);
+        state->finalize_attempted = true;
+        state->finalize_running = true;
+        lock.unlock();
+        ams_mel_status_t result = AMS_MEL_OK;
+        try {
+            input->future = state->detail->finalize();
+            if (!input->future.valid()) {
+                result = AMS_MEL_PROVIDER_FAILED;
+                message = "provider Job finalize returned invalid future";
+            } else {
+                input->emergency_self = input;
+                try {
+                    if (failpoint("finalize-worker-launch"))
+                        throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
+                    std::thread{[input] { finalize_worker(input); }}.detach();
+                    input->emergency_self.reset();
+                    input->launch_state.store(1U, std::memory_order_release);
+                } catch (...) {
+                    retain_finalize(input);
+                    input->launch_state.store(2U, std::memory_order_release);
+                    result = AMS_MEL_INTERNAL_ERROR;
+                    message = "Job finalize worker launch failed; future and provider graph retained";
+                }
+            }
+        } catch (...) {
+            result = AMS_MEL_PROVIDER_EXCEPTION;
+            try { message = exception_text("provider Job finalize exception",
+                                           "unknown provider Job finalize exception"); } catch (...) {}
+        }
+        lock.lock();
+        state->finalize_result = result;
+        state->finalize_message.swap(message);
+        state->finalize_running = false;
+        state->changed.notify_all();
+        write_diagnostic(state->finalize_message, diagnostic, capacity, required);
+        return result;
+    } catch (...) {
+        write_diagnostic("Job finalize bridge failure", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_wait_status(
+    const ams_mel_rf_job *job, std::uint32_t timeout_ms,
+    ams_mel_rf_job_status_t *out_status, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !out_status || bad_diag(diagnostic, capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        auto& state = *job->state;
+        std::unique_lock lock{state.mutex};
+        if (!state.finalize_attempted) {
+            write_diagnostic("Job finalize has not been attempted", diagnostic, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        if (!state.finalize_running && state.finalize_result != AMS_MEL_OK) {
+            write_diagnostic(state.finalize_message, diagnostic, capacity, required);
+            return state.finalize_result;
+        }
+        if (!state.changed.wait_for(lock, std::chrono::milliseconds{timeout_ms},
+                                    [&] { return state.terminal || (!state.finalize_running && state.finalize_result != AMS_MEL_OK); }))
+            return AMS_MEL_TIMEOUT;
+        if (!state.terminal) {
+            write_diagnostic(state.finalize_message, diagnostic, capacity, required);
+            return state.finalize_result;
+        }
+        write_diagnostic(state.terminal_message, diagnostic, capacity, required);
+        if (state.terminal_result == AMS_MEL_OK) *out_status = state.published_status;
+        return state.terminal_result;
+    } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_cancel(
+    ams_mel_rf_job *job, ams_mel_rf_job_cancel_result_v1 *out_result,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !job->state->detail || !out_result || bad_diag(diagnostic, capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    auto state = job->state;
+    try {
+        std::unique_lock lock{state->mutex};
+        if (state->cancel_attempted) {
+            state->changed.wait(lock, [&] { return !state->cancel_running; });
+        } else {
+            std::string message;
+            message.reserve(256);
+            state->cancel_attempted = true;
+            state->cancel_running = true;
+            state->changed.wait(lock, [&] { return !state->finalize_running; });
+            lock.unlock(); /* Provider may fulfill the finalize future here. */
+            ams_mel_status_t result = AMS_MEL_OK;
+            ams_mel_rf_job_cancel_result_v1 cancelled{};
+            try {
+                const auto answer = state->detail->cancelJob();
+                if (answer.getError() != rfmel::CancelError::None) {
+                    result = AMS_MEL_PROVIDER_FAILED;
+                    message = "unknown provider CancelError";
+                } else {
+                    cancelled.cancelled = static_cast<bool>(answer) ? 1U : 0U;
+                    cancelled.error_code = AMS_MEL_RF_CANCEL_ERROR_NONE;
+                }
+            } catch (...) {
+                result = AMS_MEL_PROVIDER_EXCEPTION;
+                try { message = exception_text("provider Job cancel exception",
+                                               "unknown provider Job cancel exception"); } catch (...) {}
+            }
+            lock.lock();
+            state->cancel_result = result;
+            state->cancelled = cancelled;
+            state->cancel_message.swap(message);
+            state->cancel_running = false;
+            state->changed.notify_all();
+        }
+        write_diagnostic(state->cancel_message, diagnostic, capacity, required);
+        if (state->cancel_result == AMS_MEL_OK) *out_result = state->cancelled;
+        return state->cancel_result;
+    } catch (...) { return AMS_MEL_INTERNAL_ERROR; }
 }
 extern "C" ams_mel_status_t ams_mel_rf_job_close(
     ams_mel_rf_job **job, char *diagnostic,
@@ -482,11 +720,22 @@ extern "C" ams_mel_status_t ams_mel_rf_job_close(
     if (!job || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
     auto owned = std::exchange(*job, nullptr);
     if (!owned) return AMS_MEL_OK;
-    auto claim = std::move(owned->claim);
-    owned->detail.reset();
-    owned->va.reset();
+    auto state = std::move(owned->state);
     delete owned;
-    const auto shutdown = claim.release();
+    if (!state) return AMS_MEL_OK;
+    {
+        std::lock_guard lock{state->mutex};
+        /* Terminal publication happens only after releasing the consumed
+         * future. A pending worker keeps the graph; Close never waits. */
+        if (state->finalize_attempted && !state->terminal &&
+            (state->finalize_running || state->finalize_result == AMS_MEL_OK ||
+             (state->finalize_result == AMS_MEL_INTERNAL_ERROR &&
+              state->finalize_message.find("retained") != std::string::npos)))
+            return AMS_MEL_OK;
+    }
+    state->detail.reset();
+    state->va.reset();
+    const auto shutdown = state->claim.release();
     write_diagnostic(shutdown.message, diagnostic, capacity, required);
     return shutdown.status;
 }

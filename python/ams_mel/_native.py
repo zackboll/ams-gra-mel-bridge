@@ -1197,6 +1197,19 @@ class RfJobInfoV1(ctypes.Structure):
                 ("rx_stream_ids", U32SpanV1)]
 
 
+AMS_MEL_RF_JOB_STATUS_NONE = 0
+AMS_MEL_RF_JOB_STATUS_IN_PROGRESS = 1
+AMS_MEL_RF_JOB_STATUS_COMPLETE = 2
+AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID = 3
+AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED = 4
+AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE = 5
+AMS_MEL_RF_CANCEL_ERROR_NONE = 0
+
+
+class RfJobCancelResultV1(ctypes.Structure):
+    _fields_ = [("cancelled", ctypes.c_uint32), ("error_code", ctypes.c_uint32)]
+
+
 ams_mel_rf_c2_submit_virtual_aperture = _LIBRARY.ams_mel_rf_c2_submit_virtual_aperture
 ams_mel_rf_c2_submit_virtual_aperture.argtypes = [
     RfC2Handle, ctypes.POINTER(RfVaConfigV1), ctypes.POINTER(RfVaRequestHandle), *_CHANNEL_DIAGNOSTIC]
@@ -1241,6 +1254,17 @@ ams_mel_rf_job_view = _LIBRARY.ams_mel_rf_job_view
 ams_mel_rf_job_view.argtypes = [RfJobHandle, ctypes.POINTER(ctypes.POINTER(RfJobInfoV1)),
                                 *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_view.restype = ctypes.c_int32
+ams_mel_rf_job_finalize = _LIBRARY.ams_mel_rf_job_finalize
+ams_mel_rf_job_finalize.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_finalize.restype = ctypes.c_int32
+ams_mel_rf_job_wait_status = _LIBRARY.ams_mel_rf_job_wait_status
+ams_mel_rf_job_wait_status.argtypes = [RfJobHandle, ctypes.c_uint32,
+                                       ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_wait_status.restype = ctypes.c_int32
+ams_mel_rf_job_cancel = _LIBRARY.ams_mel_rf_job_cancel
+ams_mel_rf_job_cancel.argtypes = [RfJobHandle, ctypes.POINTER(RfJobCancelResultV1),
+                                  *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_cancel.restype = ctypes.c_int32
 ams_mel_rf_job_close = _LIBRARY.ams_mel_rf_job_close
 ams_mel_rf_job_close.argtypes = [ctypes.POINTER(RfJobHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_close.restype = ctypes.c_int32
@@ -1506,6 +1530,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_request_claim",
     "ams_mel_rf_job_request_close",
     "ams_mel_rf_job_view",
+    "ams_mel_rf_job_finalize",
+    "ams_mel_rf_job_wait_status",
+    "ams_mel_rf_job_cancel",
     "ams_mel_rf_job_close",
     "ams_mel_rf_data_open",
     "ams_mel_rf_data_get_provider_version",

@@ -1774,6 +1774,18 @@ private package AMS.MEL_C_API is
       RX_Stream_IDs                   : U32_Span_V1;
    end record
    with Convention => C;
+   RF_Job_Status_None                 : constant Interfaces.Unsigned_32 := 0;
+   RF_Job_Status_In_Progress          : constant Interfaces.Unsigned_32 := 1;
+   RF_Job_Status_Complete             : constant Interfaces.Unsigned_32 := 2;
+   RF_Job_Status_Failed_Invalid_ID    : constant Interfaces.Unsigned_32 := 3;
+   RF_Job_Status_Failed_Interrupted   : constant Interfaces.Unsigned_32 := 4;
+   RF_Job_Status_Failed_Invalid_State : constant Interfaces.Unsigned_32 := 5;
+   RF_Cancel_Error_None               : constant Interfaces.Unsigned_32 := 0;
+   type RF_Job_Cancel_Result_V1 is record
+      Cancelled  : Interfaces.Unsigned_32;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
    type RF_Face_Info_V1 is record
       Face_ID                       : Interfaces.Unsigned_32;
       Supports_Receive              : Interfaces.Unsigned_32;
@@ -1895,6 +1907,27 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_view";
+   function RF_Job_Finalize
+     (Handle              : RF_Job_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_finalize";
+   function RF_Job_Wait_Status
+     (Handle              : RF_Job_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Status              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_wait_status";
+   function RF_Job_Cancel
+     (Handle              : RF_Job_Handle;
+      Result              : access RF_Job_Cancel_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_cancel";
    function RF_Job_Close
      (Handle              : access RF_Job_Handle;
       Diagnostic          : System.Address;

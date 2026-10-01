@@ -645,6 +645,18 @@ int main(void)
         FIELD(ams_mel_rf_job_info_v1,job_request_id);
         FIELD(ams_mel_rf_job_info_v1,lookahead_femtoseconds);
         FIELD(ams_mel_rf_job_info_v1,rx_stream_ids));
+    LAYOUT(ams_mel_rf_job_status_t);
+    LAYOUT(ams_mel_rf_cancel_error_t);
+    VALUE(AMS_MEL_RF_JOB_STATUS_NONE);
+    VALUE(AMS_MEL_RF_JOB_STATUS_IN_PROGRESS);
+    VALUE(AMS_MEL_RF_JOB_STATUS_COMPLETE);
+    VALUE(AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID);
+    VALUE(AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED);
+    VALUE(AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE);
+    VALUE(AMS_MEL_RF_CANCEL_ERROR_NONE);
+    RECORD(ams_mel_rf_job_cancel_result_v1,
+        FIELD(ams_mel_rf_job_cancel_result_v1,cancelled);
+        FIELD(ams_mel_rf_job_cancel_result_v1,error_code));
     LAYOUT(ams_mel_rf_mfa_state_t);
     LAYOUT(ams_mel_rf_data *);
     LAYOUT(ams_mel_rf_mfa_info *);

@@ -2,6 +2,7 @@
 #include <ams_mel/abi.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <sched.h>
 #include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,7 +61,9 @@ static void open_va(const char *scenario, ams_mel_rf_c2 **c2, ams_mel_rf_virtual
 {
     ams_mel_rf_virtual_aperture_request *r=NULL;
     ams_mel_rf_virtual_aperture_result_v1 result={0};
-    CHECK(ams_mel_rf_c2_open(AMS_MEL_TEST_MOCK_RF_PROVIDER,scenario,c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+    ams_mel_status_t opened=ams_mel_rf_c2_open(AMS_MEL_TEST_MOCK_RF_PROVIDER,scenario,c2,diag,sizeof diag,&required);
+    if (opened!=AMS_MEL_OK) fprintf(stderr,"open %s: %d %s\n",scenario,opened,diag);
+    CHECK(opened==AMS_MEL_OK);
     CHECK(ams_mel_rf_c2_submit_virtual_aperture(*c2,&va_config,&r,diag,sizeof diag,&required)==AMS_MEL_OK);
     CHECK(ams_mel_rf_virtual_aperture_request_wait(r,3000,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
     CHECK(ams_mel_rf_virtual_aperture_request_claim(r,va,diag,sizeof diag,&required)==AMS_MEL_OK);
@@ -94,11 +97,198 @@ static void close_all(ams_mel_rf_job_request **r, ams_mel_rf_virtual_aperture **
     CHECK(ams_mel_rf_virtual_aperture_close(va,diag,sizeof diag,&required)==AMS_MEL_OK);
     CHECK(ams_mel_rf_c2_close(c2,diag,sizeof diag,&required)==AMS_MEL_OK);
 }
+static ams_mel_rf_job *claimed(const char *scenario, ams_mel_rf_c2 **c2,
+                              ams_mel_rf_virtual_aperture **va)
+{
+    ams_mel_rf_job_request *r;
+    ams_mel_rf_job *job=NULL;
+    ams_mel_rf_job_result_v1 result={0};
+    open_va(scenario,c2,va); r=submit(*va);
+    CHECK(wait_for(r,&result)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_job_request_claim(r,&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_job_request_close(&r,diag,sizeof diag,&required)==AMS_MEL_OK);
+    return job;
+}
+static void lifecycle_case(const char *scenario, ams_mel_status_t start,
+                           ams_mel_status_t finish, ams_mel_rf_job_status_t expected)
+{
+    ams_mel_rf_c2 *c2=NULL;
+    ams_mel_rf_virtual_aperture *va=NULL;
+    ams_mel_rf_job *job;
+    ams_mel_rf_job_status_t status=99;
+    unsigned before=mock_call("mock_rf_job_finalize_calls");
+    reset(); job=claimed(scenario,&c2,&va);
+    CHECK(ams_mel_rf_job_wait_status(job,0,&status,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+    CHECK(strstr(diag,"not been attempted") && status==99);
+    CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==start);
+    char first[sizeof diag]; strcpy(first,diag);
+    CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==start);
+    CHECK(strcmp(first,diag)==0 && mock_call("mock_rf_job_finalize_calls")==before+1);
+    CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==finish);
+    if (finish==AMS_MEL_OK) CHECK(status==expected);
+    else CHECK(status==99);
+    strcpy(first,diag);
+    CHECK(ams_mel_rf_job_wait_status(job,0,&status,diag,sizeof diag,&required)==finish);
+    CHECK(strcmp(first,diag)==0);
+    check_snapshot(job);
+    CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(count("rf_job_destroyed\n")==1 && count("rf_c2_shutdown\n")==1);
+}
+static void lifecycle_tests(void)
+{
+    static const struct { const char *name; ams_mel_rf_job_status_t value; } statuses[]={
+        {"c2:finalize-complete",AMS_MEL_RF_JOB_STATUS_COMPLETE},
+        {"c2:finalize-none",AMS_MEL_RF_JOB_STATUS_NONE},
+        {"c2:finalize-progress",AMS_MEL_RF_JOB_STATUS_IN_PROGRESS},
+        {"c2:finalize-invalid-id",AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_ID},
+        {"c2:finalize-interrupted",AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED},
+        {"c2:finalize-invalid-state",AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE}};
+    for (size_t i=0;i<sizeof statuses/sizeof *statuses;++i)
+        lifecycle_case(statuses[i].name,AMS_MEL_OK,AMS_MEL_OK,statuses[i].value);
+    lifecycle_case("c2:finalize-throw",AMS_MEL_PROVIDER_EXCEPTION,AMS_MEL_PROVIDER_EXCEPTION,0);
+    lifecycle_case("c2:finalize-unknown-throw",AMS_MEL_PROVIDER_EXCEPTION,AMS_MEL_PROVIDER_EXCEPTION,0);
+    lifecycle_case("c2:finalize-invalid",AMS_MEL_PROVIDER_FAILED,AMS_MEL_PROVIDER_FAILED,0);
+    lifecycle_case("c2:finalize-future-throw",AMS_MEL_OK,AMS_MEL_PROVIDER_EXCEPTION,0);
+    lifecycle_case("c2:finalize-future-unknown",AMS_MEL_OK,AMS_MEL_PROVIDER_EXCEPTION,0);
+    lifecycle_case("c2:finalize-unknown",AMS_MEL_OK,AMS_MEL_PROVIDER_FAILED,0);
+    {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        ams_mel_rf_job_status_t status=99;
+        reset(); ams_mel_rf_job *job=claimed("c2:finalize-future-throw",&c2,&va);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(status==99); check_snapshot(job);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        const char *events=logfile();
+        CHECK(strstr(events,"rf_job_destroyed\n") < strstr(events,"rf_va_destroyed\n"));
+        CHECK(strstr(events,"rf_va_destroyed\n") < strstr(events,"rf_c2_shutdown\n"));
+    }
+    const char *cancels[]={"c2:cancel-false","c2:cancel-unknown","c2:cancel-throw",
+                           "c2:cancel-unknown-throw"};
+    for (size_t i=0;i<sizeof cancels/sizeof *cancels;++i) {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        reset(); ams_mel_rf_job *job=claimed(cancels[i],&c2,&va);
+        ams_mel_rf_job_cancel_result_v1 result={77,88};
+        unsigned calls=mock_call("mock_rf_job_cancel_calls");
+        ams_mel_status_t expected=i==0 ? AMS_MEL_OK : i==1 ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_PROVIDER_EXCEPTION;
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==expected);
+        char first[sizeof diag]; strcpy(first,diag);
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==expected);
+        CHECK(strcmp(first,diag)==0 && mock_call("mock_rf_job_cancel_calls")==calls+1);
+        if (i==0) CHECK(result.cancelled==0 && result.error_code==AMS_MEL_RF_CANCEL_ERROR_NONE);
+        else CHECK(result.cancelled==77 && result.error_code==88);
+        calls=mock_call("mock_rf_job_finalize_calls");
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(strstr(diag,"cancellation was already attempted"));
+        CHECK(mock_call("mock_rf_job_finalize_calls")==calls);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+    }
+    {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        ams_mel_rf_job_cancel_result_v1 result={77,88};
+        unsigned before=mock_call("mock_rf_job_finalize_calls");
+        reset(); ams_mel_rf_job *job=claimed("c2:cancel-success",&c2,&va);
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(result.cancelled==1 && result.error_code==AMS_MEL_RF_CANCEL_ERROR_NONE);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(mock_call("mock_rf_job_finalize_calls")==before);
+        check_snapshot(job);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+    }
+    for (unsigned repeat=0;repeat<50;++repeat) {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        ams_mel_rf_job_status_t status=99;
+        ams_mel_rf_job_cancel_result_v1 result={0};
+        unsigned f=mock_call("mock_rf_job_finalize_calls"), c=mock_call("mock_rf_job_cancel_calls");
+        reset(); ams_mel_rf_job *job=claimed("c2:finalize-cancel",&c2,&va);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,0,&status,diag,sizeof diag,&required)==AMS_MEL_TIMEOUT && status==99);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(!strstr(logfile(),"rf_c2_shutdown\n") && !strstr(logfile(),"rf_va_destroyed\n"));
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(result.cancelled==1 && result.error_code==AMS_MEL_RF_CANCEL_ERROR_NONE);
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_OK &&
+              status==AMS_MEL_RF_JOB_STATUS_COMPLETE);
+        CHECK(mock_call("mock_rf_job_finalize_calls")==f+1 && mock_call("mock_rf_job_cancel_calls")==c+1);
+        check_snapshot(job);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(count("rf_job_destroyed\n")==1 && count("rf_va_destroyed\n")==1 &&
+              count("rf_c2_shutdown\n")==1 && count("library_unloaded\n")==1);
+    }
+    /* Abandonment leaves the future, detail, VA, claim and DSO with worker. */
+    {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        unsigned shutdown=mock_call("mock_rf_job_shutdown_count");
+        reset(); ams_mel_rf_job *job=claimed("c2:finalize-abandon",&c2,&va);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK && !job);
+        CHECK(!strstr(logfile(),"rf_job_destroyed\n") && !strstr(logfile(),"rf_c2_shutdown\n") &&
+              !strstr(logfile(),"library_unloaded\n"));
+        CHECK(mock_call("mock_rf_job_resolve_finalize")==1);
+        CHECK(mock_wait(shutdown)==1);
+        for (unsigned spin=0;spin<1000000 && !strstr(logfile(),"library_unloaded\n");++spin)
+            CHECK(sched_yield()==0);
+        const char *events=logfile();
+        const char *detail=strstr(events,"rf_job_destroyed\n");
+        const char *va_end=strstr(events,"rf_va_destroyed\n");
+        const char *c2_end=strstr(events,"rf_c2_shutdown\n");
+        const char *dso=strstr(events,"library_unloaded\n");
+        if (!(detail && va_end && c2_end && dso && detail<va_end && va_end<c2_end && c2_end<dso))
+            fprintf(stderr,"abandon log: %s\n",events);
+        CHECK(detail && va_end && c2_end && dso && detail<va_end && va_end<c2_end && c2_end<dso);
+        CHECK(!strstr(events,"rf_job_cancel\n"));
+    }
+    {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        ams_mel_rf_job_status_t status=99;
+        ams_mel_rf_job_cancel_result_v1 result={0};
+        reset(); ams_mel_rf_job *job=claimed("c2:finalize-shutdown-throw",&c2,&va);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_OK &&
+              status==AMS_MEL_RF_JOB_STATUS_COMPLETE);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(count("rf_c2_shutdown\n")==1 && !strstr(logfile(),"library_unloaded\n"));
+    }
+}
 static void retention_case(const char *failure)
 {
     ams_mel_rf_c2 *c2=NULL;
     ams_mel_rf_virtual_aperture *va=NULL;
     ams_mel_rf_job_request *request=NULL;
+    if (!strcmp(failure,"finalize-worker-launch")) {
+        ams_mel_rf_job *job;
+        ams_mel_rf_job_status_t status=99;
+        reset(); job=claimed("c2:finalize-delayed",&c2,&va);
+        CHECK(setenv("AMS_MEL_TEST_RF_JOB_FAILURE",failure,1)==0);
+        unsigned before=mock_call("mock_rf_job_finalize_calls");
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_INTERNAL_ERROR);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_INTERNAL_ERROR);
+        CHECK(mock_call("mock_rf_job_finalize_calls")==before+1);
+        CHECK(ams_mel_rf_job_wait_status(job,0,&status,diag,sizeof diag,&required)==AMS_MEL_INTERNAL_ERROR && status==99);
+        CHECK(unsetenv("AMS_MEL_TEST_RF_JOB_FAILURE")==0);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(!strstr(logfile(),"rf_job_destroyed\n") && !strstr(logfile(),"rf_va_destroyed\n") &&
+              !strstr(logfile(),"rf_c2_shutdown\n") && !strstr(logfile(),"library_unloaded\n"));
+        return;
+    }
     reset(); open_va("c2:job-delayed",&c2,&va);
     CHECK(setenv("AMS_MEL_TEST_RF_JOB_FAILURE",failure,1)==0);
     CHECK(ams_mel_rf_virtual_aperture_submit_job(va,&config,&request,diag,sizeof diag,&required)==
@@ -130,6 +320,8 @@ int main(int argc, char **argv)
     isolated_retention(argv[0],"worker-launch");
     isolated_retention(argv[0],"post-provider-allocation");
     isolated_retention(argv[0],"publication");
+    isolated_retention(argv[0],"finalize-worker-launch");
+    lifecycle_tests();
     ams_mel_rf_c2 *c2=NULL;
     ams_mel_rf_virtual_aperture *va=NULL;
     ams_mel_rf_job_request *r=NULL;
