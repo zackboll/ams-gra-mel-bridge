@@ -1,3 +1,24 @@
+# Task 034C2 RF PhysicalData declaration closure
+
+Starting main: `be78151b7da016fde9b62057a1cca96540c9a997` (merged PR #63).
+The focused `#include <rfmel/mfa/PhysicalData.h>` compiler dependency probe
+used the clean full pinned RF/Common MEL, Math and VITA checkouts, with the
+existing pinned Boost 1.83.0 closure. GCC observed 516 project headers
+(RF 4, Common 23, Math 5, VITA 5, Boost 479); Clang 19 observed 517
+(RF 4, Common 23, Math 5, VITA 5, Boost 480).
+The exact missing union is one file:
+`native/vendor/rf-mel/include/rfmel/mfa/PhysicalData.h`, copied byte-identically
+from RF revision `762ce84c5555dd0f3ea66f36b321fecf8839b89f`.
+It directly includes Common `MFA_Component.h` and RF `RFMELTypes.h`;
+the former reaches `Directional.h` and `UCI_ID.h`. All other declarations
+were already vendored. Common remains pinned at
+`f6908437d8fd2f7fb69896f9eb9cfd272d10c439`.
+The expanded ordinary Admin/C2/VA/JobDetail/PhysicalData closure is GCC 712,
+Clang 713, union 714 (RF 53, Common 24, Math 5, VITA 5, Boost union 627).
+Its compile probe checks all const scalar and nested string getter types used
+by the snapshot. Path classification still rejects system/unpinned fallback.
+Inventory is 804; all original 803 blobs are unchanged.
+
 # Task 034B2A RF JobDetail declaration closure
 
 Starting main: `087d96978ca7812941f8a826ef5f8ef341b3ea4c`.

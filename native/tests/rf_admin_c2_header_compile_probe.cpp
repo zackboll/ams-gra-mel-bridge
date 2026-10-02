@@ -7,6 +7,7 @@
 #include <rfmel/c2/C2MEL.h>
 #include <rfmel/c2/VirtualAperture.h>
 #include <rfmel/c2/JobDetail.h>
+#include <rfmel/mfa/PhysicalData.h>
 
 #include <memory>
 #include <string_view>
@@ -22,6 +23,28 @@ static_assert(std::is_abstract_v<rfmel::AdminMEL>);
 static_assert(std::is_abstract_v<rfmel::C2MEL>);
 static_assert(std::is_abstract_v<rfmel::VirtualAperture>);
 static_assert(std::is_abstract_v<rfmel::JobDetail>);
+
+// Check the complete const getter surface consumed by the PhysicalData snapshot.
+using Physical = const rfmel::PhysicalData&;
+using Installation = decltype(std::declval<Physical>().getInstallationDetails());
+using Location = decltype(std::declval<Installation>().getLocation());
+using Key = decltype(std::declval<Location>().getLocationId());
+using Orientation = decltype(std::declval<Installation>().getOrientation());
+using Boresight = decltype(std::declval<Installation>().getBoresight());
+static_assert(std::is_same_v<decltype(std::declval<Physical>().getAntennaHeight()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Physical>().getAntennaWidth()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Physical>().getLatticeAngle()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Location>().getOffsetX()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Location>().getOffsetY()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Location>().getOffsetZ()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Key>().getKey()), const std::string&>);
+static_assert(std::is_same_v<decltype(std::declval<Key>().getSystemName()), const std::string&>);
+static_assert(std::is_same_v<decltype(std::declval<Orientation>().getRoll()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Orientation>().getPitch()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Orientation>().getYaw()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Boresight>().getRoll()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Boresight>().getPitch()), double>);
+static_assert(std::is_same_v<decltype(std::declval<Boresight>().getYaw()), double>);
 
 int rf_admin_c2_header_compile_probe()
 {

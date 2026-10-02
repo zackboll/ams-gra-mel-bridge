@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import check_rf_data_closure as base  # noqa: E402
 
 EXPECTED = {
-    "rfmel": (52, "93b635b8699eb4ee51f40b8a21a9f73c9178460d66aeee3ff16dd845fe3bb932"),
+    "rfmel": (53, "a165fe435c22b7ccd0fe7d970e1f15b4febb743eccb35e6f31df38a02f6161a1"),
     "mel": (24, "5c4f6d22873567ef21a40368d8dc2f79b627c4a8f32ef60aba5828bc94a13c9e"),
     "math": (5, "fcc04a579ab4389560ee0a3832757363a8e2a1f5afe09b6e26e84f720e977f51"),
     "vita": (5, "e2d9ba42f49a4f34f62550fa59841e71295bb452abf03bb2ae72ae2815340aef"),
@@ -70,6 +70,8 @@ def main():
         raise RuntimeError("unpinned Admin/C2 dependency:\n  " + "\n  ".join(violations))
     if (root / "rf-mel/include/rfmel/c2/JobDetail.h").resolve() not in observed["rfmel"]:
         raise RuntimeError("JobDetail.h is missing from the observed vendored closure")
+    if (root / "rf-mel/include/rfmel/mfa/PhysicalData.h").resolve() not in observed["rfmel"]:
+        raise RuntimeError("PhysicalData.h is missing from the observed vendored closure")
     count = verify(observed, root, args.compiler)
     print(f"RF Admin/C2/VA/JobDetail closure: {count} pinned upstream headers under {root}")
 
