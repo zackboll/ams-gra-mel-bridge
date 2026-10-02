@@ -126,6 +126,9 @@ private package AMS.MEL_C_API is
      RF_Admin_Handle (System.Null_Address);
    Null_RF_Data                       : constant RF_Data_Handle :=
      RF_Data_Handle (System.Null_Address);
+   type RF_Physical_Data_Handle is new System.Address;
+   Null_RF_Physical_Data              : constant RF_Physical_Data_Handle :=
+     RF_Physical_Data_Handle (System.Null_Address);
    type RF_MFA_Info_Handle is new System.Address;
    Null_RF_MFA_Info                   : constant RF_MFA_Info_Handle :=
      RF_MFA_Info_Handle (System.Null_Address);
@@ -1804,6 +1807,21 @@ private package AMS.MEL_C_API is
       Sample_Frequency_Ranges       : Span_V1;
    end record
    with Convention => C;
+   type RF_Euler_V1 is record
+      Roll_Rad, Pitch_Rad, Yaw_Rad : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Component_Location_V1 is record
+      Offset_X_M, Offset_Y_M, Offset_Z_M : Interfaces.C.double;
+      Key, System_Name                   : String_View_V1;
+   end record
+   with Convention => C;
+   type RF_Physical_Data_V1 is record
+      Antenna_Height_M, Antenna_Width_M, Lattice_Angle_Rad : Interfaces.C.double;
+      Location                                             : RF_Component_Location_V1;
+      Orientation, Boresight                               : RF_Euler_V1;
+   end record
+   with Convention => C;
    type RF_MFA_Info_V1 is record
       Reported_Num_Faces             : Interfaces.Unsigned_64;
       Contains_Open_Additions        : Interfaces.Unsigned_32;
@@ -1981,6 +1999,27 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_data_quantize_duration";
+   function RF_Data_Get_Physical_Data
+     (Handle              : RF_Data_Handle;
+      Face_ID             : Interfaces.Unsigned_32;
+      Output              : access RF_Physical_Data_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_get_physical_data";
+   function RF_Physical_Data_View
+     (Handle              : RF_Physical_Data_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_physical_data_view";
+   function RF_Physical_Data_Close
+     (Handle              : access RF_Physical_Data_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_physical_data_close";
    function RF_Data_Get_MFA_Info
      (Handle              : RF_Data_Handle;
       Output              : access RF_MFA_Info_Handle;

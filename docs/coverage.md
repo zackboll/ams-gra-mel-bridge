@@ -1,5 +1,12 @@
 # Implementation coverage
 
+Task 034C2: RF PhysicalData is native C + safe Ada, with complete antenna
+dimensions, lattice angle and InstallationDetails (location XYZ, ForeignKey
+key/system name, orientation and boresight). Owned point-in-time snapshots
+survive DataMEL Close; nontrivial mock-positive and pinned-Squall evidence is
+recorded in `task-034c2-rf-physical-data.md`. ABI 0.1: 139 exports; vendor 804/804.
+Raw Rust sys/private Python parity only; no TxPowerModeData or JobInterval work.
+
 Task 034C1: RF quantizeDuration is native C + safe Ada, a live RFMFAInfo
 operation validated with nontrivial mock-positive and pinned-Squall identity
 tests. ABI 0.1 has 136 exports, vendor 803/803 unchanged. This is the timing
@@ -173,7 +180,7 @@ RF DataMEL:                                   native C foundation complete
 RF version:                                   complete
 RF RFMFAInfo scalar/enum/range snapshot:      complete
 RF quantizeDuration:                          native C + safe Ada; live provider query
-RF PhysicalData:                              not implemented
+RF PhysicalData:                              native C + safe Ada owned complete snapshot
 RF Tx power modes:                            not implemented
 RF ProductRxEndpoint / IQ receive:            not implemented (033C: contract pinned only;
                                               superseded by 033D above)
@@ -337,7 +344,7 @@ Track; see `task-032a2-common-access-image.md`.
 | RF version (Task 033B) | Complete | `ams_mel_rf_data_get_provider_version` shares the IR VersionInfo helper; Squall reports 1/1/`Squall`/`Squall Simulator RF MEL` |
 | RF RFMFAInfo scalar/enum/range snapshot (Task 033B) | Complete | Owned, immutable, point-in-time `ams_mel_rf_mfa_info`, independent of provider lifetime: `getNumFaces` and `getFaceIDs` preserved separately, open additions, scheduler resolution (fs), context bytes, raw JobDataFormat set, and for each reported face the three booleans, eight femtosecond durations, and Rx/Tx/sample frequency ranges (Hz, verbatim) |
 | RF quantizeDuration | Native C + safe Ada | Live RFMFAInfo operation; mock-positive and pinned-Squall validated; excluded from the snapshot |
-| RF PhysicalData | Not implemented | Needs a new measured header and InstallationDetails mapping |
+| RF PhysicalData | Native C + safe Ada | Complete antenna dimensions, lattice angle, InstallationDetails and ComponentLocation ForeignKey; owned point-in-time snapshot, mock-positive and pinned-Squall validated |
 | RF Tx power modes | Not implemented | Both `getTxPowerModeCharacteristics` overloads are transmit-only and return provider-owned references |
 | RF ProductRxEndpoint / IQ receive | Not implemented | Never called by 033B |
 | RF RDMA | Not implemented | `registerExternalRxEndpoint` never called |

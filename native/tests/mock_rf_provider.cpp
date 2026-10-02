@@ -23,6 +23,7 @@
 #include <rfmel/endpoints/RDMAMemoryRegionParams.h>
 #include <rfmel/factory/RFCreateFunctions.h>
 #include <rfmel/mfa/RFMFAInfo.h>
+#include <rfmel/mfa/PhysicalData.h>
 
 #include <any>
 #include <atomic>
@@ -63,6 +64,8 @@ std::atomic<unsigned> shutdown_calls{};
 std::atomic<unsigned> forbidden_calls{};
 std::atomic<unsigned> getter_calls{};
 std::atomic<unsigned> quantize_calls{};
+std::atomic<unsigned> physical_calls{};
+std::atomic<std::uint32_t> physical_face{};
 
 void record(const char *event) noexcept
 {
@@ -194,8 +197,39 @@ public:
         if (scenario_->name == "future-format") formats.insert(future_format);
         return formats;
     }
-    const rfmel::PhysicalData& getPhysicalData(FaceID) const override
-    { forbidden("RFMFAInfo::getPhysicalData"); }
+    const rfmel::PhysicalData& getPhysicalData(FaceID face) const override
+    {
+        enter();
+        physical_calls.fetch_add(1U);
+        physical_face.store(face);
+        const auto& name = scenario_->name;
+        if (name == "physical-throw") throw std::runtime_error("mock PhysicalData exception");
+        if (name == "physical-unknown") throw 42;
+        if (name == "physical-alloc") throw std::bad_alloc{};
+        const bool second = name == "physical-changing" && physical_generation_++ != 0U;
+        std::string key = second ? "second-bay-µ-18" : "bay-µ-17";
+        std::string system = second ? "second/β-installation" : "mock/β-installation";
+        if (name == "physical-key-utf8") key = "\xff";
+        if (name == "physical-key-nul") key = std::string{"a\0b", 3};
+        if (name == "physical-system-utf8") system = "\xff";
+        if (name == "physical-system-nul") system = std::string{"a\0b", 3};
+        if (name == "physical-empty") { key.clear(); system.clear(); }
+        const double delta = second ? 1.0 : 0.0;
+        mel::ForeignKey id{key, system};
+        physical_.setAntennaHeight(1.25 + delta);
+        physical_.setAntennaWidth(2.5 + delta);
+        physical_.setLatticeAngle(-0.375 + delta);
+        physical_.setInstallationDetails(mel::InstallationDetails{
+            mel::ComponentLocation{10.125 + delta, -20.25 + delta, 30.5 + delta, id},
+            mel::Euler{0.125 + delta, -0.25 + delta, 0.5 + delta},
+            mel::Euler{-0.75 + delta, 1.0 + delta, -1.25 + delta}});
+        if (name == "physical-special") {
+            physical_.setAntennaHeight(-0.0);
+            physical_.setAntennaWidth(std::numeric_limits<double>::infinity());
+            physical_.setLatticeAngle(std::numeric_limits<double>::quiet_NaN());
+        }
+        return physical_;
+    }
     const std::vector<rfmel::TxPowerModeData>& getTxPowerModeCharacteristics(
         FaceID) const override
     { forbidden("RFMFAInfo::getTxPowerModeCharacteristics(face)"); }
@@ -227,6 +261,8 @@ private:
     }
 
     std::shared_ptr<Scenario> scenario_;
+    mutable rfmel::PhysicalData physical_;
+    mutable unsigned physical_generation_{};
 };
 
 /* ---------------------------------------------------------------------------
@@ -1410,3 +1446,8 @@ extern "C" __attribute__((visibility("default"))) void mock_rf_rx_set_active_thr
     active_done_fd.store(done_fd);
     active_gate_fd.store(gate_fd);
 }
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_physical_calls(void)
+{ return physical_calls.load(); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_physical_face(void)
+{ return physical_face.load(); }

@@ -12,6 +12,23 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_physical_data_signatures(self) -> None:
+        self.assertEqual(_native.ams_mel_rf_data_get_physical_data.argtypes,
+                         [_native.RfDataHandle, ctypes.c_uint32,
+                          ctypes.POINTER(_native.RfPhysicalDataHandle), ctypes.POINTER(ctypes.c_char),
+                          ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertEqual(_native.ams_mel_rf_physical_data_view.argtypes,
+                         [_native.RfPhysicalDataHandle,
+                          ctypes.POINTER(ctypes.POINTER(_native.RfPhysicalDataV1)), ctypes.POINTER(ctypes.c_char),
+                          ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertEqual(_native.ams_mel_rf_physical_data_close.argtypes,
+                         [ctypes.POINTER(_native.RfPhysicalDataHandle), ctypes.POINTER(ctypes.c_char),
+                          ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        for operation in (_native.ams_mel_rf_data_get_physical_data,
+                          _native.ams_mel_rf_physical_data_view,
+                          _native.ams_mel_rf_physical_data_close):
+            self.assertEqual(operation.restype, ctypes.c_int32)
+
     def test_reports_exact_facade_version(self) -> None:
         self.assertEqual(abi_version(), AbiVersion(major=0, minor=1))
 
@@ -143,6 +160,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_data_get_provider_version",
                 "ams_mel_rf_data_get_mfa_info",
                 "ams_mel_rf_data_quantize_duration",
+                "ams_mel_rf_data_get_physical_data",
+                "ams_mel_rf_physical_data_view",
+                "ams_mel_rf_physical_data_close",
                 "ams_mel_rf_mfa_info_view",
                 "ams_mel_rf_mfa_info_close",
                 "ams_mel_rf_data_close",
@@ -157,8 +177,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 136)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 136)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 139)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 139)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -166,7 +186,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 136)
+        self.assertEqual(len(exported), 139)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1168,6 +1188,9 @@ class AbiTests(unittest.TestCase):
             )
         )
         expected.extend(self._layout(_native.RfFaceInfoSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfEulerV1, 'roll_rad', 'pitch_rad', 'yaw_rad'))
+        expected.extend(self._layout(_native.RfComponentLocationV1, 'offset_x_m', 'offset_y_m', 'offset_z_m', 'key', 'system_name'))
+        expected.extend(self._layout(_native.RfPhysicalDataV1, 'antenna_height_m', 'antenna_width_m', 'lattice_angle_rad', 'location', 'orientation', 'boresight'))
         expected.extend(
             self._layout(
                 _native.RfMfaInfoV1,

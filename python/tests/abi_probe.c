@@ -700,6 +700,23 @@ int main(void)
     RECORD(ams_mel_rf_face_info_span_v1,
         FIELD(ams_mel_rf_face_info_span_v1,data);
         FIELD(ams_mel_rf_face_info_span_v1,size));
+    RECORD(ams_mel_rf_euler_v1,
+        FIELD(ams_mel_rf_euler_v1,roll_rad);
+        FIELD(ams_mel_rf_euler_v1,pitch_rad);
+        FIELD(ams_mel_rf_euler_v1,yaw_rad));
+    RECORD(ams_mel_rf_component_location_v1,
+        FIELD(ams_mel_rf_component_location_v1,offset_x_m);
+        FIELD(ams_mel_rf_component_location_v1,offset_y_m);
+        FIELD(ams_mel_rf_component_location_v1,offset_z_m);
+        FIELD(ams_mel_rf_component_location_v1,key);
+        FIELD(ams_mel_rf_component_location_v1,system_name));
+    RECORD(ams_mel_rf_physical_data_v1,
+        FIELD(ams_mel_rf_physical_data_v1,antenna_height_m);
+        FIELD(ams_mel_rf_physical_data_v1,antenna_width_m);
+        FIELD(ams_mel_rf_physical_data_v1,lattice_angle_rad);
+        FIELD(ams_mel_rf_physical_data_v1,location);
+        FIELD(ams_mel_rf_physical_data_v1,orientation);
+        FIELD(ams_mel_rf_physical_data_v1,boresight));
     RECORD(ams_mel_rf_mfa_info_v1,
         FIELD(ams_mel_rf_mfa_info_v1,reported_num_faces);
         FIELD(ams_mel_rf_mfa_info_v1,contains_open_additions);
@@ -779,6 +796,12 @@ int main(void)
         (void)rx_counters; (void)rx_close; (void)rx_view; (void)rx_event_close;
     }
 
+    {
+        ams_mel_status_t (*get)(const ams_mel_rf_data *, uint32_t, ams_mel_rf_physical_data **, char *, size_t, size_t *) = ams_mel_rf_data_get_physical_data;
+        ams_mel_status_t (*view)(const ams_mel_rf_physical_data *, const ams_mel_rf_physical_data_v1 **, char *, size_t, size_t *) = ams_mel_rf_physical_data_view;
+        ams_mel_status_t (*close_snapshot)(ams_mel_rf_physical_data **, char *, size_t, size_t *) = ams_mel_rf_physical_data_close;
+        (void)get; (void)view; (void)close_snapshot;
+    }
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);
     VALUE(AMS_MEL_ABI_VERSION_MINOR);

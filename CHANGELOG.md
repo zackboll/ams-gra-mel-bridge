@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Task 034C2 adds the complete RF PhysicalData/InstallationDetails owned C
+  snapshot and safe Ada value, including ComponentLocation ForeignKey strings.
+  Doubles retain meters/radians unchanged; snapshots outlive DataMEL/provider.
+  ABI 0.1 grows from 136 to 139 exports; the measured pinned declaration closure
+  adds exactly PhysicalData.h (803 → 804 vendor blobs). No TxPowerModeData,
+  JobInterval, safe Rust, or public Python RF API is added.
+
 - Task 034C1 adds a live provider-authoritative RF duration quantization C
   export and safe Ada API with exact signed femtosecond counts. The ABI 0.1
   grows from 135 to 136 exports; no vendor expansion or JobInterval work.

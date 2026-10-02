@@ -295,6 +295,102 @@ package body AMS.MEL.RF is
       end;
    end Snapshot_MFA_Info;
 
+   function Snapshot_Physical_Data
+     (Data : Data_MEL; Face_ID : Interfaces.Unsigned_32) return Physical_Data
+   is
+      Owner   : aliased C.RF_Physical_Data_Handle := C.Null_RF_Physical_Data;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      type Raw_Access is access all C.RF_Physical_Data_V1;
+      function To_Raw is new Ada.Unchecked_Conversion (System.Address, Raw_Access);
+      function To_Chars is new Ada.Unchecked_Conversion (System.Address, CS.chars_ptr);
+      function Copy (View : C.String_View_V1) return US.Unbounded_String is
+      begin
+         if View.Data = System.Null_Address or else View.Size > C.Size_T (Natural'Last) then
+            raise Provider_Error with "invalid native PhysicalData string view";
+         end if;
+         if View.Size = 0 then
+            return US.Null_Unbounded_String;
+         end if;
+         return US.To_Unbounded_String (CS.Value (To_Chars (View.Data), View.Size));
+      end Copy;
+      procedure Release is
+         Status : Interfaces.Integer_32;
+      begin
+         Status := C.RF_Physical_Data_Close (Owner'Access, D'Address, D'Length, R'Access);
+         Check (Status, D);
+      end Release;
+   begin
+      if not Is_Open (Data) then
+         raise Provider_Error with "RF DataMEL is closed";
+      end if;
+      Check
+        (C.RF_Data_Get_Physical_Data
+           (Data.Handle, Face_ID, Owner'Access, D'Address, D'Length, R'Access),
+         D);
+      begin
+         Check (C.RF_Physical_Data_View (Owner, Address'Access, D'Address, D'Length, R'Access), D);
+         if Address = System.Null_Address then
+            raise Provider_Error with "null native PhysicalData view";
+         end if;
+         declare
+            Raw    : C.RF_Physical_Data_V1 renames To_Raw (Address).all;
+            Result : Physical_Data;
+         begin
+            Result.Antenna_Height_M_Value := Long_Float (Raw.Antenna_Height_M);
+            Result.Antenna_Width_M_Value := Long_Float (Raw.Antenna_Width_M);
+            Result.Lattice_Angle_Radians_Value := Long_Float (Raw.Lattice_Angle_Rad);
+            Result.Location_Offset_X_M_Value := Long_Float (Raw.Location.Offset_X_M);
+            Result.Location_Offset_Y_M_Value := Long_Float (Raw.Location.Offset_Y_M);
+            Result.Location_Offset_Z_M_Value := Long_Float (Raw.Location.Offset_Z_M);
+            Result.Orientation_Roll_Radians_Value := Long_Float (Raw.Orientation.Roll_Rad);
+            Result.Orientation_Pitch_Radians_Value := Long_Float (Raw.Orientation.Pitch_Rad);
+            Result.Orientation_Yaw_Radians_Value := Long_Float (Raw.Orientation.Yaw_Rad);
+            Result.Boresight_Roll_Radians_Value := Long_Float (Raw.Boresight.Roll_Rad);
+            Result.Boresight_Pitch_Radians_Value := Long_Float (Raw.Boresight.Pitch_Rad);
+            Result.Boresight_Yaw_Radians_Value := Long_Float (Raw.Boresight.Yaw_Rad);
+            Result.Key := Copy (Raw.Location.Key);
+            Result.System_Name := Copy (Raw.Location.System_Name);
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Snapshot_Physical_Data;
+
+   function Antenna_Height_M (Value : Physical_Data) return Long_Float
+   is (Value.Antenna_Height_M_Value);
+   function Antenna_Width_M (Value : Physical_Data) return Long_Float
+   is (Value.Antenna_Width_M_Value);
+   function Lattice_Angle_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Lattice_Angle_Radians_Value);
+   function Location_Offset_X_M (Value : Physical_Data) return Long_Float
+   is (Value.Location_Offset_X_M_Value);
+   function Location_Offset_Y_M (Value : Physical_Data) return Long_Float
+   is (Value.Location_Offset_Y_M_Value);
+   function Location_Offset_Z_M (Value : Physical_Data) return Long_Float
+   is (Value.Location_Offset_Z_M_Value);
+   function Orientation_Roll_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Orientation_Roll_Radians_Value);
+   function Orientation_Pitch_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Orientation_Pitch_Radians_Value);
+   function Orientation_Yaw_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Orientation_Yaw_Radians_Value);
+   function Boresight_Roll_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Boresight_Roll_Radians_Value);
+   function Boresight_Pitch_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Boresight_Pitch_Radians_Value);
+   function Boresight_Yaw_Radians (Value : Physical_Data) return Long_Float
+   is (Value.Boresight_Yaw_Radians_Value);
+   function Location_Key (Value : Physical_Data) return String
+   is (US.To_String (Value.Key));
+   function Location_System_Name (Value : Physical_Data) return String
+   is (US.To_String (Value.System_Name));
+
    function Face_ID (Value : Face_Info) return Interfaces.Unsigned_32
    is (Value.ID);
    function Supports_Receive (Value : Face_Info) return Boolean

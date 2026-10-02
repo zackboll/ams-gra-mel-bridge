@@ -1111,6 +1111,24 @@ class RfFaceInfoSpanV1(ctypes.Structure):
     _fields_ = [("data", ctypes.POINTER(RfFaceInfoV1)), ("size", ctypes.c_size_t)]
 
 
+RfPhysicalDataHandle = ctypes.c_void_p
+
+
+class RfEulerV1(ctypes.Structure):
+    _fields_ = [("roll_rad", ctypes.c_double), ("pitch_rad", ctypes.c_double), ("yaw_rad", ctypes.c_double)]
+
+
+class RfComponentLocationV1(ctypes.Structure):
+    _fields_ = [("offset_x_m", ctypes.c_double), ("offset_y_m", ctypes.c_double),
+                ("offset_z_m", ctypes.c_double), ("key", StringViewV1), ("system_name", StringViewV1)]
+
+
+class RfPhysicalDataV1(ctypes.Structure):
+    _fields_ = [("antenna_height_m", ctypes.c_double), ("antenna_width_m", ctypes.c_double),
+                ("lattice_angle_rad", ctypes.c_double), ("location", RfComponentLocationV1),
+                ("orientation", RfEulerV1), ("boresight", RfEulerV1)]
+
+
 class RfMfaInfoV1(ctypes.Structure):
     _fields_ = [
         ("reported_num_faces", ctypes.c_uint64),
@@ -1279,6 +1297,19 @@ ams_mel_rf_data_get_provider_version.argtypes = [
     RfDataHandle, ctypes.POINTER(ProviderVersionV1), *_CHANNEL_DIAGNOSTIC
 ]
 ams_mel_rf_data_get_provider_version.restype = ctypes.c_int32
+ams_mel_rf_data_get_physical_data = _LIBRARY.ams_mel_rf_data_get_physical_data
+ams_mel_rf_data_get_physical_data.argtypes = [
+    RfDataHandle, ctypes.c_uint32, ctypes.POINTER(RfPhysicalDataHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_get_physical_data.restype = ctypes.c_int32
+ams_mel_rf_physical_data_view = _LIBRARY.ams_mel_rf_physical_data_view
+ams_mel_rf_physical_data_view.argtypes = [
+    RfPhysicalDataHandle, ctypes.POINTER(ctypes.POINTER(RfPhysicalDataV1)), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_physical_data_view.restype = ctypes.c_int32
+ams_mel_rf_physical_data_close = _LIBRARY.ams_mel_rf_physical_data_close
+ams_mel_rf_physical_data_close.argtypes = [ctypes.POINTER(RfPhysicalDataHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_physical_data_close.restype = ctypes.c_int32
 ams_mel_rf_data_get_mfa_info = _LIBRARY.ams_mel_rf_data_get_mfa_info
 ams_mel_rf_data_get_mfa_info.argtypes = [
     RfDataHandle, ctypes.POINTER(RfMfaInfoHandle), *_CHANNEL_DIAGNOSTIC
@@ -1543,6 +1574,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_get_provider_version",
     "ams_mel_rf_data_get_mfa_info",
     "ams_mel_rf_data_quantize_duration",
+    "ams_mel_rf_data_get_physical_data",
+    "ams_mel_rf_physical_data_view",
+    "ams_mel_rf_physical_data_close",
     "ams_mel_rf_mfa_info_view",
     "ams_mel_rf_mfa_info_close",
     "ams_mel_rf_data_close",
