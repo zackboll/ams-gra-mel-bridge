@@ -68,6 +68,74 @@ package body AMS_MEL_RF_Tests is
    end Verify;
 
    procedure Run (Provider_Path : String) is
+      procedure Test_Quantization is
+         Inputs : constant array (Positive range 1 .. 13) of Interfaces.Integer_64 :=
+           [0,
+            1,
+            9,
+            10,
+            19,
+            -1,
+            -9,
+            -10,
+            -19,
+            1_234_567_890_123_456_789,
+            -1_234_567_890_123_456_789,
+            Interfaces.Integer_64'Last,
+            Interfaces.Integer_64'First];
+         Data   : RF.Data_MEL := RF.Open (Provider_Path, "quantize");
+      begin
+         for Input of Inputs loop
+            if RF.Quantize_Duration (Data, Input) /= (Input / 10) * 10 or else not RF.Is_Open (Data)
+            then
+               raise Program_Error with "RF live quantization mismatch";
+            end if;
+         end loop;
+         RF.Close (Data);
+         begin
+            declare
+               Ignored : constant Interfaces.Integer_64 := RF.Quantize_Duration (Data, 1);
+            begin
+               raise Program_Error
+                 with
+                   "closed RF DataMEL accepted quantization"
+                   & Interfaces.Integer_64'Image (Ignored);
+            end;
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+         for Scenario in 1 .. 3 loop
+            declare
+               Bad : RF.Data_MEL :=
+                 RF.Open
+                   (Provider_Path,
+                    (if Scenario = 1
+                     then "quantize-throw"
+                     elsif Scenario = 2
+                     then "quantize-unknown"
+                     else "quantize-alloc"));
+            begin
+               begin
+                  declare
+                     Ignored : constant Interfaces.Integer_64 := RF.Quantize_Duration (Bad, -19);
+                  begin
+                     raise Program_Error
+                       with
+                         "provider quantization exception lost"
+                         & Interfaces.Integer_64'Image (Ignored);
+                  end;
+               exception
+                  when AMS.MEL.Provider_Error =>
+                     null;
+               end;
+               if not RF.Is_Open (Bad) then
+                  raise Program_Error with "failed quantization closed DataMEL";
+               end if;
+               RF.Close (Bad);
+            end;
+         end loop;
+      end Test_Quantization;
       procedure Expect_Open_Failure (Scenario : String) is
       begin
          declare
@@ -85,6 +153,7 @@ package body AMS_MEL_RF_Tests is
       Version  : constant AMS.MEL.Provider_Version := RF.Query_Provider_Version (Data);
       Snapshot : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
    begin
+      Test_Quantization;
       if not RF.Is_Open (Data)
         or else AMS.MEL.API_Version (Version) /= 16#0000_A5A5#
         or else AMS.MEL.Library_Version (Version) /= 16#5A5A_0000#

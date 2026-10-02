@@ -88,6 +88,23 @@ package body AMS.MEL.RF is
       Check (C.RF_Data_Close (Object.Handle'Access, D'Address, D'Length, R'Access), D);
    end Close;
 
+   function Quantize_Duration
+     (Data : Data_MEL; Femtoseconds : Interfaces.Integer_64) return Interfaces.Integer_64
+   is
+      Result : aliased Interfaces.Integer_64 := 0;
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+   begin
+      if not Is_Open (Data) then
+         raise Provider_Error with "RF DataMEL is closed";
+      end if;
+      Check
+        (C.RF_Data_Quantize_Duration
+           (Data.Handle, Femtoseconds, Result'Access, D'Address, D'Length, R'Access),
+         D);
+      return Result;
+   end Quantize_Duration;
+
    overriding
    procedure Finalize (Object : in out Data_MEL) is
       Ignored : Interfaces.Integer_32;

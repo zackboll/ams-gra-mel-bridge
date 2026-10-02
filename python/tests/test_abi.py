@@ -142,6 +142,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_data_open",
                 "ams_mel_rf_data_get_provider_version",
                 "ams_mel_rf_data_get_mfa_info",
+                "ams_mel_rf_data_quantize_duration",
                 "ams_mel_rf_mfa_info_view",
                 "ams_mel_rf_mfa_info_close",
                 "ams_mel_rf_data_close",
@@ -156,8 +157,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 135)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 135)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 136)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 136)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -165,7 +166,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 135)
+        self.assertEqual(len(exported), 136)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -311,6 +312,9 @@ class AbiTests(unittest.TestCase):
                 data, ctypes.POINTER(_native.ProviderVersionV1)
             ],
             "ams_mel_rf_data_get_mfa_info": [data, ctypes.POINTER(info)],
+            "ams_mel_rf_data_quantize_duration": [
+                data, ctypes.c_int64, ctypes.POINTER(ctypes.c_int64)
+            ],
             "ams_mel_rf_mfa_info_view": [
                 info, ctypes.POINTER(ctypes.POINTER(_native.RfMfaInfoV1))
             ],

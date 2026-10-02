@@ -1,5 +1,12 @@
 # Architecture decisions
 
+Task 034C1 exposes `RFMFAInfo::quantizeDuration` as a synchronous live query
+through the existing RF DataMEL owner. The result is not stored in an MFA
+snapshot: implementations can quantize dynamically. C and safe Ada preserve
+signed int64 femtoseconds unchanged; callers serialize with Close and other
+same-owner operations. This is the timing primitive for future JobInterval
+work, not an interval implementation. See `task-034c1-rf-duration-quantization.md`.
+
 Task 034B2B2 completes safe Ada RF Job finalize/status/cancel over the existing
 135-export ABI. Both opt-in pinned-Squall ProductRx clients now activate their
 Jobs via the production facade and close VA/C2 before cancellation. The former

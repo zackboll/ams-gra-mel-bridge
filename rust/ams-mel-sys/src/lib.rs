@@ -2759,6 +2759,14 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_quantize_duration(
+        data: *const AmsMelRfData,
+        unquantized_femtoseconds: i64,
+        out_quantized_femtoseconds: *mut i64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_rf_mfa_info_view(
         info: *const AmsMelRfMfaInfo,
         out_view: *mut *const AmsMelRfMfaInfoV1,

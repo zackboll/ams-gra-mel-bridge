@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Task 034C1 adds a live provider-authoritative RF duration quantization C
+  export and safe Ada API with exact signed femtosecond counts. The ABI 0.1
+  grows from 135 to 136 exports; no vendor expansion or JobInterval work.
+
 - Task 034B2B2 adds safe Ada RF Job lifecycle and helper-free pinned Squall
   ProductRx integration in C and Ada. The test-only C++ helper is removed;
   no ABI exports, vendor blobs, or JobInterval functionality are added.

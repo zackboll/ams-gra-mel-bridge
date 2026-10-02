@@ -1973,6 +1973,14 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_data_get_provider_version";
+   function RF_Data_Quantize_Duration
+     (Handle              : RF_Data_Handle;
+      Femtoseconds        : Interfaces.Integer_64;
+      Output              : access Interfaces.Integer_64;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_quantize_duration";
    function RF_Data_Get_MFA_Info
      (Handle              : RF_Data_Handle;
       Output              : access RF_MFA_Info_Handle;

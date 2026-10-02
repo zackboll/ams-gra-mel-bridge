@@ -98,6 +98,7 @@ typedef struct pin {
     counter_fn shutdown_calls;
     counter_fn forbidden_calls;
     counter_fn getter_calls;
+    counter_fn quantize_calls;
 } pin;
 
 static pin take_pin(void)
@@ -108,7 +109,8 @@ static pin take_pin(void)
     *(void **)(&value.shutdown_calls) = dlsym(value.handle, "mock_rf_shutdown_calls");
     *(void **)(&value.forbidden_calls) = dlsym(value.handle, "mock_rf_forbidden_calls");
     *(void **)(&value.getter_calls) = dlsym(value.handle, "mock_rf_getter_calls");
-    CHECK(value.shutdown_calls && value.forbidden_calls && value.getter_calls);
+    *(void **)(&value.quantize_calls) = dlsym(value.handle, "mock_rf_quantize_calls");
+    CHECK(value.shutdown_calls && value.forbidden_calls && value.getter_calls && value.quantize_calls);
     return value;
 }
 
@@ -116,7 +118,7 @@ static void drop_pin(pin *value)
 {
     CHECK(value->handle != NULL && dlclose(value->handle) == 0);
     value->handle = NULL;
-    value->shutdown_calls = value->forbidden_calls = value->getter_calls = NULL;
+    value->shutdown_calls = value->forbidden_calls = value->getter_calls = value->quantize_calls = NULL;
 }
 
 static ams_mel_rf_data *open_mock(const char *scenario)
@@ -788,6 +790,55 @@ static void case_allocation(void)
     no_violations();
 }
 
+static void case_quantize(void)
+{
+    static const int64_t inputs[] = {0, 1, 9, 10, 19, -1, -9, -10, -19,
+                                      INT64_C(1234567890123456789), -INT64_C(1234567890123456789),
+                                      INT64_MAX, INT64_MIN};
+    ams_mel_rf_data *data = open_mock("quantize");
+    pin observer = take_pin();
+    char diagnostic[128];
+    int64_t output = 777;
+    unsigned count = observer.quantize_calls();
+    for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; ++i) {
+        const int64_t expected = (inputs[i] / 10) * 10;
+        CHECK(ams_mel_rf_data_quantize_duration(data, inputs[i], &output,
+              diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        CHECK(output == expected && observer.quantize_calls() == ++count);
+    }
+    output = 777;
+    CHECK(ams_mel_rf_data_quantize_duration(data, 1, NULL, diagnostic,
+          sizeof diagnostic, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_rf_data_quantize_duration(NULL, 1, &output, diagnostic,
+          sizeof diagnostic, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(ams_mel_rf_data_quantize_duration(data, 1, &output, NULL,
+          1, NULL) == AMS_MEL_INVALID_ARGUMENT);
+    CHECK(output == 777 && observer.quantize_calls() == count);
+    close_ok(&data);
+    drop_pin(&observer);
+    no_violations();
+}
+
+static void case_quantize_failure(void)
+{
+    const char *scenarios[] = {"quantize-throw", "quantize-unknown", "quantize-alloc"};
+    for (size_t i = 0; i < 3; ++i) {
+        ams_mel_rf_data *data = open_mock(scenarios[i]);
+        pin observer = take_pin();
+        const unsigned before = observer.quantize_calls();
+        int64_t output = 777;
+        char diagnostic[128] = {0};
+        CHECK(ams_mel_rf_data_quantize_duration(data, -19, &output, diagnostic,
+              sizeof diagnostic, NULL) == (i == 2 ? AMS_MEL_INTERNAL_ERROR : AMS_MEL_PROVIDER_EXCEPTION));
+        CHECK(output == 777 && observer.quantize_calls() == before + 1);
+        CHECK(strcmp(diagnostic, i == 0 ? "mock RF quantize exception" :
+              i == 1 ? "unknown provider quantizeDuration exception" : "allocation failed") == 0);
+        close_ok(&data);
+        drop_pin(&observer);
+    }
+    no_violations();
+}
+
 int main(int argc, char **argv)
 {
     static const struct {
@@ -811,6 +862,8 @@ int main(int argc, char **argv)
         {"shutdown-throw-unknown", case_shutdown_throw_unknown},
         {"invalid", case_invalid},
         {"allocation", case_allocation},
+        {"quantize", case_quantize},
+        {"quantize-failure", case_quantize_failure},
     };
     CHECK(argc == 2);
     setup_log();

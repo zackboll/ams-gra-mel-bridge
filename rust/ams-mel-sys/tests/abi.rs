@@ -759,6 +759,14 @@ fn rf_data_signatures_match_the_c_header() {
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_data_get_mfa_info;
     let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        i64,
+        *mut i64,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_quantize_duration;
+    let _: unsafe extern "C" fn(
         *const AmsMelRfMfaInfo,
         *mut *const AmsMelRfMfaInfoV1,
         *mut std::ffi::c_char,
@@ -828,13 +836,14 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 135);
-    assert_eq!(exported.len(), 135);
+    assert_eq!(declared.len(), 136);
+    assert_eq!(exported.len(), 136);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
         "ams_mel_rf_data_get_provider_version",
         "ams_mel_rf_data_get_mfa_info",
+        "ams_mel_rf_data_quantize_duration",
         "ams_mel_rf_mfa_info_view",
         "ams_mel_rf_mfa_info_close",
         "ams_mel_rf_data_close",

@@ -1284,6 +1284,11 @@ ams_mel_rf_data_get_mfa_info.argtypes = [
     RfDataHandle, ctypes.POINTER(RfMfaInfoHandle), *_CHANNEL_DIAGNOSTIC
 ]
 ams_mel_rf_data_get_mfa_info.restype = ctypes.c_int32
+ams_mel_rf_data_quantize_duration = _LIBRARY.ams_mel_rf_data_quantize_duration
+ams_mel_rf_data_quantize_duration.argtypes = [
+    RfDataHandle, ctypes.c_int64, ctypes.POINTER(ctypes.c_int64), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_quantize_duration.restype = ctypes.c_int32
 ams_mel_rf_mfa_info_view = _LIBRARY.ams_mel_rf_mfa_info_view
 ams_mel_rf_mfa_info_view.argtypes = [
     RfMfaInfoHandle, ctypes.POINTER(ctypes.POINTER(RfMfaInfoV1)), *_CHANNEL_DIAGNOSTIC
@@ -1537,6 +1542,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_open",
     "ams_mel_rf_data_get_provider_version",
     "ams_mel_rf_data_get_mfa_info",
+    "ams_mel_rf_data_quantize_duration",
     "ams_mel_rf_mfa_info_view",
     "ams_mel_rf_mfa_info_close",
     "ams_mel_rf_data_close",

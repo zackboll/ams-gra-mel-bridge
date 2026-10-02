@@ -1,5 +1,12 @@
 # Experimental C ABI policy
 
+Task 034C1 adds exactly one ABI 0.1 export for live RF duration quantization.
+`int64_t` counts are femtoseconds in both directions, with an unchanged output
+on error and the provider's result authoritative. The caller serializes this
+synchronous DataMEL operation with Close and other same-owner operations; it
+does not acquire a child claim or retain an MFA snapshot. See
+`task-034c1-rf-duration-quantization.md`.
+
 Task 034B2B1 adds three native RF Job lifecycle exports under ABI 0.1 without
 changing `ams_mel_rf_job_info_v1`. Fixed-width JobStatus is result data, not a
 bridge failure. CancelStatus semantic bool and known error enum are returned
