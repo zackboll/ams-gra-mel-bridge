@@ -850,6 +850,31 @@ private:
     std::vector<rfmel::PointingType> pointing_;
 };
 
+using IntervalCallback = std::function<void(rfmel::JobIntervalStatus)>;
+std::mutex status_mutex;
+IntervalCallback saved_status_copy;
+const IntervalCallback *saved_status_reference{};
+std::atomic<unsigned> status_registrations{};
+rfmel::JobIntervalStatus status_payload(unsigned completion, unsigned trigger, unsigned kind, unsigned id)
+{
+    rfmel::JobIntervalStatus payload;
+    payload.setJobIntervalID(id);
+    payload.setJobIntervalCompletionStatus(static_cast<rfmel::JobIntervalCompletionStatus>(completion));
+    if (kind == 1) return payload;
+    const std::uint32_t ids[]{UINT32_MAX, 0, 17};
+    for (unsigned i = 0; i < (kind == 2 ? 4U : 3U); ++i) {
+        rfmel::JobEventLogInfo value;
+        value.setJobEventLogTrigger(static_cast<rfmel::JobEventLogTriggerType>(i == 0 ? trigger : i));
+        value.setJobEventLogTime({std::chrono::seconds{-123 - static_cast<int>(i)},
+                                 Femtoseconds{111 + static_cast<int>(i)}});
+        payload.addJobEventLog(i < 3 ? ids[i] : 18U, value);
+    }
+    std::vector<std::uint8_t> bytes(kind == 3 ? 38 : 37);
+    for (std::size_t i = 0; i < bytes.size(); ++i) bytes[i] = static_cast<std::uint8_t>(i);
+    bytes[0] = 0; bytes[1] = 0x80; bytes[2] = 0xff;
+    payload.setActivityId(bytes);
+    return payload;
+}
 class MockJobDetail final : public rfmel::JobDetail {
 public:
     explicit MockJobDetail(bool throws, std::string scenario = {})
@@ -903,8 +928,19 @@ public:
     }
     void flush() override
     { ++job_flush_calls; record("rf_job_flush"); interval_failure("flush"); }
-    void registerJobIntervalStatusCallback(const std::function<void(rfmel::JobIntervalStatus)>&) override
-    { forbidden("Job::registerStatus"); }
+    void registerJobIntervalStatusCallback(const IntervalCallback& callback) override
+    {
+        ++status_registrations;
+        record("rf_job_register_status");
+        {
+            std::lock_guard lock{status_mutex};
+            saved_status_reference = scenario_ == "c2:status-reference" ? &callback : nullptr;
+            saved_status_copy = saved_status_reference ? IntervalCallback{} : callback;
+        }
+        if (scenario_ == "c2:status-sync" || scenario_ == "c2:status-throw")
+            callback(status_payload(2, 7, 0, 0xfedcba98U));
+        if (scenario_ == "c2:status-throw") throw std::runtime_error("mock status registration stored then threw");
+    }
     void addJobIntervals(const std::vector<rfmel::JobInterval>& intervals) override
     {
         ++job_add_calls; record("rf_job_add_intervals");
@@ -1239,6 +1275,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
         configuration.substr(0, 7) != "c2:add-" &&
         configuration.substr(0, 9) != "c2:flush-" &&
         configuration.substr(0, 13) != "c2:remaining-" &&
+        configuration.substr(0, 10) != "c2:status-" &&
         configuration != "c2:job-shutdown-throw" && configuration != "c2:job-failure" &&
         configuration != "c2:job-long-failure" && configuration != "c2:job-unknown-error" &&
         configuration != "c2:job-future-throw" && configuration != "c2:job-future-unknown" &&
@@ -1601,4 +1638,28 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_start_bou
     for (std::size_t i = 0; i < 4; ++i)
         if (latest_intervals[i].getIntervalStart().count() != starts[i]) return 0;
     return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_status_registrations(void)
+{ return status_registrations.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_status_emit(
+    unsigned completion, unsigned trigger, unsigned kind, unsigned id)
+{
+    IntervalCallback copy;
+    const IntervalCallback *reference;
+    {
+        std::lock_guard lock{status_mutex};
+        copy = saved_status_copy; reference = saved_status_reference;
+    }
+    const auto& target = reference ? *reference : copy;
+    if (!target) return 0;
+    auto payload = status_payload(completion, trigger, kind, id);
+    target(payload);
+    payload.clearJobEventLog(); payload.setActivityId({}); payload.setJobIntervalID(0);
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_status_mode(unsigned index)
+{
+    std::lock_guard lock{interval_mutex};
+    return index < latest_intervals.size() ?
+        static_cast<unsigned>(latest_intervals[index].getJobIntervalStatusEnable()) : 99U;
 }

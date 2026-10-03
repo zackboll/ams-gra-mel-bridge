@@ -2,6 +2,7 @@
 #include <ams_mel/abi.h>
 #include "internal/provider_common.hpp"
 #include "internal/rf_va_job_parent.hpp"
+#include "internal/rf_job_interval_status.hpp"
 #include <rfmel/c2/ElementGroupCommand.h>
 #include <rfmel/c2/CancelStatus.h>
 #include <rfmel/c2/JobDetail.h>
@@ -223,6 +224,9 @@ static_assert(static_cast<int>(rfmel::JobStatus::FailedInvalidState) == AMS_MEL_
 static_assert(static_cast<int>(rfmel::CancelError::None) == AMS_MEL_RF_CANCEL_ERROR_NONE);
 
 struct JobState {
+    std::shared_ptr<IntervalStatusState> interval_status;
+    bool status_registration_attempted{};
+    bool status_registration_returned{};
     std::shared_ptr<rfmel::JobDetail> detail;
     std::shared_ptr<rfmel::VirtualAperture> va;
     RfC2ChildClaim claim;
@@ -245,7 +249,7 @@ struct JobState {
     std::string cancel_message;
     /* Explicit Close releases the claim itself so a deferred shutdown error
      * can be returned to that caller. Worker-only cleanup uses this fallback. */
-    ~JobState() { detail.reset(); va.reset(); (void)claim.release(); }
+    ~JobState() { stop_interval_status(interval_status); detail.reset(); va.reset(); (void)claim.release(); }
 };
 struct FinalizeInput {
     std::shared_ptr<JobState> state;
@@ -312,6 +316,49 @@ struct ams_mel_rf_job {
     std::shared_ptr<JobState> state;
 };
 
+extern "C" ams_mel_status_t ams_mel_rf_job_interval_status_open(
+    ams_mel_rf_job *job, const ams_mel_rf_job_interval_status_options_v1 *options,
+    ams_mel_rf_job_interval_status **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !job->state->detail || !options || !output || *output ||
+        bad_diag(diagnostic, capacity) || !valid_interval_status_options(*options))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto state = job->state;
+        std::unique_lock lock{state->mutex};
+        if (state->finalize_attempted || state->cancel_attempted || state->status_registration_attempted) {
+            write_diagnostic("Job status registration unavailable or already attempted", diagnostic, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        auto owner = std::make_unique<ams_mel_rf_job_interval_status>();
+        auto library = state->claim.library_pin();
+        if (!library) return AMS_MEL_PROVIDER_FAILED;
+        auto registration = prepare_interval_status(*options, std::move(library));
+        owner->state = registration->state;
+        state->interval_status = registration->state;
+        state->status_registration_attempted = true;
+        auto *permanent = registration.release();
+        /* Retain before exposure: also safe for synchronous/reentrant callbacks. */
+        retain_interval_status(permanent);
+        lock.unlock();
+        try { state->detail->registerJobIntervalStatusCallback(permanent->callback); }
+        catch (...) {
+            stop_interval_status(permanent->state);
+            return translate_provider_exception("provider Job status registration exception",
+                "unknown provider Job status registration exception", diagnostic, capacity, required);
+        }
+        lock.lock();
+        state->status_registration_returned = true;
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        write_diagnostic("Job status registration preparation failed", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
 namespace {
 using Fs = ams::util::math::Femtoseconds;
 static_assert(!std::numeric_limits<Fs>::is_specialized,
@@ -355,16 +402,28 @@ ams_mel_status_t interval_command(ams_mel_rf_job *job, bool require_unfinalized,
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }
-}
-extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
-    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v1 inputs,
+template<class Span>
+ams_mel_status_t add_rx_intervals(
+    ams_mel_rf_job *job, Span inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 {
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
+    const auto input_at = [&](std::size_t i) -> const ams_mel_rf_job_interval_config_v1& {
+        if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) return inputs.data[i];
+        else return inputs.data[i].interval;
+    };
+    const auto mode_at = [&](std::size_t i) -> std::uint32_t {
+        if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) {
+            (void)i; return AMS_MEL_RF_INTERVAL_STATUS_NEVER;
+        } else return inputs.data[i].status_enable;
+    };
+    bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
-        const auto& input = inputs.data[i];
+        const auto& input = input_at(i);
+        if (mode_at(i) > AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION) return AMS_MEL_INVALID_ARGUMENT;
+        enabled = enabled || mode_at(i) != AMS_MEL_RF_INTERVAL_STATUS_NEVER;
         if (input.phase_coherence_with_prior > 1U || !fits_count(input.sequence_repeat_count) ||
             !fits_count(input.iterations_per_signal) ||
             !span_ok(input.receive_events.size, input.receive_events.data, sizeof(*input.receive_events.data)))
@@ -376,10 +435,18 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
         }
     }
     try {
+        if (enabled) {
+            std::lock_guard lock{job->state->mutex};
+            if (!job->state->status_registration_returned ||
+                !usable_interval_status(job->state->interval_status)) {
+                write_diagnostic("status-enabled intervals require usable bridge registration", diagnostic, capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
+        }
         std::vector<rfmel::JobInterval> intervals;
         intervals.reserve(inputs.size);
         for (std::size_t i = 0; i < inputs.size; ++i) {
-            const auto& input = inputs.data[i];
+            const auto& input = input_at(i);
             std::vector<rfmel::ReceiveEvent> events;
             events.reserve(input.receive_events.size);
             for (std::size_t e = 0; e < input.receive_events.size; ++e) {
@@ -412,6 +479,7 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
             interval.setMaxDataRateBps(input.max_data_rate_bps);
             interval.setMaxSampleRateHZ(input.max_sample_rate_hz);
             interval.setJobDetailsId(input.job_details_id);
+            interval.setJobIntervalStatusEnable(static_cast<rfmel::JobIntervalStatusEnable>(mode_at(i)));
             intervals.push_back(std::move(interval));
         }
         return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
@@ -424,6 +492,15 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v1 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v2 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(
     ams_mel_rf_job *job, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 {
@@ -848,6 +925,7 @@ extern "C" ams_mel_status_t ams_mel_rf_job_close(
     auto state = std::move(owned->state);
     delete owned;
     if (!state) return AMS_MEL_OK;
+    stop_interval_status(state->interval_status);
     {
         std::lock_guard lock{state->mutex};
         /* Terminal publication happens only after releasing the consumed

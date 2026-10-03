@@ -14,7 +14,7 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
-    src/rf_job.cpp)
+    src/rf_job.cpp src/rf_job_interval_status.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -42,6 +42,8 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_status_hold;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
@@ -309,6 +311,15 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_rf_job mock_rf_provider)
     ams_mel_warnings(test_rf_job)
     add_test(NAME rf-job-request COMMAND test_rf_job)
+    add_executable(test_rf_job_interval_status tests/test_rf_job_interval_status.c)
+    target_compile_features(test_rf_job_interval_status PRIVATE c_std_11)
+    set_target_properties(test_rf_job_interval_status PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_job_interval_status PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    target_link_libraries(test_rf_job_interval_status PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} pthread)
+    add_dependencies(test_rf_job_interval_status mock_rf_provider)
+    ams_mel_warnings(test_rf_job_interval_status)
+    add_test(NAME rf-job-interval-status COMMAND test_rf_job_interval_status)
     # One process per case: lifetime/retention evidence cannot leak.
     foreach(case IN ITEMS open version version-long snapshot two-snapshots
             snapshot-independent snapshot-throw inconsistent-faces future-format
