@@ -4,6 +4,90 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ams_mel_sys::*;
+#[test]
+fn rf_va_query_signatures_match_the_c_header() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut u32,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_id;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut AmsMelRfVirtualApertureStatus,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_status;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u32,
+        *mut AmsMelRfVirtualApertureStatus,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_instance_status;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut *mut AmsMelRfVaInstanceList,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_all_instances;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u32,
+        *mut *mut AmsMelRfVaInstanceList,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_instances;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaInstanceList,
+        *mut AmsMelU32SpanV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_instance_list_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaInstanceList,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_instance_list_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u32,
+        *mut *mut AmsMelRfVaInstanceStatusReport,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_instance_status_report;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaInstanceStatusReport,
+        *mut *const AmsMelRfVaInstanceStatusReportV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_instance_status_report_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaInstanceStatusReport,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_instance_status_report_close;
+    assert_eq!(
+        [
+            AMS_MEL_RF_VA_STATUS_NONE,
+            AMS_MEL_RF_VA_STATUS_OPERATIONAL,
+            AMS_MEL_RF_VA_STATUS_DEGRADED,
+            AMS_MEL_RF_VA_STATUS_FAILED
+        ],
+        [0, 1, 2, 3]
+    );
+}
 
 macro_rules! layout {
     ($values:expr, $type:ty, $($field:ident),+ $(,)?) => {{
@@ -836,8 +920,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 154);
-    assert_eq!(exported.len(), 154);
+    assert_eq!(declared.len(), 164);
+    assert_eq!(exported.len(), 164);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1940,6 +2024,28 @@ fn declarations_match_the_c_header() {
         va_instance_ids,
         element_group_labels,
         is_single_group
+    );
+    expected.extend([
+        size_of::<AmsMelRfVirtualApertureStatus>(),
+        align_of::<AmsMelRfVirtualApertureStatus>(),
+        size_of::<*mut AmsMelRfVaInstanceList>(),
+        align_of::<*mut AmsMelRfVaInstanceList>(),
+        size_of::<*mut AmsMelRfVaInstanceStatusReport>(),
+        align_of::<*mut AmsMelRfVaInstanceStatusReport>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfVaLocalFunctionStatusV1,
+        local_function_type_id,
+        statuses
+    );
+    layout!(expected, AmsMelRfVaLocalFunctionStatusSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfVaInstanceStatusReportV1,
+        va_instance_id,
+        status,
+        local_functions
     );
     expected.extend([
         size_of::<*mut AmsMelRfJobRequest>(),

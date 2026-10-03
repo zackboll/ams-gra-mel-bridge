@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Task 034E1 adds ten RF VA query/list/report exports (154 -> 164), safe Ada
+  child-package query functions and ordinary private copied values, and raw
+  Rust/private Python parity. Claim-time info and all original records remain
+  unchanged. Live vectors preserve order/duplicates; complete reports preserve
+  returned IDs, LF keys/empty groups and nested status ordering. Known four-value
+  VA status is data; unknown enums reject the whole result. Snapshots retain no
+  provider/DSO resource. No callbacks or broader RF surface. Separately restores
+  exactly one missing final LF in each of four specified RF evidence files.
+
 - Task 034D3 adds exactly one C event-extension export (153 -> 154) and safe
   Ada Extend_Job_Event, preserving exact IDs/signed femtoseconds, repeatability,
   unlocked synchronous calls and immutable snapshots. Finalize does not block

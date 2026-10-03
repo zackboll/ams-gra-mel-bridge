@@ -79,6 +79,8 @@ int main(int argc, char **argv)
     ams_mel_rf_c2 *c2 = NULL;
     ams_mel_rf_virtual_aperture_request *va_request = NULL;
     ams_mel_rf_virtual_aperture *va = NULL;
+    ams_mel_rf_va_instance_list *va_instances = NULL;
+    ams_mel_rf_va_instance_status_report *va_report = NULL;
     ams_mel_rf_job_request *job_request = NULL;
     ams_mel_rf_job *job = NULL;
     ams_mel_rf_job_interval_status *status_stream = NULL;
@@ -157,6 +159,34 @@ int main(int argc, char **argv)
                                                         sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("claim_va", status, diagnostic);
     REQUIRE(ams_mel_rf_virtual_aperture_request_close(&va_request, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Pinned provider query-value evidence, not hardware health/transitions.
+     * Retain plain snapshots across public VA/C2 Close below. This ProductRx
+     * process has callback pins and is intentionally NOT DSO-unload evidence. */
+    {
+        uint32_t value = UINT32_MAX;
+        ams_mel_u32_span_v1 list = {NULL, 0};
+        ams_mel_rf_va_instance_list *face = NULL, *unknown_face = NULL;
+        ams_mel_rf_va_instance_status_report *known_report = NULL;
+        const ams_mel_rf_va_instance_status_report_v1 *report = NULL;
+        REQUIRE(ams_mel_rf_virtual_aperture_get_id(va, &value, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && value == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_status(va, &value, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && value == AMS_MEL_RF_VA_STATUS_OPERATIONAL);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instance_status(va, 0, &value, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && value == AMS_MEL_RF_VA_STATUS_OPERATIONAL);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instance_status(va, UINT32_MAX, &value, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && value == AMS_MEL_RF_VA_STATUS_FAILED);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_all_instances(va, &va_instances, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_list_view(va_instances, &list, NULL, 0, NULL) == AMS_MEL_OK && list.size == 1 && list.data[0] == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instances(va, 0, &face, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_list_view(face, &list, NULL, 0, NULL) == AMS_MEL_OK && list.size == 1 && list.data[0] == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instances(va, UINT32_MAX, &unknown_face, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_list_view(unknown_face, &list, NULL, 0, NULL) == AMS_MEL_OK && list.size == 0 && !list.data);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instance_status_report(va, 0, &known_report, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_status_report_view(known_report, &report, NULL, 0, NULL) == AMS_MEL_OK && report->va_instance_id == 0 && report->status == AMS_MEL_RF_VA_STATUS_OPERATIONAL && report->local_functions.size == 0 && !report->local_functions.data);
+        report = NULL;
+        REQUIRE(ams_mel_rf_virtual_aperture_get_instance_status_report(va, UINT32_MAX, &va_report, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_status_report_view(va_report, &report, NULL, 0, NULL) == AMS_MEL_OK && report->va_instance_id == UINT32_MAX && report->status == AMS_MEL_RF_VA_STATUS_FAILED && report->local_functions.size == 0 && !report->local_functions.data);
+        REQUIRE(ams_mel_rf_va_instance_list_close(&face, NULL, 0, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_list_close(&unknown_face, NULL, 0, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_status_report_close(&known_report, NULL, 0, NULL) == AMS_MEL_OK);
+    }
     {
         ams_mel_rf_job_request_config_v1 job_config = {0};
         job_config.request_id = UINT32_C(0x12345678);
@@ -214,6 +244,15 @@ int main(int argc, char **argv)
     if (status != AMS_MEL_OK) return failed("close_va", status, diagnostic);
     status = ams_mel_rf_c2_close(&c2, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_c2", status, diagnostic);
+    {
+        ams_mel_u32_span_v1 list = {NULL, 0};
+        const ams_mel_rf_va_instance_status_report_v1 *report = NULL;
+        REQUIRE(ams_mel_rf_va_instance_list_view(va_instances, &list, NULL, 0, NULL) == AMS_MEL_OK && list.size == 1 && list.data[0] == 0);
+        REQUIRE(ams_mel_rf_va_instance_status_report_view(va_report, &report, NULL, 0, NULL) == AMS_MEL_OK && report->va_instance_id == UINT32_MAX && report->status == AMS_MEL_RF_VA_STATUS_FAILED && report->local_functions.size == 0);
+        REQUIRE(ams_mel_rf_va_instance_list_close(&va_instances, NULL, 0, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_instance_status_report_close(&va_report, NULL, 0, NULL) == AMS_MEL_OK);
+        puts("RF VA queries: exact pinned values; native snapshots survive public VA/C2 Close");
+    }
     status = ams_mel_rf_job_extend_event(job, 1, 1, INT64_C(123456789),
         diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("extend_event", status, diagnostic);

@@ -1,5 +1,18 @@
 # Experimental C ABI policy
 
+Task 034E1 adds ten ABI 0.1 exports (154 -> 164) with no change to any original
+declaration or layout. Distinct uint32 VirtualApertureStatus values 0..3 are
+validated against the pinned enum; Degraded/Failed are OK data. Unknown status
+anywhere rejects the whole query/report with PROVIDER_FAILED. Scalar/View outputs
+are untouched on failure; creation outputs must initially be null. Lists reuse
+the canonical u32 span; reports expose ordered LF-type records with validated
+numeric status spans. Views allocate/call no provider; Close consumes only plain
+bridge-owned storage and is null-idempotent. Snapshots retain no resource/DSO pin.
+Exceptions use existing diagnostics (bad_alloc INTERNAL_ERROR, others
+PROVIDER_EXCEPTION). Each explicit provider query runs once; Ada uses fixed
+diagnostics and never reissues a query to retrieve a longer message. See
+`task-034e1-rf-va-status-queries.md`.
+
 Task 034D3 adds only ams_mel_rf_job_extend_event (153 -> 154), ABI still 0.1.
 No new owner, result, callback or interval record version. uint32 IDs and int64
 signed femtoseconds map exactly to the pinned void method. OK reports normal

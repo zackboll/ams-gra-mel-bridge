@@ -266,6 +266,11 @@ begin
       if Code /= 0 then
          raise Program_Error with "isolated RF event extension suite failed";
       end if;
+      Code :=
+        GNAT.OS_Lib.Spawn (Workspace_Root & "/ada/tests/bin/ams_mel_rf_va_queries", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF VA query suite failed";
+      end if;
    end;
    Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line ("PASS: Ada provider load/init/version/close/finalization contract");

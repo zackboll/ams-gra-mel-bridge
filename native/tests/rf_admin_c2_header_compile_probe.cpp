@@ -18,6 +18,29 @@
 #include "../include/ams_mel/abi.h"
 
 namespace rfmel = ams::iface::rfmel;
+// Task 034E1: all six exact live methods, distinct set/vector getters, and
+// concrete report getters. In particular getLFStatus is a VALUE, not reference.
+using BaseVA = rfmel::BaseVirtualAperture;
+using VAReport = const rfmel::VirtualApertureInstanceStatusReport&;
+using LFStatuses = std::map<rfmel::LocalFunctionTypeID, std::vector<rfmel::VirtualApertureStatus>>;
+static_assert(std::is_same_v<rfmel::VirtualApertureDefinitionID, uint32_t>);
+static_assert(std::is_same_v<rfmel::VirtualApertureInstanceID, uint32_t>);
+static_assert(std::is_same_v<rfmel::FaceID, uint32_t>);
+static_assert(std::is_same_v<rfmel::LocalFunctionTypeID, uint32_t>);
+static_assert(std::is_same_v<decltype(&BaseVA::getID), uint32_t (BaseVA::*)() const>);
+static_assert(std::is_same_v<decltype(&BaseVA::getStatus), rfmel::VirtualApertureStatus (BaseVA::*)() const>);
+static_assert(std::is_same_v<decltype(&BaseVA::getInstanceStatus), rfmel::VirtualApertureStatus (BaseVA::*)(uint32_t) const>);
+static_assert(std::is_same_v<decltype(&BaseVA::getAllInstances), std::vector<uint32_t> (BaseVA::*)() const>);
+static_assert(std::is_same_v<decltype(&BaseVA::getInstances), std::vector<uint32_t> (BaseVA::*)(uint32_t) const>);
+static_assert(std::is_same_v<decltype(&BaseVA::getInstanceStatusReport), rfmel::VirtualApertureInstanceStatusReport (BaseVA::*)(uint32_t) const>);
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::VirtualAperture&>().getVAInstanceIDs()), std::set<uint32_t>>);
+static_assert(std::is_same_v<decltype(std::declval<VAReport>().getVAInstanceID()), uint32_t>);
+static_assert(std::is_same_v<decltype(std::declval<VAReport>().getStatus()), rfmel::VirtualApertureStatus>);
+static_assert(std::is_same_v<decltype(std::declval<VAReport>().getLFStatus()), LFStatuses>);
+static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::None) == AMS_MEL_RF_VA_STATUS_NONE);
+static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::Operational) == AMS_MEL_RF_VA_STATUS_OPERATIONAL);
+static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::Degraded) == AMS_MEL_RF_VA_STATUS_DEGRADED);
+static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::Failed) == AMS_MEL_RF_VA_STATUS_FAILED);
 using Fs = ams::util::math::Femtoseconds;
 static_assert(std::is_same_v<Fs::rep, std::int64_t>);
 static_assert(!std::numeric_limits<Fs>::is_specialized);

@@ -2910,13 +2910,87 @@ typedef struct ams_mel_rf_virtual_aperture_config_v1 {
 typedef struct ams_mel_rf_virtual_aperture_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_rf_virtual_aperture_result_v1;
-/* Immutable borrowed view until VA Close; IDs iterate the provider set in
+/* Immutable Claim-time borrowed view until VA Close; IDs iterate the provider set in
  * ascending order. Labels retain the provider vector's order. */
 typedef struct ams_mel_rf_virtual_aperture_info_v1 {
     ams_mel_u32_span_v1 va_instance_ids;
     ams_mel_string_view_span_v1 element_group_labels;
     uint32_t is_single_group;
 } ams_mel_rf_virtual_aperture_info_v1;
+/* Live BaseVirtualAperture queries are distinct from the frozen Claim-time
+ * info above. Same-owner calls must be externally serialized with VA Close.
+ * The existing VA child claim allows querying after public C2 Close. Each
+ * explicit query invokes its corresponding provider method once, without
+ * caching, membership checks, or cross-call atomic consistency. */
+typedef uint32_t ams_mel_rf_virtual_aperture_status_t;
+#define AMS_MEL_RF_VA_STATUS_NONE UINT32_C(0)
+#define AMS_MEL_RF_VA_STATUS_OPERATIONAL UINT32_C(1)
+#define AMS_MEL_RF_VA_STATUS_DEGRADED UINT32_C(2)
+#define AMS_MEL_RF_VA_STATUS_FAILED UINT32_C(3)
+typedef struct ams_mel_rf_va_instance_list ams_mel_rf_va_instance_list;
+typedef struct ams_mel_rf_va_instance_status_report ams_mel_rf_va_instance_status_report;
+typedef struct ams_mel_rf_va_local_function_status_v1 {
+    uint32_t local_function_type_id;
+    /* Each element is a validated VirtualApertureStatus (0..3). Position is
+     * provider LF-instance ordering, not a separately published instance ID. */
+    ams_mel_u32_span_v1 statuses;
+} ams_mel_rf_va_local_function_status_v1;
+typedef struct ams_mel_rf_va_local_function_status_span_v1 {
+    const ams_mel_rf_va_local_function_status_v1 *data;
+    size_t size;
+} ams_mel_rf_va_local_function_status_span_v1;
+typedef struct ams_mel_rf_va_instance_status_report_v1 {
+    uint32_t va_instance_id;
+    ams_mel_rf_virtual_aperture_status_t status;
+    ams_mel_rf_va_local_function_status_span_v1 local_functions;
+} ams_mel_rf_va_instance_status_report_v1;
+/* Known Degraded/Failed are OK result data; any unknown enum rejects the query
+ * (the whole report, including nested values) with PROVIDER_FAILED. Scalar and
+ * View outputs are untouched on failure. Creation outputs must point to NULL.
+ * bad_alloc maps to INTERNAL_ERROR; other exceptions to PROVIDER_EXCEPTION. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_id(
+    const ams_mel_rf_virtual_aperture *va, uint32_t *out_id, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_status(
+    const ams_mel_rf_virtual_aperture *va, ams_mel_rf_virtual_aperture_status_t *out_status,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_instance_status(
+    const ams_mel_rf_virtual_aperture *va, uint32_t instance_id,
+    ams_mel_rf_virtual_aperture_status_t *out_status, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Plain copied snapshots retain no VA/C2/provider/DSO. Vector order and
+ * duplicates are preserved; empty lists/spans are {NULL,0}. View allocates
+ * nothing and calls no provider. Borrowed views last until snapshot Close;
+ * they survive VA/C2 teardown and unpinned provider DSO unload. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_all_instances(
+    const ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_instance_list **out_list,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_instances(
+    const ams_mel_rf_virtual_aperture *va, uint32_t face_id,
+    ams_mel_rf_va_instance_list **out_list, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_instance_list_view(
+    const ams_mel_rf_va_instance_list *list, ams_mel_u32_span_v1 *out_view,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_instance_list_close(
+    ams_mel_rf_va_instance_list **list, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Copy of ONE provider-returned value. Returned instance ID is authoritative,
+ * even if different from the requested ID. Groups preserve ascending map-key
+ * order, including empty vectors; inner status order/length is unchanged.
+ * No separate LF queries, list reconciliation, or direct-status comparison. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_instance_status_report(
+    const ams_mel_rf_virtual_aperture *va, uint32_t instance_id,
+    ams_mel_rf_va_instance_status_report **out_report, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_instance_status_report_view(
+    const ams_mel_rf_va_instance_status_report *report,
+    const ams_mel_rf_va_instance_status_report_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Both snapshot Close operations consume the owner; already-NULL is OK. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_instance_status_report_close(
+    ams_mel_rf_va_instance_status_report **report, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_c2_submit_virtual_aperture(
     ams_mel_rf_c2 *c2, const ams_mel_rf_virtual_aperture_config_v1 *config,
     ams_mel_rf_virtual_aperture_request **out_request, char *diagnostic,

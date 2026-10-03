@@ -1,5 +1,20 @@
 # Implementation coverage
 
+Task 034E1 represents all six synchronous BaseVirtualAperture read/query methods
+in production C and safe Ada: getID, getStatus, getInstanceStatus, getAllInstances,
+getInstances and getInstanceStatusReport with complete nested LF status groups.
+Claim-time VA info remains unchanged and separate. ABI 0.1 adds ten exports to
+164; raw Rust/private Python parity only, vendor tree unchanged. Mock coverage
+distinguishes each provider call, ordering/duplicates, all known/unknown enums,
+fresh state, returned/requested ID mismatch, exceptions/allocation rollback,
+parent-first calls and plain snapshot teardown. Squall configured query values
+are positive data evidence, not hardware health/dynamic transitions/callbacks.
+BaseVirtualAperture/VirtualAperture as a whole are not complete. Deferred:
+add/removeStatusCallback, VADB/unclaimed discovery, ElementGroupDescriptor/DataPipe,
+standalone LocalFunction queries, weights/TX power calculations, broader
+JobRequest/conditional/TX work, RDMA and additional ProductRx formats. See
+`task-034e1-rf-va-status-queries.md` for validation evidence.
+
 Task 034D3: JobDetail::extendJobEvent command coverage in native C and safe Ada,
 with raw Rust/private Python parity only. One added export brings ABI 0.1 to 154;
 804/804 vendor blobs unchanged. Exact signed duration/ID forwarding, repeatable

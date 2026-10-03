@@ -12,6 +12,36 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_va_query_signatures(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        va = _native.RfVaHandle
+        owner = ctypes.POINTER(_native.RfVaInstanceListHandle)
+        report = ctypes.POINTER(_native.RfVaInstanceStatusReportHandle)
+        scalar = ctypes.POINTER(ctypes.c_uint32)
+        expected = {
+            "ams_mel_rf_virtual_aperture_get_id": [va, scalar],
+            "ams_mel_rf_virtual_aperture_get_status": [va, scalar],
+            "ams_mel_rf_virtual_aperture_get_instance_status": [va, ctypes.c_uint32, scalar],
+            "ams_mel_rf_virtual_aperture_get_all_instances": [va, owner],
+            "ams_mel_rf_virtual_aperture_get_instances": [va, ctypes.c_uint32, owner],
+            "ams_mel_rf_va_instance_list_view": [_native.RfVaInstanceListHandle, ctypes.POINTER(_native.U32SpanV1)],
+            "ams_mel_rf_va_instance_list_close": [owner],
+            "ams_mel_rf_virtual_aperture_get_instance_status_report": [va, ctypes.c_uint32, report],
+            "ams_mel_rf_va_instance_status_report_view": [_native.RfVaInstanceStatusReportHandle, ctypes.POINTER(ctypes.POINTER(_native.RfVaInstanceStatusReportV1))],
+            "ams_mel_rf_va_instance_status_report_close": [report],
+        }
+        import ams_mel
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic], name)
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertNotIn(name, ams_mel.__all__)
+        for name in ("RfVaInstanceListHandle", "RfVaInstanceStatusReportHandle",
+                     "RfVirtualApertureStatus", "RfVaLocalFunctionStatusV1",
+                     "RfVaLocalFunctionStatusSpanV1", "RfVaInstanceStatusReportV1"):
+            self.assertNotIn(name, ams_mel.__all__)
+        self.assertEqual([_native.RF_VA_STATUS_NONE, _native.RF_VA_STATUS_OPERATIONAL,
+                          _native.RF_VA_STATUS_DEGRADED, _native.RF_VA_STATUS_FAILED], [0, 1, 2, 3])
     def test_private_job_extension_signature(self) -> None:
         diagnostic = [ctypes.POINTER(ctypes.c_char), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         self.assertEqual(_native.ams_mel_rf_job_extend_event.argtypes,
@@ -184,6 +214,16 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_virtual_aperture_request_close",
                 "ams_mel_rf_virtual_aperture_view",
                 "ams_mel_rf_virtual_aperture_close",
+                "ams_mel_rf_virtual_aperture_get_id",
+                "ams_mel_rf_virtual_aperture_get_status",
+                "ams_mel_rf_virtual_aperture_get_instance_status",
+                "ams_mel_rf_virtual_aperture_get_all_instances",
+                "ams_mel_rf_virtual_aperture_get_instances",
+                "ams_mel_rf_va_instance_list_view",
+                "ams_mel_rf_va_instance_list_close",
+                "ams_mel_rf_virtual_aperture_get_instance_status_report",
+                "ams_mel_rf_va_instance_status_report_view",
+                "ams_mel_rf_va_instance_status_report_close",
                 "ams_mel_rf_virtual_aperture_submit_job",
                 "ams_mel_rf_job_request_wait",
                 "ams_mel_rf_job_request_claim",
@@ -230,8 +270,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 154)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 154)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 164)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 164)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -239,7 +279,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 154)
+        self.assertEqual(len(exported), 164)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1198,6 +1238,12 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfVaResultV1, 'error_code'))
         expected.extend(self._layout(_native.RfVaInfoV1, 'va_instance_ids', 'element_group_labels',
                                      'is_single_group'))
+        expected.extend([ctypes.sizeof(_native.RfVirtualApertureStatus), ctypes.alignment(_native.RfVirtualApertureStatus)])
+        for handle in (_native.RfVaInstanceListHandle, _native.RfVaInstanceStatusReportHandle):
+            expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
+        expected.extend(self._layout(_native.RfVaLocalFunctionStatusV1, 'local_function_type_id', 'statuses'))
+        expected.extend(self._layout(_native.RfVaLocalFunctionStatusSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfVaInstanceStatusReportV1, 'va_instance_id', 'status', 'local_functions'))
         for handle in (_native.RfJobRequestHandle, _native.RfJobHandle):
             expected.extend([ctypes.sizeof(handle), ctypes.alignment(handle)])
         expected.extend(self._layout(_native.U64SpanV1, 'data', 'size'))

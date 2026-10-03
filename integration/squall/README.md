@@ -1,5 +1,17 @@
 # Real Squall IR MEL integration
 
+Task 034E1 extends the existing RF safe Ada VA and helper-free C ProductRx
+clients with all six live queries. At pinned Squall `b1015728…`, face/VA-zero
+fixtures return ID 0, Operational VA/instance 0, lists [0] for all/configured face,
+empty for face UINT32_MAX, and Failed (successful data) for instance UINT32_MAX.
+Reports preserve the requested ID, corresponding status and empty LF groups.
+Ada repeats queries after public C2 Close and retains plain values after VA Close;
+C retains native list/report snapshots across public VA/C2 Close. Positive
+query-value results do not prove hardware health, transitions or callbacks.
+ProductRx registrations already pin the DSO, so its process is not unload proof.
+Existing Job/ProductRx/status/extension checks and isolated RF port overrides
+remain unchanged. See `../../docs/task-034e1-rf-va-status-queries.md`.
+
 Task 034D3 configures MaxExtensionDuration = 500,000,000 femtoseconds on the
 submitted receive event, then requests 123,456,789 femtoseconds after Finalize
 and public VA/C2 Close in the Job and both ProductRx clients. Squall at

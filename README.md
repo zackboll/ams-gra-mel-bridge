@@ -1,5 +1,17 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034E1 adds all six synchronous BaseVirtualAperture read/query methods in
+production C and safe Ada `AMS.MEL.RF.C2.Virtual_Aperture_Queries`. Fresh ID/status
+calls are distinct from immutable Claim-time VA info. Owned instance lists retain
+provider vector order and duplicates; complete reports copy one provider-returned
+value, including ordered LF groups and nested statuses. Calls are not an atomic
+multi-call transaction. Plain snapshots survive VA/C2/DSO teardown. Known Failed
+and Degraded are successful data; unknown status values fail closed. Ten additions
+bring ABI 0.1 to **164** production exports; all 804 vendor blobs are unchanged.
+Raw Rust/private Python parity only. VA callbacks, VADB, standalone LF queries,
+weights/TX/RDMA and other deferred surfaces are not started. See
+`docs/task-034e1-rf-va-status-queries.md`.
+
 Task 034D3 adds the repeatable event-extension command
 `ams_mel_rf_job_extend_event` and safe Ada `AMS.MEL.RF.C2.Extend_Job_Event`.
 IDs are exact uint32 and added duration is exact signed int64 femtoseconds.
@@ -7,7 +19,7 @@ Normal return means only that the provider's void method returned without
 throwing, not acceptance, scheduling or notification. Calls are admitted after
 Finalize, blocked after any full Cancel attempt, and never automatically retried.
 Status reception is optional; mock command-to-eventExtended feedback exercises
-the existing owned stream. Pinned Squall's method is a no-op. ABI 0.1: **154**
+the existing owned stream. Pinned Squall's method is a no-op. Its ABI 0.1 checkpoint had **154**
 production exports, unchanged 804 vendor files. Conditional commands/TX/RDMA/VADB
 remain deferred. See `docs/task-034d3-rf-job-event-extension.md`.
 
@@ -626,7 +638,7 @@ A simplified Squall deployment is:
 PROCESS 1
 Ada Skill
   |
-AMS.MEL
+# AMS MEL
   |
 ams_mel_c
   |

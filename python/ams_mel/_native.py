@@ -1188,6 +1188,59 @@ ams_mel_rf_c2_close.argtypes = [ctypes.POINTER(RfC2Handle), *_CHANNEL_DIAGNOSTIC
 ams_mel_rf_c2_close.restype = ctypes.c_int32
 RfVaRequestHandle = ctypes.c_void_p
 RfVaHandle = ctypes.c_void_p
+RfVaInstanceListHandle = ctypes.c_void_p
+RfVaInstanceStatusReportHandle = ctypes.c_void_p
+RfVirtualApertureStatus = ctypes.c_uint32
+RF_VA_STATUS_NONE = 0
+RF_VA_STATUS_OPERATIONAL = 1
+RF_VA_STATUS_DEGRADED = 2
+RF_VA_STATUS_FAILED = 3
+
+
+class RfVaLocalFunctionStatusV1(ctypes.Structure):
+    _fields_ = [("local_function_type_id", ctypes.c_uint32), ("statuses", U32SpanV1)]
+
+
+class RfVaLocalFunctionStatusSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfVaLocalFunctionStatusV1)), ("size", ctypes.c_size_t)]
+
+
+class RfVaInstanceStatusReportV1(ctypes.Structure):
+    _fields_ = [("va_instance_id", ctypes.c_uint32), ("status", RfVirtualApertureStatus),
+                ("local_functions", RfVaLocalFunctionStatusSpanV1)]
+
+
+# Private raw ABI only: no public Python RF query API.
+ams_mel_rf_virtual_aperture_get_id = _LIBRARY.ams_mel_rf_virtual_aperture_get_id
+ams_mel_rf_virtual_aperture_get_id.argtypes = [RfVaHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_id.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_status = _LIBRARY.ams_mel_rf_virtual_aperture_get_status
+ams_mel_rf_virtual_aperture_get_status.argtypes = [RfVaHandle, ctypes.POINTER(RfVirtualApertureStatus), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_status.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_instance_status = _LIBRARY.ams_mel_rf_virtual_aperture_get_instance_status
+ams_mel_rf_virtual_aperture_get_instance_status.argtypes = [RfVaHandle, ctypes.c_uint32, ctypes.POINTER(RfVirtualApertureStatus), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_instance_status.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_all_instances = _LIBRARY.ams_mel_rf_virtual_aperture_get_all_instances
+ams_mel_rf_virtual_aperture_get_all_instances.argtypes = [RfVaHandle, ctypes.POINTER(RfVaInstanceListHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_all_instances.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_instances = _LIBRARY.ams_mel_rf_virtual_aperture_get_instances
+ams_mel_rf_virtual_aperture_get_instances.argtypes = [RfVaHandle, ctypes.c_uint32, ctypes.POINTER(RfVaInstanceListHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_instances.restype = ctypes.c_int32
+ams_mel_rf_va_instance_list_view = _LIBRARY.ams_mel_rf_va_instance_list_view
+ams_mel_rf_va_instance_list_view.argtypes = [RfVaInstanceListHandle, ctypes.POINTER(U32SpanV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_instance_list_view.restype = ctypes.c_int32
+ams_mel_rf_va_instance_list_close = _LIBRARY.ams_mel_rf_va_instance_list_close
+ams_mel_rf_va_instance_list_close.argtypes = [ctypes.POINTER(RfVaInstanceListHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_instance_list_close.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_instance_status_report = _LIBRARY.ams_mel_rf_virtual_aperture_get_instance_status_report
+ams_mel_rf_virtual_aperture_get_instance_status_report.argtypes = [RfVaHandle, ctypes.c_uint32, ctypes.POINTER(RfVaInstanceStatusReportHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_instance_status_report.restype = ctypes.c_int32
+ams_mel_rf_va_instance_status_report_view = _LIBRARY.ams_mel_rf_va_instance_status_report_view
+ams_mel_rf_va_instance_status_report_view.argtypes = [RfVaInstanceStatusReportHandle, ctypes.POINTER(ctypes.POINTER(RfVaInstanceStatusReportV1)), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_instance_status_report_view.restype = ctypes.c_int32
+ams_mel_rf_va_instance_status_report_close = _LIBRARY.ams_mel_rf_va_instance_status_report_close
+ams_mel_rf_va_instance_status_report_close.argtypes = [ctypes.POINTER(RfVaInstanceStatusReportHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_instance_status_report_close.restype = ctypes.c_int32
 
 
 class RfVaConfigV1(ctypes.Structure):
@@ -1729,6 +1782,16 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_virtual_aperture_request_close",
     "ams_mel_rf_virtual_aperture_view",
     "ams_mel_rf_virtual_aperture_close",
+    "ams_mel_rf_virtual_aperture_get_id",
+    "ams_mel_rf_virtual_aperture_get_status",
+    "ams_mel_rf_virtual_aperture_get_instance_status",
+    "ams_mel_rf_virtual_aperture_get_all_instances",
+    "ams_mel_rf_virtual_aperture_get_instances",
+    "ams_mel_rf_va_instance_list_view",
+    "ams_mel_rf_va_instance_list_close",
+    "ams_mel_rf_virtual_aperture_get_instance_status_report",
+    "ams_mel_rf_va_instance_status_report_view",
+    "ams_mel_rf_va_instance_status_report_close",
     "ams_mel_rf_virtual_aperture_submit_job",
     "ams_mel_rf_job_request_wait",
     "ams_mel_rf_job_request_claim",
