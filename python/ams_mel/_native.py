@@ -1112,6 +1112,18 @@ class RfFaceInfoSpanV1(ctypes.Structure):
 
 
 RfPhysicalDataHandle = ctypes.c_void_p
+RfTxPowerModeSnapshotHandle = ctypes.c_void_p
+
+
+class RfTxPowerModeV1(ctypes.Structure):
+    _fields_ = [("tx_power_mode_id", ctypes.c_uint32), ("is_linear_operation", ctypes.c_uint32),
+                ("tx_power_level", ctypes.c_uint32), ("tx_frequency_ranges", RfFrequencyRangeSpanV1),
+                ("max_tx_duty_factor", ctypes.c_double), ("max_tx_pulse_width_ns", ctypes.c_int64),
+                ("max_tx_atten", ctypes.c_double), ("tx_atten_step_size", ctypes.c_double)]
+
+
+class RfTxPowerModeSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfTxPowerModeV1)), ("size", ctypes.c_size_t)]
 
 
 class RfEulerV1(ctypes.Structure):
@@ -1139,6 +1151,19 @@ class RfMfaInfoV1(ctypes.Structure):
         ("faces", RfFaceInfoSpanV1),
     ]
 
+
+ams_mel_rf_data_get_tx_power_modes = _LIBRARY.ams_mel_rf_data_get_tx_power_modes
+ams_mel_rf_data_get_tx_power_modes.argtypes = [RfDataHandle, ctypes.c_uint32, ctypes.POINTER(RfTxPowerModeSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_data_get_tx_power_modes.restype = ctypes.c_int32
+ams_mel_rf_data_get_tx_power_mode = _LIBRARY.ams_mel_rf_data_get_tx_power_mode
+ams_mel_rf_data_get_tx_power_mode.argtypes = [RfDataHandle, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(RfTxPowerModeSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_data_get_tx_power_mode.restype = ctypes.c_int32
+ams_mel_rf_tx_power_mode_snapshot_view = _LIBRARY.ams_mel_rf_tx_power_mode_snapshot_view
+ams_mel_rf_tx_power_mode_snapshot_view.argtypes = [RfTxPowerModeSnapshotHandle, ctypes.POINTER(RfTxPowerModeSpanV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_tx_power_mode_snapshot_view.restype = ctypes.c_int32
+ams_mel_rf_tx_power_mode_snapshot_close = _LIBRARY.ams_mel_rf_tx_power_mode_snapshot_close
+ams_mel_rf_tx_power_mode_snapshot_close.argtypes = [ctypes.POINTER(RfTxPowerModeSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_tx_power_mode_snapshot_close.restype = ctypes.c_int32
 
 ams_mel_rf_admin_open = _LIBRARY.ams_mel_rf_admin_open
 ams_mel_rf_admin_open.argtypes = [
@@ -1575,6 +1600,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_get_mfa_info",
     "ams_mel_rf_data_quantize_duration",
     "ams_mel_rf_data_get_physical_data",
+    "ams_mel_rf_data_get_tx_power_modes",
+    "ams_mel_rf_data_get_tx_power_mode",
+    "ams_mel_rf_tx_power_mode_snapshot_view",
+    "ams_mel_rf_tx_power_mode_snapshot_close",
     "ams_mel_rf_physical_data_view",
     "ams_mel_rf_physical_data_close",
     "ams_mel_rf_mfa_info_view",

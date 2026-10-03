@@ -86,7 +86,11 @@ begin
          Version : constant AMS.MEL.Provider_Version := RF.Query_Provider_Version (Data);
          MFA     : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
          Physical : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Data, 0);
+         Modes : constant RF.Tx_Power_Mode_List := RF.Snapshot_Tx_Power_Modes (Data, 0);
       begin
+         if RF.Tx_Power_Mode_Count (Modes) /= 0 then
+            raise Program_Error with "receive-only Squall returned Tx modes";
+         end if;
          Verify_Physical (Physical);
          declare
             Inputs : constant array (Positive range 1 .. 4) of Interfaces.Integer_64 :=

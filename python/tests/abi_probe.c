@@ -717,6 +717,18 @@ int main(void)
         FIELD(ams_mel_rf_physical_data_v1,location);
         FIELD(ams_mel_rf_physical_data_v1,orientation);
         FIELD(ams_mel_rf_physical_data_v1,boresight));
+    RECORD(ams_mel_rf_tx_power_mode_v1,
+        FIELD(ams_mel_rf_tx_power_mode_v1,tx_power_mode_id);
+        FIELD(ams_mel_rf_tx_power_mode_v1,is_linear_operation);
+        FIELD(ams_mel_rf_tx_power_mode_v1,tx_power_level);
+        FIELD(ams_mel_rf_tx_power_mode_v1,tx_frequency_ranges);
+        FIELD(ams_mel_rf_tx_power_mode_v1,max_tx_duty_factor);
+        FIELD(ams_mel_rf_tx_power_mode_v1,max_tx_pulse_width_ns);
+        FIELD(ams_mel_rf_tx_power_mode_v1,max_tx_atten);
+        FIELD(ams_mel_rf_tx_power_mode_v1,tx_atten_step_size));
+    RECORD(ams_mel_rf_tx_power_mode_span_v1,
+        FIELD(ams_mel_rf_tx_power_mode_span_v1,data);
+        FIELD(ams_mel_rf_tx_power_mode_span_v1,size));
     RECORD(ams_mel_rf_mfa_info_v1,
         FIELD(ams_mel_rf_mfa_info_v1,reported_num_faces);
         FIELD(ams_mel_rf_mfa_info_v1,contains_open_additions);

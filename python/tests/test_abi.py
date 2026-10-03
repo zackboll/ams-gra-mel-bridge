@@ -12,6 +12,20 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_tx_power_mode_signatures(self) -> None:
+        diagnostic = [ctypes.POINTER(ctypes.c_char), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        owner = ctypes.POINTER(_native.RfTxPowerModeSnapshotHandle)
+        self.assertEqual(_native.ams_mel_rf_data_get_tx_power_modes.argtypes,
+                         [_native.RfDataHandle, ctypes.c_uint32, owner, *diagnostic])
+        self.assertEqual(_native.ams_mel_rf_data_get_tx_power_mode.argtypes,
+                         [_native.RfDataHandle, ctypes.c_uint32, ctypes.c_uint32, owner, *diagnostic])
+        self.assertEqual(_native.ams_mel_rf_tx_power_mode_snapshot_view.argtypes,
+                         [_native.RfTxPowerModeSnapshotHandle, ctypes.POINTER(_native.RfTxPowerModeSpanV1), *diagnostic])
+        self.assertEqual(_native.ams_mel_rf_tx_power_mode_snapshot_close.argtypes, [owner, *diagnostic])
+        for operation in (_native.ams_mel_rf_data_get_tx_power_modes, _native.ams_mel_rf_data_get_tx_power_mode,
+                          _native.ams_mel_rf_tx_power_mode_snapshot_view, _native.ams_mel_rf_tx_power_mode_snapshot_close):
+            self.assertIs(operation.restype, ctypes.c_int32)
+
     def test_private_physical_data_signatures(self) -> None:
         self.assertEqual(_native.ams_mel_rf_data_get_physical_data.argtypes,
                          [_native.RfDataHandle, ctypes.c_uint32,
@@ -161,6 +175,10 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_data_get_mfa_info",
                 "ams_mel_rf_data_quantize_duration",
                 "ams_mel_rf_data_get_physical_data",
+                "ams_mel_rf_data_get_tx_power_modes",
+                "ams_mel_rf_data_get_tx_power_mode",
+                "ams_mel_rf_tx_power_mode_snapshot_view",
+                "ams_mel_rf_tx_power_mode_snapshot_close",
                 "ams_mel_rf_physical_data_view",
                 "ams_mel_rf_physical_data_close",
                 "ams_mel_rf_mfa_info_view",
@@ -177,8 +195,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 139)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 139)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 143)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 143)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -186,7 +204,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 139)
+        self.assertEqual(len(exported), 143)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1191,6 +1209,8 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfEulerV1, 'roll_rad', 'pitch_rad', 'yaw_rad'))
         expected.extend(self._layout(_native.RfComponentLocationV1, 'offset_x_m', 'offset_y_m', 'offset_z_m', 'key', 'system_name'))
         expected.extend(self._layout(_native.RfPhysicalDataV1, 'antenna_height_m', 'antenna_width_m', 'lattice_angle_rad', 'location', 'orientation', 'boresight'))
+        expected.extend(self._layout(_native.RfTxPowerModeV1, 'tx_power_mode_id', 'is_linear_operation', 'tx_power_level', 'tx_frequency_ranges', 'max_tx_duty_factor', 'max_tx_pulse_width_ns', 'max_tx_atten', 'tx_atten_step_size'))
+        expected.extend(self._layout(_native.RfTxPowerModeSpanV1, 'data', 'size'))
         expected.extend(
             self._layout(
                 _native.RfMfaInfoV1,

@@ -66,6 +66,8 @@ std::atomic<unsigned> getter_calls{};
 std::atomic<unsigned> quantize_calls{};
 std::atomic<unsigned> physical_calls{};
 std::atomic<std::uint32_t> physical_face{};
+std::atomic<unsigned> tx_collection_calls{}, tx_direct_calls{};
+std::atomic<std::uint32_t> tx_face{}, tx_requested_id{};
 
 void record(const char *event) noexcept
 {
@@ -231,16 +233,63 @@ public:
         return physical_;
     }
     const std::vector<rfmel::TxPowerModeData>& getTxPowerModeCharacteristics(
-        FaceID) const override
-    { forbidden("RFMFAInfo::getTxPowerModeCharacteristics(face)"); }
+        FaceID face) const override
+    {
+        enter();
+        tx_collection_calls.fetch_add(1U);
+        tx_face.store(face);
+        tx_failure();
+        modes_.clear();
+        if (scenario_->name == "tx-empty") return modes_;
+        const bool changed = scenario_->name == "tx-changing" && tx_generation_++ != 0U;
+        modes_.push_back(make_mode(false, changed));
+        modes_.push_back(make_mode(true, changed));
+        return modes_;
+    }
     const rfmel::TxPowerModeData& getTxPowerModeCharacteristics(
-        rfmel::TxPowerModeID, FaceID) const override
-    { forbidden("RFMFAInfo::getTxPowerModeCharacteristics(mode, face)"); }
+        rfmel::TxPowerModeID id, FaceID face) const override
+    {
+        enter();
+        tx_direct_calls.fetch_add(1U);
+        tx_face.store(face);
+        tx_requested_id.store(id);
+        tx_failure();
+        direct_mode_ = make_mode(false, false);
+        if (scenario_->name != "tx-mismatch") direct_mode_.setTxPowerModeID(id);
+        return direct_mode_;
+    }
     /* Non-contiguous, inserted out of order: std::set order is {7, 42}. */
     std::set<FaceID> getFaceIDs() const override
     { enter(); return {42U, 7U}; }
 
 private:
+    void tx_failure() const
+    {
+        if (scenario_->name == "tx-throw") throw std::runtime_error("mock TxPowerModeData exception");
+        if (scenario_->name == "tx-unknown") throw 42;
+        if (scenario_->name == "tx-alloc") throw std::bad_alloc{};
+    }
+    rfmel::TxPowerModeData make_mode(bool second, bool changed) const
+    {
+        rfmel::TxPowerModeData mode;
+        mode.setTxPowerModeID(second ? UINT32_MAX : UINT32_C(0x80000001));
+        mode.setIsLinearOperation(!second);
+        mode.setTxPowerLevel(second ? 0U : UINT32_C(0xF0E1D2C3));
+        const double delta = changed ? 10.0 : 0.0;
+        if (!second) mode.setTxFrequencyRanges({
+            FrequencyRange{1000000.25 + delta, 2000000.5 + delta},
+            FrequencyRange{987654321.125 + delta, 987654322.875 + delta}});
+        mode.setMaxTxDutyFactor((second ? 0.375 : 0.625) + delta);
+        mode.setMaxTxPulseWidth(std::chrono::nanoseconds{second ? INT64_C(9876543210) : INT64_C(-123456789)});
+        mode.setMaxTxAtten(second ? 12.25 : 63.5);
+        mode.setTxAttenStepSize(second ? 0.5 : 0.125);
+        if (scenario_->name == "tx-special") {
+            mode.setMaxTxDutyFactor(-0.0);
+            mode.setMaxTxAtten(std::numeric_limits<double>::infinity());
+            mode.setTxAttenStepSize(std::numeric_limits<double>::quiet_NaN());
+        }
+        return mode;
+    }
     void enter() const
     {
         getter_calls.fetch_add(1U);
@@ -263,6 +312,9 @@ private:
     std::shared_ptr<Scenario> scenario_;
     mutable rfmel::PhysicalData physical_;
     mutable unsigned physical_generation_{};
+    mutable unsigned tx_generation_{};
+    mutable std::vector<rfmel::TxPowerModeData> modes_;
+    mutable rfmel::TxPowerModeData direct_mode_;
 };
 
 /* ---------------------------------------------------------------------------
@@ -1449,5 +1501,13 @@ extern "C" __attribute__((visibility("default"))) void mock_rf_rx_set_active_thr
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_physical_calls(void)
 { return physical_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_tx_collection_calls(void)
+{ return tx_collection_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_tx_direct_calls(void)
+{ return tx_direct_calls.load(); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_tx_face(void)
+{ return tx_face.load(); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_tx_requested_id(void)
+{ return tx_requested_id.load(); }
 extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_physical_face(void)
 { return physical_face.load(); }

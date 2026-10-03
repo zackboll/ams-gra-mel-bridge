@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Task 034C3 adds complete RF TxPowerModeData collection/direct immutable owned
+  snapshots and safe Ada values. Four new exports bring ABI 0.1 to 143;
+  raw Ada/Rust/private Python parity, no new safe Rust/public Python API.
+  Provider order, all doubles and signed nanoseconds are preserved. Direct
+  returned IDs are authoritative; no supportsTransmit gate. Mock-positive;
+  pinned Squall receive-only/empty collection. Vendor unchanged at 804 files.
+
 - Task 034C2 adds the complete RF PhysicalData/InstallationDetails owned C
   snapshot and safe Ada value, including ComponentLocation ForeignKey strings.
   Doubles retain meters/radians unchanged; snapshots outlive DataMEL/provider.

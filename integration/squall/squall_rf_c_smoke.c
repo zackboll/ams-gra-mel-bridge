@@ -118,6 +118,8 @@ int main(int argc, char **argv)
 {
     ams_mel_rf_data *data = NULL;
     ams_mel_rf_physical_data *physical = NULL;
+    ams_mel_rf_tx_power_mode_snapshot *modes = NULL;
+    ams_mel_rf_tx_power_mode_span_v1 mode_view = {0};
     const ams_mel_rf_physical_data_v1 *physical_view = NULL;
     ams_mel_rf_mfa_info *info = NULL;
     const ams_mel_rf_mfa_info_v1 *view = NULL;
@@ -169,6 +171,9 @@ int main(int argc, char **argv)
     REQUIRE(ams_mel_rf_data_get_physical_data(data, 0, &physical, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
     REQUIRE(ams_mel_rf_physical_data_view(physical, &physical_view, NULL, 0, NULL) == AMS_MEL_OK);
     REQUIRE(check_physical(physical_view) == EXIT_SUCCESS);
+    REQUIRE(ams_mel_rf_data_get_tx_power_modes(data, 0, &modes, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+    REQUIRE(ams_mel_rf_tx_power_mode_snapshot_view(modes, &mode_view, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(mode_view.size == 0 && mode_view.data == NULL);
 
     /* RF Close: shutdown once, destroy DataMEL, then unload the provider. */
     status = ams_mel_rf_data_close(&data, diagnostic, sizeof diagnostic, NULL);
@@ -189,6 +194,9 @@ int main(int argc, char **argv)
     REQUIRE(ams_mel_rf_physical_data_view(physical, &physical_view, NULL, 0, NULL) == AMS_MEL_OK);
     REQUIRE(check_physical(physical_view) == EXIT_SUCCESS);
     REQUIRE(ams_mel_rf_physical_data_close(&physical, NULL, 0, NULL) == AMS_MEL_OK && physical == NULL);
+    REQUIRE(ams_mel_rf_tx_power_mode_snapshot_view(modes, &mode_view, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(mode_view.size == 0 && mode_view.data == NULL);
+    REQUIRE(ams_mel_rf_tx_power_mode_snapshot_close(&modes, NULL, 0, NULL) == AMS_MEL_OK && modes == NULL);
     puts("PASS: real Squall RF DataMEL C smoke (version, MFA snapshot, close, "
          "snapshot after close)");
     return EXIT_SUCCESS;

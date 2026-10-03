@@ -2455,8 +2455,8 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_close(
  * open-arsenal RF MEL 762ce84c5555dd0f3ea66f36b321fecf8839b89f (Task 033A).
  *
  * The RF DataMEL surface includes live duration quantization as well as the
- * point-in-time MFA snapshot. getPhysicalData, Tx power characteristics and
- * external/RDMA endpoints remain outside this RF slice; see docs/coverage.md
+ * point-in-time MFA, PhysicalData and Tx power mode snapshots.
+ * External/RDMA endpoints remain outside this RF slice; see docs/coverage.md
  * for the separately added ProductRx, Admin, C2, VA and Job surfaces.
  *
  * Threading: open shares no object. Version, MFA snapshot, quantization and Close on ONE
@@ -2507,6 +2507,51 @@ typedef struct ams_mel_rf_frequency_range_span_v1 {
     const ams_mel_rf_frequency_range_v1 *data;
     size_t size;
 } ams_mel_rf_frequency_range_span_v1;
+
+typedef struct ams_mel_rf_tx_power_mode_snapshot ams_mel_rf_tx_power_mode_snapshot;
+typedef struct ams_mel_rf_tx_power_mode_v1 {
+    uint32_t tx_power_mode_id;
+    uint32_t is_linear_operation; /* exactly 0 or 1 */
+    uint32_t tx_power_level;
+    ams_mel_rf_frequency_range_span_v1 tx_frequency_ranges;
+    double max_tx_duty_factor;
+    int64_t max_tx_pulse_width_ns;
+    double max_tx_atten;
+    double tx_atten_step_size;
+} ams_mel_rf_tx_power_mode_v1;
+typedef struct ams_mel_rf_tx_power_mode_span_v1 {
+    const ams_mel_rf_tx_power_mode_v1 *data;
+    size_t size;
+} ams_mel_rf_tx_power_mode_span_v1;
+
+/* RequiredIfTransmit, independent published queries: no supportsTransmit gate.
+ * Collection preserves provider order; empty is OK with {NULL,0}. Direct calls
+ * the exact direct overload once and copies exactly one provider-returned mode,
+ * even if its ID differs from the requested ID. All getters are read once.
+ * Doubles and signed nanoseconds are copied without normalization/validation.
+ * Snapshots own every mode/range; no provider reference or DataMEL child claim
+ * survives creation. out_snapshot must point to NULL. Serialize Get with other
+ * same-DataMEL operations/Close. bad_alloc => INTERNAL_ERROR; other exceptions
+ * => PROVIDER_EXCEPTION. No partial owner escapes. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_tx_power_modes(
+    const ams_mel_rf_data *data, uint32_t face_id,
+    ams_mel_rf_tx_power_mode_snapshot **out_snapshot, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_tx_power_mode(
+    const ams_mel_rf_data *data, uint32_t face_id, uint32_t tx_power_mode_id,
+    ams_mel_rf_tx_power_mode_snapshot **out_snapshot, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* No allocation/provider calls. All spans remain valid until snapshot Close,
+ * including after DataMEL Close/provider unload. Serialize View with Close on
+ * the same owner. out_view must be non-NULL; its initial value is unrestricted. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_tx_power_mode_snapshot_view(
+    const ams_mel_rf_tx_power_mode_snapshot *snapshot,
+    ams_mel_rf_tx_power_mode_span_v1 *out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Consumes/nulls caller handle; idempotent for an already-NULL owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_tx_power_mode_snapshot_close(
+    ams_mel_rf_tx_power_mode_snapshot **snapshot, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* All input spans and strings are borrowed only during submission. Exactly
  * one provider-created RX element group is included in each Job request. */

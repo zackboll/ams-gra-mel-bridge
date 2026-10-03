@@ -295,6 +295,122 @@ package body AMS.MEL.RF is
       end;
    end Snapshot_MFA_Info;
 
+   function Copy_Tx_Snapshot
+     (Owner : aliased in out C.RF_Tx_Power_Mode_Snapshot_Handle; Direct : Boolean)
+      return Tx_Power_Mode_List
+   is
+      Span   : aliased C.Span_V1;
+      D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R      : aliased C.Size_T := 0;
+      Result : Tx_Power_Mode_List;
+      type Raw_Array is array (Natural range <>) of aliased C.RF_Tx_Power_Mode_V1
+      with Convention => C;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.RF_Tx_Power_Mode_Snapshot_Close (Owner'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      Check
+        (C.RF_Tx_Power_Mode_Snapshot_View (Owner, Span'Access, D'Address, D'Length, R'Access), D);
+      declare
+         Count : constant Natural := Checked_Count (Span);
+      begin
+         if Direct and then Count /= 1 then
+            raise Provider_Error with "native direct TxPowerMode snapshot must contain one mode";
+         end if;
+         if Count > 0 then
+            declare
+               Raw : Raw_Array (0 .. Count - 1)
+               with Import, Address => Span.Data;
+            begin
+               for Item of Raw loop
+                  declare
+                     Mode : Tx_Power_Mode;
+                  begin
+                     Mode.ID := Item.Tx_Power_Mode_ID;
+                     Mode.Level := Item.Tx_Power_Level;
+                     Mode.Linear := Binary (Item.Is_Linear_Operation);
+                     Copy_Ranges (Item.Tx_Frequency_Ranges, Mode.Ranges);
+                     Mode.Duty := Long_Float (Item.Max_Tx_Duty_Factor);
+                     Mode.Pulse_NS := Item.Max_Tx_Pulse_Width_NS;
+                     Mode.Attenuation := Long_Float (Item.Max_Tx_Atten);
+                     Mode.Step_Size := Long_Float (Item.Tx_Atten_Step_Size);
+                     Result.Modes.Append (Mode);
+                  end;
+               end loop;
+            end;
+         end if;
+      end;
+      Check (C.RF_Tx_Power_Mode_Snapshot_Close (Owner'Access, D'Address, D'Length, R'Access), D);
+      return Result;
+   exception
+      when others =>
+         Release;
+         raise;
+   end Copy_Tx_Snapshot;
+
+   function Snapshot_Tx_Power_Modes
+     (Data : Data_MEL; Face_ID : Interfaces.Unsigned_32) return Tx_Power_Mode_List
+   is
+      Owner : aliased C.RF_Tx_Power_Mode_Snapshot_Handle := C.Null_RF_Tx_Power_Mode_Snapshot;
+      D     : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R     : aliased C.Size_T := 0;
+   begin
+      if not Is_Open (Data) then
+         raise Provider_Error with "RF DataMEL is closed";
+      end if;
+      Check
+        (C.RF_Data_Get_Tx_Power_Modes
+           (Data.Handle, Face_ID, Owner'Access, D'Address, D'Length, R'Access),
+         D);
+      declare
+         Result : constant Tx_Power_Mode_List := Copy_Tx_Snapshot (Owner, False);
+      begin
+         return Result;
+      end;
+   end Snapshot_Tx_Power_Modes;
+
+   function Snapshot_Tx_Power_Mode
+     (Data : Data_MEL; Face_ID, Power_Mode_ID : Interfaces.Unsigned_32) return Tx_Power_Mode
+   is
+      Owner : aliased C.RF_Tx_Power_Mode_Snapshot_Handle := C.Null_RF_Tx_Power_Mode_Snapshot;
+      D     : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R     : aliased C.Size_T := 0;
+   begin
+      if not Is_Open (Data) then
+         raise Provider_Error with "RF DataMEL is closed";
+      end if;
+      Check
+        (C.RF_Data_Get_Tx_Power_Mode
+           (Data.Handle, Face_ID, Power_Mode_ID, Owner'Access, D'Address, D'Length, R'Access),
+         D);
+      return Tx_Power_Mode_At (Copy_Tx_Snapshot (Owner, True), 1);
+   end Snapshot_Tx_Power_Mode;
+
+   function Tx_Power_Mode_Count (Value : Tx_Power_Mode_List) return Natural
+   is (Natural (Value.Modes.Length));
+   function Tx_Power_Mode_At (Value : Tx_Power_Mode_List; Index : Positive) return Tx_Power_Mode
+   is (Value.Modes (Index));
+   function Tx_Power_Mode_ID (Value : Tx_Power_Mode) return Interfaces.Unsigned_32
+   is (Value.ID);
+   function Is_Linear_Operation (Value : Tx_Power_Mode) return Boolean
+   is (Value.Linear);
+   function Tx_Power_Level (Value : Tx_Power_Mode) return Interfaces.Unsigned_32
+   is (Value.Level);
+   function Tx_Frequency_Range_Count (Value : Tx_Power_Mode) return Natural
+   is (Natural (Value.Ranges.Length));
+   function Tx_Frequency_Range_At (Value : Tx_Power_Mode; Index : Positive) return Frequency_Range
+   is (Value.Ranges (Index));
+   function Max_Tx_Duty_Factor (Value : Tx_Power_Mode) return Long_Float
+   is (Value.Duty);
+   function Max_Tx_Pulse_Width_NS (Value : Tx_Power_Mode) return Interfaces.Integer_64
+   is (Value.Pulse_NS);
+   function Max_Tx_Attenuation (Value : Tx_Power_Mode) return Long_Float
+   is (Value.Attenuation);
+   function Tx_Attenuation_Step_Size (Value : Tx_Power_Mode) return Long_Float
+   is (Value.Step_Size);
+
    function Snapshot_Physical_Data
      (Data : Data_MEL; Face_ID : Interfaces.Unsigned_32) return Physical_Data
    is

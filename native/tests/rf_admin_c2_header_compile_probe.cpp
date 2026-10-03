@@ -12,8 +12,29 @@
 #include <memory>
 #include <string_view>
 #include <type_traits>
+#include <cstdint>
+#include <chrono>
 
 namespace rfmel = ams::iface::rfmel;
+
+// Task 034C3: exact pinned const TxPowerModeData getter/representation surface.
+using TxMode = const rfmel::TxPowerModeData&;
+static_assert(std::is_same_v<rfmel::TxPowerModeID, std::uint32_t>);
+static_assert(std::is_same_v<rfmel::TxPowerLevel, std::uint32_t>);
+static_assert(std::is_same_v<rfmel::DutyFactor, double>);
+static_assert(std::is_same_v<rfmel::Frequency, double>);
+static_assert(std::is_same_v<std::chrono::nanoseconds::rep, std::int64_t>);
+static_assert(std::is_integral_v<std::chrono::nanoseconds::rep>);
+static_assert(std::is_signed_v<std::chrono::nanoseconds::rep>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getTxPowerModeID()), std::uint32_t>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getIsLinearOperation()), bool>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getTxPowerLevel()), std::uint32_t>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getTxFrequencyRanges(0)),
+                             const std::vector<rfmel::FrequencyRange>&>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getMaxTxDutyFactor()), double>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getMaxTxPulseWidth()), std::chrono::nanoseconds>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getMaxTxAtten()), double>);
+static_assert(std::is_same_v<decltype(std::declval<TxMode>().getTxAttenStepSize()), double>);
 
 static_assert(std::is_same_v<rfmel::fnAdminMEL,
                              std::shared_ptr<rfmel::AdminMEL> (*)(std::string_view)>);
