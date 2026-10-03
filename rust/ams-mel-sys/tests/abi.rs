@@ -836,8 +836,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 136);
-    assert_eq!(exported.len(), 136);
+    assert_eq!(declared.len(), 139);
+    assert_eq!(exported.len(), 139);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2046,6 +2046,26 @@ fn declarations_match_the_c_header() {
         sample_frequency_ranges
     );
     layout!(expected, AmsMelRfFaceInfoSpanV1, data, size);
+    layout!(expected, AmsMelRfEulerV1, roll_rad, pitch_rad, yaw_rad);
+    layout!(
+        expected,
+        AmsMelRfComponentLocationV1,
+        offset_x_m,
+        offset_y_m,
+        offset_z_m,
+        key,
+        system_name
+    );
+    layout!(
+        expected,
+        AmsMelRfPhysicalDataV1,
+        antenna_height_m,
+        antenna_width_m,
+        lattice_angle_rad,
+        location,
+        orientation,
+        boresight
+    );
     layout!(
         expected,
         AmsMelRfMfaInfoV1,
@@ -2129,4 +2149,29 @@ fn absolute(path: &Path) -> PathBuf {
     } else {
         env::current_dir().expect("current directory").join(path)
     }
+}
+
+#[test]
+fn physical_data_signatures() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        u32,
+        *mut *mut AmsMelRfPhysicalData,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_get_physical_data;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfPhysicalData,
+        *mut *const AmsMelRfPhysicalDataV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_physical_data_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfPhysicalData,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_physical_data_close;
 }

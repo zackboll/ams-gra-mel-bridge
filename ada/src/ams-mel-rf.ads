@@ -1,5 +1,6 @@
 private with Ada.Containers.Vectors;
 private with Ada.Finalization;
+private with Ada.Strings.Unbounded;
 private with Interfaces.C;
 private with AMS.MEL_C_API;
 with Interfaces;
@@ -12,6 +13,25 @@ package AMS.MEL.RF is
    function Query_Provider_Version (Object : Data_MEL) return AMS.MEL.Provider_Version;
    function Quantize_Duration
      (Data : Data_MEL; Femtoseconds : Interfaces.Integer_64) return Interfaces.Integer_64;
+
+   --  Ada-owned point-in-time value; no native/provider handle survives return.
+   type Physical_Data is private;
+   function Snapshot_Physical_Data
+     (Data : Data_MEL; Face_ID : Interfaces.Unsigned_32) return Physical_Data;
+   function Antenna_Height_M (Value : Physical_Data) return Long_Float;
+   function Antenna_Width_M (Value : Physical_Data) return Long_Float;
+   function Lattice_Angle_Radians (Value : Physical_Data) return Long_Float;
+   function Location_Offset_X_M (Value : Physical_Data) return Long_Float;
+   function Location_Offset_Y_M (Value : Physical_Data) return Long_Float;
+   function Location_Offset_Z_M (Value : Physical_Data) return Long_Float;
+   function Orientation_Roll_Radians (Value : Physical_Data) return Long_Float;
+   function Orientation_Pitch_Radians (Value : Physical_Data) return Long_Float;
+   function Orientation_Yaw_Radians (Value : Physical_Data) return Long_Float;
+   function Boresight_Roll_Radians (Value : Physical_Data) return Long_Float;
+   function Boresight_Pitch_Radians (Value : Physical_Data) return Long_Float;
+   function Boresight_Yaw_Radians (Value : Physical_Data) return Long_Float;
+   function Location_Key (Value : Physical_Data) return String;
+   function Location_System_Name (Value : Physical_Data) return String;
 
    type Job_Data_Format is mod 2**32 with Size => 32;
    Direct_INT8          : constant Job_Data_Format := 0;
@@ -66,6 +86,21 @@ package AMS.MEL.RF is
    function Face_At (Value : MFA_Info; Index : Positive) return Face_Info;
 
 private
+   type Physical_Data is record
+      Antenna_Height_M_Value          : Long_Float := 0.0;
+      Antenna_Width_M_Value           : Long_Float := 0.0;
+      Lattice_Angle_Radians_Value     : Long_Float := 0.0;
+      Location_Offset_X_M_Value       : Long_Float := 0.0;
+      Location_Offset_Y_M_Value       : Long_Float := 0.0;
+      Location_Offset_Z_M_Value       : Long_Float := 0.0;
+      Orientation_Roll_Radians_Value  : Long_Float := 0.0;
+      Orientation_Pitch_Radians_Value : Long_Float := 0.0;
+      Orientation_Yaw_Radians_Value   : Long_Float := 0.0;
+      Boresight_Roll_Radians_Value    : Long_Float := 0.0;
+      Boresight_Pitch_Radians_Value   : Long_Float := 0.0;
+      Boresight_Yaw_Radians_Value     : Long_Float := 0.0;
+      Key, System_Name                : Ada.Strings.Unbounded.Unbounded_String;
+   end record;
    pragma
      Compile_Time_Error
        (Long_Float'Size < Interfaces.C.double'Size

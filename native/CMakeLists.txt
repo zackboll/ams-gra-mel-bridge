@@ -237,6 +237,16 @@ if(AMS_MEL_BUILD_TESTS)
         ams_mel_warnings(${rf_provider})
     endforeach()
 
+    add_executable(test_rf_physical tests/test_rf_physical.c)
+    target_compile_features(test_rf_physical PRIVATE c_std_11)
+    set_target_properties(test_rf_physical PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_physical PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    target_link_libraries(test_rf_physical PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_rf_physical mock_rf_provider)
+    ams_mel_warnings(test_rf_physical)
+    add_test(NAME rf-physical COMMAND test_rf_physical)
+
     add_executable(test_rf_data tests/test_rf_data.c)
     target_compile_features(test_rf_data PRIVATE c_std_11)
     set_target_properties(test_rf_data PROPERTIES C_EXTENSIONS OFF)

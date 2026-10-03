@@ -1685,6 +1685,38 @@ pub struct AmsMelRfJobInfoV1 {
     pub lookahead_femtoseconds: i64,
     pub rx_stream_ids: AmsMelU32SpanV1,
 }
+
+#[repr(C)]
+pub struct AmsMelRfPhysicalData {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AmsMelRfEulerV1 {
+    pub roll_rad: f64,
+    pub pitch_rad: f64,
+    pub yaw_rad: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AmsMelRfComponentLocationV1 {
+    pub offset_x_m: f64,
+    pub offset_y_m: f64,
+    pub offset_z_m: f64,
+    pub key: AmsMelStringViewV1,
+    pub system_name: AmsMelStringViewV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AmsMelRfPhysicalDataV1 {
+    pub antenna_height_m: f64,
+    pub antenna_width_m: f64,
+    pub lattice_angle_rad: f64,
+    pub location: AmsMelRfComponentLocationV1,
+    pub orientation: AmsMelRfEulerV1,
+    pub boresight: AmsMelRfEulerV1,
+}
 pub type AmsMelRfMfaState = u32;
 /// Opaque, fully owned RFMFAInfo snapshot, independent of the provider.
 #[repr(C)]
@@ -2748,6 +2780,27 @@ extern "C" {
     pub fn ams_mel_rf_data_get_provider_version(
         data: *const AmsMelRfData,
         out_version: *mut AmsMelProviderVersionV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_get_physical_data(
+        data: *const AmsMelRfData,
+        face_id: u32,
+        out_physical: *mut *mut AmsMelRfPhysicalData,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_physical_data_view(
+        physical: *const AmsMelRfPhysicalData,
+        out_view: *mut *const AmsMelRfPhysicalDataV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_physical_data_close(
+        physical: *mut *mut AmsMelRfPhysicalData,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

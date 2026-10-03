@@ -102,9 +102,23 @@ static void print_snapshot(const ams_mel_rf_mfa_info_v1 *view)
     }
 }
 
+static int check_physical(const ams_mel_rf_physical_data_v1 *v)
+{
+    REQUIRE(v->antenna_height_m == 0.25 && v->antenna_width_m == 0.25);
+    REQUIRE(v->lattice_angle_rad == 0.0);
+    REQUIRE(v->location.offset_x_m == 0.0 && v->location.offset_y_m == 0.0 && v->location.offset_z_m == 0.0);
+    REQUIRE(v->location.key.size == 0 && v->location.key.data != NULL);
+    REQUIRE(v->location.system_name.size == 0 && v->location.system_name.data != NULL);
+    REQUIRE(v->orientation.roll_rad == 0.0 && v->orientation.pitch_rad == 0.0 && v->orientation.yaw_rad == 0.0);
+    REQUIRE(v->boresight.roll_rad == 0.0 && v->boresight.pitch_rad == 0.0 && v->boresight.yaw_rad == 0.0);
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
     ams_mel_rf_data *data = NULL;
+    ams_mel_rf_physical_data *physical = NULL;
+    const ams_mel_rf_physical_data_v1 *physical_view = NULL;
     ams_mel_rf_mfa_info *info = NULL;
     const ams_mel_rf_mfa_info_v1 *view = NULL;
     const ams_mel_rf_mfa_info_v1 *after = NULL;
@@ -152,6 +166,10 @@ int main(int argc, char **argv)
     print_snapshot(view);
     REQUIRE(check_snapshot(view) == EXIT_SUCCESS);
 
+    REQUIRE(ams_mel_rf_data_get_physical_data(data, 0, &physical, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+    REQUIRE(ams_mel_rf_physical_data_view(physical, &physical_view, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(check_physical(physical_view) == EXIT_SUCCESS);
+
     /* RF Close: shutdown once, destroy DataMEL, then unload the provider. */
     status = ams_mel_rf_data_close(&data, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("ams_mel_rf_data_close", status, diagnostic);
@@ -168,6 +186,9 @@ int main(int argc, char **argv)
     REQUIRE(after == view);
     REQUIRE(check_snapshot(after) == EXIT_SUCCESS);
     REQUIRE(ams_mel_rf_mfa_info_close(&info, NULL, 0, NULL) == AMS_MEL_OK && info == NULL);
+    REQUIRE(ams_mel_rf_physical_data_view(physical, &physical_view, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(check_physical(physical_view) == EXIT_SUCCESS);
+    REQUIRE(ams_mel_rf_physical_data_close(&physical, NULL, 0, NULL) == AMS_MEL_OK && physical == NULL);
     puts("PASS: real Squall RF DataMEL C smoke (version, MFA snapshot, close, "
          "snapshot after close)");
     return EXIT_SUCCESS;

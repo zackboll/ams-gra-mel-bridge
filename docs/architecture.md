@@ -1,5 +1,14 @@
 # Architecture decisions
 
+Task 034C2 adds an independent immutable PhysicalData snapshot owner. Creation
+reads the published RFMFAInfo/PhysicalData/InstallationDetails getter chain once,
+copies all doubles and both ComponentLocation ForeignKey strings, then publishes
+bridge-owned storage. It retains no provider reference, DSO pin or DataMEL child
+claim. View and Close call no provider code. Safe Ada copies to a private value
+record with Long_Float scalars and Unbounded_String storage, closing the native
+snapshot before return. Frozen MFA/face v1 records are unchanged. See
+`task-034c2-rf-physical-data.md`; TxPowerModeData and JobInterval remain deferred.
+
 Task 034C1 exposes `RFMFAInfo::quantizeDuration` as a synchronous live query
 through the existing RF DataMEL owner. The result is not stored in an MFA
 snapshot: implementations can quantize dynamically. C and safe Ada preserve

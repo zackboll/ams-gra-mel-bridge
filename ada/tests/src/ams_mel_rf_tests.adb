@@ -68,6 +68,79 @@ package body AMS_MEL_RF_Tests is
    end Verify;
 
    procedure Run (Provider_Path : String) is
+      procedure Test_Physical is
+         procedure Verify_Physical (Value : RF.Physical_Data; Delta_Value : Long_Float) is
+         begin
+            if RF.Antenna_Height_M (Value) /= 1.25 + Delta_Value
+              or else RF.Antenna_Width_M (Value) /= 2.5 + Delta_Value
+              or else RF.Lattice_Angle_Radians (Value) /= -0.375 + Delta_Value
+              or else RF.Location_Offset_X_M (Value) /= 10.125 + Delta_Value
+              or else RF.Location_Offset_Y_M (Value) /= -20.25 + Delta_Value
+              or else RF.Location_Offset_Z_M (Value) /= 30.5 + Delta_Value
+              or else RF.Orientation_Roll_Radians (Value) /= 0.125 + Delta_Value
+              or else RF.Orientation_Pitch_Radians (Value) /= -0.25 + Delta_Value
+              or else RF.Orientation_Yaw_Radians (Value) /= 0.5 + Delta_Value
+              or else RF.Boresight_Roll_Radians (Value) /= -0.75 + Delta_Value
+              or else RF.Boresight_Pitch_Radians (Value) /= 1.0 + Delta_Value
+              or else RF.Boresight_Yaw_Radians (Value) /= -1.25 + Delta_Value
+              or else RF.Location_Key (Value)
+                      /= (if Delta_Value = 0.0 then "bay-µ-17" else "second-bay-µ-18")
+              or else RF.Location_System_Name (Value)
+                      /= (if Delta_Value = 0.0
+                          then "mock/β-installation"
+                          else "second/β-installation")
+            then
+               raise Program_Error with "PhysicalData mismatch";
+            end if;
+         end Verify_Physical;
+         Data : RF.Data_MEL := RF.Open (Provider_Path, "physical-changing");
+         A    : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Data, 16#FEDCBA98#);
+         B    : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Data, 0);
+      begin
+         Verify_Physical (A, 0.0);
+         Verify_Physical (B, 1.0);
+         RF.Close (Data);
+         Verify_Physical (A, 0.0);
+         Verify_Physical (B, 1.0);
+         begin
+            declare
+               Ignored : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Data, 0);
+            begin
+               raise Program_Error with "closed PhysicalData accepted" & RF.Location_Key (Ignored);
+            end;
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+         for I in 1 .. 7 loop
+            declare
+               Bad : RF.Data_MEL :=
+                 RF.Open
+                   (Provider_Path,
+                    (case I is
+                       when 1      => "physical-key-utf8",
+                       when 2      => "physical-key-nul",
+                       when 3      => "physical-system-utf8",
+                       when 4      => "physical-system-nul",
+                       when 5      => "physical-throw",
+                       when 6      => "physical-unknown",
+                       when others => "physical-alloc"));
+            begin
+               begin
+                  declare
+                     Ignored : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Bad, 0);
+                  begin
+                     raise Program_Error
+                       with "bad PhysicalData accepted" & RF.Location_Key (Ignored);
+                  end;
+               exception
+                  when AMS.MEL.Provider_Error =>
+                     null;
+               end;
+               RF.Close (Bad);
+            end;
+         end loop;
+      end Test_Physical;
       procedure Test_Quantization is
          Inputs : constant array (Positive range 1 .. 13) of Interfaces.Integer_64 :=
            [0,
@@ -153,6 +226,7 @@ package body AMS_MEL_RF_Tests is
       Version  : constant AMS.MEL.Provider_Version := RF.Query_Provider_Version (Data);
       Snapshot : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
    begin
+      Test_Physical;
       Test_Quantization;
       if not RF.Is_Open (Data)
         or else AMS.MEL.API_Version (Version) /= 16#0000_A5A5#

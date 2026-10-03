@@ -22,6 +22,7 @@
 #include <rfmel/data/DataMEL.h>
 #include <rfmel/factory/RFCreateFunctions.h>
 #include <rfmel/mfa/RFMFAInfo.h>
+#include <rfmel/mfa/PhysicalData.h>
 
 #include <atomic>
 #include <cstdint>
@@ -361,6 +362,88 @@ extern "C" ams_mel_status_t ams_mel_rf_data_quantize_duration(
             "provider quantizeDuration exception", "unknown provider quantizeDuration exception",
             diagnostic, diagnostic_capacity, diagnostic_required);
     }
+}
+
+struct ams_mel_rf_physical_data {
+    std::string key;
+    std::string system_name;
+    ams_mel_rf_physical_data_v1 view{};
+};
+
+extern "C" ams_mel_status_t ams_mel_rf_data_get_physical_data(
+    const ams_mel_rf_data *data, std::uint32_t face_id,
+    ams_mel_rf_physical_data **out_physical, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (data == nullptr || !data->state || !data->state->data ||
+        out_physical == nullptr || *out_physical != nullptr ||
+        invalid_diagnostic(diagnostic, diagnostic_capacity)) {
+        write_diagnostic("invalid argument", diagnostic, diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    try {
+        auto owner = std::make_unique<ams_mel_rf_physical_data>();
+        const auto& info = data->state->data->getRFMFAInfo();
+        const auto& physical = info.getPhysicalData(face_id);
+        auto& view = owner->view;
+        view.antenna_height_m = physical.getAntennaHeight();
+        view.antenna_width_m = physical.getAntennaWidth();
+        view.lattice_angle_rad = physical.getLatticeAngle();
+        const auto& installation = physical.getInstallationDetails();
+        const auto& location = installation.getLocation();
+        view.location.offset_x_m = location.getOffsetX();
+        view.location.offset_y_m = location.getOffsetY();
+        view.location.offset_z_m = location.getOffsetZ();
+        const auto& foreign_key = location.getLocationId();
+        const auto& key = foreign_key.getKey();
+        const auto& system_name = foreign_key.getSystemName();
+        const auto& orientation = installation.getOrientation();
+        view.orientation = {orientation.getRoll(), orientation.getPitch(), orientation.getYaw()};
+        const auto& boresight = installation.getBoresight();
+        view.boresight = {boresight.getRoll(), boresight.getPitch(), boresight.getYaw()};
+        if (!valid_utf8(key) || !valid_utf8(system_name)) {
+            write_diagnostic("malformed provider PhysicalData ForeignKey", diagnostic,
+                             diagnostic_capacity, diagnostic_required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
+        owner->key = key;
+        owner->system_name = system_name;
+        view.location.key = {owner->key.data(), owner->key.size()};
+        view.location.system_name = {owner->system_name.data(), owner->system_name.size()};
+        *out_physical = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception(
+            "provider PhysicalData exception", "unknown provider PhysicalData exception",
+            diagnostic, diagnostic_capacity, diagnostic_required);
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_physical_data_view(
+    const ams_mel_rf_physical_data *physical, const ams_mel_rf_physical_data_v1 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (physical == nullptr || out_view == nullptr || invalid_diagnostic(diagnostic, diagnostic_capacity)) {
+        write_diagnostic("invalid argument", diagnostic, diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    *out_view = &physical->view;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_physical_data_close(
+    ams_mel_rf_physical_data **physical, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (physical == nullptr || invalid_diagnostic(diagnostic, diagnostic_capacity)) {
+        write_diagnostic("invalid argument", diagnostic, diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    delete std::exchange(*physical, nullptr);
+    return AMS_MEL_OK;
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_data_get_mfa_info(

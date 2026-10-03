@@ -2607,6 +2607,53 @@ typedef struct ams_mel_rf_mfa_info_v1 {
     ams_mel_rf_face_info_span_v1 faces;
 } ams_mel_rf_mfa_info_v1;
 
+typedef struct ams_mel_rf_physical_data ams_mel_rf_physical_data;
+typedef struct ams_mel_rf_euler_v1 {
+    double roll_rad;
+    double pitch_rad;
+    double yaw_rad;
+} ams_mel_rf_euler_v1;
+typedef struct ams_mel_rf_component_location_v1 {
+    double offset_x_m;
+    double offset_y_m;
+    double offset_z_m;
+    ams_mel_string_view_v1 key;
+    ams_mel_string_view_v1 system_name;
+} ams_mel_rf_component_location_v1;
+typedef struct ams_mel_rf_physical_data_v1 {
+    double antenna_height_m;
+    double antenna_width_m;
+    double lattice_angle_rad;
+    ams_mel_rf_component_location_v1 location;
+    ams_mel_rf_euler_v1 orientation;
+    ams_mel_rf_euler_v1 boresight;
+} ams_mel_rf_physical_data_v1;
+
+/* Point-in-time owned PhysicalData snapshot. All doubles are copied verbatim
+ * in published meters/radians, without finite-value restrictions. Both ForeignKey
+ * strings are copied completely and must be valid UTF-8 without embedded NUL;
+ * malformed strings fail closed with PROVIDER_FAILED. Empty strings are valid.
+ * No provider reference or DataMEL child claim survives creation. Serialize Get
+ * with operations/Close on DataMEL. out_physical must be non-NULL and initially
+ * NULL. Exceptions: bad_alloc => INTERNAL_ERROR, others => PROVIDER_EXCEPTION. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_get_physical_data(
+    const ams_mel_rf_data *data, uint32_t face_id,
+    ams_mel_rf_physical_data **out_physical, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* No allocation/provider call. The immutable record and string storage remain
+ * valid until snapshot Close, including after DataMEL Close/provider unload.
+ * out_view must be non-NULL (as for MFA View, its initial value is unrestricted).
+ * Serialize View with Close on the same snapshot. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_physical_data_view(
+    const ams_mel_rf_physical_data *physical,
+    const ams_mel_rf_physical_data_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Consumes owner, nulls caller handle, idempotent for already-NULL owner.
+ * No provider call; independent of DataMEL lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_physical_data_close(
+    ams_mel_rf_physical_data **physical, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* RF Admin is a distinct createAdminMEL factory owner; no DataMEL is involved.
  * C strings use the RF Data open conventions (NUL-terminated UTF-8, no embedded
  * NUL). out_admin must be non-NULL and initially NULL. Close consumes the owner

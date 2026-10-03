@@ -1,5 +1,14 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+RF PhysicalData is available through an owned point-in-time C snapshot and
+the safe Ada-owned `AMS.MEL.RF.Physical_Data` value. It preserves antenna
+dimensions, lattice angle, location XYZ and both ForeignKey strings, and
+orientation/boresight roll-pitch-yaw in published meters/radians. Values remain
+usable after DataMEL Close. ABI 0.1 now has 139 production operations;
+Rust sys and private Python have raw parity only. See
+`docs/task-034c2-rf-physical-data.md`. TxPowerModeData and JobInterval remain
+unimplemented.
+
 RF duration quantization is available as the live C
 `ams_mel_rf_data_quantize_duration` query and safe Ada
 `AMS.MEL.RF.Quantize_Duration`, preserving signed 64-bit femtoseconds exactly.

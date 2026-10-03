@@ -848,3 +848,9 @@ cf19703875b8aa1f51884947e48a772b921237eae9a41bcf1f116ccdfc9ded2e  native/vendor/
 61b52b0cf5edff087f5fe46eb1c1922d643e1cf5368e5b834056f37932942dfc  native/vendor/rf-mel/include/rfmel/virtualaperture/BaseVirtualAperture.h
 51403df7b5d8cf2ba00a54ff6c0010c393a5754b99cce3c0b9185bfa485e3fb2  native/vendor/rf-mel/include/rfmel/virtualaperture/VirtualApertureInstanceStatusReport.h
 21b878d59e219380511963a68028d2f4c846f5bc98e1f203795100941c673db9  native/vendor/rf-mel/include/rfmel/virtualaperture/VirtualApertureStatusReport.h
+
+## Task 034C2 PhysicalData declaration closure
+
+```text
+d4918d8077ed7f43db09b7c4fa952d0950aaefa5966fb494f129f230eb765361  native/vendor/rf-mel/include/rfmel/mfa/PhysicalData.h
+```

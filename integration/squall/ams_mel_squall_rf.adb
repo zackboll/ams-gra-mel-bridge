@@ -54,6 +54,25 @@ procedure AMS_MEL_Squall_RF is
       RX.With_Samples (Value, Scan'Access);
       return Found;
    end Nonzero;
+   procedure Verify_Physical (Value : RF.Physical_Data) is
+   begin
+      if RF.Antenna_Height_M (Value) /= 0.25 or else RF.Antenna_Width_M (Value) /= 0.25
+        or else RF.Lattice_Angle_Radians (Value) /= 0.0
+        or else RF.Location_Offset_X_M (Value) /= 0.0
+        or else RF.Location_Offset_Y_M (Value) /= 0.0
+        or else RF.Location_Offset_Z_M (Value) /= 0.0
+        or else RF.Location_Key (Value) /= ""
+        or else RF.Location_System_Name (Value) /= ""
+        or else RF.Orientation_Roll_Radians (Value) /= 0.0
+        or else RF.Orientation_Pitch_Radians (Value) /= 0.0
+        or else RF.Orientation_Yaw_Radians (Value) /= 0.0
+        or else RF.Boresight_Roll_Radians (Value) /= 0.0
+        or else RF.Boresight_Pitch_Radians (Value) /= 0.0
+        or else RF.Boresight_Yaw_Radians (Value) /= 0.0
+      then
+         raise Program_Error with "pinned Squall PhysicalData mismatch";
+      end if;
+   end Verify_Physical;
 begin
    if Ada.Command_Line.Argument_Count /= 2 then
       raise Program_Error with "usage: ams_mel_squall_rf PROVIDER PROFILE";
@@ -66,7 +85,9 @@ begin
          Data    : RF.Data_MEL := RF.Open (Provider, Profile);
          Version : constant AMS.MEL.Provider_Version := RF.Query_Provider_Version (Data);
          MFA     : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
+         Physical : constant RF.Physical_Data := RF.Snapshot_Physical_Data (Data, 0);
       begin
+         Verify_Physical (Physical);
          declare
             Inputs : constant array (Positive range 1 .. 4) of Interfaces.Integer_64 :=
               [0, 1, 123_456_789, -123_456_789];
@@ -221,6 +242,7 @@ begin
                   C2.Close (Job);
                   RX.Close (Endpoint);
                   RF.Close (Data);
+                  Verify_Physical (Physical);
                   if Fingerprint (A) /= Original then
                      raise Program_Error with "Squall RF event A lost ownership";
                   end if;
