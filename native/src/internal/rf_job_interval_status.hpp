@@ -23,6 +23,9 @@ struct IntervalStatusState {
     /* Fixed-size ring: publication and permanent retention allocate nothing. */
     std::vector<std::unique_ptr<ams_mel_rf_job_interval_status_event>> queue;
     std::size_t head{}, size{};
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    std::size_t waiters{};
+#endif
 };
 struct PermanentIntervalStatusRegistration {
     std::shared_ptr<SharedLibrary> library;
@@ -39,4 +42,5 @@ bool usable_interval_status(const std::shared_ptr<IntervalStatusState>&);
 }
 struct ams_mel_rf_job_interval_status {
     std::shared_ptr<ams_mel::internal::IntervalStatusState> state;
+    ~ams_mel_rf_job_interval_status() { ams_mel::internal::stop_interval_status(state); }
 };

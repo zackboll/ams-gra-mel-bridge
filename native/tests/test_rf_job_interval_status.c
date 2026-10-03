@@ -7,7 +7,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
+#include <sched.h>
 extern void ams_mel_test_rf_status_hold(unsigned, int, int);
+extern unsigned ams_mel_test_rf_status_waiters(const ams_mel_rf_job_interval_status *);
+extern void ams_mel_test_rf_status_preset(ams_mel_rf_job_interval_status *, uint64_t);
+extern size_t ams_mel_test_rf_status_last(ams_mel_rf_job_interval_status_counters_v1 *);
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL %s:%d %s\n",__FILE__,__LINE__,#x); exit(1); } } while (0)
 static unsigned (*emit)(unsigned,unsigned,unsigned,unsigned);
 static unsigned (*registrations)(void);
@@ -16,6 +21,9 @@ static unsigned (*start_boundary)(void);
 static unsigned (*shutdowns)(void);
 static unsigned (*resolve_finalize)(void);
 static unsigned (*wait_shutdown)(unsigned);
+static unsigned (*fidelity)(void);
+static unsigned (*fidelity_v2)(void);
+static unsigned (*add_calls)(void);
 static char lifetime_path[]="/tmp/ams-rf-status-XXXXXX";
 static int has_lifetime(const char *event)
 {
@@ -96,6 +104,9 @@ int main(void)
     *(void **)(&shutdowns)=dlsym(provider,"mock_rf_job_shutdown_count");
     *(void **)(&resolve_finalize)=dlsym(provider,"mock_rf_job_resolve_finalize");
     *(void **)(&wait_shutdown)=dlsym(provider,"mock_rf_job_wait_shutdown_after");
+    *(void **)(&fidelity)=dlsym(provider,"mock_rf_job_interval_fidelity");
+    *(void **)(&fidelity_v2)=dlsym(provider,"mock_rf_job_interval_fidelity_v2");
+    *(void **)(&add_calls)=dlsym(provider,"mock_rf_job_add_calls");
     CHECK(emit && registrations && mode && start_boundary && shutdowns && resolve_finalize && wait_shutdown);
     /* No registration yet: old unload behavior is unchanged. Reload controls
      * after this unload before keeping function pointers for registered cases. */
@@ -109,6 +120,9 @@ int main(void)
     *(void **)(&shutdowns)=dlsym(provider,"mock_rf_job_shutdown_count");
     *(void **)(&resolve_finalize)=dlsym(provider,"mock_rf_job_resolve_finalize");
     *(void **)(&wait_shutdown)=dlsym(provider,"mock_rf_job_wait_shutdown_after");
+    *(void **)(&fidelity)=dlsym(provider,"mock_rf_job_interval_fidelity");
+    *(void **)(&fidelity_v2)=dlsym(provider,"mock_rf_job_interval_fidelity_v2");
+    *(void **)(&add_calls)=dlsym(provider,"mock_rf_job_add_calls");
     for (unsigned run=0;run<50;++run) {
         ams_mel_rf_job *job=NULL;
         ams_mel_rf_job_interval_status *stream=NULL,*second=NULL;
@@ -128,6 +142,20 @@ int main(void)
         if (run%2) CHECK(emit(2,7,0,0xfedcba98U)==1);
         CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&held,NULL,0,NULL)==AMS_MEL_OK);
         rich(view(held));
+        const ams_mel_rf_receive_event_config_v1 rx_events[]={
+            {0x80000001U,{"rx/µ-main",10},-123,456789,987654321.125,2000000.5,0x100000007ULL,3,-999},
+            {UINT32_MAX,{"β-secondary",12},777,-888,-0.0,INFINITY,0,0x100000009ULL,INT64_MAX-1}
+        };
+        const ams_mel_rf_job_interval_config_v1 rx_intervals[]={
+            {0,0x10203040U,-111,9876543210123LL,0x100000003ULL,222,-333,1,0x100000005ULL,
+                123456789.25,2500000.5,0xABCDEF01U,{rx_events,2}},
+            {-1,42,12,-13,2,-14,15,0,3,NAN,INFINITY,43,{NULL,0}}
+        };
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,(ams_mel_rf_job_interval_config_span_v1){rx_intervals,2},NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(fidelity()==1 && mode(0)==0 && mode(1)==0);
+        ams_mel_rf_job_interval_config_v2 rich_configs[]={{rx_intervals[0],1},{rx_intervals[1],2}};
+        CHECK(ams_mel_rf_job_add_rx_intervals_v2(job,(ams_mel_rf_job_interval_config_span_v2){rich_configs,2},NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(fidelity_v2()==1);
         ams_mel_rf_job_interval_config_v2 configs[4]={0};
         const int64_t starts[]={0,1,-1,INT64_MAX};
         for (unsigned i=0;i<4;++i) { configs[i].interval.interval_start_femtoseconds=starts[i]; configs[i].status_enable=i%3; }
@@ -146,6 +174,11 @@ int main(void)
             CHECK(view(event)->event_log.data[2].trigger==i);
             CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
         }
+        CHECK(emit(2,7,4,0)==1);
+        CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(view(event)->event_log.data[0].time_seconds==0 &&
+              view(event)->event_log.data[0].time_fractional_femtoseconds==-112);
+        CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(emit(99,7,0,0)==1 && emit(2,99,0,0)==1);
         CHECK(emit(2,7,2,0)==1 && emit(2,7,3,0)==1);
         CHECK(setenv("AMS_MEL_TEST_RF_STATUS_FAILURE","activity-allocation",1)==0);
@@ -160,7 +193,7 @@ int main(void)
         CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(ams_mel_rf_job_interval_status_receive(stream,1,&event,NULL,0,NULL)==AMS_MEL_TIMEOUT && !event);
         CHECK(ams_mel_rf_job_interval_status_get_counters(stream,&counters,NULL,0,NULL)==AMS_MEL_OK);
-        CHECK(counters.callback_entries==42 && counters.events_queued==36 && counters.events_delivered==36);
+        CHECK(counters.callback_entries==43 && counters.events_queued==37 && counters.events_delivered==37);
         CHECK(counters.queue_full_drops==1 && counters.malformed_drops==2 && counters.oversize_drops==2 && counters.allocation_failures==1);
         pthread_t worker;
         CHECK(pthread_create(&worker,NULL,thread_emit,NULL)==0 && pthread_join(worker,NULL)==0);
@@ -169,6 +202,7 @@ int main(void)
         CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
         struct waiter waiting={stream,AMS_MEL_INTERNAL_ERROR};
         CHECK(pthread_create(&worker,NULL,thread_receive,&waiting)==0);
+        while (!ams_mel_test_rf_status_waiters(stream)) sched_yield();
         CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(has_lifetime("rf_job_destroyed\n") && has_lifetime("rf_va_destroyed\n") &&
               has_lifetime("rf_c2_shutdown\n") && !has_lifetime("library_unloaded\n"));
@@ -176,7 +210,7 @@ int main(void)
         CHECK(emit(2,7,0,0)==1);
         CHECK(ams_mel_rf_job_interval_status_get_counters(stream,&counters,NULL,0,NULL)==AMS_MEL_OK && counters.callbacks_after_close==1);
         CHECK(ams_mel_rf_job_interval_status_close(&stream,NULL,0,NULL)==AMS_MEL_OK);
-        CHECK(emit(2,7,0,0)==1);
+        CHECK(pthread_create(&worker,NULL,thread_emit,NULL)==0 && pthread_join(worker,NULL)==0);
         rich(view(held));
         CHECK(ams_mel_rf_job_interval_status_event_close(&held,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(ams_mel_rf_job_interval_status_event_close(&held,NULL,0,NULL)==AMS_MEL_OK);
@@ -248,9 +282,11 @@ int main(void)
         CHECK(unsetenv("AMS_MEL_TEST_RF_STATUS_FAILURE")==0);
         ams_mel_rf_job_interval_config_v2 config={0};
         config.status_enable=1;
+        unsigned adds=add_calls();
         CHECK(ams_mel_rf_job_add_rx_intervals_v2(job,(ams_mel_rf_job_interval_config_span_v2){&config,1},NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
         config.status_enable=99;
         CHECK(ams_mel_rf_job_add_rx_intervals_v2(job,(ams_mel_rf_job_interval_config_span_v2){&config,1},NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        CHECK(add_calls()==adds);
         CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(emit(2,7,0,0)==1 && emit(0,0,1,0)==1);
         CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_OK);
@@ -258,6 +294,8 @@ int main(void)
         CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(emit(0,0,1,0)==1);
         CHECK(ams_mel_rf_job_interval_status_close(&stream,NULL,0,NULL)==AMS_MEL_OK);
+        ams_mel_rf_job_interval_status_counters_v1 discarded;
+        CHECK(ams_mel_test_rf_status_last(&discarded)==0);
         config.status_enable=1;
         CHECK(ams_mel_rf_job_add_rx_intervals_v2(job,(ams_mel_rf_job_interval_config_span_v2){&config,1},NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
         CHECK(ams_mel_rf_job_interval_status_open(job,&options,&second,NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
@@ -286,14 +324,66 @@ int main(void)
         unsigned before=registrations();
         CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_PROVIDER_EXCEPTION);
         CHECK(!stream && registrations()==before+1);
+        ams_mel_rf_job_interval_status_counters_v1 failed;
+        CHECK(ams_mel_test_rf_status_last(&failed)==0 && failed.events_queued==1 && failed.events_delivered==0);
         CHECK(emit(2,7,0,0)==1);
+        CHECK(ams_mel_test_rf_status_last(&failed)==0 && failed.callbacks_after_close==1);
         CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
         CHECK(registrations()==before+1);
         ams_mel_rf_job_cancel_result_v1 cancel={0};
         CHECK(ams_mel_rf_job_cancel(job,&cancel,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
     }
+    {
+        ams_mel_rf_job *job=NULL;
+        ams_mel_rf_job_interval_status *stream=NULL;
+        ams_mel_rf_job_interval_status_event *event=NULL;
+        ams_mel_rf_job_interval_status_counters_v1 counters;
+        const ams_mel_rf_job_interval_status_options_v1 options={1,3,37};
+        create_job("c2:status-reference",&job);
+        CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(setenv("AMS_MEL_TEST_RF_STATUS_FAILURE","event-allocation",1)==0);
+        CHECK(emit(2,7,0,0)==1);
+        CHECK(unsetenv("AMS_MEL_TEST_RF_STATUS_FAILURE")==0);
+        CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_TIMEOUT);
+        CHECK(ams_mel_rf_job_interval_status_get_counters(stream,&counters,NULL,0,NULL)==AMS_MEL_OK && counters.allocation_failures==1);
+        ams_mel_test_rf_status_preset(stream,UINT64_MAX-1);
+        CHECK(emit(2,7,0,0)==1 && emit(2,7,0,0)==1 && emit(2,7,0,0)==1);
+        CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(emit(99,7,0,0)==1 && emit(99,7,0,0)==1);
+        CHECK(emit(2,7,2,0)==1 && emit(2,7,3,0)==1);
+        CHECK(setenv("AMS_MEL_TEST_RF_STATUS_FAILURE","event-allocation",1)==0);
+        CHECK(emit(2,7,0,0)==1 && emit(2,7,0,0)==1);
+        CHECK(unsetenv("AMS_MEL_TEST_RF_STATUS_FAILURE")==0);
+        CHECK(emit(2,7,0,0)==1);
+        CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_interval_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(emit(2,7,0,0)==1 && emit(2,7,0,0)==1);
+        CHECK(ams_mel_rf_job_interval_status_get_counters(stream,&counters,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(counters.callback_entries==UINT64_MAX && counters.events_queued==UINT64_MAX &&
+            counters.events_delivered==UINT64_MAX && counters.queue_full_drops==UINT64_MAX &&
+            counters.malformed_drops==UINT64_MAX && counters.oversize_drops==UINT64_MAX &&
+            counters.allocation_failures==UINT64_MAX && counters.callbacks_after_close==UINT64_MAX);
+        CHECK(ams_mel_rf_job_interval_status_close(&stream,NULL,0,NULL)==AMS_MEL_OK);
+    }
     puts("PASS: native RF interval status focused repeat 50/50");
+    {
+        ams_mel_rf_job *job=NULL;
+        ams_mel_rf_job_interval_status *stream=NULL;
+        ams_mel_rf_job_interval_status_event *event=NULL;
+        const ams_mel_rf_job_interval_status_options_v1 options={1,3,37};
+        create_job("c2:finalize-shutdown-throw",&job);
+        unsigned before=shutdowns();
+        CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_PROVIDER_EXCEPTION);
+        CHECK(shutdowns()==before+1);
+        CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_STREAM_STOPPED);
+        CHECK(emit(2,7,0,0)==1);
+        CHECK(ams_mel_rf_job_interval_status_close(&stream,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(shutdowns()==before+1); /* uncertain graph retained, no retry */
+    }
     CHECK(!has_lifetime("rf_forbidden_call\n"));
     CHECK(unlink(lifetime_path)==0);
     return 0;

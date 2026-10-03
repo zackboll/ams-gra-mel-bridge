@@ -35,18 +35,23 @@ procedure AMS_MEL_RF_Interval_Status is
        (Completion, Trigger, Kind, ID : Interfaces.C.unsigned) return Interfaces.C.unsigned
    with Convention => C;
    function To_Emit is new Ada.Unchecked_Conversion (System.Address, Emit_Access);
+   type Mode_Access is access function (Index : Interfaces.C.unsigned) return Interfaces.C.unsigned
+   with Convention => C;
+   function To_Mode is new Ada.Unchecked_Conversion (System.Address, Mode_Access);
    procedure Verify (Condition : Boolean) is
    begin
       if not Condition then
          raise Program_Error with "RF interval status assertion";
       end if;
    end Verify;
-   Provider : constant String :=
+   Provider  : constant String :=
      Ada.Environment_Variables.Value ("AMS_MEL_TEST_PROVIDER_DIR") & "/libmock_rf_provider.so";
-   Path     : CS.chars_ptr := CS.New_String (Provider);
-   Name     : CS.chars_ptr := CS.New_String ("mock_rf_status_emit");
-   Library  : constant System.Address := DL_Open (Path, 2);
-   Emit     : constant Emit_Access := To_Emit (DL_Sym (Library, Name));
+   Path      : CS.chars_ptr := CS.New_String (Provider);
+   Name      : CS.chars_ptr := CS.New_String ("mock_rf_status_emit");
+   Library   : constant System.Address := DL_Open (Path, 2);
+   Emit      : constant Emit_Access := To_Emit (DL_Sym (Library, Name));
+   Mode_Name : CS.chars_ptr := CS.New_String ("mock_rf_status_mode");
+   Mode_At   : constant Mode_Access := To_Mode (DL_Sym (Library, Mode_Name));
    procedure Send (ID : Interfaces.C.unsigned := 16#FEDC_BA98#) is
    begin
       Verify (Emit (2, 7, 0, ID) = 1);
@@ -97,6 +102,12 @@ procedure AMS_MEL_RF_Interval_Status is
       Verify (Status.Trigger (Status.Log_At (Event, 3)) = Status.Event_Type_Not_Supported);
       Verify (Status.Time_Seconds (Status.Log_At (Event, 1)) = -124);
       Verify (Status.Time_Fractional_Femtoseconds (Status.Log_At (Event, 1)) = 112);
+      Verify (Status.Time_Seconds (Status.Log_At (Event, 2)) = -125);
+      Verify (Status.Time_Fractional_Femtoseconds (Status.Log_At (Event, 2)) = 113);
+      Verify (Status.Time_Seconds (Status.Log_At (Event, 3)) = -123);
+      Verify (Status.Time_Fractional_Femtoseconds (Status.Log_At (Event, 3)) = 111);
+      Verify (Status.Trigger (Status.Log_At (Event, 1)) = Status.Event_Extended);
+      Verify (Status.Trigger (Status.Log_At (Event, 2)) = Status.Event_Triggered);
       for I in 1 .. 37 loop
          Verify
            (Status.Activity_ID_Byte (Event, I)
@@ -108,6 +119,7 @@ begin
    Verify (Library /= System.Null_Address);
    CS.Free (Path);
    CS.Free (Name);
+   CS.Free (Mode_Name);
    for Run in 1 .. 50 loop
       declare
          Parent : C2.C2_MEL := C2.Open (Provider, "c2:status-reference");
@@ -130,12 +142,45 @@ begin
                C2.Close (JR);
                C2.Close (VA);
                C2.Close (Parent);
-               C2.Set_Interval_Status_Enable (Interval, C2.Always);
-               C2.Append_Job_Interval (Intervals, Interval);
+               for Mode in C2.Interval_Status_Enable loop
+                  C2.Set_Interval_Status_Enable (Interval, Mode);
+                  C2.Append_Job_Interval (Intervals, Interval);
+               end loop;
                C2.Add_RX_Job_Intervals (Object, Intervals);
+               Verify (Mode_At (0) = 0 and Mode_At (1) = 1 and Mode_At (2) = 2);
                Send;
                Held := Status.Receive_Event (Stream, 0);
                Rich (Held);
+               for Value in Status.Completion_Status loop
+                  Verify
+                    (Emit
+                       (Interfaces.C.unsigned (Status.Completion_Status'Enum_Rep (Value)), 0, 1, 0)
+                     = 1);
+                  declare
+                     Event : constant Status.Status_Event := Status.Receive_Event (Stream, 0);
+                  begin
+                     Verify (Status.Completion (Event) = Value);
+                     Verify
+                       (Status.Activity_ID_Length (Event) = 0 and Status.Log_Count (Event) = 0);
+                  end;
+               end loop;
+               for Value in Status.Log_Trigger loop
+                  Verify
+                    (Emit (2, Interfaces.C.unsigned (Status.Log_Trigger'Enum_Rep (Value)), 0, 0)
+                     = 1);
+                  declare
+                     Event : constant Status.Status_Event := Status.Receive_Event (Stream, 0);
+                  begin
+                     Verify (Status.Trigger (Status.Log_At (Event, 3)) = Value);
+                  end;
+               end loop;
+               Verify (Emit (2, 7, 4, 0) = 1);
+               declare
+                  Event : constant Status.Status_Event := Status.Receive_Event (Stream, 0);
+               begin
+                  Verify (Status.Time_Seconds (Status.Log_At (Event, 1)) = 0);
+                  Verify (Status.Time_Fractional_Femtoseconds (Status.Log_At (Event, 1)) = -112);
+               end;
                Send (101);
                Send (102);
                Send (103);

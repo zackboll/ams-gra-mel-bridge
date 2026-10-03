@@ -112,6 +112,177 @@ package AMS.MEL.RF.C2.Interval_Status is
    end record;
    function Statistics (Object : Stream) return Counters;
 private
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (None) /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_None),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Ready_For_Next_Job_Interval)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Ready_For_Next_Job_Interval),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Interrupted)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Interrupted),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Tx_Event_Spatial_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Tx_Event_Spatial_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Tx_Event_Signal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Tx_Event_Signal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Tx_Event_Temporal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Tx_Event_Temporal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Tx_Event_Identifier_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Tx_Event_Identifier_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Rx_Event_Spatial_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Rx_Event_Spatial_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Rx_Event_Signal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Rx_Event_Signal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Rx_Event_Temporal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Rx_Event_Temporal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Rx_Event_Identifier_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Rx_Event_Identifier_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Sequence_Temporal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Sequence_Temporal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Interval_Spatial_Data)
+          /= Integer
+               (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Job_Interval_Spatial_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Interval_Event_Signal_Data)
+          /= Integer
+               (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Signal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Interval_Event_Temporal_Data)
+          /= Integer
+               (AMS
+                  .MEL_C_API
+                  .Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Temporal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Interval_Event_Identifier_Data)
+          /= Integer
+               (AMS
+                  .MEL_C_API
+                  .Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Identifier_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Temporal_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Job_Temporal_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Failed_Invalid_Job_Identifier_Data)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Failed_Invalid_Job_Identifier_Data),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Completed)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Completed),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Cancelled)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Cancelled),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Late_Controls)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Late_Controls),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Invalid_Controls)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Invalid_Controls),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Antenna_Fov_Error)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Antenna_Fov_Error),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Transmit_Rf_Inhibited)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Transmit_Rf_Inhibited),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Completion_Status'Enum_Rep (Started)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Completion_Started),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (None) /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_None),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Extended)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Extended),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Triggered)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Triggered),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Resumed)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Resumed),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Cancelled)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Cancelled),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Inhibited)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Inhibited),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Delayed_Start)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Delayed_Start),
+        "RF status enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Log_Trigger'Enum_Rep (Event_Type_Not_Supported)
+          /= Integer (AMS.MEL_C_API.Rf_Log_Trigger_Event_Type_Not_Supported),
+        "RF status enum representation mismatch");
    type Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.RF_Interval_Status_Handle :=
         AMS.MEL_C_API.Null_RF_Interval_Status;

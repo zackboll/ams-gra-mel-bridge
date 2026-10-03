@@ -1,5 +1,15 @@
 # Real Squall IR MEL integration
 
+Task 034D2 extends the RF Job and both ProductRx clients with observer status
+streams, enabled interval submission and bounded polls. At Squall pin
+`b1015728f904c799fa0c07489fce48e78f67845f`, registration/Add/Flush/Cancel_Remaining
+are no-ops; the getter is dummy and is never invoked to fabricate delivery.
+The clients require TIMEOUT after submission and STREAM_STOPPED after Job Close,
+while retaining existing snapshot, data/counter and parent-first assertions.
+This is registration-call/lifecycle/no-delivery evidence, **not** positive real
+JobIntervalStatus delivery or scheduling. Positive reception is mock-only.
+See `../../docs/task-034d2-rf-job-interval-status.md`.
+
 Task 034B2B2: Both ProductRx clients activate and cancel the real receive Job
 through the production C facade or safe Ada facade. The former test-only C++
 Job helper has been removed. Pinned Squall confirms Finalize -> pending poll ->

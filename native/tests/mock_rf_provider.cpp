@@ -865,8 +865,12 @@ rfmel::JobIntervalStatus status_payload(unsigned completion, unsigned trigger, u
     for (unsigned i = 0; i < (kind == 2 ? 4U : 3U); ++i) {
         rfmel::JobEventLogInfo value;
         value.setJobEventLogTrigger(static_cast<rfmel::JobEventLogTriggerType>(i == 0 ? trigger : i));
-        value.setJobEventLogTime({std::chrono::seconds{-123 - static_cast<int>(i)},
-                                 Femtoseconds{111 + static_cast<int>(i)}});
+        if (kind == 4) {
+            /* The duration constructor retains negative fractional counts.
+             * Exercise that published representation without private layout access. */
+            value.setJobEventLogTime(ams::util::math::UTCTime{Femtoseconds{-111 - static_cast<int>(i)}});
+        } else value.setJobEventLogTime({std::chrono::seconds{-123 - static_cast<int>(i)},
+                                        Femtoseconds{111 + static_cast<int>(i)}});
         payload.addJobEventLog(i < 3 ? ids[i] : 18U, value);
     }
     std::vector<std::uint8_t> bytes(kind == 3 ? 38 : 37);
@@ -1576,7 +1580,7 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_flush_cal
 { return job_flush_calls.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_remaining_calls(void)
 { return job_remaining_calls.load(); }
-extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity(void)
+static unsigned interval_fidelity(bool enabled)
 {
     std::lock_guard lock{interval_mutex};
     if (latest_intervals.size() != 2) return 0;
@@ -1613,7 +1617,9 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_
     for (const auto& interval : latest_intervals) {
         if (interval.getApplicableElementGroups().size() != 0 || interval.getEndpoints().size() != 0 ||
             !interval.getStabPoints().empty() || !interval.getLfCommands().empty() ||
-            interval.getJobIntervalStatusEnable() != rfmel::JobIntervalStatusEnable::Never ||
+            interval.getJobIntervalStatusEnable() != (enabled ? (&interval == &a ?
+                rfmel::JobIntervalStatusEnable::Always : rfmel::JobIntervalStatusEnable::OnException) :
+                rfmel::JobIntervalStatusEnable::Never) ||
             !interval.getActivityId().empty() || interval.getTxPowerModeID() != 0 ||
             interval.getExecutionType() != rfmel::ExecutionType::Normal ||
             !interval.getModulations().empty() || !interval.getSequence().getTxEvents().empty()) return 0;
@@ -1630,6 +1636,10 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_
     }
     return 1;
 }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity(void)
+{ return interval_fidelity(false); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity_v2(void)
+{ return interval_fidelity(true); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_start_boundary(void)
 {
     std::lock_guard lock{interval_mutex};

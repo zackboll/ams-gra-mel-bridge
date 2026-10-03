@@ -12,6 +12,23 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_interval_status_signatures(self) -> None:
+        diagnostic = [ctypes.POINTER(ctypes.c_char), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_open.argtypes, [_native.RfJobHandle, ctypes.POINTER(_native.RfJobIntervalStatusOptionsV1), ctypes.POINTER(_native.RfJobIntervalStatusHandle), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_open.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_receive.argtypes, [_native.RfJobIntervalStatusHandle, ctypes.c_uint32, ctypes.POINTER(_native.RfJobIntervalStatusEventHandle), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_receive.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_get_counters.argtypes, [_native.RfJobIntervalStatusHandle, ctypes.POINTER(_native.RfJobIntervalStatusCountersV1), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_get_counters.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_close.argtypes, [ctypes.POINTER(_native.RfJobIntervalStatusHandle), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_close.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_event_view.argtypes, [_native.RfJobIntervalStatusEventHandle, ctypes.POINTER(ctypes.POINTER(_native.RfJobIntervalStatusV1)), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_event_view.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_interval_status_event_close.argtypes, [ctypes.POINTER(_native.RfJobIntervalStatusEventHandle), *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_interval_status_event_close.restype, ctypes.c_int32)
+        self.assertEqual(_native.ams_mel_rf_job_add_rx_intervals_v2.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV2, *diagnostic])
+        self.assertIs(_native.ams_mel_rf_job_add_rx_intervals_v2.restype, ctypes.c_int32)
+
     def test_private_tx_power_mode_signatures(self) -> None:
         diagnostic = [ctypes.POINTER(ctypes.c_char), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         owner = ctypes.POINTER(_native.RfTxPowerModeSnapshotHandle)
@@ -167,6 +184,14 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_job_request_close",
                 "ams_mel_rf_job_view",
                 "ams_mel_rf_job_add_rx_intervals",
+                "ams_mel_rf_job_interval_status_open",
+                "ams_mel_rf_job_interval_status_receive",
+                "ams_mel_rf_job_interval_status_get_counters",
+                "ams_mel_rf_job_interval_status_close",
+                "ams_mel_rf_job_interval_status_event_view",
+                "ams_mel_rf_job_interval_status_event_close",
+                "ams_mel_rf_job_add_rx_intervals_v2",
+
                 "ams_mel_rf_job_flush",
                 "ams_mel_rf_job_cancel_remaining_intervals",
                 "ams_mel_rf_job_finalize",
@@ -198,8 +223,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 146)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 146)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 153)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 153)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -207,7 +232,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 146)
+        self.assertEqual(len(exported), 153)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1287,6 +1312,49 @@ class AbiTests(unittest.TestCase):
                 'callbacks_after_close',
             )
         )
+        expected.extend(self._layout(_native.RfJobIntervalConfigV2, 'interval', 'status_enable'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV2, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobEventLogEntryV1, 'event_id', 'trigger', 'time_seconds', 'time_fractional_femtoseconds'))
+        expected.extend(self._layout(_native.RfJobEventLogSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalStatusV1, 'interval_id', 'completion_status', 'event_log', 'activity_id'))
+        expected.extend(self._layout(_native.RfJobIntervalStatusOptionsV1, 'queue_capacity', 'max_event_log_entries', 'max_activity_id_bytes'))
+        expected.extend(self._layout(_native.RfJobIntervalStatusCountersV1, 'callback_entries', 'events_queued', 'events_delivered', 'queue_full_drops', 'malformed_drops', 'oversize_drops', 'allocation_failures', 'callbacks_after_close'))
+        expected.append(_native.AMS_MEL_RF_INTERVAL_STATUS_NEVER)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_STATUS_ALWAYS)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_NONE)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED)
+        expected.append(_native.AMS_MEL_RF_INTERVAL_COMPLETION_STARTED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_NONE)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START)
+        expected.append(_native.AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED)
         expected.extend(
             [
                 _native.AMS_MEL_OK,

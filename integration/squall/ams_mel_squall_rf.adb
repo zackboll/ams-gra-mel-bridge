@@ -5,6 +5,7 @@ with AMS.MEL.RF;
 with AMS.MEL.RF.Product_Rx;
 with AMS.MEL.RF.Admin;
 with AMS.MEL.RF.C2;
+with AMS.MEL.RF.C2.Interval_Status;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -180,6 +181,7 @@ begin
                         end if;
                         declare
                            Job : C2.Job := C2.Claim (Job_Request);
+                           Status_Stream : C2.Interval_Status.Stream := C2.Interval_Status.Open (Job, 2, 8, 64);
                         begin
                            C2.Close (Job_Request);
                            --  No-op provider commands: call-path/lifecycle evidence only.
@@ -189,6 +191,7 @@ begin
                                   (1, 2_000_000_000, Job_Details_ID => C2.Job_Details_ID (Job));
                               Intervals : C2.RX_Job_Interval_List;
                            begin
+                              C2.Set_Interval_Status_Enable (Interval, C2.On_Exception);
                               C2.Append_RX_Event
                                 (Interval,
                                  C2.Create_RX_Receive_Event
@@ -196,6 +199,15 @@ begin
                               C2.Append_Job_Interval (Intervals, Interval);
                               C2.Add_RX_Job_Intervals (Job, Intervals);
                               C2.Flush_Job (Job);
+                           end;
+                           begin
+                              declare
+                                 Unexpected : constant C2.Interval_Status.Status_Event := C2.Interval_Status.Receive_Event (Status_Stream, 0);
+                              begin
+                                 raise Program_Error with "unexpected interval status delivery" & C2.Interval_Status.Interval_ID (Unexpected)'Image;
+                              end;
+                           exception
+                              when C2.Timeout_Error => null;
                            end;
                            C2.Finalize_Job (Job);
                            begin
@@ -264,6 +276,16 @@ begin
                                  raise Program_Error with "Squall Job completion/snapshot mismatch";
                               end if;
                               C2.Close (Job);
+                              begin
+                                 declare
+                                    Unexpected : constant C2.Interval_Status.Status_Event := C2.Interval_Status.Receive_Event (Status_Stream, 0);
+                                 begin
+                                    raise Program_Error with "missing interval status stop" & C2.Interval_Status.Interval_ID (Unexpected)'Image;
+                                 end;
+                              exception
+                                 when C2.Interval_Status.Stream_Stopped => null;
+                              end;
+                              C2.Interval_Status.Close (Status_Stream);
                               RX.Close (Endpoint);
                               RF.Close (Data);
                               Verify_Physical (Physical);

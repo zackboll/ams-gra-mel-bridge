@@ -170,6 +170,20 @@ package AMS.MEL.RF.C2 is
 private
    pragma
      Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (Never) /= Integer (AMS.MEL_C_API.Rf_Interval_Status_Never),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (Always)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Status_Always),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (On_Exception)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Status_On_Exception),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
        (Job_Status'Enum_Rep (Failed_Invalid_State)
           /= Integer (AMS.MEL_C_API.RF_Job_Status_Failed_Invalid_State),
         "RF Job status representation mismatch");

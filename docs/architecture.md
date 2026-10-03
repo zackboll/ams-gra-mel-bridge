@@ -1,5 +1,17 @@
 # Architecture decisions
 
+Task 034D2 adds a JobIntervalStatus observer state separate from JobState/provider
+ownership. JobState holds state only to logically stop on Close before deferred
+finalize cleanup. A permanent holder pins the exact const-reference callable,
+bridge queue state and DSO, never the Job/VA/C2 graph. By-value map/vector payloads
+allow already-entered/late callbacks to finish without provider resources or a
+quiescence wait. A preallocated ring bounds queued copies; immutable events own
+logs/activity bytes and survive every owner closure. Copy each non-const log-time
+getter's value locally. Safe Ada copies out and closes native events. v1 stays
+frozen/Never; v2 reuses the interval builder and requires usable local registration
+for enabled reporting. See `task-034d2-rf-job-interval-status.md` for exact
+registration transaction, queue bounds/counters and mock versus Squall evidence.
+
 Task 034D1 adds receive-only JobInterval synchronous commands in C + safe Ada.
 Complete borrowed-input validation and C++ construction precede one provider
 Add; brief lifecycle inspection releases JobState's mutex before Add/Flush/

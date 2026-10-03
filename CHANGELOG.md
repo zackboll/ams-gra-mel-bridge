@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Task 034D2 adds complete owned RF JobIntervalStatus reception, bounded queue,
+  saturating counters, late-callback-safe exact-callable/state/DSO retention,
+  and safe Ada binary/log/time copy-out. Observer streams do not retain Jobs or
+  provider parent claims. Frozen v1 remains Never; additive v2 controls reporting.
+  Seven new ABI 0.1 exports (146 -> 153), raw Rust/private Python parity, unchanged
+  804 vendor blobs and zero continuation sentinel. Mock-positive callback evidence;
+  Squall no-op/no-delivery lifecycle only. Extension/TX/RDMA/VADB remain deferred.
+
 - Task 034D1 adds bounded RF RX JobInterval commands in C and safe Ada:
   ordered receive sequences, Add, Flush, Cancel_Remaining; three exports bring
   ABI 0.1 to 146. Exact numeric forwarding, checked size_t counts, owned Ada

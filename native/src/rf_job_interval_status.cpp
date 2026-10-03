@@ -14,6 +14,7 @@
 namespace {
 std::atomic<unsigned> hold_stage{};
 std::atomic<int> hold_notify{-1}, hold_release{-1};
+std::atomic<ams_mel::internal::IntervalStatusState *> last_registration{};
 void test_hold(unsigned stage) noexcept
 {
     unsigned expected = stage;
@@ -27,6 +28,26 @@ void test_hold(unsigned stage) noexcept
 extern "C" __attribute__((visibility("default"))) void ams_mel_test_rf_status_hold(
     unsigned stage, int notify, int release) noexcept
 { hold_notify.store(notify); hold_release.store(release); hold_stage.store(stage); }
+extern "C" __attribute__((visibility("default"))) unsigned ams_mel_test_rf_status_waiters(
+    const ams_mel_rf_job_interval_status *stream) noexcept
+{
+    std::lock_guard lock{stream->state->mutex};
+    return static_cast<unsigned>(stream->state->waiters);
+}
+extern "C" __attribute__((visibility("default"))) void ams_mel_test_rf_status_preset(
+    ams_mel_rf_job_interval_status *stream, std::uint64_t value) noexcept
+{
+    std::lock_guard lock{stream->state->mutex};
+    stream->state->counters = {value,value,value,value,value,value,value,value};
+}
+extern "C" __attribute__((visibility("default"))) std::size_t ams_mel_test_rf_status_last(
+    ams_mel_rf_job_interval_status_counters_v1 *counters) noexcept
+{
+    auto *state = last_registration.load();
+    std::lock_guard lock{state->mutex};
+    *counters = state->counters;
+    return state->size;
+}
 #endif
 
 using namespace ams_mel::internal;
@@ -186,6 +207,9 @@ std::unique_ptr<PermanentIntervalStatusRegistration> prepare_interval_status(
 }
 void retain_interval_status(PermanentIntervalStatusRegistration *registration) noexcept
 {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    last_registration.store(registration->state.get());
+#endif
     static std::atomic<PermanentIntervalStatusRegistration *> root{};
     auto *head = root.load(std::memory_order_relaxed);
     do { registration->next = head; }
@@ -221,6 +245,13 @@ extern "C" ams_mel_status_t ams_mel_rf_job_interval_status_receive(
     try {
         auto& state = *stream->state;
         std::unique_lock lock{state.mutex};
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        ++state.waiters;
+        struct WaiterExit {
+            std::size_t& value;
+            ~WaiterExit() { --value; }
+        } waiter_exit{state.waiters};
+#endif
         if (!state.ready.wait_for(lock, std::chrono::milliseconds{timeout_ms},
                                  [&] { return state.stopped || state.size; })) return AMS_MEL_TIMEOUT;
         if (state.stopped) return AMS_MEL_STREAM_STOPPED;

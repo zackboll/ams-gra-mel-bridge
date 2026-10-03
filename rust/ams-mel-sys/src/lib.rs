@@ -3021,3 +3021,156 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+// Raw interval-status ABI only; no safe Rust callback API.
+#[repr(C)]
+pub struct AmsMelRfJobIntervalStatus {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelRfJobIntervalStatusEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+pub const AMS_MEL_RF_INTERVAL_STATUS_NEVER: u32 = 0;
+pub const AMS_MEL_RF_INTERVAL_STATUS_ALWAYS: u32 = 1;
+pub const AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION: u32 = 2;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_NONE: u32 = 0;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL: u32 = 1;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED: u32 = 2;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA: u32 = 3;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA: u32 = 4;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA: u32 = 5;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA: u32 = 6;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA: u32 = 7;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA: u32 = 8;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA: u32 = 9;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA: u32 = 10;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA: u32 = 11;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA: u32 = 12;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA: u32 = 13;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA: u32 = 14;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA: u32 =
+    15;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA: u32 = 16;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA: u32 = 17;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED: u32 = 18;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED: u32 = 19;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS: u32 = 20;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS: u32 = 21;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR: u32 = 22;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED: u32 = 23;
+pub const AMS_MEL_RF_INTERVAL_COMPLETION_STARTED: u32 = 24;
+pub const AMS_MEL_RF_LOG_TRIGGER_NONE: u32 = 0;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED: u32 = 1;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED: u32 = 2;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED: u32 = 3;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED: u32 = 4;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED: u32 = 5;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START: u32 = 6;
+pub const AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED: u32 = 7;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV2 {
+    pub interval: AmsMelRfJobIntervalConfigV1,
+    pub status_enable: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV2 {
+    pub data: *const AmsMelRfJobIntervalConfigV2,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobEventLogEntryV1 {
+    pub event_id: u32,
+    pub trigger: u32,
+    pub time_seconds: i64,
+    pub time_fractional_femtoseconds: i64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobEventLogSpanV1 {
+    pub data: *const AmsMelRfJobEventLogEntryV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalStatusV1 {
+    pub interval_id: u32,
+    pub completion_status: u32,
+    pub event_log: AmsMelRfJobEventLogSpanV1,
+    pub activity_id: AmsMelU8SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalStatusOptionsV1 {
+    pub queue_capacity: usize,
+    pub max_event_log_entries: usize,
+    pub max_activity_id_bytes: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalStatusCountersV1 {
+    pub callback_entries: u64,
+    pub events_queued: u64,
+    pub events_delivered: u64,
+    pub queue_full_drops: u64,
+    pub malformed_drops: u64,
+    pub oversize_drops: u64,
+    pub allocation_failures: u64,
+    pub callbacks_after_close: u64,
+}
+unsafe extern "C" {
+    pub fn ams_mel_rf_job_interval_status_open(
+        job: *mut AmsMelRfJob,
+        options: *const AmsMelRfJobIntervalStatusOptionsV1,
+        out_stream: *mut *mut AmsMelRfJobIntervalStatus,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_interval_status_receive(
+        stream: *mut AmsMelRfJobIntervalStatus,
+        timeout_ms: u32,
+        out_event: *mut *mut AmsMelRfJobIntervalStatusEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_interval_status_get_counters(
+        stream: *const AmsMelRfJobIntervalStatus,
+        out_counters: *mut AmsMelRfJobIntervalStatusCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_interval_status_close(
+        stream: *mut *mut AmsMelRfJobIntervalStatus,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_interval_status_event_view(
+        event: *const AmsMelRfJobIntervalStatusEvent,
+        out_view: *mut *const AmsMelRfJobIntervalStatusV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_interval_status_event_close(
+        event: *mut *mut AmsMelRfJobIntervalStatusEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_add_rx_intervals_v2(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV2,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

@@ -81,6 +81,8 @@ int main(int argc, char **argv)
     ams_mel_rf_virtual_aperture *va = NULL;
     ams_mel_rf_job_request *job_request = NULL;
     ams_mel_rf_job *job = NULL;
+    ams_mel_rf_job_interval_status *status_stream = NULL;
+    ams_mel_rf_job_interval_status_event *status_event = NULL;
     const ams_mel_rf_product_rx_event_v1 *first = NULL;
     ams_mel_rf_product_rx_config_v1 config;
     ams_mel_rf_product_rx_request_result_v1 result = {UINT32_C(0xFFFF)};
@@ -173,27 +175,36 @@ int main(int argc, char **argv)
     status = ams_mel_rf_job_request_claim(job_request, &job, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("claim_job", status, diagnostic);
     REQUIRE(ams_mel_rf_job_request_close(&job_request, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        const ams_mel_rf_job_interval_status_options_v1 options = {2, 8, 64};
+        REQUIRE(ams_mel_rf_job_interval_status_open(job, &options, &status_stream,
+            diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+    }
     /* Pinned Squall methods are no-ops: this proves call-path/lifecycle only. */
     {
         ams_mel_rf_receive_event_config_v1 event = {0};
-        ams_mel_rf_job_interval_config_v1 interval = {0};
+        ams_mel_rf_job_interval_config_v2 configured = {0};
+        ams_mel_rf_job_interval_config_v1 *interval = &configured.interval;
         event.event_id = 1;
         event.element_group_label = (ams_mel_string_view_v1){"0", 1};
         event.duration_femtoseconds = INT64_C(1000000000);
         event.center_frequency_hz = 100000000.0;
         event.sample_frequency_hz = 1000000.0;
-        interval.interval_start_femtoseconds = AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS;
-        interval.interval_id = 1;
-        interval.sequence_duration_femtoseconds = INT64_C(2000000000);
-        interval.sequence_repeat_count = 1;
-        interval.job_details_id = UINT32_C(0x12345678);
-        interval.receive_events = (ams_mel_rf_receive_event_config_span_v1){&event, 1};
-        status = ams_mel_rf_job_add_rx_intervals(job,
-            (ams_mel_rf_job_interval_config_span_v1){&interval, 1}, diagnostic, sizeof diagnostic, NULL);
+        interval->interval_start_femtoseconds = AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS;
+        interval->interval_id = 1;
+        interval->sequence_duration_femtoseconds = INT64_C(2000000000);
+        interval->sequence_repeat_count = 1;
+        interval->job_details_id = UINT32_C(0x12345678);
+        interval->receive_events = (ams_mel_rf_receive_event_config_span_v1){&event, 1};
+        configured.status_enable = AMS_MEL_RF_INTERVAL_STATUS_ALWAYS;
+        status = ams_mel_rf_job_add_rx_intervals_v2(job,
+            (ams_mel_rf_job_interval_config_span_v2){&configured, 1}, diagnostic, sizeof diagnostic, NULL);
         if (status != AMS_MEL_OK) return failed("add_rx_intervals", status, diagnostic);
         status = ams_mel_rf_job_flush(job, diagnostic, sizeof diagnostic, NULL);
         if (status != AMS_MEL_OK) return failed("flush_job", status, diagnostic);
     }
+    REQUIRE(ams_mel_rf_job_interval_status_receive(status_stream, 0, &status_event,
+        diagnostic, sizeof diagnostic, NULL) == AMS_MEL_TIMEOUT && !status_event);
     status = ams_mel_rf_job_finalize(job, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("finalize_job", status, diagnostic);
     REQUIRE(ams_mel_rf_job_wait_status(job, 0, &job_status, diagnostic, sizeof diagnostic, NULL) ==
@@ -271,6 +282,9 @@ int main(int argc, char **argv)
                 snapshot->rx_stream_ids.size > 0);
     }
     status = ams_mel_rf_job_close(&job, diagnostic, sizeof diagnostic, NULL);
+    REQUIRE(ams_mel_rf_job_interval_status_receive(status_stream, 0, &status_event,
+        diagnostic, sizeof diagnostic, NULL) == AMS_MEL_STREAM_STOPPED && !status_event);
+    REQUIRE(ams_mel_rf_job_interval_status_close(&status_stream, NULL, 0, NULL) == AMS_MEL_OK);
     if (status != AMS_MEL_OK) return failed("close_job", status, diagnostic);
     status = ams_mel_rf_admin_close(&admin, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_admin", status, diagnostic);

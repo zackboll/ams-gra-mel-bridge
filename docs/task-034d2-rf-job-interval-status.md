@@ -84,12 +84,47 @@ Seven additive ABI 0.1 exports: six stream/event operations and Add v2. Existing
 146 operations/layouts are preserved. Test-only controls are excluded from the
 production export map. All 804 vendor blobs remain unchanged.
 
-## Evidence (updated as validation completes)
+## Local validation evidence
 
 Baseline native: 255/255. Focused native and isolated safe Ada status suites have
 each completed their internal 50/50 loops. Mock supports copied and exact-reference
 callables, synchronous registration, stored-then-throw, malformed/oversize/empty
 payloads, deterministic mapping holds and late invocation without Job dereference.
+All known enums are also covered by the safe Ada suite, including negative
+fractional time counts. Both native and safe Ada executables additionally
+completed 50 isolated process repetitions using the Clang Release facade/mock.
+Tests cover both allocation failpoints, recovery, every counter's saturation,
+queue discard after Close/registration throw, second Open and lifecycle guards,
+actual waiting Receive wakeup, Close during admission/mapping, nonblocking pending
+Finalize Close, and throwing deferred C2 shutdown with no retry.
+
+The DSO proof drops the test's dlopen reference after registration, then invokes
+saved reference/copy callbacks after provider Job destruction and C2 shutdown,
+including from another thread. The lifetime log shows Job/VA destruction and C2
+shutdown but no DSO unload. Legacy ordinary-job tests continue to prove unload
+without status registration. v1 rich D1 inspection remains Never; v2 reuses the
+same complete-field/default inspection with Always/OnException. Mixed-mode order
+and starts 0/1/-1/INT64_MAX are separately inspected in the provider.
+
+Commands/results:
+
+- `make test-native`: 256/256 (baseline 255/255).
+- `make test-build-isolation`: PASS.
+- `make format-ada`, `make check-ada-format`: PASS.
+- `alr -C ada build`, `alr -C ada/tests run`: PASS.
+- Direct GPR via `alr -C ada exec -- make -C /home/zboll/git/ams-mel test-ada`:
+  PASS (GNAT 16.1.0, GPRbuild 26.0.1; no standalone GPRbuild on initial PATH).
+- `make test-rust` with its repository-required test-library environment,
+  workspace cargo check/clippy (`-D warnings`)/fmt check: PASS.
+- `make test-python`: 113/113 (baseline inventory 112).
+- GCC 14.2 Debug/Release and Clang 19.1.7 Debug/Release: 256/256 each;
+  actual-vendored-header signature/getter/enum/closure probes included.
+- Fresh production Release `nm -D --defined-only`: **153 measured exports**,
+  exact map parity, no test-only symbols; ABI remains 0.1. Original declarations
+  and record bodies compared against starting main unchanged.
+- SHA-256 vendor audit: 804/804; no vendor diff from starting main.
+- `git diff --check`: PASS. Four pre-existing missing-final-newline documentation
+  defects were confirmed at starting main and preserved; all changed files pass.
 
 Pinned Squall `b1015728f904c799fa0c07489fce48e78f67845f` was rechecked:
 registration/Add/Flush/Cancel_Remaining are no-ops and the getter returns a dummy.
@@ -97,6 +132,14 @@ Integration clients open before Finalize, submit enabled intervals, poll TIMEOUT
 retain the existing ProductRx/finalize/cancel/completion assertions, then observe
 STREAM_STOPPED after Job Close. This is call-path/lifecycle/no-delivery evidence,
 not positive real notification delivery or actual scheduling.
+All three requested commands passed: `make test-squall-rf-ada-job`,
+`make test-squall-rf-rx`, `make test-squall-rf-ada` (through the Alire toolchain
+environment, SQUALL_SOURCE_DIR pointing at the verified checkout). The first RX
+invocation safely rejected an occupied host port; rerun with existing per-run
+port overrides passed without replacing unrelated containers. The C ProductRx
+client received eight 4096-element ComplexINT16 events, seven changed from held
+event A, no dropped/malformed/allocation failures; its original ownership checks
+remain active. No status notification was received or manufactured.
 
 extendJobEvent, conditional commands, TX events, pointing, weights, RDMA, VADB and
 additional ProductRx formats remain deferred; no full RF MEL coverage is claimed.

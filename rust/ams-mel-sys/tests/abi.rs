@@ -836,8 +836,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 146);
-    assert_eq!(exported.len(), 146);
+    assert_eq!(declared.len(), 153);
+    assert_eq!(exported.len(), 153);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2181,6 +2181,91 @@ fn declarations_match_the_c_header() {
         allocation_failures,
         callbacks_after_close
     );
+    layout!(
+        expected,
+        AmsMelRfJobIntervalConfigV2,
+        interval,
+        status_enable
+    );
+    layout!(expected, AmsMelRfJobIntervalConfigSpanV2, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobEventLogEntryV1,
+        event_id,
+        trigger,
+        time_seconds,
+        time_fractional_femtoseconds
+    );
+    layout!(expected, AmsMelRfJobEventLogSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobIntervalStatusV1,
+        interval_id,
+        completion_status,
+        event_log,
+        activity_id
+    );
+    layout!(
+        expected,
+        AmsMelRfJobIntervalStatusOptionsV1,
+        queue_capacity,
+        max_event_log_entries,
+        max_activity_id_bytes
+    );
+    layout!(
+        expected,
+        AmsMelRfJobIntervalStatusCountersV1,
+        callback_entries,
+        events_queued,
+        events_delivered,
+        queue_full_drops,
+        malformed_drops,
+        oversize_drops,
+        allocation_failures,
+        callbacks_after_close
+    );
+    expected.push(AMS_MEL_RF_INTERVAL_STATUS_NEVER as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_STATUS_ALWAYS as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_NONE as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA as usize);
+    expected.push(
+        AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA as usize,
+    );
+    expected.push(
+        AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA as usize,
+    );
+    expected.push(
+        AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA as usize,
+    );
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED as usize);
+    expected.push(AMS_MEL_RF_INTERVAL_COMPLETION_STARTED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_NONE as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START as usize);
+    expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED as usize);
     expected.extend([
         AMS_MEL_OK as usize,
         AMS_MEL_ABI_VERSION_MAJOR as usize,
@@ -2279,4 +2364,57 @@ fn rx_interval_command_signatures() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_job_cancel_remaining_intervals;
+}
+
+#[test]
+fn interval_status_signatures() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        *const AmsMelRfJobIntervalStatusOptionsV1,
+        *mut *mut AmsMelRfJobIntervalStatus,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJobIntervalStatus,
+        u32,
+        *mut *mut AmsMelRfJobIntervalStatusEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfJobIntervalStatus,
+        *mut AmsMelRfJobIntervalStatusCountersV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfJobIntervalStatus,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfJobIntervalStatusEvent,
+        *mut *const AmsMelRfJobIntervalStatusV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_event_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfJobIntervalStatusEvent,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_interval_status_event_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v2;
 }
