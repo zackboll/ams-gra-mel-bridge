@@ -1,5 +1,14 @@
 # Implementation coverage
 
+Task 034D1 RF RX JobInterval command foundation: native C + safe Ada, ordered
+receive-event sequences, addJobIntervals / flush / cancelRemainingJobIntervals.
+Mock-positive payload fidelity; pinned Squall lifecycle/call-path only because
+provider methods are no-ops. Pinned continuation count 0 aliases ordinary zero
+start; no scheduling claim. JobIntervalStatus callbacks, extendJobEvent and
+TransmitEvent deferred. ABI 0.1: 146 exports; vendor unchanged 804/804. See
+`task-034d1-rf-rx-job-intervals.md`. Historical checkpoints below retain their
+own scope/counts.
+
 Task 034C2: RF PhysicalData is native C + safe Ada, with complete antenna
 dimensions, lattice angle and InstallationDetails (location XYZ, ForeignKey
 key/system name, orientation and boresight). Owned point-in-time snapshots

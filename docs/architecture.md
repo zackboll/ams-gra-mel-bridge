@@ -1,5 +1,15 @@
 # Architecture decisions
 
+Task 034D1 adds receive-only JobInterval synchronous commands in C + safe Ada.
+Complete borrowed-input validation and C++ construction precede one provider
+Add; brief lifecycle inspection releases JobState's mutex before Add/Flush/
+Cancel_Remaining. Existing worker/ownership machinery is unchanged. Ada owns
+nested configs and marshals final-sized arrays with controlled label buffers.
+Pinned ContinueFromPrevious count is zero and aliases ordinary zero start;
+no translation or automatic quantization. Mock-positive payload fidelity;
+pinned Squall no-op call-path/lifecycle only. Status callbacks, extendJobEvent
+and TransmitEvent remain deferred. See `task-034d1-rf-rx-job-intervals.md`.
+
 Task 034C3 completes the published RFMFAInfo data/query surface for current
 bridge scope in native C + safe Ada, not full RF MEL. TxPowerModeData uses one
 provider-independent immutable owner for collection/direct overloads, with

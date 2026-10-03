@@ -1667,6 +1667,50 @@ pub struct AmsMelRfJobRequestConfigV1 {
     pub instance_selection: AmsMelU32SpanV1,
     pub rx_group: AmsMelRfRxElementGroupConfigV1,
 }
+// Pinned sentinel aliases ordinary zero relative start; not i64::MAX.
+pub const AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS: i64 = 0;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigV1 {
+    pub event_id: u32,
+    pub element_group_label: AmsMelStringViewV1,
+    pub start_femtoseconds: i64,
+    pub duration_femtoseconds: i64,
+    pub center_frequency_hz: f64,
+    pub sample_frequency_hz: f64,
+    pub agc_processing_iterations: u64,
+    pub ignored_post_agc_iterations: u64,
+    pub max_extension_femtoseconds: i64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigSpanV1 {
+    pub data: *const AmsMelRfReceiveEventConfigV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV1 {
+    pub interval_start_femtoseconds: i64,
+    pub interval_id: u32,
+    pub interval_starting_gap_femtoseconds: i64,
+    pub sequence_duration_femtoseconds: i64,
+    pub sequence_repeat_count: u64,
+    pub calibration_duration_femtoseconds: i64,
+    pub interval_ending_gap_femtoseconds: i64,
+    pub phase_coherence_with_prior: u32,
+    pub iterations_per_signal: u64,
+    pub max_data_rate_bps: f64,
+    pub max_sample_rate_hz: f64,
+    pub job_details_id: u32,
+    pub receive_events: AmsMelRfReceiveEventConfigSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV1 {
+    pub data: *const AmsMelRfJobIntervalConfigV1,
+    pub size: usize,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelRfJobResultV1 {
@@ -2746,6 +2790,25 @@ extern "C" {
     pub fn ams_mel_rf_job_view(
         job: *const AmsMelRfJob,
         out_info: *mut *const AmsMelRfJobInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_add_rx_intervals(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_flush(
+        job: *mut AmsMelRfJob,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_cancel_remaining_intervals(
+        job: *mut AmsMelRfJob,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

@@ -8,6 +8,10 @@ with System.Storage_Elements;
 package body AMS.MEL.RF.C2 is
    package C renames AMS.MEL_C_API;
    package CS renames Interfaces.C.Strings;
+   --  IEEE NaN/infinity are intentional provider data in this command profile,
+   --  not invalid Ada representations. GNAT's optional float validity checks
+   --  would reject them before submission; disable only those checks here.
+   pragma Validity_Checks ("F");
    use type Interfaces.Integer_32;
    use type C.RF_C2_Handle;
    use type C.RF_VA_Request_Handle;
@@ -86,6 +90,159 @@ package body AMS.MEL.RF.C2 is
          raise Provider_Error with Message (Buffer);
       end if;
    end Check;
+
+   function Create_RX_Receive_Event
+     (Event_ID                    : Interfaces.Unsigned_32;
+      Element_Group_Label         : String;
+      Start_Femtoseconds          : Interfaces.Integer_64;
+      Duration_Femtoseconds       : Interfaces.Integer_64;
+      Center_Frequency_Hz         : Long_Float;
+      Sample_Frequency_Hz         : Long_Float;
+      AGC_Processing_Iterations   : Interfaces.Unsigned_64 := 0;
+      Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
+      Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config is
+   begin
+      if not Valid_String (Element_Group_Label) then
+         raise Constraint_Error with "Element_Group_Label contains embedded NUL";
+      end if;
+      return
+        (Event_ID,
+         US.To_Unbounded_String (Element_Group_Label),
+         Start_Femtoseconds,
+         Duration_Femtoseconds,
+         Center_Frequency_Hz,
+         Sample_Frequency_Hz,
+         AGC_Processing_Iterations,
+         Ignored_Post_AGC_Iterations,
+         Max_Extension_Femtoseconds);
+   end Create_RX_Receive_Event;
+   function Create_RX_Job_Interval
+     (Interval_ID                        : Interfaces.Unsigned_32;
+      Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
+      Job_Details_ID                     : Interfaces.Unsigned_32 := 0;
+      Interval_Start_Femtoseconds        : Interfaces.Integer_64 :=
+        Continue_From_Previous_Femtoseconds;
+      Interval_Starting_Gap_Femtoseconds : Interfaces.Integer_64 := 0;
+      Sequence_Repeat_Count              : Interfaces.Unsigned_64 := 1;
+      Calibration_Duration_Femtoseconds  : Interfaces.Integer_64 := 0;
+      Interval_Ending_Gap_Femtoseconds   : Interfaces.Integer_64 := 0;
+      Phase_Coherence_With_Prior         : Boolean := False;
+      Iterations_Per_Signal              : Interfaces.Unsigned_64 := 0;
+      Max_Data_Rate_BPS                  : Long_Float := 0.0;
+      Max_Sample_Rate_Hz                 : Long_Float := 0.0) return RX_Job_Interval_Config is
+   begin
+      return
+        (Interval_ID,
+         Job_Details_ID,
+         Interval_Start_Femtoseconds,
+         Interval_Starting_Gap_Femtoseconds,
+         Sequence_Duration_Femtoseconds,
+         Calibration_Duration_Femtoseconds,
+         Interval_Ending_Gap_Femtoseconds,
+         Sequence_Repeat_Count,
+         Iterations_Per_Signal,
+         Phase_Coherence_With_Prior,
+         Max_Data_Rate_BPS,
+         Max_Sample_Rate_Hz,
+         RX_Event_Vectors.Empty_Vector);
+   end Create_RX_Job_Interval;
+   procedure Append_RX_Event
+     (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config) is
+   begin
+      Interval.Events.Append (Event);
+   end Append_RX_Event;
+   procedure Append_Job_Interval
+     (Intervals : in out RX_Job_Interval_List; Interval : RX_Job_Interval_Config) is
+   begin
+      Intervals.Values.Append (Interval);
+   end Append_Job_Interval;
+   function Job_Interval_Count (Intervals : RX_Job_Interval_List) return Natural
+   is (Natural (Intervals.Values.Length));
+
+   procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
+      function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V1
+      with Convention => C;
+      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V1
+      with Convention => C;
+      type Labels is array (Positive range <>) of String_Owner;
+      Count       : constant Natural := Job_Interval_Count (Intervals);
+      Event_Count : Natural := 0;
+      D           : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R           : aliased C.Size_T := 0;
+   begin
+      for Interval of Intervals.Values loop
+         Event_Count := Event_Count + Natural (Interval.Events.Length);
+      end loop;
+      --  All backing arrays have their final sizes before any span is assigned.
+      --  Controlled label owners release every allocation on return or exception.
+      declare
+         Configs    : Native_Intervals (1 .. Count);
+         Events     : Native_Events (1 .. Event_Count);
+         Strings    : Labels (1 .. Event_Count);
+         Next_Event : Positive := 1;
+         I          : Positive := 1;
+         Span       : C.RF_Job_Interval_Config_Span_V1 := (System.Null_Address, C.Size_T (Count));
+      begin
+         for Interval of Intervals.Values loop
+            declare
+               First_Event : constant Positive := Next_Event;
+               Event_Span  : C.RF_Receive_Event_Config_Span_V1 :=
+                 (System.Null_Address, C.Size_T (Interval.Events.Length));
+            begin
+               for Event of Interval.Events loop
+                  Strings (Next_Event).Value := CS.New_String (US.To_String (Event.Label));
+                  Events (Next_Event) :=
+                    (Event.Event_ID,
+                     (Pointer_Address (Strings (Next_Event).Value),
+                      C.Size_T (US.Length (Event.Label))),
+                     Event.Start_Femtoseconds,
+                     Event.Duration_Femtoseconds,
+                     Interfaces.C.double (Event.Center_Frequency_Hz),
+                     Interfaces.C.double (Event.Sample_Frequency_Hz),
+                     Event.AGC_Processing_Iterations,
+                     Event.Ignored_Post_AGC_Iterations,
+                     Event.Max_Extension_Femtoseconds);
+                  Next_Event := Next_Event + 1;
+               end loop;
+               if Event_Span.Size > 0 then
+                  Event_Span.Data := Events (First_Event)'Address;
+               end if;
+               Configs (I) :=
+                 (Interval.Interval_Start_Femtoseconds,
+                  Interval.Interval_ID,
+                  Interval.Interval_Starting_Gap_Femtoseconds,
+                  Interval.Sequence_Duration_Femtoseconds,
+                  Interval.Sequence_Repeat_Count,
+                  Interval.Calibration_Duration_Femtoseconds,
+                  Interval.Interval_Ending_Gap_Femtoseconds,
+                  Boolean'Pos (Interval.Phase_Coherence_With_Prior),
+                  Interval.Iterations_Per_Signal,
+                  Interfaces.C.double (Interval.Max_Data_Rate_BPS),
+                  Interfaces.C.double (Interval.Max_Sample_Rate_Hz),
+                  Interval.Job_Details_ID,
+                  Event_Span);
+               I := I + 1;
+            end;
+         end loop;
+         if Count > 0 then
+            Span.Data := Configs (1)'Address;
+         end if;
+         Check (C.RF_Job_Add_RX_Intervals (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+      end;
+   end Add_RX_Job_Intervals;
+   procedure Flush_Job (Object : in out Job) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_Job_Flush (Object.Handle, D'Address, D'Length, R'Access), D);
+   end Flush_Job;
+   procedure Cancel_Remaining_Job_Intervals (Object : in out Job) is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.RF_Job_Cancel_Remaining_Intervals (Object.Handle, D'Address, D'Length, R'Access), D);
+   end Cancel_Remaining_Job_Intervals;
 
    function Open (Library_Path : String; Configuration : String) return C2_MEL is
       Library_C, Configuration_C : String_Owner;

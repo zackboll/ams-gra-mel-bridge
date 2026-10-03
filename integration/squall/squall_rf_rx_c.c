@@ -173,6 +173,27 @@ int main(int argc, char **argv)
     status = ams_mel_rf_job_request_claim(job_request, &job, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("claim_job", status, diagnostic);
     REQUIRE(ams_mel_rf_job_request_close(&job_request, NULL, 0, NULL) == AMS_MEL_OK);
+    /* Pinned Squall methods are no-ops: this proves call-path/lifecycle only. */
+    {
+        ams_mel_rf_receive_event_config_v1 event = {0};
+        ams_mel_rf_job_interval_config_v1 interval = {0};
+        event.event_id = 1;
+        event.element_group_label = (ams_mel_string_view_v1){"0", 1};
+        event.duration_femtoseconds = INT64_C(1000000000);
+        event.center_frequency_hz = 100000000.0;
+        event.sample_frequency_hz = 1000000.0;
+        interval.interval_start_femtoseconds = AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS;
+        interval.interval_id = 1;
+        interval.sequence_duration_femtoseconds = INT64_C(2000000000);
+        interval.sequence_repeat_count = 1;
+        interval.job_details_id = UINT32_C(0x12345678);
+        interval.receive_events = (ams_mel_rf_receive_event_config_span_v1){&event, 1};
+        status = ams_mel_rf_job_add_rx_intervals(job,
+            (ams_mel_rf_job_interval_config_span_v1){&interval, 1}, diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_OK) return failed("add_rx_intervals", status, diagnostic);
+        status = ams_mel_rf_job_flush(job, diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_OK) return failed("flush_job", status, diagnostic);
+    }
     status = ams_mel_rf_job_finalize(job, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("finalize_job", status, diagnostic);
     REQUIRE(ams_mel_rf_job_wait_status(job, 0, &job_status, diagnostic, sizeof diagnostic, NULL) ==
@@ -235,6 +256,8 @@ int main(int argc, char **argv)
     REQUIRE(counters.products_dropped_queue_full == 0U);
     REQUIRE(counters.allocation_failures == 0U && counters.callbacks_after_close == 0U);
 
+    status = ams_mel_rf_job_cancel_remaining_intervals(job, diagnostic, sizeof diagnostic, NULL);
+    if (status != AMS_MEL_OK) return failed("cancel_remaining", status, diagnostic);
     status = ams_mel_rf_job_cancel(job, &cancel_result, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("cancel_job", status, diagnostic);
     REQUIRE(cancel_result.cancelled == 1U && cancel_result.error_code == AMS_MEL_RF_CANCEL_ERROR_NONE);

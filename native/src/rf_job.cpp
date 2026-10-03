@@ -312,6 +312,131 @@ struct ams_mel_rf_job {
     std::shared_ptr<JobState> state;
 };
 
+namespace {
+using Fs = ams::util::math::Femtoseconds;
+static_assert(!std::numeric_limits<Fs>::is_specialized,
+              "Review the pinned duration-sentinel contract");
+static_assert(std::numeric_limits<Fs>::max().count() == INT64_C(0),
+              "Unexpected numeric_limits<Femtoseconds> behavior");
+static_assert(rfmel::JobInterval::ContinueFromPrevious.count() == INT64_C(0),
+              "Pinned RF MEL ContinueFromPrevious changed; review compatibility");
+static_assert(rfmel::JobInterval::ContinueFromPrevious.count() ==
+              AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS,
+              "C continuation constant must exactly match pinned RF MEL");
+bool fits_count(std::uint64_t value) noexcept
+{ return value <= std::numeric_limits<std::size_t>::max(); }
+template<class Operation>
+ams_mel_status_t interval_command(ams_mel_rf_job *job, bool require_unfinalized,
+    Operation operation, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto state = job->state;
+        {
+            std::lock_guard lock{state->mutex};
+            if (state->cancel_attempted || (require_unfinalized && state->finalize_attempted)) {
+                write_diagnostic(state->cancel_attempted ? "full Job Cancel already attempted" :
+                                 "Job Finalize already attempted", diagnostic, capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
+        }
+        operation(*state->detail); // Provider runs unlocked, including during future publication.
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        write_diagnostic("Job interval allocation failed", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        write_exception_diagnostic(error, "provider Job interval exception", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        write_diagnostic("unknown provider Job interval exception", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v1 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
+        !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
+    for (std::size_t i = 0; i < inputs.size; ++i) {
+        const auto& input = inputs.data[i];
+        if (input.phase_coherence_with_prior > 1U || !fits_count(input.sequence_repeat_count) ||
+            !fits_count(input.iterations_per_signal) ||
+            !span_ok(input.receive_events.size, input.receive_events.data, sizeof(*input.receive_events.data)))
+            return AMS_MEL_INVALID_ARGUMENT;
+        for (std::size_t e = 0; e < input.receive_events.size; ++e) {
+            const auto& event = input.receive_events.data[e];
+            if (!valid_view(event.element_group_label) || !fits_count(event.agc_processing_iterations) ||
+                !fits_count(event.ignored_post_agc_iterations)) return AMS_MEL_INVALID_ARGUMENT;
+        }
+    }
+    try {
+        std::vector<rfmel::JobInterval> intervals;
+        intervals.reserve(inputs.size);
+        for (std::size_t i = 0; i < inputs.size; ++i) {
+            const auto& input = inputs.data[i];
+            std::vector<rfmel::ReceiveEvent> events;
+            events.reserve(input.receive_events.size);
+            for (std::size_t e = 0; e < input.receive_events.size; ++e) {
+                const auto& config = input.receive_events.data[e];
+                rfmel::ReceiveEvent event;
+                event.setEventID(config.event_id);
+                event.setElementGroupLabel(copy_view(config.element_group_label));
+                event.setStart(Fs{config.start_femtoseconds});
+                event.setDuration(Fs{config.duration_femtoseconds});
+                event.setCenterFrequency(config.center_frequency_hz);
+                event.setSampleFrequency(config.sample_frequency_hz);
+                event.setNumIterationProcessingAGC(static_cast<std::size_t>(config.agc_processing_iterations));
+                event.setNumIterationIgnoredPostAGC(static_cast<std::size_t>(config.ignored_post_agc_iterations));
+                event.setMaxExtensionDuration(Fs{config.max_extension_femtoseconds});
+                events.push_back(std::move(event));
+            }
+            rfmel::Sequence sequence;
+            sequence.setDuration(Fs{input.sequence_duration_femtoseconds});
+            sequence.setRxEvents(events);
+            rfmel::JobInterval interval;
+            interval.setIntervalStart(Fs{input.interval_start_femtoseconds});
+            interval.setIntervalID(input.interval_id);
+            interval.setIntervalStartingGap(Fs{input.interval_starting_gap_femtoseconds});
+            interval.setSequence(sequence);
+            interval.setSequenceRepeatCount(static_cast<std::size_t>(input.sequence_repeat_count));
+            interval.setCalDuration(Fs{input.calibration_duration_femtoseconds});
+            interval.setIntervalEndingGap(Fs{input.interval_ending_gap_femtoseconds});
+            interval.setPhaseCoherenceWithPrior(input.phase_coherence_with_prior != 0U);
+            interval.setIterationsPerSignal(static_cast<std::size_t>(input.iterations_per_signal));
+            interval.setMaxDataRateBps(input.max_data_rate_bps);
+            interval.setMaxSampleRateHZ(input.max_sample_rate_hz);
+            interval.setJobDetailsId(input.job_details_id);
+            intervals.push_back(std::move(interval));
+        }
+        return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
+                                diagnostic, capacity, required);
+    } catch (const std::bad_alloc&) {
+        write_diagnostic("Job interval construction allocation failed", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (...) {
+        write_diagnostic("Job interval construction exception", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_flush(
+    ams_mel_rf_job *job, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    return interval_command(job, true, [](rfmel::JobDetail& detail) { detail.flush(); },
+                            diagnostic, capacity, required);
+}
+extern "C" ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
+    ams_mel_rf_job *job, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    return interval_command(job, false, [](rfmel::JobDetail& detail) { detail.cancelRemainingJobIntervals(); },
+                            diagnostic, capacity, required);
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
     ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v1 *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,

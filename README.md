@@ -1,28 +1,36 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034D1 adds bounded RF receive JobInterval commands in native C and safe
+Ada `AMS.MEL.RF.C2`: ordered receive-event sequences, Add, Flush and
+Cancel_Remaining. ABI 0.1 has 146 exports; vendor unchanged at 804 files.
+**Pinned continuation count is zero**, aliasing an ordinary zero relative start;
+INT64_MAX is forwarded unchanged, not treated as continuation. No automatic
+quantization. Mock payload fidelity and pinned-Squall no-op call-path/lifecycle
+evidence are distinct. Status callbacks, event extension and TX remain deferred.
+See `docs/task-034d1-rf-rx-job-intervals.md`.
+
 RF PhysicalData is available through an owned point-in-time C snapshot and
 the safe Ada-owned `AMS.MEL.RF.Physical_Data` value. It preserves antenna
 dimensions, lattice angle, location XYZ and both ForeignKey strings, and
 orientation/boresight roll-pitch-yaw in published meters/radians. Values remain
-usable after DataMEL Close. ABI 0.1 now has 143 production operations;
+usable after DataMEL Close. ABI 0.1 now has 146 production operations;
 Rust sys and private Python have raw parity only. See
 `docs/task-034c2-rf-physical-data.md`. Task 034C3 adds complete TxPowerModeData
 collection/direct snapshots in C and safe Ada: mock-positive, while pinned Squall
 is receive-only with an empty collection. See `docs/task-034c3-rf-tx-power-modes.md`.
-JobInterval remains
-unimplemented.
+Receive-only JobInterval commands are available as described above.
 
 RF duration quantization is available as the live C
 `ams_mel_rf_data_quantize_duration` query and safe Ada
 `AMS.MEL.RF.Quantize_Duration`, preserving signed 64-bit femtoseconds exactly.
-The provider determines the result; this is a prerequisite timing primitive for
-future JobInterval support, not JobInterval itself. See
+The provider determines the result; callers can explicitly quantize values
+before constructing receive JobIntervals. No interval call quantizes implicitly. See
 `docs/task-034c1-rf-duration-quantization.md`.
 
 Task 034B2B2: safe Ada RF Job `Finalize_Job`, `Wait_Job_Status`, and
 `Cancel_Job` wrap the existing native lifecycle. Both Squall ProductRx
 integrations use production Job APIs rather than the former test-only C++
-helper. JobInterval and interval callbacks remain deferred.
+helper. JobInterval status callbacks remain deferred.
 
 An independent, experimental **consumer-side language binding** for the
 Agile Mission Suite Government Reference Architecture (**AMS GRA**)
@@ -68,7 +76,7 @@ the request to the VA; parent-first Close delays C2 shutdown until the last
 child is released. `make test-squall-rf-ada-va` exercises this through pinned
 Squall. Native C and safe Ada RX Job request/JobDetail snapshots are
 implemented. Job finalize/status/cancel is available in native C and safe Ada;
-JobIntervals remain unimplemented. The opt-in `make test-squall-rf-ada-job`
+Receive-only JobInterval commands are available. The opt-in `make test-squall-rf-ada-job`
 checks two sequential Jobs and parent-first lifecycle against pinned Squall.
 
 **Safe Ada RF (Task 034A):** `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx`

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Task 034D1 adds bounded RF RX JobInterval commands in C and safe Ada:
+  ordered receive sequences, Add, Flush, Cancel_Remaining; three exports bring
+  ABI 0.1 to 146. Exact numeric forwarding, checked size_t counts, owned Ada
+  marshalling and raw Rust/private Python parity. The pinned continuation
+  constant is zero and aliases ordinary zero start, not INT64_MAX. Vendor and
+  pins unchanged. Mock payload fidelity; pinned Squall commands are no-ops.
+  Status callbacks, event extension and TX remain deferred.
+
 - Task 034C3 adds complete RF TxPowerModeData collection/direct immutable owned
   snapshots and safe Ada values. Four new exports bring ABI 0.1 to 143;
   raw Ada/Rust/private Python parity, no new safe Rust/public Python API.

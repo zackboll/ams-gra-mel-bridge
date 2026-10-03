@@ -1224,6 +1224,45 @@ class RfJobRequestConfigV1(ctypes.Structure):
                 ("instance_selection", U32SpanV1), ("rx_group", RfRxElementGroupConfigV1)]
 
 
+# Pinned sentinel aliases ordinary zero relative start; not INT64_MAX.
+AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS = 0
+
+class RfReceiveEventConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("event_id", ctypes.c_uint32),
+        ("element_group_label", StringViewV1),
+        ("start_femtoseconds", ctypes.c_int64),
+        ("duration_femtoseconds", ctypes.c_int64),
+        ("center_frequency_hz", ctypes.c_double),
+        ("sample_frequency_hz", ctypes.c_double),
+        ("agc_processing_iterations", ctypes.c_uint64),
+        ("ignored_post_agc_iterations", ctypes.c_uint64),
+        ("max_extension_femtoseconds", ctypes.c_int64),
+    ]
+
+class RfReceiveEventConfigSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfReceiveEventConfigV1)), ("size", ctypes.c_size_t)]
+
+class RfJobIntervalConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("interval_start_femtoseconds", ctypes.c_int64),
+        ("interval_id", ctypes.c_uint32),
+        ("interval_starting_gap_femtoseconds", ctypes.c_int64),
+        ("sequence_duration_femtoseconds", ctypes.c_int64),
+        ("sequence_repeat_count", ctypes.c_uint64),
+        ("calibration_duration_femtoseconds", ctypes.c_int64),
+        ("interval_ending_gap_femtoseconds", ctypes.c_int64),
+        ("phase_coherence_with_prior", ctypes.c_uint32),
+        ("iterations_per_signal", ctypes.c_uint64),
+        ("max_data_rate_bps", ctypes.c_double),
+        ("max_sample_rate_hz", ctypes.c_double),
+        ("job_details_id", ctypes.c_uint32),
+        ("receive_events", RfReceiveEventConfigSpanV1),
+    ]
+
+class RfJobIntervalConfigSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV1)), ("size", ctypes.c_size_t)]
+
 class RfJobResultV1(ctypes.Structure):
     _fields_ = [("error_code", ctypes.c_uint32)]
 
@@ -1297,6 +1336,16 @@ ams_mel_rf_job_view = _LIBRARY.ams_mel_rf_job_view
 ams_mel_rf_job_view.argtypes = [RfJobHandle, ctypes.POINTER(ctypes.POINTER(RfJobInfoV1)),
                                 *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_view.restype = ctypes.c_int32
+ams_mel_rf_job_add_rx_intervals = _LIBRARY.ams_mel_rf_job_add_rx_intervals
+ams_mel_rf_job_add_rx_intervals.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV1, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals.restype = ctypes.c_int32
+ams_mel_rf_job_flush = _LIBRARY.ams_mel_rf_job_flush
+ams_mel_rf_job_flush.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_flush.restype = ctypes.c_int32
+ams_mel_rf_job_cancel_remaining_intervals = _LIBRARY.ams_mel_rf_job_cancel_remaining_intervals
+ams_mel_rf_job_cancel_remaining_intervals.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_cancel_remaining_intervals.restype = ctypes.c_int32
+
 ams_mel_rf_job_finalize = _LIBRARY.ams_mel_rf_job_finalize
 ams_mel_rf_job_finalize.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_finalize.restype = ctypes.c_int32
@@ -1591,6 +1640,9 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_request_claim",
     "ams_mel_rf_job_request_close",
     "ams_mel_rf_job_view",
+    "ams_mel_rf_job_add_rx_intervals",
+    "ams_mel_rf_job_flush",
+    "ams_mel_rf_job_cancel_remaining_intervals",
     "ams_mel_rf_job_finalize",
     "ams_mel_rf_job_wait_status",
     "ams_mel_rf_job_cancel",

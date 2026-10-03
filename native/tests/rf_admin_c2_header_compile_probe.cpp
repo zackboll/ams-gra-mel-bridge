@@ -14,8 +14,19 @@
 #include <type_traits>
 #include <cstdint>
 #include <chrono>
+#include <limits>
+#include "../include/ams_mel/abi.h"
 
 namespace rfmel = ams::iface::rfmel;
+using Fs = ams::util::math::Femtoseconds;
+static_assert(std::is_same_v<Fs::rep, std::int64_t>);
+static_assert(!std::numeric_limits<Fs>::is_specialized);
+static_assert(std::numeric_limits<Fs>::max().count() == 0);
+static_assert(rfmel::JobInterval::ContinueFromPrevious.count() == 0);
+static_assert(Fs::max().count() == INT64_MAX);
+static_assert(rfmel::JobInterval::ContinueFromPrevious.count() != Fs::max().count());
+static_assert(rfmel::JobInterval::ContinueFromPrevious.count() ==
+              AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS);
 
 // Task 034C3: exact pinned const TxPowerModeData getter/representation surface.
 using TxMode = const rfmel::TxPowerModeData&;
@@ -67,7 +78,54 @@ static_assert(std::is_same_v<decltype(std::declval<Boresight>().getRoll()), doub
 static_assert(std::is_same_v<decltype(std::declval<Boresight>().getPitch()), double>);
 static_assert(std::is_same_v<decltype(std::declval<Boresight>().getYaw()), double>);
 
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setIntervalStart(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getIntervalStart())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setIntervalID(std::declval<uint32_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getIntervalID())>, std::remove_cvref_t<uint32_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setIntervalStartingGap(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getIntervalStartingGap())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setSequence(std::declval<const rfmel::Sequence&>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getSequence())>, std::remove_cvref_t<const rfmel::Sequence&>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setSequenceRepeatCount(std::declval<size_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getSequenceRepeatCount())>, std::remove_cvref_t<size_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setCalDuration(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getCalDuration())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setIntervalEndingGap(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getIntervalEndingGap())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setPhaseCoherenceWithPrior(std::declval<bool>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getPhaseCoherenceWithPrior())>, std::remove_cvref_t<bool>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setIterationsPerSignal(std::declval<size_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getIterationsPerSignal())>, std::remove_cvref_t<size_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setMaxDataRateBps(std::declval<double>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getMaxDataRateBps())>, std::remove_cvref_t<double>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setMaxSampleRateHZ(std::declval<rfmel::Frequency>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getMaxSampleRateHZ())>, std::remove_cvref_t<rfmel::Frequency>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::JobInterval&>().setJobDetailsId(std::declval<uint32_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::JobInterval&>().getJobDetailsID())>, std::remove_cvref_t<uint32_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::Sequence&>().setDuration(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::Sequence&>().getDuration())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::Sequence&>().setRxEvents(std::declval<const std::vector<rfmel::ReceiveEvent>&>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::Sequence&>().getRxEvents())>, std::remove_cvref_t<const std::vector<rfmel::ReceiveEvent>&>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setEventID(std::declval<rfmel::JobEventID>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getEventID())>, std::remove_cvref_t<rfmel::JobEventID>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setElementGroupLabel(std::declval<const rfmel::ElementGroupLabel&>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getElementGroupLabel())>, std::remove_cvref_t<const rfmel::ElementGroupLabel&>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setStart(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getStart())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setDuration(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getDuration())>, std::remove_cvref_t<Fs>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setCenterFrequency(std::declval<rfmel::Frequency>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getCenterFrequency())>, std::remove_cvref_t<rfmel::Frequency>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setSampleFrequency(std::declval<rfmel::Frequency>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getSampleFrequency())>, std::remove_cvref_t<rfmel::Frequency>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setNumIterationProcessingAGC(std::declval<size_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getNumIterationProcessingAGC())>, std::remove_cvref_t<size_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setNumIterationIgnoredPostAGC(std::declval<size_t>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getNumIterationIgnoredPostAGC())>, std::remove_cvref_t<size_t>>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ReceiveEvent&>().setMaxExtensionDuration(std::declval<Fs>())), void>);
+static_assert(std::is_same_v<std::remove_cvref_t<decltype(std::declval<const rfmel::ReceiveEvent&>().getMaxExtensionDuration())>, std::remove_cvref_t<Fs>>);
+
 int rf_admin_c2_header_compile_probe()
 {
-    return 0;
+    return rfmel::JobInterval{}.getIntervalStart() == rfmel::JobInterval::ContinueFromPrevious ? 0 : 1;
 }

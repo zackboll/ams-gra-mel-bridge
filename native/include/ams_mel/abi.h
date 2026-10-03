@@ -2570,6 +2570,50 @@ typedef struct ams_mel_rf_job_request_config_v1 {
     ams_mel_u32_span_v1 instance_selection;
     ams_mel_rf_rx_element_group_config_v1 rx_group;
 } ams_mel_rf_job_request_config_v1;
+/* Pinned RF MEL 762ce84 uses numeric_limits<Femtoseconds>::max(), whose
+ * count is zero, NOT the duration representation's maximum. This aliases
+ * an ordinary zero relative start: callers cannot distinguish those intentions
+ * in the provider scalar interface. INT64_MAX is NOT this pinned sentinel.
+ * A future pin change requires explicit provider/ABI compatibility review. */
+#define AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS INT64_C(0)
+/* Receive-only borrowed inputs, valid only during Add. Empty spans may have
+ * NULL data. Labels are UTF-8 without embedded NUL (empty allowed). Counts
+ * must fit provider size_t. Signed femtoseconds and doubles are unchanged:
+ * no automatic quantization or domain/timing validation is performed. */
+typedef struct ams_mel_rf_receive_event_config_v1 {
+    uint32_t event_id;
+    ams_mel_string_view_v1 element_group_label;
+    int64_t start_femtoseconds;
+    int64_t duration_femtoseconds;
+    double center_frequency_hz;
+    double sample_frequency_hz;
+    uint64_t agc_processing_iterations;
+    uint64_t ignored_post_agc_iterations;
+    int64_t max_extension_femtoseconds;
+} ams_mel_rf_receive_event_config_v1;
+typedef struct ams_mel_rf_receive_event_config_span_v1 {
+    const ams_mel_rf_receive_event_config_v1 *data;
+    size_t size;
+} ams_mel_rf_receive_event_config_span_v1;
+typedef struct ams_mel_rf_job_interval_config_v1 {
+    int64_t interval_start_femtoseconds;
+    uint32_t interval_id;
+    int64_t interval_starting_gap_femtoseconds;
+    int64_t sequence_duration_femtoseconds;
+    uint64_t sequence_repeat_count;
+    int64_t calibration_duration_femtoseconds;
+    int64_t interval_ending_gap_femtoseconds;
+    uint32_t phase_coherence_with_prior; /* exactly 0 or 1 */
+    uint64_t iterations_per_signal;
+    double max_data_rate_bps;
+    double max_sample_rate_hz;
+    uint32_t job_details_id;
+    ams_mel_rf_receive_event_config_span_v1 receive_events;
+} ams_mel_rf_job_interval_config_v1;
+typedef struct ams_mel_rf_job_interval_config_span_v1 {
+    const ams_mel_rf_job_interval_config_v1 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v1;
 typedef struct ams_mel_rf_job_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_rf_job_result_v1;
@@ -2793,6 +2837,24 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_view(
 /* Serialize calls on the same public owner with Close. Finalize and Cancel are
  * independently one-shot; Cancel attempted first prohibits Finalize. A pending
  * Wait never modifies out_status. Close does not cancel or wait for the worker. */
+/* Synchronous mutating operations: never retry for a longer diagnostic.
+ * Add/Flush reject after Finalize or full Cancel has been attempted.
+ * Cancel_Remaining is repeatable before/during/after Finalize, but rejects
+ * after full Cancel has been attempted. Rejection is PROVIDER_FAILED.
+ * Same-owner public operations/Close must be externally serialized. Provider
+ * calls run outside JobState's mutex; no new worker/owner is created.
+ * bad_alloc => INTERNAL_ERROR, all other exceptions => PROVIDER_EXCEPTION.
+ * Unsupported fields retain upstream defaults, including status-enable Never. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v1 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_flush(
+    ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
+    ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_finalize(
     ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

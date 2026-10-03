@@ -26,6 +26,7 @@
 #include <rfmel/mfa/PhysicalData.h>
 
 #include <any>
+#include <cmath>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -807,6 +808,10 @@ std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::Job
 std::atomic<unsigned> job_get_calls{};
 std::atomic<unsigned> job_finalize_calls{};
 std::atomic<unsigned> job_cancel_calls{};
+std::atomic<unsigned> job_add_calls{}, job_flush_calls{}, job_remaining_calls{};
+std::mutex interval_mutex;
+std::vector<rfmel::JobInterval> latest_intervals;
+
 std::mutex finalize_gate_mutex;
 std::vector<std::shared_ptr<std::promise<rfmel::JobStatus>>> finalize_pending;
 std::mutex job_cleanup_mutex;
@@ -889,12 +894,25 @@ public:
         else gate->set_value(rfmel::JobStatus::Complete);
         return future;
     }
-    void flush() override { forbidden("Job::flush"); }
+    void interval_failure(const char *operation)
+    {
+        const auto prefix = std::string{"c2:"} + operation;
+        if (scenario_ == prefix + "-throw") throw std::runtime_error(std::string(900, 'x') + " µ end");
+        if (scenario_ == prefix + "-unknown") throw 42;
+        if (scenario_ == prefix + "-alloc") throw std::bad_alloc{};
+    }
+    void flush() override
+    { ++job_flush_calls; record("rf_job_flush"); interval_failure("flush"); }
     void registerJobIntervalStatusCallback(const std::function<void(rfmel::JobIntervalStatus)>&) override
     { forbidden("Job::registerStatus"); }
-    void addJobIntervals(const std::vector<rfmel::JobInterval>&) override
-    { forbidden("Job::addIntervals"); }
-    void cancelRemainingJobIntervals() override { forbidden("Job::cancelIntervals"); }
+    void addJobIntervals(const std::vector<rfmel::JobInterval>& intervals) override
+    {
+        ++job_add_calls; record("rf_job_add_intervals");
+        { std::lock_guard lock{interval_mutex}; latest_intervals = intervals; }
+        interval_failure("add");
+    }
+    void cancelRemainingJobIntervals() override
+    { ++job_remaining_calls; record("rf_job_cancel_remaining"); interval_failure("remaining"); }
     rfmel::CancelStatus cancelJob() override
     {
         job_cancel_calls.fetch_add(1U);
@@ -1218,6 +1236,9 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
         configuration != "c2:job-ok" && configuration != "c2:job-delayed" &&
         configuration.substr(0, 12) != "c2:finalize-" &&
         configuration.substr(0, 10) != "c2:cancel-" &&
+        configuration.substr(0, 7) != "c2:add-" &&
+        configuration.substr(0, 9) != "c2:flush-" &&
+        configuration.substr(0, 13) != "c2:remaining-" &&
         configuration != "c2:job-shutdown-throw" && configuration != "c2:job-failure" &&
         configuration != "c2:job-long-failure" && configuration != "c2:job-unknown-error" &&
         configuration != "c2:job-future-throw" && configuration != "c2:job-future-unknown" &&
@@ -1511,3 +1532,73 @@ extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_tx_reque
 { return tx_requested_id.load(); }
 extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_physical_face(void)
 { return physical_face.load(); }
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_add_calls(void)
+{ return job_add_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_flush_calls(void)
+{ return job_flush_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_remaining_calls(void)
+{ return job_remaining_calls.load(); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity(void)
+{
+    std::lock_guard lock{interval_mutex};
+    if (latest_intervals.size() != 2) return 0;
+    const auto& a = latest_intervals[0];
+    const auto& b = latest_intervals[1];
+    const auto& seq = a.getSequence();
+    if (a.getIntervalStart().count() != 0 || a.getIntervalID() != 0x10203040U ||
+        a.getIntervalStartingGap().count() != -111 || seq.getDuration().count() != 9876543210123LL ||
+        a.getSequenceRepeatCount() != 0x100000003ULL || a.getCalDuration().count() != 222 ||
+        a.getIntervalEndingGap().count() != -333 || !a.getPhaseCoherenceWithPrior() ||
+        a.getIterationsPerSignal() != 0x100000005ULL || a.getMaxDataRateBps() != 123456789.25 ||
+        a.getMaxSampleRateHZ() != 2500000.5 || a.getJobDetailsID() != 0xABCDEF01U ||
+        seq.getRxEvents().size() != 2 || !seq.getTxEvents().empty()) return 0;
+    const auto& x = seq.getRxEvents()[0];
+    const auto& y = seq.getRxEvents()[1];
+    if (x.getEventID() != 0x80000001U || x.getElementGroupLabel() != "rx/µ-main" ||
+        x.getStart().count() != -123 || x.getDuration().count() != 456789 ||
+        x.getCenterFrequency() != 987654321.125 || x.getSampleFrequency() != 2000000.5 ||
+        x.getNumIterationProcessingAGC() != 0x100000007ULL || x.getNumIterationIgnoredPostAGC() != 3 ||
+        x.getMaxExtensionDuration().count() != -999) return 0;
+    if (y.getEventID() != UINT32_MAX || y.getElementGroupLabel() != "β-secondary" ||
+        y.getStart().count() != 777 || y.getDuration().count() != -888 ||
+        y.getCenterFrequency() != 0 || !std::signbit(y.getCenterFrequency()) ||
+        !std::isinf(y.getSampleFrequency()) || std::signbit(y.getSampleFrequency()) ||
+        y.getNumIterationProcessingAGC() != 0 || y.getNumIterationIgnoredPostAGC() != 0x100000009ULL ||
+        y.getMaxExtensionDuration().count() != INT64_MAX - 1) return 0;
+    if (b.getIntervalStart().count() != -1 || b.getIntervalID() != 42 ||
+        b.getIntervalStartingGap().count() != 12 || b.getSequence().getDuration().count() != -13 ||
+        b.getSequenceRepeatCount() != 2 || b.getCalDuration().count() != -14 ||
+        b.getIntervalEndingGap().count() != 15 || b.getPhaseCoherenceWithPrior() ||
+        b.getIterationsPerSignal() != 3 || !std::isnan(b.getMaxDataRateBps()) ||
+        !std::isinf(b.getMaxSampleRateHZ()) || b.getJobDetailsID() != 43 ||
+        !b.getSequence().getRxEvents().empty()) return 0;
+    for (const auto& interval : latest_intervals) {
+        if (interval.getApplicableElementGroups().size() != 0 || interval.getEndpoints().size() != 0 ||
+            !interval.getStabPoints().empty() || !interval.getLfCommands().empty() ||
+            interval.getJobIntervalStatusEnable() != rfmel::JobIntervalStatusEnable::Never ||
+            !interval.getActivityId().empty() || interval.getTxPowerModeID() != 0 ||
+            interval.getExecutionType() != rfmel::ExecutionType::Normal ||
+            !interval.getModulations().empty() || !interval.getSequence().getTxEvents().empty()) return 0;
+        for (const auto& event : interval.getSequence().getRxEvents()) {
+            if (event.getDirection() != rfmel::JobEvent::Direction::Receive ||
+                !event.getPolarization().empty() || event.getPolarizationBeemSteerCorrection() ||
+                event.getPhaseOffset() != 0 || event.getStabPointIndex() != 0 || !event.getWeights().empty() ||
+                event.getExecutionType() != rfmel::ExecutionType::Normal ||
+                event.getEventTerminationType() != rfmel::JobEvent::EventTerminationType::InhibitEvent ||
+                event.getAllowDelayStart() || event.getIterationHoldCount() != 0 ||
+                event.getIterationTerminationCount() != 0 || event.getChannelizationEnabled() ||
+                !event.getApplicableRxElementGroups().empty()) return 0;
+        }
+    }
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_start_boundary(void)
+{
+    std::lock_guard lock{interval_mutex};
+    if (latest_intervals.size() != 4) return 0;
+    const std::int64_t starts[]{0, 1, -1, INT64_MAX};
+    for (std::size_t i = 0; i < 4; ++i)
+        if (latest_intervals[i].getIntervalStart().count() != starts[i]) return 0;
+    return 1;
+}

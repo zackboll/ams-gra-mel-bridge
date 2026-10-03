@@ -166,6 +166,9 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_job_request_claim",
                 "ams_mel_rf_job_request_close",
                 "ams_mel_rf_job_view",
+                "ams_mel_rf_job_add_rx_intervals",
+                "ams_mel_rf_job_flush",
+                "ams_mel_rf_job_cancel_remaining_intervals",
                 "ams_mel_rf_job_finalize",
                 "ams_mel_rf_job_wait_status",
                 "ams_mel_rf_job_cancel",
@@ -195,8 +198,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 143)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 143)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 146)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 146)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -204,7 +207,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 143)
+        self.assertEqual(len(exported), 146)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -325,6 +328,9 @@ class AbiTests(unittest.TestCase):
             "ams_mel_rf_job_request_claim": [request, ctypes.POINTER(job)],
             "ams_mel_rf_job_request_close": [ctypes.POINTER(request)],
             "ams_mel_rf_job_view": [job, ctypes.POINTER(ctypes.POINTER(_native.RfJobInfoV1))],
+            "ams_mel_rf_job_add_rx_intervals": [job, _native.RfJobIntervalConfigSpanV1],
+            "ams_mel_rf_job_flush": [job],
+            "ams_mel_rf_job_cancel_remaining_intervals": [job],
             "ams_mel_rf_job_finalize": [job],
             "ams_mel_rf_job_wait_status": [job, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)],
             "ams_mel_rf_job_cancel": [job, ctypes.POINTER(_native.RfJobCancelResultV1)],
@@ -1178,6 +1184,11 @@ class AbiTests(unittest.TestCase):
         expected.extend([ctypes.sizeof(ctypes.c_uint32), ctypes.alignment(ctypes.c_uint32)] * 2)
         expected.extend(range(6))
         expected.append(_native.AMS_MEL_RF_CANCEL_ERROR_NONE)
+        expected.append(_native.AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS)
+        expected.extend(self._layout(_native.RfReceiveEventConfigV1, 'event_id', 'element_group_label', 'start_femtoseconds', 'duration_femtoseconds', 'center_frequency_hz', 'sample_frequency_hz', 'agc_processing_iterations', 'ignored_post_agc_iterations', 'max_extension_femtoseconds'))
+        expected.extend(self._layout(_native.RfReceiveEventConfigSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigV1, 'interval_start_femtoseconds', 'interval_id', 'interval_starting_gap_femtoseconds', 'sequence_duration_femtoseconds', 'sequence_repeat_count', 'calibration_duration_femtoseconds', 'interval_ending_gap_femtoseconds', 'phase_coherence_with_prior', 'iterations_per_signal', 'max_data_rate_bps', 'max_sample_rate_hz', 'job_details_id', 'receive_events'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV1, 'data', 'size'))
         expected.extend(self._layout(_native.RfJobCancelResultV1, 'cancelled', 'error_code'))
         for handle in (ctypes.c_uint32, _native.RfDataHandle, _native.RfMfaInfoHandle,
                        ctypes.c_uint32):

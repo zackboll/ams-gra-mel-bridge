@@ -836,8 +836,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 143);
-    assert_eq!(exported.len(), 143);
+    assert_eq!(declared.len(), 146);
+    assert_eq!(exported.len(), 146);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1994,6 +1994,39 @@ fn declarations_match_the_c_header() {
         AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE as usize,
         AMS_MEL_RF_CANCEL_ERROR_NONE as usize,
     ]);
+    expected.push(AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS as usize);
+    layout!(
+        expected,
+        AmsMelRfReceiveEventConfigV1,
+        event_id,
+        element_group_label,
+        start_femtoseconds,
+        duration_femtoseconds,
+        center_frequency_hz,
+        sample_frequency_hz,
+        agc_processing_iterations,
+        ignored_post_agc_iterations,
+        max_extension_femtoseconds
+    );
+    layout!(expected, AmsMelRfReceiveEventConfigSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobIntervalConfigV1,
+        interval_start_femtoseconds,
+        interval_id,
+        interval_starting_gap_femtoseconds,
+        sequence_duration_femtoseconds,
+        sequence_repeat_count,
+        calibration_duration_femtoseconds,
+        interval_ending_gap_femtoseconds,
+        phase_coherence_with_prior,
+        iterations_per_signal,
+        max_data_rate_bps,
+        max_sample_rate_hz,
+        job_details_id,
+        receive_events
+    );
+    layout!(expected, AmsMelRfJobIntervalConfigSpanV1, data, size);
     layout!(expected, AmsMelRfJobCancelResultV1, cancelled, error_code);
     expected.extend([
         size_of::<AmsMelRfMfaState>(),
@@ -2222,4 +2255,28 @@ fn tx_power_mode_signatures() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_tx_power_mode_snapshot_close;
+}
+
+#[test]
+fn rx_interval_command_signatures() {
+    assert_eq!(AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS, 0);
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_flush;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_cancel_remaining_intervals;
 }
