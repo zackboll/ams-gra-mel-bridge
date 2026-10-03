@@ -79,6 +79,7 @@ int main(int argc, char **argv)
     ams_mel_rf_c2 *c2 = NULL;
     ams_mel_rf_virtual_aperture_request *va_request = NULL;
     ams_mel_rf_virtual_aperture *va = NULL;
+    ams_mel_rf_va_status_subscription *va_subscription = NULL;
     ams_mel_rf_va_instance_list *va_instances = NULL;
     ams_mel_rf_va_instance_status_report *va_report = NULL;
     ams_mel_rf_job_request *job_request = NULL;
@@ -158,6 +159,11 @@ int main(int argc, char **argv)
     status = ams_mel_rf_virtual_aperture_request_claim(va_request, &va, diagnostic,
                                                         sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("claim_va", status, diagnostic);
+    status = ams_mel_rf_va_status_subscription_open(va, &va_subscription,
+        diagnostic, sizeof diagnostic, NULL);
+    if (status != AMS_MEL_OK) return failed("subscribe_va", status, diagnostic);
+    REQUIRE(ams_mel_rf_va_status_subscription_wait(va_subscription, 0, diagnostic,
+        sizeof diagnostic, NULL) == AMS_MEL_TIMEOUT);
     REQUIRE(ams_mel_rf_virtual_aperture_request_close(&va_request, NULL, 0, NULL) == AMS_MEL_OK);
     /* Pinned provider query-value evidence, not hardware health/transitions.
      * Retain plain snapshots across public VA/C2 Close below. This ProductRx
@@ -242,6 +248,10 @@ int main(int argc, char **argv)
             AMS_MEL_TIMEOUT);
     status = ams_mel_rf_virtual_aperture_close(&va, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_va", status, diagnostic);
+    REQUIRE(ams_mel_rf_va_status_subscription_wait(va_subscription, 0, diagnostic,
+        sizeof diagnostic, NULL) == AMS_MEL_STREAM_STOPPED);
+    REQUIRE(ams_mel_rf_va_status_subscription_close(&va_subscription, NULL, 0, NULL) == AMS_MEL_OK);
+    puts("RF VA notifications: registration/automatic removal/no-delivery only; no real positive transition claim");
     status = ams_mel_rf_c2_close(&c2, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_c2", status, diagnostic);
     {

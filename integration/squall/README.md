@@ -1,5 +1,19 @@
 # Real Squall IR MEL integration
 
+Task 034E2 rechecks SquallVirtualAperture at exact pin
+`b1015728f904c799fa0c07489fce48e78f67845f`: `SquallC2MEL.cc:539..552`
+stores a callable copy in a key-indexed map and erases the specified key, unlike
+SquallJobDetail's no-op interval-status registration. No VA emission path is
+shown. The Ada VA client subscribes before E1 queries, requires TIMEOUT, closes
+public C2 while retaining usable VA, explicitly unsubscribes, requires stopped,
+then locally closes. C ProductRx subscribes on claimed VA, requires TIMEOUT,
+retains its observer across public VA Close/automatic removal and requires
+STREAM_STOPPED. Existing snapshots/Job/ProductRx assertions remain. This is
+**registration/removal call-path and lifecycle/no-delivery evidence only**, not
+positive real transitions or hardware-health reporting. No stored callable test
+hook is invoked and labeled real evidence. See
+`../../docs/task-034e2-rf-va-status-subscriptions.md`.
+
 Task 034E1 extends the existing RF safe Ada VA and helper-free C ProductRx
 clients with all six live queries. At pinned Squall `b1015728…`, face/VA-zero
 fixtures return ID 0, Operational VA/instance 0, lists [0] for all/configured face,

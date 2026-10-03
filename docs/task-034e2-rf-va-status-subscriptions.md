@@ -9,6 +9,12 @@ Measured starting native 258/258, Python 115/115, production exports 164.
 ABI 0.1. No dependency/vendor expansion, provider ownership graph refactor,
 safe Rust subscription or public Python RF subscription.
 
+Baseline hosted push workflow 37158408055 succeeded on that exact main revision:
+all eight jobs including Ada/direct-GPR and native GCC/Clang Debug/Release.
+The first local aggregate invocation could not find GPRbuild on the shell PATH;
+it was not a passing aggregate result. Direct-GPR validation uses installed
+GNAT 13.2.1/GPRbuild 22.0.1 explicitly on PATH; Alire uses GNAT 16.1.0.
+
 RF MEL pin `762ce84c5555dd0f3ea66f36b321fecf8839b89f` declares:
 
 ```cpp
@@ -171,3 +177,67 @@ show no status-change emission path. This is distinct from no-op JobDetail
 interval-status registration. Ada VA and C ProductRx integration require timeout,
 registration/removal and stopped lifecycle, not positive real transitions or
 hardware health. No test hook manufactures real-provider emission.
+
+## Validation methodology and preserved failures
+
+Evidence logs are under `/tmp/ams-034e2/`. Shared-tree build targets are run
+sequentially. Clang Release and fresh production Release audits use independent
+`/tmp/ams-034e2/` CMake trees. Rust tests use the repository target's explicit
+`AMS_MEL_NATIVE_LIB_DIR=native/build-tests/lib` and
+`AMS_MEL_TEST_PROVIDER_DIR=native/build-tests/test-providers` (absolute paths).
+The pinned GNATformat is run before Ada builds and checked before commits.
+The repaired final-newline checker remains active, with all new files terminated.
+
+Two development/harness failures are preserved, not hidden by later success:
+
+* `native-first.log`: controlled race fixture hit SIGALRM because it paused one
+  callback while holding the provider status mutex, then attempted synchronous
+  removal-callback entry through that mutex. The fixture now separates concurrent
+  late callbacks (different live references) and synchronous-removal callback
+  scenarios. Production publication remains one locked transaction. No assertion
+  or timeout was weakened/increased.
+* `native-repeat.log`: tests were **Not Run**, not passed, because an Alire
+  pre-build action replaced the shared test tree during CTest. Repetitions are
+  rerun only after all shared-tree writers finish; independent Clang repeats use
+  a separate tree. The initial erroneous progress claim was explicitly corrected.
+  `final-native-repeat.log` also records Not Run after the aggregate: its Ada
+  pre-build intentionally recreates a library/provider-only test tree, without
+  native executables. A subsequent `make test-native` rebuild is required before
+  CTest repetition; `final-native-repeat-rebuilt.log` records that corrected order.
+
+These are not the earlier legacy Job-abandonment timeout observation. Existing
+Job request/lifecycle/worker sources are byte-identical to starting main; no
+causal fix to that unresolved reliability observation is claimed.
+
+Completed local command results (shared build-driving commands sequential):
+
+| Command / audit | Result |
+|---|---|
+| `make test-native` | 269/269, GCC Debug, warnings as errors |
+| Fresh Clang Release build/CTest | 269/269, warnings as errors |
+| Clang focused notification repeat until-fail:50 | Each of 11 cases 50/50, isolated processes |
+| GCC focused notification repeat until-fail:50 after native rebuild | Each of 11 cases 50/50, isolated processes |
+| Safe Ada focused notification executable, 50 isolated processes | 50/50 |
+| `make test-build-isolation` | Pass, production/test trees and failpoints distinct |
+| `make format-ada`; `make check-ada-format` | Pass, pinned GNATformat |
+| `alr -C ada build` | Pass, GNAT 16.1.0 |
+| `alr -C ada/tests run` | Pass, full smoke including isolated notifications |
+| `make test-rust` | 72 ordinary tests plus 4 compile-fail doctests pass |
+| `cargo check --manifest-path rust/Cargo.toml --workspace` | Pass |
+| `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | Pass |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Pass |
+| `make test-python` | 116/116 plus compileall |
+| `make check` | Pass including direct-GPR Ada and final-newline gate |
+| `git diff --check` | Pass |
+| GCC/Clang actual-vendored-header add/remove signature/closure probes | Pass; 712/713 pinned headers |
+| Fresh production Release export audit | Exactly 169, map parity, no test exports, ABI 0.1 |
+| Full vendor SHA-256 audit | 804/804 unchanged; vendor/manifest diff empty |
+
+Source comparisons preserve all original 164 C declarations and record
+definitions. The Claim function, C2, Job workers, JobIntervalStatus and E1 safe
+Ada query implementation remain byte-identical to starting main. Strong DSO
+retention tests explicitly drop their test dlopen reference after registration;
+unload negative controls remain separate no-registration processes. Removal
+precedes provider VA destruction, which precedes final C2 shutdown/destruction.
+Job-outliving-public-VA checks show the existing Job parent graph may remain,
+but VA reception is already stopped and delivery cannot resume.
