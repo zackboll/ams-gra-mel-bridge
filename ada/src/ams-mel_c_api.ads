@@ -1803,6 +1803,170 @@ private package AMS.MEL_C_API is
       Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   type RF_Job_Interval_Config_V2 is record
+      Interval      : RF_Job_Interval_Config_V1;
+      Status_Enable : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V2 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   Rf_Interval_Status_Never                                                 :
+     constant Interfaces.Unsigned_32 := 0;
+   Rf_Interval_Status_Always                                                :
+     constant Interfaces.Unsigned_32 := 1;
+   Rf_Interval_Status_On_Exception                                          :
+     constant Interfaces.Unsigned_32 := 2;
+   Rf_Interval_Completion_None                                              :
+     constant Interfaces.Unsigned_32 := 0;
+   Rf_Interval_Completion_Ready_For_Next_Job_Interval                       :
+     constant Interfaces.Unsigned_32 := 1;
+   Rf_Interval_Completion_Failed_Interrupted                                :
+     constant Interfaces.Unsigned_32 := 2;
+   Rf_Interval_Completion_Failed_Invalid_Tx_Event_Spatial_Data              :
+     constant Interfaces.Unsigned_32 := 3;
+   Rf_Interval_Completion_Failed_Invalid_Tx_Event_Signal_Data               :
+     constant Interfaces.Unsigned_32 := 4;
+   Rf_Interval_Completion_Failed_Invalid_Tx_Event_Temporal_Data             :
+     constant Interfaces.Unsigned_32 := 5;
+   Rf_Interval_Completion_Failed_Invalid_Tx_Event_Identifier_Data           :
+     constant Interfaces.Unsigned_32 := 6;
+   Rf_Interval_Completion_Failed_Invalid_Rx_Event_Spatial_Data              :
+     constant Interfaces.Unsigned_32 := 7;
+   Rf_Interval_Completion_Failed_Invalid_Rx_Event_Signal_Data               :
+     constant Interfaces.Unsigned_32 := 8;
+   Rf_Interval_Completion_Failed_Invalid_Rx_Event_Temporal_Data             :
+     constant Interfaces.Unsigned_32 := 9;
+   Rf_Interval_Completion_Failed_Invalid_Rx_Event_Identifier_Data           :
+     constant Interfaces.Unsigned_32 := 10;
+   Rf_Interval_Completion_Failed_Invalid_Sequence_Temporal_Data             :
+     constant Interfaces.Unsigned_32 := 11;
+   Rf_Interval_Completion_Failed_Invalid_Job_Interval_Spatial_Data          :
+     constant Interfaces.Unsigned_32 := 12;
+   Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Signal_Data     :
+     constant Interfaces.Unsigned_32 := 13;
+   Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Temporal_Data   :
+     constant Interfaces.Unsigned_32 := 14;
+   Rf_Interval_Completion_Failed_Invalid_Job_Interval_Event_Identifier_Data :
+     constant Interfaces.Unsigned_32 := 15;
+   Rf_Interval_Completion_Failed_Invalid_Job_Temporal_Data                  :
+     constant Interfaces.Unsigned_32 := 16;
+   Rf_Interval_Completion_Failed_Invalid_Job_Identifier_Data                :
+     constant Interfaces.Unsigned_32 := 17;
+   Rf_Interval_Completion_Completed                                         :
+     constant Interfaces.Unsigned_32 := 18;
+   Rf_Interval_Completion_Cancelled                                         :
+     constant Interfaces.Unsigned_32 := 19;
+   Rf_Interval_Completion_Late_Controls                                     :
+     constant Interfaces.Unsigned_32 := 20;
+   Rf_Interval_Completion_Invalid_Controls                                  :
+     constant Interfaces.Unsigned_32 := 21;
+   Rf_Interval_Completion_Antenna_Fov_Error                                 :
+     constant Interfaces.Unsigned_32 := 22;
+   Rf_Interval_Completion_Transmit_Rf_Inhibited                             :
+     constant Interfaces.Unsigned_32 := 23;
+   Rf_Interval_Completion_Started                                           :
+     constant Interfaces.Unsigned_32 := 24;
+   Rf_Log_Trigger_None                                                      :
+     constant Interfaces.Unsigned_32 := 0;
+   Rf_Log_Trigger_Event_Extended                                            :
+     constant Interfaces.Unsigned_32 := 1;
+   Rf_Log_Trigger_Event_Triggered                                           :
+     constant Interfaces.Unsigned_32 := 2;
+   Rf_Log_Trigger_Event_Resumed                                             :
+     constant Interfaces.Unsigned_32 := 3;
+   Rf_Log_Trigger_Event_Cancelled                                           :
+     constant Interfaces.Unsigned_32 := 4;
+   Rf_Log_Trigger_Event_Inhibited                                           :
+     constant Interfaces.Unsigned_32 := 5;
+   Rf_Log_Trigger_Event_Delayed_Start                                       :
+     constant Interfaces.Unsigned_32 := 6;
+   Rf_Log_Trigger_Event_Type_Not_Supported                                  :
+     constant Interfaces.Unsigned_32 := 7;
+   type RF_Interval_Status_Handle is new System.Address;
+   Null_RF_Interval_Status                                                  :
+     constant RF_Interval_Status_Handle := RF_Interval_Status_Handle (System.Null_Address);
+   type RF_Interval_Status_Event_Handle is new System.Address;
+   Null_RF_Interval_Status_Event                                            :
+     constant RF_Interval_Status_Event_Handle :=
+       RF_Interval_Status_Event_Handle (System.Null_Address);
+   type RF_Interval_Status_Options_V1 is record
+      Queue_Capacity, Max_Event_Log_Entries, Max_Activity_ID_Bytes : Size_T;
+   end record
+   with Convention => C;
+   type RF_Interval_Status_Counters_V1 is record
+      Callback_Entries,
+      Events_Queued,
+      Events_Delivered,
+      Queue_Full_Drops,
+      Malformed_Drops,
+      Oversize_Drops,
+      Allocation_Failures,
+      Callbacks_After_Close : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   type RF_Job_Event_Log_Entry_V1 is record
+      Event_ID, Trigger                          : Interfaces.Unsigned_32;
+      Time_Seconds, Time_Fractional_Femtoseconds : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type RF_Interval_Status_V1 is record
+      Interval_ID, Completion_Status : Interfaces.Unsigned_32;
+      Event_Log                      : Span_V1;
+      Activity_ID                    : U8_Span_V1;
+   end record
+   with Convention => C;
+   function RF_Interval_Status_Open
+     (Handle              : RF_Job_Handle;
+      Options             : access constant RF_Interval_Status_Options_V1;
+      Output              : access RF_Interval_Status_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_open";
+   function RF_Interval_Status_Receive
+     (Handle              : RF_Interval_Status_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access RF_Interval_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_receive";
+   function RF_Interval_Status_Get_Counters
+     (Handle              : RF_Interval_Status_Handle;
+      Output              : access RF_Interval_Status_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_get_counters";
+   function RF_Interval_Status_Close
+     (Handle              : access RF_Interval_Status_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_close";
+   function RF_Interval_Status_Event_View
+     (Handle              : RF_Interval_Status_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_event_view";
+   function RF_Interval_Status_Event_Close
+     (Handle              : access RF_Interval_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_event_close";
+   function RF_Job_Add_RX_Intervals_V2
+     (Handle              : RF_Job_Handle;
+      Intervals           : RF_Job_Interval_Config_Span_V2;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v2";
    type RF_Job_Info_V1 is record
       Actual_Start_Seconds            : Interfaces.Integer_64;
       Actual_Start_Femtoseconds       : Interfaces.Integer_64;
@@ -1815,13 +1979,20 @@ private package AMS.MEL_C_API is
       RX_Stream_IDs                   : U32_Span_V1;
    end record
    with Convention => C;
-   RF_Job_Status_None                 : constant Interfaces.Unsigned_32 := 0;
-   RF_Job_Status_In_Progress          : constant Interfaces.Unsigned_32 := 1;
-   RF_Job_Status_Complete             : constant Interfaces.Unsigned_32 := 2;
-   RF_Job_Status_Failed_Invalid_ID    : constant Interfaces.Unsigned_32 := 3;
-   RF_Job_Status_Failed_Interrupted   : constant Interfaces.Unsigned_32 := 4;
-   RF_Job_Status_Failed_Invalid_State : constant Interfaces.Unsigned_32 := 5;
-   RF_Cancel_Error_None               : constant Interfaces.Unsigned_32 := 0;
+   RF_Job_Status_None                                                       :
+     constant Interfaces.Unsigned_32 := 0;
+   RF_Job_Status_In_Progress                                                :
+     constant Interfaces.Unsigned_32 := 1;
+   RF_Job_Status_Complete                                                   :
+     constant Interfaces.Unsigned_32 := 2;
+   RF_Job_Status_Failed_Invalid_ID                                          :
+     constant Interfaces.Unsigned_32 := 3;
+   RF_Job_Status_Failed_Interrupted                                         :
+     constant Interfaces.Unsigned_32 := 4;
+   RF_Job_Status_Failed_Invalid_State                                       :
+     constant Interfaces.Unsigned_32 := 5;
+   RF_Cancel_Error_None                                                     :
+     constant Interfaces.Unsigned_32 := 0;
    type RF_Job_Cancel_Result_V1 is record
       Cancelled  : Interfaces.Unsigned_32;
       Error_Code : Interfaces.Unsigned_32;
@@ -1846,8 +2017,9 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type RF_Tx_Power_Mode_Snapshot_Handle is new System.Address;
-   Null_RF_Tx_Power_Mode_Snapshot     : constant RF_Tx_Power_Mode_Snapshot_Handle :=
-     RF_Tx_Power_Mode_Snapshot_Handle (System.Null_Address);
+   Null_RF_Tx_Power_Mode_Snapshot                                           :
+     constant RF_Tx_Power_Mode_Snapshot_Handle :=
+       RF_Tx_Power_Mode_Snapshot_Handle (System.Null_Address);
    type RF_Tx_Power_Mode_V1 is record
       Tx_Power_Mode_ID, Is_Linear_Operation, Tx_Power_Level : Interfaces.Unsigned_32;
       Tx_Frequency_Ranges                                   : Span_V1;

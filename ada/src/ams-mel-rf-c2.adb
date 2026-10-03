@@ -144,8 +144,14 @@ package body AMS.MEL.RF.C2 is
          Phase_Coherence_With_Prior,
          Max_Data_Rate_BPS,
          Max_Sample_Rate_Hz,
-         RX_Event_Vectors.Empty_Vector);
+         RX_Event_Vectors.Empty_Vector,
+         Never);
    end Create_RX_Job_Interval;
+   procedure Set_Interval_Status_Enable
+     (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable) is
+   begin
+      Interval.Status_Enable := Mode;
+   end Set_Interval_Status_Enable;
    procedure Append_RX_Event
      (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config) is
    begin
@@ -166,6 +172,9 @@ package body AMS.MEL.RF.C2 is
       type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V1
       with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
+      type Native_Intervals_V2 is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V2
+      with Convention => C;
+      Enabled     : Boolean := False;
       Count       : constant Natural := Job_Interval_Count (Intervals);
       Event_Count : Natural := 0;
       D           : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
@@ -173,11 +182,13 @@ package body AMS.MEL.RF.C2 is
    begin
       for Interval of Intervals.Values loop
          Event_Count := Event_Count + Natural (Interval.Events.Length);
+         Enabled := Enabled or Interval.Status_Enable /= Never;
       end loop;
       --  All backing arrays have their final sizes before any span is assigned.
       --  Controlled label owners release every allocation on return or exception.
       declare
          Configs    : Native_Intervals (1 .. Count);
+         Configs_V2 : Native_Intervals_V2 (1 .. Count);
          Events     : Native_Events (1 .. Event_Count);
          Strings    : Labels (1 .. Event_Count);
          Next_Event : Positive := 1;
@@ -222,13 +233,27 @@ package body AMS.MEL.RF.C2 is
                   Interfaces.C.double (Interval.Max_Sample_Rate_Hz),
                   Interval.Job_Details_ID,
                   Event_Span);
+               Configs_V2 (I) :=
+                 (Configs (I), Interval_Status_Enable'Enum_Rep (Interval.Status_Enable));
                I := I + 1;
             end;
          end loop;
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         Check (C.RF_Job_Add_RX_Intervals (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         if Enabled then
+            Check
+              (C.RF_Job_Add_RX_Intervals_V2
+                 (Object.Handle,
+                  (Configs_V2 (1)'Address, C.Size_T (Count)),
+                  D'Address,
+                  D'Length,
+                  R'Access),
+               D);
+         else
+            Check
+              (C.RF_Job_Add_RX_Intervals (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         end if;
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

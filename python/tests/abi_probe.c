@@ -851,6 +851,109 @@ int main(void)
         ams_mel_status_t (*close_snapshot)(ams_mel_rf_physical_data **, char *, size_t, size_t *) = ams_mel_rf_physical_data_close;
         (void)get; (void)view; (void)close_snapshot;
     }
+    RECORD(ams_mel_rf_job_interval_config_v2,
+        FIELD(ams_mel_rf_job_interval_config_v2,interval);
+        FIELD(ams_mel_rf_job_interval_config_v2,status_enable));
+    RECORD(ams_mel_rf_job_interval_config_span_v2,
+        FIELD(ams_mel_rf_job_interval_config_span_v2,data);
+        FIELD(ams_mel_rf_job_interval_config_span_v2,size));
+    RECORD(ams_mel_rf_job_event_log_entry_v1,
+        FIELD(ams_mel_rf_job_event_log_entry_v1,event_id);
+        FIELD(ams_mel_rf_job_event_log_entry_v1,trigger);
+        FIELD(ams_mel_rf_job_event_log_entry_v1,time_seconds);
+        FIELD(ams_mel_rf_job_event_log_entry_v1,time_fractional_femtoseconds));
+    RECORD(ams_mel_rf_job_event_log_span_v1,
+        FIELD(ams_mel_rf_job_event_log_span_v1,data);
+        FIELD(ams_mel_rf_job_event_log_span_v1,size));
+    RECORD(ams_mel_rf_job_interval_status_v1,
+        FIELD(ams_mel_rf_job_interval_status_v1,interval_id);
+        FIELD(ams_mel_rf_job_interval_status_v1,completion_status);
+        FIELD(ams_mel_rf_job_interval_status_v1,event_log);
+        FIELD(ams_mel_rf_job_interval_status_v1,activity_id));
+    RECORD(ams_mel_rf_job_interval_status_options_v1,
+        FIELD(ams_mel_rf_job_interval_status_options_v1,queue_capacity);
+        FIELD(ams_mel_rf_job_interval_status_options_v1,max_event_log_entries);
+        FIELD(ams_mel_rf_job_interval_status_options_v1,max_activity_id_bytes));
+    RECORD(ams_mel_rf_job_interval_status_counters_v1,
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,callback_entries);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,events_queued);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,events_delivered);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,queue_full_drops);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,malformed_drops);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,oversize_drops);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,allocation_failures);
+        FIELD(ams_mel_rf_job_interval_status_counters_v1,callbacks_after_close));
+    VALUE(AMS_MEL_RF_INTERVAL_STATUS_NEVER);
+    VALUE(AMS_MEL_RF_INTERVAL_STATUS_ALWAYS);
+    VALUE(AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_NONE);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED);
+    VALUE(AMS_MEL_RF_INTERVAL_COMPLETION_STARTED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_NONE);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START);
+    VALUE(AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED);
+    {
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_open)(
+    ams_mel_rf_job *job, const ams_mel_rf_job_interval_status_options_v1 *options,
+    ams_mel_rf_job_interval_status **out_stream, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_open;
+        (void)probe_ams_mel_rf_job_interval_status_open;
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_receive)(
+    ams_mel_rf_job_interval_status *stream, uint32_t timeout_ms,
+    ams_mel_rf_job_interval_status_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_receive;
+        (void)probe_ams_mel_rf_job_interval_status_receive;
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_get_counters)(
+    const ams_mel_rf_job_interval_status *stream,
+    ams_mel_rf_job_interval_status_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_get_counters;
+        (void)probe_ams_mel_rf_job_interval_status_get_counters;
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_close)(
+    ams_mel_rf_job_interval_status **stream, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_close;
+        (void)probe_ams_mel_rf_job_interval_status_close;
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_event_view)(
+    const ams_mel_rf_job_interval_status_event *event,
+    const ams_mel_rf_job_interval_status_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_event_view;
+        (void)probe_ams_mel_rf_job_interval_status_event_view;
+        ams_mel_status_t (*probe_ams_mel_rf_job_interval_status_event_close)(
+    ams_mel_rf_job_interval_status_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) = ams_mel_rf_job_interval_status_event_close;
+        (void)probe_ams_mel_rf_job_interval_status_event_close;
+        ams_mel_status_t (*probe_ams_mel_rf_job_add_rx_intervals_v2)(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v2 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) = ams_mel_rf_job_add_rx_intervals_v2;
+        (void)probe_ams_mel_rf_job_add_rx_intervals_v2;
+    }
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);
     VALUE(AMS_MEL_ABI_VERSION_MINOR);

@@ -42,6 +42,9 @@ public:
     static bool acquire(const std::shared_ptr<RfC2State>&, RfC2ChildClaim&) noexcept;
     /* Count a new sibling without transferring the existing VA's claim. */
     bool acquire_sibling(RfC2ChildClaim& output) const noexcept;
+    /* Private DSO pin only: does not retain this claim or the C2 graph. */
+    std::shared_ptr<SharedLibrary> library_pin() const noexcept
+    { return state_ ? state_->library : nullptr; }
     C2ShutdownOutcome release() noexcept;
 private:
     std::shared_ptr<RfC2State> state_;

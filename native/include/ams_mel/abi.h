@@ -2614,6 +2614,133 @@ typedef struct ams_mel_rf_job_interval_config_span_v1 {
     const ams_mel_rf_job_interval_config_v1 *data;
     size_t size;
 } ams_mel_rf_job_interval_config_span_v1;
+/* v1 is frozen and keeps upstream Never. v2 preserves its complete layout. */
+typedef uint32_t ams_mel_rf_job_interval_status_enable_t;
+#define AMS_MEL_RF_INTERVAL_STATUS_NEVER UINT32_C(0)
+#define AMS_MEL_RF_INTERVAL_STATUS_ALWAYS UINT32_C(1)
+#define AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION UINT32_C(2)
+typedef struct ams_mel_rf_job_interval_config_v2 {
+    ams_mel_rf_job_interval_config_v1 interval;
+    ams_mel_rf_job_interval_status_enable_t status_enable;
+} ams_mel_rf_job_interval_config_v2;
+typedef struct ams_mel_rf_job_interval_config_span_v2 {
+    const ams_mel_rf_job_interval_config_v2 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v2;
+typedef uint32_t ams_mel_rf_job_interval_completion_status_t;
+#define AMS_MEL_RF_INTERVAL_COMPLETION_NONE UINT32_C(0)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL UINT32_C(1)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED UINT32_C(2)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA UINT32_C(3)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA UINT32_C(4)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA UINT32_C(5)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA UINT32_C(6)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA UINT32_C(7)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA UINT32_C(8)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA UINT32_C(9)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA UINT32_C(10)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA UINT32_C(11)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA UINT32_C(12)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA UINT32_C(13)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA UINT32_C(14)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA UINT32_C(15)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA UINT32_C(16)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA UINT32_C(17)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED UINT32_C(18)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED UINT32_C(19)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS UINT32_C(20)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS UINT32_C(21)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR UINT32_C(22)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED UINT32_C(23)
+#define AMS_MEL_RF_INTERVAL_COMPLETION_STARTED UINT32_C(24)
+typedef uint32_t ams_mel_rf_job_event_log_trigger_t;
+#define AMS_MEL_RF_LOG_TRIGGER_NONE UINT32_C(0)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED UINT32_C(1)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED UINT32_C(2)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED UINT32_C(3)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED UINT32_C(4)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED UINT32_C(5)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START UINT32_C(6)
+#define AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED UINT32_C(7)
+typedef struct ams_mel_rf_job_event_log_entry_v1 {
+    uint32_t event_id;
+    ams_mel_rf_job_event_log_trigger_t trigger;
+    int64_t time_seconds;
+    int64_t time_fractional_femtoseconds;
+} ams_mel_rf_job_event_log_entry_v1;
+typedef struct ams_mel_rf_job_event_log_span_v1 {
+    const ams_mel_rf_job_event_log_entry_v1 *data;
+    size_t size;
+} ams_mel_rf_job_event_log_span_v1;
+typedef struct ams_mel_rf_job_interval_status_v1 {
+    uint32_t interval_id;
+    ams_mel_rf_job_interval_completion_status_t completion_status;
+    ams_mel_rf_job_event_log_span_v1 event_log;
+    ams_mel_u8_span_v1 activity_id;
+} ams_mel_rf_job_interval_status_v1;
+/* Capacity > 0. Zero payload limits accept only empty respective payloads.
+ * Bounds apply to queued bridge copies, not provider argument construction,
+ * concurrent callback temporaries, or application-retained events. */
+typedef struct ams_mel_rf_job_interval_status_options_v1 {
+    size_t queue_capacity;
+    size_t max_event_log_entries;
+    size_t max_activity_id_bytes;
+} ams_mel_rf_job_interval_status_options_v1;
+typedef struct ams_mel_rf_job_interval_status_counters_v1 {
+    uint64_t callback_entries;
+    uint64_t events_queued;
+    uint64_t events_delivered;
+    uint64_t queue_full_drops;
+    uint64_t malformed_drops;
+    uint64_t oversize_drops;
+    uint64_t allocation_failures;
+    uint64_t callbacks_after_close;
+} ams_mel_rf_job_interval_status_counters_v1;
+typedef struct ams_mel_rf_job_interval_status ams_mel_rf_job_interval_status;
+typedef struct ams_mel_rf_job_interval_status_event ams_mel_rf_job_interval_status_event;
+typedef struct ams_mel_rf_job ams_mel_rf_job;
+/* One registration attempt per Job, before Finalize/full Cancel. Provider
+ * registration is void: OK means normal return, NOT a delivery acknowledgement.
+ * Its const-reference callable, queue state and DSO pin are retained forever;
+ * no JobDetail/VA/C2 claim is retained by that shell. No unregister/quiescence
+ * contract exists. Stream is an observer; Close makes no provider call.
+ * Job Close stops it before any deferred cleanup and does not implicitly cancel.
+ * Same-handle operations require external serialization with destruction. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_open(
+    ams_mel_rf_job *job, const ams_mel_rf_job_interval_status_options_v1 *options,
+    ams_mel_rf_job_interval_status **out_stream, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Poll at zero; TIMEOUT/STREAM_STOPPED transfer nothing. Invalid output does
+ * not consume. FIFO DROP-INCOMING; success transfers one immutable owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_receive(
+    ams_mel_rf_job_interval_status *stream, uint32_t timeout_ms,
+    ams_mel_rf_job_interval_status_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_get_counters(
+    const ams_mel_rf_job_interval_status *stream,
+    ams_mel_rf_job_interval_status_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_close(
+    ams_mel_rf_job_interval_status **stream, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* View allocates/calls no provider. Spans live until Event Close, independently
+ * of Job/stream/parents. Logs are event-ID key order, NOT chronological order.
+ * Activity ID is arbitrary binary bytes, NOT UCI_ID/UUID/UTF-8. Both time counts
+ * are exact signed int64; no timestamp recombination or normalization. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_event_view(
+    const ams_mel_rf_job_interval_status_event *event,
+    const ams_mel_rf_job_interval_status_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_event_close(
+    ams_mel_rf_job_interval_status_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Always/OnException require this Job's registration to have returned normally
+ * and its stream to be locally usable when checked, not proven provider delivery.
+ * v1 remains Never. No incoming notification filtering by reporting mode. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v2 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_rf_job_result_v1;
@@ -2760,7 +2887,6 @@ typedef struct ams_mel_rf_c2 ams_mel_rf_c2;
 typedef struct ams_mel_rf_virtual_aperture_request ams_mel_rf_virtual_aperture_request;
 typedef struct ams_mel_rf_virtual_aperture ams_mel_rf_virtual_aperture;
 typedef struct ams_mel_rf_job_request ams_mel_rf_job_request;
-typedef struct ams_mel_rf_job ams_mel_rf_job;
 /* All views and spans are borrowed only during Submit; the adapter copies
  * every string and UCI ID before calling the provider. A successful Submit
  * returns an owned request. Wait(0) polls, positive timeouts wait at most that

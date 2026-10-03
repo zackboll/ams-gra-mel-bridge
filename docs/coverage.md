@@ -1,5 +1,16 @@
 # Implementation coverage
 
+Task 034D2: complete JobIntervalStatus/JobEventLogInfo payload reception in native
+C and safe Ada, all 25 completion/8 trigger values, arbitrary binary activity,
+exact signed seconds/femtoseconds, owned immutable events, bounded FIFO queue and
+counters. Reporting Never/Always/OnException via additive v2 and safe Ada setter;
+v1 layout/default frozen. ABI 0.1: 153 exports; vendor unchanged 804/804. Positive
+callback payload/lifetime evidence is mock-only. Pinned Squall has no-op
+registration/interval commands; timeout/stop evidence only, no scheduling claim.
+Event extension, conditional commands, TX/pointing/weights/RDMA/VADB and additional
+ProductRx formats remain deferred. See `task-034d2-rf-job-interval-status.md`.
+Earlier task paragraphs below describe historical checkpoints.
+
 Task 034D1 RF RX JobInterval command foundation: native C + safe Ada, ordered
 receive-event sequences, addJobIntervals / flush / cancelRemainingJobIntervals.
 Mock-positive payload fidelity; pinned Squall lifecycle/call-path only because

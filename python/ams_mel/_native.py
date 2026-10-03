@@ -1523,6 +1523,96 @@ ams_mel_rf_product_rx_event_close.argtypes = [
 ]
 ams_mel_rf_product_rx_event_close.restype = ctypes.c_int32
 
+
+# Private raw interval-status ABI only.
+RfJobIntervalStatusHandle = ctypes.c_void_p
+RfJobIntervalStatusEventHandle = ctypes.c_void_p
+AMS_MEL_RF_INTERVAL_STATUS_NEVER = 0
+AMS_MEL_RF_INTERVAL_STATUS_ALWAYS = 1
+AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION = 2
+AMS_MEL_RF_INTERVAL_COMPLETION_NONE = 0
+AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL = 1
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INTERRUPTED = 2
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SPATIAL_DATA = 3
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_SIGNAL_DATA = 4
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_TEMPORAL_DATA = 5
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_TX_EVENT_IDENTIFIER_DATA = 6
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SPATIAL_DATA = 7
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_SIGNAL_DATA = 8
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_TEMPORAL_DATA = 9
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_RX_EVENT_IDENTIFIER_DATA = 10
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_SEQUENCE_TEMPORAL_DATA = 11
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_SPATIAL_DATA = 12
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_SIGNAL_DATA = 13
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_TEMPORAL_DATA = 14
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_INTERVAL_EVENT_IDENTIFIER_DATA = 15
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_TEMPORAL_DATA = 16
+AMS_MEL_RF_INTERVAL_COMPLETION_FAILED_INVALID_JOB_IDENTIFIER_DATA = 17
+AMS_MEL_RF_INTERVAL_COMPLETION_COMPLETED = 18
+AMS_MEL_RF_INTERVAL_COMPLETION_CANCELLED = 19
+AMS_MEL_RF_INTERVAL_COMPLETION_LATE_CONTROLS = 20
+AMS_MEL_RF_INTERVAL_COMPLETION_INVALID_CONTROLS = 21
+AMS_MEL_RF_INTERVAL_COMPLETION_ANTENNA_FOV_ERROR = 22
+AMS_MEL_RF_INTERVAL_COMPLETION_TRANSMIT_RF_INHIBITED = 23
+AMS_MEL_RF_INTERVAL_COMPLETION_STARTED = 24
+AMS_MEL_RF_LOG_TRIGGER_NONE = 0
+AMS_MEL_RF_LOG_TRIGGER_EVENT_EXTENDED = 1
+AMS_MEL_RF_LOG_TRIGGER_EVENT_TRIGGERED = 2
+AMS_MEL_RF_LOG_TRIGGER_EVENT_RESUMED = 3
+AMS_MEL_RF_LOG_TRIGGER_EVENT_CANCELLED = 4
+AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED = 5
+AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START = 6
+AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED = 7
+
+class RfJobIntervalConfigV2(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV1), ("status_enable", ctypes.c_uint32)]
+
+class RfJobIntervalConfigSpanV2(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV2)), ("size", ctypes.c_size_t)]
+
+class RfJobEventLogEntryV1(ctypes.Structure):
+    _fields_ = [("event_id", ctypes.c_uint32), ("trigger", ctypes.c_uint32), ("time_seconds", ctypes.c_int64), ("time_fractional_femtoseconds", ctypes.c_int64)]
+
+class RfJobEventLogSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobEventLogEntryV1)), ("size", ctypes.c_size_t)]
+
+class RfJobIntervalStatusV1(ctypes.Structure):
+    _fields_ = [("interval_id", ctypes.c_uint32), ("completion_status", ctypes.c_uint32), ("event_log", RfJobEventLogSpanV1), ("activity_id", U8SpanV1)]
+
+class RfJobIntervalStatusOptionsV1(ctypes.Structure):
+    _fields_ = [("queue_capacity", ctypes.c_size_t), ("max_event_log_entries", ctypes.c_size_t), ("max_activity_id_bytes", ctypes.c_size_t)]
+
+class RfJobIntervalStatusCountersV1(ctypes.Structure):
+    _fields_ = [("callback_entries", ctypes.c_uint64), ("events_queued", ctypes.c_uint64), ("events_delivered", ctypes.c_uint64), ("queue_full_drops", ctypes.c_uint64), ("malformed_drops", ctypes.c_uint64), ("oversize_drops", ctypes.c_uint64), ("allocation_failures", ctypes.c_uint64), ("callbacks_after_close", ctypes.c_uint64)]
+
+ams_mel_rf_job_interval_status_open = _LIBRARY.ams_mel_rf_job_interval_status_open
+ams_mel_rf_job_interval_status_open.argtypes = [RfJobHandle, ctypes.POINTER(RfJobIntervalStatusOptionsV1), ctypes.POINTER(RfJobIntervalStatusHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_open.restype = ctypes.c_int32
+
+ams_mel_rf_job_interval_status_receive = _LIBRARY.ams_mel_rf_job_interval_status_receive
+ams_mel_rf_job_interval_status_receive.argtypes = [RfJobIntervalStatusHandle, ctypes.c_uint32, ctypes.POINTER(RfJobIntervalStatusEventHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_receive.restype = ctypes.c_int32
+
+ams_mel_rf_job_interval_status_get_counters = _LIBRARY.ams_mel_rf_job_interval_status_get_counters
+ams_mel_rf_job_interval_status_get_counters.argtypes = [RfJobIntervalStatusHandle, ctypes.POINTER(RfJobIntervalStatusCountersV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_get_counters.restype = ctypes.c_int32
+
+ams_mel_rf_job_interval_status_close = _LIBRARY.ams_mel_rf_job_interval_status_close
+ams_mel_rf_job_interval_status_close.argtypes = [ctypes.POINTER(RfJobIntervalStatusHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_close.restype = ctypes.c_int32
+
+ams_mel_rf_job_interval_status_event_view = _LIBRARY.ams_mel_rf_job_interval_status_event_view
+ams_mel_rf_job_interval_status_event_view.argtypes = [RfJobIntervalStatusEventHandle, ctypes.POINTER(ctypes.POINTER(RfJobIntervalStatusV1)), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_event_view.restype = ctypes.c_int32
+
+ams_mel_rf_job_interval_status_event_close = _LIBRARY.ams_mel_rf_job_interval_status_event_close
+ams_mel_rf_job_interval_status_event_close.argtypes = [ctypes.POINTER(RfJobIntervalStatusEventHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_interval_status_event_close.restype = ctypes.c_int32
+
+ams_mel_rf_job_add_rx_intervals_v2 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v2
+ams_mel_rf_job_add_rx_intervals_v2.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV2, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v2.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
@@ -1641,6 +1731,14 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_request_close",
     "ams_mel_rf_job_view",
     "ams_mel_rf_job_add_rx_intervals",
+    "ams_mel_rf_job_interval_status_open",
+    "ams_mel_rf_job_interval_status_receive",
+    "ams_mel_rf_job_interval_status_get_counters",
+    "ams_mel_rf_job_interval_status_close",
+    "ams_mel_rf_job_interval_status_event_view",
+    "ams_mel_rf_job_interval_status_event_close",
+    "ams_mel_rf_job_add_rx_intervals_v2",
+
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
     "ams_mel_rf_job_finalize",

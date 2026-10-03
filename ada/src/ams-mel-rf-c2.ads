@@ -108,6 +108,10 @@ package AMS.MEL.RF.C2 is
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
    type RX_Job_Interval_Config is private;
+   type Interval_Status_Enable is (Never, Always, On_Exception);
+   for Interval_Status_Enable use (Never => 0, Always => 1, On_Exception => 2);
+   procedure Set_Interval_Status_Enable
+     (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable);
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
       Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
@@ -166,6 +170,20 @@ package AMS.MEL.RF.C2 is
 private
    pragma
      Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (Never) /= Integer (AMS.MEL_C_API.Rf_Interval_Status_Never),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (Always)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Status_Always),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Interval_Status_Enable'Enum_Rep (On_Exception)
+          /= Integer (AMS.MEL_C_API.Rf_Interval_Status_On_Exception),
+        "RF reporting enum representation mismatch");
+   pragma
+     Compile_Time_Error
        (Job_Status'Enum_Rep (Failed_Invalid_State)
           /= Integer (AMS.MEL_C_API.RF_Job_Status_Failed_Invalid_State),
         "RF Job status representation mismatch");
@@ -194,6 +212,7 @@ private
       Phase_Coherence_With_Prior                   : Boolean;
       Max_Data_Rate_BPS, Max_Sample_Rate_Hz        : Long_Float;
       Events                                       : RX_Event_Vectors.Vector;
+      Status_Enable                                : Interval_Status_Enable := Never;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record

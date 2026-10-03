@@ -2,12 +2,14 @@ with Ada.Command_Line;
 with Ada.Text_IO;
 with AMS.MEL.RF.Admin;
 with AMS.MEL.RF.C2;
+with AMS.MEL.RF.C2.Interval_Status;
 with AMS.MEL.Status;
 with Interfaces;
 
 procedure AMS_MEL_Squall_RF_Job is
    package Admin renames AMS.MEL.RF.Admin;
    package C2 renames AMS.MEL.RF.C2;
+   package Intervals_Status renames C2.Interval_Status;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
    use type C2.Job_Status;
@@ -93,6 +95,7 @@ begin
                   end if;
                   declare
                      Object : C2.Job := C2.Claim (Request);
+                     Stream : Intervals_Status.Stream := Intervals_Status.Open (Object, 2, 8, 64);
                   begin
                      C2.Close (Request);
                      Verify (Object, ID);
@@ -105,6 +108,7 @@ begin
                                 Job_Details_ID => C2.Job_Details_ID (Object));
                            Intervals : C2.RX_Job_Interval_List;
                         begin
+                           C2.Set_Interval_Status_Enable (Interval, C2.Always);
                            C2.Append_RX_Event
                              (Interval,
                               C2.Create_RX_Receive_Event
@@ -117,6 +121,15 @@ begin
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
+                        end;
+                        begin
+                           declare
+                              Unexpected : constant Intervals_Status.Status_Event := Intervals_Status.Receive_Event (Stream, 0);
+                           begin
+                              raise Program_Error with "Squall unexpectedly delivered interval status" & Intervals_Status.Interval_ID (Unexpected)'Image;
+                           end;
+                        exception
+                           when C2.Timeout_Error => null;
                         end;
                         C2.Finalize_Job (Object);
                         begin
@@ -155,6 +168,16 @@ begin
                         Verify (Object, ID);
                      end if;
                      C2.Close (Object);
+                     begin
+                        declare
+                           Unexpected : constant Intervals_Status.Status_Event := Intervals_Status.Receive_Event (Stream, 0);
+                        begin
+                           raise Program_Error with "status stream not stopped" & Intervals_Status.Interval_ID (Unexpected)'Image;
+                        end;
+                     exception
+                        when Intervals_Status.Stream_Stopped => null;
+                     end;
+                     Intervals_Status.Close (Stream);
                   end;
                end;
             end loop;

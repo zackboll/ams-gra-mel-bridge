@@ -1,5 +1,13 @@
 # Experimental C ABI policy
 
+Task 034D2 adds seven ABI 0.1 exports, keeping existing interval config v1 frozen.
+The separate v2 input embeds v1 and reporting mode. Status stream/event owners
+have explicit null-idempotent closure; immutable spans borrow event storage only.
+No callback getter or provider layout crosses C. Observer reception is stopped by
+Job Close before pending-finalize cleanup; no implicit cancellation or provider
+quiescence is promised. Exact callable/state/DSO retention does not own the Job
+graph. See `task-034d2-rf-job-interval-status.md` for payload/queue semantics.
+
 Task 034C1 adds exactly one ABI 0.1 export for live RF duration quantization.
 `int64_t` counts are femtoseconds in both directions, with an unchanged output
 on error and the provider's result authoritative. The caller serializes this
