@@ -1692,6 +1692,29 @@ pub struct AmsMelRfPhysicalData {
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
 #[repr(C)]
+pub struct AmsMelRfTxPowerModeSnapshot {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AmsMelRfTxPowerModeV1 {
+    pub tx_power_mode_id: u32,
+    pub is_linear_operation: u32,
+    pub tx_power_level: u32,
+    pub tx_frequency_ranges: AmsMelRfFrequencyRangeSpanV1,
+    pub max_tx_duty_factor: f64,
+    pub max_tx_pulse_width_ns: i64,
+    pub max_tx_atten: f64,
+    pub tx_atten_step_size: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AmsMelRfTxPowerModeSpanV1 {
+    pub data: *const AmsMelRfTxPowerModeV1,
+    pub size: usize,
+}
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct AmsMelRfEulerV1 {
     pub roll_rad: f64,
@@ -2780,6 +2803,36 @@ extern "C" {
     pub fn ams_mel_rf_data_get_provider_version(
         data: *const AmsMelRfData,
         out_version: *mut AmsMelProviderVersionV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_get_tx_power_modes(
+        data: *const AmsMelRfData,
+        face_id: u32,
+        out_snapshot: *mut *mut AmsMelRfTxPowerModeSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_get_tx_power_mode(
+        data: *const AmsMelRfData,
+        face_id: u32,
+        tx_power_mode_id: u32,
+        out_snapshot: *mut *mut AmsMelRfTxPowerModeSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_tx_power_mode_snapshot_view(
+        snapshot: *const AmsMelRfTxPowerModeSnapshot,
+        out_view: *mut AmsMelRfTxPowerModeSpanV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_tx_power_mode_snapshot_close(
+        snapshot: *mut *mut AmsMelRfTxPowerModeSnapshot,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

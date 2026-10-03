@@ -55,6 +55,24 @@ package AMS.MEL.RF is
    end record;
 
    type Face_Info is private;
+   --  Complete Ada-owned values; direct returned IDs are provider-authoritative.
+   type Tx_Power_Mode is private;
+   type Tx_Power_Mode_List is private;
+   function Snapshot_Tx_Power_Modes
+     (Data : Data_MEL; Face_ID : Interfaces.Unsigned_32) return Tx_Power_Mode_List;
+   function Snapshot_Tx_Power_Mode
+     (Data : Data_MEL; Face_ID, Power_Mode_ID : Interfaces.Unsigned_32) return Tx_Power_Mode;
+   function Tx_Power_Mode_Count (Value : Tx_Power_Mode_List) return Natural;
+   function Tx_Power_Mode_At (Value : Tx_Power_Mode_List; Index : Positive) return Tx_Power_Mode;
+   function Tx_Power_Mode_ID (Value : Tx_Power_Mode) return Interfaces.Unsigned_32;
+   function Is_Linear_Operation (Value : Tx_Power_Mode) return Boolean;
+   function Tx_Power_Level (Value : Tx_Power_Mode) return Interfaces.Unsigned_32;
+   function Tx_Frequency_Range_Count (Value : Tx_Power_Mode) return Natural;
+   function Tx_Frequency_Range_At (Value : Tx_Power_Mode; Index : Positive) return Frequency_Range;
+   function Max_Tx_Duty_Factor (Value : Tx_Power_Mode) return Long_Float;
+   function Max_Tx_Pulse_Width_NS (Value : Tx_Power_Mode) return Interfaces.Integer_64;
+   function Max_Tx_Attenuation (Value : Tx_Power_Mode) return Long_Float;
+   function Tx_Attenuation_Step_Size (Value : Tx_Power_Mode) return Long_Float;
    function Face_ID (Value : Face_Info) return Interfaces.Unsigned_32;
    function Supports_Receive (Value : Face_Info) return Boolean;
    function Supports_Transmit (Value : Face_Info) return Boolean;
@@ -108,6 +126,17 @@ private
         "RF frequency ranges require a lossless C double representation");
    package Range_Vectors is new Ada.Containers.Vectors (Positive, Frequency_Range);
    package Format_Vectors is new Ada.Containers.Vectors (Positive, Job_Data_Format);
+   type Tx_Power_Mode is record
+      ID, Level                    : Interfaces.Unsigned_32 := 0;
+      Linear                       : Boolean := False;
+      Ranges                       : Range_Vectors.Vector;
+      Duty, Attenuation, Step_Size : Long_Float := 0.0;
+      Pulse_NS                     : Interfaces.Integer_64 := 0;
+   end record;
+   package Mode_Vectors is new Ada.Containers.Vectors (Positive, Tx_Power_Mode);
+   type Tx_Power_Mode_List is record
+      Modes : Mode_Vectors.Vector;
+   end record;
    type Face_Info is record
       ID                                        : Interfaces.Unsigned_32 := 0;
       Receive_OK, Transmit_OK, Association      : Boolean := False;

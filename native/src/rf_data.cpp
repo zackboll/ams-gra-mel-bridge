@@ -370,6 +370,115 @@ struct ams_mel_rf_physical_data {
     ams_mel_rf_physical_data_v1 view{};
 };
 
+static_assert(std::is_same_v<rfmel::TxPowerModeID, std::uint32_t>);
+static_assert(std::is_same_v<rfmel::TxPowerLevel, std::uint32_t>);
+static_assert(std::is_same_v<rfmel::DutyFactor, double>);
+static_assert(std::is_same_v<rfmel::Frequency, double>);
+static_assert(std::is_same_v<std::chrono::nanoseconds::rep, std::int64_t>);
+static_assert(std::is_integral_v<std::chrono::nanoseconds::rep> &&
+              std::is_signed_v<std::chrono::nanoseconds::rep>);
+
+struct ams_mel_rf_tx_power_mode_snapshot {
+    std::vector<std::vector<ams_mel_rf_frequency_range_v1>> ranges;
+    std::vector<ams_mel_rf_tx_power_mode_v1> modes;
+
+    void copy(const rfmel::TxPowerModeData *input, std::size_t count, rfmel::FaceID face)
+    {
+        // Final-size both levels before copying; publish pointers only at the end.
+        ranges.resize(count);
+        modes.resize(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto& source = input[i];
+            auto& mode = modes[i];
+            mode.tx_power_mode_id = source.getTxPowerModeID();
+            mode.is_linear_operation = source.getIsLinearOperation() ? 1U : 0U;
+            mode.tx_power_level = source.getTxPowerLevel();
+            ranges[i] = copy_ranges(source.getTxFrequencyRanges(face));
+            mode.max_tx_duty_factor = source.getMaxTxDutyFactor();
+            mode.max_tx_pulse_width_ns = source.getMaxTxPulseWidth().count();
+            mode.max_tx_atten = source.getMaxTxAtten();
+            mode.tx_atten_step_size = source.getTxAttenStepSize();
+        }
+        for (std::size_t i = 0; i < count; ++i)
+            modes[i].tx_frequency_ranges = range_span(ranges[i]);
+    }
+};
+
+namespace {
+ams_mel_status_t snapshot_tx_modes(
+    const ams_mel_rf_data *data, std::uint32_t face, std::uint32_t id, bool direct,
+    ams_mel_rf_tx_power_mode_snapshot **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (data == nullptr || !data->state || !data->state->data ||
+        output == nullptr || *output != nullptr || invalid_diagnostic(diagnostic, capacity)) {
+        write_diagnostic("invalid argument", diagnostic, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    try {
+        if (rf_allocation_failure() == RfAllocationFailure::SnapshotOwner)
+            throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_tx_power_mode_snapshot>();
+        const auto& info = data->state->data->getRFMFAInfo();
+        if (direct) {
+            const auto& mode = info.getTxPowerModeCharacteristics(id, face);
+            owner->copy(&mode, 1, face);
+        } else {
+            const auto& modes = info.getTxPowerModeCharacteristics(face);
+            owner->copy(modes.data(), modes.size(), face);
+        }
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("provider TxPowerModeData exception",
+            "unknown provider TxPowerModeData exception", diagnostic, capacity, required);
+    }
+}
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_rf_data_get_tx_power_modes(
+    const ams_mel_rf_data *data, std::uint32_t face,
+    ams_mel_rf_tx_power_mode_snapshot **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return snapshot_tx_modes(data, face, 0, false, output, diagnostic, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_data_get_tx_power_mode(
+    const ams_mel_rf_data *data, std::uint32_t face, std::uint32_t id,
+    ams_mel_rf_tx_power_mode_snapshot **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return snapshot_tx_modes(data, face, id, true, output, diagnostic, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_tx_power_mode_snapshot_view(
+    const ams_mel_rf_tx_power_mode_snapshot *snapshot, ams_mel_rf_tx_power_mode_span_v1 *view,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (snapshot == nullptr || view == nullptr || invalid_diagnostic(diagnostic, capacity)) {
+        write_diagnostic("invalid argument", diagnostic, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    *view = {snapshot->modes.empty() ? nullptr : snapshot->modes.data(), snapshot->modes.size()};
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_tx_power_mode_snapshot_close(
+    ams_mel_rf_tx_power_mode_snapshot **snapshot, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (snapshot == nullptr || invalid_diagnostic(diagnostic, capacity)) {
+        write_diagnostic("invalid argument", diagnostic, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    delete std::exchange(*snapshot, nullptr);
+    return AMS_MEL_OK;
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_data_get_physical_data(
     const ams_mel_rf_data *data, std::uint32_t face_id,
     ams_mel_rf_physical_data **out_physical, char *diagnostic,

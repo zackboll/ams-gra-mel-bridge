@@ -68,6 +68,127 @@ package body AMS_MEL_RF_Tests is
    end Verify;
 
    procedure Run (Provider_Path : String) is
+      procedure Verify_Tx (Modes : RF.Tx_Power_Mode_List; Delta_Value : Long_Float) is
+         A : constant RF.Tx_Power_Mode := RF.Tx_Power_Mode_At (Modes, 1);
+         B : constant RF.Tx_Power_Mode := RF.Tx_Power_Mode_At (Modes, 2);
+      begin
+         if RF.Tx_Power_Mode_Count (Modes) /= 2
+           or else RF.Tx_Power_Mode_ID (A) /= 16#80000001#
+           or else RF.Tx_Power_Mode_ID (B) /= Interfaces.Unsigned_32'Last
+           or else not RF.Is_Linear_Operation (A)
+           or else RF.Is_Linear_Operation (B)
+           or else RF.Tx_Power_Level (A) /= 16#F0E1D2C3#
+           or else RF.Tx_Power_Level (B) /= 0
+           or else RF.Tx_Frequency_Range_Count (A) /= 2
+           or else RF.Tx_Frequency_Range_Count (B) /= 0
+           or else RF.Tx_Frequency_Range_At (A, 1)
+                   /= (1000000.25 + Delta_Value, 2000000.5 + Delta_Value)
+           or else RF.Tx_Frequency_Range_At (A, 2)
+                   /= (987654321.125 + Delta_Value, 987654322.875 + Delta_Value)
+           or else RF.Max_Tx_Duty_Factor (A) /= 0.625 + Delta_Value
+           or else RF.Max_Tx_Duty_Factor (B) /= 0.375 + Delta_Value
+           or else RF.Max_Tx_Pulse_Width_NS (A) /= -123456789
+           or else RF.Max_Tx_Pulse_Width_NS (B) /= 9876543210
+           or else RF.Max_Tx_Attenuation (A) /= 63.5
+           or else RF.Max_Tx_Attenuation (B) /= 12.25
+           or else RF.Tx_Attenuation_Step_Size (A) /= 0.125
+           or else RF.Tx_Attenuation_Step_Size (B) /= 0.5
+         then
+            raise Program_Error with "TxPowerModeData mismatch";
+         end if;
+      end Verify_Tx;
+
+      procedure Test_Tx is
+         Data : RF.Data_MEL := RF.Open (Provider_Path, "tx-changing");
+         A    : constant RF.Tx_Power_Mode_List := RF.Snapshot_Tx_Power_Modes (Data, 16#FEDCBA98#);
+      begin
+         Verify_Tx (A, 0.0);
+         declare
+            B      : constant RF.Tx_Power_Mode_List := RF.Snapshot_Tx_Power_Modes (Data, 0);
+            Direct : constant RF.Tx_Power_Mode :=
+              RF.Snapshot_Tx_Power_Mode (Data, 16#FEDCBA98#, 16#DEADBEEF#);
+         begin
+            Verify_Tx (B, 10.0);
+            Verify_Tx (A, 0.0);
+            if RF.Tx_Power_Mode_ID (Direct) /= 16#DEADBEEF# then
+               raise Program_Error;
+            end if;
+         end;
+         Verify_Tx (A, 0.0);
+         RF.Close (Data);
+         Verify_Tx (A, 0.0);
+         begin
+            declare
+               Ignored : constant RF.Tx_Power_Mode_List := RF.Snapshot_Tx_Power_Modes (Data, 0);
+            begin
+               raise Program_Error with Natural'Image (RF.Tx_Power_Mode_Count (Ignored));
+            end;
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+         begin
+            declare
+               Ignored : constant RF.Tx_Power_Mode := RF.Snapshot_Tx_Power_Mode (Data, 0, 0);
+            begin
+               raise Program_Error
+                 with Interfaces.Unsigned_32'Image (RF.Tx_Power_Mode_ID (Ignored));
+            end;
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+         declare
+            Empty_Data  : RF.Data_MEL := RF.Open (Provider_Path, "tx-empty");
+            Empty_Modes : constant RF.Tx_Power_Mode_List :=
+              RF.Snapshot_Tx_Power_Modes (Empty_Data, 0);
+         begin
+            if RF.Tx_Power_Mode_Count (Empty_Modes) /= 0 then
+               raise Program_Error;
+            end if;
+            RF.Close (Empty_Data);
+         end;
+         declare
+            Mismatch_Data : RF.Data_MEL := RF.Open (Provider_Path, "tx-mismatch");
+            Mode          : constant RF.Tx_Power_Mode :=
+              RF.Snapshot_Tx_Power_Mode (Mismatch_Data, 16#FEDCBA98#, 16#DEADBEEF#);
+         begin
+            if RF.Tx_Power_Mode_ID (Mode) /= 16#80000001# then
+               raise Program_Error;
+            end if;
+            RF.Close (Mismatch_Data);
+         end;
+         for Unknown in Boolean loop
+            declare
+               Bad : RF.Data_MEL :=
+                 RF.Open (Provider_Path, (if Unknown then "tx-unknown" else "tx-throw"));
+            begin
+               begin
+                  declare
+                     Ignored : constant RF.Tx_Power_Mode_List :=
+                       RF.Snapshot_Tx_Power_Modes (Bad, 0);
+                  begin
+                     raise Program_Error with Natural'Image (RF.Tx_Power_Mode_Count (Ignored));
+                  end;
+               exception
+                  when AMS.MEL.Provider_Error =>
+                     null;
+               end;
+               begin
+                  declare
+                     Ignored : constant RF.Tx_Power_Mode := RF.Snapshot_Tx_Power_Mode (Bad, 0, 0);
+                  begin
+                     raise Program_Error
+                       with Interfaces.Unsigned_32'Image (RF.Tx_Power_Mode_ID (Ignored));
+                  end;
+               exception
+                  when AMS.MEL.Provider_Error =>
+                     null;
+               end;
+               RF.Close (Bad);
+            end;
+         end loop;
+      end Test_Tx;
       procedure Test_Physical is
          procedure Verify_Physical (Value : RF.Physical_Data; Delta_Value : Long_Float) is
          begin
@@ -227,6 +348,7 @@ package body AMS_MEL_RF_Tests is
       Snapshot : constant RF.MFA_Info := RF.Snapshot_MFA_Info (Data);
    begin
       Test_Physical;
+      Test_Tx;
       Test_Quantization;
       if not RF.Is_Open (Data)
         or else AMS.MEL.API_Version (Version) /= 16#0000_A5A5#

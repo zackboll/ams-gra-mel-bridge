@@ -1807,6 +1807,46 @@ private package AMS.MEL_C_API is
       Sample_Frequency_Ranges       : Span_V1;
    end record
    with Convention => C;
+   type RF_Tx_Power_Mode_Snapshot_Handle is new System.Address;
+   Null_RF_Tx_Power_Mode_Snapshot     : constant RF_Tx_Power_Mode_Snapshot_Handle :=
+     RF_Tx_Power_Mode_Snapshot_Handle (System.Null_Address);
+   type RF_Tx_Power_Mode_V1 is record
+      Tx_Power_Mode_ID, Is_Linear_Operation, Tx_Power_Level : Interfaces.Unsigned_32;
+      Tx_Frequency_Ranges                                   : Span_V1;
+      Max_Tx_Duty_Factor                                    : Interfaces.C.double;
+      Max_Tx_Pulse_Width_NS                                 : Interfaces.Integer_64;
+      Max_Tx_Atten, Tx_Atten_Step_Size                      : Interfaces.C.double;
+   end record
+   with Convention => C;
+   function RF_Data_Get_Tx_Power_Modes
+     (Handle              : RF_Data_Handle;
+      Face_ID             : Interfaces.Unsigned_32;
+      Output              : access RF_Tx_Power_Mode_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_get_tx_power_modes";
+   function RF_Data_Get_Tx_Power_Mode
+     (Handle                 : RF_Data_Handle;
+      Face_ID, Power_Mode_ID : Interfaces.Unsigned_32;
+      Output                 : access RF_Tx_Power_Mode_Snapshot_Handle;
+      Diagnostic             : System.Address;
+      Diagnostic_Capacity    : Size_T;
+      Diagnostic_Required    : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_get_tx_power_mode";
+   function RF_Tx_Power_Mode_Snapshot_View
+     (Handle              : RF_Tx_Power_Mode_Snapshot_Handle;
+      Output              : access Span_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_tx_power_mode_snapshot_view";
+   function RF_Tx_Power_Mode_Snapshot_Close
+     (Handle              : access RF_Tx_Power_Mode_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_tx_power_mode_snapshot_close";
    type RF_Euler_V1 is record
       Roll_Rad, Pitch_Rad, Yaw_Rad : Interfaces.C.double;
    end record

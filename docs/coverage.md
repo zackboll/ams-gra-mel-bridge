@@ -5,7 +5,17 @@ dimensions, lattice angle and InstallationDetails (location XYZ, ForeignKey
 key/system name, orientation and boresight). Owned point-in-time snapshots
 survive DataMEL Close; nontrivial mock-positive and pinned-Squall evidence is
 recorded in `task-034c2-rf-physical-data.md`. ABI 0.1: 139 exports; vendor 804/804.
-Raw Rust sys/private Python parity only; no TxPowerModeData or JobInterval work.
+Task 034C3 adds complete TxPowerModeData collection/direct snapshots in native
+C + safe Ada; ABI 0.1 now has 143 exports, vendor unchanged at 804/804.
+Mock-positive; pinned Squall receive-only/empty collection. Raw Rust sys/private
+Python parity only. JobInterval remains unimplemented.
+
+The published RFMFAInfo data/query surface is now represented in native C +
+safe Ada for current scope: version, face set/count, receive/transmit support,
+endpoint association, open additions, scheduler resolution, quantizeDuration,
+lead/switching times, Rx/Tx/sample ranges, max user context bytes, supported
+formats, PhysicalData and TxPowerModeData collection/direct. TxPowerModeData is
+mock-positive; pinned Squall is receive-only/empty. This is not full RF MEL.
 
 Task 034C1: RF quantizeDuration is native C + safe Ada, a live RFMFAInfo
 operation validated with nontrivial mock-positive and pinned-Squall identity
@@ -181,7 +191,7 @@ RF version:                                   complete
 RF RFMFAInfo scalar/enum/range snapshot:      complete
 RF quantizeDuration:                          native C + safe Ada; live provider query
 RF PhysicalData:                              native C + safe Ada owned complete snapshot
-RF Tx power modes:                            not implemented
+RF Tx power modes:                            native C + safe Ada snapshots
 RF ProductRxEndpoint / IQ receive:            not implemented (033C: contract pinned only;
                                               superseded by 033D above)
 RF RDMA:                                      not implemented
@@ -345,7 +355,7 @@ Track; see `task-032a2-common-access-image.md`.
 | RF RFMFAInfo scalar/enum/range snapshot (Task 033B) | Complete | Owned, immutable, point-in-time `ams_mel_rf_mfa_info`, independent of provider lifetime: `getNumFaces` and `getFaceIDs` preserved separately, open additions, scheduler resolution (fs), context bytes, raw JobDataFormat set, and for each reported face the three booleans, eight femtosecond durations, and Rx/Tx/sample frequency ranges (Hz, verbatim) |
 | RF quantizeDuration | Native C + safe Ada | Live RFMFAInfo operation; mock-positive and pinned-Squall validated; excluded from the snapshot |
 | RF PhysicalData | Native C + safe Ada | Complete antenna dimensions, lattice angle, InstallationDetails and ComponentLocation ForeignKey; owned point-in-time snapshot, mock-positive and pinned-Squall validated |
-| RF Tx power modes | Not implemented | Both `getTxPowerModeCharacteristics` overloads are transmit-only and return provider-owned references |
+| RF Tx power modes | Native C + safe Ada | Complete TxPowerModeData collection/direct snapshots; mock-positive; pinned Squall is receive-only and reports an empty collection |
 | RF ProductRxEndpoint / IQ receive | Not implemented | Never called by 033B |
 | RF RDMA | Not implemented | `registerExternalRxEndpoint` never called |
 | RF C2 / jobs | Not implemented | No other RF MEL family |

@@ -836,8 +836,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 139);
-    assert_eq!(exported.len(), 139);
+    assert_eq!(declared.len(), 143);
+    assert_eq!(exported.len(), 143);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2068,6 +2068,19 @@ fn declarations_match_the_c_header() {
     );
     layout!(
         expected,
+        AmsMelRfTxPowerModeV1,
+        tx_power_mode_id,
+        is_linear_operation,
+        tx_power_level,
+        tx_frequency_ranges,
+        max_tx_duty_factor,
+        max_tx_pulse_width_ns,
+        max_tx_atten,
+        tx_atten_step_size
+    );
+    layout!(expected, AmsMelRfTxPowerModeSpanV1, data, size);
+    layout!(
+        expected,
         AmsMelRfMfaInfoV1,
         reported_num_faces,
         contains_open_additions,
@@ -2174,4 +2187,39 @@ fn physical_data_signatures() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_physical_data_close;
+}
+
+#[test]
+fn tx_power_mode_signatures() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        u32,
+        *mut *mut AmsMelRfTxPowerModeSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_get_tx_power_modes;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfData,
+        u32,
+        u32,
+        *mut *mut AmsMelRfTxPowerModeSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_get_tx_power_mode;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfTxPowerModeSnapshot,
+        *mut AmsMelRfTxPowerModeSpanV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_tx_power_mode_snapshot_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfTxPowerModeSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_tx_power_mode_snapshot_close;
 }

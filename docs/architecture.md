@@ -1,5 +1,16 @@
 # Architecture decisions
 
+Task 034C3 completes the published RFMFAInfo data/query surface for current
+bridge scope in native C + safe Ada, not full RF MEL. TxPowerModeData uses one
+provider-independent immutable owner for collection/direct overloads, with
+final-sized range/mode backing and nested spans published after copying.
+Each represented getter is called once; all doubles and signed nanoseconds are
+preserved. Direct returned IDs are authoritative, with no supportsTransmit gate.
+Safe Ada copies all modes/ranges and closes the native owner before returning.
+Positive transmit data is mock-proven; pinned Squall is receive-only and returns
+an empty collection. JobInterval remains deferred. See
+`task-034c3-rf-tx-power-modes.md`.
+
 Task 034C2 adds an independent immutable PhysicalData snapshot owner. Creation
 reads the published RFMFAInfo/PhysicalData/InstallationDetails getter chain once,
 copies all doubles and both ComponentLocation ForeignKey strings, then publishes
@@ -7,7 +18,7 @@ bridge-owned storage. It retains no provider reference, DSO pin or DataMEL child
 claim. View and Close call no provider code. Safe Ada copies to a private value
 record with Long_Float scalars and Unbounded_String storage, closing the native
 snapshot before return. Frozen MFA/face v1 records are unchanged. See
-`task-034c2-rf-physical-data.md`; TxPowerModeData and JobInterval remain deferred.
+`task-034c2-rf-physical-data.md`; JobInterval remains deferred.
 
 Task 034C1 exposes `RFMFAInfo::quantizeDuration` as a synchronous live query
 through the existing RF DataMEL owner. The result is not stored in an MFA
