@@ -1,5 +1,19 @@
 # Architecture decisions
 
+Task 034E1 reuses the existing claimed VA and its C2 child claim for six fresh
+synchronous BaseVirtualAperture queries. Same-owner external serialization with
+Close keeps the public owner alive; no C2/request mutex is held during provider
+calls, no sibling Job claim/worker/callback/DSO pin is created. Claim still reads
+only getVAInstanceIDs/getElementGroupLabels/isSingleGroup. Independent plain
+instance-list/report owners copy bridge primitive storage and survive provider
+teardown. Report creation reads one provider value and each concrete getter once,
+obtaining getLFStatus's by-value map locally. Final-sized nested backing precedes
+span publication. Ada controlled temporaries close native owners after checked
+copy-out or exceptions. Separate live calls have no atomic consistency guarantee.
+This represents all six BaseVirtualAperture read/query methods, not the complete
+class or VirtualAperture; callbacks/VADB/standalone LF queries remain deferred.
+See `task-034e1-rf-va-status-queries.md`.
+
 Task 034D3 reuses interval_command with broad lifecycle admission for synchronous
 JobDetail::extendJobEvent. One retained shared JobState covers the invocation;
 the lifecycle lock scope ends before the provider call. No queue/C2 lock, worker,

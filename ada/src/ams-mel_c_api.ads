@@ -2442,4 +2442,99 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_close";
+   --  Task 034E1 private raw live-query ABI. Public values copy out all storage.
+   RF_VA_Status_None                 : constant Interfaces.Unsigned_32 := 0;
+   RF_VA_Status_Operational          : constant Interfaces.Unsigned_32 := 1;
+   RF_VA_Status_Degraded             : constant Interfaces.Unsigned_32 := 2;
+   RF_VA_Status_Failed               : constant Interfaces.Unsigned_32 := 3;
+   type RF_VA_Instance_List_Handle is new System.Address;
+   Null_RF_VA_Instance_List          : constant RF_VA_Instance_List_Handle :=
+     RF_VA_Instance_List_Handle (System.Null_Address);
+   type RF_VA_Instance_Status_Report_Handle is new System.Address;
+   Null_RF_VA_Instance_Status_Report : constant RF_VA_Instance_Status_Report_Handle :=
+     RF_VA_Instance_Status_Report_Handle (System.Null_Address);
+   type RF_VA_Local_Function_Status_V1 is record
+      Local_Function_Type_ID : Interfaces.Unsigned_32;
+      Statuses               : Span_V1;
+   end record
+   with Convention => C;
+   type RF_VA_Instance_Status_Report_V1 is record
+      VA_Instance_ID, Status : Interfaces.Unsigned_32;
+      Local_Functions        : Span_V1;
+   end record
+   with Convention => C;
+   function RF_VA_Get_ID
+     (Handle              : RF_VA_Handle;
+      Output              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_id";
+   function RF_VA_Get_Status
+     (Handle              : RF_VA_Handle;
+      Output              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_status";
+   function RF_VA_Get_Instance_Status
+     (Handle              : RF_VA_Handle;
+      Instance_ID         : Interfaces.Unsigned_32;
+      Output              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_instance_status";
+   function RF_VA_Get_All_Instances
+     (Handle              : RF_VA_Handle;
+      Output              : access RF_VA_Instance_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_all_instances";
+   function RF_VA_Get_Instances
+     (Handle              : RF_VA_Handle;
+      Face_ID             : Interfaces.Unsigned_32;
+      Output              : access RF_VA_Instance_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_instances";
+   function RF_VA_Instance_List_View
+     (Handle              : RF_VA_Instance_List_Handle;
+      Output              : access Span_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_list_view";
+   function RF_VA_Instance_List_Close
+     (Handle              : access RF_VA_Instance_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_list_close";
+   function RF_VA_Get_Instance_Status_Report
+     (Handle              : RF_VA_Handle;
+      Instance_ID         : Interfaces.Unsigned_32;
+      Output              : access RF_VA_Instance_Status_Report_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_instance_status_report";
+   function RF_VA_Instance_Status_Report_View
+     (Handle              : RF_VA_Instance_Status_Report_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_status_report_view";
+   function RF_VA_Instance_Status_Report_Close
+     (Handle              : access RF_VA_Instance_Status_Report_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_status_report_close";
 end AMS.MEL_C_API;
