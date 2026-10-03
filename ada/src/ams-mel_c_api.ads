@@ -2537,4 +2537,51 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_status_report_close";
+   type RF_VA_Subscription_Handle is new System.Address;
+   Null_RF_VA_Subscription           : constant RF_VA_Subscription_Handle :=
+     RF_VA_Subscription_Handle (System.Null_Address);
+   type RF_VA_Subscription_Statistics_V1 is record
+      Callback_Entries, Callbacks_Coalesced, Notifications_Delivered, Callbacks_After_Stop :
+        Interfaces.Unsigned_64;
+      Pending, Stopped                                                                     :
+        Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   function RF_VA_Subscription_Open
+     (VA                  : RF_VA_Handle;
+      Output              : access RF_VA_Subscription_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_open";
+   function RF_VA_Subscription_Wait
+     (Object               : RF_VA_Subscription_Handle;
+      Timeout_Milliseconds : Interfaces.Unsigned_32;
+      Diagnostic           : System.Address;
+      Diagnostic_Capacity  : Size_T;
+      Diagnostic_Required  : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_wait";
+   function RF_VA_Subscription_Get_Statistics
+     (Object              : RF_VA_Subscription_Handle;
+      Output              : access RF_VA_Subscription_Statistics_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_va_status_subscription_get_statistics";
+   function RF_VA_Subscription_Unsubscribe
+     (VA                  : RF_VA_Handle;
+      Object              : RF_VA_Subscription_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_unsubscribe";
+   function RF_VA_Subscription_Close
+     (Object              : access RF_VA_Subscription_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_close";
 end AMS.MEL_C_API;
