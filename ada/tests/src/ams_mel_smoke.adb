@@ -250,6 +250,18 @@ begin
    AMS_MEL_RF_Job_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Admin_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Product_Rx_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
+   --  Separate process: permanent status registrations must not pin the mock
+   --  DSO in this legacy process, whose tests verify repeated unload.
+   declare
+      Arguments : GNAT.OS_Lib.Argument_List (1 .. 0);
+      Code      : Integer;
+   begin
+      Code :=
+        GNAT.OS_Lib.Spawn (Workspace_Root & "/ada/tests/bin/ams_mel_rf_interval_status", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF interval status suite failed";
+      end if;
+   end;
    Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line ("PASS: Ada provider load/init/version/close/finalization contract");
 exception

@@ -108,6 +108,10 @@ package AMS.MEL.RF.C2 is
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
    type RX_Job_Interval_Config is private;
+   type Interval_Status_Enable is (Never, Always, On_Exception);
+   for Interval_Status_Enable use (Never => 0, Always => 1, On_Exception => 2);
+   procedure Set_Interval_Status_Enable
+     (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable);
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
       Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
@@ -194,6 +198,7 @@ private
       Phase_Coherence_With_Prior                   : Boolean;
       Max_Data_Rate_BPS, Max_Sample_Rate_Hz        : Long_Float;
       Events                                       : RX_Event_Vectors.Vector;
+      Status_Enable                                : Interval_Status_Enable := Never;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record

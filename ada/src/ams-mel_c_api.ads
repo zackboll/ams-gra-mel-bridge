@@ -1803,6 +1803,97 @@ private package AMS.MEL_C_API is
       Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   type RF_Job_Interval_Config_V2 is record
+      Interval      : RF_Job_Interval_Config_V1;
+      Status_Enable : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V2 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   type RF_Interval_Status_Handle is new System.Address;
+   Null_RF_Interval_Status            : constant RF_Interval_Status_Handle :=
+     RF_Interval_Status_Handle (System.Null_Address);
+   type RF_Interval_Status_Event_Handle is new System.Address;
+   Null_RF_Interval_Status_Event      : constant RF_Interval_Status_Event_Handle :=
+     RF_Interval_Status_Event_Handle (System.Null_Address);
+   type RF_Interval_Status_Options_V1 is record
+      Queue_Capacity, Max_Event_Log_Entries, Max_Activity_ID_Bytes : Size_T;
+   end record
+   with Convention => C;
+   type RF_Interval_Status_Counters_V1 is record
+      Callback_Entries,
+      Events_Queued,
+      Events_Delivered,
+      Queue_Full_Drops,
+      Malformed_Drops,
+      Oversize_Drops,
+      Allocation_Failures,
+      Callbacks_After_Close : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   type RF_Job_Event_Log_Entry_V1 is record
+      Event_ID, Trigger                          : Interfaces.Unsigned_32;
+      Time_Seconds, Time_Fractional_Femtoseconds : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type RF_Interval_Status_V1 is record
+      Interval_ID, Completion_Status : Interfaces.Unsigned_32;
+      Event_Log                      : Span_V1;
+      Activity_ID                    : U8_Span_V1;
+   end record
+   with Convention => C;
+   function RF_Interval_Status_Open
+     (Handle              : RF_Job_Handle;
+      Options             : access constant RF_Interval_Status_Options_V1;
+      Output              : access RF_Interval_Status_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_open";
+   function RF_Interval_Status_Receive
+     (Handle              : RF_Interval_Status_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access RF_Interval_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_receive";
+   function RF_Interval_Status_Get_Counters
+     (Handle              : RF_Interval_Status_Handle;
+      Output              : access RF_Interval_Status_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_get_counters";
+   function RF_Interval_Status_Close
+     (Handle              : access RF_Interval_Status_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_close";
+   function RF_Interval_Status_Event_View
+     (Handle              : RF_Interval_Status_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_event_view";
+   function RF_Interval_Status_Event_Close
+     (Handle              : access RF_Interval_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_interval_status_event_close";
+   function RF_Job_Add_RX_Intervals_V2
+     (Handle              : RF_Job_Handle;
+      Intervals           : RF_Job_Interval_Config_Span_V2;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v2";
    type RF_Job_Info_V1 is record
       Actual_Start_Seconds            : Interfaces.Integer_64;
       Actual_Start_Femtoseconds       : Interfaces.Integer_64;
