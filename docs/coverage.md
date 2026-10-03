@@ -1,5 +1,15 @@
 # Implementation coverage
 
+Task 034D3: JobDetail::extendJobEvent command coverage in native C and safe Ada,
+with raw Rust/private Python parity only. One added export brings ABI 0.1 to 154;
+804/804 vendor blobs unchanged. Exact signed duration/ID forwarding, repeatable
+calls, full-Cancel-attempt rejection and unlocked parent-first ownership are
+mock-tested. Provider-generated eventExtended feedback uses the existing status
+API; no duration field is invented in its payload. Pinned Squall's no-op method
+proves command-call/lifecycle/no-delivery only. Conditional commands, TX, pointing,
+weights, RDMA, VADB and additional ProductRx formats remain deferred. Not complete
+JobDetail/JobInterval or full RF MEL. See `task-034d3-rf-job-event-extension.md`.
+
 Task 034D2: complete JobIntervalStatus/JobEventLogInfo payload reception in native
 C and safe Ada, all 25 completion/8 trigger values, arbitrary binary activity,
 exact signed seconds/femtoseconds, owned immutable events, bounded FIFO queue and
@@ -7,7 +17,7 @@ counters. Reporting Never/Always/OnException via additive v2 and safe Ada setter
 v1 layout/default frozen. ABI 0.1: 153 exports; vendor unchanged 804/804. Positive
 callback payload/lifetime evidence is mock-only. Pinned Squall has no-op
 registration/interval commands; timeout/stop evidence only, no scheduling claim.
-Event extension, conditional commands, TX/pointing/weights/RDMA/VADB and additional
+At that checkpoint, event extension, conditional commands, TX/pointing/weights/RDMA/VADB and additional
 ProductRx formats remain deferred. See `task-034d2-rf-job-interval-status.md`.
 Earlier task paragraphs below describe historical checkpoints.
 

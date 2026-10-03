@@ -139,6 +139,19 @@ package AMS.MEL.RF.C2 is
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List);
    procedure Flush_Job (Object : in out Job);
    procedure Cancel_Remaining_Job_Intervals (Object : in out Job);
+   --  Repeatable, including before/during/after Finalize, until full Cancel
+   --  has been attempted (even False or an exception). No status stream is
+   --  required. Normal return means only the provider's void method returned
+   --  without throwing, not acceptance, effective extension or notification.
+   --  Exact signed femtoseconds; no validation, arithmetic or quantization.
+   --  Never automatically retries. Explicit retries after failure require
+   --  provider-specific knowledge because mutation may precede an exception.
+   --  Same-Job calls/Close are externally serialized; snapshot is unchanged.
+   procedure Extend_Job_Event
+     (Object                      : in out Job;
+      Interval_ID                 : Interfaces.Unsigned_32;
+      Event_ID                    : Interfaces.Unsigned_32;
+      Added_Duration_Femtoseconds : Interfaces.Integer_64);
    type Job_Status is
      (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);
    for Job_Status use

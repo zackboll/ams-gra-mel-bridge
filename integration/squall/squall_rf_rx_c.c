@@ -188,6 +188,7 @@ int main(int argc, char **argv)
         event.event_id = 1;
         event.element_group_label = (ams_mel_string_view_v1){"0", 1};
         event.duration_femtoseconds = INT64_C(1000000000);
+        event.max_extension_femtoseconds = INT64_C(500000000);
         event.center_frequency_hz = 100000000.0;
         event.sample_frequency_hz = 1000000.0;
         interval->interval_start_femtoseconds = AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS;
@@ -213,6 +214,12 @@ int main(int argc, char **argv)
     if (status != AMS_MEL_OK) return failed("close_va", status, diagnostic);
     status = ams_mel_rf_c2_close(&c2, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_c2", status, diagnostic);
+    status = ams_mel_rf_job_extend_event(job, 1, 1, INT64_C(123456789),
+        diagnostic, sizeof diagnostic, NULL);
+    if (status != AMS_MEL_OK) return failed("extend_event", status, diagnostic);
+    REQUIRE(ams_mel_rf_job_interval_status_receive(status_stream, 0, &status_event,
+        diagnostic, sizeof diagnostic, NULL) == AMS_MEL_TIMEOUT && !status_event);
+    puts("RF extension: production command-call/lifecycle/no-delivery evidence only");
 
     status = ams_mel_rf_product_rx_receive(endpoint, 30000U, &events[0], diagnostic,
                                            sizeof diagnostic, NULL);

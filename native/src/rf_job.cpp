@@ -507,6 +507,15 @@ extern "C" ams_mel_status_t ams_mel_rf_job_flush(
     return interval_command(job, true, [](rfmel::JobDetail& detail) { detail.flush(); },
                             diagnostic, capacity, required);
 }
+extern "C" ams_mel_status_t ams_mel_rf_job_extend_event(
+    ams_mel_rf_job *job, std::uint32_t interval_id, std::uint32_t event_id,
+    std::int64_t added_duration_femtoseconds, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return interval_command(job, false, [=](rfmel::JobDetail& detail) {
+        detail.extendJobEvent(interval_id, event_id, Fs{added_duration_femtoseconds});
+    }, diagnostic, capacity, required);
+}
 extern "C" ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
     ams_mel_rf_job *job, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 {

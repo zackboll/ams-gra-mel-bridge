@@ -1345,6 +1345,10 @@ ams_mel_rf_job_flush.restype = ctypes.c_int32
 ams_mel_rf_job_cancel_remaining_intervals = _LIBRARY.ams_mel_rf_job_cancel_remaining_intervals
 ams_mel_rf_job_cancel_remaining_intervals.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_cancel_remaining_intervals.restype = ctypes.c_int32
+ams_mel_rf_job_extend_event = _LIBRARY.ams_mel_rf_job_extend_event
+ams_mel_rf_job_extend_event.argtypes = [RfJobHandle, ctypes.c_uint32, ctypes.c_uint32,
+                                      ctypes.c_int64, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_extend_event.restype = ctypes.c_int32
 
 ams_mel_rf_job_finalize = _LIBRARY.ams_mel_rf_job_finalize
 ams_mel_rf_job_finalize.argtypes = [RfJobHandle, *_CHANNEL_DIAGNOSTIC]
@@ -1741,6 +1745,7 @@ BOUND_FUNCTION_NAMES = (
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
+    "ams_mel_rf_job_extend_event",
     "ams_mel_rf_job_finalize",
     "ams_mel_rf_job_wait_status",
     "ams_mel_rf_job_cancel",

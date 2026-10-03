@@ -836,8 +836,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 153);
-    assert_eq!(exported.len(), 153);
+    assert_eq!(declared.len(), 154);
+    assert_eq!(exported.len(), 154);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2344,6 +2344,15 @@ fn tx_power_mode_signatures() {
 
 #[test]
 fn rx_interval_command_signatures() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        u32,
+        u32,
+        i64,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_extend_event;
     assert_eq!(AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS, 0);
     let _: unsafe extern "C" fn(
         *mut AmsMelRfJob,

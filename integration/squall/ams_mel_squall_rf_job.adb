@@ -117,7 +117,8 @@ begin
                                  0,
                                  1_000_000_000,
                                  100_000_000.0,
-                                 1_000_000.0));
+                                 1_000_000.0,
+                                 Max_Extension_Femtoseconds => 500_000_000));
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
@@ -148,6 +149,19 @@ begin
                         end;
                         C2.Close (VA);
                         C2.Close (Parent);
+                        C2.Extend_Job_Event (Object, 1, 1, 123_456_789);
+                        --  Pinned extension and registration are no-ops.
+                        begin
+                           declare
+                              Unexpected : constant Intervals_Status.Status_Event :=
+                                Intervals_Status.Receive_Event (Stream, 0);
+                           begin
+                              raise Program_Error with "unexpected extension status" &
+                                Intervals_Status.Interval_ID (Unexpected)'Image;
+                           end;
+                        exception
+                           when C2.Timeout_Error => null;
+                        end;
                         C2.Cancel_Remaining_Job_Intervals (Object);
                         declare
                            Result : constant C2.Cancel_Result :=

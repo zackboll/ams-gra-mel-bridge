@@ -817,6 +817,7 @@ std::vector<std::shared_ptr<std::promise<rfmel::JobStatus>>> finalize_pending;
 std::mutex job_cleanup_mutex;
 std::condition_variable job_cleanup_changed;
 unsigned job_cleanup_shutdowns{};
+unsigned job_cleanup_destructions{};
 
 class MockRxCommand final : public rfmel::ElementGroupCommand {
 public:
@@ -855,6 +856,42 @@ std::mutex status_mutex;
 IntervalCallback saved_status_copy;
 const IntervalCallback *saved_status_reference{};
 std::atomic<unsigned> status_registrations{};
+struct ExtensionAttempt {
+    std::uint32_t interval, event;
+    std::int64_t duration;
+};
+std::mutex extension_mutex;
+std::condition_variable extension_changed;
+std::vector<ExtensionAttempt> extension_attempts;
+bool extension_hold{}, extension_callback_returned{};
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_count(void)
+{
+    std::lock_guard lock{extension_mutex};
+    return static_cast<unsigned>(extension_attempts.size());
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_at(
+    unsigned index, std::uint32_t *interval, std::uint32_t *event, std::int64_t *duration)
+{
+    std::lock_guard lock{extension_mutex};
+    if (index >= extension_attempts.size() || !interval || !event || !duration) return 0;
+    const auto& value = extension_attempts[index];
+    *interval = value.interval; *event = value.event; *duration = value.duration;
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_hold(unsigned hold)
+{
+    std::lock_guard lock{extension_mutex};
+    extension_hold = hold != 0;
+    extension_callback_returned = false;
+    extension_changed.notify_all();
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_wait(void)
+{
+    std::unique_lock lock{extension_mutex};
+    return extension_changed.wait_for(lock, std::chrono::seconds{3},
+        [] { return extension_callback_returned; }) ? 1U : 0U;
+}
 rfmel::JobIntervalStatus status_payload(unsigned completion, unsigned trigger, unsigned kind, unsigned id)
 {
     rfmel::JobIntervalStatus payload;
@@ -906,7 +943,8 @@ public:
         auto gate = std::make_shared<std::promise<rfmel::JobStatus>>();
         auto future = gate->get_future();
         if (scenario_ == "c2:finalize-delayed" || scenario_ == "c2:finalize-cancel" ||
-            scenario_ == "c2:finalize-abandon" || scenario_ == "c2:finalize-shutdown-throw") {
+            scenario_ == "c2:finalize-abandon" || scenario_ == "c2:finalize-shutdown-throw" ||
+            scenario_ == "c2:extension-feedback" || scenario_ == "c2:extension-reference") {
             std::lock_guard lock{finalize_gate_mutex};
             finalize_pending.push_back(std::move(gate));
         } else if (scenario_ == "c2:finalize-future-throw")
@@ -940,6 +978,8 @@ public:
             std::lock_guard lock{status_mutex};
             saved_status_reference = scenario_ == "c2:status-reference" ? &callback : nullptr;
             saved_status_copy = saved_status_reference ? IntervalCallback{} : callback;
+            extension_reference_ = scenario_ == "c2:extension-reference" ? &callback : nullptr;
+            extension_callback_ = extension_reference_ ? IntervalCallback{} : callback;
         }
         if (scenario_ == "c2:status-sync" || scenario_ == "c2:status-throw")
             callback(status_payload(2, 7, 0, 0xfedcba98U));
@@ -949,6 +989,16 @@ public:
     {
         ++job_add_calls; record("rf_job_add_intervals");
         { std::lock_guard lock{interval_mutex}; latest_intervals = intervals; }
+        if (scenario_ == "c2:extension-feedback" || scenario_ == "c2:extension-reference") {
+            if (intervals.size() != 1 || intervals[0].getIntervalID() != 0xfedcba98U ||
+                intervals[0].getJobIntervalStatusEnable() != rfmel::JobIntervalStatusEnable::Always ||
+                intervals[0].getSequence().getRxEvents().size() != 1)
+                throw std::runtime_error("mock extension interval fixture mismatch");
+            const auto& rx = intervals[0].getSequence().getRxEvents()[0];
+            if (rx.getEventID() != 0x80000001U || rx.getMaxExtensionDuration().count() != 500000000 ||
+                rx.getDuration().count() != 1000000000)
+                throw std::runtime_error("mock extension allowance/event fixture mismatch");
+        }
         interval_failure("add");
     }
     void cancelRemainingJobIntervals() override
@@ -961,7 +1011,8 @@ public:
         if (scenario_ == "c2:cancel-unknown-throw") throw 17;
         if (scenario_ == "c2:cancel-unknown")
             return rfmel::CancelStatus{static_cast<rfmel::CancelError>(77)};
-        if (scenario_ == "c2:finalize-cancel" || scenario_ == "c2:finalize-shutdown-throw") {
+        if (scenario_ == "c2:finalize-cancel" || scenario_ == "c2:finalize-shutdown-throw" ||
+            scenario_ == "c2:extension-feedback" || scenario_ == "c2:extension-reference") {
             std::shared_ptr<std::promise<rfmel::JobStatus>> gate;
             {
                 std::lock_guard lock{finalize_gate_mutex};
@@ -975,8 +1026,44 @@ public:
         if (scenario_ == "c2:cancel-false") return rfmel::CancelStatus{rfmel::CancelError::None};
         return {};
     }
-    void extendJobEvent(uint32_t, rfmel::JobEventID, Femtoseconds) override
-    { forbidden("Job::extendJobEvent"); }
+    void extendJobEvent(uint32_t interval, rfmel::JobEventID event, Femtoseconds duration) override
+    {
+        {
+            std::lock_guard lock{extension_mutex};
+            extension_attempts.push_back({interval, event, duration.count()});
+        }
+        record("rf_job_extend_event");
+        if (scenario_ == "c2:extend-standard") throw std::runtime_error("mock extension attempted then threw");
+        if (scenario_ == "c2:extend-throw") {
+            std::string message;
+            for (unsigned i = 0; i < 600; ++i) message += "µ";
+            throw std::runtime_error(message + " end");
+        }
+        interval_failure("extend");
+        if (scenario_ != "c2:extension-feedback" && scenario_ != "c2:extension-reference") return;
+        IntervalCallback copy;
+        const IntervalCallback *reference;
+        {
+            std::lock_guard lock{status_mutex};
+            copy = extension_callback_; reference = extension_reference_;
+        }
+        const auto& target = reference ? *reference : copy;
+        if (!target) return; // Normal command return does not require a callback.
+        rfmel::JobIntervalStatus payload;
+        payload.setJobIntervalID(interval);
+        payload.setJobIntervalCompletionStatus(rfmel::JobIntervalCompletionStatus::Started);
+        rfmel::JobEventLogInfo log;
+        log.setJobEventLogTrigger(rfmel::JobEventLogTriggerType::eventExtended);
+        ++extension_notifications_;
+        log.setJobEventLogTime({std::chrono::seconds{1234567890 + extension_notifications_},
+                               Femtoseconds{987654321000 + extension_notifications_}});
+        payload.addJobEventLog(event, log);
+        target(payload); // Provider behavior, outside all mock bookkeeping locks.
+        std::unique_lock lock{extension_mutex};
+        extension_callback_returned = true;
+        extension_changed.notify_all();
+        extension_changed.wait(lock, [] { return !extension_hold; });
+    }
     std::vector<rfmel::StreamID> getRxStreamIDs(size_t group) const override
     { if (group != 0) forbidden("Job::getRxStreamIDs(nonzero)"); return {0, 3, UINT32_MAX}; }
     uint32_t getJobRequestId() const override { return 0xFEDCBA98U; }
@@ -984,6 +1071,9 @@ public:
 private:
     bool throws_;
     std::string scenario_;
+    IntervalCallback extension_callback_;
+    const IntervalCallback *extension_reference_{};
+    std::int64_t extension_notifications_{};
 };
 
 class MockVirtualAperture final : public rfmel::VirtualAperture {
@@ -1110,7 +1200,13 @@ private:
 class MockC2MEL final : public rfmel::C2MEL {
 public:
     explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)} {}
-    ~MockC2MEL() override { record("rf_c2_destroyed"); }
+    ~MockC2MEL() override
+    {
+        record("rf_c2_destroyed");
+        std::lock_guard lock{job_cleanup_mutex};
+        ++job_cleanup_destructions;
+        job_cleanup_changed.notify_all();
+    }
     mel::RequestFor<rfmel::VirtualAperture> requestVirtualAperture(
         rfmel::VirtualApertureDefinitionID id, rfmel::Priority priority,
         const std::vector<std::string>& local, const std::string& file,
@@ -1280,6 +1376,8 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
         configuration.substr(0, 9) != "c2:flush-" &&
         configuration.substr(0, 13) != "c2:remaining-" &&
         configuration.substr(0, 10) != "c2:status-" &&
+        configuration.substr(0, 10) != "c2:extend-" &&
+        configuration != "c2:extension-feedback" && configuration != "c2:extension-reference" &&
         configuration != "c2:job-shutdown-throw" && configuration != "c2:job-failure" &&
         configuration != "c2:job-long-failure" && configuration != "c2:job-unknown-error" &&
         configuration != "c2:job-future-throw" && configuration != "c2:job-future-unknown" &&
@@ -1348,6 +1446,17 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_wait_shut
     std::unique_lock lock{job_cleanup_mutex};
     return job_cleanup_changed.wait_for(lock, std::chrono::seconds{3},
         [&] { return job_cleanup_shutdowns > baseline; }) ? 1U : 0U;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_destructions(void)
+{
+    std::lock_guard lock{job_cleanup_mutex};
+    return job_cleanup_destructions;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_extension_wait_destroy(unsigned baseline)
+{
+    std::unique_lock lock{job_cleanup_mutex};
+    return job_cleanup_changed.wait_for(lock, std::chrono::seconds{3},
+        [&] { return job_cleanup_destructions > baseline; }) ? 1U : 0U;
 }
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_factory_calls(void)

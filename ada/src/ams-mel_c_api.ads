@@ -2194,6 +2194,14 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_cancel_remaining_intervals";
+   function RF_Job_Extend_Event
+     (Handle                      : RF_Job_Handle;
+      Interval_ID, Event_ID       : Interfaces.Unsigned_32;
+      Added_Duration_Femtoseconds : Interfaces.Integer_64;
+      Diagnostic                  : System.Address;
+      Diagnostic_Capacity         : Size_T;
+      Diagnostic_Required         : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_extend_event";
    function RF_Job_Finalize
      (Handle              : RF_Job_Handle;
       Diagnostic          : System.Address;

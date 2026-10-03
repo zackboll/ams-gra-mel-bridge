@@ -2981,6 +2981,21 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_flush(
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
     ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Repeatable synchronous command, admitted before/during/after Finalize, but
+ * blocked after any full Cancel attempt (even False/throw). OK means only that
+ * the provider's void method returned without throwing: not acceptance, changed
+ * scheduling, or notification. Status registration is optional. IDs and signed
+ * femtoseconds are forwarded exactly, including zero and INT64_MIN/MAX; no local
+ * lookup, allowance accounting, sentinel translation or quantization occurs.
+ * Provider runs outside bridge locks and may deliver status before return.
+ * Never automatically retry on exception or a short diagnostic buffer. Explicit
+ * application retries require provider-specific knowledge of partial mutation.
+ * Same-Job operations, including Close, must be externally serialized. The
+ * immutable Job snapshot remains a point-in-time snapshot. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_extend_event(
+    ams_mel_rf_job *job, uint32_t interval_id, uint32_t event_id,
+    int64_t added_duration_femtoseconds, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_finalize(
     ams_mel_rf_job *job, char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

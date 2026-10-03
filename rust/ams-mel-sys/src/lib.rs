@@ -2819,6 +2819,15 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_rf_job_extend_event(
+        job: *mut AmsMelRfJob,
+        interval_id: u32,
+        event_id: u32,
+        added_duration_femtoseconds: i64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_rf_job_wait_status(
         job: *const AmsMelRfJob,
         timeout_ms: u32,
