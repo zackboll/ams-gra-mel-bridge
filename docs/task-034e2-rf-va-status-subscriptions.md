@@ -241,3 +241,36 @@ unload negative controls remain separate no-registration processes. Removal
 precedes provider VA destruction, which precedes final C2 shutdown/destruction.
 Job-outliving-public-VA checks show the existing Job parent graph may remain,
 but VA reception is already stopped and delivery cannot resume.
+
+## Real pinned Squall results
+
+All four opt-in targets passed sequentially at the exact Squall pin; no mock
+callable or private transport was used by the integration clients:
+
+| Target | Evidence |
+|---|---|
+| `make test-squall-rf-ada-va` | Subscribe before initial E1 queries; pinned values; poll TIMEOUT; public C2 Close leaves VA usable; explicit Unsubscribe; stopped; local Close; immutable snapshots after VA Close |
+| `make test-squall-rf-ada-job` | Preserved two-Job, lifecycle/status/extension and parent-first assertions |
+| `make test-squall-rf-rx` | VA registration/poll TIMEOUT; automatic removal/stopped after public VA Close while Job remains; local observer Close; all existing receive/status/extension/snapshot assertions |
+| `make test-squall-rf-ada` | Preserved safe Ada ComplexINT16 receive assertions |
+
+Distinct control/couloir-metrics/health/RF-metrics/data port sets:
+VA 28203/28318/28313/28314/28601; Job 29203/29318/29313/29314/29601;
+C RX 30203/30318/30313/30314/30601; Ada RX
+31203/31318/31313/31314/31601. No unrelated container was stopped.
+C RX observed eight 4096-element ComplexINT16 events, seven later events
+different from A, received=8/queued=8 and zero drops/malformed/allocation/
+after-close events. These observations are not a generic size/rate guarantee.
+VA evidence is registration/removal/lifecycle/**no-delivery**, not positive real
+status transitions, hardware health, callback-argument identity or quiescence.
+
+No legacy Job-abandonment timeout recurred in completed local regressions or
+focused runs. This is an observation, **not** proof of a reliability fix.
+
+Checkpoint commits are `c75d2fc` (native plus raw parity/contracts), `a4f4c0e`
+(safe Ada and tested usage), and `e9dd061` (teardown/compatibility and integration).
+Subsequent evidence commits are normal commits, never amended/force-pushed.
+Hosted push/PR revisions and final review state are verified separately in the
+completion report; this document records local evidence rather than predicting
+hosted workflow success. The PR must remain open, non-draft and unmerged with
+auto-merge disabled.
