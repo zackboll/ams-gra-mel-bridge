@@ -1761,6 +1761,44 @@ private package AMS.MEL_C_API is
       RX_Group                   : RF_RX_Element_Group_Config_V1;
    end record
    with Convention => C;
+   type RF_Receive_Event_Config_V1 is record
+      Event_ID                    : Interfaces.Unsigned_32;
+      Element_Group_Label         : String_View_V1;
+      Start_Femtoseconds          : Interfaces.Integer_64;
+      Duration_Femtoseconds       : Interfaces.Integer_64;
+      Center_Frequency_Hz         : Interfaces.C.double;
+      Sample_Frequency_Hz         : Interfaces.C.double;
+      AGC_Processing_Iterations   : Interfaces.Unsigned_64;
+      Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64;
+      Max_Extension_Femtoseconds  : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type RF_Receive_Event_Config_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V1 is record
+      Interval_Start_Femtoseconds        : Interfaces.Integer_64;
+      Interval_ID                        : Interfaces.Unsigned_32;
+      Interval_Starting_Gap_Femtoseconds : Interfaces.Integer_64;
+      Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
+      Sequence_Repeat_Count              : Interfaces.Unsigned_64;
+      Calibration_Duration_Femtoseconds  : Interfaces.Integer_64;
+      Interval_Ending_Gap_Femtoseconds   : Interfaces.Integer_64;
+      Phase_Coherence_With_Prior         : Interfaces.Unsigned_32;
+      Iterations_Per_Signal              : Interfaces.Unsigned_64;
+      Max_Data_Rate_BPS                  : Interfaces.C.double;
+      Max_Sample_Rate_Hz                 : Interfaces.C.double;
+      Job_Details_ID                     : Interfaces.Unsigned_32;
+      Receive_Events                     : RF_Receive_Event_Config_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
    type RF_Job_Result_V1 is record
       Error_Code : Interfaces.Unsigned_32;
    end record
@@ -1965,6 +2003,25 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_view";
+   function RF_Job_Add_RX_Intervals
+     (Handle              : RF_Job_Handle;
+      Intervals           : RF_Job_Interval_Config_Span_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals";
+   function RF_Job_Flush
+     (Handle              : RF_Job_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_flush";
+   function RF_Job_Cancel_Remaining_Intervals
+     (Handle              : RF_Job_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_cancel_remaining_intervals";
    function RF_Job_Finalize
      (Handle              : RF_Job_Handle;
       Diagnostic          : System.Address;

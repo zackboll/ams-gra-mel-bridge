@@ -118,6 +118,9 @@ AMS_MEL_0.1 {
         ams_mel_rf_job_request_close;
         ams_mel_rf_job_view;
         ams_mel_rf_job_finalize;
+        ams_mel_rf_job_add_rx_intervals;
+        ams_mel_rf_job_flush;
+        ams_mel_rf_job_cancel_remaining_intervals;
         ams_mel_rf_job_wait_status;
         ams_mel_rf_job_cancel;
         ams_mel_rf_job_close;

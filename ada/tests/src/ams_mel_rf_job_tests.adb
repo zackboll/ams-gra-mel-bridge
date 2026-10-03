@@ -2,12 +2,16 @@ with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.RF.C2;
 with Ada.Unchecked_Conversion;
+with Ada.Text_IO;
+with Ada.Strings.Unbounded;
 with Interfaces;
 with Interfaces.C;
 with Interfaces.C.Strings;
 with System;
 
 package body AMS_MEL_RF_Job_Tests is
+   --  These fixtures deliberately carry IEEE NaN/infinity to the provider.
+   pragma Validity_Checks ("F");
    package C2 renames AMS.MEL.RF.C2;
    use type C2.Request_Outcome;
    use type C2.Request_Error_Code;
@@ -147,6 +151,261 @@ package body AMS_MEL_RF_Job_Tests is
       end if;
    end Snapshot;
 
+   function Special (Bits : Interfaces.Unsigned_64) return Long_Float is
+      function Convert is new Ada.Unchecked_Conversion (Interfaces.Unsigned_64, Long_Float);
+   begin
+      return Convert (Bits);
+   end Special;
+   function Intervals return C2.RX_Job_Interval_List is
+      A    : C2.RX_Job_Interval_Config :=
+        C2.Create_RX_Job_Interval
+          (Interval_ID                        => 16#1020_3040#,
+           Sequence_Duration_Femtoseconds     => 9876543210123,
+           Job_Details_ID                     => 16#ABCD_EF01#,
+           Interval_Starting_Gap_Femtoseconds => -111,
+           Sequence_Repeat_Count              => 16#1_0000_0003#,
+           Calibration_Duration_Femtoseconds  => 222,
+           Interval_Ending_Gap_Femtoseconds   => -333,
+           Phase_Coherence_With_Prior         => True,
+           Iterations_Per_Signal              => 16#1_0000_0005#,
+           Max_Data_Rate_BPS                  => 123456789.25,
+           Max_Sample_Rate_Hz                 => 2500000.5);
+      B    : constant C2.RX_Job_Interval_Config :=
+        C2.Create_RX_Job_Interval
+          (Interval_ID                        => 42,
+           Sequence_Duration_Femtoseconds     => -13,
+           Job_Details_ID                     => 43,
+           Interval_Start_Femtoseconds        => -1,
+           Interval_Starting_Gap_Femtoseconds => 12,
+           Sequence_Repeat_Count              => 2,
+           Calibration_Duration_Femtoseconds  => -14,
+           Interval_Ending_Gap_Femtoseconds   => 15,
+           Iterations_Per_Signal              => 3,
+           Max_Data_Rate_BPS                  => Special (16#7FF8_0000_0000_0001#),
+           Max_Sample_Rate_Hz                 => Special (16#7FF0_0000_0000_0000#));
+      List : C2.RX_Job_Interval_List;
+   begin
+      C2.Append_RX_Event
+        (A,
+         C2.Create_RX_Receive_Event
+           (16#8000_0001#,
+            "rx/µ-main",
+            -123,
+            456789,
+            987654321.125,
+            2000000.5,
+            16#1_0000_0007#,
+            3,
+            -999));
+      C2.Append_RX_Event
+        (A,
+         C2.Create_RX_Receive_Event
+           (Interfaces.Unsigned_32'Last,
+            "β-secondary",
+            777,
+            -888,
+            Special (16#8000_0000_0000_0000#),
+            Special (16#7FF0_0000_0000_0000#),
+            0,
+            16#1_0000_0009#,
+            Interfaces.Integer_64'Last - 1));
+      C2.Append_Job_Interval (List, A);
+      C2.Append_Job_Interval (List, B);
+      return List;
+   end Intervals;
+   procedure Interval_Tests (Provider_Path : String) is
+      List : constant C2.RX_Job_Interval_List := Intervals;
+   begin
+      if C2.Job_Interval_Count (List) /= 2 then
+         raise Program_Error with "interval construction mismatch";
+      end if;
+      begin
+         declare
+            Invalid  : constant C2.RX_Receive_Event_Config :=
+              C2.Create_RX_Receive_Event (1, "a" & Character'Val (0), 0, 0, 0.0, 0.0);
+            Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 0);
+         begin
+            C2.Append_RX_Event (Interval, Invalid);
+            raise Program_Error with "NUL label accepted";
+         end;
+      exception
+         when Constraint_Error =>
+            null;
+      end;
+      for Repeat in 1 .. 50 loop
+         declare
+            Parent     : C2.C2_MEL := C2.Open (Provider_Path, "c2:finalize-cancel");
+            VA_Request : C2.Virtual_Aperture_Request :=
+              C2.Submit_Virtual_Aperture (Parent, VA_Config);
+         begin
+            if C2.Outcome (C2.Wait (VA_Request, 3000)) /= C2.Created then
+               raise Program_Error;
+            end if;
+            declare
+               VA      : C2.Virtual_Aperture := C2.Claim (VA_Request);
+               Request : C2.Job_Request := C2.Submit_Job (VA, Job_Config);
+            begin
+               C2.Close (VA_Request);
+               if C2.Outcome (C2.Wait (Request, 3000)) /= C2.Created then
+                  raise Program_Error;
+               end if;
+               declare
+                  Object    : C2.Job := C2.Claim (Request);
+                  Adds      : constant Interfaces.C.unsigned :=
+                    Mock_Calls (Provider_Path, "mock_rf_job_add_calls");
+                  Flushes   : constant Interfaces.C.unsigned :=
+                    Mock_Calls (Provider_Path, "mock_rf_job_flush_calls");
+                  Remaining : constant Interfaces.C.unsigned :=
+                    Mock_Calls (Provider_Path, "mock_rf_job_remaining_calls");
+                  procedure Add is
+                  begin
+                     C2.Add_RX_Job_Intervals (Object, List);
+                  end Add;
+                  procedure Flush is
+                  begin
+                     C2.Flush_Job (Object);
+                  end Flush;
+                  procedure Cancel_Remaining is
+                  begin
+                     C2.Cancel_Remaining_Job_Intervals (Object);
+                  end Cancel_Remaining;
+               begin
+                  C2.Close (Request);
+                  if Repeat = 1 then
+                     declare
+                        Boundary_List : C2.RX_Job_Interval_List;
+                        Starts        : constant array (1 .. 4) of Interfaces.Integer_64 :=
+                          [0, 1, -1, Interfaces.Integer_64'Last];
+                     begin
+                        for Start of Starts loop
+                           C2.Append_Job_Interval
+                             (Boundary_List,
+                              C2.Create_RX_Job_Interval
+                                (1, 0, Interval_Start_Femtoseconds => Start));
+                        end loop;
+                        C2.Add_RX_Job_Intervals (Object, Boundary_List);
+                        if Mock_Calls (Provider_Path, "mock_rf_job_start_boundary") /= 1 then
+                           raise Program_Error with "Ada interval start was remapped";
+                        end if;
+                     end;
+                  end if;
+                  C2.Add_RX_Job_Intervals (Object, List);
+                  if Mock_Calls (Provider_Path, "mock_rf_job_add_calls")
+                    /= Adds + (if Repeat = 1 then 2 else 1)
+                    or else Mock_Calls (Provider_Path, "mock_rf_job_interval_fidelity") /= 1
+                  then
+                     raise Program_Error with "Ada interval nested fidelity/defaults mismatch";
+                  end if;
+                  C2.Flush_Job (Object);
+                  C2.Flush_Job (Object);
+                  C2.Cancel_Remaining_Job_Intervals (Object);
+                  C2.Finalize_Job (Object);
+                  begin
+                     declare
+                        Value : constant C2.Job_Status := C2.Wait_Job_Status (Object, 0);
+                     begin
+                        raise Program_Error with "expected timeout" & Value'Image;
+                     end;
+                  exception
+                     when C2.Timeout_Error =>
+                        null;
+                  end;
+                  Expect_Failure (Add'Access);
+                  Expect_Failure (Flush'Access);
+                  C2.Close (VA);
+                  C2.Close (Parent);
+                  C2.Cancel_Remaining_Job_Intervals (Object);
+                  Snapshot (Object);
+                  declare
+                     Result : constant C2.Cancel_Result := C2.Cancel_Job (Object);
+                  begin
+                     if not C2.Cancelled (Result) then
+                        raise Program_Error;
+                     end if;
+                  end;
+                  if C2.Wait_Job_Status (Object, 3000) /= C2.Complete then
+                     raise Program_Error;
+                  end if;
+                  Expect_Failure (Cancel_Remaining'Access);
+                  if Mock_Calls (Provider_Path, "mock_rf_job_add_calls")
+                    /= Adds + (if Repeat = 1 then 2 else 1)
+                    or else Mock_Calls (Provider_Path, "mock_rf_job_flush_calls") /= Flushes + 2
+                    or else Mock_Calls (Provider_Path, "mock_rf_job_remaining_calls")
+                            /= Remaining + 2
+                  then
+                     raise Program_Error with "Ada interval operation counts mismatch";
+                  end if;
+                  Snapshot (Object);
+                  C2.Close (Object);
+               end;
+            end;
+         end;
+      end loop;
+      Ada.Text_IO.Put_Line ("PASS: safe Ada RX JobInterval focused repeat 50/50");
+      for Variant in 1 .. 9 loop
+         declare
+            Names      : constant array (1 .. 9) of Ada.Strings.Unbounded.Unbounded_String :=
+              [Ada.Strings.Unbounded.To_Unbounded_String ("c2:add-throw"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:add-unknown"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:add-alloc"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:flush-throw"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:flush-unknown"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:flush-alloc"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:remaining-throw"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:remaining-unknown"),
+               Ada.Strings.Unbounded.To_Unbounded_String ("c2:remaining-alloc")];
+            Parent     : C2.C2_MEL :=
+              C2.Open (Provider_Path, Ada.Strings.Unbounded.To_String (Names (Variant)));
+            VA_Request : C2.Virtual_Aperture_Request :=
+              C2.Submit_Virtual_Aperture (Parent, VA_Config);
+         begin
+            if C2.Outcome (C2.Wait (VA_Request, 3000)) /= C2.Created then
+               raise Program_Error;
+            end if;
+            declare
+               VA      : C2.Virtual_Aperture := C2.Claim (VA_Request);
+               Request : C2.Job_Request := C2.Submit_Job (VA, Job_Config);
+            begin
+               C2.Close (VA_Request);
+               if C2.Outcome (C2.Wait (Request, 3000)) /= C2.Created then
+                  raise Program_Error;
+               end if;
+               declare
+                  Object  : C2.Job := C2.Claim (Request);
+                  Counter : constant String :=
+                    (if Variant <= 3
+                     then "mock_rf_job_add_calls"
+                     elsif Variant <= 6
+                     then "mock_rf_job_flush_calls"
+                     else "mock_rf_job_remaining_calls");
+                  Before  : constant Interfaces.C.unsigned := Mock_Calls (Provider_Path, Counter);
+                  procedure Fail is
+                  begin
+                     if Variant <= 3 then
+                        C2.Add_RX_Job_Intervals (Object, List);
+                     elsif Variant <= 6 then
+                        C2.Flush_Job (Object);
+                     else
+                        C2.Cancel_Remaining_Job_Intervals (Object);
+                     end if;
+                  end Fail;
+               begin
+                  C2.Close (Request);
+                  Expect_Failure (Fail'Access);
+                  if Mock_Calls (Provider_Path, Counter) /= Before + 1 or not C2.Is_Open (Object)
+                  then
+                     raise Program_Error with "mutating call retried/Job lost";
+                  end if;
+                  Snapshot (Object);
+                  C2.Close (Object);
+                  C2.Close (VA);
+                  C2.Close (Parent);
+               end;
+            end;
+         end;
+      end loop;
+   end Interval_Tests;
+
    procedure Lifecycle (Provider_Path : String) is
    begin
       for Variant in 1 .. 6 loop
@@ -202,6 +461,7 @@ package body AMS_MEL_RF_Job_Tests is
                      raise Program_Error with "Job status caching/mapping mismatch";
                   end if;
                   Snapshot (Object);
+                  C2.Cancel_Remaining_Job_Intervals (Object);
                   C2.Close (VA);
                   C2.Close (Parent);
                   C2.Close (Object);
@@ -303,6 +563,18 @@ package body AMS_MEL_RF_Job_Tests is
                   begin
                      C2.Finalize_Job (Object);
                   end Start;
+                  procedure Add_After_Cancel is
+                  begin
+                     C2.Add_RX_Job_Intervals (Object, Intervals);
+                  end Add_After_Cancel;
+                  procedure Flush_After_Cancel is
+                  begin
+                     C2.Flush_Job (Object);
+                  end Flush_After_Cancel;
+                  procedure Remaining_After_Cancel is
+                  begin
+                     C2.Cancel_Remaining_Job_Intervals (Object);
+                  end Remaining_After_Cancel;
                begin
                   C2.Close (Request);
                   if Name = "c2:cancel-unknown" or else Name = "c2:cancel-throw" then
@@ -323,6 +595,9 @@ package body AMS_MEL_RF_Job_Tests is
                      end loop;
                   end if;
                   Expect_Failure (Start'Access);
+                  Expect_Failure (Add_After_Cancel'Access);
+                  Expect_Failure (Flush_After_Cancel'Access);
+                  Expect_Failure (Remaining_After_Cancel'Access);
                   if Cancel_Calls (Provider_Path) /= Before + 1
                     or else Finalize_Calls (Provider_Path) /= Starts
                   then
@@ -603,6 +878,7 @@ package body AMS_MEL_RF_Job_Tests is
             C2.Close (Parent);
          end;
       end;
+      Interval_Tests (Provider_Path);
       Lifecycle (Provider_Path);
    end Run;
 end AMS_MEL_RF_Job_Tests;

@@ -10,7 +10,7 @@ package AMS.MEL.RF.C2 is
    function Open (Library_Path : String; Configuration : String) return C2_MEL;
    function Is_Open (Object : C2_MEL) return Boolean;
    procedure Close (Object : in out C2_MEL);
-   Timeout_Error : exception;
+   Timeout_Error                       : exception;
    type Virtual_Aperture_Config is private;
    function Create_Virtual_Aperture_Config
      (VA_Definition_ID        : Interfaces.Unsigned_32;
@@ -90,6 +90,51 @@ package AMS.MEL.RF.C2 is
    type Job is limited private;
    function Claim (Request : Job_Request'Class) return Job;
    function Is_Open (Object : Job) return Boolean;
+   --  Matches RF MEL 762ce84: numeric_limits<Femtoseconds>::max() has
+   --  count zero, unlike Femtoseconds::max(). This aliases an ordinary zero
+   --  relative start; the scalar provider interface cannot distinguish intent.
+   --  INT64_MAX is not the pinned continuation sentinel. No quantization or
+   --  remapping is performed. Matching this value does not prove scheduling.
+   Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 := 0;
+   type RX_Receive_Event_Config is private;
+   function Create_RX_Receive_Event
+     (Event_ID                    : Interfaces.Unsigned_32;
+      Element_Group_Label         : String;
+      Start_Femtoseconds          : Interfaces.Integer_64;
+      Duration_Femtoseconds       : Interfaces.Integer_64;
+      Center_Frequency_Hz         : Long_Float;
+      Sample_Frequency_Hz         : Long_Float;
+      AGC_Processing_Iterations   : Interfaces.Unsigned_64 := 0;
+      Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
+      Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
+   type RX_Job_Interval_Config is private;
+   function Create_RX_Job_Interval
+     (Interval_ID                        : Interfaces.Unsigned_32;
+      Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
+      Job_Details_ID                     : Interfaces.Unsigned_32 := 0;
+      Interval_Start_Femtoseconds        : Interfaces.Integer_64 :=
+        Continue_From_Previous_Femtoseconds;
+      Interval_Starting_Gap_Femtoseconds : Interfaces.Integer_64 := 0;
+      Sequence_Repeat_Count              : Interfaces.Unsigned_64 := 1;
+      Calibration_Duration_Femtoseconds  : Interfaces.Integer_64 := 0;
+      Interval_Ending_Gap_Femtoseconds   : Interfaces.Integer_64 := 0;
+      Phase_Coherence_With_Prior         : Boolean := False;
+      Iterations_Per_Signal              : Interfaces.Unsigned_64 := 0;
+      Max_Data_Rate_BPS                  : Long_Float := 0.0;
+      Max_Sample_Rate_Hz                 : Long_Float := 0.0) return RX_Job_Interval_Config;
+   procedure Append_RX_Event
+     (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config);
+   type RX_Job_Interval_List is private;
+   procedure Append_Job_Interval
+     (Intervals : in out RX_Job_Interval_List; Interval : RX_Job_Interval_Config);
+   function Job_Interval_Count (Intervals : RX_Job_Interval_List) return Natural;
+   --  Synchronous, externally serialized with same-Job calls and Close.
+   --  Add/Flush reject after Finalize or full Cancel has been attempted.
+   --  Cancel_Remaining is repeatable, including during/after Finalize, until
+   --  full Cancel has been attempted. Failures raise Provider_Error; no retry.
+   procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List);
+   procedure Flush_Job (Object : in out Job);
+   procedure Cancel_Remaining_Job_Intervals (Object : in out Job);
    type Job_Status is
      (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);
    for Job_Status use
@@ -128,6 +173,32 @@ private
      Compile_Time_Error
        (Cancel_Error'Enum_Rep (None) /= Integer (AMS.MEL_C_API.RF_Cancel_Error_None),
         "RF CancelError representation mismatch");
+   type RX_Receive_Event_Config is record
+      Event_ID                                               : Interfaces.Unsigned_32;
+      Label                                                  :
+        Ada.Strings.Unbounded.Unbounded_String;
+      Start_Femtoseconds, Duration_Femtoseconds              : Interfaces.Integer_64;
+      Center_Frequency_Hz, Sample_Frequency_Hz               : Long_Float;
+      AGC_Processing_Iterations, Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64;
+      Max_Extension_Femtoseconds                             : Interfaces.Integer_64;
+   end record;
+   package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
+   type RX_Job_Interval_Config is record
+      Interval_ID, Job_Details_ID                  : Interfaces.Unsigned_32;
+      Interval_Start_Femtoseconds,
+      Interval_Starting_Gap_Femtoseconds,
+      Sequence_Duration_Femtoseconds,
+      Calibration_Duration_Femtoseconds,
+      Interval_Ending_Gap_Femtoseconds             : Interfaces.Integer_64;
+      Sequence_Repeat_Count, Iterations_Per_Signal : Interfaces.Unsigned_64;
+      Phase_Coherence_With_Prior                   : Boolean;
+      Max_Data_Rate_BPS, Max_Sample_Rate_Hz        : Long_Float;
+      Events                                       : RX_Event_Vectors.Vector;
+   end record;
+   package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
+   type RX_Job_Interval_List is record
+      Values : RX_Interval_Vectors.Vector;
+   end record;
    type Cancel_Result is record
       Was_Cancelled : Boolean := False;
       Code          : Cancel_Error := None;

@@ -218,6 +218,11 @@ if(AMS_MEL_BUILD_TESTS)
             ${ams_mel_rf_data_isystem_args}
         DEPENDS rf_admin_c2_header_compile_probe
         VERBATIM)
+    add_executable(test_rf_interval_headers tests/test_rf_interval_headers.cpp)
+    target_compile_features(test_rf_interval_headers PRIVATE cxx_std_20)
+    target_include_directories(test_rf_interval_headers SYSTEM PRIVATE ${ams_mel_rf_data_vendor_roots})
+    ams_mel_warnings(test_rf_interval_headers)
+    add_test(NAME rf-interval-pinned-headers COMMAND test_rf_interval_headers)
     add_test(NAME c_abi COMMAND test_c_abi)
 
     # Task 033B: dedicated mock RF provider (createDataMEL + TEST-only

@@ -658,6 +658,43 @@ int main(void)
     VALUE(AMS_MEL_RF_JOB_STATUS_FAILED_INTERRUPTED);
     VALUE(AMS_MEL_RF_JOB_STATUS_FAILED_INVALID_STATE);
     VALUE(AMS_MEL_RF_CANCEL_ERROR_NONE);
+    VALUE(AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS);
+    RECORD(ams_mel_rf_receive_event_config_v1,
+        FIELD(ams_mel_rf_receive_event_config_v1,event_id);
+        FIELD(ams_mel_rf_receive_event_config_v1,element_group_label);
+        FIELD(ams_mel_rf_receive_event_config_v1,start_femtoseconds);
+        FIELD(ams_mel_rf_receive_event_config_v1,duration_femtoseconds);
+        FIELD(ams_mel_rf_receive_event_config_v1,center_frequency_hz);
+        FIELD(ams_mel_rf_receive_event_config_v1,sample_frequency_hz);
+        FIELD(ams_mel_rf_receive_event_config_v1,agc_processing_iterations);
+        FIELD(ams_mel_rf_receive_event_config_v1,ignored_post_agc_iterations);
+        FIELD(ams_mel_rf_receive_event_config_v1,max_extension_femtoseconds));
+    RECORD(ams_mel_rf_receive_event_config_span_v1,
+        FIELD(ams_mel_rf_receive_event_config_span_v1,data);
+        FIELD(ams_mel_rf_receive_event_config_span_v1,size));
+    RECORD(ams_mel_rf_job_interval_config_v1,
+        FIELD(ams_mel_rf_job_interval_config_v1,interval_start_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v1,interval_id);
+        FIELD(ams_mel_rf_job_interval_config_v1,interval_starting_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v1,sequence_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v1,sequence_repeat_count);
+        FIELD(ams_mel_rf_job_interval_config_v1,calibration_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v1,interval_ending_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v1,phase_coherence_with_prior);
+        FIELD(ams_mel_rf_job_interval_config_v1,iterations_per_signal);
+        FIELD(ams_mel_rf_job_interval_config_v1,max_data_rate_bps);
+        FIELD(ams_mel_rf_job_interval_config_v1,max_sample_rate_hz);
+        FIELD(ams_mel_rf_job_interval_config_v1,job_details_id);
+        FIELD(ams_mel_rf_job_interval_config_v1,receive_events));
+    RECORD(ams_mel_rf_job_interval_config_span_v1,
+        FIELD(ams_mel_rf_job_interval_config_span_v1,data);
+        FIELD(ams_mel_rf_job_interval_config_span_v1,size));
+    {
+        ams_mel_status_t (*add)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v1, char *, size_t, size_t *) = ams_mel_rf_job_add_rx_intervals;
+        ams_mel_status_t (*flush)(ams_mel_rf_job *, char *, size_t, size_t *) = ams_mel_rf_job_flush;
+        ams_mel_status_t (*remaining)(ams_mel_rf_job *, char *, size_t, size_t *) = ams_mel_rf_job_cancel_remaining_intervals;
+        (void)add; (void)flush; (void)remaining;
+    }
     RECORD(ams_mel_rf_job_cancel_result_v1,
         FIELD(ams_mel_rf_job_cancel_result_v1,cancelled);
         FIELD(ams_mel_rf_job_cancel_result_v1,error_code));

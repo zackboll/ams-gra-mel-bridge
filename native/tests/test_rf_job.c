@@ -109,6 +109,138 @@ static ams_mel_rf_job *claimed(const char *scenario, ams_mel_rf_c2 **c2,
     CHECK(ams_mel_rf_job_request_close(&r,diag,sizeof diag,&required)==AMS_MEL_OK);
     return job;
 }
+
+static const ams_mel_rf_receive_event_config_v1 rx_events[]={
+    {0x80000001U,{"rx/µ-main",10},-123,456789,987654321.125,2000000.5,0x100000007ULL,3,-999},
+    {UINT32_MAX,{"β-secondary",12},777,-888,-0.0,INFINITY,0,0x100000009ULL,INT64_MAX-1}
+};
+static const ams_mel_rf_job_interval_config_v1 rx_intervals[]={
+    {AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS,0x10203040U,-111,9876543210123LL,
+     0x100000003ULL,222,-333,1,0x100000005ULL,123456789.25,2500000.5,0xABCDEF01U,{rx_events,2}},
+    {-1,42,12,-13,2,-14,15,0,3,NAN,INFINITY,43,{NULL,0}}
+};
+static const ams_mel_rf_job_interval_config_span_v1 rx_span={rx_intervals,2};
+static void interval_tests(void)
+{
+    CHECK(AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS==0);
+    for (unsigned repeat=0;repeat<50;++repeat) {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        ams_mel_rf_job_status_t status=99; ams_mel_rf_job_cancel_result_v1 cancelled={0};
+        reset(); ams_mel_rf_job *job=claimed("c2:finalize-cancel",&c2,&va);
+        unsigned add=mock_call("mock_rf_job_add_calls"), flush=mock_call("mock_rf_job_flush_calls"),
+                 remaining=mock_call("mock_rf_job_remaining_calls");
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,rx_span,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(mock_call("mock_rf_job_add_calls")==add+1 && mock_call("mock_rf_job_interval_fidelity")==1);
+        CHECK(ams_mel_rf_job_flush(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_flush(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(mock_call("mock_rf_job_flush_calls")==flush+2);
+        CHECK(ams_mel_rf_job_cancel_remaining_intervals(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,0,&status,diag,sizeof diag,&required)==AMS_MEL_TIMEOUT);
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,rx_span,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(strstr(diag,"Finalize"));
+        CHECK(ams_mel_rf_job_flush(job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(mock_call("mock_rf_job_add_calls")==add+1 && mock_call("mock_rf_job_flush_calls")==flush+2);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(!strstr(logfile(),"rf_c2_shutdown\n") && !strstr(logfile(),"rf_va_destroyed\n"));
+        CHECK(ams_mel_rf_job_cancel_remaining_intervals(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(mock_call("mock_rf_job_remaining_calls")==remaining+2);
+        check_snapshot(job);
+        CHECK(ams_mel_rf_job_cancel(job,&cancelled,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_OK &&
+              status==AMS_MEL_RF_JOB_STATUS_COMPLETE);
+        CHECK(ams_mel_rf_job_cancel_remaining_intervals(job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(mock_call("mock_rf_job_remaining_calls")==remaining+2);
+        check_snapshot(job);
+        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
+        CHECK(count("rf_job_destroyed\n")==1 && count("rf_va_destroyed\n")==1 &&
+              count("rf_c2_shutdown\n")==1 && count("library_unloaded\n")==1);
+    }
+    puts("PASS: native RX JobInterval focused repeat 50/50");
+    {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        reset(); ams_mel_rf_job *job=claimed("c2:job-ok",&c2,&va);
+        unsigned before=mock_call("mock_rf_job_add_calls");
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,(ams_mel_rf_job_interval_config_span_v1){NULL,1},NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        ams_mel_rf_job_interval_config_v1 bad=rx_intervals[0];
+        ams_mel_rf_job_interval_config_span_v1 one={&bad,1};
+        bad.receive_events.data=NULL;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        bad=rx_intervals[0]; bad.phase_coherence_with_prior=2;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        ams_mel_rf_receive_event_config_v1 event=rx_events[0];
+        bad=rx_intervals[0]; bad.receive_events=(ams_mel_rf_receive_event_config_span_v1){&event,1};
+        const ams_mel_string_view_v1 labels[]={{NULL,1},{"\xff",1},{"a\0b",3}};
+        for (size_t i=0;i<3;++i) {
+            event.element_group_label=labels[i];
+            CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        }
+#if SIZE_MAX < UINT64_MAX
+        event=rx_events[0]; event.agc_processing_iterations=UINT64_MAX;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        event=rx_events[0]; event.ignored_post_agc_iterations=UINT64_MAX;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        event=rx_events[0]; bad.sequence_repeat_count=UINT64_MAX;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+        bad.sequence_repeat_count=1; bad.iterations_per_signal=UINT64_MAX;
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT);
+#endif
+        CHECK(mock_call("mock_rf_job_add_calls")==before);
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,(ams_mel_rf_job_interval_config_span_v1){NULL,0},NULL,0,NULL)==AMS_MEL_OK);
+        event=rx_events[0]; event.element_group_label=(ams_mel_string_view_v1){NULL,0};
+        bad=rx_intervals[0]; bad.receive_events=(ams_mel_rf_receive_event_config_span_v1){&event,1};
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,one,NULL,0,NULL)==AMS_MEL_OK);
+        ams_mel_rf_job_interval_config_v1 boundaries[4]={rx_intervals[1],rx_intervals[1],rx_intervals[1],rx_intervals[1]};
+        const int64_t starts[]={0,1,-1,INT64_MAX};
+        for (size_t i=0;i<4;++i) boundaries[i].interval_start_femtoseconds=starts[i];
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,(ams_mel_rf_job_interval_config_span_v1){boundaries,4},NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(mock_call("mock_rf_job_start_boundary")==1);
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,NULL,0,NULL)==AMS_MEL_OK);
+    }
+    const char *scenarios[]={"c2:add-throw","c2:add-unknown","c2:add-alloc",
+        "c2:flush-throw","c2:flush-unknown","c2:flush-alloc",
+        "c2:remaining-throw","c2:remaining-unknown","c2:remaining-alloc"};
+    for (unsigned i=0;i<9;++i) {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        reset(); ams_mel_rf_job *job=claimed(scenarios[i],&c2,&va);
+        const char *counter=i<3?"mock_rf_job_add_calls":i<6?"mock_rf_job_flush_calls":"mock_rf_job_remaining_calls";
+        unsigned before=mock_call(counter);
+        ams_mel_status_t result=i<3?ams_mel_rf_job_add_rx_intervals(job,rx_span,diag,sizeof diag,&required):
+            i<6?ams_mel_rf_job_flush(job,diag,sizeof diag,&required):
+                ams_mel_rf_job_cancel_remaining_intervals(job,diag,sizeof diag,&required);
+        CHECK(result==(i%3==2?AMS_MEL_INTERNAL_ERROR:AMS_MEL_PROVIDER_EXCEPTION));
+        CHECK(mock_call(counter)==before+1);
+        check_snapshot(job);
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,NULL,0,NULL)==AMS_MEL_OK);
+    }
+    for (unsigned i=0;i<3;++i) {
+        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+        reset(); ams_mel_rf_job *job=claimed(i==0?"c2:finalize-complete":i==1?"c2:cancel-throw":"c2:finalize-throw",&c2,&va);
+        unsigned add=mock_call("mock_rf_job_add_calls"), flush=mock_call("mock_rf_job_flush_calls"), remaining=mock_call("mock_rf_job_remaining_calls");
+        if (i==1) {
+            ams_mel_rf_job_cancel_result_v1 result={0};
+            CHECK(ams_mel_rf_job_cancel(job,&result,NULL,0,NULL)==AMS_MEL_PROVIDER_EXCEPTION);
+        } else {
+            ams_mel_rf_job_status_t status=99;
+            CHECK(ams_mel_rf_job_finalize(job,NULL,0,NULL)==(i==0?AMS_MEL_OK:AMS_MEL_PROVIDER_EXCEPTION));
+            if (i==0) CHECK(ams_mel_rf_job_wait_status(job,3000,&status,NULL,0,NULL)==AMS_MEL_OK);
+        }
+        CHECK(ams_mel_rf_job_add_rx_intervals(job,rx_span,NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(ams_mel_rf_job_flush(job,NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
+        CHECK(ams_mel_rf_job_cancel_remaining_intervals(job,NULL,0,NULL)==(i==1?AMS_MEL_PROVIDER_FAILED:AMS_MEL_OK));
+        CHECK(mock_call("mock_rf_job_add_calls")==add && mock_call("mock_rf_job_flush_calls")==flush);
+        CHECK(mock_call("mock_rf_job_remaining_calls")==remaining+(i==1?0U:1U));
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&c2,NULL,0,NULL)==AMS_MEL_OK);
+    }
+}
+
 static void lifecycle_case(const char *scenario, ams_mel_status_t start,
                            ams_mel_status_t finish, ams_mel_rf_job_status_t expected)
 {
@@ -321,6 +453,7 @@ int main(int argc, char **argv)
     isolated_retention(argv[0],"post-provider-allocation");
     isolated_retention(argv[0],"publication");
     isolated_retention(argv[0],"finalize-worker-launch");
+    interval_tests();
     lifecycle_tests();
     ams_mel_rf_c2 *c2=NULL;
     ams_mel_rf_virtual_aperture *va=NULL;
