@@ -155,7 +155,7 @@ lack test hooks).
 | `make format-ada`; `make check-ada-format` | Pass, pinned GNATformat |
 | `alr -C ada build` | Pass, GNAT 16.1.0 |
 | `alr -C ada/tests run` | Pass, full smoke including isolated query suite |
-| `make test-rust` | Pass: 79 ordinary tests plus 4 compile-fail doctests |
+| `make test-rust` | Pass: 71 ordinary tests plus 4 compile-fail doctests |
 | `cargo check --manifest-path rust/Cargo.toml --workspace` | Pass |
 | `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | Pass |
 | `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Pass |
