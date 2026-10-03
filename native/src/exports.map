@@ -112,6 +112,16 @@ AMS_MEL_0.1 {
         ams_mel_rf_virtual_aperture_request_close;
         ams_mel_rf_virtual_aperture_view;
         ams_mel_rf_virtual_aperture_close;
+        ams_mel_rf_virtual_aperture_get_id;
+        ams_mel_rf_virtual_aperture_get_status;
+        ams_mel_rf_virtual_aperture_get_instance_status;
+        ams_mel_rf_virtual_aperture_get_all_instances;
+        ams_mel_rf_virtual_aperture_get_instances;
+        ams_mel_rf_va_instance_list_view;
+        ams_mel_rf_va_instance_list_close;
+        ams_mel_rf_virtual_aperture_get_instance_status_report;
+        ams_mel_rf_va_instance_status_report_view;
+        ams_mel_rf_va_instance_status_report_close;
         ams_mel_rf_virtual_aperture_submit_job;
         ams_mel_rf_job_request_wait;
         ams_mel_rf_job_request_claim;

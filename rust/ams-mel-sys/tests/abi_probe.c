@@ -619,6 +619,19 @@ int main(void)
         FIELD(ams_mel_rf_virtual_aperture_info_v1,va_instance_ids);
         FIELD(ams_mel_rf_virtual_aperture_info_v1,element_group_labels);
         FIELD(ams_mel_rf_virtual_aperture_info_v1,is_single_group));
+    LAYOUT(ams_mel_rf_virtual_aperture_status_t);
+    LAYOUT(ams_mel_rf_va_instance_list *);
+    LAYOUT(ams_mel_rf_va_instance_status_report *);
+    RECORD(ams_mel_rf_va_local_function_status_v1,
+        FIELD(ams_mel_rf_va_local_function_status_v1,local_function_type_id);
+        FIELD(ams_mel_rf_va_local_function_status_v1,statuses));
+    RECORD(ams_mel_rf_va_local_function_status_span_v1,
+        FIELD(ams_mel_rf_va_local_function_status_span_v1,data);
+        FIELD(ams_mel_rf_va_local_function_status_span_v1,size));
+    RECORD(ams_mel_rf_va_instance_status_report_v1,
+        FIELD(ams_mel_rf_va_instance_status_report_v1,va_instance_id);
+        FIELD(ams_mel_rf_va_instance_status_report_v1,status);
+        FIELD(ams_mel_rf_va_instance_status_report_v1,local_functions));
     LAYOUT(ams_mel_rf_job_request *);
     LAYOUT(ams_mel_rf_job *);
     RECORD(ams_mel_u64_span_v1,
@@ -965,6 +978,20 @@ int main(void)
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) = ams_mel_rf_job_add_rx_intervals_v2;
         (void)probe_ams_mel_rf_job_add_rx_intervals_v2;
+    }
+    {
+        ams_mel_status_t (*id)(const ams_mel_rf_virtual_aperture *, uint32_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_id;
+        ams_mel_status_t (*status)(const ams_mel_rf_virtual_aperture *, ams_mel_rf_virtual_aperture_status_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_status;
+        ams_mel_status_t (*instance)(const ams_mel_rf_virtual_aperture *, uint32_t, ams_mel_rf_virtual_aperture_status_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_instance_status;
+        ams_mel_status_t (*all)(const ams_mel_rf_virtual_aperture *, ams_mel_rf_va_instance_list **, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_all_instances;
+        ams_mel_status_t (*face)(const ams_mel_rf_virtual_aperture *, uint32_t, ams_mel_rf_va_instance_list **, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_instances;
+        ams_mel_status_t (*list_view)(const ams_mel_rf_va_instance_list *, ams_mel_u32_span_v1 *, char *, size_t, size_t *) = ams_mel_rf_va_instance_list_view;
+        ams_mel_status_t (*list_close)(ams_mel_rf_va_instance_list **, char *, size_t, size_t *) = ams_mel_rf_va_instance_list_close;
+        ams_mel_status_t (*report)(const ams_mel_rf_virtual_aperture *, uint32_t, ams_mel_rf_va_instance_status_report **, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_instance_status_report;
+        ams_mel_status_t (*report_view)(const ams_mel_rf_va_instance_status_report *, const ams_mel_rf_va_instance_status_report_v1 **, char *, size_t, size_t *) = ams_mel_rf_va_instance_status_report_view;
+        ams_mel_status_t (*report_close)(ams_mel_rf_va_instance_status_report **, char *, size_t, size_t *) = ams_mel_rf_va_instance_status_report_close;
+        (void)id; (void)status; (void)instance; (void)all; (void)face;
+        (void)list_view; (void)list_close; (void)report; (void)report_view; (void)report_close;
     }
     VALUE(ams_mel_get_abi_version(&version));
     VALUE(version.major); VALUE(version.minor);

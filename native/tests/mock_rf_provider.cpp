@@ -803,6 +803,8 @@ std::atomic<unsigned> c2_shutdown_calls{};
 std::mutex va_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>> va_pending;
 std::atomic<unsigned> va_get_calls{};
+std::atomic<unsigned> va_query_calls[6]{};
+std::atomic<std::uint32_t> va_query_inputs[6]{};
 std::mutex job_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>> job_pending;
 std::atomic<unsigned> job_get_calls{};
@@ -1081,19 +1083,48 @@ public:
     explicit MockVirtualAperture(bool fail_getter, std::string scenario = {})
         : fail_getter_{fail_getter}, scenario_{std::move(scenario)} {}
     ~MockVirtualAperture() override { record("rf_va_destroyed"); }
-    rfmel::VirtualApertureDefinitionID getID() const override { return 0; }
+    rfmel::VirtualApertureDefinitionID getID() const override
+    { query(0); return 0x87654321U; }
     std::size_t addStatusCallback(const std::function<void(rfmel::BaseVirtualAperture&)>&) override
     { forbidden("VA::addStatusCallback"); }
     void removeStatusCallback(std::size_t) override { forbidden("VA::removeStatusCallback"); }
-    rfmel::VirtualApertureStatus getStatus() const override { forbidden("VA::getStatus"); }
-    rfmel::VirtualApertureStatus getInstanceStatus(rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getInstanceStatus"); }
+    rfmel::VirtualApertureStatus getStatus() const override
+    {
+        query(1);
+        if (std::getenv("AMS_MEL_TEST_VA_UNKNOWN_STATUS")) return static_cast<rfmel::VirtualApertureStatus>(99);
+        return static_cast<rfmel::VirtualApertureStatus>((status_sequence_++) % 4);
+    }
+    rfmel::VirtualApertureStatus getInstanceStatus(rfmel::VirtualApertureInstanceID id) const override
+    {
+        query(2, id);
+        if (std::getenv("AMS_MEL_TEST_VA_UNKNOWN_STATUS")) return static_cast<rfmel::VirtualApertureStatus>(99);
+        return rfmel::VirtualApertureStatus::Failed; // Deliberately differs from report.
+    }
     std::vector<rfmel::VirtualApertureInstanceID> getAllInstances() const override
-    { forbidden("VA::getAllInstances"); }
-    std::vector<rfmel::VirtualApertureInstanceID> getInstances(rfmel::FaceID) const override
-    { forbidden("VA::getInstances"); }
-    rfmel::VirtualApertureInstanceStatusReport getInstanceStatusReport(rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getInstanceStatusReport"); }
+    {
+        query(3);
+        if (scenario_ == "c2:va-query-changing" && all_sequence_++ > 0) return {2, 42};
+        return {UINT32_MAX, 7, 0, 7};
+    }
+    std::vector<rfmel::VirtualApertureInstanceID> getInstances(rfmel::FaceID face) const override
+    { query(4, face); return face == 0xFEDCBA98U ? std::vector<std::uint32_t>{42, 2, 42} : std::vector<std::uint32_t>{}; }
+    rfmel::VirtualApertureInstanceStatusReport getInstanceStatusReport(rfmel::VirtualApertureInstanceID id) const override
+    {
+        query(5, id);
+        rfmel::VirtualApertureInstanceStatusReport report;
+        report.setVAInstanceID(42);
+        report.setStatus(scenario_ == "c2:va-query-changing" && report_sequence_++ > 0 ?
+            rfmel::VirtualApertureStatus::Operational : rfmel::VirtualApertureStatus::Degraded);
+        using S = rfmel::VirtualApertureStatus;
+        std::map<rfmel::LocalFunctionTypeID, std::vector<S>> functions;
+        functions.emplace(UINT32_MAX, std::vector<S>{S::Operational, S::Operational, S::Failed});
+        functions.emplace(0, std::vector<S>{S::Failed, S::None, S::Degraded, S::Operational});
+        functions.emplace(0x80000001U, std::vector<S>{});
+        if (std::getenv("AMS_MEL_TEST_VA_UNKNOWN_STATUS")) report.setStatus(static_cast<S>(99));
+        if (std::getenv("AMS_MEL_TEST_VA_BAD_REPORT")) functions[UINT32_MAX].push_back(static_cast<S>(99));
+        report.setLFStatus(functions);
+        return report;
+    }
     std::set<rfmel::VirtualApertureInstanceID> getVAInstanceIDs() const override
     {
         va_get_calls.fetch_add(1U);
@@ -1193,6 +1224,18 @@ public:
         rfmel::VirtualApertureInstanceID, rfmel::LocalFunctionTypeID) const override
     { forbidden("VA::getLocalFunctionStatus"); }
 private:
+    void query(unsigned method, std::uint32_t input = 0) const
+    {
+        va_query_calls[method].fetch_add(1U);
+        va_query_inputs[method].store(input);
+        const char *failure = std::getenv("AMS_MEL_TEST_VA_QUERY_EXCEPTION");
+        if (!failure) return;
+        if (std::strcmp(failure, "allocation") == 0) throw std::bad_alloc{};
+        if (std::strcmp(failure, "unknown") == 0) throw 17;
+        if (std::strcmp(failure, "standard") == 0) throw std::runtime_error("mock VA live query exception");
+        if (std::strcmp(failure, "long") == 0) throw std::runtime_error(std::string(800, 'Q'));
+    }
+    mutable unsigned status_sequence_{}, all_sequence_{}, report_sequence_{};
     bool fail_getter_{};
     std::string scenario_;
 };
@@ -1362,7 +1405,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration == "c2:factory-throw") throw FactoryFailure{};
     if (configuration == "c2:factory-throw-unknown") throw 5;
     if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
-        configuration != "c2:va-ok" && configuration != "c2:va-failure" &&
+        configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
         configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
         configuration != "c2:va-future-unknown" && configuration != "c2:va-submit-throw" &&
         configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
@@ -1418,6 +1461,10 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_release_o
         std::make_shared<MockJobDetail>(false)});
     return 1;
 }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_query_calls(unsigned method)
+{ return method < 6 ? va_query_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_va_query_input(unsigned method)
+{ return method < 6 ? va_query_inputs[method].load() : 0; }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_get_calls(void)
 { return job_get_calls.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_finalize_calls(void)
