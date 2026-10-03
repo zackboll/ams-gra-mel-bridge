@@ -171,6 +171,8 @@ static_assert(std::is_same_v<decltype(std::declval<const rfmel::JobEventLogInfo&
 static_assert(std::is_same_v<decltype(std::declval<rfmel::JobEventLogInfo&>().getJobEventLogTime()), const ams::util::math::UTCTime&>);
 static_assert(std::is_same_v<std::chrono::seconds::rep, int64_t>);
 static_assert(std::is_same_v<rfmel::JobEventID, uint32_t>);
+static_assert(std::is_same_v<decltype(&rfmel::JobDetail::extendJobEvent),
+                             void (rfmel::JobDetail::*)(uint32_t, rfmel::JobEventID, Fs)>);
 static_assert(std::is_same_v<decltype(&rfmel::JobInterval::setJobIntervalStatusEnable), void (rfmel::JobInterval::*)(rfmel::JobIntervalStatusEnable)>);
 int rf_admin_c2_header_compile_probe()
 {

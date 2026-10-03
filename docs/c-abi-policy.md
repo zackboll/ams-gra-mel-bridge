@@ -1,5 +1,13 @@
 # Experimental C ABI policy
 
+Task 034D3 adds only ams_mel_rf_job_extend_event (153 -> 154), ABI still 0.1.
+No new owner, result, callback or interval record version. uint32 IDs and int64
+signed femtoseconds map exactly to the pinned void method. OK reports normal
+synchronous return only; exceptions use existing UTF-8-safe diagnostics and
+bad_alloc/internal versus other/provider mappings. Mutations are never retried
+for a longer diagnostic. Full Cancel attempted blocks, Finalize does not.
+See `task-034d3-rf-job-event-extension.md` for lifecycle/evidence limits.
+
 Task 034D2 adds seven ABI 0.1 exports, keeping existing interval config v1 frozen.
 The separate v2 input embeds v1 and reporting mode. Status stream/event owners
 have explicit null-idempotent closure; immutable spans borrow event storage only.

@@ -195,7 +195,8 @@ begin
                               C2.Append_RX_Event
                                 (Interval,
                                  C2.Create_RX_Receive_Event
-                                   (1, "0", 0, 1_000_000_000, 100_000_000.0, 1_000_000.0));
+                                    (1, "0", 0, 1_000_000_000, 100_000_000.0, 1_000_000.0,
+                                     Max_Extension_Femtoseconds => 500_000_000));
                               C2.Append_Job_Interval (Intervals, Interval);
                               C2.Add_RX_Job_Intervals (Job, Intervals);
                               C2.Flush_Job (Job);
@@ -223,6 +224,18 @@ begin
                            end;
                            C2.Close (VA);
                            C2.Close (Parent);
+                           C2.Extend_Job_Event (Job, 1, 1, 123_456_789);
+                           begin
+                              declare
+                                 Unexpected : constant C2.Interval_Status.Status_Event :=
+                                   C2.Interval_Status.Receive_Event (Status_Stream, 0);
+                              begin
+                                 raise Program_Error with "unexpected extension status" &
+                                   C2.Interval_Status.Interval_ID (Unexpected)'Image;
+                              end;
+                           exception
+                              when C2.Timeout_Error => null;
+                           end;
                            declare
                               A           : constant RX.Event := RX.Receive (Endpoint, 30_000);
                               Original    : constant Interfaces.Unsigned_64 := Fingerprint (A);

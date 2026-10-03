@@ -1,5 +1,17 @@
 # Architecture decisions
 
+Task 034D3 reuses interval_command with broad lifecycle admission for synchronous
+JobDetail::extendJobEvent. One retained shared JobState covers the invocation;
+the lifecycle lock scope ends before the provider call. No queue/C2 lock, worker,
+future, sibling claim or registration is added. A distinct status receiver can
+run concurrently and a provider may call back synchronously before return.
+Every explicit invocation forwards once, without local event lookup, allowance
+accounting, quantization or cached outcome. Finalize pending/terminal is admitted;
+any full Cancel attempt blocks. Existing snapshots are unchanged. Mock feedback
+is provider behavior; Squall is no-op/no-delivery. This is event-extension command
+coverage, not complete JobDetail/JobInterval/RF MEL. See
+`task-034d3-rf-job-event-extension.md`.
+
 Task 034D2 adds a JobIntervalStatus observer state separate from JobState/provider
 ownership. JobState holds state only to logically stop on Close before deferred
 finalize cleanup. A permanent holder pins the exact const-reference callable,

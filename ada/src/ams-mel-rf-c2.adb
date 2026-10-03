@@ -268,6 +268,26 @@ package body AMS.MEL.RF.C2 is
    begin
       Check (C.RF_Job_Cancel_Remaining_Intervals (Object.Handle, D'Address, D'Length, R'Access), D);
    end Cancel_Remaining_Job_Intervals;
+   procedure Extend_Job_Event
+     (Object                      : in out Job;
+      Interval_ID                 : Interfaces.Unsigned_32;
+      Event_ID                    : Interfaces.Unsigned_32;
+      Added_Duration_Femtoseconds : Interfaces.Integer_64)
+   is
+      D : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check
+        (C.RF_Job_Extend_Event
+           (Object.Handle,
+            Interval_ID,
+            Event_ID,
+            Added_Duration_Femtoseconds,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+   end Extend_Job_Event;
 
    function Open (Library_Path : String; Configuration : String) return C2_MEL is
       Library_C, Configuration_C : String_Owner;

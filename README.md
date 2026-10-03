@@ -1,5 +1,16 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034D3 adds the repeatable event-extension command
+`ams_mel_rf_job_extend_event` and safe Ada `AMS.MEL.RF.C2.Extend_Job_Event`.
+IDs are exact uint32 and added duration is exact signed int64 femtoseconds.
+Normal return means only that the provider's void method returned without
+throwing, not acceptance, scheduling or notification. Calls are admitted after
+Finalize, blocked after any full Cancel attempt, and never automatically retried.
+Status reception is optional; mock command-to-eventExtended feedback exercises
+the existing owned stream. Pinned Squall's method is a no-op. ABI 0.1: **154**
+production exports, unchanged 804 vendor files. Conditional commands/TX/RDMA/VADB
+remain deferred. See `docs/task-034d3-rf-job-event-extension.md`.
+
 Task 034D2 adds owned RF JobIntervalStatus reception and safe Ada
 `AMS.MEL.RF.C2.Interval_Status`: bounded FIFO DROP-INCOMING, full ordered event
 logs, exact signed seconds/femtoseconds, and arbitrary binary activity IDs.
@@ -7,9 +18,9 @@ The observer stream stops on Job Close without implicit cancellation. One exact
 callable/state/DSO shell is retained per attempted registration, never the Job/VA/C2
 graph. Registration returns void and does not acknowledge delivery. Frozen interval
 v1 remains Never; additive v2 and the Ada setter select Never/Always/OnException.
-ABI 0.1 has 153 exports; vendor unchanged at 804 files. Mock-positive delivery;
+That checkpoint had 153 exports; vendor unchanged at 804 files. Mock-positive delivery;
 pinned Squall registration/commands are no-ops (timeout/stop lifecycle evidence
-only). Extension/TX/RDMA/VADB remain deferred. See
+only). Extension was deferred at that checkpoint. See
 `docs/task-034d2-rf-job-interval-status.md` for ownership and validation details.
 
 Task 034D1 adds bounded RF receive JobInterval commands in native C and safe
@@ -18,14 +29,14 @@ Cancel_Remaining. Its checkpoint had 146 exports; vendor unchanged at 804 files.
 **Pinned continuation count is zero**, aliasing an ordinary zero relative start;
 INT64_MAX is forwarded unchanged, not treated as continuation. No automatic
 quantization. Mock payload fidelity and pinned-Squall no-op call-path/lifecycle
-evidence are distinct. Event extension and TX remain deferred.
+evidence are distinct. Event extension was deferred at that checkpoint; TX remains deferred.
 See `docs/task-034d1-rf-rx-job-intervals.md`.
 
 RF PhysicalData is available through an owned point-in-time C snapshot and
 the safe Ada-owned `AMS.MEL.RF.Physical_Data` value. It preserves antenna
 dimensions, lattice angle, location XYZ and both ForeignKey strings, and
 orientation/boresight roll-pitch-yaw in published meters/radians. Values remain
-usable after DataMEL Close. ABI 0.1 now has 153 production operations;
+usable after DataMEL Close. ABI 0.1 now has 154 production operations;
 Rust sys and private Python have raw parity only. See
 `docs/task-034c2-rf-physical-data.md`. Task 034C3 adds complete TxPowerModeData
 collection/direct snapshots in C and safe Ada: mock-positive, while pinned Squall

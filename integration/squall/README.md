@@ -1,5 +1,16 @@
 # Real Squall IR MEL integration
 
+Task 034D3 configures MaxExtensionDuration = 500,000,000 femtoseconds on the
+submitted receive event, then requests 123,456,789 femtoseconds after Finalize
+and public VA/C2 Close in the Job and both ProductRx clients. Squall at
+`b1015728f904c799fa0c07489fce48e78f67845f` has no-op extendJobEvent and no-op
+registration. Normal return and status TIMEOUT are required; existing ProductRx,
+snapshot, cancellation/completion and ownership checks remain. This is only
+**production command-call/lifecycle/no-delivery evidence**, not actual extension,
+provider acceptance, scheduling change or positive real notification delivery.
+The existing `AMS_MEL_SQUALL_REPEAT=3` and per-run RF port overrides are used for
+C/Ada ProductRx repetitions. See `../../docs/task-034d3-rf-job-event-extension.md`.
+
 Task 034D2 extends the RF Job and both ProductRx clients with observer status
 streams, enabled interval submission and bounded polls. At Squall pin
 `b1015728f904c799fa0c07489fce48e78f67845f`, registration/Add/Flush/Cancel_Remaining

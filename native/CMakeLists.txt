@@ -320,6 +320,16 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_rf_job_interval_status mock_rf_provider)
     ams_mel_warnings(test_rf_job_interval_status)
     add_test(NAME rf-job-interval-status COMMAND test_rf_job_interval_status)
+    add_executable(test_rf_job_extension tests/test_rf_job_extension.c)
+    target_compile_features(test_rf_job_extension PRIVATE c_std_11)
+    set_target_properties(test_rf_job_extension PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_job_extension PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    target_link_libraries(test_rf_job_extension PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_rf_job_extension mock_rf_provider)
+    ams_mel_warnings(test_rf_job_extension)
+    add_test(NAME rf-job-event-extension COMMAND test_rf_job_extension)
+    set_tests_properties(rf-job-event-extension PROPERTIES TIMEOUT 60)
     # One process per case: lifetime/retention evidence cannot leak.
     foreach(case IN ITEMS open version version-long snapshot two-snapshots
             snapshot-independent snapshot-throw inconsistent-faces future-format

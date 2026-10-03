@@ -689,7 +689,8 @@ int main(void)
         ams_mel_status_t (*add)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v1, char *, size_t, size_t *) = ams_mel_rf_job_add_rx_intervals;
         ams_mel_status_t (*flush)(ams_mel_rf_job *, char *, size_t, size_t *) = ams_mel_rf_job_flush;
         ams_mel_status_t (*remaining)(ams_mel_rf_job *, char *, size_t, size_t *) = ams_mel_rf_job_cancel_remaining_intervals;
-        (void)add; (void)flush; (void)remaining;
+        ams_mel_status_t (*extend)(ams_mel_rf_job *, uint32_t, uint32_t, int64_t, char *, size_t, size_t *) = ams_mel_rf_job_extend_event;
+        (void)add; (void)flush; (void)remaining; (void)extend;
     }
     RECORD(ams_mel_rf_job_cancel_result_v1,
         FIELD(ams_mel_rf_job_cancel_result_v1,cancelled);
