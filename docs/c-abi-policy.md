@@ -1,5 +1,21 @@
 # Experimental C ABI policy
 
+Task 034E2 adds exactly five ABI 0.1 exports (164 -> 169), one opaque observer,
+and `ams_mel_rf_va_status_subscription_statistics_v1` (four uint64 saturating
+counters, two uint32 Boolean flags). Original declarations/layouts remain frozen.
+Open requires a null output; invalid arguments publish/consume nothing. Wait(0)
+polls; pending active => OK/consume, finite absence => TIMEOUT, stopped =>
+STREAM_STOPPED before pending. Statistics copies a consistent nonconsuming snapshot.
+Open/Unsubscribe use externally serialized live VA ownership; Wait/Statistics may
+overlap VA Close. No raw handle may race its own wrapper destruction. Matching
+bridge registration identity, not provider key/ID/reference, validates Unsubscribe.
+Native size_t keys 0/SIZE_MAX are valid and stay private. Unsubscribe stops then
+removes once/caches outcome; Close only stops/consumes locally. VA Close also
+removes once, then cleans up; deferred C2 failure has priority over removal error.
+Diagnostics are bounded and removal is not retried even for bad_alloc. No provider
+getters, callback-time snapshots, quiescence or nonblocking VA removal are promised.
+See `task-034e2-rf-va-status-subscriptions.md` for permanent-shell ownership.
+
 Task 034E1 adds ten ABI 0.1 exports (154 -> 164) with no change to any original
 declaration or layout. Distinct uint32 VirtualApertureStatus values 0..3 are
 validated against the pinned enum; Degraded/Failed are OK data. Unknown status

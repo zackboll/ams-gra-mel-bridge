@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Task 034E2 adds exactly five VA subscription operations (164 -> 169), fixed
+  saturating statistics, and a limited controlled safe Ada observer. Signal-only
+  reference callbacks never query providers; pending notifications coalesce.
+  Explicit exact-key Unsubscribe, local-only Close/finalization, and automatic VA
+  removal are distinct. One exposed attempt per VA permanently retains only its
+  callable/signal/DSO shell, not provider graph. Removal failures are cached with
+  no retry; VA Close preserves C2 shutdown precedence/retention. No quiescence or
+  time-bounded provider removal promise. Subscribe-first E1 usage is tested;
+  raw Rust/private Python parity only. ABI 0.1 and 804 vendor blobs unchanged.
+
 - Task 034E1 adds ten RF VA query/list/report exports (154 -> 164), safe Ada
   child-package query functions and ordinary private copied values, and raw
   Rust/private Python parity. Claim-time info and all original records remain

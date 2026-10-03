@@ -3,6 +3,7 @@
 #include "internal/provider_common.hpp"
 #include "internal/rf_c2.hpp"
 #include "internal/rf_va_job_parent.hpp"
+#include "internal/rf_va_status.hpp"
 
 #include <algorithm>
 #include <array>
@@ -216,6 +217,7 @@ struct ams_mel_rf_virtual_aperture {
     std::vector<std::string> labels;
     std::vector<ams_mel_string_view_v1> views;
     ams_mel_rf_virtual_aperture_info_v1 info{};
+    std::unique_ptr<VaRegistration> registration;
 };
 struct ams_mel_rf_va_instance_list {
     std::vector<std::uint32_t> ids;
@@ -649,9 +651,78 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_close(
     if (!va || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
     auto owned = std::exchange(*va, nullptr);
     if (!owned) return AMS_MEL_OK;
+    auto registration = std::move(owned->registration);
+    if (registration) remove_va_callback(*owned->va, *registration);
     auto claim = std::move(owned->claim);
     delete owned; /* VA destroyed while parent and DSO still held by claim */
     const auto outcome = claim.release();
+    if (registration && registration->removal_status != AMS_MEL_OK) {
+        if (outcome.status != AMS_MEL_OK) {
+            /* Fixed storage after cleanup; neither allocation nor truncation can
+             * prevent provider destruction or cause a second removal attempt. */
+            std::array<char, 1024> combined{};
+            write_diagnostic(outcome.message, combined.data(), 512, nullptr);
+            auto length = std::strlen(combined.data());
+            constexpr std::string_view separator{"; removal: "};
+            std::memcpy(combined.data() + length, separator.data(), separator.size());
+            length += separator.size();
+            write_diagnostic(registration->diagnostic.data(), combined.data() + length,
+                             combined.size() - length, nullptr);
+            write_diagnostic(combined.data(), diagnostic, capacity, required);
+            return outcome.status;
+        }
+        write_diagnostic(registration->diagnostic.data(), diagnostic, capacity, required);
+        return registration->removal_status;
+    }
     write_diagnostic(outcome.message, diagnostic, capacity, required);
     return outcome.status;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_va_status_subscription_open(
+    ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_status_subscription **output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    if (va->registration) {
+        write_diagnostic("VA subscription registration already attempted", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    try {
+        if (failpoint("subscription-owner")) throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_va_status_subscription>();
+        if (failpoint("subscription-state")) throw std::bad_alloc{};
+        owner->state = std::make_shared<VaSignalState>();
+        if (failpoint("subscription-control")) throw std::bad_alloc{};
+        auto registration = std::make_unique<VaRegistration>();
+        registration->state = owner->state;
+        if (failpoint("subscription-callable")) throw std::bad_alloc{};
+        auto shell = prepare_va_callable(owner->state, va->claim.library_pin());
+        if (failpoint("subscription-retention")) throw std::bad_alloc{};
+        /* Every allocation precedes exposure. Nonallocating retention consumes
+         * the attempt before provider code; synchronous callbacks are supported. */
+        va->registration = std::move(registration);
+        auto *stable = shell.release();
+        retain_va_callable(stable);
+        try {
+            va->registration->key = va->va->addStatusCallback(stable->callback);
+            va->registration->key_known = true;
+        } catch (...) { stop_va_signal(owner->state); throw; }
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA callback registration exception",
+            "unknown VA callback registration exception", diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_status_subscription_unsubscribe(
+    ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_status_subscription *owner,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !owner || !owner->state || !va->registration ||
+        va->registration->state != owner->state || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    remove_va_callback(*va->va, *va->registration);
+    write_diagnostic(va->registration->diagnostic.data(), diagnostic, capacity, required);
+    return va->registration->removal_status;
 }

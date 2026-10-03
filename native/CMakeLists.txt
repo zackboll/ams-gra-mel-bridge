@@ -14,7 +14,7 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
-    src/rf_job.cpp src/rf_job_interval_status.cpp)
+    src/rf_job.cpp src/rf_job_interval_status.cpp src/rf_va_status.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
 target_compile_features(ams_mel_c PRIVATE cxx_std_20)
 target_compile_definitions(ams_mel_c PRIVATE AMS_MEL_BUILDING_LIBRARY)
@@ -42,6 +42,8 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_va_signal_hold;\n        ams_mel_test_va_signal_waiters;\n        ams_mel_test_va_signal_preset;\n        ams_mel_test_va_signal_last;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_status_hold;\n        ams_mel_test_rf_status_waiters;\n        ams_mel_test_rf_status_preset;\n        ams_mel_test_rf_status_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;"
@@ -312,6 +314,20 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_rf_va_queries)
     add_test(NAME rf-va-live-queries COMMAND test_rf_va_queries)
     set_tests_properties(rf-va-live-queries PROPERTIES TIMEOUT 30)
+    add_executable(test_rf_va_notifications tests/test_rf_va_notifications.c)
+    target_compile_features(test_rf_va_notifications PRIVATE c_std_11)
+    set_target_properties(test_rf_va_notifications PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_va_notifications PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    target_link_libraries(test_rf_va_notifications PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_rf_va_notifications mock_rf_provider)
+    ams_mel_warnings(test_rf_va_notifications)
+    foreach(case IN ITEMS c2:va-notify-zero c2:va-notify-max c2:va-notify-copy
+            c2:va-notify-reference c2:va-notify-sync c2:va-notify-remove-callback
+            preparation stored-throw removal-errors races job-lifetime)
+        add_test(NAME rf-va-notifications-${case} COMMAND test_rf_va_notifications ${case})
+        set_tests_properties(rf-va-notifications-${case} PROPERTIES TIMEOUT 25)
+    endforeach()
     add_executable(test_rf_job tests/test_rf_job.c)
     target_compile_features(test_rf_job PRIVATE c_std_11)
     set_target_properties(test_rf_job PROPERTIES C_EXTENSIONS OFF)

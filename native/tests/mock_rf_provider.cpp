@@ -1078,19 +1078,102 @@ private:
     std::int64_t extension_notifications_{};
 };
 
+using VaCallback = std::function<void(rfmel::BaseVirtualAperture&)>;
+struct MockVaRegistration {
+    std::mutex status_mutex;
+    rfmel::BaseVirtualAperture *live{};
+    std::map<std::size_t, VaCallback> callbacks;
+    VaCallback saved;
+    const VaCallback *reference{};
+    std::size_t returned{}, removed{};
+    unsigned registrations{}, removals{}, other_invocations{};
+    std::atomic<unsigned> invocations{};
+    rfmel::VirtualApertureStatus status{rfmel::VirtualApertureStatus::Operational};
+};
+std::mutex va_registration_mutex;
+std::atomic<int> va_remove_notify{-1}, va_remove_release{-1};
+std::atomic<bool> va_remove_hold{};
+std::vector<std::shared_ptr<MockVaRegistration>> va_registrations;
+std::shared_ptr<MockVaRegistration> va_registration(unsigned index)
+{
+    std::lock_guard lock{va_registration_mutex};
+    return index < va_registrations.size() ? va_registrations[index] : nullptr;
+}
 class MockVirtualAperture final : public rfmel::VirtualAperture {
 public:
     explicit MockVirtualAperture(bool fail_getter, std::string scenario = {})
-        : fail_getter_{fail_getter}, scenario_{std::move(scenario)} {}
-    ~MockVirtualAperture() override { record("rf_va_destroyed"); }
+        : fail_getter_{fail_getter}, scenario_{std::move(scenario)}
+    {
+        if (scenario_.starts_with("c2:va-notify-")) {
+            notifications_ = std::make_shared<MockVaRegistration>();
+            notifications_->live = this;
+            std::lock_guard lock{va_registration_mutex};
+            va_registrations.push_back(notifications_);
+        }
+    }
+    ~MockVirtualAperture() override
+    {
+        if (notifications_) notifications_->live = nullptr;
+        record(scenario_ == "late-argument" ? "rf_va_argument_destroyed" : "rf_va_destroyed");
+    }
     rfmel::VirtualApertureDefinitionID getID() const override
     { query(0); return 0x87654321U; }
-    std::size_t addStatusCallback(const std::function<void(rfmel::BaseVirtualAperture&)>&) override
-    { forbidden("VA::addStatusCallback"); }
-    void removeStatusCallback(std::size_t) override { forbidden("VA::removeStatusCallback"); }
+    std::size_t addStatusCallback(const VaCallback& callback) override
+    {
+        if (!notifications_) forbidden("VA::addStatusCallback");
+        auto& n = *notifications_;
+        ++n.registrations;
+        record("rf_va_callback_added");
+        n.returned = scenario_.find("zero") != std::string::npos ? 0 :
+            scenario_.find("max") != std::string::npos ? SIZE_MAX : 0x12345678U;
+        // A separate provider-owned registration must survive bridge removal.
+        n.callbacks.emplace(77, [state = notifications_.get()](rfmel::BaseVirtualAperture&) {
+            ++state->other_invocations;
+        });
+        if (scenario_.find("reference") != std::string::npos) n.reference = &callback;
+        else { n.saved = callback; n.callbacks.emplace(n.returned, callback); }
+        if (scenario_.find("sync") != std::string::npos) {
+            std::lock_guard lock{n.status_mutex};
+            ++n.invocations;
+            callback(*this); // Getter reentrancy would deadlock on this mutex.
+        }
+        if (scenario_.find("stored-throw") != std::string::npos) throw std::runtime_error("mock stored VA callback registration exception");
+        return n.returned;
+    }
+    void removeStatusCallback(std::size_t key) override
+    {
+        if (!notifications_) forbidden("VA::removeStatusCallback");
+        auto& n = *notifications_;
+        ++n.removals; n.removed = key;
+        record("rf_va_callback_removed");
+        if (va_remove_hold.exchange(false)) {
+            char byte = 'h';
+            if (write(va_remove_notify.load(), &byte, 1) != 1 ||
+                read(va_remove_release.load(), &byte, 1) != 1)
+                throw std::runtime_error("mock removal gate failed");
+        }
+        if (key != n.returned) throw std::runtime_error("wrong VA callback key");
+        if (scenario_.find("remove-callback") != std::string::npos) {
+            std::lock_guard lock{n.status_mutex};
+            ++n.invocations;
+            (n.reference ? *n.reference : n.saved)(*this);
+        }
+        const char *failure = std::getenv("AMS_MEL_TEST_VA_REMOVE_EXCEPTION");
+        if (failure) {
+            if (std::strcmp(failure, "allocation") == 0) throw std::bad_alloc{};
+            if (std::strcmp(failure, "unknown") == 0) throw 19;
+            if (std::strcmp(failure, "long") == 0) throw std::runtime_error(std::string(800, 'R'));
+            throw std::runtime_error("mock VA removal exception");
+        }
+        n.callbacks.erase(key); // Only this exact registration, never clear().
+    }
     rfmel::VirtualApertureStatus getStatus() const override
     {
         query(1);
+        if (notifications_) {
+            std::lock_guard lock{notifications_->status_mutex};
+            return notifications_->status;
+        }
         if (std::getenv("AMS_MEL_TEST_VA_UNKNOWN_STATUS")) return static_cast<rfmel::VirtualApertureStatus>(99);
         return static_cast<rfmel::VirtualApertureStatus>((status_sequence_++) % 4);
     }
@@ -1115,6 +1198,10 @@ public:
         report.setVAInstanceID(42);
         report.setStatus(scenario_ == "c2:va-query-changing" && report_sequence_++ > 0 ?
             rfmel::VirtualApertureStatus::Operational : rfmel::VirtualApertureStatus::Degraded);
+        if (notifications_) {
+            std::lock_guard lock{notifications_->status_mutex};
+            report.setStatus(notifications_->status);
+        }
         using S = rfmel::VirtualApertureStatus;
         std::map<rfmel::LocalFunctionTypeID, std::vector<S>> functions;
         functions.emplace(UINT32_MAX, std::vector<S>{S::Operational, S::Operational, S::Failed});
@@ -1228,6 +1315,9 @@ private:
     {
         va_query_calls[method].fetch_add(1U);
         va_query_inputs[method].store(input);
+        // All E1 getters would block reentrantly under notification emission.
+        std::unique_lock<std::mutex> status_lock;
+        if (notifications_) status_lock = std::unique_lock{notifications_->status_mutex};
         const char *failure = std::getenv("AMS_MEL_TEST_VA_QUERY_EXCEPTION");
         if (!failure) return;
         if (std::strcmp(failure, "allocation") == 0) throw std::bad_alloc{};
@@ -1238,6 +1328,7 @@ private:
     mutable unsigned status_sequence_{}, all_sequence_{}, report_sequence_{};
     bool fail_getter_{};
     std::string scenario_;
+    std::shared_ptr<MockVaRegistration> notifications_;
 };
 
 class MockC2MEL final : public rfmel::C2MEL {
@@ -1327,7 +1418,8 @@ public:
         job_cleanup_changed.notify_all();
         if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw" ||
             configuration_ == "c2:job-shutdown-throw" ||
-            configuration_ == "c2:finalize-shutdown-throw")
+            configuration_ == "c2:finalize-shutdown-throw" ||
+            configuration_ == "c2:va-notify-shutdown-throw")
             throw std::runtime_error("mock C2 shutdown exception");
     }
 private:
@@ -1406,6 +1498,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration == "c2:factory-throw-unknown") throw 5;
     if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
         configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
+        !configuration.starts_with("c2:va-notify-") &&
         configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
         configuration != "c2:va-future-unknown" && configuration != "c2:va-submit-throw" &&
         configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
@@ -1432,6 +1525,52 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     return std::make_shared<MockC2MEL>(std::string{configuration});
 }
 static_assert(std::is_same_v<decltype(&createC2MEL), rfmel::fnC2MEL>);
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_notification_last(void)
+{ std::lock_guard lock{va_registration_mutex}; return static_cast<unsigned>(va_registrations.size() - 1); }
+extern "C" __attribute__((visibility("default"))) void mock_rf_va_notification_hold_removal(int notify, int release)
+{ va_remove_notify.store(notify); va_remove_release.store(release); va_remove_hold.store(true); }
+extern "C" __attribute__((visibility("default"))) std::size_t mock_rf_va_notification_value(unsigned index, unsigned field)
+{
+    auto n = va_registration(index);
+    if (!n) return 0;
+    switch (field) {
+    case 0: return n->registrations;
+    case 1: return n->removals;
+    case 2: return n->returned;
+    case 3: return n->removed;
+    case 4: return n->invocations.load();
+    case 5: return n->callbacks.count(77);
+    case 6: return n->other_invocations;
+    case 7: return n->live ? 1 : 0;
+    default: return 0;
+    }
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_notification_emit(unsigned index, unsigned count, unsigned late)
+{
+    auto n = va_registration(index);
+    if (!n || (!late && !n->live)) return 0;
+    // Late invocations use a DIFFERENT, still-live object; never dangling C++ references.
+    MockVirtualAperture other{false, "late-argument"};
+    std::unique_lock lock{n->status_mutex, std::defer_lock};
+    if (late < 2) lock.lock();
+    if (!late) n->status = rfmel::VirtualApertureStatus::Degraded;
+    auto& argument = late ? static_cast<rfmel::BaseVirtualAperture&>(other) : *n->live;
+    for (unsigned i = 0; i < count; ++i) {
+        if (n->reference) (*n->reference)(argument);
+        else if (n->saved) n->saved(argument);
+        else return 0;
+        ++n->invocations;
+    }
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_notification_other(unsigned index)
+{
+    auto n = va_registration(index);
+    if (!n || !n->live) return 0;
+    n->callbacks.at(77)(*n->live);
+    return n->other_invocations;
+}
 
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_release_one(void)
 {

@@ -1,5 +1,19 @@
 # Implementation coverage
 
+Task 034E2 adapts both BaseVirtualAperture add/removeStatusCallback methods into
+one bounded coalescing notification registration per public VA. C + safe Ada
+provide Open, Wait, Statistics, explicit Unsubscribe and local Close. This is
+change-notification coverage, not arbitrary callbacks/borrowed-object exposure
+or atomic status-event snapshots. Callback arguments are ignored; provider reads
+occur only through explicit E1 queries. Exact 0/ordinary/SIZE_MAX keys, synchronous
+entry, stored-then-throw, preparation rollback, cached removal exceptions, ownership,
+stop races, saturation and subscribe-first immutable reports are mock-tested.
+Pinned Squall stores/erases callbacks but shows no emission path; integration is
+registration/removal/lifecycle/no-delivery, not positive transition evidence.
+ABI 0.1: 169 exports; raw Rust/private Python only; 804 vendor blobs unchanged.
+No VADB, standalone LF/descriptor/DataPipe/TX/weights/RDMA/format expansion.
+See `task-034e2-rf-va-status-subscriptions.md`.
+
 Task 034E1 represents all six synchronous BaseVirtualAperture read/query methods
 in production C and safe Ada: getID, getStatus, getInstanceStatus, getAllInstances,
 getInstances and getInstanceStatusReport with complete nested LF status groups.
@@ -10,7 +24,7 @@ fresh state, returned/requested ID mismatch, exceptions/allocation rollback,
 parent-first calls and plain snapshot teardown. Squall configured query values
 are positive data evidence, not hardware health/dynamic transitions/callbacks.
 BaseVirtualAperture/VirtualAperture as a whole are not complete. Deferred:
-add/removeStatusCallback, VADB/unclaimed discovery, ElementGroupDescriptor/DataPipe,
+at that checkpoint add/removeStatusCallback, VADB/unclaimed discovery, ElementGroupDescriptor/DataPipe,
 standalone LocalFunction queries, weights/TX power calculations, broader
 JobRequest/conditional/TX work, RDMA and additional ProductRx formats. See
 `task-034e1-rf-va-status-queries.md` for validation evidence.

@@ -2886,6 +2886,64 @@ typedef struct ams_mel_rf_admin ams_mel_rf_admin;
 typedef struct ams_mel_rf_c2 ams_mel_rf_c2;
 typedef struct ams_mel_rf_virtual_aperture_request ams_mel_rf_virtual_aperture_request;
 typedef struct ams_mel_rf_virtual_aperture ams_mel_rf_virtual_aperture;
+/* Change notification, NOT a callback-time status snapshot. The provider's
+ * reference argument is ignored: no getter, address/identity inspection, or
+ * application callback. Register first, query E1 on the application thread,
+ * Wait, then query again. Queries do not clear pending; transitions coalesce
+ * and a successful Wait need not imply the next query differs.
+ * One registration attempt per public VA (a bridge profile, not an upstream
+ * restriction). Exact size_t keys including 0 and SIZE_MAX remain private.
+ * Each exposed attempt permanently retains the exact callable, fixed signal
+ * state and DSO pin, but no VA/C2/child claim. Removal does not prove quiescence;
+ * validity of the callback reference remains the provider's responsibility. */
+typedef struct ams_mel_rf_va_status_subscription ams_mel_rf_va_status_subscription;
+typedef struct ams_mel_rf_va_status_subscription_statistics_v1 {
+    uint64_t callback_entries;       /* All invocations, including after stop. */
+    uint64_t callbacks_coalesced;    /* Active invocations while already pending. */
+    uint64_t notifications_delivered; /* Successful Wait consumptions. */
+    uint64_t callbacks_after_stop;   /* Invocations counted and discarded after stop. */
+    uint32_t pending;               /* Consistent snapshot: exactly 0 or 1. */
+    uint32_t stopped;               /* Consistent snapshot: exactly 0 or 1. */
+} ams_mel_rf_va_status_subscription_statistics_v1;
+/* All counters saturate at UINT64_MAX; Boolean pending drives wakeup even then.
+ * Open/Unsubscribe must be serialized with all same-VA calls/Close. Wait and
+ * Statistics may overlap VA Close, but all subscription calls must be serialized
+ * with destruction of their own wrapper. No lock-free/hard-real-time guarantee.
+ * Open requires a null output and synthesizes no initial notification. Provider
+ * synchronous registration invocation is observable after successful Open.
+ * Stored-then-throw registration stops/retains the shell, publishes no owner,
+ * consumes the attempt, and does not invent a key. bad_alloc => INTERNAL_ERROR;
+ * other exceptions => PROVIDER_EXCEPTION. Mutations must never be auto-retried. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_status_subscription_open(
+    ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_status_subscription **out_subscription,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* 0 polls; finite wait with no pending => TIMEOUT. Active pending is consumed
+ * atomically => OK. Stop clears pending/wakes waiters and takes precedence =>
+ * STREAM_STOPPED. Invalid arguments consume nothing. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_status_subscription_wait(
+    ams_mel_rf_va_status_subscription *subscription, uint32_t timeout_ms,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Consistent copy, no consumption/provider call/allocation; unchanged on error. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_status_subscription_get_statistics(
+    const ams_mel_rf_va_status_subscription *subscription,
+    ams_mel_rf_va_status_subscription_statistics_v1 *out_statistics,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Matching live VA required; wrong-owner INVALID_ARGUMENT changes nothing.
+ * Stop before exact-key removal, once only; outcome/diagnostic cached even on
+ * exceptions. Wrapper remains open for Statistics; no Job cancel/finalize.
+ * Provider removal may synchronously invoke callbacks or block. No drain wait. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_status_subscription_unsubscribe(
+    ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_status_subscription *subscription,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Local stop/consume/null only; null-idempotent. NO provider removal. VA Close
+ * automatically removes a known key once even after local Close, destroys VA
+ * then releases its claim. Surviving observers remain stopped. VA Close reports
+ * deferred C2 shutdown failure first, otherwise cached/current removal failure,
+ * otherwise OK. Cleanup is not skipped; bounded diagnostics preserve both where
+ * possible. C2 Close alone does not stop a still-open VA subscription. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_status_subscription_close(
+    ams_mel_rf_va_status_subscription **subscription,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_request ams_mel_rf_job_request;
 /* All views and spans are borrowed only during Submit; the adapter copies
  * every string and UCI ID before calling the provider. A successful Submit

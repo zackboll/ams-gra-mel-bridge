@@ -1,5 +1,23 @@
 # Architecture decisions
 
+Task 034E2 attaches a private registration-control record to the existing VA
+owner, without a shared provider-owner graph refactor. The public subscription
+contains only fixed bridge signal state. Its unnamed BaseVirtualAperture& callback
+ignores the reference entirely (unlike D2's self-contained by-value payload),
+locks signal state, saturates counters, sets Boolean pending, and wakes waiters.
+It never queries/retains/compares provider objects or invokes Ada/application code.
+One registration attempt per public VA: every allocation and stable callable/DSO
+pin precedes exposure; exact-callable/state/DSO retention is then allocation-free
+and permanent. Native size_t key plus separate known flag supports 0/SIZE_MAX.
+Unsubscribe validates bridge state identity before stop, consumes removal before
+provider entry, and caches fixed diagnostics. Local Close calls no provider; VA
+Close stops/removes once before provider destruction and existing claim release.
+Shutdown failure wins over removal failure; failed C2 shutdown retention remains.
+Removal may block and is not callback quiescence. Subscription Wait/Statistics
+may overlap VA Close, never their own wrapper destruction. Stopped shells safely
+ignore valid-reference late calls, without preserving provider graphs or repairing
+provider-internal reference lifetime bugs. See `task-034e2-rf-va-status-subscriptions.md`.
+
 Task 034E1 reuses the existing claimed VA and its C2 child claim for six fresh
 synchronous BaseVirtualAperture queries. Same-owner external serialization with
 Close keeps the public owner alive; no C2/request mutex is held during provider
@@ -11,7 +29,7 @@ obtaining getLFStatus's by-value map locally. Final-sized nested backing precede
 span publication. Ada controlled temporaries close native owners after checked
 copy-out or exceptions. Separate live calls have no atomic consistency guarantee.
 This represents all six BaseVirtualAperture read/query methods, not the complete
-class or VirtualAperture; callbacks/VADB/standalone LF queries remain deferred.
+class or VirtualAperture; callbacks/VADB/standalone LF queries were deferred at that checkpoint.
 See `task-034e1-rf-va-status-queries.md`.
 
 Task 034D3 reuses interval_command with broad lifecycle admission for synchronous

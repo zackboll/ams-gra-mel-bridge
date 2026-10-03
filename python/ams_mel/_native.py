@@ -1670,7 +1670,46 @@ ams_mel_rf_job_add_rx_intervals_v2 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v2
 ams_mel_rf_job_add_rx_intervals_v2.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV2, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v2.restype = ctypes.c_int32
 
+class _RfVaSubscription(ctypes.Structure):
+    pass
+
+
+RfVaSubscriptionHandle = ctypes.POINTER(_RfVaSubscription)
+
+
+class RfVaSubscriptionStatisticsV1(ctypes.Structure):
+    _fields_ = [
+        ("callback_entries", ctypes.c_uint64),
+        ("callbacks_coalesced", ctypes.c_uint64),
+        ("notifications_delivered", ctypes.c_uint64),
+        ("callbacks_after_stop", ctypes.c_uint64),
+        ("pending", ctypes.c_uint32),
+        ("stopped", ctypes.c_uint32),
+    ]
+
+
+ams_mel_rf_va_status_subscription_open = _LIBRARY.ams_mel_rf_va_status_subscription_open
+ams_mel_rf_va_status_subscription_open.argtypes = [RfVaHandle, ctypes.POINTER(RfVaSubscriptionHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_status_subscription_open.restype = ctypes.c_int32
+ams_mel_rf_va_status_subscription_wait = _LIBRARY.ams_mel_rf_va_status_subscription_wait
+ams_mel_rf_va_status_subscription_wait.argtypes = [RfVaSubscriptionHandle, ctypes.c_uint32, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_status_subscription_wait.restype = ctypes.c_int32
+ams_mel_rf_va_status_subscription_get_statistics = _LIBRARY.ams_mel_rf_va_status_subscription_get_statistics
+ams_mel_rf_va_status_subscription_get_statistics.argtypes = [RfVaSubscriptionHandle, ctypes.POINTER(RfVaSubscriptionStatisticsV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_status_subscription_get_statistics.restype = ctypes.c_int32
+ams_mel_rf_va_status_subscription_unsubscribe = _LIBRARY.ams_mel_rf_va_status_subscription_unsubscribe
+ams_mel_rf_va_status_subscription_unsubscribe.argtypes = [RfVaHandle, RfVaSubscriptionHandle, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_status_subscription_unsubscribe.restype = ctypes.c_int32
+ams_mel_rf_va_status_subscription_close = _LIBRARY.ams_mel_rf_va_status_subscription_close
+ams_mel_rf_va_status_subscription_close.argtypes = [ctypes.POINTER(RfVaSubscriptionHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_status_subscription_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_va_status_subscription_open",
+    "ams_mel_rf_va_status_subscription_wait",
+    "ams_mel_rf_va_status_subscription_get_statistics",
+    "ams_mel_rf_va_status_subscription_unsubscribe",
+    "ams_mel_rf_va_status_subscription_close",
     "ams_mel_get_abi_version",
     "ams_mel_session_open",
     "ams_mel_session_open_with_options",

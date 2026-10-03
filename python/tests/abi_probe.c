@@ -983,6 +983,22 @@ int main(void)
         (void)list_view; (void)list_close; (void)report; (void)report_view; (void)report_close;
     }
     VALUE(ams_mel_get_abi_version(&version));
+    LAYOUT(ams_mel_rf_va_status_subscription *);
+    RECORD(ams_mel_rf_va_status_subscription_statistics_v1,
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,callback_entries);
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,callbacks_coalesced);
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,notifications_delivered);
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,callbacks_after_stop);
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,pending);
+        FIELD(ams_mel_rf_va_status_subscription_statistics_v1,stopped));
+    {
+        ams_mel_status_t (*open)(ams_mel_rf_virtual_aperture *, ams_mel_rf_va_status_subscription **, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_open;
+        ams_mel_status_t (*wait)(ams_mel_rf_va_status_subscription *, uint32_t, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_wait;
+        ams_mel_status_t (*statistics)(const ams_mel_rf_va_status_subscription *, ams_mel_rf_va_status_subscription_statistics_v1 *, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_get_statistics;
+        ams_mel_status_t (*unsubscribe)(ams_mel_rf_virtual_aperture *, ams_mel_rf_va_status_subscription *, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_unsubscribe;
+        ams_mel_status_t (*close)(ams_mel_rf_va_status_subscription **, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_close;
+        (void)open; (void)wait; (void)statistics; (void)unsubscribe; (void)close;
+    }
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);
     VALUE(AMS_MEL_ABI_VERSION_MINOR);
     VALUE(version.major);

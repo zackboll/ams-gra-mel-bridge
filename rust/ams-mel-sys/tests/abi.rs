@@ -5,6 +5,44 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn rf_va_notification_signatures_match_c() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
+        *mut *mut AmsMelRfVaStatusSubscription,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_status_subscription_open;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVaStatusSubscription,
+        u32,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_status_subscription_wait;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaStatusSubscription,
+        *mut AmsMelRfVaStatusSubscriptionStatisticsV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_status_subscription_get_statistics;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
+        *mut AmsMelRfVaStatusSubscription,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_status_subscription_unsubscribe;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaStatusSubscription,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_status_subscription_close;
+}
+#[test]
 fn rf_va_query_signatures_match_the_c_header() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
@@ -920,8 +958,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 164);
-    assert_eq!(exported.len(), 164);
+    assert_eq!(declared.len(), 169);
+    assert_eq!(exported.len(), 169);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2372,8 +2410,22 @@ fn declarations_match_the_c_header() {
     expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_INHIBITED as usize);
     expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_DELAYED_START as usize);
     expected.push(AMS_MEL_RF_LOG_TRIGGER_EVENT_TYPE_NOT_SUPPORTED as usize);
+    expected.push(AMS_MEL_OK as usize);
     expected.extend([
-        AMS_MEL_OK as usize,
+        size_of::<*mut AmsMelRfVaStatusSubscription>(),
+        align_of::<*mut AmsMelRfVaStatusSubscription>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfVaStatusSubscriptionStatisticsV1,
+        callback_entries,
+        callbacks_coalesced,
+        notifications_delivered,
+        callbacks_after_stop,
+        pending,
+        stopped
+    );
+    expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,
     ]);

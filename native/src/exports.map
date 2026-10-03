@@ -112,6 +112,11 @@ AMS_MEL_0.1 {
         ams_mel_rf_virtual_aperture_request_close;
         ams_mel_rf_virtual_aperture_view;
         ams_mel_rf_virtual_aperture_close;
+        ams_mel_rf_va_status_subscription_open;
+        ams_mel_rf_va_status_subscription_wait;
+        ams_mel_rf_va_status_subscription_get_statistics;
+        ams_mel_rf_va_status_subscription_unsubscribe;
+        ams_mel_rf_va_status_subscription_close;
         ams_mel_rf_virtual_aperture_get_id;
         ams_mel_rf_virtual_aperture_get_status;
         ams_mel_rf_virtual_aperture_get_instance_status;
