@@ -18,6 +18,7 @@
 #include <mutex>
 #include <new>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -249,6 +250,16 @@ struct ams_mel_rf_element_group_snapshot {
     std::vector<ElementGroupStorage> storage;
     std::vector<ams_mel_rf_element_group_descriptor_v1> records;
     ams_mel_rf_element_group_snapshot_v1 view{};
+};
+struct VaDataPipeGroupStorage {
+    std::string key;
+    std::vector<ElementGroupPipeStorage> pipes;
+    std::vector<ams_mel_rf_data_pipe_info_v1> records;
+};
+struct ams_mel_rf_va_data_pipe_connections_snapshot {
+    std::vector<VaDataPipeGroupStorage> storage;
+    std::vector<ams_mel_rf_va_data_pipe_group_v1> records;
+    ams_mel_rf_va_data_pipe_connections_snapshot_v1 view{};
 };
 
 namespace {
@@ -868,6 +879,166 @@ extern "C" ams_mel_status_t ams_mel_rf_va_status_subscription_unsubscribe(
     remove_va_callback(*va->va, *va->registration);
     write_diagnostic(va->registration->diagnostic.data(), diagnostic, capacity, required);
     return va->registration->removal_status;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_data_pipes(
+    const ams_mel_rf_virtual_aperture *va,
+    ams_mel_rf_va_data_pipe_connections_snapshot **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    auto invalid = [&]() noexcept {
+        write_diagnostic("invalid VA DataPipe connection key, label or null pipe", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    };
+    try {
+        const auto groups = va->va->getDataPipes();
+        using Entry = std::pair<const rfmel::ElementGroupLabel,
+            std::map<rfmel::DataPipeLabel, std::shared_ptr<rfmel::DataPipe>>>;
+        std::vector<const Entry *> ordered;
+        ordered.reserve(groups.size());
+        for (const auto& entry : groups) {
+            if (!valid_utf8(entry.first)) return invalid();
+            ordered.push_back(&entry);
+        }
+        std::sort(ordered.begin(), ordered.end(), [](const Entry *a, const Entry *b) {
+            return std::lexicographical_compare(a->first.begin(), a->first.end(),
+                b->first.begin(), b->first.end(), [](char x, char y) {
+                    return static_cast<unsigned char>(x) < static_cast<unsigned char>(y);
+                });
+        });
+        if (failpoint("connections-owner")) throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_va_data_pipe_connections_snapshot>();
+        owner->storage.resize(ordered.size());
+        owner->records.resize(ordered.size());
+        for (std::size_t i = 0; i < ordered.size(); ++i) {
+            if (i == 1 && failpoint("connections-group")) throw std::bad_alloc{};
+            const auto& entry = *ordered[i];
+            auto& storage = owner->storage[i];
+            storage.key = entry.first;
+            storage.pipes.resize(entry.second.size());
+            storage.records.resize(entry.second.size());
+            std::size_t j = 0;
+            for (const auto& [key, pipe] : entry.second) {
+                if (j == 1 && failpoint("connections-pipe")) throw std::bad_alloc{};
+                if (!valid_utf8(key) || !pipe) return invalid();
+                auto& target = storage.pipes[j++];
+                target.key = key;
+                target.label = pipe->getLabel();
+                if (!valid_utf8(target.label)) return invalid();
+                const auto endpoints = pipe->getAssociatedEndpoints();
+                if (failpoint("connections-endpoints")) throw std::bad_alloc{};
+                target.endpoints.assign(endpoints.begin(), endpoints.end());
+            }
+        }
+        // Every string/vector is final before publishing any pointer.
+        auto text = [](const std::string& value) noexcept -> ams_mel_string_view_v1 {
+            return {value.empty() ? nullptr : value.data(), value.size()};
+        };
+        for (std::size_t i = 0; i < owner->storage.size(); ++i) {
+            auto& storage = owner->storage[i];
+            for (std::size_t j = 0; j < storage.pipes.size(); ++j) {
+                const auto& pipe = storage.pipes[j];
+                storage.records[j] = {text(pipe.key), text(pipe.label),
+                    {pipe.endpoints.empty() ? nullptr : pipe.endpoints.data(), pipe.endpoints.size()}};
+            }
+            owner->records[i] = {text(storage.key),
+                {storage.records.empty() ? nullptr : storage.records.data(), storage.records.size()}};
+        }
+        owner->view = {{owner->records.empty() ? nullptr : owner->records.data(), owner->records.size()}};
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA connections snapshot exception",
+            "unknown VA connections snapshot exception", diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_data_pipe_connections_snapshot_view(
+    const ams_mel_rf_va_data_pipe_connections_snapshot *owner,
+    const ams_mel_rf_va_data_pipe_connections_snapshot_v1 **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    *output = &owner->view;
+    return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_data_pipe_connections_snapshot_close(
+    ams_mel_rf_va_data_pipe_connections_snapshot **owner, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*owner, nullptr);
+    return AMS_MEL_OK;
+}
+namespace {
+template<class Mutation>
+ams_mel_status_t mutate_data_pipe(ams_mel_rf_virtual_aperture *va,
+    const std::string& group_key, const std::string& pipe_key, std::uint32_t *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required, Mutation mutation)
+{
+    const auto groups = va->va->getDataPipes(); // Own value, never cached.
+    const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& entry) {
+        return entry.first == group_key;
+    }); // operator[] would INSERT a missing key; no upstream find() exists.
+    auto failure = [&](std::string_view message) {
+        write_diagnostic(message, diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    };
+    if (group == groups.end()) return failure("provider connection map contains no such ElementGroup lookup key");
+    const auto pipe = group->second.find(pipe_key);
+    if (pipe == group->second.end()) return failure("provider DataPipe lookup key not found in ElementGroup");
+    if (!pipe->second) return failure("provider DataPipe lookup target is null");
+    const bool accepted = mutation(*pipe->second);
+    *output = accepted ? 1U : 0U;
+    return AMS_MEL_OK;
+}
+bool valid_endpoint_span(ams_mel_u64_span_v1 span) noexcept
+{
+    if (!span_ok(span.size, span.data, sizeof(std::uint64_t))) return false;
+    if (!span.size) return true;
+    const auto address = reinterpret_cast<std::uintptr_t>(span.data);
+    return address % alignof(std::uint64_t) == 0 &&
+        address <= std::numeric_limits<std::uintptr_t>::max() - span.size * sizeof(std::uint64_t);
+}
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint(
+    ams_mel_rf_virtual_aperture *va, ams_mel_string_view_v1 group,
+    ams_mel_string_view_v1 pipe, std::uint64_t endpoint, std::uint32_t *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || bad_diag(diagnostic, capacity) ||
+        !valid_view(group) || !valid_view(pipe)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto group_key = copy_view(group), pipe_key = copy_view(pipe);
+        return mutate_data_pipe(va, group_key, pipe_key, output, diagnostic, capacity, required,
+            [endpoint](auto& target) { return target.associateEndpoint(endpoint); });
+    } catch (...) {
+        return translate_provider_exception("DataPipe association exception",
+            "unknown DataPipe association exception", diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints(
+    ams_mel_rf_virtual_aperture *va, ams_mel_string_view_v1 group,
+    ams_mel_string_view_v1 pipe, ams_mel_u64_span_v1 endpoints, std::uint32_t *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || bad_diag(diagnostic, capacity) ||
+        !valid_view(group) || !valid_view(pipe) || !valid_endpoint_span(endpoints)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto group_key = copy_view(group), pipe_key = copy_view(pipe);
+        std::set<rfmel::EndpointID> ids;
+        for (std::size_t i = 0; i < endpoints.size; ++i) ids.insert(endpoints.data[i]);
+        return mutate_data_pipe(va, group_key, pipe_key, output, diagnostic, capacity, required,
+            [&ids](auto& target) { return target.associateEndpoints(ids); });
+    } catch (...) {
+        return translate_provider_exception("DataPipe set association exception",
+            "unknown DataPipe set association exception", diagnostic, capacity, required);
+    }
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_element_groups(

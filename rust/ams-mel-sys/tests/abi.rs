@@ -5,6 +5,50 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn va_data_pipe_signatures_match_c() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut *mut AmsMelRfVaDataPipeConnectionsSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_data_pipes;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaDataPipeConnectionsSnapshot,
+        *mut *const AmsMelRfVaDataPipeConnectionsSnapshotV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_data_pipe_connections_snapshot_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaDataPipeConnectionsSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_data_pipe_connections_snapshot_close;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
+        AmsMelStringViewV1,
+        AmsMelStringViewV1,
+        u64,
+        *mut u32,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
+        AmsMelStringViewV1,
+        AmsMelStringViewV1,
+        AmsMelU64SpanV1,
+        *mut u32,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints;
+}
+#[test]
 fn element_group_signatures_match_c() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
@@ -983,8 +1027,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 180);
-    assert_eq!(exported.len(), 180);
+    assert_eq!(declared.len(), 185);
+    assert_eq!(exported.len(), 185);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2503,6 +2547,18 @@ fn declarations_match_the_c_header() {
         instance_count
     );
     layout!(expected, AmsMelRfVaLocalFunctionInfoSpanV1, data, size);
+    expected.extend([
+        size_of::<*mut AmsMelRfVaDataPipeConnectionsSnapshot>(),
+        align_of::<*mut AmsMelRfVaDataPipeConnectionsSnapshot>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfVaDataPipeGroupV1,
+        element_group_lookup_label,
+        data_pipes
+    );
+    layout!(expected, AmsMelRfVaDataPipeGroupSpanV1, data, size);
+    layout!(expected, AmsMelRfVaDataPipeConnectionsSnapshotV1, groups);
     expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,

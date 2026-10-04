@@ -1785,7 +1785,43 @@ ams_mel_rf_va_local_function_status_close = _LIBRARY.ams_mel_rf_va_local_functio
 ams_mel_rf_va_local_function_status_close.argtypes = [ctypes.POINTER(RfVaLocalFunctionStatusHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_va_local_function_status_close.restype = ctypes.c_int32
 
+RfVaDataPipeConnectionsSnapshotHandle = ctypes.c_void_p
+
+
+class RfVaDataPipeGroupV1(ctypes.Structure):
+    _fields_ = [("element_group_lookup_label", StringViewV1), ("data_pipes", RfDataPipeInfoSpanV1)]
+
+
+class RfVaDataPipeGroupSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfVaDataPipeGroupV1)), ("size", ctypes.c_size_t)]
+
+
+class RfVaDataPipeConnectionsSnapshotV1(ctypes.Structure):
+    _fields_ = [("groups", RfVaDataPipeGroupSpanV1)]
+
+
+ams_mel_rf_virtual_aperture_get_data_pipes = _LIBRARY.ams_mel_rf_virtual_aperture_get_data_pipes
+ams_mel_rf_virtual_aperture_get_data_pipes.argtypes = [RfVaHandle, ctypes.POINTER(RfVaDataPipeConnectionsSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_data_pipes.restype = ctypes.c_int32
+ams_mel_rf_va_data_pipe_connections_snapshot_view = _LIBRARY.ams_mel_rf_va_data_pipe_connections_snapshot_view
+ams_mel_rf_va_data_pipe_connections_snapshot_view.argtypes = [RfVaDataPipeConnectionsSnapshotHandle, ctypes.POINTER(ctypes.POINTER(RfVaDataPipeConnectionsSnapshotV1)), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_data_pipe_connections_snapshot_view.restype = ctypes.c_int32
+ams_mel_rf_va_data_pipe_connections_snapshot_close = _LIBRARY.ams_mel_rf_va_data_pipe_connections_snapshot_close
+ams_mel_rf_va_data_pipe_connections_snapshot_close.argtypes = [ctypes.POINTER(RfVaDataPipeConnectionsSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_data_pipe_connections_snapshot_close.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint = _LIBRARY.ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint.argtypes = [RfVaHandle, StringViewV1, StringViewV1, ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints = _LIBRARY.ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints.argtypes = [RfVaHandle, StringViewV1, StringViewV1, U64SpanV1, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_get_data_pipes",
+    "ams_mel_rf_va_data_pipe_connections_snapshot_view",
+    "ams_mel_rf_va_data_pipe_connections_snapshot_close",
+    "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint",
+    "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints",
     "ams_mel_rf_virtual_aperture_is_cached_waveform_supported",
     "ams_mel_rf_virtual_aperture_dynamic_weights_supported",
     "ams_mel_rf_virtual_aperture_get_local_functions",

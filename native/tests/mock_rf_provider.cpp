@@ -811,6 +811,74 @@ std::atomic<std::uint32_t> va_query_inputs[6]{};
 // descriptor pipes, pipe label, endpoints. Getter counts are per occurrence.
 std::atomic<unsigned> element_calls[10]{};
 std::atomic<unsigned> element_live{}, pipe_live{}, element_generation{};
+// E5 independent from every E3 descriptor/pipe counter.
+std::atomic<unsigned> connection_calls[5]{}, connection_live{}, connection_generation{};
+std::atomic<std::uint64_t> connection_single{}, connection_set[4]{};
+std::atomic<unsigned> connection_set_size{};
+bool connection_case(const char *value)
+{
+    const char *current = std::getenv("AMS_MEL_TEST_CONNECTION_CASE");
+    return current && std::strcmp(current, value) == 0;
+}
+void connection_call(unsigned method)
+{
+    ++connection_calls[method];
+    const char *target = std::getenv("AMS_MEL_TEST_CONNECTION_THROW_METHOD");
+    if (!target || std::strtoul(target, nullptr, 10) != method) return;
+    const char *kind = std::getenv("AMS_MEL_TEST_CONNECTION_THROW_KIND");
+    if (kind && std::strcmp(kind, "allocation") == 0) throw std::bad_alloc{};
+    if (kind && std::strcmp(kind, "unknown") == 0) throw 53;
+    throw std::runtime_error("mock VA DataPipe exception");
+}
+std::string connection_string(std::string value, const char *category)
+{
+    const char *bad = std::getenv("AMS_MEL_TEST_CONNECTION_BAD_STRING");
+    if (bad && std::strcmp(bad, category) == 0)
+        return connection_case("nul") ? std::string{"a\0b", 3} : std::string{"\xc0\xaf", 2};
+    return value;
+}
+class MockConnectionPipe final : public rfmel::DataPipe {
+public:
+    MockConnectionPipe(bool empty, unsigned generation) : empty_{empty}, generation_{generation}
+    {
+        ++connection_live;
+        if (!empty) endpoints_ = generation ? std::set<rfmel::EndpointID>{7, UINT64_MAX} :
+            std::set<rfmel::EndpointID>{0, UINT64_C(0x8000000000000000), UINT64_MAX};
+    }
+    ~MockConnectionPipe() override { --connection_live; record("rf_connection_pipe_destroyed"); }
+    bool operator==(const rfmel::DataPipe&) const override { forbidden("E5 equality"); }
+    bool operator==(const rfmel::DataPipe&&) const override { forbidden("E5 equality move"); }
+    const rfmel::DataPipeLabel getLabel() const override
+    {
+        connection_call(1);
+        return connection_string(generation_ ? "later-β" : empty_ ? "" :
+            connection_case("long") ? std::string(100, 'P') + "µ" : "returned-µ", "label");
+    }
+    std::set<rfmel::EndpointID> getAssociatedEndpoints() const override
+    { connection_call(2); return endpoints_; }
+    bool associateEndpoint(rfmel::EndpointID endpoint) override
+    {
+        connection_call(3);
+        connection_single.store(endpoint);
+        if (connection_case("false")) return false;
+        endpoints_.insert(endpoint);
+        return true;
+    }
+    bool associateEndpoints(const std::set<rfmel::EndpointID>& endpoints) override
+    {
+        connection_call(4);
+        connection_set_size.store(static_cast<unsigned>(endpoints.size()));
+        unsigned i = 0;
+        for (auto id : endpoints) { if (i < 4) connection_set[i].store(id); ++i; }
+        if (connection_case("false")) return false;
+        endpoints_.insert(endpoints.begin(), endpoints.end());
+        return true;
+    }
+private:
+    bool empty_;
+    unsigned generation_;
+    std::set<rfmel::EndpointID> endpoints_;
+};
 void element_get(unsigned method)
 {
     ++element_calls[method];
@@ -1382,7 +1450,32 @@ public:
     }
     std::vector<rfmel::ElementGroupLabel> getElementGroupLabels() const override
     { record("rf_va_get_labels"); return {"group/β", "", "0"}; }
-    rfmel::ElementGroupConnections getDataPipes() override { forbidden("VA::getDataPipes"); }
+    rfmel::ElementGroupConnections getDataPipes() override
+    {
+        std::unique_lock<std::mutex> status_lock;
+        if (notifications_) status_lock = std::unique_lock{notifications_->status_mutex};
+        connection_call(0);
+        rfmel::ElementGroupConnections result;
+        if (connection_case("empty")) return result;
+        const unsigned generation = connection_generation.load();
+        auto pipe = connection_case("persistent") ? persistent_pipe_ : nullptr;
+        if (!pipe) {
+            pipe = std::make_shared<MockConnectionPipe>(false, generation);
+            if (connection_case("persistent")) persistent_pipe_ = pipe;
+        }
+        if (connection_case("empty-groups")) {
+            result["µ-group"] = {}; result[""] = {}; result["rx/main"] = {};
+            return result;
+        }
+        // Noncanonical insertion. Aliases preserve both occurrences, no identity API.
+        result["µ-group"] = {};
+        result[connection_string(generation ? "later/group" : "", "outer")] = {
+            {connection_string(generation ? "later/pipe" : connection_case("long") ? std::string(90, 'K') : "a", "inner"),
+                connection_case("null") ? nullptr : pipe},
+            {"default", std::make_shared<MockConnectionPipe>(true, generation)}};
+        result["rx/main"] = {{"default", pipe}, {"z", std::make_shared<MockConnectionPipe>(true, generation)}};
+        return result;
+    }
     std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(
         std::shared_ptr<rfmel::ElementGroupDescriptor>) override
     { forbidden("VA::createElementGroupCommand(descriptor)"); }
@@ -1464,6 +1557,7 @@ private:
     bool fail_getter_{};
     std::string scenario_;
     std::shared_ptr<MockVaRegistration> notifications_;
+    std::shared_ptr<MockConnectionPipe> persistent_pipe_;
 };
 
 class MockC2MEL final : public rfmel::C2MEL {
@@ -1746,6 +1840,14 @@ extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_va_lf_in
 { return which == 0 ? va_lf_instance.load() : va_lf_type.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_calls(unsigned method)
 { return method < 10 ? element_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_connection_calls(unsigned method)
+{ return method < 5 ? connection_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_connection_live(void)
+{ return connection_live.load(); }
+extern "C" __attribute__((visibility("default"))) void mock_rf_connection_change(unsigned generation)
+{ connection_generation.store(generation); }
+extern "C" __attribute__((visibility("default"))) std::uint64_t mock_rf_connection_input(unsigned index)
+{ return index == 0 ? connection_single.load() : index < 5 ? connection_set[index-1].load() : connection_set_size.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_live(unsigned kind)
 { return kind ? pipe_live.load() : element_live.load(); }
 extern "C" __attribute__((visibility("default"))) void mock_rf_element_change(unsigned generation)
