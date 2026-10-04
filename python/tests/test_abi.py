@@ -12,6 +12,29 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_local_function_signatures(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        l = _native.RfVaLocalFunctionListHandle
+        s = _native.RfVaLocalFunctionStatusHandle
+        expected = {
+            "ams_mel_rf_virtual_aperture_is_cached_waveform_supported": [_native.RfVaHandle, ctypes.POINTER(ctypes.c_uint32)],
+            "ams_mel_rf_virtual_aperture_dynamic_weights_supported": [_native.RfVaHandle, ctypes.POINTER(ctypes.c_uint32)],
+            "ams_mel_rf_virtual_aperture_get_local_functions": [_native.RfVaHandle, ctypes.POINTER(l)],
+            "ams_mel_rf_va_local_function_list_view": [l, ctypes.POINTER(_native.RfVaLocalFunctionInfoSpanV1)],
+            "ams_mel_rf_va_local_function_list_close": [ctypes.POINTER(l)],
+            "ams_mel_rf_virtual_aperture_get_local_function_status": [_native.RfVaHandle, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(s)],
+            "ams_mel_rf_va_local_function_status_view": [s, ctypes.POINTER(_native.U32SpanV1)],
+            "ams_mel_rf_va_local_function_status_close": [ctypes.POINTER(s)],
+        }
+        import ams_mel
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertNotIn(name, ams_mel.__all__)
+        for name in ("RfVaLocalFunctionListHandle", "RfVaLocalFunctionStatusHandle",
+                     "RfVaLocalFunctionInfoV1", "RfVaLocalFunctionInfoSpanV1"):
+            self.assertNotIn(name, ams_mel.__all__)
     def test_private_element_group_signatures(self) -> None:
         diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         owner = _native.RfElementGroupSnapshotHandle
@@ -142,6 +165,14 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_rf_virtual_aperture_is_cached_waveform_supported",
+                "ams_mel_rf_virtual_aperture_dynamic_weights_supported",
+                "ams_mel_rf_virtual_aperture_get_local_functions",
+                "ams_mel_rf_va_local_function_list_view",
+                "ams_mel_rf_va_local_function_list_close",
+                "ams_mel_rf_virtual_aperture_get_local_function_status",
+                "ams_mel_rf_va_local_function_status_view",
+                "ams_mel_rf_va_local_function_status_close",
                 "ams_mel_rf_virtual_aperture_get_element_groups",
                 "ams_mel_rf_element_group_snapshot_view",
                 "ams_mel_rf_element_group_snapshot_close",
@@ -317,8 +348,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 172)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 172)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 180)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 180)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -326,7 +357,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 172)
+        self.assertEqual(len(exported), 180)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1472,6 +1503,10 @@ class AbiTests(unittest.TestCase):
                 *self._layout(_native.RfElementGroupDescriptorV1, 'lookup_label', 'label', 'mode', 'max_rf_bandwidth_hz', 'max_sample_rate_samples_per_second', 'max_data_rate_bits_per_second', 'max_duty_factor', 'data_pipes'),
                 *self._layout(_native.RfElementGroupDescriptorSpanV1, 'data', 'size'),
                 *self._layout(_native.RfElementGroupSnapshotV1, 'data_pipes_included', 'descriptors'),
+                ctypes.sizeof(_native.RfVaLocalFunctionListHandle), ctypes.alignment(_native.RfVaLocalFunctionListHandle),
+                ctypes.sizeof(_native.RfVaLocalFunctionStatusHandle), ctypes.alignment(_native.RfVaLocalFunctionStatusHandle),
+                *self._layout(_native.RfVaLocalFunctionInfoV1, 'local_function_type_id', 'instance_count'),
+                *self._layout(_native.RfVaLocalFunctionInfoSpanV1, 'data', 'size'),
                 _native.AMS_MEL_ABI_VERSION_MAJOR,
                 _native.AMS_MEL_ABI_VERSION_MINOR,
                 _native.AMS_MEL_ABI_VERSION_MAJOR,

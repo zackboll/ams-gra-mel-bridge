@@ -983,8 +983,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 172);
-    assert_eq!(exported.len(), 172);
+    assert_eq!(declared.len(), 180);
+    assert_eq!(exported.len(), 180);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2491,6 +2491,19 @@ fn declarations_match_the_c_header() {
         descriptors
     );
     expected.extend([
+        size_of::<*mut AmsMelRfVaLocalFunctionList>(),
+        align_of::<*mut AmsMelRfVaLocalFunctionList>(),
+        size_of::<*mut AmsMelRfVaLocalFunctionStatus>(),
+        align_of::<*mut AmsMelRfVaLocalFunctionStatus>(),
+    ]);
+    layout!(
+        expected,
+        AmsMelRfVaLocalFunctionInfoV1,
+        local_function_type_id,
+        instance_count
+    );
+    layout!(expected, AmsMelRfVaLocalFunctionInfoSpanV1, data, size);
+    expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,
     ]);
@@ -2528,6 +2541,61 @@ fn physical_data_signatures() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_physical_data_close;
+}
+
+#[test]
+fn local_function_signatures() {
+    type BooleanQuery = unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut u32,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus;
+    let _: BooleanQuery = ams_mel_rf_virtual_aperture_is_cached_waveform_supported;
+    let _: BooleanQuery = ams_mel_rf_virtual_aperture_dynamic_weights_supported;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *mut *mut AmsMelRfVaLocalFunctionList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_local_functions;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaLocalFunctionList,
+        *mut AmsMelRfVaLocalFunctionInfoSpanV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_local_function_list_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaLocalFunctionList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_local_function_list_close;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u32,
+        u32,
+        *mut *mut AmsMelRfVaLocalFunctionStatus,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_local_function_status;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVaLocalFunctionStatus,
+        *mut AmsMelU32SpanV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_local_function_status_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfVaLocalFunctionStatus,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_va_local_function_status_close;
 }
 
 #[test]

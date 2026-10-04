@@ -222,6 +222,12 @@ struct ams_mel_rf_virtual_aperture {
 struct ams_mel_rf_va_instance_list {
     std::vector<std::uint32_t> ids;
 };
+struct ams_mel_rf_va_local_function_list {
+    std::vector<ams_mel_rf_va_local_function_info_v1> entries;
+};
+struct ams_mel_rf_va_local_function_status {
+    std::vector<std::uint32_t> statuses;
+};
 struct ams_mel_rf_va_instance_status_report {
     std::vector<std::vector<std::uint32_t>> statuses;
     std::vector<ams_mel_rf_va_local_function_status_v1> groups;
@@ -246,6 +252,9 @@ struct ams_mel_rf_element_group_snapshot {
 };
 
 namespace {
+static_assert(std::numeric_limits<std::size_t>::digits <=
+              std::numeric_limits<std::uint64_t>::digits,
+              "Local Function size_t counts must fit uint64_t without truncation");
 static_assert(static_cast<unsigned>(rfmel::Mode::RX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_RX);
 static_assert(static_cast<unsigned>(rfmel::Mode::TX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_TX);
 static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::None) == AMS_MEL_RF_VA_STATUS_NONE);
@@ -343,6 +352,121 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_instances(
 {
     return query_va_list(va, output, diagnostic, capacity, required,
                         [face](const auto& provider) { return provider.getInstances(face); });
+}
+namespace {
+template<class Query>
+ams_mel_status_t query_va_boolean(const ams_mel_rf_virtual_aperture *va,
+    std::uint32_t *output, char *diagnostic, std::size_t capacity,
+    std::size_t *required, Query query) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const bool value = query(*va->va);
+        *output = value ? 1U : 0U;
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA capability exception", "unknown VA capability exception",
+                                            diagnostic, capacity, required);
+    }
+}
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_is_cached_waveform_supported(
+    const ams_mel_rf_virtual_aperture *va, std::uint32_t *output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return query_va_boolean(va, output, diagnostic, capacity, required,
+        [](const auto& provider) { return provider.isCachedWaveformSupported(); });
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_dynamic_weights_supported(
+    const ams_mel_rf_virtual_aperture *va, std::uint32_t *output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return query_va_boolean(va, output, diagnostic, capacity, required,
+        [](const auto& provider) { return provider.dynamicWeightsSupported(); });
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_local_functions(
+    const ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_local_function_list **output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto value = va->va->getLocalFunctions();
+        if (failpoint("lf-list-owner")) throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_va_local_function_list>();
+        owner->entries.reserve(value.size());
+        for (const auto& [id, count] : value) {
+            if (owner->entries.size() == 1 && failpoint("lf-list-copy")) throw std::bad_alloc{};
+            owner->entries.push_back({id, static_cast<std::uint64_t>(count)});
+        }
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA LF catalog exception", "unknown VA LF catalog exception",
+                                            diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_local_function_status(
+    const ams_mel_rf_virtual_aperture *va, std::uint32_t instance, std::uint32_t type,
+    ams_mel_rf_va_local_function_status **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        const auto value = va->va->getLocalFunctionStatus(instance, type);
+        if (failpoint("lf-status-owner")) throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_va_local_function_status>();
+        owner->statuses.reserve(value.size());
+        for (const auto status : value) {
+            std::uint32_t decoded{};
+            if (!decode_va_status(status, decoded)) return unknown_va_status(diagnostic, capacity, required);
+            if (owner->statuses.size() == 1 && failpoint("lf-status-copy")) throw std::bad_alloc{};
+            owner->statuses.push_back(decoded);
+        }
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA LF status exception", "unknown VA LF status exception",
+                                            diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_local_function_list_view(
+    const ams_mel_rf_va_local_function_list *owner, ams_mel_rf_va_local_function_info_span_v1 *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || !output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    *output = {owner->entries.empty() ? nullptr : owner->entries.data(), owner->entries.size()};
+    return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_local_function_status_view(
+    const ams_mel_rf_va_local_function_status *owner, ams_mel_u32_span_v1 *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || !output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    *output = {owner->statuses.empty() ? nullptr : owner->statuses.data(), owner->statuses.size()};
+    return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_local_function_list_close(
+    ams_mel_rf_va_local_function_list **owner, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*owner, nullptr);
+    return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_va_local_function_status_close(
+    ams_mel_rf_va_local_function_status **owner, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*owner, nullptr);
+    return AMS_MEL_OK;
 }
 extern "C" ams_mel_status_t ams_mel_rf_va_instance_list_view(
     const ams_mel_rf_va_instance_list *owner, ams_mel_u32_span_v1 *output,

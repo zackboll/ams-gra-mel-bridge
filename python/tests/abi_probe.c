@@ -1,4 +1,5 @@
 #include <ams_mel/abi.h>
+#include "../../native/tests/rf_local_functions_abi_probe.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -9,6 +10,7 @@
 
 int main(void)
 {
+    check_rf_local_function_signatures();
     ams_mel_abi_version_v1 version = {0, 0};
     ams_mel_status_t (*get_abi_version)(ams_mel_abi_version_v1 *) = ams_mel_get_abi_version;
     ams_mel_status_t (*session_open)(const char *, const char *, const char *,
@@ -1032,6 +1034,14 @@ int main(void)
         ams_mel_status_t (*close)(ams_mel_rf_element_group_snapshot **, char *, size_t, size_t *) = ams_mel_rf_element_group_snapshot_close;
         (void)create; (void)view; (void)close;
     }
+    LAYOUT(ams_mel_rf_va_local_function_list *);
+    LAYOUT(ams_mel_rf_va_local_function_status *);
+    LAYOUT(ams_mel_rf_va_local_function_info_v1);
+    FIELD(ams_mel_rf_va_local_function_info_v1,local_function_type_id);
+    FIELD(ams_mel_rf_va_local_function_info_v1,instance_count);
+    LAYOUT(ams_mel_rf_va_local_function_info_span_v1);
+    FIELD(ams_mel_rf_va_local_function_info_span_v1,data);
+    FIELD(ams_mel_rf_va_local_function_info_span_v1,size);
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);
     VALUE(AMS_MEL_ABI_VERSION_MINOR);
     VALUE(version.major);

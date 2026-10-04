@@ -1,6 +1,86 @@
 //! Raw declarations for all current `ams_mel_c` ABI exports.
 
 use std::ffi::{c_char, c_void};
+#[repr(C)]
+pub struct AmsMelRfVaLocalFunctionList {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+pub struct AmsMelRfVaLocalFunctionStatus {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfVaLocalFunctionInfoV1 {
+    pub local_function_type_id: u32,
+    pub instance_count: u64,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfVaLocalFunctionInfoSpanV1 {
+    pub data: *const AmsMelRfVaLocalFunctionInfoV1,
+    pub size: usize,
+}
+unsafe extern "C" {
+    pub fn ams_mel_rf_virtual_aperture_is_cached_waveform_supported(
+        va: *const AmsMelRfVa,
+        output: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_dynamic_weights_supported(
+        va: *const AmsMelRfVa,
+        output: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_get_local_functions(
+        va: *const AmsMelRfVa,
+        output: *mut *mut AmsMelRfVaLocalFunctionList,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_local_function_list_view(
+        owner: *const AmsMelRfVaLocalFunctionList,
+        output: *mut AmsMelRfVaLocalFunctionInfoSpanV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_local_function_list_close(
+        owner: *mut *mut AmsMelRfVaLocalFunctionList,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_get_local_function_status(
+        va: *const AmsMelRfVa,
+        instance: u32,
+        type_id: u32,
+        output: *mut *mut AmsMelRfVaLocalFunctionStatus,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_local_function_status_view(
+        owner: *const AmsMelRfVaLocalFunctionStatus,
+        output: *mut AmsMelU32SpanV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_local_function_status_close(
+        owner: *mut *mut AmsMelRfVaLocalFunctionStatus,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
 
 #[repr(C)]
 pub struct AmsMelRfElementGroupSnapshot {

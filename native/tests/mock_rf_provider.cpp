@@ -804,6 +804,8 @@ std::mutex va_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::VirtualAperture>>>>> va_pending;
 std::atomic<unsigned> va_get_calls{};
 std::atomic<unsigned> va_query_calls[6]{};
+std::atomic<unsigned> va_lf_calls[4]{}, va_lf_generation{};
+std::atomic<std::uint32_t> va_lf_instance{}, va_lf_type{};
 std::atomic<std::uint32_t> va_query_inputs[6]{};
 // E3 method indices: top, label, mode, bandwidth, sample, data, duty,
 // descriptor pipes, pipe label, endpoints. Getter counts are per occurrence.
@@ -1392,10 +1394,12 @@ public:
         return std::make_shared<MockRxCommand>(std::move(label), scenario_ == "c2:job-command-tx",
                                                scenario_ == "c2:job-setter-throw");
     }
-    bool isCachedWaveformSupported() const override { forbidden("VA::isCachedWaveformSupported"); }
+    bool isCachedWaveformSupported() const override
+    { lf_query(0); return va_lf_generation.load() == 0; }
     std::shared_ptr<rfmel::Weights> getStaticWeights(const std::string&) const override
     { forbidden("VA::getStaticWeights"); }
-    bool dynamicWeightsSupported() const override { forbidden("VA::dynamicWeightsSupported"); }
+    bool dynamicWeightsSupported() const override
+    { lf_query(1); return va_lf_generation.load() != 0; }
     std::shared_ptr<rfmel::Weights> createWeights(const std::string&, rfmel::WeightType) override
     { forbidden("VA::createWeights"); }
     bool isSingleGroup() const override { record("rf_va_is_single"); return true; }
@@ -1411,11 +1415,37 @@ public:
     double getMaxTxAttenuation(std::size_t, rfmel::TxPowerModeID, rfmel::VirtualApertureInstanceID) const override
     { forbidden("VA::getMaxTxAttenuation"); }
     std::map<rfmel::LocalFunctionTypeID, std::size_t> getLocalFunctions() const override
-    { forbidden("VA::getLocalFunctions"); }
+    {
+        lf_query(2);
+        if (va_lf_generation.load() == 2) return {};
+        if (va_lf_generation.load() == 1) return {{42, 4}};
+        if (va_lf_generation.load() == 3) return {{7, SIZE_MAX}};
+        return {{UINT32_MAX, 0}, {7, 3}, {0x80000001U, 1}, {0, 2}};
+    }
     std::vector<rfmel::VirtualApertureStatus> getLocalFunctionStatus(
-        rfmel::VirtualApertureInstanceID, rfmel::LocalFunctionTypeID) const override
-    { forbidden("VA::getLocalFunctionStatus"); }
+        rfmel::VirtualApertureInstanceID instance, rfmel::LocalFunctionTypeID type) const override
+    {
+        va_lf_instance.store(instance); va_lf_type.store(type);
+        lf_query(3);
+        using S = rfmel::VirtualApertureStatus;
+        if (std::getenv("AMS_MEL_TEST_LF_UNKNOWN_STATUS"))
+            return {S::Operational, S::None, static_cast<S>(99), S::Failed};
+        if (va_lf_generation.load() == 2) return {};
+        if (va_lf_generation.load() == 1) return {S::Degraded, S::None, S::Degraded};
+        return {S::Failed, S::None, S::Operational, S::Degraded, S::Failed};
+    }
 private:
+    void lf_query(unsigned method) const
+    {
+        ++va_lf_calls[method];
+        std::unique_lock<std::mutex> status_lock;
+        if (notifications_) status_lock = std::unique_lock{notifications_->status_mutex};
+        const char *failure = std::getenv("AMS_MEL_TEST_LF_EXCEPTION");
+        if (!failure) return;
+        if (std::strcmp(failure, "allocation") == 0) throw std::bad_alloc{};
+        if (std::strcmp(failure, "unknown") == 0) throw 23;
+        throw std::runtime_error("mock LF live query exception");
+    }
     void query(unsigned method, std::uint32_t input = 0) const
     {
         va_query_calls[method].fetch_add(1U);
@@ -1602,7 +1632,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration == "c2:factory-throw") throw FactoryFailure{};
     if (configuration == "c2:factory-throw-unknown") throw 5;
     if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
-        configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
+        configuration != "c2:va-lf" && configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
         !configuration.starts_with("c2:va-notify-") &&
         !configuration.starts_with("c2:element-") &&
         configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
@@ -1708,6 +1738,12 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_release_o
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_query_calls(unsigned method)
 { return method < 6 ? va_query_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_lf_calls(unsigned method)
+{ return method < 4 ? va_lf_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) void mock_rf_va_lf_change(unsigned generation)
+{ va_lf_generation.store(generation); }
+extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_va_lf_input(unsigned which)
+{ return which == 0 ? va_lf_instance.load() : va_lf_type.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_calls(unsigned method)
 { return method < 10 ? element_calls[method].load() : 0; }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_live(unsigned kind)
