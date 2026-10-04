@@ -1084,17 +1084,16 @@ void check_job_defaults(const rfmel::JobRequest& request, bool v1)
     const auto *context = std::any_cast<std::nullptr_t>(&request.getCallbackContext());
     const rfmel::JobRequest defaults;
     const auto& point = request.getEstimatedStabPoint();
-    // Pinned default is ECEF with zero location/velocity/time, not a bridge value.
+    // Pinned default is ECEF. Boost c_vector's default constructor leaves its
+    // component storage uninitialized: do NOT read those indeterminate doubles.
     if (request.getSendNextJIBatchCallback() || request.getNumJIBs() != 0 ||
         request.getRequestRejectedCallback() || !context || *context != nullptr ||
         point.index() != defaults.getEstimatedStabPoint().index())
         throw std::runtime_error("Job deferred defaults changed");
     const auto& ecef = std::get<rfmel::ECEFPointing>(point);
     const auto& zero = std::get<rfmel::ECEFPointing>(defaults.getEstimatedStabPoint());
-    for (unsigned i = 0; i < 3; ++i)
-        if (ecef.getLocation()[i] != zero.getLocation()[i] || ecef.getVelocity()[i] != zero.getVelocity()[i])
-            throw std::runtime_error("Job default pointing components changed");
-    if (!(ecef.getTimeOfValidity() == zero.getTimeOfValidity()))
+    if (ecef.getLocation().size() != 3 || ecef.getVelocity().size() != 3 ||
+        !(ecef.getTimeOfValidity() == zero.getTimeOfValidity()))
         throw std::runtime_error("Job default pointing changed");
     if (v1 && (!(request.getMinStartTime() == defaults.getMinStartTime()) ||
                !(request.getMaxCompleteTime() == defaults.getMaxCompleteTime())))

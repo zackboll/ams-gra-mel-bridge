@@ -83,7 +83,10 @@ future/parent graph permanently in isolated processes, as before.
 
 The mock directly inspects all scoped request getters. Deferred defaults remain
 null NextJIB/rejection callbacks, zero numJIBs, std::any holding nullptr context,
-and the pinned default ECEF pointing variant with zero location/velocity/time.
+and the pinned default ECEF pointing variant, three-component vector dimensions
+and zero UTC time. No numeric location/velocity default is promised: pinned
+Boost c_vector's default constructor leaves component storage uninitialized.
+Tests must not read those indeterminate doubles; production never sets pointing.
 RX command pointing vectors remain empty and setters for pointing/TX are forbidden.
 Direct v1 additionally checks zero min/max time, duration/lookahead and [0]
 capability/activity/power modes, alongside original one-group fidelity.
@@ -190,4 +193,16 @@ reported zero scheduling fields even though nondefault values were submitted:
 this matches the documented non-interpretation limit, not a fidelity claim.
 
 Final publication and hosted results are recorded in the PR and final report.
+
+## Hosted Release corrective
+
+Initial head 650ed11's push/PR GCC Release jobs exposed an invalid new mock
+assertion that read default ECEF location/velocity doubles. Actual pinned
+Boost vector.hpp:2448..2449 initializes size only, not data_. The assertion and
+documentation were corrected to defined default state (ECEF variant, dimensions,
+UTC), retaining forbidden pointing setter checks. No provider default is locally
+initialized, no vendor file is changed, and no pointing support is added. This
+is a test undefined-read correction, not a weakening of any published numeric
+contract. Initial hosted logs are preserved. A normal corrective commit follows
+the original three commits and the new head is revalidated.
 
