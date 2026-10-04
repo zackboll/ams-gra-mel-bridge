@@ -2443,15 +2443,15 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_close";
    --  Task 034E1 private raw live-query ABI. Public values copy out all storage.
-   RF_VA_Status_None                 : constant Interfaces.Unsigned_32 := 0;
-   RF_VA_Status_Operational          : constant Interfaces.Unsigned_32 := 1;
-   RF_VA_Status_Degraded             : constant Interfaces.Unsigned_32 := 2;
-   RF_VA_Status_Failed               : constant Interfaces.Unsigned_32 := 3;
+   RF_VA_Status_None                         : constant Interfaces.Unsigned_32 := 0;
+   RF_VA_Status_Operational                  : constant Interfaces.Unsigned_32 := 1;
+   RF_VA_Status_Degraded                     : constant Interfaces.Unsigned_32 := 2;
+   RF_VA_Status_Failed                       : constant Interfaces.Unsigned_32 := 3;
    type RF_VA_Instance_List_Handle is new System.Address;
-   Null_RF_VA_Instance_List          : constant RF_VA_Instance_List_Handle :=
+   Null_RF_VA_Instance_List                  : constant RF_VA_Instance_List_Handle :=
      RF_VA_Instance_List_Handle (System.Null_Address);
    type RF_VA_Instance_Status_Report_Handle is new System.Address;
-   Null_RF_VA_Instance_Status_Report : constant RF_VA_Instance_Status_Report_Handle :=
+   Null_RF_VA_Instance_Status_Report         : constant RF_VA_Instance_Status_Report_Handle :=
      RF_VA_Instance_Status_Report_Handle (System.Null_Address);
    type RF_VA_Local_Function_Status_V1 is record
       Local_Function_Type_ID : Interfaces.Unsigned_32;
@@ -2491,10 +2491,10 @@ private package AMS.MEL_C_API is
      Convention    => C,
      External_Name => "ams_mel_rf_virtual_aperture_dynamic_weights_supported";
    type RF_VA_LF_List_Handle is new System.Address;
-   Null_RF_VA_LF_List                : constant RF_VA_LF_List_Handle :=
+   Null_RF_VA_LF_List                        : constant RF_VA_LF_List_Handle :=
      RF_VA_LF_List_Handle (System.Null_Address);
    type RF_VA_LF_Status_Handle is new System.Address;
-   Null_RF_VA_LF_Status              : constant RF_VA_LF_Status_Handle :=
+   Null_RF_VA_LF_Status                      : constant RF_VA_LF_Status_Handle :=
      RF_VA_LF_Status_Handle (System.Null_Address);
    type RF_VA_Local_Function_Info_V1 is record
       Local_Function_Type_ID : Interfaces.Unsigned_32;
@@ -2614,7 +2614,7 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_status_report_close";
    type RF_VA_Subscription_Handle is new System.Address;
-   Null_RF_VA_Subscription           : constant RF_VA_Subscription_Handle :=
+   Null_RF_VA_Subscription                   : constant RF_VA_Subscription_Handle :=
      RF_VA_Subscription_Handle (System.Null_Address);
    type RF_VA_Subscription_Statistics_V1 is record
       Callback_Entries, Callbacks_Coalesced, Notifications_Delivered, Callbacks_After_Stop :
@@ -2661,11 +2661,11 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_close";
    type RF_Element_Group_Snapshot_Handle is new System.Address;
-   Null_RF_Element_Group_Snapshot    : constant RF_Element_Group_Snapshot_Handle :=
+   Null_RF_Element_Group_Snapshot            : constant RF_Element_Group_Snapshot_Handle :=
      RF_Element_Group_Snapshot_Handle (System.Null_Address);
    subtype RF_Element_Group_Mode is Interfaces.Unsigned_32;
-   RF_Element_Group_Mode_RX          : constant RF_Element_Group_Mode := 0;
-   RF_Element_Group_Mode_TX          : constant RF_Element_Group_Mode := 1;
+   RF_Element_Group_Mode_RX                  : constant RF_Element_Group_Mode := 0;
+   RF_Element_Group_Mode_TX                  : constant RF_Element_Group_Mode := 1;
    type RF_Element_Group_Snapshot_Options_V1 is record
       Include_Data_Pipes : Interfaces.Unsigned_32;
    end record
@@ -2713,4 +2713,75 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_element_group_snapshot_close";
+   type RF_VA_Data_Pipe_Connections_Snapshot_Handle is new System.Address;
+   Null_RF_VA_Data_Pipe_Connections_Snapshot :
+     constant RF_VA_Data_Pipe_Connections_Snapshot_Handle :=
+       RF_VA_Data_Pipe_Connections_Snapshot_Handle (System.Null_Address);
+   type RF_VA_Data_Pipe_Group_V1 is record
+      Element_Group_Lookup_Label : String_View_V1;
+      Data_Pipes                 : RF_Data_Pipe_Info_Span_V1;
+   end record
+   with Convention => C;
+   subtype RF_VA_Data_Pipe_Group_Span_V1 is Span_V1;
+   type RF_VA_Data_Pipe_Connections_Snapshot_V1 is record
+      Groups : RF_VA_Data_Pipe_Group_Span_V1;
+   end record
+   with Convention => C;
+   function RF_VA_Get_Data_Pipes
+     (VA                  : RF_VA_Handle;
+      Output              : access RF_VA_Data_Pipe_Connections_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_data_pipes";
+   function RF_VA_Data_Pipe_Connections_Snapshot_View
+     (Object              : RF_VA_Data_Pipe_Connections_Snapshot_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_va_data_pipe_connections_snapshot_view";
+   function RF_VA_Data_Pipe_Connections_Snapshot_Close
+     (Object              : access RF_VA_Data_Pipe_Connections_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_va_data_pipe_connections_snapshot_close";
+   --  Existing view/span records are used through pointers elsewhere. These
+   --  private derived representations supply C by-value parameter convention
+   --  without changing their frozen records or introducing public Ada C types.
+   type String_View_By_Copy_V1 is new String_View_V1 with Convention => C_Pass_By_Copy;
+   type U64_Span_By_Copy_V1 is new U64_Span_V1 with Convention => C_Pass_By_Copy;
+   function RF_VA_Associate_Data_Pipe_Endpoint
+     (VA                                                 : RF_VA_Handle;
+      Element_Group_Lookup_Label, Data_Pipe_Lookup_Label : String_View_By_Copy_V1;
+      Endpoint_ID                                        : Interfaces.Unsigned_64;
+      Accepted                                           : access Interfaces.Unsigned_32;
+      Diagnostic                                         : System.Address;
+      Diagnostic_Capacity                                : Size_T;
+      Diagnostic_Required                                : access Size_T)
+      return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint";
+   function RF_VA_Associate_Data_Pipe_Endpoints
+     (VA                                                 : RF_VA_Handle;
+      Element_Group_Lookup_Label, Data_Pipe_Lookup_Label : String_View_By_Copy_V1;
+      Endpoint_IDs                                       : U64_Span_By_Copy_V1;
+      Accepted                                           : access Interfaces.Unsigned_32;
+      Diagnostic                                         : System.Address;
+      Diagnostic_Capacity                                : Size_T;
+      Diagnostic_Required                                : access Size_T)
+      return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints";
 end AMS.MEL_C_API;
