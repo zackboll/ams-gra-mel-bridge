@@ -206,3 +206,11 @@ is a test undefined-read correction, not a weakening of any published numeric
 contract. Initial hosted logs are preserved. A normal corrective commit follows
 the original three commits and the new head is revalidated.
 
+Initial-head Clang Debug parallel repetition also exposed a test observation
+race: release_one's transient dlopen/dlclose could allow completed cleanup to
+unload the mock before the next wait dlopen, resetting the mock's counters.
+F1's delayed fixture now holds a test-only DSO observation pin across baseline,
+release and wait, then closes it after ordered teardown evidence. No production
+owner/claim/worker/retention path changed; timeout and assertions remain unchanged.
+The earlier v1 timeout is not claimed fixed; its source remains untouched.
+

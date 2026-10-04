@@ -254,6 +254,10 @@ int main(int argc, char **argv)
     // Delayed request: timeout, parent-first claim and non-cancelling abandonment.
     for(unsigned abandon=0;abandon<2;++abandon) {
         reset(); open_va(&c2,&va); CHECK(setenv("AMS_MEL_TEST_F1_CASE","delayed",1)==0);
+        // Keep the test observation DSO loaded across baseline/release/wait.
+        // Otherwise cleanup may unload it between calls, resetting its counters
+        // before the next dlopen and making a completed shutdown look absent.
+        void *observation=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL); CHECK(observation);
         unsigned shutdown_before=mock("mock_rf_job_shutdown_count");
         ams_mel_rf_job_request *r=NULL; ams_mel_rf_job *job=NULL; ams_mel_rf_job_result_v1 result={0};
         CHECK(ams_mel_rf_virtual_aperture_submit_job_v2(va,&config,&r,D)==AMS_MEL_OK);
@@ -268,12 +272,12 @@ int main(int argc, char **argv)
             CHECK(ams_mel_rf_job_close(&job,D)==AMS_MEL_OK);
         } else {
             // Existing deterministic cleanup barrier, not a timing sleep.
-            void *lib=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL); CHECK(lib);
-            unsigned (*wait_shutdown)(unsigned); *(void **)(&wait_shutdown)=dlsym(lib,"mock_rf_job_wait_shutdown_after"); CHECK(wait_shutdown);
-            CHECK(wait_shutdown(shutdown_before)>0); CHECK(dlclose(lib)==0);
+            unsigned (*wait_shutdown)(unsigned); *(void **)(&wait_shutdown)=dlsym(observation,"mock_rf_job_wait_shutdown_after"); CHECK(wait_shutdown);
+            CHECK(wait_shutdown(shutdown_before)>0);
         }
         const char *s=logfile(), *commands=strstr(s,"rf_job_command_destroyed\n"), *destroyed=strstr(s,"rf_va_destroyed\n"), *shutdown=strstr(s,"rf_c2_shutdown\n");
         CHECK(commands && destroyed && shutdown && commands<destroyed && destroyed<shutdown);
+        CHECK(dlclose(observation)==0);
         CHECK(unsetenv("AMS_MEL_TEST_F1_CASE")==0);
     }
     retention(argv[0]); CHECK(unlink(log_path)==0);
