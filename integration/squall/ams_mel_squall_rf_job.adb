@@ -52,6 +52,26 @@ procedure AMS_MEL_Squall_RF_Job is
          & " lookahead"
          & Lookahead'Image);
    end Verify;
+   function Job_Config (ID : Interfaces.Unsigned_32) return C2.Job_Config is
+      First : C2.RX_Element_Group_Config := C2.Create_RX_Element_Group ("0", 0.625);
+      Second : C2.RX_Element_Group_Config := C2.Create_RX_Element_Group ("0", 0.5);
+   begin
+      --  Pinned rf_environment advertises only its active 915 MHz point range.
+      C2.Append_Expected_Center_Frequency (First, 915_000_000.0, 915_000_000.0);
+      C2.Append_Expected_Center_Frequency (Second, 915_000_000.0, 915_000_000.0);
+      return Config : C2.Job_Config := C2.Create_Job_Config (ID, 1, First) do
+         C2.Append_RX_Element_Group (Config, Second);
+         C2.Set_Min_Start_Time (Config, C2.Create_UTC_Time (-5, 123456789012345));
+         C2.Set_Max_Complete_Time (Config, C2.Create_UTC_Time (42, 999999999999999));
+         C2.Set_Duration_Femtoseconds (Config, -123456789012345);
+         C2.Set_Capability_ID (Config, [0, 16#FF#, 16#80#, 0, 7]);
+         C2.Set_Activity_ID (Config, [16#DE#, 16#AD#, 0, 16#BE#, 16#EF#]);
+         C2.Append_Instance_Selection (Config, 0);
+         C2.Append_Instance_Selection (Config, 0);
+         C2.Set_TX_Power_Mode_IDs (Config, [7, 7, 16#8000_0000#, Interfaces.Unsigned_32'Last]);
+         C2.Set_Lookahead_Femtoseconds (Config, Interfaces.Integer_64'Last);
+      end return;
+   end Job_Config;
 begin
    if Ada.Command_Line.Argument_Count /= 2 then
       raise Program_Error with "usage: ams_mel_squall_rf_job PROVIDER PROFILE";
@@ -78,8 +98,6 @@ begin
          end if;
          declare
             VA    : C2.Virtual_Aperture := C2.Claim (VA_Request);
-            Group : constant C2.RX_Element_Group_Config :=
-              C2.Create_RX_Element_Group ("0", 1.0, "default");
          begin
             C2.Close (VA_Request);
             for Sequence in 0 .. 1 loop
@@ -87,12 +105,16 @@ begin
                   ID      : constant Interfaces.Unsigned_32 :=
                     16#1234_5678# + Interfaces.Unsigned_32 (Sequence);
                   Config  : constant C2.Job_Config :=
-                    C2.Create_Job_Config (ID, 1, Group);
+                    Job_Config (ID);
                   Request : C2.Job_Request := C2.Submit_Job (VA, Config);
                begin
-                  if C2.Outcome (C2.Wait (Request, 10_000)) /= C2.Created then
-                     raise Program_Error with "Squall Job rejected";
-                  end if;
+                  declare
+                     Result : constant C2.Job_Result := C2.Wait (Request, 10_000);
+                  begin
+                     if C2.Outcome (Result) /= C2.Created then
+                        raise Program_Error with "Squall Job rejected: " & C2.Description (Result);
+                     end if;
+                  end;
                   declare
                      Object : C2.Job := C2.Claim (Request);
                      Stream : Intervals_Status.Stream := Intervals_Status.Open (Object, 2, 8, 64);

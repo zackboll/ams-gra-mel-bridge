@@ -1,5 +1,24 @@
 # Architecture decisions
 
+Task 034F1 adds an RX JobRequest v2 profile without a second request owner.
+Both submit exports share parent acquisition, requestJob/future validation,
+worker launch, publication, abandonment and emergency retention. Strings,
+frequency vectors, endpoint sets, instances, binary IDs and power-mode sets are
+prepared before claiming the provider parent. Completion/input/public owner/
+worker holder allocations precede requestJob. Builder-local commands and the
+JobRequest unwind before VA/C2 claim release on synchronous failures, including
+middle/final group failures. Every group is created by label, checked RX and
+configured in caller order; repeated group/pipe labels are not deduplicated and
+each pipe entry produces one setter call. No E3/E5/E6 lookup or capability check.
+Safe Ada stores ordinary ordered group/pipe vectors and uses final-sized raw
+backing only privately during Submit_Job; controlled strings clean up on errors.
+UTC_Time construction validates canonical fractional femtoseconds and never
+normalizes. Old one-group configurations retain upstream v1 defaults even though
+Ada now submits through v2. Pointing and MFADrivenControls fields remain untouched;
+TX groups, resources, callbacks, external/RDMA and VADB are outside F1. Pinned
+Squall iterates RX groups but ignores added scheduling/identity fields except
+requestId; acceptance is not semantic fidelity evidence. See the F1 task report.
+
 Task 034E6 exposes getTxRadiatedPower, getTxPeakRadiatedPower, getTxApertureGain
 and getMaxTxAttenuation as independent @RequiredIfTransmit scalar queries. The
 existing VA claim protects each synchronous exact-once call outside C2 lifecycle,

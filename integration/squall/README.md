@@ -1,3 +1,21 @@
+# Task 034F1 RX JobRequest v2 evidence
+
+Safe Ada Job integration constructs two ordered RX groups, both using pinned
+Squall's label `0`, with distinct valid duties and active-capability frequencies.
+It populates nondefault canonical min/max UTC, signed duration, binary capability/
+activity IDs, duplicate instance selection, TX power-mode set and lookahead,
+while retaining every existing Job lifecycle/status/extension assertion.
+The exact pin is `b1015728f904c799fa0c07489fce48e78f67845f`.
+`SquallC2MEL.cc:395..453` validates/iterates every RX group, tunes using the first
+available frequency, and copies requestId into JobDetail. It does **not** inspect
+the added scheduling/identity fields: success proves acceptance of the complete
+constructed request, not semantic use of ignored fields. Positive field fidelity
+comes from the separate mock. C ProductRx deliberately continues using the frozen
+v1 Job submit export. Safe Ada ProductRx uses v2 internally with unchanged
+one-group defaults/application source and existing 8/8 events/counters/teardown.
+No TX execution, pointing/JIB callback architecture, RDMA or VADB is added.
+See `../../docs/task-034f1-rf-job-request-v2.md` for actual validation results.
+
 # Task 034E6 TX power query evidence
 
 Exact Squall pin `b1015728f904c799fa0c07489fce48e78f67845f` implements all four

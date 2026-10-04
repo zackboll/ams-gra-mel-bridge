@@ -1,5 +1,20 @@
 # Experimental C ABI policy
 
+Task 034F1 adds exactly ams_mel_rf_virtual_aperture_submit_job_v2 (189 -> 190),
+ABI 0.1 unchanged. V1 Job records/signature/caller requirements are frozen.
+V2 uses the same request/wait/claim/close owners. All inputs are borrowed during
+submission, validated/copied before provider command creation. Nonempty ordered
+RX groups, UTF-8/NUL-free labels, finite duty in (0,1], ordered finite frequency
+ranges with min <= max, and nonempty duplicate-free endpoint sets are required.
+Repeated group/pipe labels are allowed; each pipe entry causes one ordered call.
+UTC fractions must be canonical [0,10^15), seconds are full int64; noncanonical
+input returns INVALID_ARGUMENT without normalization/provider entry/publication.
+No min/max relation check; signed duration/lookahead pass exactly. Binary IDs
+accept empty/all bytes. Instance vector keeps duplicates/order; TX mode set
+collapses duplicates and accepts empty. Existing error, timeout, emergency
+retention and external serialization contracts apply unchanged. Pointing and
+MFADrivenControls callbacks/context retain pinned defaults. See F1 report.
+
 Task 034E6 adds exactly four scalar TX power query exports (185 -> 189), ABI
 0.1 unchanged and no records/owners. uint64 represents upstream size_t group
 and WeightType IDs; compile-time size_t width <= uint64 and runtime bounds reject

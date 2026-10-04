@@ -1,5 +1,20 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034F1 adds **RX JobRequest v2** in production C and safe Ada: ordered
+multiple RX groups, ordered multiple DataPipe endpoint-set calls per group,
+priority/precedence, canonical two-component min/max UTC times, exact signed
+duration/lookahead, binary capability/activity IDs, request ID, ordered instance
+selection (duplicates retained), interruptable and TX power-mode **set** semantics.
+The frozen v1 records/export remain supported. Safe Ada's source-compatible
+`Job_Config` now supports `Append_RX_Element_Group`, explicit pipe-label endpoint
+collections, `UTC_Time` and scheduling/identity setters; `Submit_Job` uses v2 with
+the historical defaults for untouched configurations. One new export takes ABI
+**0.1** from **189 to 190**; raw Rust/private Python parity only. JobRequest is
+**not complete**: pointing, TX groups/execution, MFADrivenControls/JIB machinery
+and rejection callbacks/context remain deferred. Mock fidelity is distinct from
+pinned Squall acceptance of two groups and fields it does not interpret. See
+`docs/task-034f1-rf-job-request-v2.md`.
+
 Task 034E6 adds all four conditional **VirtualAperture TX power/gain/attenuation
 queries** in production C and safe Ada `AMS.MEL.RF.C2.Transmit_Power`. Each call
 forwards scalar IDs and doubles to its exact provider method once: no local RF
