@@ -2986,6 +2986,45 @@ typedef uint32_t ams_mel_rf_virtual_aperture_status_t;
 #define AMS_MEL_RF_VA_STATUS_DEGRADED UINT32_C(2)
 #define AMS_MEL_RF_VA_STATUS_FAILED UINT32_C(3)
 typedef struct ams_mel_rf_va_instance_list ams_mel_rf_va_instance_list;
+/* @RequiredIfTransmit: four independent synchronous provider queries, not TX
+ * execution or evidence of transmit support. Callers may inspect capabilities
+ * separately; no capability gate, element-group lookup, Weights resource,
+ * formula, reconciliation, caching or retry occurs here. WeightType is an ID.
+ * Semantic upstream size_t inputs use stable uint64_t: unrepresentable values
+ * fail INVALID_ARGUMENT before provider entry (never truncate). The live VA,
+ * output pointer and diagnostic pairing are also validated before entry.
+ * Radiated/peak results are dBW; gain/max attenuation results are dB.
+ * Attenuation input is dB; frequency is Hz; u/v construct AnglePair{u,v}, the upstream
+ * U,V line-of-sight/stabilization pair, without conversion or normalization.
+ * Doubles including negative values, signed zero, infinity and NaN pass through;
+ * outputs copy the provider double unchanged. NaN payload bits are not promised.
+ * Every failure leaves the output untouched. bad_alloc => INTERNAL_ERROR;
+ * other standard/unknown exceptions => PROVIDER_EXCEPTION. No result owner,
+ * worker, registration or extra claim/DSO pin. Same-VA operations including Close
+ * require external serialization. The existing claim permits parent-first calls
+ * after public C2 Close; provider code executes outside bridge lifecycle locks. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_radiated_power(
+    const ams_mel_rf_virtual_aperture *va, uint64_t tx_element_group_id,
+    uint32_t tx_power_mode_id, double tx_attenuation_db, uint64_t tx_weight_type,
+    double center_frequency_hz, double u, double v, uint32_t va_instance_id,
+    double *out_power_dbw, char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power(
+    const ams_mel_rf_virtual_aperture *va, uint64_t tx_element_group_id,
+    uint32_t tx_power_mode_id, double tx_attenuation_db, double center_frequency_hz,
+    uint32_t va_instance_id, double *out_power_dbw, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_aperture_gain(
+    const ams_mel_rf_virtual_aperture *va, uint64_t tx_element_group_id,
+    uint32_t tx_power_mode_id, uint64_t tx_weight_type, double center_frequency_hz,
+    double u, double v, uint32_t va_instance_id, double *out_gain_db,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_max_tx_attenuation(
+    const ams_mel_rf_virtual_aperture *va, uint64_t tx_element_group_id,
+    uint32_t tx_power_mode_id, uint32_t va_instance_id, double *out_attenuation_db,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* Required live capability methods. False is successful data, not unsupported.
  * Each explicit call invokes the exact provider method once. Output is 0/1 on
  * success and untouched on failure. Same-owner serialization includes Close. */

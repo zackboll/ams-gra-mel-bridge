@@ -325,6 +325,73 @@ ams_mel_status_t query_va_list(const ams_mel_rf_virtual_aperture *va,
 }
 } // namespace
 
+namespace {
+static_assert(std::numeric_limits<std::size_t>::digits <=
+              std::numeric_limits<std::uint64_t>::digits);
+template<class Query>
+ams_mel_status_t query_tx(const ams_mel_rf_virtual_aperture *va,
+    std::uint64_t group, std::uint64_t weight, double *output, char *diagnostic,
+    std::size_t capacity, std::size_t *required, Query query) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !output || bad_diag(diagnostic, capacity) ||
+        group > std::numeric_limits<std::size_t>::max() ||
+        weight > std::numeric_limits<std::size_t>::max()) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        // Existing VA claim protects this synchronous call. No lock or new pin.
+        const double value = query(*va->va, static_cast<std::size_t>(group),
+                                   static_cast<std::size_t>(weight));
+        *output = value;
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("VA TX query exception", "unknown VA TX query exception",
+                                            diagnostic, capacity, required);
+    }
+}
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_radiated_power(
+    const ams_mel_rf_virtual_aperture *va, std::uint64_t group, std::uint32_t mode,
+    double attenuation, std::uint64_t weight, double frequency, double u, double v,
+    std::uint32_t instance, double *output, char *diagnostic, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    return query_tx(va, group, weight, output, diagnostic, capacity, required,
+        [=](const auto& provider, std::size_t g, std::size_t w) {
+            return provider.getTxRadiatedPower(g, mode, attenuation, w, frequency,
+                                              rfmel::AnglePair{u, v}, instance);
+        });
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power(
+    const ams_mel_rf_virtual_aperture *va, std::uint64_t group, std::uint32_t mode,
+    double attenuation, double frequency, std::uint32_t instance, double *output,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    return query_tx(va, group, 0, output, diagnostic, capacity, required,
+        [=](const auto& provider, std::size_t g, std::size_t) {
+            return provider.getTxPeakRadiatedPower(g, mode, attenuation, frequency, instance);
+        });
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_tx_aperture_gain(
+    const ams_mel_rf_virtual_aperture *va, std::uint64_t group, std::uint32_t mode,
+    std::uint64_t weight, double frequency, double u, double v, std::uint32_t instance,
+    double *output, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{
+    return query_tx(va, group, weight, output, diagnostic, capacity, required,
+        [=](const auto& provider, std::size_t g, std::size_t w) {
+            return provider.getTxApertureGain(g, mode, w, frequency, rfmel::AnglePair{u, v}, instance);
+        });
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_max_tx_attenuation(
+    const ams_mel_rf_virtual_aperture *va, std::uint64_t group, std::uint32_t mode,
+    std::uint32_t instance, double *output, char *diagnostic, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    return query_tx(va, group, 0, output, diagnostic, capacity, required,
+        [=](const auto& provider, std::size_t g, std::size_t) {
+            return provider.getMaxTxAttenuation(g, mode, instance);
+        });
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_id(
     const ams_mel_rf_virtual_aperture *va, std::uint32_t *output, char *diagnostic,
     std::size_t capacity, std::size_t *required) noexcept

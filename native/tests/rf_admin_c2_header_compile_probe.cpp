@@ -18,6 +18,18 @@
 #include "../include/ams_mel/abi.h"
 
 namespace rfmel = ams::iface::rfmel;
+// E6: actual pinned member signatures include size_t group IDs, not labels.
+using VA = rfmel::VirtualAperture;
+static_assert(std::is_same_v<rfmel::TxPowerModeID, uint32_t>);
+static_assert(std::is_same_v<rfmel::VirtualApertureInstanceID, uint32_t>);
+static_assert(std::is_same_v<rfmel::WeightType, std::size_t>);
+static_assert(std::is_same_v<rfmel::AnglePair, std::pair<double, double>>);
+static_assert(std::is_same_v<rfmel::AnglePair::first_type, double>);
+static_assert(std::is_same_v<rfmel::AnglePair::second_type, double>);
+static_assert(std::is_same_v<decltype(&VA::getTxRadiatedPower), double (VA::*)(std::size_t, uint32_t, double, std::size_t, double, std::pair<double, double>, uint32_t) const>);
+static_assert(std::is_same_v<decltype(&VA::getTxPeakRadiatedPower), double (VA::*)(std::size_t, uint32_t, double, double, uint32_t) const>);
+static_assert(std::is_same_v<decltype(&VA::getTxApertureGain), double (VA::*)(std::size_t, uint32_t, std::size_t, double, std::pair<double, double>, uint32_t) const>);
+static_assert(std::is_same_v<decltype(&VA::getMaxTxAttenuation), double (VA::*)(std::size_t, uint32_t, uint32_t) const>);
 using LFCatalog = std::map<rfmel::LocalFunctionTypeID, std::size_t>;
 static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::isCachedWaveformSupported), bool (rfmel::VirtualAperture::*)() const>);
 static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::dynamicWeightsSupported), bool (rfmel::VirtualAperture::*)() const>);
