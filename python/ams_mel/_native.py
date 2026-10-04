@@ -1704,7 +1704,54 @@ ams_mel_rf_va_status_subscription_close = _LIBRARY.ams_mel_rf_va_status_subscrip
 ams_mel_rf_va_status_subscription_close.argtypes = [ctypes.POINTER(RfVaSubscriptionHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_va_status_subscription_close.restype = ctypes.c_int32
 
+RfElementGroupSnapshotHandle = ctypes.c_void_p
+RfElementGroupMode = ctypes.c_uint32
+RF_ELEMENT_GROUP_MODE_RX, RF_ELEMENT_GROUP_MODE_TX = 0, 1
+
+
+class RfElementGroupSnapshotOptionsV1(ctypes.Structure):
+    _fields_ = [("include_data_pipes", ctypes.c_uint32)]
+
+
+class RfDataPipeInfoV1(ctypes.Structure):
+    _fields_ = [("lookup_label", StringViewV1), ("label", StringViewV1),
+                ("associated_endpoint_ids", U64SpanV1)]
+
+
+class RfDataPipeInfoSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfDataPipeInfoV1)), ("size", ctypes.c_size_t)]
+
+
+class RfElementGroupDescriptorV1(ctypes.Structure):
+    _fields_ = [("lookup_label", StringViewV1), ("label", StringViewV1),
+                ("mode", RfElementGroupMode), ("max_rf_bandwidth_hz", ctypes.c_double),
+                ("max_sample_rate_samples_per_second", ctypes.c_double),
+                ("max_data_rate_bits_per_second", ctypes.c_double),
+                ("max_duty_factor", ctypes.c_double), ("data_pipes", RfDataPipeInfoSpanV1)]
+
+
+class RfElementGroupDescriptorSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfElementGroupDescriptorV1)), ("size", ctypes.c_size_t)]
+
+
+class RfElementGroupSnapshotV1(ctypes.Structure):
+    _fields_ = [("data_pipes_included", ctypes.c_uint32), ("descriptors", RfElementGroupDescriptorSpanV1)]
+
+
+ams_mel_rf_virtual_aperture_get_element_groups = _LIBRARY.ams_mel_rf_virtual_aperture_get_element_groups
+ams_mel_rf_virtual_aperture_get_element_groups.argtypes = [RfVaHandle, ctypes.POINTER(RfElementGroupSnapshotOptionsV1), ctypes.POINTER(RfElementGroupSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_element_groups.restype = ctypes.c_int32
+ams_mel_rf_element_group_snapshot_view = _LIBRARY.ams_mel_rf_element_group_snapshot_view
+ams_mel_rf_element_group_snapshot_view.argtypes = [RfElementGroupSnapshotHandle, ctypes.POINTER(ctypes.POINTER(RfElementGroupSnapshotV1)), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_element_group_snapshot_view.restype = ctypes.c_int32
+ams_mel_rf_element_group_snapshot_close = _LIBRARY.ams_mel_rf_element_group_snapshot_close
+ams_mel_rf_element_group_snapshot_close.argtypes = [ctypes.POINTER(RfElementGroupSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_element_group_snapshot_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_get_element_groups",
+    "ams_mel_rf_element_group_snapshot_view",
+    "ams_mel_rf_element_group_snapshot_close",
     "ams_mel_rf_va_status_subscription_open",
     "ams_mel_rf_va_status_subscription_wait",
     "ams_mel_rf_va_status_subscription_get_statistics",

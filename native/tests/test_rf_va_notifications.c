@@ -100,6 +100,13 @@ static void ordinary(const char *scenario)
     CHECK(ams_mel_rf_virtual_aperture_get_status(va,&current,D)==AMS_MEL_OK && current==1);
     CHECK(ams_mel_rf_virtual_aperture_get_instance_status_report(va,42,&old,D)==AMS_MEL_OK);
     CHECK(ams_mel_rf_va_instance_status_report_view(old,&old_view,D)==AMS_MEL_OK && old_view->status==1);
+    // E3 is an explicit application-thread read, never a callback-time read.
+    ams_mel_rf_element_group_snapshot *descriptors=NULL;
+    const ams_mel_rf_element_group_snapshot_v1 *descriptor_view=NULL;
+    const ams_mel_rf_element_group_snapshot_options_v1 descriptor_options={1};
+    CHECK(ams_mel_rf_virtual_aperture_get_element_groups(va,&descriptor_options,&descriptors,D)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_element_group_snapshot_view(descriptors,&descriptor_view,D)==AMS_MEL_OK);
+    CHECK(descriptor_view->data_pipes_included && descriptor_view->descriptors.size==3);
     for(unsigned i=0;i<6;++i) before[i]=queries(i);
     uint64_t initial=stats(s).callback_entries, delivered=stats(s).notifications_delivered;
     CHECK(emit(index,3,0)==1); // Holds mock nonrecursive getter mutex throughout callback.
@@ -144,6 +151,10 @@ static void ordinary(const char *scenario)
     CHECK(ams_mel_rf_virtual_aperture_close(&va,D)==AMS_MEL_OK && !va);
     CHECK(value(index,1)==1 && value(index,7)==0);
     no_reads(before);
+    teardown_log();
+    CHECK(descriptor_view->descriptors.data[0].data_pipes.data[0].associated_endpoint_ids.data[2]==UINT64_MAX);
+    CHECK(ams_mel_rf_element_group_snapshot_close(&descriptors,D)==AMS_MEL_OK);
+    // The intentional E2 exact-callable DSO pin remains, not snapshot retention.
     teardown_log();
     uint64_t late=stats(s).callbacks_after_stop;
     for(unsigned i=0;i<6;++i) before[i]=queries(i);

@@ -18,6 +18,29 @@
 #include "../include/ams_mel/abi.h"
 
 namespace rfmel = ams::iface::rfmel;
+// 034E3: exact pinned by-value containers and const virtual getter signatures.
+using Descriptor = rfmel::ElementGroupDescriptor;
+using Pipe = rfmel::DataPipe;
+using PipeMap = std::map<rfmel::DataPipeLabel, std::shared_ptr<Pipe>>;
+using DescriptorMap = std::unordered_map<rfmel::ElementGroupLabel, std::shared_ptr<Descriptor>>;
+static_assert(std::is_same_v<std::underlying_type_t<rfmel::Mode>, uint8_t>);
+static_assert(static_cast<unsigned>(rfmel::Mode::RX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_RX);
+static_assert(static_cast<unsigned>(rfmel::Mode::TX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_TX);
+static_assert(std::is_same_v<rfmel::DutyFactor, double>);
+static_assert(std::is_same_v<rfmel::EndpointID, uint64_t>);
+static_assert(std::is_same_v<rfmel::ElementGroupLabel, std::string>);
+static_assert(std::is_same_v<rfmel::DataPipeLabel, std::string>);
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::getElementGroups), rfmel::ElementGroupDescriptorLookupMap (rfmel::VirtualAperture::*)() const>);
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::ElementGroupDescriptorLookupMap&>().begin()), DescriptorMap::const_iterator>);
+static_assert(std::is_same_v<decltype(&Descriptor::getElementGroupLabel), rfmel::ElementGroupLabel (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getMode), rfmel::Mode (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getMaxRfBandwidth), double (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getMaxSampleRate), double (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getMaxDataRate), double (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getMaxDutyFactor), double (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Descriptor::getDataPipes), PipeMap (Descriptor::*)() const>);
+static_assert(std::is_same_v<decltype(&Pipe::getLabel), const rfmel::DataPipeLabel (Pipe::*)() const>);
+static_assert(std::is_same_v<decltype(&Pipe::getAssociatedEndpoints), std::set<uint64_t> (Pipe::*)() const>);
 // Task 034E1: all six exact live methods, distinct set/vector getters, and
 // concrete report getters. In particular getLFStatus is a VALUE, not reference.
 using BaseVA = rfmel::BaseVirtualAperture;

@@ -5,6 +5,31 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn element_group_signatures_match_c() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        *const AmsMelRfElementGroupSnapshotOptionsV1,
+        *mut *mut AmsMelRfElementGroupSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_element_groups;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfElementGroupSnapshot,
+        *mut *const AmsMelRfElementGroupSnapshotV1,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_element_group_snapshot_view;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelRfElementGroupSnapshot,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_element_group_snapshot_close;
+}
+#[test]
 fn rf_va_notification_signatures_match_c() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
@@ -958,8 +983,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 169);
-    assert_eq!(exported.len(), 169);
+    assert_eq!(declared.len(), 172);
+    assert_eq!(exported.len(), 172);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2424,6 +2449,46 @@ fn declarations_match_the_c_header() {
         callbacks_after_stop,
         pending,
         stopped
+    );
+    expected.extend([
+        size_of::<*mut AmsMelRfElementGroupSnapshot>(),
+        align_of::<*mut AmsMelRfElementGroupSnapshot>(),
+        size_of::<AmsMelRfElementGroupMode>(),
+        align_of::<AmsMelRfElementGroupMode>(),
+        AMS_MEL_RF_ELEMENT_GROUP_MODE_RX as usize,
+        AMS_MEL_RF_ELEMENT_GROUP_MODE_TX as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelRfElementGroupSnapshotOptionsV1,
+        include_data_pipes
+    );
+    layout!(
+        expected,
+        AmsMelRfDataPipeInfoV1,
+        lookup_label,
+        label,
+        associated_endpoint_ids
+    );
+    layout!(expected, AmsMelRfDataPipeInfoSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfElementGroupDescriptorV1,
+        lookup_label,
+        label,
+        mode,
+        max_rf_bandwidth_hz,
+        max_sample_rate_samples_per_second,
+        max_data_rate_bits_per_second,
+        max_duty_factor,
+        data_pipes
+    );
+    layout!(expected, AmsMelRfElementGroupDescriptorSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfElementGroupSnapshotV1,
+        data_pipes_included,
+        descriptors
     );
     expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,

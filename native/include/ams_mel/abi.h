@@ -3508,6 +3508,86 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_close(
     size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Task 034E3: provider-independent, immutable element-group descriptor values.
+ * Lookup keys and returned labels are distinct, validated UTF-8 without NUL.
+ * Outer entries are ordered by unsigned UTF-8 lookup-key bytes (no locale or
+ * normalization); nested pipes preserve std::map key traversal and endpoint
+ * IDs ascend unsigned numerically. Aliased objects remain separate occurrences.
+ * Empty spans are {NULL, 0}. All pointers borrow snapshot-owned storage. */
+typedef struct ams_mel_rf_element_group_snapshot ams_mel_rf_element_group_snapshot;
+typedef uint32_t ams_mel_rf_element_group_mode_t;
+#define AMS_MEL_RF_ELEMENT_GROUP_MODE_RX ((ams_mel_rf_element_group_mode_t)0)
+#define AMS_MEL_RF_ELEMENT_GROUP_MODE_TX ((ams_mel_rf_element_group_mode_t)1)
+
+typedef struct ams_mel_rf_element_group_snapshot_options_v1 {
+    uint32_t include_data_pipes; /* exactly 0 or 1; options pointer required */
+} ams_mel_rf_element_group_snapshot_options_v1;
+
+typedef struct ams_mel_rf_data_pipe_info_v1 {
+    ams_mel_string_view_v1 lookup_label;
+    ams_mel_string_view_v1 label;
+    ams_mel_u64_span_v1 associated_endpoint_ids;
+} ams_mel_rf_data_pipe_info_v1;
+typedef struct ams_mel_rf_data_pipe_info_span_v1 {
+    const ams_mel_rf_data_pipe_info_v1 *data;
+    size_t size;
+} ams_mel_rf_data_pipe_info_span_v1;
+
+typedef struct ams_mel_rf_element_group_descriptor_v1 {
+    ams_mel_string_view_v1 lookup_label;
+    ams_mel_string_view_v1 label;
+    ams_mel_rf_element_group_mode_t mode;
+    double max_rf_bandwidth_hz;
+    double max_sample_rate_samples_per_second;
+    double max_data_rate_bits_per_second;
+    double max_duty_factor;
+    ams_mel_rf_data_pipe_info_span_v1 data_pipes;
+} ams_mel_rf_element_group_descriptor_v1;
+typedef struct ams_mel_rf_element_group_descriptor_span_v1 {
+    const ams_mel_rf_element_group_descriptor_v1 *data;
+    size_t size;
+} ams_mel_rf_element_group_descriptor_span_v1;
+typedef struct ams_mel_rf_element_group_snapshot_v1 {
+    uint32_t data_pipes_included;
+    ams_mel_rf_element_group_descriptor_span_v1 descriptors;
+} ams_mel_rf_element_group_snapshot_v1;
+
+/* One explicit synchronous getElementGroups call, then mandatory getters once
+ * per represented occurrence. No atomic multi-getter consistency is promised.
+ * include_data_pipes=0 NEVER calls descriptor getDataPipes or any pipe method.
+ * =1 copies all pipe keys/labels/endpoint IDs, or rejects the entire snapshot.
+ * Inclusion is meaningful even when descriptors/pipes are empty; false means
+ * not queried, not unsupported. No association/equality/VA-level pipe/Job calls.
+ * Numeric values are forwarded without arithmetic, conversion or normalization:
+ * Hz, samples/second, bits/second, dimensionless duty factor. Upstream states
+ * 0 < duty factor <= 1; this descriptive API does not clamp/repair values.
+ * Negative values, signed zero, infinity and NaN are preserved as values;
+ * NaN payload bits are not promised. RX/TX data does not extend Job support.
+ * Same-VA external serialization includes Close. No bridge mutex is held during
+ * provider calls. An open VA works after public C2 Close. output must be nonnull
+ * and initially NULL; invalid arguments make no provider call. Unknown mode,
+ * null objects or malformed strings => PROVIDER_FAILED; bad_alloc =>
+ * INTERNAL_ERROR; other exceptions => PROVIDER_EXCEPTION. No partial owner.
+ * Snapshots retain no provider graph/DSO and survive actual provider unload. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_element_groups(
+    const ams_mel_rf_virtual_aperture *va,
+    const ams_mel_rf_element_group_snapshot_options_v1 *options,
+    ams_mel_rf_element_group_snapshot **out_snapshot,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* No allocation/provider call. output must be nonnull and initially NULL;
+ * invalid arguments leave it unchanged. View stays immutable until Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_element_group_snapshot_view(
+    const ams_mel_rf_element_group_snapshot *snapshot,
+    const ams_mel_rf_element_group_snapshot_v1 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Consumes/nulls the owner; NULL-idempotent; no provider call. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_element_group_snapshot_close(
+    ams_mel_rf_element_group_snapshot **snapshot,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 #ifdef __cplusplus
 }
 #endif

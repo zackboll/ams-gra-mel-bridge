@@ -805,6 +805,99 @@ std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::Vir
 std::atomic<unsigned> va_get_calls{};
 std::atomic<unsigned> va_query_calls[6]{};
 std::atomic<std::uint32_t> va_query_inputs[6]{};
+// E3 method indices: top, label, mode, bandwidth, sample, data, duty,
+// descriptor pipes, pipe label, endpoints. Getter counts are per occurrence.
+std::atomic<unsigned> element_calls[10]{};
+std::atomic<unsigned> element_live{}, pipe_live{}, element_generation{};
+void element_get(unsigned method)
+{
+    ++element_calls[method];
+    const char *target = std::getenv("AMS_MEL_TEST_ELEMENT_THROW_METHOD");
+    if (!target || std::strtoul(target, nullptr, 10) != method) return;
+    const char *kind = std::getenv("AMS_MEL_TEST_ELEMENT_THROW_KIND");
+    if (kind && std::strcmp(kind, "allocation") == 0) throw std::bad_alloc{};
+    if (kind && std::strcmp(kind, "unknown") == 0) throw 37;
+    throw std::runtime_error("mock element getter exception");
+}
+bool element_case(const char *value)
+{
+    const char *current = std::getenv("AMS_MEL_TEST_ELEMENT_CASE");
+    return current && std::strcmp(current, value) == 0;
+}
+std::string element_string(std::string value, const char *category)
+{
+    const char *bad = std::getenv("AMS_MEL_TEST_ELEMENT_BAD_STRING");
+    if (bad && std::strcmp(bad, category) == 0)
+        return element_case("nul") ? std::string{"a\0b", 3} : std::string{"\xc0\xaf", 2};
+    return value;
+}
+class MockDescriptorPipe final : public rfmel::DataPipe {
+public:
+    MockDescriptorPipe(bool empty, unsigned generation) : empty_{empty}, generation_{generation}
+    { ++pipe_live; }
+    ~MockDescriptorPipe() override { --pipe_live; record("rf_descriptor_pipe_destroyed"); }
+    bool operator==(const rfmel::DataPipe&) const override { forbidden("pipe equality"); }
+    bool operator==(const rfmel::DataPipe&&) const override { forbidden("pipe equality move"); }
+    bool associateEndpoint(rfmel::EndpointID) override { forbidden("pipe associateEndpoint"); }
+    bool associateEndpoints(const std::set<rfmel::EndpointID>&) override { forbidden("pipe associateEndpoints"); }
+    const rfmel::DataPipeLabel getLabel() const override
+    {
+        element_get(8);
+        return element_string(element_case("long") ? std::string(100, 'P') + "µ" :
+            generation_ ? "pipe-later-β" : empty_ ? "" : "pipe-returned-µ", "pipe-label");
+    }
+    std::set<rfmel::EndpointID> getAssociatedEndpoints() const override
+    {
+        element_get(9);
+        if (empty_) return {};
+        if (generation_) return {7, UINT64_MAX};
+        return {0, UINT64_C(0x8000000000000000), UINT64_MAX};
+    }
+private:
+    bool empty_;
+    unsigned generation_;
+};
+class MockElementDescriptor final : public rfmel::ElementGroupDescriptor {
+public:
+    MockElementDescriptor(unsigned index, unsigned generation) : index_{index}, generation_{generation}
+    { ++element_live; }
+    ~MockElementDescriptor() override { --element_live; record("rf_element_descriptor_destroyed"); }
+    rfmel::ElementGroupLabel getElementGroupLabel() const override
+    {
+        element_get(1);
+        return element_string(element_case("long") ? std::string(120, 'D') + "β" :
+            generation_ ? "descriptor-later-β" : index_ == 0 ? "returned-empty-key" :
+            index_ == 1 ? "returned-z" : "returned-µ", "descriptor-label");
+    }
+    rfmel::Mode getMode() const override
+    {
+        element_get(2);
+        if (element_case("mode")) return static_cast<rfmel::Mode>(2);
+        return index_ == 1 ? rfmel::Mode::TX : rfmel::Mode::RX;
+    }
+    double getMaxRfBandwidth() const override
+    { element_get(3); return element_case("numeric") ? -0.0 : generation_ ? 42.25 : 12345678.25; }
+    double getMaxSampleRate() const override
+    { element_get(4); return element_case("numeric") ? std::numeric_limits<double>::infinity() : 2500000.5; }
+    double getMaxDataRate() const override
+    { element_get(5); return element_case("numeric") ? std::numeric_limits<double>::quiet_NaN() : 987654321.125; }
+    rfmel::DutyFactor getMaxDutyFactor() const override
+    { element_get(6); return element_case("numeric") ? -0.625 : 0.625; }
+    std::map<rfmel::DataPipeLabel, std::shared_ptr<rfmel::DataPipe>> getDataPipes() const override
+    {
+        element_get(7);
+        if (element_case("forbidden-pipes")) throw std::runtime_error("conditional pipe getter forbidden");
+        if (index_ == 1 || element_case("empty-pipes")) return {};
+        std::map<rfmel::DataPipeLabel, std::shared_ptr<rfmel::DataPipe>> result;
+        auto pipe = std::make_shared<MockDescriptorPipe>(false, generation_);
+        result[element_string(element_case("long") ? std::string(90, 'K') : "a-pipe", "pipe-key")] =
+            element_case("null-pipe") ? nullptr : pipe;
+        result["µ-pipe"] = element_case("alias") ? pipe : std::make_shared<MockDescriptorPipe>(true, generation_);
+        return result;
+    }
+private:
+    unsigned index_, generation_;
+};
 std::mutex job_gate_mutex;
 std::vector<std::shared_ptr<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>> job_pending;
 std::atomic<unsigned> job_get_calls{};
@@ -1272,7 +1365,19 @@ public:
         return future;
     }
     rfmel::ElementGroupDescriptorLookupMap getElementGroups() const override
-    { forbidden("VA::getElementGroups"); }
+    {
+        if (!scenario_.starts_with("c2:element-") && !scenario_.starts_with("c2:va-notify-")) forbidden("VA::getElementGroups");
+        element_get(0);
+        rfmel::ElementGroupDescriptorLookupMap result;
+        if (element_case("empty")) return result;
+        const unsigned generation = element_generation.load();
+        auto descriptor = std::make_shared<MockElementDescriptor>(0, generation);
+        result["µ-map"] = element_case("alias") ? descriptor : std::make_shared<MockElementDescriptor>(2, generation);
+        result["z-map"] = std::make_shared<MockElementDescriptor>(1, generation);
+        result[element_string(element_case("long") ? std::string(110, 'A') : "", "outer-key")] =
+            element_case("null-descriptor") ? nullptr : descriptor;
+        return result;
+    }
     std::vector<rfmel::ElementGroupLabel> getElementGroupLabels() const override
     { record("rf_va_get_labels"); return {"group/β", "", "0"}; }
     rfmel::ElementGroupConnections getDataPipes() override { forbidden("VA::getDataPipes"); }
@@ -1499,6 +1604,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
         configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
         !configuration.starts_with("c2:va-notify-") &&
+        !configuration.starts_with("c2:element-") &&
         configuration != "c2:va-null" && configuration != "c2:va-future-throw" &&
         configuration != "c2:va-future-unknown" && configuration != "c2:va-submit-throw" &&
         configuration != "c2:va-delayed" && configuration != "c2:va-long-failure" &&
@@ -1602,6 +1708,12 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_release_o
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_query_calls(unsigned method)
 { return method < 6 ? va_query_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_calls(unsigned method)
+{ return method < 10 ? element_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_element_live(unsigned kind)
+{ return kind ? pipe_live.load() : element_live.load(); }
+extern "C" __attribute__((visibility("default"))) void mock_rf_element_change(unsigned generation)
+{ element_generation.store(generation); }
 extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_va_query_input(unsigned method)
 { return method < 6 ? va_query_inputs[method].load() : 0; }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_get_calls(void)
