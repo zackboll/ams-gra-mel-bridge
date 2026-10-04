@@ -1,6 +1,60 @@
 //! Raw declarations for all current `ams_mel_c` ABI exports.
 
 use std::ffi::{c_char, c_void};
+
+extern "C" {
+    pub fn ams_mel_rf_virtual_aperture_get_tx_radiated_power(
+        va: *const AmsMelRfVa,
+        tx_element_group_id: u64,
+        tx_power_mode_id: u32,
+        tx_attenuation_db: f64,
+        tx_weight_type: u64,
+        center_frequency_hz: f64,
+        u: f64,
+        v: f64,
+        va_instance_id: u32,
+        out_power_dbw: *mut f64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power(
+        va: *const AmsMelRfVa,
+        tx_element_group_id: u64,
+        tx_power_mode_id: u32,
+        tx_attenuation_db: f64,
+        center_frequency_hz: f64,
+        va_instance_id: u32,
+        out_power_dbw: *mut f64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_get_tx_aperture_gain(
+        va: *const AmsMelRfVa,
+        tx_element_group_id: u64,
+        tx_power_mode_id: u32,
+        tx_weight_type: u64,
+        center_frequency_hz: f64,
+        u: f64,
+        v: f64,
+        va_instance_id: u32,
+        out_gain_db: *mut f64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_get_max_tx_attenuation(
+        va: *const AmsMelRfVa,
+        tx_element_group_id: u64,
+        tx_power_mode_id: u32,
+        va_instance_id: u32,
+        out_attenuation_db: *mut f64,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
 #[repr(C)]
 pub struct AmsMelRfVaDataPipeConnectionsSnapshot {
     _private: [u8; 0],

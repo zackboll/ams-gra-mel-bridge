@@ -1,5 +1,25 @@
 # Implementation coverage
 
+Task 034E6 implements all four VirtualAperture @RequiredIfTransmit calculations:
+getTxRadiatedPower (dBW), getTxPeakRadiatedPower (dBW), getTxApertureGain (dB),
+getMaxTxAttenuation (dB), in production C and safe Ada Transmit_Power. Scalar
+uint64 group/WeightType IDs check size_t representability; exact doubles/U,V
+and independent provider results pass without formulas, local lookups, gates,
+normalization, caching or Weights resources. Existing synchronous VA lifetime
+works after public C2 Close, with no new owner/worker/pin. Mock evidence covers
+exact inputs, exceptions/output preservation, IEEE values, boundaries, freshness
+and isolated actual DSO unload. Receive-only pinned Squall's four zero results
+are call-path/return-value evidence only, not TX capability or RF model accuracy.
+Four ABI 0.1 additions take 185 -> 189; raw Rust/private Python parity, vendor 804
+unchanged. Current VA query coverage includes Claim-time info, BaseVA status/
+instance queries, status subscriptions, ElementGroup descriptors, required
+cached-waveform/dynamic-weight Booleans, Local Functions, VA-level DataPipe
+connections/association and all four conditional TX calculations. VirtualAperture
+is NOT complete: descriptor command creation/thick coverage, broader command/
+JobRequest configuration, static/dynamic Weights, CachedWaveform allocation,
+WaveformTxEndpoint, external/RDMA, VADB, TX JobIntervals/TransmitEvent and extra
+ProductRx formats remain deferred. See `task-034e6-rf-tx-power-queries.md`.
+
 Task 034E5 implements VirtualAperture::getDataPipes plus DataPipe getLabel,
 getAssociatedEndpoints, associateEndpoint and associateEndpoints through production
 C and safe Ada `AMS.MEL.RF.C2.Data_Pipes`. E3 descriptor queries remain independent.
@@ -11,7 +31,7 @@ exports take 180 -> 185; frozen records remain unchanged, vendor 804 unchanged.
 Rust/private Python raw parity only. Pinned Squall has fresh object-local pipes:
 snapshot values and mutation true returns do not establish persistence, external
 connectivity, RDMA/Q-pairs or hardware routing. VirtualAperture/DataPipe/RF MEL
-remain partial: equality, descriptor command builders, Weights, TX power,
+remain partial at that E5 checkpoint: equality, descriptor command builders, Weights, TX power,
 CachedWaveform, WaveformTxEndpoint, external/RDMA, VADB, TX intervals/events and
 additional ProductRx formats remain deferred. See the E5 report for actual checks.
 

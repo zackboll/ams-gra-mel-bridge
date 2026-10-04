@@ -7,6 +7,7 @@ with AMS.MEL.RF.C2.Virtual_Aperture_Notifications;
 with AMS.MEL.RF.C2.Element_Groups;
 with AMS.MEL.RF.C2.Local_Functions;
 with AMS.MEL.RF.C2.Data_Pipes;
+with AMS.MEL.RF.C2.Transmit_Power;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -18,6 +19,7 @@ procedure AMS_MEL_Squall_RF_VA is
    package E renames C2.Element_Groups;
    package LF renames C2.Local_Functions;
    package P renames C2.Data_Pipes;
+   package T renames C2.Transmit_Power;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
    use type Interfaces.Unsigned_32;
@@ -119,6 +121,23 @@ procedure AMS_MEL_Squall_RF_VA is
          raise Program_Error with "Squall live VA query values mismatch";
       end if;
    end Queries;
+   procedure TX_Queries (VA : C2.Virtual_Aperture'Class) is
+      --  Receive-only pinned Squall returns zero. Call-path/return-value
+      --  evidence only, never positive TX capability or model accuracy.
+      Radiated : constant Long_Float := T.Radiated_Power_DBW
+        (VA, 17, 16#FEDC_BA98#, -12.75, 23, 987654321.125, (-0.75, 0.625), 16#DEAD_BEEF#);
+      Peak : constant Long_Float := T.Peak_Radiated_Power_DBW
+        (VA, 17, 16#FEDC_BA98#, -12.75, 987654321.125, 16#DEAD_BEEF#);
+      Gain : constant Long_Float := T.Aperture_Gain_DB
+        (VA, 17, 16#FEDC_BA98#, 23, 987654321.125, (-0.75, 0.625), 16#DEAD_BEEF#);
+      Attenuation : constant Long_Float := T.Max_Attenuation_DB
+        (VA, 17, 16#FEDC_BA98#, 16#DEAD_BEEF#);
+   begin
+      if Radiated /= 0.0 or Peak /= 0.0 or Gain /= 0.0 or Attenuation /= 0.0 then
+         raise Program_Error with "Squall pinned TX zero results mismatch";
+      end if;
+      Ada.Text_IO.Put_Line ("E6 pinned receive-only Squall: four zero TX query results");
+   end TX_Queries;
 begin
    if Ada.Command_Line.Argument_Count /= 2 then
       raise Program_Error with "usage: ams_mel_squall_rf_va PROVIDER PROFILE";
@@ -153,6 +172,7 @@ begin
          begin
             C2.Close (Request);
             Queries (VA);
+            TX_Queries (VA);
             Descriptors (Basic, False);
             Connections (Pipes);
             Associations (VA);
@@ -173,6 +193,7 @@ begin
                raise Program_Error with "Squall VA snapshot mismatch";
             end if;
             C2.Close (Parent);
+            TX_Queries (VA);
             Associations (VA);
             Queries (VA);
             Descriptors (E.Snapshot_Element_Groups (VA), False);

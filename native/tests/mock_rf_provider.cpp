@@ -68,6 +68,37 @@ std::atomic<unsigned> quantize_calls{};
 std::atomic<unsigned> physical_calls{};
 std::atomic<std::uint32_t> physical_face{};
 std::atomic<unsigned> tx_collection_calls{}, tx_direct_calls{};
+struct TxObservation {
+    std::uint64_t group{}, weight{};
+    std::uint32_t mode{}, instance{};
+    double attenuation{}, frequency{}, u{}, v{};
+};
+// Same-VA operations are externally serialized, including test observations.
+TxObservation tx_observed[4]{};
+std::atomic<unsigned> tx_query_calls[4]{}, tx_generation{};
+double tx_result(unsigned method, TxObservation value)
+{
+    tx_observed[method] = value;
+    ++tx_query_calls[method];
+    const char *failure = std::getenv("AMS_MEL_TEST_TX_EXCEPTION");
+    if (failure) {
+        if (std::strcmp(failure, "allocation") == 0) throw std::bad_alloc{};
+        if (std::strcmp(failure, "unknown") == 0) throw 23;
+        throw std::runtime_error("mock TX power query exception");
+    }
+    const char *special = std::getenv("AMS_MEL_TEST_TX_RESULT");
+    if (special) {
+        if (std::strcmp(special, "positive-zero") == 0) return 0.0;
+        if (std::strcmp(special, "negative-zero") == 0) return -0.0;
+        if (std::strcmp(special, "positive-infinity") == 0) return std::numeric_limits<double>::infinity();
+        if (std::strcmp(special, "negative-infinity") == 0) return -std::numeric_limits<double>::infinity();
+        if (std::strcmp(special, "nan") == 0) return std::numeric_limits<double>::quiet_NaN();
+        throw std::runtime_error("unknown mock TX result selector");
+    }
+    constexpr double a[]{47.125, -3.5, 17.75, 63.25};
+    constexpr double b[]{-28.625, 91.5, -6.25, 12.875};
+    return tx_generation.load() ? b[method] : a[method];
+}
 std::atomic<std::uint32_t> tx_face{}, tx_requested_id{};
 
 void record(const char *event) noexcept
@@ -1496,17 +1527,19 @@ public:
     std::shared_ptr<rfmel::Weights> createWeights(const std::string&, rfmel::WeightType) override
     { forbidden("VA::createWeights"); }
     bool isSingleGroup() const override { record("rf_va_is_single"); return true; }
-    double getTxRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, rfmel::WeightType,
-        double, rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getTxRadiatedPower"); }
-    double getTxPeakRadiatedPower(std::size_t, rfmel::TxPowerModeID, double, double,
-        rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getTxPeakRadiatedPower"); }
-    double getTxApertureGain(std::size_t, rfmel::TxPowerModeID, rfmel::WeightType, double,
-        rfmel::AnglePair, rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getTxApertureGain"); }
-    double getMaxTxAttenuation(std::size_t, rfmel::TxPowerModeID, rfmel::VirtualApertureInstanceID) const override
-    { forbidden("VA::getMaxTxAttenuation"); }
+    double getTxRadiatedPower(std::size_t group, rfmel::TxPowerModeID mode, double attenuation,
+        rfmel::WeightType weight, double frequency, rfmel::AnglePair uv,
+        rfmel::VirtualApertureInstanceID instance) const override
+    { return tx_result(0, {group, weight, mode, instance, attenuation, frequency, uv.first, uv.second}); }
+    double getTxPeakRadiatedPower(std::size_t group, rfmel::TxPowerModeID mode, double attenuation,
+        double frequency, rfmel::VirtualApertureInstanceID instance) const override
+    { return tx_result(1, {group, 0, mode, instance, attenuation, frequency, 0, 0}); }
+    double getTxApertureGain(std::size_t group, rfmel::TxPowerModeID mode, rfmel::WeightType weight,
+        double frequency, rfmel::AnglePair uv, rfmel::VirtualApertureInstanceID instance) const override
+    { return tx_result(2, {group, weight, mode, instance, 0, frequency, uv.first, uv.second}); }
+    double getMaxTxAttenuation(std::size_t group, rfmel::TxPowerModeID mode,
+        rfmel::VirtualApertureInstanceID instance) const override
+    { return tx_result(3, {group, 0, mode, instance, 0, 0, 0, 0}); }
     std::map<rfmel::LocalFunctionTypeID, std::size_t> getLocalFunctions() const override
     {
         lf_query(2);
@@ -1834,6 +1867,24 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_query_call
 { return method < 6 ? va_query_calls[method].load() : 0; }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_va_lf_calls(unsigned method)
 { return method < 4 ? va_lf_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_tx_query_calls(unsigned method)
+{ return method < 4 ? tx_query_calls[method].load() : 0; }
+extern "C" __attribute__((visibility("default"))) void mock_rf_tx_query_change(unsigned generation)
+{ tx_generation.store(generation); }
+extern "C" __attribute__((visibility("default"))) std::uint64_t mock_rf_tx_query_id(unsigned method, unsigned field)
+{
+    if (method >= 4) return 0;
+    const auto& v = tx_observed[method];
+    return field == 0 ? v.group : field == 1 ? v.weight : field == 2 ? v.mode : v.instance;
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_tx_query_double(unsigned method, unsigned field)
+{
+    if (method >= 4) return 0;
+    const auto& v = tx_observed[method];
+    return field == 0 ? v.attenuation : field == 1 ? v.frequency : field == 2 ? v.u : v.v;
+}
+extern "C" __attribute__((visibility("default"))) std::uint64_t mock_rf_tx_size_max(void)
+{ return SIZE_MAX; }
 extern "C" __attribute__((visibility("default"))) void mock_rf_va_lf_change(unsigned generation)
 { va_lf_generation.store(generation); }
 extern "C" __attribute__((visibility("default"))) std::uint32_t mock_rf_va_lf_input(unsigned which)

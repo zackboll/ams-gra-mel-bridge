@@ -1,5 +1,9 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_rf_virtual_aperture_get_tx_radiated_power;
+        ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power;
+        ams_mel_rf_virtual_aperture_get_tx_aperture_gain;
+        ams_mel_rf_virtual_aperture_get_max_tx_attenuation;
         ams_mel_rf_virtual_aperture_get_data_pipes;
         ams_mel_rf_va_data_pipe_connections_snapshot_view;
         ams_mel_rf_va_data_pipe_connections_snapshot_close;

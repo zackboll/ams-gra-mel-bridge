@@ -1,5 +1,6 @@
 #include <ams_mel/abi.h>
 #include "../../native/tests/rf_local_functions_abi_probe.h"
+#include "../../native/tests/rf_transmit_power_abi_probe.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 int main(void)
 {
     check_rf_local_function_signatures();
+    check_rf_transmit_power_signatures();
     ams_mel_abi_version_v1 version = {0, 0};
     ams_mel_status_t (*get_abi_version)(ams_mel_abi_version_v1 *) = ams_mel_get_abi_version;
     ams_mel_status_t (*session_open)(const char *, const char *, const char *,

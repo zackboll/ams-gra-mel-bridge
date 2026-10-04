@@ -2463,6 +2463,63 @@ private package AMS.MEL_C_API is
       Local_Functions        : Span_V1;
    end record
    with Convention => C;
+   function RF_VA_Get_TX_Radiated_Power
+     (Handle              : RF_VA_Handle;
+      Element_Group       : Interfaces.Unsigned_64;
+      Power_Mode          : Interfaces.Unsigned_32;
+      Attenuation         : Interfaces.C.double;
+      Weight              : Interfaces.Unsigned_64;
+      Frequency, U, V     : Interfaces.C.double;
+      Instance            : Interfaces.Unsigned_32;
+      Output              : access Interfaces.C.double;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_tx_radiated_power";
+   function RF_VA_Get_TX_Peak_Radiated_Power
+     (Handle                 : RF_VA_Handle;
+      Element_Group          : Interfaces.Unsigned_64;
+      Power_Mode             : Interfaces.Unsigned_32;
+      Attenuation, Frequency : Interfaces.C.double;
+      Instance               : Interfaces.Unsigned_32;
+      Output                 : access Interfaces.C.double;
+      Diagnostic             : System.Address;
+      Diagnostic_Capacity    : Size_T;
+      Diagnostic_Required    : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power";
+   function RF_VA_Get_TX_Aperture_Gain
+     (Handle              : RF_VA_Handle;
+      Element_Group       : Interfaces.Unsigned_64;
+      Power_Mode          : Interfaces.Unsigned_32;
+      Weight              : Interfaces.Unsigned_64;
+      Frequency, U, V     : Interfaces.C.double;
+      Instance            : Interfaces.Unsigned_32;
+      Output              : access Interfaces.C.double;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_tx_aperture_gain";
+   function RF_VA_Get_Max_TX_Attenuation
+     (Handle               : RF_VA_Handle;
+      Element_Group        : Interfaces.Unsigned_64;
+      Power_Mode, Instance : Interfaces.Unsigned_32;
+      Output               : access Interfaces.C.double;
+      Diagnostic           : System.Address;
+      Diagnostic_Capacity  : Size_T;
+      Diagnostic_Required  : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_max_tx_attenuation";
    function RF_VA_Get_ID
      (Handle              : RF_VA_Handle;
       Output              : access Interfaces.Unsigned_32;

@@ -12,6 +12,22 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_transmit_power_signatures(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        va, u64, u32, f64 = _native.RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_double
+        output = ctypes.POINTER(f64)
+        expected = {
+            "ams_mel_rf_virtual_aperture_get_tx_radiated_power": [va, u64, u32, f64, u64, f64, f64, f64, u32, output],
+            "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power": [va, u64, u32, f64, f64, u32, output],
+            "ams_mel_rf_virtual_aperture_get_tx_aperture_gain": [va, u64, u32, u64, f64, f64, f64, u32, output],
+            "ams_mel_rf_virtual_aperture_get_max_tx_attenuation": [va, u64, u32, u32, output],
+        }
+        import ams_mel
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertNotIn(name, ams_mel.__all__)
     def test_private_va_data_pipe_signatures(self) -> None:
         diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         owner = _native.RfVaDataPipeConnectionsSnapshotHandle
@@ -184,6 +200,10 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
+                "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power",
+                "ams_mel_rf_virtual_aperture_get_tx_aperture_gain",
+                "ams_mel_rf_virtual_aperture_get_max_tx_attenuation",
                 "ams_mel_rf_virtual_aperture_get_data_pipes",
                 "ams_mel_rf_va_data_pipe_connections_snapshot_view",
                 "ams_mel_rf_va_data_pipe_connections_snapshot_close",
@@ -372,8 +392,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 185)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 185)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 189)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 189)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -381,7 +401,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 185)
+        self.assertEqual(len(exported), 189)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

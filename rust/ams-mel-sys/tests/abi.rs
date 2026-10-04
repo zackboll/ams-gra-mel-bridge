@@ -5,6 +5,61 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn transmit_power_signatures_match_c() {
+    use std::ffi::c_char;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u64,
+        u32,
+        f64,
+        u64,
+        f64,
+        f64,
+        f64,
+        u32,
+        *mut f64,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_tx_radiated_power;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u64,
+        u32,
+        f64,
+        f64,
+        u32,
+        *mut f64,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u64,
+        u32,
+        u64,
+        f64,
+        f64,
+        f64,
+        u32,
+        *mut f64,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_tx_aperture_gain;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfVa,
+        u64,
+        u32,
+        u32,
+        *mut f64,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_get_max_tx_attenuation;
+}
+#[test]
 fn va_data_pipe_signatures_match_c() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
@@ -1027,8 +1082,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 185);
-    assert_eq!(exported.len(), 185);
+    assert_eq!(declared.len(), 189);
+    assert_eq!(exported.len(), 189);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
