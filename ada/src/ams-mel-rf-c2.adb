@@ -21,6 +21,7 @@ package body AMS.MEL.RF.C2 is
    use type C.Size_T;
    use type Interfaces.Unsigned_64;
    use type Interfaces.Unsigned_32;
+   use type Interfaces.Integer_64;
    use type System.Address;
    use System.Storage_Elements;
    package US renames Ada.Strings.Unbounded;
@@ -632,7 +633,7 @@ package body AMS.MEL.RF.C2 is
          Pipe        => US.To_Unbounded_String (Data_Pipe_Label),
          Duty        => Desired_Duty_Factor,
          Frequencies => <>,
-         Endpoints   => <>);
+         Pipes       => <>);
    end Create_RX_Element_Group;
    procedure Append_Expected_Center_Frequency
      (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float) is
@@ -645,13 +646,92 @@ package body AMS.MEL.RF.C2 is
    procedure Append_Endpoint_ID
      (Group : in out RX_Element_Group_Config; ID : Interfaces.Unsigned_64) is
    begin
-      for Existing of Group.Endpoints loop
-         if Existing = ID then
-            raise Constraint_Error with "duplicate endpoint ID";
+      Append_Endpoint_ID (Group, US.To_String (Group.Pipe), ID);
+   end Append_Endpoint_ID;
+   procedure Append_Endpoint_ID
+     (Group : in out RX_Element_Group_Config; Data_Pipe_Label : String; ID : Interfaces.Unsigned_64)
+   is
+   begin
+      if not Valid_String (Data_Pipe_Label) then
+         raise Constraint_Error with "invalid pipe label";
+      end if;
+      for I in Group.Pipes.First_Index .. Group.Pipes.Last_Index loop
+         if US.To_String (Group.Pipes (I).Label) = Data_Pipe_Label then
+            for Existing of Group.Pipes (I).Endpoints loop
+               if Existing = ID then
+                  raise Constraint_Error with "duplicate endpoint ID";
+               end if;
+            end loop;
+            Group.Pipes (I).Endpoints.Append (ID);
+            return;
          end if;
       end loop;
-      Group.Endpoints.Append (ID);
+      declare
+         Pipe : Pipe_Config := (Label => US.To_Unbounded_String (Data_Pipe_Label), Endpoints => <>);
+      begin
+         Pipe.Endpoints.Append (ID);
+         Group.Pipes.Append (Pipe);
+      end;
    end Append_Endpoint_ID;
+   function Create_UTC_Time
+     (Seconds, Fractional_Femtoseconds : Interfaces.Integer_64) return UTC_Time is
+   begin
+      if Fractional_Femtoseconds < 0 or else Fractional_Femtoseconds >= 1_000_000_000_000_000 then
+         raise Constraint_Error with "noncanonical UTC fraction";
+      end if;
+      return (Seconds, Fractional_Femtoseconds);
+   end Create_UTC_Time;
+   function Seconds (Value : UTC_Time) return Interfaces.Integer_64
+   is (Value.Seconds);
+   function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64
+   is (Value.Fraction);
+   procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config)
+   is
+   begin
+      Config.Groups.Append (Group);
+   end Append_RX_Element_Group;
+   procedure Set_Min_Start_Time (Config : in out Job_Config; Value : UTC_Time) is
+   begin
+      Config.Min_Start := Value;
+   end Set_Min_Start_Time;
+   procedure Set_Max_Complete_Time (Config : in out Job_Config; Value : UTC_Time) is
+   begin
+      Config.Max_Complete := Value;
+   end Set_Max_Complete_Time;
+   procedure Set_Duration_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64)
+   is
+   begin
+      Config.Duration := Value;
+   end Set_Duration_Femtoseconds;
+   procedure Set_Capability_ID (Config : in out Job_Config; Value : Byte_Array) is
+      Bytes : Byte_Vectors.Vector;
+   begin
+      for Item of Value loop
+         Bytes.Append (Item);
+      end loop;
+      Config.Capability := Bytes;
+   end Set_Capability_ID;
+   procedure Set_Activity_ID (Config : in out Job_Config; Value : Byte_Array) is
+      Bytes : Byte_Vectors.Vector;
+   begin
+      for Item of Value loop
+         Bytes.Append (Item);
+      end loop;
+      Config.Activity := Bytes;
+   end Set_Activity_ID;
+   procedure Set_TX_Power_Mode_IDs (Config : in out Job_Config; Value : Unsigned_32_Array) is
+      IDs : ID_Vectors.Vector;
+   begin
+      for Item of Value loop
+         IDs.Append (Item);
+      end loop;
+      Config.Power_Modes := IDs;
+   end Set_TX_Power_Mode_IDs;
+   procedure Set_Lookahead_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64)
+   is
+   begin
+      Config.Lookahead := Value;
+   end Set_Lookahead_Femtoseconds;
    function Create_Job_Config
      (Request_ID, Priority       : Interfaces.Unsigned_32;
       Group                      : RX_Element_Group_Config;
@@ -659,12 +739,20 @@ package body AMS.MEL.RF.C2 is
       Interruptable              : Boolean := False) return Job_Config is
    begin
       return
-        (ID            => Request_ID,
-         Priority      => Priority,
-         Precedence    => Precedence_Within_Priority,
-         Interruptable => Interruptable,
-         Group         => Group,
-         Instances     => <>);
+         Result : Job_Config :=
+           (ID            => Request_ID,
+            Priority      => Priority,
+            Precedence    => Precedence_Within_Priority,
+            Interruptable => Interruptable,
+            Groups        => <>,
+            Instances     => <>,
+            others        => <>)
+      do
+         Result.Groups.Append (Group);
+         Result.Capability.Append (0);
+         Result.Activity.Append (0);
+         Result.Power_Modes.Append (0);
+      end return;
    end Create_Job_Config;
    procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32) is
    begin
@@ -672,40 +760,67 @@ package body AMS.MEL.RF.C2 is
    end Append_Instance_Selection;
    function Submit_Job (VA : Virtual_Aperture'Class; Config : Job_Config) return Job_Request is
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      Label       : String_Owner;
-      Pipe        : String_Owner;
-      Label_Text  : constant String := US.To_String (Config.Group.Label);
-      Pipe_Text   : constant String := US.To_String (Config.Group.Pipe);
       type Raw_Frequencies is array (Positive range <>) of aliased C.RF_Frequency_Range_V1
       with Convention => C;
       type Raw_Endpoints is array (Positive range <>) of aliased Interfaces.Unsigned_64
       with Convention => C;
       type Raw_Instances is array (Positive range <>) of aliased Interfaces.Unsigned_32
       with Convention => C;
-      Frequencies : Raw_Frequencies (1 .. Natural (Config.Group.Frequencies.Length));
-      Endpoints   : Raw_Endpoints (1 .. Natural (Config.Group.Endpoints.Length));
-      Instances   : Raw_Instances (1 .. Natural (Config.Instances.Length));
-      D           : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
-      R           : aliased C.Size_T := 0;
+      type Raw_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
+      with Convention => C;
+      type Raw_Groups is array (Positive range <>) of aliased C.RF_RX_Element_Group_Config_V2
+      with Convention => C;
+      type Raw_Pipes is array (Positive range <>) of aliased C.RF_RX_Data_Pipe_Endpoint_Config_V1
+      with Convention => C;
+      type String_Owners is array (Positive range <>) of String_Owner;
+      Frequency_Count, Pipe_Count, Endpoint_Count : Natural := 0;
+      Instances                                   :
+        Raw_Instances (1 .. Natural (Config.Instances.Length));
+      Modes                                       :
+        Raw_Instances (1 .. Natural (Config.Power_Modes.Length));
+      Capability                                  :
+        Raw_Bytes (1 .. Natural (Config.Capability.Length));
+      Activity                                    :
+        Raw_Bytes (1 .. Natural (Config.Activity.Length));
+      D                                           : aliased Fixed_Diagnostic :=
+        [others => Interfaces.C.nul];
+      R                                           : aliased C.Size_T := 0;
    begin
       if not Is_Open (VA) then
          raise Provider_Error with "VirtualAperture is closed";
       end if;
-      Label.Value := CS.New_String (Label_Text);
-      Pipe.Value := CS.New_String (Pipe_Text);
-      for I in Frequencies'Range loop
-         Frequencies (I) :=
-           (Interfaces.C.double (Config.Group.Frequencies (I).Min_Hz),
-            Interfaces.C.double (Config.Group.Frequencies (I).Max_Hz));
-      end loop;
-      for I in Endpoints'Range loop
-         Endpoints (I) := Config.Group.Endpoints (I);
+      for Group of Config.Groups loop
+         Frequency_Count := Frequency_Count + Natural (Group.Frequencies.Length);
+         for Pipe of Group.Pipes loop
+            if not Pipe.Endpoints.Is_Empty then
+               Pipe_Count := Pipe_Count + 1;
+               Endpoint_Count := Endpoint_Count + Natural (Pipe.Endpoints.Length);
+            end if;
+         end loop;
       end loop;
       for I in Instances'Range loop
          Instances (I) := Config.Instances (I);
       end loop;
+      for I in Modes'Range loop
+         Modes (I) := Config.Power_Modes (I);
+      end loop;
+      for I in Capability'Range loop
+         Capability (I) := Config.Capability (I);
+      end loop;
+      for I in Activity'Range loop
+         Activity (I) := Config.Activity (I);
+      end loop;
       declare
-         Raw : aliased constant C.RF_Job_Request_Config_V1 :=
+         --  Final-sized backing arrays precede all pointer publication. Controlled
+         --  strings clean up even when serialization or native submission raises.
+         Groups      : Raw_Groups (1 .. Natural (Config.Groups.Length));
+         Pipes       : Raw_Pipes (1 .. Pipe_Count);
+         Frequencies : Raw_Frequencies (1 .. Frequency_Count);
+         Endpoints   : Raw_Endpoints (1 .. Endpoint_Count);
+         Labels      : String_Owners (Groups'Range);
+         Pipe_Labels : String_Owners (Pipes'Range);
+         G, F, P, E  : Positive := 1;
+         Raw         : aliased C.RF_Job_Request_Config_V2 :=
            (Request_ID                 => Config.ID,
             Priority                   => Config.Priority,
             Precedence_Within_Priority => Config.Precedence,
@@ -716,26 +831,68 @@ package body AMS.MEL.RF.C2 is
                   then System.Null_Address
                   else Instances (Instances'First)'Address),
                Size => Instances'Length),
-            RX_Group                   =>
-              (Label                       => (Pointer_Address (Label.Value), Label_Text'Length),
-               Desired_Duty_Factor         => Interfaces.C.double (Config.Group.Duty),
-               Expected_Center_Frequencies =>
-                 (Data =>
-                    (if Frequencies'Length = 0
-                     then System.Null_Address
-                     else Frequencies (Frequencies'First)'Address),
-                  Size => Frequencies'Length),
-               Endpoint_IDs                =>
-                 (Data =>
-                    (if Endpoints'Length = 0
-                     then System.Null_Address
-                     else Endpoints (Endpoints'First)'Address),
-                  Size => Endpoints'Length),
-               Data_Pipe_Label             => (Pointer_Address (Pipe.Value), Pipe_Text'Length)));
+            RX_Groups                  => (System.Null_Address, C.Size_T (Groups'Length)),
+            Min_Start_Time             => (Config.Min_Start.Seconds, Config.Min_Start.Fraction),
+            Max_Complete_Time          =>
+              (Config.Max_Complete.Seconds, Config.Max_Complete.Fraction),
+            Duration_Femtoseconds      => Config.Duration,
+            Capability_ID              =>
+              ((if Capability'Length = 0 then System.Null_Address else Capability (1)'Address),
+               C.Size_T (Capability'Length)),
+            Activity_ID                =>
+              ((if Activity'Length = 0 then System.Null_Address else Activity (1)'Address),
+               C.Size_T (Activity'Length)),
+            TX_Power_Mode_IDs          =>
+              ((if Modes'Length = 0 then System.Null_Address else Modes (1)'Address),
+               C.Size_T (Modes'Length)),
+            Lookahead_Femtoseconds     => Config.Lookahead);
       begin
+         for Group of Config.Groups loop
+            declare
+               First_F : constant Positive := F;
+               First_P : constant Positive := P;
+            begin
+               Labels (G).Value := CS.New_String (US.To_String (Group.Label));
+               for Range_Value of Group.Frequencies loop
+                  Frequencies (F) :=
+                    (Interfaces.C.double (Range_Value.Min_Hz),
+                     Interfaces.C.double (Range_Value.Max_Hz));
+                  F := F + 1;
+               end loop;
+               for Pipe of Group.Pipes loop
+                  if not Pipe.Endpoints.Is_Empty then
+                     declare
+                        First_E : constant Positive := E;
+                     begin
+                        Pipe_Labels (P).Value := CS.New_String (US.To_String (Pipe.Label));
+                        for ID of Pipe.Endpoints loop
+                           Endpoints (E) := ID;
+                           E := E + 1;
+                        end loop;
+                        Pipes (P) :=
+                          ((Pointer_Address (Pipe_Labels (P).Value),
+                            C.Size_T (US.Length (Pipe.Label))),
+                           (Endpoints (First_E)'Address, C.Size_T (E - First_E)));
+                        P := P + 1;
+                     end;
+                  end if;
+               end loop;
+               Groups (G) :=
+                 ((Pointer_Address (Labels (G).Value), C.Size_T (US.Length (Group.Label))),
+                  Interfaces.C.double (Group.Duty),
+                  ((if F = First_F then System.Null_Address else Frequencies (First_F)'Address),
+                   C.Size_T (F - First_F)),
+                  ((if P = First_P then System.Null_Address else Pipes (First_P)'Address),
+                   C.Size_T (P - First_P)));
+               G := G + 1;
+            end;
+         end loop;
+         if Groups'Length > 0 then
+            Raw.RX_Groups.Data := Groups (1)'Address;
+         end if;
          return Result : Job_Request do
             Check
-              (C.RF_VA_Submit_Job
+              (C.RF_VA_Submit_Job_V2
                  (VA.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
                D);
          end return;

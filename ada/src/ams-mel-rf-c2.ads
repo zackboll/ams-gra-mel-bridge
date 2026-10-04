@@ -71,6 +71,19 @@ package AMS.MEL.RF.C2 is
      (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float);
    procedure Append_Endpoint_ID
      (Group : in out RX_Element_Group_Config; ID : Interfaces.Unsigned_64);
+   --  Explicit pipe collections retain insertion order. Duplicate IDs within
+   --  one collection raise Constraint_Error; empty collections are omitted.
+   procedure Append_Endpoint_ID
+     (Group           : in out RX_Element_Group_Config;
+      Data_Pipe_Label : String;
+      ID              : Interfaces.Unsigned_64);
+   type UTC_Time is private;
+   function Create_UTC_Time
+     (Seconds, Fractional_Femtoseconds : Interfaces.Integer_64) return UTC_Time;
+   function Seconds (Value : UTC_Time) return Interfaces.Integer_64;
+   function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64;
+   type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;
+   type Unsigned_32_Array is array (Natural range <>) of Interfaces.Unsigned_32;
    type Job_Config is private;
    function Create_Job_Config
      (Request_ID, Priority       : Interfaces.Unsigned_32;
@@ -78,6 +91,17 @@ package AMS.MEL.RF.C2 is
       Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
       Interruptable              : Boolean := False) return Job_Config;
    procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32);
+   procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config);
+   procedure Set_Min_Start_Time (Config : in out Job_Config; Value : UTC_Time);
+   procedure Set_Max_Complete_Time (Config : in out Job_Config; Value : UTC_Time);
+   procedure Set_Duration_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64);
+   procedure Set_Capability_ID (Config : in out Job_Config; Value : Byte_Array);
+   procedure Set_Activity_ID (Config : in out Job_Config; Value : Byte_Array);
+   procedure Set_TX_Power_Mode_IDs (Config : in out Job_Config; Value : Unsigned_32_Array);
+   procedure Set_Lookahead_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64);
+   --  Create_Job_Config inserts Group first and retains the historical upstream
+   --  defaults: zero times/duration/lookahead and [0] identity/power-mode IDs.
+   --  Instance selection is a vector; TX power modes are serialized as a set.
    type Job_Request is tagged limited private;
    function Submit_Job (VA : Virtual_Aperture'Class; Config : Job_Config) return Job_Request;
    function Is_Open (Request : Job_Request) return Boolean;
@@ -249,17 +273,32 @@ private
       Min_Hz, Max_Hz : Long_Float;
    end record;
    package Frequency_Vectors is new Ada.Containers.Vectors (Positive, Frequency_Range);
+   type Pipe_Config is record
+      Label     : Ada.Strings.Unbounded.Unbounded_String;
+      Endpoints : Endpoint_Vectors.Vector;
+   end record;
+   package Pipe_Vectors is new Ada.Containers.Vectors (Positive, Pipe_Config);
    type RX_Element_Group_Config is record
       Label, Pipe : Ada.Strings.Unbounded.Unbounded_String;
       Duty        : Long_Float;
       Frequencies : Frequency_Vectors.Vector;
-      Endpoints   : Endpoint_Vectors.Vector;
+      Pipes       : Pipe_Vectors.Vector;
+   end record;
+   package Group_Vectors is new Ada.Containers.Vectors (Positive, RX_Element_Group_Config);
+   package Byte_Vectors is new
+     Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
+   type UTC_Time is record
+      Seconds, Fraction : Interfaces.Integer_64 := 0;
    end record;
    type Job_Config is record
       ID, Priority, Precedence : Interfaces.Unsigned_32;
       Interruptable            : Boolean;
-      Group                    : RX_Element_Group_Config;
+      Groups                   : Group_Vectors.Vector;
       Instances                : ID_Vectors.Vector;
+      Min_Start, Max_Complete  : UTC_Time;
+      Duration, Lookahead      : Interfaces.Integer_64 := 0;
+      Capability, Activity     : Byte_Vectors.Vector;
+      Power_Modes              : ID_Vectors.Vector;
    end record;
    type Job_Result is record
       State : Request_Outcome := Created;
