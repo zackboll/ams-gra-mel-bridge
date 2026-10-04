@@ -1025,6 +1025,7 @@ bool f1_failure(unsigned group, const char *stage)
     const char *selected = std::getenv("AMS_MEL_TEST_F1_FAILURE");
     return selected && std::string{selected} == std::to_string(group) + ":" + stage;
 }
+bool f2_enabled() { return std::getenv("AMS_MEL_TEST_F2_CASE") != nullptr; }
 class MockRxCommand final : public rfmel::ElementGroupCommand {
 public:
     explicit MockRxCommand(std::string label, bool tx, bool throws, unsigned f1 = 0)
@@ -1034,6 +1035,7 @@ public:
     rfmel::Mode getMode() const override
     {
         record("rf_job_mode_checked"); ++mode_calls;
+        operations.push_back('m');
         if (f1_failure(f1_, "mode")) throw std::runtime_error("F1 mode exception");
         return tx_ || f1_failure(f1_, "tx") ? rfmel::Mode::TX : rfmel::Mode::RX;
     }
@@ -1046,28 +1048,46 @@ public:
     void addExpectedCenterFrequencies(rfmel::FrequencyRange range) override
     {
         ++frequency_calls;
+        operations.push_back('f');
         if (f1_failure(f1_, "frequency")) throw std::runtime_error("F1 frequency exception");
         frequencies_.push_back(range);
+        record("rf_job_frequency_added");
     }
     void setTxPower(rfmel::TxPowerLevel) override { forbidden("Job::setTxPower"); }
     void setDesiredDutyFactor(rfmel::DutyFactor duty) override
     {
         ++duty_calls;
+        operations.push_back('d');
         if (throws_ || f1_failure(f1_, "duty")) throw std::runtime_error("mock Job setter exception");
         duty_ = duty;
+        record("rf_job_duty_set");
     }
     void addEndpointIDs(const std::set<rfmel::EndpointID>& ids, rfmel::DataPipeLabel pipe) override
     {
         ++endpoint_calls;
+        operations.push_back('e');
         if (f1_failure(f1_, "endpoint")) throw std::runtime_error("F1 endpoint exception");
         endpoint_entries.emplace_back(pipe, ids);
         connections_.insert_or_assign(pipe, ids);
+        record("rf_job_endpoint_added");
     }
-    std::vector<rfmel::PointingType> getExpectedPointingAngles() override { return {}; }
-    void addExpectedPointingAngle(const rfmel::PointingType&) override { forbidden("Job::addPointing"); }
+    std::vector<rfmel::PointingType> getExpectedPointingAngles() override { return pointing_; }
+    void addExpectedPointingAngle(const rfmel::PointingType& value) override
+    {
+        if (!f2_enabled()) forbidden("Job::addPointing");
+        ++pointing_calls;
+        operations.push_back('p');
+        record("rf_job_pointing_added");
+        const auto stage = std::string{"point-"} + std::to_string(pointing_calls);
+        if (f1_failure(f1_, (stage + "-std").c_str())) throw std::runtime_error("F2 pointing exception");
+        if (f1_failure(f1_, (stage + "-unknown").c_str())) throw 17;
+        if (f1_failure(f1_, (stage + "-alloc").c_str())) throw std::bad_alloc{};
+        pointing_.push_back(value);
+    }
     std::vector<rfmel::PointingType>& getRefExpectedPointingAngles() override { return pointing_; }
     mutable unsigned mode_calls{};
-    unsigned duty_calls{}, frequency_calls{}, endpoint_calls{};
+    mutable std::vector<char> operations;
+    unsigned duty_calls{}, frequency_calls{}, endpoint_calls{}, pointing_calls{};
     std::vector<std::pair<std::string, std::set<rfmel::EndpointID>>> endpoint_entries;
 private:
     std::string label_;
@@ -1087,14 +1107,18 @@ void check_job_defaults(const rfmel::JobRequest& request, bool v1)
     // Pinned default is ECEF. Boost c_vector's default constructor leaves its
     // component storage uninitialized: do NOT read those indeterminate doubles.
     if (request.getSendNextJIBatchCallback() || request.getNumJIBs() != 0 ||
-        request.getRequestRejectedCallback() || !context || *context != nullptr ||
-        point.index() != defaults.getEstimatedStabPoint().index())
+        request.getRequestRejectedCallback() || !context || *context != nullptr)
         throw std::runtime_error("Job deferred defaults changed");
+    const char *f2 = std::getenv("AMS_MEL_TEST_F2_CASE");
+    if (!f2 || std::strcmp(f2, "clear") == 0) {
+    if (point.index() != defaults.getEstimatedStabPoint().index())
+        throw std::runtime_error("Job default variant changed");
     const auto& ecef = std::get<rfmel::ECEFPointing>(point);
     const auto& zero = std::get<rfmel::ECEFPointing>(defaults.getEstimatedStabPoint());
     if (ecef.getLocation().size() != 3 || ecef.getVelocity().size() != 3 ||
         !(ecef.getTimeOfValidity() == zero.getTimeOfValidity()))
         throw std::runtime_error("Job default pointing changed");
+    }
     if (v1 && (!(request.getMinStartTime() == defaults.getMinStartTime()) ||
                !(request.getMaxCompleteTime() == defaults.getMaxCompleteTime())))
         throw std::runtime_error("v1 UTC defaults changed");
@@ -1114,7 +1138,7 @@ void check_f1_request(const rfmel::JobRequest& request)
             command->getDesiredDutyFactor() != duties[i] || command->mode_calls != 1 ||
             command->duty_calls != 1 || command->frequency_calls != (i == 0 ? 2U : i == 1 ? 0U : 1U) ||
             command->endpoint_calls != (i == 0 ? repeated ? 3U : 2U : i == 1 ? 1U : 0U) ||
-            !command->getRefExpectedPointingAngles().empty())
+            (!f2_enabled() && !command->getRefExpectedPointingAngles().empty()))
             throw std::runtime_error("F1 group order/call counts/pointing");
         const auto ranges = command->getExpectedCenterFrequencies();
         if (i == 0 && (ranges[0].getMinFrequency() != 1000000.25 || ranges[0].getMaxFrequency() != 2000000.5 ||
@@ -1158,6 +1182,75 @@ void check_f1_request(const rfmel::JobRequest& request)
         request.getDuration().count() != duration || request.getLookAheadTime().count() != lookahead)
         throw std::runtime_error("F1 scheduling/identity fields");
     record("rf_job_v2_fidelity_verified");
+}
+
+void check_f2_point(const rfmel::PointingType& point, unsigned kind, bool estimated = false)
+{
+    if (point.index() != kind) throw std::runtime_error("F2 exact variant/order");
+    const char *selected = std::getenv("AMS_MEL_TEST_F2_CASE");
+    const bool special = selected && std::strcmp(selected, "special") == 0 && !estimated;
+    auto same = [](double actual, double expected) {
+        return std::isnan(expected) ? std::isnan(actual) : actual == expected &&
+            (expected != 0.0 || std::signbit(actual) == std::signbit(expected));
+    };
+    auto require = [&](double actual, double expected) {
+        if (!same(actual, expected)) throw std::runtime_error("F2 numeric fidelity");
+    };
+    if (kind == 0) {
+        const auto& p = std::get<rfmel::ECEFPointing>(point);
+        const double location[]{special ? INFINITY : 1.25, -2.5, 3.75};
+        const double velocity[]{-4.5, 5.625, special ? -INFINITY : -6.75};
+        for (unsigned i = 0; i < 3; ++i) {
+            require(p.getLocation()[i], location[i]); require(p.getVelocity()[i], velocity[i]);
+        }
+        if (p.getTimeOfValidity().getIntegralSeconds().count() != -7 ||
+            p.getTimeOfValidity().getFractionalFemtoseconds().count() != 123456789012345)
+            throw std::runtime_error("F2 ECEF UTC");
+    } else if (kind == 1) {
+        const auto& p = std::get<rfmel::LLAPointing>(point);
+        require(p.getLocation().getLatitude(), estimated ? -8.125 : 0.125);
+        require(p.getLocation().getLongitude(), estimated ? 9.25 : -1.25);
+        require(p.getLocation().getAltitude(), estimated ? -999.5 : 12345.5);
+        const double velocity[]{estimated ? -21.25 : 11.25, estimated ? 22.5 : -12.5, estimated ? -23.75 : 13.75};
+        for (unsigned i = 0; i < 3; ++i) require(p.getVelocity()[i], velocity[i]);
+        if (p.getTimeOfValidity().getIntegralSeconds().count() != (estimated ? INT64_MIN : 42) ||
+            p.getTimeOfValidity().getFractionalFemtoseconds().count() != (estimated ? 0 : 999999999999999))
+            throw std::runtime_error("F2 LLA UTC");
+    } else if (kind == 2) {
+        const auto& p = std::get<rfmel::PlatformRelativePointing>(point).getLocation();
+        require(p.az, -0.75); require(p.el, 0.25);
+    } else if (kind == 3) {
+        const auto& p = std::get<rfmel::FaceRelativePointing>(point).getLocation();
+        require(p.az, special ? NAN : 1.5); require(p.el, special ? -0.0 : -0.5);
+    } else require(std::get<rfmel::BaselineRelativePointing>(point).getLocation(), -2.25);
+}
+void check_f2_request(const rfmel::JobRequest& request)
+{
+    const char *selected = std::getenv("AMS_MEL_TEST_F2_CASE");
+    if (std::strcmp(selected, "clear") != 0) {
+        unsigned kind = 1;
+        if (std::strcmp(selected, "estimated-ecef") == 0) kind = 0;
+        if (std::strcmp(selected, "estimated-platform") == 0) kind = 2;
+        if (std::strcmp(selected, "estimated-face") == 0) kind = 3;
+        if (std::strcmp(selected, "estimated-baseline") == 0) kind = 4;
+        check_f2_point(request.getEstimatedStabPoint(), kind, kind == 1);
+        record("rf_job_estimated_point_verified");
+    }
+    const std::vector<unsigned> kinds[]{{0, 2}, {1, 3, 3}, {4}};
+    const auto& groups = request.getElementGroups();
+    for (unsigned i = 0; i < 3; ++i) {
+        auto command = std::dynamic_pointer_cast<MockRxCommand>(groups[i]);
+        const auto points = command->getExpectedPointingAngles();
+        if (points.size() != kinds[i].size() || command->pointing_calls != points.size())
+            throw std::runtime_error("F2 pointing call count/duplicates");
+        std::vector<char> operations{'m', 'd'};
+        operations.insert(operations.end(), command->frequency_calls, 'f');
+        operations.insert(operations.end(), command->endpoint_calls, 'e');
+        operations.insert(operations.end(), points.size(), 'p');
+        if (command->operations != operations) throw std::runtime_error("F2 provider setter ordering");
+        for (unsigned p = 0; p < points.size(); ++p) check_f2_point(points[p], kinds[i][p]);
+    }
+    record("rf_job_v3_pointing_verified");
 }
 
 using IntervalCallback = std::function<void(rfmel::JobIntervalStatus)>;
@@ -1535,6 +1628,7 @@ public:
             if (f1_case("submit-unknown")) throw 17;
             if (f1_case("submit-alloc")) throw std::bad_alloc{};
             check_f1_request(request);
+            if (f2_enabled()) check_f2_request(request);
         } else {
         check_job_defaults(request, true);
         const auto& groups = request.getElementGroups();

@@ -25,6 +25,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -524,7 +525,7 @@ extern "C" ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
 }
 
 namespace {
-/* Both profiles use this sole post-validation pipeline. The builder's command
+/* All profiles use this sole post-validation pipeline. The builder's command
  * locals and request unwind before the explicit parent release on every failure.
  * No allocation needed to publish/retain the async owner follows requestJob. */
 template<class Build>
@@ -601,9 +602,67 @@ struct PreparedGroup {
     double duty;
     std::vector<rfmel::FrequencyRange> frequencies;
     std::vector<PreparedPipe> pipes;
+    std::vector<rfmel::PointingType> pointings;
 };
 bool canonical(ams_mel_rf_utc_time_v1 time) noexcept
 { return time.fractional_femtoseconds >= 0 && time.fractional_femtoseconds < INT64_C(1000000000000000); }
+bool valid_pointing(const ams_mel_rf_pointing_v1& value) noexcept
+{
+    switch (value.kind) {
+    case AMS_MEL_RF_POINTING_ECEF: return canonical(value.ecef.time_of_validity);
+    case AMS_MEL_RF_POINTING_LLA: return canonical(value.lla.time_of_validity);
+    case AMS_MEL_RF_POINTING_PLATFORM_RELATIVE:
+    case AMS_MEL_RF_POINTING_FACE_RELATIVE:
+    case AMS_MEL_RF_POINTING_BASELINE_RELATIVE: return true;
+    default: return false;
+    }
+}
+ams::util::math::UTCTime pointing_time(ams_mel_rf_utc_time_v1 value)
+{
+    return {std::chrono::seconds{value.seconds}, Fs{value.fractional_femtoseconds}};
+}
+rfmel::PointingType prepare_pointing(const ams_mel_rf_pointing_v1& value)
+{
+    // Called only after tag/active UTC validation. Every c_vector component is
+    // assigned explicitly: its default constructor does not initialize data_.
+    switch (value.kind) {
+    case AMS_MEL_RF_POINTING_ECEF: {
+        EcefPoint location;
+        location[0] = value.ecef.location_m.x;
+        location[1] = value.ecef.location_m.y;
+        location[2] = value.ecef.location_m.z;
+        EcefVelocity velocity;
+        velocity[0] = value.ecef.velocity_mps.x;
+        velocity[1] = value.ecef.velocity_mps.y;
+        velocity[2] = value.ecef.velocity_mps.z;
+        rfmel::ECEFPointing point;
+        point.setLocation(location);
+        point.setVelocity(velocity);
+        point.setTimeOfValidity(pointing_time(value.ecef.time_of_validity));
+        return rfmel::PointingType{point};
+    }
+    case AMS_MEL_RF_POINTING_LLA: {
+        const auto& input = value.lla;
+        NedVelocity velocity;
+        velocity[0] = input.velocity_north_mps;
+        velocity[1] = input.velocity_east_mps;
+        velocity[2] = input.velocity_down_mps;
+        rfmel::LLAPointing point;
+        point.setLocation(LLAPoint{input.latitude_rad, input.longitude_rad, input.altitude_m});
+        point.setVelocity(velocity);
+        point.setTimeOfValidity(pointing_time(input.time_of_validity));
+        return rfmel::PointingType{point};
+    }
+    case AMS_MEL_RF_POINTING_PLATFORM_RELATIVE:
+        return rfmel::PointingType{rfmel::PlatformRelativePointing{AzEl{
+            value.platform_relative.azimuth_rad, value.platform_relative.elevation_rad}}};
+    case AMS_MEL_RF_POINTING_FACE_RELATIVE:
+        return rfmel::PointingType{rfmel::FaceRelativePointing{AzEl{
+            value.face_relative.azimuth_rad, value.face_relative.elevation_rad}}};
+    default:
+        return rfmel::PointingType{rfmel::BaselineRelativePointing{value.baseline_relative_conic_rad}};
+    }
+}
 template<class T, class Span>
 std::vector<T> copy_span(Span span)
 { return span.size ? std::vector<T>{span.data, span.data + span.size} : std::vector<T>{}; }
@@ -665,15 +724,17 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
     }, out_request, diagnostic, capacity, required);
 }
 
-extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
-    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v2 *config,
+namespace {
+template<class Config>
+ams_mel_status_t submit_extended_job(
+    ams_mel_rf_virtual_aperture *va, const Config *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     std::size_t capacity, std::size_t *required) noexcept
 {
     clear_diagnostic(diagnostic, capacity, required);
     if (bad_diag(diagnostic, capacity) || !va || !config || !out_request || *out_request)
         return AMS_MEL_INVALID_ARGUMENT;
-    const auto value = *config;
+    const auto& value = *config;
     if (value.is_interruptable > 1U || !canonical(value.min_start_time) ||
         !canonical(value.max_complete_time) || !value.rx_groups.size ||
         !span_ok(value.rx_groups.size, value.rx_groups.data, sizeof(*value.rx_groups.data)) ||
@@ -686,17 +747,30 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
     std::vector<rfmel::VirtualApertureInstanceID> instances;
     std::vector<std::uint8_t> capability, activity;
     std::set<rfmel::TxPowerModeID> modes;
+    std::optional<rfmel::PointingType> estimated;
     try {
+        if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) {
+            if (failpoint("pointing-preparation")) throw std::bad_alloc{};
+            if (value.has_estimated_stab_point > 1U) return AMS_MEL_INVALID_ARGUMENT;
+            if (value.has_estimated_stab_point) {
+                if (!valid_pointing(value.estimated_stab_point)) return AMS_MEL_INVALID_ARGUMENT;
+                estimated.emplace(prepare_pointing(value.estimated_stab_point));
+            }
+        }
         groups.reserve(value.rx_groups.size);
         for (std::size_t i = 0; i < value.rx_groups.size; ++i) {
-            const auto& group = value.rx_groups.data[i];
+            const auto& input = value.rx_groups.data[i];
+            const auto& group = [&]() -> const ams_mel_rf_rx_element_group_config_v2& {
+                if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) return input.group;
+                else return input;
+            }();
             if (!valid_view(group.label) || !std::isfinite(group.desired_duty_factor) ||
                 group.desired_duty_factor <= 0.0 || group.desired_duty_factor > 1.0 ||
                 !span_ok(group.expected_center_frequencies.size, group.expected_center_frequencies.data,
                          sizeof(*group.expected_center_frequencies.data)) ||
                 !span_ok(group.data_pipe_endpoint_configs.size, group.data_pipe_endpoint_configs.data,
                          sizeof(*group.data_pipe_endpoint_configs.data))) return AMS_MEL_INVALID_ARGUMENT;
-            PreparedGroup prepared{copy_view(group.label), group.desired_duty_factor, {}, {}};
+            PreparedGroup prepared{copy_view(group.label), group.desired_duty_factor, {}, {}, {}};
             prepared.frequencies.reserve(group.expected_center_frequencies.size);
             for (std::size_t f = 0; f < group.expected_center_frequencies.size; ++f) {
                 const auto& range = group.expected_center_frequencies.data[f];
@@ -715,6 +789,15 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
                     if (!association.endpoints.insert(pipe.endpoint_ids.data[e]).second)
                         return AMS_MEL_INVALID_ARGUMENT;
                 prepared.pipes.push_back(std::move(association));
+            }
+            if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) {
+                const auto points = input.expected_pointing_angles;
+                if (!span_ok(points.size, points.data, sizeof(*points.data))) return AMS_MEL_INVALID_ARGUMENT;
+                prepared.pointings.reserve(points.size);
+                for (std::size_t p = 0; p < points.size; ++p) {
+                    if (!valid_pointing(points.data[p])) return AMS_MEL_INVALID_ARGUMENT;
+                    prepared.pointings.push_back(prepare_pointing(points.data[p]));
+                }
             }
             groups.push_back(std::move(prepared));
         }
@@ -744,16 +827,34 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
         request.setIsInterruptable(value.is_interruptable == 1U);
         request.setTxPowerModeIDs(modes);
         request.setLookAheadTime(Femtoseconds{value.lookahead_femtoseconds});
+        if (estimated) request.setEstimatedStabPoint(*estimated);
         for (const auto& group : groups) {
             auto command = provider.createElementGroupCommand(group.label);
             if (!command || command->getMode() != rfmel::Mode::RX) return false;
             command->setDesiredDutyFactor(group.duty);
             for (const auto& range : group.frequencies) command->addExpectedCenterFrequencies(range);
             for (const auto& pipe : group.pipes) command->addEndpointIDs(pipe.endpoints, pipe.label);
+            for (const auto& point : group.pointings) command->addExpectedPointingAngle(point);
             request.addElementGroup(command);
         }
         return true;
     }, out_request, diagnostic, capacity, required);
+}
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v2 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return submit_extended_job(va, config, out_request, diagnostic, capacity, required);
+}
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v3(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v3 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return submit_extended_job(va, config, out_request, diagnostic, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_job_request_wait(
