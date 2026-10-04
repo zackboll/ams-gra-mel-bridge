@@ -1,3 +1,22 @@
+# Task 034E5 VA connections and association evidence
+
+Rechecked exact Squall pin `b1015728f904c799fa0c07489fce48e78f67845f`:
+`interfaces/squall-rf-mel-impl/src/SquallC2MEL.cc:125..142,467..471`.
+VA getDataPipes returns configured RX key `0`, inner key `default`, returned label
+`default` and an empty endpoint set. Each query creates a **new SquallDataPipe**;
+mutations insert into that object's local set and return true. Ada VA and C
+ProductRx require these exact values and true single/set mutation returns. New
+snapshots remain empty: separate calls do not retain provider pipe objects.
+This is **real VA getDataPipes returned-value evidence + real DataPipe mutation
+method return-value evidence**, not persistent routing/RDMA/Q-pair creation,
+external endpoint connectivity or hardware-route evidence. No automatic readback
+occurs inside a command; integration explicitly queries again. Ada repeats E5
+after public C2 Close; both retain copied values across VA/C2 Close and preserve
+E1/E2/E3/E4/Job/ProductRx assertions. These callback-pinned integration processes
+are not DSO-unload proof. E5 isolated no-registration tests supply that separately.
+Five exports, ABI 0.1; RF pin `762ce84c5555dd0f3ea66f36b321fecf8839b89f`,
+vendor 804 unchanged. See `../../docs/task-034e5-rf-datapipe-association.md`.
+
 # Task 034E4 capability and Local Function evidence
 
 At Squall `b1015728f904c799fa0c07489fce48e78f67845f`,

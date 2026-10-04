@@ -1,5 +1,20 @@
 # Experimental C ABI policy
 
+Task 034E5 adds exactly five ABI 0.1 exports (180 -> 185), one opaque copied
+connection snapshot and three new records (group, group span, top-level view),
+reusing E3 pipe info/span and u64 span without modifying any frozen declaration.
+Creation/View require initially null outputs; Close consumes/nulls idempotently.
+Empty spans are {NULL,0}. All provider strings validate complete UTF-8/no NUL,
+including empty strings. Null pipes/malformed snapshot entries reject whole
+owners with PROVIDER_FAILED. Exact-key mutation lookup absence is PROVIDER_FAILED,
+not INVALID_ARGUMENT. Inputs are copied/set-converted before the provider query;
+uint64 IDs preserve all values. Normal false/true returns OK/0 or OK/1 only.
+Every failure leaves association output untouched; bad_alloc maps INTERNAL_ERROR,
+other exceptions PROVIDER_EXCEPTION. No retry/readback, capability query or
+persistent provider pipe handle. Each call obtains one fresh getDataPipes value.
+View/Close allocate/call no provider and copied values survive actual DSO unload.
+See `task-034e5-rf-datapipe-association.md` for ordering and ownership evidence.
+
 Task 034E4 adds exactly eight ABI 0.1 operations (172 -> 180), two primitive
 LF snapshot owners and fixed info/span records; all earlier declarations and
 records remain frozen. Live required Boolean false is OK/0. Conditional LF

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Task 034E5 adds five VA DataPipe snapshot/association exports (180 -> 185),
+  ABI 0.1 unchanged. Provider-independent connections preserve canonical unsigned
+  UTF-8 outer keys, inner map order, distinct returned labels, aliases and full
+  uint64 endpoint sets. Safe Ada copies values and provides synchronous exact-key
+  mutations, with successful Boolean false and native set duplicate-collapse.
+  No retained pipe owner, readback, retry, capability gate or persistence promise.
+  Pinned Squall fresh pipes yield snapshot/mutation-return evidence only, not
+  RDMA/Q-pairs/routing/hardware evidence. Raw Rust/private Python parity only;
+  all 804 vendor files unchanged. No equality/Weights/TX/RDMA/VADB expansion.
+
 - Task 034E4 adds eight VA capability/Local Function exports (172 -> 180), ABI
   0.1 unchanged. Required Booleans return exact live false/true values; conditional
   LF snapshots preserve map order/zero counts, exact size_t-to-uint64 counts and

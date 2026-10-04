@@ -70,6 +70,21 @@ static int check_descriptors(ams_mel_rf_element_group_snapshot *owner, unsigned 
     return EXIT_SUCCESS;
 }
 
+static int check_connections(ams_mel_rf_va_data_pipe_connections_snapshot *owner)
+{
+    const ams_mel_rf_va_data_pipe_connections_snapshot_v1 *v = NULL;
+    REQUIRE(ams_mel_rf_va_data_pipe_connections_snapshot_view(owner, &v, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(v && v->groups.size == 1 && v->groups.data);
+    const ams_mel_rf_va_data_pipe_group_v1 *g = v->groups.data;
+    REQUIRE(g->element_group_lookup_label.size == 1 && g->element_group_lookup_label.data[0] == '0');
+    REQUIRE(g->data_pipes.size == 1 && g->data_pipes.data);
+    const ams_mel_rf_data_pipe_info_v1 *p = g->data_pipes.data;
+    REQUIRE(p->lookup_label.size == 7 && !memcmp(p->lookup_label.data, "default", 7));
+    REQUIRE(p->label.size == 7 && !memcmp(p->label.data, "default", 7));
+    REQUIRE(!p->associated_endpoint_ids.size && !p->associated_endpoint_ids.data);
+    return EXIT_SUCCESS;
+}
+
 static size_t nonzero(const ams_mel_rf_product_rx_event_v1 *view)
 {
     size_t index, count = 0;
@@ -121,6 +136,7 @@ int main(int argc, char **argv)
     uint32_t accepted = 0;
     ams_mel_rf_va_local_function_list *lf_catalog = NULL;
     ams_mel_rf_va_local_function_status *lf_status = NULL;
+    ams_mel_rf_va_data_pipe_connections_snapshot *connections = NULL;
     ams_mel_status_t status;
     uint64_t hash_a, distinct = 0;
     size_t count_a, index, received = 0;
@@ -212,6 +228,20 @@ int main(int argc, char **argv)
     /* Pinned provider query-value evidence, not hardware health/transitions.
      * Retain plain snapshots across public VA/C2 Close below. This ProductRx
      * process has callback pins and is intentionally NOT DSO-unload evidence. */
+    {
+        const ams_mel_string_view_v1 group = {"0", 1}, pipe = {"default", 7};
+        const uint64_t ids[] = {0, 7, UINT64_MAX};
+        REQUIRE(ams_mel_rf_virtual_aperture_get_data_pipes(va, &connections, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(check_connections(connections) == EXIT_SUCCESS);
+        REQUIRE(ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint(va, group, pipe,
+            UINT64_C(0x8000000000000000), &accepted, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && accepted == 1);
+        REQUIRE(ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints(va, group, pipe,
+            (ams_mel_u64_span_v1){ids, 3}, &accepted, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && accepted == 1);
+        ams_mel_rf_va_data_pipe_connections_snapshot *fresh = NULL;
+        REQUIRE(ams_mel_rf_virtual_aperture_get_data_pipes(va, &fresh, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(check_connections(fresh) == EXIT_SUCCESS); // New Squall pipe, still empty.
+        REQUIRE(ams_mel_rf_va_data_pipe_connections_snapshot_close(&fresh, NULL, 0, NULL) == AMS_MEL_OK);
+    }
     {
         uint32_t value = UINT32_MAX;
         ams_mel_u32_span_v1 list = {NULL, 0};
@@ -310,6 +340,9 @@ int main(int argc, char **argv)
     REQUIRE(check_descriptors(descriptor_basic, 0) == EXIT_SUCCESS);
     REQUIRE(check_descriptors(descriptor_full, 1) == EXIT_SUCCESS);
     REQUIRE(ams_mel_rf_element_group_snapshot_close(&descriptor_basic, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(check_connections(connections) == EXIT_SUCCESS);
+    REQUIRE(ams_mel_rf_va_data_pipe_connections_snapshot_close(&connections, NULL, 0, NULL) == AMS_MEL_OK);
+    puts("RF E5: real VA returned-value + mutation true evidence; fresh pipe, no persistence/RDMA/Q-pair/hardware claim");
     REQUIRE(ams_mel_rf_element_group_snapshot_close(&descriptor_full, NULL, 0, NULL) == AMS_MEL_OK);
     puts("RF descriptors: exact pinned RX limits and fresh default-empty pipe; no persistent route/association claim");
     {
