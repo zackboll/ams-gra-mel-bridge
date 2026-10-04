@@ -1,5 +1,16 @@
 # Experimental C ABI policy
 
+Task 034E4 adds exactly eight ABI 0.1 operations (172 -> 180), two primitive
+LF snapshot owners and fixed info/span records; all earlier declarations and
+records remain frozen. Live required Boolean false is OK/0. Conditional LF
+empty values are OK/{NULL,0}. size_t counts widen exactly to uint64_t with a
+compile-time portability check. Map key order and zero counts remain; status
+spans reuse E1's validated 0..3 domain, preserving position/duplicates. Any
+unknown entry rejects the whole owner. Outputs remain untouched on failure;
+creation requires initially null output. Views/Close never call providers and
+owners survive unload. No cross-call reconciliation/atomic consistency or
+additional claim/worker/pin. See the E4 task report for validation.
+
 Task 034E3 adds exactly three ABI 0.1 exports (169 -> 172), an opaque plain
 element-group snapshot and new versioned options/descriptor/pipe/span/view records.
 All original records/declarations stay frozen. uint32 RX/TX maps explicitly to

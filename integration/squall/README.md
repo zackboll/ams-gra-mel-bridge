@@ -1,3 +1,16 @@
+# Task 034E4 capability and Local Function evidence
+
+At Squall `b1015728f904c799fa0c07489fce48e78f67845f`,
+`interfaces/squall-rf-mel-impl/src/SquallC2MEL.cc:488..498,530..537`
+returns false/false and empty LF map/vector. The safe Ada VA and C ProductRx
+clients require those exact values. Ada repeats after public C2 Close; both
+retain copied LF values across VA/C2 Close. Empty LF data is successful, not
+unsupported/error and not positive LF-support evidence. No Weights/TX getter
+is inferred/called from False. Existing E1/E2/E3 and Job/ProductRx assertions
+remain. These callback-pinned processes are NOT DSO-unload evidence; the
+isolated native no-registration test supplies that proof. See the task report
+for actual runtime results rather than inferring a pass from source inspection.
+
 # Task 034E3 descriptor evidence
 
 The safe Ada VA and C ProductRx paths assert descriptor-only and opted-in

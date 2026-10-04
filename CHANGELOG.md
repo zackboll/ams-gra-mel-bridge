@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Task 034E4 adds eight VA capability/Local Function exports (172 -> 180), ABI
+  0.1 unchanged. Required Booleans return exact live false/true values; conditional
+  LF snapshots preserve map order/zero counts, exact size_t-to-uint64 counts and
+  status length/order/duplicates with E1's canonical enum. Safe Ada owns copied
+  values; raw Rust/private Python parity only. No cross-query reconciliation,
+  callback getter, new claim/worker/pin or resource/TX/association expansion.
+  Vendor inventory remains 804. See the task report for actual validation.
+
 - Task 034E3 adds three element-group snapshot exports (169 -> 172), one plain
   nested owner and safe Ada ordinary values with checked copy-out. Actual
   provider descriptors preserve independent map/returned labels, RX/TX, four

@@ -119,6 +119,8 @@ int main(int argc, char **argv)
     ams_mel_rf_job_status_t job_status = UINT32_MAX;
     ams_mel_rf_job_cancel_result_v1 cancel_result = {0};
     uint32_t accepted = 0;
+    ams_mel_rf_va_local_function_list *lf_catalog = NULL;
+    ams_mel_rf_va_local_function_status *lf_status = NULL;
     ams_mel_status_t status;
     uint64_t hash_a, distinct = 0;
     size_t count_a, index, received = 0;
@@ -186,6 +188,17 @@ int main(int argc, char **argv)
     REQUIRE(ams_mel_rf_va_status_subscription_wait(va_subscription, 0, diagnostic,
         sizeof diagnostic, NULL) == AMS_MEL_TIMEOUT);
     REQUIRE(ams_mel_rf_virtual_aperture_request_close(&va_request, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        uint32_t supported = UINT32_MAX;
+        ams_mel_rf_va_local_function_info_span_v1 catalog = {NULL, 0};
+        ams_mel_u32_span_v1 statuses = {NULL, 0};
+        REQUIRE(ams_mel_rf_virtual_aperture_is_cached_waveform_supported(va, &supported, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && supported == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_dynamic_weights_supported(va, &supported, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && supported == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_local_functions(va, &lf_catalog, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_local_function_list_view(lf_catalog, &catalog, NULL, 0, NULL) == AMS_MEL_OK && !catalog.data && catalog.size == 0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_local_function_status(va, 0, 0, &lf_status, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_local_function_status_view(lf_status, &statuses, NULL, 0, NULL) == AMS_MEL_OK && !statuses.data && statuses.size == 0);
+    }
     {
         ams_mel_rf_element_group_snapshot_options_v1 options = {0};
         status = ams_mel_rf_virtual_aperture_get_element_groups(va, &options, &descriptor_basic, diagnostic, sizeof diagnostic, NULL);
@@ -285,6 +298,15 @@ int main(int argc, char **argv)
     puts("RF VA notifications: registration/automatic removal/no-delivery only; no real positive transition claim");
     status = ams_mel_rf_c2_close(&c2, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_c2", status, diagnostic);
+    {
+        ams_mel_rf_va_local_function_info_span_v1 catalog = {NULL, 0};
+        ams_mel_u32_span_v1 statuses = {NULL, 0};
+        REQUIRE(ams_mel_rf_va_local_function_list_view(lf_catalog, &catalog, NULL, 0, NULL) == AMS_MEL_OK && !catalog.data && catalog.size == 0);
+        REQUIRE(ams_mel_rf_va_local_function_status_view(lf_status, &statuses, NULL, 0, NULL) == AMS_MEL_OK && !statuses.data && statuses.size == 0);
+        REQUIRE(ams_mel_rf_va_local_function_list_close(&lf_catalog, NULL, 0, NULL) == AMS_MEL_OK);
+        REQUIRE(ams_mel_rf_va_local_function_status_close(&lf_status, NULL, 0, NULL) == AMS_MEL_OK);
+    }
+    puts("RF required capabilities: false/false; LF empty map/vector, not positive LF support; copied values survive VA/C2 Close");
     REQUIRE(check_descriptors(descriptor_basic, 0) == EXIT_SUCCESS);
     REQUIRE(check_descriptors(descriptor_full, 1) == EXIT_SUCCESS);
     REQUIRE(ams_mel_rf_element_group_snapshot_close(&descriptor_basic, NULL, 0, NULL) == AMS_MEL_OK);

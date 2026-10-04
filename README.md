@@ -1,5 +1,15 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034E4 adds required live cached-waveform/dynamic-weights Booleans and
+conditional Local Function catalog/status queries in C and safe Ada. Ordinary
+copied values preserve ascending type IDs, exact uint64 counts, zero counts,
+and status vector ordering/duplicates without cross-call reconciliation or
+provider retention. ABI 0.1 adds eight operations (172 -> 180); raw Rust/private
+Python parity only, 804 vendor files unchanged. VirtualAperture remains partial:
+no VA DataPipe operations, Weights resources, TX power, cached-waveform allocation,
+TX endpoints, RDMA or VADB. See
+`docs/task-034e4-rf-va-capability-local-functions.md` for evidence and limitations.
+
 Task 034E3 adds provider-created **element-group descriptor value snapshots** in
 C and safe Ada `AMS.MEL.RF.C2.Element_Groups`. Mandatory RX/TX mode and four
 numeric limits are copied; descriptor-level DataPipe labels/endpoint sets are
