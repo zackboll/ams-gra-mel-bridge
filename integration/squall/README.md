@@ -1,3 +1,18 @@
+# Task 034E6 TX power query evidence
+
+Exact Squall pin `b1015728f904c799fa0c07489fce48e78f67845f` implements all four
+methods in `interfaces/squall-rf-mel-impl/src/SquallC2MEL.cc:508..529` with `0.0`.
+Its RF profile is receive-only. Safe Ada VA and C ProductRx integration call
+getTxRadiatedPower/getTxPeakRadiatedPower/getTxApertureGain/getMaxTxAttenuation
+using nontrivial scalar inputs and require all four zero returns. Ada repeats
+after public C2 Close while VA remains open. All E1-E5/Job/ProductRx assertions
+remain. This is call-path/return-value evidence only, NOT positive transmit
+capability, radiated-power accuracy, gain-model or attenuation-model correctness.
+These callback-pinned processes are not unload proof; isolated mock E6 C/Ada
+processes without registrations supply that separately. No local formula/gate,
+Weights owner, TX execution, RDMA or VADB. ABI 0.1 adds four exports; vendor 804
+unchanged. See `../../docs/task-034e6-rf-tx-power-queries.md` for measured checks.
+
 # Task 034E5 VA connections and association evidence
 
 Rechecked exact Squall pin `b1015728f904c799fa0c07489fce48e78f67845f`:

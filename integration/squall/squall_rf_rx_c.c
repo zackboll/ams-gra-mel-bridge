@@ -198,6 +198,23 @@ int main(int argc, char **argv)
     status = ams_mel_rf_virtual_aperture_request_claim(va_request, &va, diagnostic,
                                                         sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("claim_va", status, diagnostic);
+    {
+        /* Exact receive-only pin: call-path/zero-return evidence only, not
+         * TX capability, hardware or RF model accuracy; not unload proof. */
+        double radiated=111, peak=222, gain=333, attenuation=444;
+        REQUIRE(ams_mel_rf_virtual_aperture_get_tx_radiated_power(va, 17, 0xFEDCBA98U,
+            -12.75, 23, 987654321.125, -0.75, 0.625, 0xDEADBEEFU, &radiated,
+            diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && radiated == 0.0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power(va, 17, 0xFEDCBA98U,
+            -12.75, 987654321.125, 0xDEADBEEFU, &peak,
+            diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && peak == 0.0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_tx_aperture_gain(va, 17, 0xFEDCBA98U,
+            23, 987654321.125, -0.75, 0.625, 0xDEADBEEFU, &gain,
+            diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && gain == 0.0);
+        REQUIRE(ams_mel_rf_virtual_aperture_get_max_tx_attenuation(va, 17, 0xFEDCBA98U,
+            0xDEADBEEFU, &attenuation, diagnostic, sizeof diagnostic, NULL) == AMS_MEL_OK && attenuation == 0.0);
+        puts("E6 pinned receive-only Squall: four zero TX query results");
+    }
     status = ams_mel_rf_va_status_subscription_open(va, &va_subscription,
         diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("subscribe_va", status, diagnostic);

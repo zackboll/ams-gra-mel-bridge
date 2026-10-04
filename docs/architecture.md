@@ -1,5 +1,19 @@
 # Architecture decisions
 
+Task 034E6 exposes getTxRadiatedPower, getTxPeakRadiatedPower, getTxApertureGain
+and getMaxTxAttenuation as independent @RequiredIfTransmit scalar queries. The
+existing VA claim protects each synchronous exact-once call outside C2 lifecycle,
+notification, Job and interval-queue locks; same-VA operations including Close
+remain externally serialized. No new claim, owner, worker, registration or DSO
+pin; scalar copies outlive unload. No group/descriptor/Weights lookup, capability
+auto-gate, local formula, reconciliation, caching or retry. Stable uint64 group
+and WeightType IDs check provider size_t representability before entry; doubles
+pass without physical validation, finite checks, normalization or unit conversion.
+Safe Ada uses ordinary Long_Float and IDs with narrowly scoped C-double conversion,
+not project-wide validity changes. Mock-positive evidence is independent of
+receive-only pinned Squall's zero-return call-path evidence. Vendor unchanged.
+See `task-034e6-rf-tx-power-queries.md`; VirtualAperture is not complete.
+
 Task 034E5 uses a thick key-addressed synchronous model, not a public DataPipe
 resource owner. Each explicit snapshot or mutation obtains VA::getDataPipes once,
 independent of E3 descriptor pipes. Mutations copy inputs (including upstream set

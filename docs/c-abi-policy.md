@@ -1,5 +1,15 @@
 # Experimental C ABI policy
 
+Task 034E6 adds exactly four scalar TX power query exports (185 -> 189), ABI
+0.1 unchanged and no records/owners. uint64 represents upstream size_t group
+and WeightType IDs; compile-time size_t width <= uint64 and runtime bounds reject
+unrepresentable IDs before provider entry. Live VA/output/diagnostic validation
+precedes each exact independent provider call. Every failure leaves output
+unchanged; bad_alloc maps INTERNAL_ERROR and other/unknown exceptions map
+PROVIDER_EXCEPTION, without retry. dBW/dB/Hz and U,V preserve doubles including
+signed zero/infinity/NaN without normalization or payload-bit guarantee. No
+capability gate/formula/lookup/Weights resource/new claim/worker/pin. See E6 report.
+
 Task 034E5 adds exactly five ABI 0.1 exports (180 -> 185), one opaque copied
 connection snapshot and three new records (group, group span, top-level view),
 reusing E3 pipe info/span and u64 span without modifying any frozen declaration.

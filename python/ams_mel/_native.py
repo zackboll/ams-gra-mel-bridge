@@ -1816,7 +1816,24 @@ ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints = _LIBRARY.ams_mel_rf_
 ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints.argtypes = [RfVaHandle, StringViewV1, StringViewV1, U64SpanV1, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints.restype = ctypes.c_int32
 
+ams_mel_rf_virtual_aperture_get_tx_radiated_power = _LIBRARY.ams_mel_rf_virtual_aperture_get_tx_radiated_power
+ams_mel_rf_virtual_aperture_get_tx_radiated_power.argtypes = [RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_double, ctypes.c_uint64, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_uint32, ctypes.POINTER(ctypes.c_double), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_tx_radiated_power.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power = _LIBRARY.ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power
+ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power.argtypes = [RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_double, ctypes.c_double, ctypes.c_uint32, ctypes.POINTER(ctypes.c_double), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_tx_aperture_gain = _LIBRARY.ams_mel_rf_virtual_aperture_get_tx_aperture_gain
+ams_mel_rf_virtual_aperture_get_tx_aperture_gain.argtypes = [RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint64, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_uint32, ctypes.POINTER(ctypes.c_double), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_tx_aperture_gain.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_max_tx_attenuation = _LIBRARY.ams_mel_rf_virtual_aperture_get_max_tx_attenuation
+ams_mel_rf_virtual_aperture_get_max_tx_attenuation.argtypes = [RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_double), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_max_tx_attenuation.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
+    "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power",
+    "ams_mel_rf_virtual_aperture_get_tx_aperture_gain",
+    "ams_mel_rf_virtual_aperture_get_max_tx_attenuation",
     "ams_mel_rf_virtual_aperture_get_data_pipes",
     "ams_mel_rf_va_data_pipe_connections_snapshot_view",
     "ams_mel_rf_va_data_pipe_connections_snapshot_close",

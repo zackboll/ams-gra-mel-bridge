@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Task 034E6 adds four exact independent TX power query exports (185 -> 189),
+  ABI 0.1 and frozen records unchanged, plus safe Ada Transmit_Power functions.
+  Stable uint64 group/WeightType IDs reject values outside provider size_t before
+  entry. dBW/dB/Hz and U,V doubles pass without formulas, normalization or gates;
+  failures preserve outputs. Existing VA claim supports parent-first synchronous
+  calls; no owner/worker/pin, Weights/TX execution/RDMA/VADB expansion. Mock-positive
+  calculations and receive-only Squall zero-return evidence are distinguished.
+  Raw Rust/private Python parity only; 804 vendor files unchanged.
+
 - Task 034E5 adds five VA DataPipe snapshot/association exports (180 -> 185),
   ABI 0.1 unchanged. Provider-independent connections preserve canonical unsigned
   UTF-8 outer keys, inner map order, distinct returned labels, aliases and full

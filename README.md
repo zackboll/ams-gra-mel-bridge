@@ -1,5 +1,18 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034E6 adds all four conditional **VirtualAperture TX power/gain/attenuation
+queries** in production C and safe Ada `AMS.MEL.RF.C2.Transmit_Power`. Each call
+forwards scalar IDs and doubles to its exact provider method once: no local RF
+formula, reconciliation, capability auto-gate, lookup, Weights owner or cache.
+Upstream size_t IDs use stable uint64 with checked representability; units remain
+dBW/dB/Hz and U,V components unchanged, including special IEEE values. The existing
+VA claim permits synchronous parent-first calls, with no new owner/worker/pin.
+Four additions take ABI **0.1** from **185 to 189**; raw Rust/private Python parity
+only. Vendor **804** unchanged. Receive-only pinned Squall returns four zeros:
+call-path/return-value evidence, **not positive TX capability or model accuracy**.
+VirtualAperture remains partial; Weights, CachedWaveform, TX endpoints/events/jobs,
+external/RDMA and VADB remain deferred. See `docs/task-034e6-rf-tx-power-queries.md`.
+
 Task 034E5 adds **VA-level DataPipe connections and endpoint association** in
 production C and safe Ada `AMS.MEL.RF.C2.Data_Pipes`, distinct from E3's optional
 descriptor pipes. Copied nested snapshots retain no provider/claim/DSO; synchronous
