@@ -1,5 +1,10 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_rf_virtual_aperture_get_data_pipes;
+        ams_mel_rf_va_data_pipe_connections_snapshot_view;
+        ams_mel_rf_va_data_pipe_connections_snapshot_close;
+        ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint;
+        ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints;
         ams_mel_rf_virtual_aperture_is_cached_waveform_supported;
         ams_mel_rf_virtual_aperture_dynamic_weights_supported;
         ams_mel_rf_virtual_aperture_get_local_functions;

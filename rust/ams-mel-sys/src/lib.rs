@@ -2,6 +2,70 @@
 
 use std::ffi::{c_char, c_void};
 #[repr(C)]
+pub struct AmsMelRfVaDataPipeConnectionsSnapshot {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfVaDataPipeGroupV1 {
+    pub element_group_lookup_label: AmsMelStringViewV1,
+    pub data_pipes: AmsMelRfDataPipeInfoSpanV1,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfVaDataPipeGroupSpanV1 {
+    pub data: *const AmsMelRfVaDataPipeGroupV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfVaDataPipeConnectionsSnapshotV1 {
+    pub groups: AmsMelRfVaDataPipeGroupSpanV1,
+}
+unsafe extern "C" {
+    pub fn ams_mel_rf_virtual_aperture_get_data_pipes(
+        va: *const AmsMelRfVa,
+        output: *mut *mut AmsMelRfVaDataPipeConnectionsSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_data_pipe_connections_snapshot_view(
+        owner: *const AmsMelRfVaDataPipeConnectionsSnapshot,
+        output: *mut *const AmsMelRfVaDataPipeConnectionsSnapshotV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_data_pipe_connections_snapshot_close(
+        owner: *mut *mut AmsMelRfVaDataPipeConnectionsSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint(
+        va: *mut AmsMelRfVa,
+        group: AmsMelStringViewV1,
+        pipe: AmsMelStringViewV1,
+        endpoint: u64,
+        accepted: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints(
+        va: *mut AmsMelRfVa,
+        group: AmsMelStringViewV1,
+        pipe: AmsMelStringViewV1,
+        endpoints: AmsMelU64SpanV1,
+        accepted: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
+#[repr(C)]
 pub struct AmsMelRfVaLocalFunctionList {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,

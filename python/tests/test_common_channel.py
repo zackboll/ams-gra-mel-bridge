@@ -1192,7 +1192,7 @@ class PublicSurfaceTests(unittest.TestCase):
                        "IrChannelCapabilityV1"):
             self.assertNotIn(leaked, ams_mel.__all__)
         # Task 034B1B1 adds two private raw C2 lifecycle bindings; no public RF API.
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 180)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 185)
         for leaked in ("RfAdminHandle", "RfC2Handle", "RfVaRequestHandle", "RfVaHandle",
                        "RfVaConfigV1", "RfVaResultV1", "RfVaInfoV1",
                        "RfDataHandle", "RfMfaInfoHandle", "RfMfaInfoV1",

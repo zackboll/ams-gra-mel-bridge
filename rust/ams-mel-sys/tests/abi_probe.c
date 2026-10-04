@@ -1053,6 +1053,23 @@ int main(void)
     LAYOUT(ams_mel_rf_va_local_function_info_span_v1);
     FIELD(ams_mel_rf_va_local_function_info_span_v1,data);
     FIELD(ams_mel_rf_va_local_function_info_span_v1,size);
+    LAYOUT(ams_mel_rf_va_data_pipe_connections_snapshot *);
+    RECORD(ams_mel_rf_va_data_pipe_group_v1,
+        FIELD(ams_mel_rf_va_data_pipe_group_v1,element_group_lookup_label);
+        FIELD(ams_mel_rf_va_data_pipe_group_v1,data_pipes));
+    RECORD(ams_mel_rf_va_data_pipe_group_span_v1,
+        FIELD(ams_mel_rf_va_data_pipe_group_span_v1,data);
+        FIELD(ams_mel_rf_va_data_pipe_group_span_v1,size));
+    RECORD(ams_mel_rf_va_data_pipe_connections_snapshot_v1,
+        FIELD(ams_mel_rf_va_data_pipe_connections_snapshot_v1,groups));
+    {
+        ams_mel_status_t (*create)(const ams_mel_rf_virtual_aperture *, ams_mel_rf_va_data_pipe_connections_snapshot **, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_data_pipes;
+        ams_mel_status_t (*view)(const ams_mel_rf_va_data_pipe_connections_snapshot *, const ams_mel_rf_va_data_pipe_connections_snapshot_v1 **, char *, size_t, size_t *) = ams_mel_rf_va_data_pipe_connections_snapshot_view;
+        ams_mel_status_t (*close)(ams_mel_rf_va_data_pipe_connections_snapshot **, char *, size_t, size_t *) = ams_mel_rf_va_data_pipe_connections_snapshot_close;
+        ams_mel_status_t (*single)(ams_mel_rf_virtual_aperture *, ams_mel_string_view_v1, ams_mel_string_view_v1, uint64_t, uint32_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint;
+        ams_mel_status_t (*many)(ams_mel_rf_virtual_aperture *, ams_mel_string_view_v1, ams_mel_string_view_v1, ams_mel_u64_span_v1, uint32_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints;
+        (void)create; (void)view; (void)close; (void)single; (void)many;
+    }
     VALUE(version.major); VALUE(version.minor);
     return 0;
 }

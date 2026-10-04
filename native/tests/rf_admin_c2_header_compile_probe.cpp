@@ -28,6 +28,14 @@ static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::getLocalFunctionS
 using Descriptor = rfmel::ElementGroupDescriptor;
 using Pipe = rfmel::DataPipe;
 using PipeMap = std::map<rfmel::DataPipeLabel, std::shared_ptr<Pipe>>;
+// E5: exact VA-level getter and set mutations; no expanded vendor dependency.
+using ConnectionMap = std::unordered_map<rfmel::ElementGroupLabel, PipeMap>;
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::getDataPipes), rfmel::ElementGroupConnections (rfmel::VirtualAperture::*)()>);
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::ElementGroupConnections&>().begin()), ConnectionMap::const_iterator>);
+static_assert(std::is_same_v<decltype(std::declval<rfmel::ElementGroupConnections&>().begin()), ConnectionMap::iterator>);
+static_assert(std::is_same_v<decltype(*std::declval<const rfmel::ElementGroupConnections&>().begin()), const ConnectionMap::value_type&>);
+static_assert(std::is_same_v<decltype(&Pipe::associateEndpoint), bool (Pipe::*)(rfmel::EndpointID)>);
+static_assert(std::is_same_v<decltype(&Pipe::associateEndpoints), bool (Pipe::*)(const std::set<rfmel::EndpointID>&)>);
 using DescriptorMap = std::unordered_map<rfmel::ElementGroupLabel, std::shared_ptr<Descriptor>>;
 static_assert(std::is_same_v<std::underlying_type_t<rfmel::Mode>, uint8_t>);
 static_assert(static_cast<unsigned>(rfmel::Mode::RX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_RX);

@@ -1,5 +1,20 @@
 # Implementation coverage
 
+Task 034E5 implements VirtualAperture::getDataPipes plus DataPipe getLabel,
+getAssociatedEndpoints, associateEndpoint and associateEndpoints through production
+C and safe Ada `AMS.MEL.RF.C2.Data_Pipes`. E3 descriptor queries remain independent.
+Mock evidence covers deterministic ordering, keys versus labels, full-width IDs,
+aliases/fresh objects, set semantics/empty input, true/false, lookup failures,
+malformed/null data, exceptions/rollback, changing independent snapshots and
+parent-first ownership with copied values after actual DSO unload. Five ABI 0.1
+exports take 180 -> 185; frozen records remain unchanged, vendor 804 unchanged.
+Rust/private Python raw parity only. Pinned Squall has fresh object-local pipes:
+snapshot values and mutation true returns do not establish persistence, external
+connectivity, RDMA/Q-pairs or hardware routing. VirtualAperture/DataPipe/RF MEL
+remain partial: equality, descriptor command builders, Weights, TX power,
+CachedWaveform, WaveformTxEndpoint, external/RDMA, VADB, TX intervals/events and
+additional ProductRx formats remain deferred. See the E5 report for actual checks.
+
 Task 034E4 adds production C and safe Ada for required
 isCachedWaveformSupported/dynamicWeightsSupported and conditional
 getLocalFunctions/getLocalFunctionStatus. Mock-positive LF evidence covers
@@ -9,7 +24,7 @@ Pinned Squall returns false/false and empty map/vector: not positive LF support.
 VA read/query coverage now includes Claim info, BaseVA live status/instance
 queries/reports, status-change adaptation, descriptors, required capability
 Booleans and conditional LF queries. VirtualAperture is NOT complete. Deferred:
-VA DataPipes, descriptor command creation, static/dynamic Weights resources,
+at that checkpoint VA DataPipes, descriptor command creation, static/dynamic Weights resources,
 TX power, cached-waveform allocation, dynamic TX endpoints, external/RDMA,
 VADB and full TX Job/Event support. ABI 0.1 adds eight exports (172 -> 180),
 raw Rust/private Python parity only; vendor 804 unchanged. Actual validation:

@@ -3639,6 +3639,70 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_element_group_snapshot_close(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Task 034E5: VA-level connections, DISTINCT from optional E3 descriptor pipes.
+ * Only copied strings/endpoints/records are owned; no provider pipe handle or
+ * object identity escapes. Outer groups ascend lexicographic unsigned UTF-8
+ * key bytes; inner pipes preserve std::map traversal; endpoints ascend uint64.
+ * Keys and returned labels remain distinct. Aliases preserve every occurrence.
+ * Empty spans/string views are {NULL,0}; all pointers borrow owner storage. */
+typedef struct ams_mel_rf_va_data_pipe_connections_snapshot
+    ams_mel_rf_va_data_pipe_connections_snapshot;
+typedef struct ams_mel_rf_va_data_pipe_group_v1 {
+    ams_mel_string_view_v1 element_group_lookup_label;
+    ams_mel_rf_data_pipe_info_span_v1 data_pipes;
+} ams_mel_rf_va_data_pipe_group_v1;
+typedef struct ams_mel_rf_va_data_pipe_group_span_v1 {
+    const ams_mel_rf_va_data_pipe_group_v1 *data;
+    size_t size;
+} ams_mel_rf_va_data_pipe_group_span_v1;
+typedef struct ams_mel_rf_va_data_pipe_connections_snapshot_v1 {
+    ams_mel_rf_va_data_pipe_group_span_v1 groups;
+} ams_mel_rf_va_data_pipe_connections_snapshot_v1;
+
+/* Exactly one VA::getDataPipes and each pipe getter once per occurrence.
+ * Output must be initially NULL. Malformed UTF-8/NUL keys/labels or null pipes
+ * reject the entire snapshot (PROVIDER_FAILED). No provider/claim/DSO retained;
+ * View/Close allocate and call no provider, even after actual DSO unload. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_data_pipes(
+    const ams_mel_rf_virtual_aperture *va,
+    ams_mel_rf_va_data_pipe_connections_snapshot **out_snapshot,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_data_pipe_connections_snapshot_view(
+    const ams_mel_rf_va_data_pipe_connections_snapshot *snapshot,
+    const ams_mel_rf_va_data_pipe_connections_snapshot_v1 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_data_pipe_connections_snapshot_close(
+    ams_mel_rf_va_data_pipe_connections_snapshot **snapshot,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Synchronous key-addressed commands: validate/copy inputs, obtain exactly one
+ * fresh VA::getDataPipes value, select exact keys, invoke the exact mutation
+ * once. Missing keys/null target => PROVIDER_FAILED, no mutation. No capability
+ * auto-gate, cache, retry or readback. Boolean false/true is OK with accepted 0/1
+ * and means ONLY the provider method returned false/true, not RDMA/Q-pairs,
+ * connectivity, hardware routing or persistence across queries. Outputs remain
+ * untouched on failure. bad_alloc => INTERNAL_ERROR; other exceptions =>
+ * PROVIDER_EXCEPTION. Same-VA operations including Close externally serialized;
+ * provider calls hold no bridge locks. Open VA remains usable after C2 Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_associate_data_pipe_endpoint(
+    ams_mel_rf_virtual_aperture *va,
+    ams_mel_string_view_v1 element_group_lookup_label,
+    ams_mel_string_view_v1 data_pipe_lookup_label,
+    uint64_t endpoint_id, uint32_t *out_accepted,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Input is converted to upstream std::set BEFORE the provider query: ordering
+ * insignificant, duplicates collapse, empty set valid and forwarded once. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints(
+    ams_mel_rf_virtual_aperture *va,
+    ams_mel_string_view_v1 element_group_lookup_label,
+    ams_mel_string_view_v1 data_pipe_lookup_label,
+    ams_mel_u64_span_v1 endpoint_ids, uint32_t *out_accepted,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 #ifdef __cplusplus
 }
 #endif

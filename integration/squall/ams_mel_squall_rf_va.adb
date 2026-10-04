@@ -6,6 +6,7 @@ with AMS.MEL.RF.C2.Virtual_Aperture_Queries;
 with AMS.MEL.RF.C2.Virtual_Aperture_Notifications;
 with AMS.MEL.RF.C2.Element_Groups;
 with AMS.MEL.RF.C2.Local_Functions;
+with AMS.MEL.RF.C2.Data_Pipes;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -16,11 +17,46 @@ procedure AMS_MEL_Squall_RF_VA is
    package N renames C2.Virtual_Aperture_Notifications;
    package E renames C2.Element_Groups;
    package LF renames C2.Local_Functions;
+   package P renames C2.Data_Pipes;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
    use type Interfaces.Unsigned_32;
    use type Q.Status_Kind;
    use type E.Element_Group_Mode;
+   procedure Connections (Value : P.Connection_Snapshot) is
+   begin
+      if P.Group_Count (Value) /= 1 then
+         raise Program_Error with "Squall E5 group count mismatch";
+      end if;
+      declare
+         G : constant P.Element_Group_Connection := P.Group_At (Value, 1);
+      begin
+         if P.Element_Group_Label (G) /= "0" or else P.Pipe_Count (G) /= 1 then
+            raise Program_Error with "Squall E5 group/key mismatch";
+         end if;
+         declare
+            Pipe : constant P.Data_Pipe_Connection := P.Pipe_At (G, 1);
+         begin
+            if P.Lookup_Label (Pipe) /= "default" or else P.Label (Pipe) /= "default"
+              or else P.Endpoint_Count (Pipe) /= 0
+            then
+               raise Program_Error with "Squall E5 default fresh empty pipe mismatch";
+            end if;
+         end;
+      end;
+   end Connections;
+   procedure Associations (VA : in out C2.Virtual_Aperture'Class) is
+   begin
+      Connections (P.Snapshot (VA));
+      if not P.Associate_Endpoint (VA, "0", "default", 16#8000_0000_0000_0000#)
+        or else not P.Associate_Endpoints (VA, "0", "default", [0, 7, Interfaces.Unsigned_64'Last])
+      then
+         raise Program_Error with "Squall E5 mutation method returned false";
+      end if;
+      --  Each call above used a fresh getDataPipes container/object. A NEW
+      --  snapshot is empty; true is mutation-return evidence, not persistence.
+      Connections (P.Snapshot (VA));
+   end Associations;
    procedure Descriptors (Value : E.Element_Group_List; Included : Boolean) is
    begin
       if E.Count (Value) /= 1 or else E.Data_Pipes_Included (Value) /= Included then
@@ -113,10 +149,13 @@ begin
             Full : constant E.Element_Group_List := E.Snapshot_Element_Groups (VA, True);
             Catalog : constant LF.Local_Function_List := LF.Snapshot_Local_Functions (VA);
             Statuses : constant LF.Status_List := LF.Snapshot_Local_Function_Status (VA, 0, 0);
+            Pipes : constant P.Connection_Snapshot := P.Snapshot (VA);
          begin
             C2.Close (Request);
             Queries (VA);
             Descriptors (Basic, False);
+            Connections (Pipes);
+            Associations (VA);
             Descriptors (Full, True);
             begin
                N.Wait_For_Change (Subscription, 0);
@@ -134,6 +173,7 @@ begin
                raise Program_Error with "Squall VA snapshot mismatch";
             end if;
             C2.Close (Parent);
+            Associations (VA);
             Queries (VA);
             Descriptors (E.Snapshot_Element_Groups (VA), False);
             Descriptors (E.Snapshot_Element_Groups (VA, True), True);
@@ -161,6 +201,7 @@ begin
                  Q.Snapshot_Instance_Status_Report (VA, Interfaces.Unsigned_32'Last);
             begin
                C2.Close (VA);
+               Connections (Pipes);
                if LF.Count (Catalog) /= 0 or else LF.Count (Statuses) /= 0 then
                   raise Program_Error with "copied Squall LF values changed after VA Close";
                end if;
@@ -180,5 +221,5 @@ begin
       Admin.Close (Control);
    end;
    Ada.Text_IO.Put_Line
-     ("PASS: safe Ada Squall VA registration/removal/no-delivery and parent-first snapshots; no positive transition or hardware health claim");
+      ("PASS: safe Ada Squall VA and fresh E5 connection values + mutation returns; no persistence/RDMA/routing/hardware claim");
 end AMS_MEL_Squall_RF_VA;

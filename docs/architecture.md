@@ -1,5 +1,21 @@
 # Architecture decisions
 
+Task 034E5 uses a thick key-addressed synchronous model, not a public DataPipe
+resource owner. Each explicit snapshot or mutation obtains VA::getDataPipes once,
+independent of E3 descriptor pipes. Mutations copy inputs (including upstream set
+conversion) before that query, select exact outer/inner keys, reject a null target,
+and invoke one exact method once. No sibling claim, worker, callback, resource/DSO
+pin or lock is added; live VA's existing claim permits parent-first operations.
+No capability auto-gate/cache/retry/readback or association-persistence guarantee.
+Snapshots contain only final-sized bridge strings/vectors/records; outer keys
+sort by unsigned UTF-8 bytes, inner std::map traversal and ascending endpoint sets
+remain. Aliases preserve each occurrence; lookup keys differ from returned labels.
+Checked Ada copy-out closes a controlled native temporary before ordinary values
+return. Actual no-registration unload tests distinguish E5 from E2's intentional
+permanent callback shell. Squall's fresh object-local pipes supply returned-value
+and mutation-return evidence, never RDMA/Q-pairs/hardware routing. See
+`task-034e5-rf-datapipe-association.md`.
+
 Task 034E4 adds four exact synchronous provider query families under the existing
 VA claim, without holding lifecycle/notification/Job/queue locks. Required
 cached-waveform/dynamic-weights Booleans are not cached and False is data.
