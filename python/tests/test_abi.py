@@ -12,6 +12,19 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_job_request_v2_signature(self) -> None:
+        function = _native.ams_mel_rf_virtual_aperture_submit_job_v2
+        self.assertEqual(function.argtypes, [
+            _native.RfVaHandle, ctypes.POINTER(_native.RfJobRequestConfigV2),
+            ctypes.POINTER(_native.RfJobRequestHandle), _native.CharPointer,
+            ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        import ams_mel
+        for name in ("ams_mel_rf_virtual_aperture_submit_job_v2", "RfJobRequestConfigV2",
+                     "RfUtcTimeV1", "RfRxElementGroupConfigV2", "RfRxElementGroupConfigSpanV2",
+                     "RfRxDataPipeEndpointConfigV1", "RfRxDataPipeEndpointConfigSpanV1"):
+            self.assertNotIn(name, ams_mel.__all__)
+
     def test_private_transmit_power_signatures(self) -> None:
         diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         va, u64, u32, f64 = _native.RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_double
@@ -200,6 +213,7 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_rf_virtual_aperture_submit_job_v2",
                 "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
                 "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power",
                 "ams_mel_rf_virtual_aperture_get_tx_aperture_gain",
@@ -392,8 +406,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 189)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 189)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 190)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 190)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -401,7 +415,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 189)
+        self.assertEqual(len(exported), 190)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1375,6 +1389,12 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfJobRequestConfigV1,
                                      'request_id', 'priority', 'precedence_within_priority',
                                      'is_interruptable', 'instance_selection', 'rx_group'))
+        expected.extend(self._layout(_native.RfUtcTimeV1, 'seconds', 'fractional_femtoseconds'))
+        expected.extend(self._layout(_native.RfRxDataPipeEndpointConfigV1, 'data_pipe_label', 'endpoint_ids'))
+        expected.extend(self._layout(_native.RfRxDataPipeEndpointConfigSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfRxElementGroupConfigV2, 'label', 'desired_duty_factor', 'expected_center_frequencies', 'data_pipe_endpoint_configs'))
+        expected.extend(self._layout(_native.RfRxElementGroupConfigSpanV2, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobRequestConfigV2, 'request_id', 'priority', 'precedence_within_priority', 'is_interruptable', 'instance_selection', 'rx_groups', 'min_start_time', 'max_complete_time', 'duration_femtoseconds', 'capability_id', 'activity_id', 'tx_power_mode_ids', 'lookahead_femtoseconds'))
         expected.extend(self._layout(_native.RfJobResultV1, 'error_code'))
         expected.extend(self._layout(_native.RfJobInfoV1,
                                      'actual_start_seconds', 'actual_start_femtoseconds',

@@ -1,4 +1,4 @@
-/* One provider-created RX command and one C2 child claim per asynchronous Job. */
+/* Ordered provider-created RX commands and one C2 child claim per async Job. */
 #include <ams_mel/abi.h>
 #include "internal/provider_common.hpp"
 #include "internal/rf_va_job_parent.hpp"
@@ -523,46 +523,20 @@ extern "C" ams_mel_status_t ams_mel_rf_job_cancel_remaining_intervals(
                             diagnostic, capacity, required);
 }
 
-extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
-    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v1 *config,
+namespace {
+/* Both profiles use this sole post-validation pipeline. The builder's command
+ * locals and request unwind before the explicit parent release on every failure.
+ * No allocation needed to publish/retain the async owner follows requestJob. */
+template<class Build>
+ams_mel_status_t submit_prepared(ams_mel_rf_virtual_aperture *va, Build&& build,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     std::size_t capacity, std::size_t *required) noexcept
 {
-    clear_diagnostic(diagnostic, capacity, required);
-    if (bad_diag(diagnostic, capacity) || !va || !config || !out_request || *out_request)
-        return AMS_MEL_INVALID_ARGUMENT;
-    const auto& group = config->rx_group;
-    if (!valid_view(group.label) || !valid_view(group.data_pipe_label) ||
-        !std::isfinite(group.desired_duty_factor) || group.desired_duty_factor <= 0.0 ||
-        group.desired_duty_factor > 1.0 || config->is_interruptable > 1U ||
-        !span_ok(group.expected_center_frequencies.size, group.expected_center_frequencies.data,
-                 sizeof(ams_mel_rf_frequency_range_v1)) ||
-        !span_ok(group.endpoint_ids.size, group.endpoint_ids.data, sizeof(std::uint64_t)) ||
-        !span_ok(config->instance_selection.size, config->instance_selection.data,
-                 sizeof(std::uint32_t))) return AMS_MEL_INVALID_ARGUMENT;
-    std::string label, pipe;
-    std::vector<rfmel::FrequencyRange> frequencies;
-    std::set<rfmel::EndpointID> endpoints;
-    std::vector<rfmel::VirtualApertureInstanceID> instances;
     std::shared_ptr<Completion> completion;
     std::shared_ptr<WorkerInput> input;
     std::unique_ptr<ams_mel_rf_job_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
-        label = copy_view(group.label);
-        pipe = copy_view(group.data_pipe_label);
-        frequencies.reserve(group.expected_center_frequencies.size);
-        for (std::size_t i = 0; i < group.expected_center_frequencies.size; ++i) {
-            const auto& range = group.expected_center_frequencies.data[i];
-            if (!std::isfinite(range.min_hz) || !std::isfinite(range.max_hz) ||
-                range.min_hz > range.max_hz) return AMS_MEL_INVALID_ARGUMENT;
-            frequencies.emplace_back(range.min_hz, range.max_hz);
-        }
-        for (std::size_t i = 0; i < group.endpoint_ids.size; ++i)
-            if (!endpoints.insert(group.endpoint_ids.data[i]).second) return AMS_MEL_INVALID_ARGUMENT;
-        if (config->instance_selection.size)
-            instances.assign(config->instance_selection.data,
-                             config->instance_selection.data + config->instance_selection.size);
         completion = std::make_shared<Completion>();
         input = std::make_shared<WorkerInput>();
         input->completion = completion;
@@ -577,42 +551,24 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
         write_diagnostic("VirtualAperture job parent unavailable", diagnostic, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
     }
-    /* Synchronous failures must destroy the command before dropping VA/C2. */
-    std::shared_ptr<rfmel::ElementGroupCommand> command;
+    bool available = false;
     try {
-        command = completion->va->createElementGroupCommand(label);
-        if (!command || command->getMode() != rfmel::Mode::RX) {
-            write_diagnostic("provider RX element group unavailable", diagnostic, capacity, required);
-            command.reset();
-            completion->va.reset();
-            (void)completion->claim.release();
-            return AMS_MEL_PROVIDER_FAILED;
-        }
-        command->setDesiredDutyFactor(group.desired_duty_factor);
-        for (const auto& range : frequencies) command->addExpectedCenterFrequencies(range);
-        if (!endpoints.empty()) command->addEndpointIDs(endpoints, pipe);
         rfmel::JobRequest request;
-        request.setRequestId(config->request_id);
-        request.setPriority(config->priority);
-        request.setPrecedenceWithinPriority(config->precedence_within_priority);
-        request.setInstanceSelection(instances);
-        request.setIsInterruptable(config->is_interruptable == 1U);
-        request.addElementGroup(command);
-        input->future = completion->va->requestJob(request);
+        available = build(*completion->va, request);
+        if (available) input->future = completion->va->requestJob(request);
     } catch (...) {
         const auto result = translate_provider_exception("provider Job submission exception",
             "unknown provider Job submission exception", diagnostic, capacity, required);
-        command.reset();
         completion->va.reset();
         (void)completion->claim.release();
         return result;
     }
-    command.reset();
-    if (!input->future.valid()) {
+    if (!available || !input->future.valid()) {
         input->future = Future{};
         completion->va.reset();
         (void)completion->claim.release();
-        write_diagnostic("invalid JobDetail future", diagnostic, capacity, required);
+        write_diagnostic(available ? "invalid JobDetail future" : "provider RX element group unavailable",
+                         diagnostic, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
     }
     input->emergency_self = input;
@@ -635,6 +591,169 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
                          diagnostic, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+}
+struct PreparedPipe {
+    std::string label;
+    std::set<rfmel::EndpointID> endpoints;
+};
+struct PreparedGroup {
+    std::string label;
+    double duty;
+    std::vector<rfmel::FrequencyRange> frequencies;
+    std::vector<PreparedPipe> pipes;
+};
+bool canonical(ams_mel_rf_utc_time_v1 time) noexcept
+{ return time.fractional_femtoseconds >= 0 && time.fractional_femtoseconds < INT64_C(1000000000000000); }
+template<class T, class Span>
+std::vector<T> copy_span(Span span)
+{ return span.size ? std::vector<T>{span.data, span.data + span.size} : std::vector<T>{}; }
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v1 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (bad_diag(diagnostic, capacity) || !va || !config || !out_request || *out_request)
+        return AMS_MEL_INVALID_ARGUMENT;
+    const auto& group = config->rx_group;
+    if (!valid_view(group.label) || !valid_view(group.data_pipe_label) ||
+        !std::isfinite(group.desired_duty_factor) || group.desired_duty_factor <= 0.0 ||
+        group.desired_duty_factor > 1.0 || config->is_interruptable > 1U ||
+        !span_ok(group.expected_center_frequencies.size, group.expected_center_frequencies.data,
+                 sizeof(ams_mel_rf_frequency_range_v1)) ||
+        !span_ok(group.endpoint_ids.size, group.endpoint_ids.data, sizeof(std::uint64_t)) ||
+        !span_ok(config->instance_selection.size, config->instance_selection.data,
+                 sizeof(std::uint32_t))) return AMS_MEL_INVALID_ARGUMENT;
+    std::string label, pipe;
+    std::vector<rfmel::FrequencyRange> frequencies;
+    std::set<rfmel::EndpointID> endpoints;
+    std::vector<rfmel::VirtualApertureInstanceID> instances;
+    try {
+        label = copy_view(group.label);
+        pipe = copy_view(group.data_pipe_label);
+        frequencies.reserve(group.expected_center_frequencies.size);
+        for (std::size_t i = 0; i < group.expected_center_frequencies.size; ++i) {
+            const auto& range = group.expected_center_frequencies.data[i];
+            if (!std::isfinite(range.min_hz) || !std::isfinite(range.max_hz) ||
+                range.min_hz > range.max_hz) return AMS_MEL_INVALID_ARGUMENT;
+            frequencies.emplace_back(range.min_hz, range.max_hz);
+        }
+        for (std::size_t i = 0; i < group.endpoint_ids.size; ++i)
+            if (!endpoints.insert(group.endpoint_ids.data[i]).second) return AMS_MEL_INVALID_ARGUMENT;
+        if (config->instance_selection.size)
+            instances.assign(config->instance_selection.data,
+                             config->instance_selection.data + config->instance_selection.size);
+    } catch (...) {
+        write_diagnostic("Job request preparation failed", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return submit_prepared(va, [&](rfmel::VirtualAperture& provider, rfmel::JobRequest& request) {
+        auto command = provider.createElementGroupCommand(label);
+        if (!command || command->getMode() != rfmel::Mode::RX) return false;
+        command->setDesiredDutyFactor(group.desired_duty_factor);
+        for (const auto& range : frequencies) command->addExpectedCenterFrequencies(range);
+        if (!endpoints.empty()) command->addEndpointIDs(endpoints, pipe);
+        request.setRequestId(config->request_id);
+        request.setPriority(config->priority);
+        request.setPrecedenceWithinPriority(config->precedence_within_priority);
+        request.setInstanceSelection(instances);
+        request.setIsInterruptable(config->is_interruptable == 1U);
+        request.addElementGroup(command);
+        return true;
+    }, out_request, diagnostic, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v2 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (bad_diag(diagnostic, capacity) || !va || !config || !out_request || *out_request)
+        return AMS_MEL_INVALID_ARGUMENT;
+    const auto value = *config;
+    if (value.is_interruptable > 1U || !canonical(value.min_start_time) ||
+        !canonical(value.max_complete_time) || !value.rx_groups.size ||
+        !span_ok(value.rx_groups.size, value.rx_groups.data, sizeof(*value.rx_groups.data)) ||
+        !span_ok(value.instance_selection.size, value.instance_selection.data, sizeof(std::uint32_t)) ||
+        !span_ok(value.capability_id.size, value.capability_id.data, sizeof(std::uint8_t)) ||
+        !span_ok(value.activity_id.size, value.activity_id.data, sizeof(std::uint8_t)) ||
+        !span_ok(value.tx_power_mode_ids.size, value.tx_power_mode_ids.data, sizeof(std::uint32_t)))
+        return AMS_MEL_INVALID_ARGUMENT;
+    std::vector<PreparedGroup> groups;
+    std::vector<rfmel::VirtualApertureInstanceID> instances;
+    std::vector<std::uint8_t> capability, activity;
+    std::set<rfmel::TxPowerModeID> modes;
+    try {
+        groups.reserve(value.rx_groups.size);
+        for (std::size_t i = 0; i < value.rx_groups.size; ++i) {
+            const auto& group = value.rx_groups.data[i];
+            if (!valid_view(group.label) || !std::isfinite(group.desired_duty_factor) ||
+                group.desired_duty_factor <= 0.0 || group.desired_duty_factor > 1.0 ||
+                !span_ok(group.expected_center_frequencies.size, group.expected_center_frequencies.data,
+                         sizeof(*group.expected_center_frequencies.data)) ||
+                !span_ok(group.data_pipe_endpoint_configs.size, group.data_pipe_endpoint_configs.data,
+                         sizeof(*group.data_pipe_endpoint_configs.data))) return AMS_MEL_INVALID_ARGUMENT;
+            PreparedGroup prepared{copy_view(group.label), group.desired_duty_factor, {}, {}};
+            prepared.frequencies.reserve(group.expected_center_frequencies.size);
+            for (std::size_t f = 0; f < group.expected_center_frequencies.size; ++f) {
+                const auto& range = group.expected_center_frequencies.data[f];
+                if (!std::isfinite(range.min_hz) || !std::isfinite(range.max_hz) ||
+                    range.min_hz > range.max_hz) return AMS_MEL_INVALID_ARGUMENT;
+                prepared.frequencies.emplace_back(range.min_hz, range.max_hz);
+            }
+            prepared.pipes.reserve(group.data_pipe_endpoint_configs.size);
+            for (std::size_t p = 0; p < group.data_pipe_endpoint_configs.size; ++p) {
+                const auto& pipe = group.data_pipe_endpoint_configs.data[p];
+                if (!valid_view(pipe.data_pipe_label) || !pipe.endpoint_ids.size ||
+                    !span_ok(pipe.endpoint_ids.size, pipe.endpoint_ids.data, sizeof(std::uint64_t)))
+                    return AMS_MEL_INVALID_ARGUMENT;
+                PreparedPipe association{copy_view(pipe.data_pipe_label), {}};
+                for (std::size_t e = 0; e < pipe.endpoint_ids.size; ++e)
+                    if (!association.endpoints.insert(pipe.endpoint_ids.data[e]).second)
+                        return AMS_MEL_INVALID_ARGUMENT;
+                prepared.pipes.push_back(std::move(association));
+            }
+            groups.push_back(std::move(prepared));
+        }
+        instances = copy_span<rfmel::VirtualApertureInstanceID>(value.instance_selection);
+        capability = copy_span<std::uint8_t>(value.capability_id);
+        activity = copy_span<std::uint8_t>(value.activity_id);
+        for (std::size_t i = 0; i < value.tx_power_mode_ids.size; ++i)
+            modes.insert(value.tx_power_mode_ids.data[i]);
+    } catch (...) {
+        write_diagnostic("Job request preparation failed", diagnostic, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    return submit_prepared(va, [&](rfmel::VirtualAperture& provider, rfmel::JobRequest& request) {
+        using ams::util::math::UTCTime;
+        using ams::util::math::Femtoseconds;
+        request.setPriority(value.priority);
+        request.setPrecedenceWithinPriority(value.precedence_within_priority);
+        request.setMinStartTime(UTCTime{std::chrono::seconds{value.min_start_time.seconds},
+                                      Femtoseconds{value.min_start_time.fractional_femtoseconds}});
+        request.setMaxCompleteTime(UTCTime{std::chrono::seconds{value.max_complete_time.seconds},
+                                         Femtoseconds{value.max_complete_time.fractional_femtoseconds}});
+        request.setDuration(Femtoseconds{value.duration_femtoseconds});
+        request.setCapabilityId(capability);
+        request.setActivityId(activity);
+        request.setRequestId(value.request_id);
+        request.setInstanceSelection(instances);
+        request.setIsInterruptable(value.is_interruptable == 1U);
+        request.setTxPowerModeIDs(modes);
+        request.setLookAheadTime(Femtoseconds{value.lookahead_femtoseconds});
+        for (const auto& group : groups) {
+            auto command = provider.createElementGroupCommand(group.label);
+            if (!command || command->getMode() != rfmel::Mode::RX) return false;
+            command->setDesiredDutyFactor(group.duty);
+            for (const auto& range : group.frequencies) command->addExpectedCenterFrequencies(range);
+            for (const auto& pipe : group.pipes) command->addEndpointIDs(pipe.endpoints, pipe.label);
+            request.addElementGroup(command);
+        }
+        return true;
+    }, out_request, diagnostic, capacity, required);
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_job_request_wait(

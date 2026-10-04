@@ -888,6 +888,14 @@ fn rf_job_signatures_match_the_c_header() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
         *mut AmsMelRfVa,
+        *const AmsMelRfJobRequestConfigV2,
+        *mut *mut AmsMelRfJobRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_submit_job_v2;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
         *const AmsMelRfJobRequestConfigV1,
         *mut *mut AmsMelRfJobRequest,
         *mut c_char,
@@ -1082,8 +1090,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 189);
-    assert_eq!(exported.len(), 189);
+    assert_eq!(declared.len(), 190);
+    assert_eq!(exported.len(), 190);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2234,6 +2242,45 @@ fn declarations_match_the_c_header() {
         is_interruptable,
         instance_selection,
         rx_group
+    );
+    layout!(
+        expected,
+        AmsMelRfUtcTimeV1,
+        seconds,
+        fractional_femtoseconds
+    );
+    layout!(
+        expected,
+        AmsMelRfRxDataPipeEndpointConfigV1,
+        data_pipe_label,
+        endpoint_ids
+    );
+    layout!(expected, AmsMelRfRxDataPipeEndpointConfigSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfRxElementGroupConfigV2,
+        label,
+        desired_duty_factor,
+        expected_center_frequencies,
+        data_pipe_endpoint_configs
+    );
+    layout!(expected, AmsMelRfRxElementGroupConfigSpanV2, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobRequestConfigV2,
+        request_id,
+        priority,
+        precedence_within_priority,
+        is_interruptable,
+        instance_selection,
+        rx_groups,
+        min_start_time,
+        max_complete_time,
+        duration_femtoseconds,
+        capability_id,
+        activity_id,
+        tx_power_mode_ids,
+        lookahead_femtoseconds
     );
     layout!(expected, AmsMelRfJobResultV1, error_code);
     layout!(

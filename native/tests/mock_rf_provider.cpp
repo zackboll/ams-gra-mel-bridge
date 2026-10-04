@@ -1015,13 +1015,28 @@ std::condition_variable job_cleanup_changed;
 unsigned job_cleanup_shutdowns{};
 unsigned job_cleanup_destructions{};
 
+bool f1_case(const char *value)
+{
+    const char *selected = std::getenv("AMS_MEL_TEST_F1_CASE");
+    return selected && std::strcmp(selected, value) == 0;
+}
+bool f1_failure(unsigned group, const char *stage)
+{
+    const char *selected = std::getenv("AMS_MEL_TEST_F1_FAILURE");
+    return selected && std::string{selected} == std::to_string(group) + ":" + stage;
+}
 class MockRxCommand final : public rfmel::ElementGroupCommand {
 public:
-    explicit MockRxCommand(std::string label, bool tx, bool throws)
-        : label_{std::move(label)}, tx_{tx}, throws_{throws} {}
+    explicit MockRxCommand(std::string label, bool tx, bool throws, unsigned f1 = 0)
+        : label_{std::move(label)}, tx_{tx}, throws_{throws}, f1_{f1} {}
+    ~MockRxCommand() override { record("rf_job_command_destroyed"); }
     rfmel::ElementGroupLabel getElementGroupLabel() const override { return label_; }
     rfmel::Mode getMode() const override
-    { record("rf_job_mode_checked"); return tx_ ? rfmel::Mode::TX : rfmel::Mode::RX; }
+    {
+        record("rf_job_mode_checked"); ++mode_calls;
+        if (f1_failure(f1_, "mode")) throw std::runtime_error("F1 mode exception");
+        return tx_ || f1_failure(f1_, "tx") ? rfmel::Mode::TX : rfmel::Mode::RX;
+    }
     std::vector<rfmel::FrequencyRange> getExpectedCenterFrequencies() const override { return frequencies_; }
     std::vector<rfmel::FrequencyRange>& getRefExpectedCenterFrequencies() override { return frequencies_; }
     rfmel::TxPowerLevel getTxPower() const override { forbidden("Job::getTxPower"); }
@@ -1029,23 +1044,122 @@ public:
     rfmel::DataPipeConnections getEndpointIDs() const override { return connections_; }
     rfmel::DataPipeConnections& getRefEndpointIDs() override { return connections_; }
     void addExpectedCenterFrequencies(rfmel::FrequencyRange range) override
-    { frequencies_.push_back(range); }
+    {
+        ++frequency_calls;
+        if (f1_failure(f1_, "frequency")) throw std::runtime_error("F1 frequency exception");
+        frequencies_.push_back(range);
+    }
     void setTxPower(rfmel::TxPowerLevel) override { forbidden("Job::setTxPower"); }
     void setDesiredDutyFactor(rfmel::DutyFactor duty) override
-    { if (throws_) throw std::runtime_error("mock Job setter exception"); duty_ = duty; }
+    {
+        ++duty_calls;
+        if (throws_ || f1_failure(f1_, "duty")) throw std::runtime_error("mock Job setter exception");
+        duty_ = duty;
+    }
     void addEndpointIDs(const std::set<rfmel::EndpointID>& ids, rfmel::DataPipeLabel pipe) override
-    { connections_.insert_or_assign(pipe, ids); }
+    {
+        ++endpoint_calls;
+        if (f1_failure(f1_, "endpoint")) throw std::runtime_error("F1 endpoint exception");
+        endpoint_entries.emplace_back(pipe, ids);
+        connections_.insert_or_assign(pipe, ids);
+    }
     std::vector<rfmel::PointingType> getExpectedPointingAngles() override { return {}; }
     void addExpectedPointingAngle(const rfmel::PointingType&) override { forbidden("Job::addPointing"); }
     std::vector<rfmel::PointingType>& getRefExpectedPointingAngles() override { return pointing_; }
+    mutable unsigned mode_calls{};
+    unsigned duty_calls{}, frequency_calls{}, endpoint_calls{};
+    std::vector<std::pair<std::string, std::set<rfmel::EndpointID>>> endpoint_entries;
 private:
     std::string label_;
     bool tx_, throws_;
+    unsigned f1_{};
     double duty_{1.0};
     std::vector<rfmel::FrequencyRange> frequencies_;
     rfmel::DataPipeConnections connections_;
     std::vector<rfmel::PointingType> pointing_;
 };
+
+void check_job_defaults(const rfmel::JobRequest& request, bool v1)
+{
+    const auto *context = std::any_cast<std::nullptr_t>(&request.getCallbackContext());
+    const rfmel::JobRequest defaults;
+    const auto& point = request.getEstimatedStabPoint();
+    // Pinned default is ECEF with zero location/velocity/time, not a bridge value.
+    if (request.getSendNextJIBatchCallback() || request.getNumJIBs() != 0 ||
+        request.getRequestRejectedCallback() || !context || *context != nullptr ||
+        point.index() != defaults.getEstimatedStabPoint().index())
+        throw std::runtime_error("Job deferred defaults changed");
+    const auto& ecef = std::get<rfmel::ECEFPointing>(point);
+    const auto& zero = std::get<rfmel::ECEFPointing>(defaults.getEstimatedStabPoint());
+    for (unsigned i = 0; i < 3; ++i)
+        if (ecef.getLocation()[i] != zero.getLocation()[i] || ecef.getVelocity()[i] != zero.getVelocity()[i])
+            throw std::runtime_error("Job default pointing components changed");
+    if (!(ecef.getTimeOfValidity() == zero.getTimeOfValidity()))
+        throw std::runtime_error("Job default pointing changed");
+    if (v1 && (!(request.getMinStartTime() == defaults.getMinStartTime()) ||
+               !(request.getMaxCompleteTime() == defaults.getMaxCompleteTime())))
+        throw std::runtime_error("v1 UTC defaults changed");
+    record(v1 ? "rf_job_v1_defaults_verified" : "rf_job_v2_deferred_defaults_verified");
+}
+void check_f1_request(const rfmel::JobRequest& request)
+{
+    check_job_defaults(request, false);
+    const auto& groups = request.getElementGroups();
+    const bool repeated = f1_case("repeated");
+    if (groups.size() != 3) throw std::runtime_error("F1 group count");
+    const std::string labels[]{"rx/α", repeated ? "rx/α" : "", "rx/γ"};
+    const double duties[]{0.625, 0.5, 1.0};
+    for (unsigned i = 0; i < 3; ++i) {
+        const auto command = std::dynamic_pointer_cast<MockRxCommand>(groups[i]);
+        if (!command || command->getElementGroupLabel() != labels[i] ||
+            command->getDesiredDutyFactor() != duties[i] || command->mode_calls != 1 ||
+            command->duty_calls != 1 || command->frequency_calls != (i == 0 ? 2U : i == 1 ? 0U : 1U) ||
+            command->endpoint_calls != (i == 0 ? repeated ? 3U : 2U : i == 1 ? 1U : 0U) ||
+            !command->getRefExpectedPointingAngles().empty())
+            throw std::runtime_error("F1 group order/call counts/pointing");
+        const auto ranges = command->getExpectedCenterFrequencies();
+        if (i == 0 && (ranges[0].getMinFrequency() != 1000000.25 || ranges[0].getMaxFrequency() != 2000000.5 ||
+                       ranges[1].getMinFrequency() != 987654321.125 || ranges[1].getMaxFrequency() != 987654322.875))
+            throw std::runtime_error("F1 first frequencies");
+        if (i == 2 && (ranges[0].getMinFrequency() != -1.25 || ranges[0].getMaxFrequency() != 3.5))
+            throw std::runtime_error("F1 final frequency");
+        std::vector<std::pair<std::string, std::set<rfmel::EndpointID>>> entries;
+        if (i == 0) {
+            entries = {{"products/β", {0, UINT64_C(0x8000000000000000), UINT64_MAX}}, {"secondary", {7, 42}}};
+            if (repeated) entries.emplace_back("products/β", std::set<rfmel::EndpointID>{9});
+        } else if (i == 1) entries = {{"default", {9}}};
+        if (command->endpoint_entries != entries) throw std::runtime_error("F1 endpoint call order/sets");
+    }
+    std::vector<uint32_t> instances{42, 0, 42, UINT32_MAX};
+    std::vector<uint8_t> capability{0, 0xff, 0x80, 0, 7}, activity{0xde, 0xad, 0, 0xbe, 0xef};
+    std::set<uint32_t> modes{7, 0x80000000U, UINT32_MAX};
+    std::int64_t min_sec = -5, min_fs = 123456789012345, max_sec = 42, max_fs = 999999999999999;
+    std::int64_t duration = -123456789012345, lookahead = INT64_MAX;
+    if (f1_case("boundaries")) {
+        min_sec = INT64_MIN; min_fs = 0; max_sec = INT64_MAX; duration = INT64_MIN; lookahead = INT64_MIN;
+        instances = {UINT32_MAX, 7, UINT32_MAX, 0}; modes = {0, 9, 0x80000000U, UINT32_MAX};
+    } else if (f1_case("empty")) {
+        capability.clear(); activity.clear(); modes.clear(); duration = 0; lookahead = 0;
+        // Deliberately reversed scheduling relationship: only representation is validated.
+        min_sec = INT64_MAX; max_sec = INT64_MIN;
+    } else if (f1_case("zero")) {
+        capability = {0}; activity = {0}; duration = INT64_MAX;
+    } else if (f1_case("binary")) {
+        capability.resize(257); activity.resize(257);
+        for (unsigned i = 0; i < 257; ++i) { capability[i] = static_cast<uint8_t>(i); activity[i] = static_cast<uint8_t>(256 - i); }
+    }
+    if (request.getRequestId() != 0xFEDCBA98U || request.getPriority() != 0x80000001U ||
+        request.getPrecedenceWithinPriority() != 0x7FFFFFFEU || !request.getIsInterruptable() ||
+        request.getInstanceSelection() != instances || request.getCapabilityId() != capability ||
+        request.getActivityId() != activity || request.getTxPowerModeIDs() != modes ||
+        request.getMinStartTime().getIntegralSeconds().count() != min_sec ||
+        request.getMinStartTime().getFractionalFemtoseconds().count() != min_fs ||
+        request.getMaxCompleteTime().getIntegralSeconds().count() != max_sec ||
+        request.getMaxCompleteTime().getFractionalFemtoseconds().count() != max_fs ||
+        request.getDuration().count() != duration || request.getLookAheadTime().count() != lookahead)
+        throw std::runtime_error("F1 scheduling/identity fields");
+    record("rf_job_v2_fidelity_verified");
+}
 
 using IntervalCallback = std::function<void(rfmel::JobIntervalStatus)>;
 std::mutex status_mutex;
@@ -1417,6 +1531,13 @@ public:
     {
         record("rf_job_requested");
         if (scenario_ == "c2:job-submit-throw") throw std::runtime_error("mock Job submit exception");
+        if (scenario_ == "c2:f1") {
+            if (f1_case("submit-std")) throw std::runtime_error("F1 requestJob exception");
+            if (f1_case("submit-unknown")) throw 17;
+            if (f1_case("submit-alloc")) throw std::bad_alloc{};
+            check_f1_request(request);
+        } else {
+        check_job_defaults(request, true);
         const auto& groups = request.getElementGroups();
         if (groups.size() != 1 || groups[0]->getMode() != rfmel::Mode::RX ||
             groups[0]->getElementGroupLabel() != "rx/µ-main" ||
@@ -1444,24 +1565,27 @@ public:
         if (pipes.size() != 1 || it->first != "products/β" ||
             it->second != std::set<rfmel::EndpointID>{0, UINT64_C(0x8000000000000000), UINT64_MAX})
             throw std::runtime_error("Job endpoint association mismatched");
-        if (scenario_ == "c2:job-invalid-future") return {};
+        }
+        if (scenario_ == "c2:job-invalid-future" || f1_case("invalid-future")) return {};
         auto gate = std::make_shared<std::promise<mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>>>();
         auto future = gate->get_future();
-        if (scenario_ == "c2:job-delayed" || scenario_ == "c2:job-shutdown-throw") {
+        if (scenario_ == "c2:job-delayed" || scenario_ == "c2:job-shutdown-throw" || f1_case("delayed")) {
             std::lock_guard lock{job_gate_mutex};
             job_pending.push_back(std::move(gate));
-        } else if (scenario_ == "c2:job-future-throw")
+        } else if (scenario_ == "c2:job-future-throw" || f1_case("future-std"))
             gate->set_exception(std::make_exception_ptr(std::runtime_error("mock Job future exception")));
-        else if (scenario_ == "c2:job-future-unknown")
+        else if (scenario_ == "c2:job-future-unknown" || f1_case("future-unknown"))
             gate->set_exception(std::make_exception_ptr(17));
+        else if (f1_case("future-alloc"))
+            gate->set_exception(std::make_exception_ptr(std::bad_alloc{}));
         else if (scenario_ == "c2:job-failure" || scenario_ == "c2:job-long-failure" ||
-                 scenario_ == "c2:job-unknown-error")
+                 scenario_ == "c2:job-unknown-error" || f1_case("rejected"))
             gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
                 mel::Error{scenario_ == "c2:job-unknown-error" ? static_cast<mel::ErrorCode>(99) :
                     mel::ErrorCode::InvalidParameters, scenario_ == "c2:job-long-failure" ?
                     std::string(800, 'X') + "µ end" : "mock Job rejected"}});
         else gate->set_value(mel::ErrorOr<std::shared_ptr<rfmel::JobDetail>>{
-            scenario_ == "c2:job-null" ? std::shared_ptr<rfmel::JobDetail>{} :
+            scenario_ == "c2:job-null" || f1_case("null-job") ? std::shared_ptr<rfmel::JobDetail>{} :
             std::make_shared<MockJobDetail>(scenario_ == "c2:job-getter-throw", scenario_)});
         return future;
     }
@@ -1513,10 +1637,18 @@ public:
     std::shared_ptr<rfmel::ElementGroupCommand> createElementGroupCommand(rfmel::ElementGroupLabel label) override
     {
         record("rf_job_command_created");
+        unsigned f1 = 0;
+        if (scenario_ == "c2:f1") {
+            f1 = label == "rx/α" ? 1U : label.empty() ? 2U : 3U;
+            if (f1_failure(f1, "create-std")) throw std::runtime_error("F1 create exception");
+            if (f1_failure(f1, "create-unknown")) throw 17;
+            if (f1_failure(f1, "create-alloc")) throw std::bad_alloc{};
+            if (f1_failure(f1, "null")) return {};
+        }
         if (scenario_ == "c2:job-command-throw") throw std::runtime_error("mock Job command exception");
         if (scenario_ == "c2:job-command-null") return {};
         return std::make_shared<MockRxCommand>(std::move(label), scenario_ == "c2:job-command-tx",
-                                               scenario_ == "c2:job-setter-throw");
+                                               scenario_ == "c2:job-setter-throw", f1);
     }
     bool isCachedWaveformSupported() const override
     { lf_query(0); return va_lf_generation.load() == 0; }
@@ -1758,7 +1890,7 @@ std::shared_ptr<ams::iface::rfmel::C2MEL> createC2MEL(std::string_view configura
     if (configuration == "c2:factory-null") return {};
     if (configuration == "c2:factory-throw") throw FactoryFailure{};
     if (configuration == "c2:factory-throw-unknown") throw 5;
-    if (configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
+    if (configuration != "c2:f1" && configuration != "c2:ok" && configuration != "c2:shutdown-throw" &&
         configuration != "c2:va-lf" && configuration != "c2:va-ok" && configuration != "c2:va-query-changing" && configuration != "c2:va-failure" &&
         !configuration.starts_with("c2:va-notify-") &&
         !configuration.starts_with("c2:element-") &&

@@ -1761,6 +1761,44 @@ private package AMS.MEL_C_API is
       RX_Group                   : RF_RX_Element_Group_Config_V1;
    end record
    with Convention => C;
+   type RF_UTC_Time_V1 is record
+      Seconds, Fractional_Femtoseconds : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type RF_RX_Data_Pipe_Endpoint_Config_V1 is record
+      Data_Pipe_Label : String_View_V1;
+      Endpoint_IDs    : U64_Span_V1;
+   end record
+   with Convention => C;
+   type RF_RX_Data_Pipe_Endpoint_Config_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_RX_Element_Group_Config_V2 is record
+      Label                       : String_View_V1;
+      Desired_Duty_Factor         : Interfaces.C.double;
+      Expected_Center_Frequencies : RF_Frequency_Range_Span_V1;
+      Data_Pipe_Endpoint_Configs  : RF_RX_Data_Pipe_Endpoint_Config_Span_V1;
+   end record
+   with Convention => C;
+   type RF_RX_Element_Group_Config_Span_V2 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Request_Config_V2 is record
+      Request_ID, Priority, Precedence_Within_Priority, Is_Interruptable : Interfaces.Unsigned_32;
+      Instance_Selection                                                 : U32_Span_V1;
+      RX_Groups                                                          :
+        RF_RX_Element_Group_Config_Span_V2;
+      Min_Start_Time, Max_Complete_Time                                  : RF_UTC_Time_V1;
+      Duration_Femtoseconds                                              : Interfaces.Integer_64;
+      Capability_ID, Activity_ID                                         : U8_Span_V1;
+      TX_Power_Mode_IDs                                                  : U32_Span_V1;
+      Lookahead_Femtoseconds                                             : Interfaces.Integer_64;
+   end record
+   with Convention => C;
    type RF_Receive_Event_Config_V1 is record
       Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String_View_V1;
@@ -2147,6 +2185,14 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job";
+   function RF_VA_Submit_Job_V2
+     (Handle              : RF_VA_Handle;
+      Config              : access constant RF_Job_Request_Config_V2;
+      Output              : access RF_Job_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job_v2";
    function RF_Job_Request_Wait
      (Handle              : RF_Job_Request_Handle;
       Timeout_MS          : Interfaces.Unsigned_32;

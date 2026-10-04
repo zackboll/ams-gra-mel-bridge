@@ -650,6 +650,37 @@ int main(void)
         FIELD(ams_mel_rf_job_request_config_v1,is_interruptable);
         FIELD(ams_mel_rf_job_request_config_v1,instance_selection);
         FIELD(ams_mel_rf_job_request_config_v1,rx_group));
+    RECORD(ams_mel_rf_utc_time_v1,
+        FIELD(ams_mel_rf_utc_time_v1,seconds);
+        FIELD(ams_mel_rf_utc_time_v1,fractional_femtoseconds));
+    RECORD(ams_mel_rf_rx_data_pipe_endpoint_config_v1,
+        FIELD(ams_mel_rf_rx_data_pipe_endpoint_config_v1,data_pipe_label);
+        FIELD(ams_mel_rf_rx_data_pipe_endpoint_config_v1,endpoint_ids));
+    RECORD(ams_mel_rf_rx_data_pipe_endpoint_config_span_v1,
+        FIELD(ams_mel_rf_rx_data_pipe_endpoint_config_span_v1,data);
+        FIELD(ams_mel_rf_rx_data_pipe_endpoint_config_span_v1,size));
+    RECORD(ams_mel_rf_rx_element_group_config_v2,
+        FIELD(ams_mel_rf_rx_element_group_config_v2,label);
+        FIELD(ams_mel_rf_rx_element_group_config_v2,desired_duty_factor);
+        FIELD(ams_mel_rf_rx_element_group_config_v2,expected_center_frequencies);
+        FIELD(ams_mel_rf_rx_element_group_config_v2,data_pipe_endpoint_configs));
+    RECORD(ams_mel_rf_rx_element_group_config_span_v2,
+        FIELD(ams_mel_rf_rx_element_group_config_span_v2,data);
+        FIELD(ams_mel_rf_rx_element_group_config_span_v2,size));
+    RECORD(ams_mel_rf_job_request_config_v2,
+        FIELD(ams_mel_rf_job_request_config_v2,request_id);
+        FIELD(ams_mel_rf_job_request_config_v2,priority);
+        FIELD(ams_mel_rf_job_request_config_v2,precedence_within_priority);
+        FIELD(ams_mel_rf_job_request_config_v2,is_interruptable);
+        FIELD(ams_mel_rf_job_request_config_v2,instance_selection);
+        FIELD(ams_mel_rf_job_request_config_v2,rx_groups);
+        FIELD(ams_mel_rf_job_request_config_v2,min_start_time);
+        FIELD(ams_mel_rf_job_request_config_v2,max_complete_time);
+        FIELD(ams_mel_rf_job_request_config_v2,duration_femtoseconds);
+        FIELD(ams_mel_rf_job_request_config_v2,capability_id);
+        FIELD(ams_mel_rf_job_request_config_v2,activity_id);
+        FIELD(ams_mel_rf_job_request_config_v2,tx_power_mode_ids);
+        FIELD(ams_mel_rf_job_request_config_v2,lookahead_femtoseconds));
     RECORD(ams_mel_rf_job_result_v1,
         FIELD(ams_mel_rf_job_result_v1,error_code));
     RECORD(ams_mel_rf_job_info_v1,

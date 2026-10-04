@@ -1277,6 +1277,38 @@ class RfJobRequestConfigV1(ctypes.Structure):
                 ("instance_selection", U32SpanV1), ("rx_group", RfRxElementGroupConfigV1)]
 
 
+class RfUtcTimeV1(ctypes.Structure):
+    _fields_ = [("seconds", ctypes.c_int64), ("fractional_femtoseconds", ctypes.c_int64)]
+
+
+class RfRxDataPipeEndpointConfigV1(ctypes.Structure):
+    _fields_ = [("data_pipe_label", StringViewV1), ("endpoint_ids", U64SpanV1)]
+
+
+class RfRxDataPipeEndpointConfigSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfRxDataPipeEndpointConfigV1)), ("size", ctypes.c_size_t)]
+
+
+class RfRxElementGroupConfigV2(ctypes.Structure):
+    _fields_ = [("label", StringViewV1), ("desired_duty_factor", ctypes.c_double),
+                ("expected_center_frequencies", RfFrequencyRangeSpanV1),
+                ("data_pipe_endpoint_configs", RfRxDataPipeEndpointConfigSpanV1)]
+
+
+class RfRxElementGroupConfigSpanV2(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfRxElementGroupConfigV2)), ("size", ctypes.c_size_t)]
+
+
+class RfJobRequestConfigV2(ctypes.Structure):
+    _fields_ = [("request_id", ctypes.c_uint32), ("priority", ctypes.c_uint32),
+                ("precedence_within_priority", ctypes.c_uint32), ("is_interruptable", ctypes.c_uint32),
+                ("instance_selection", U32SpanV1), ("rx_groups", RfRxElementGroupConfigSpanV2),
+                ("min_start_time", RfUtcTimeV1), ("max_complete_time", RfUtcTimeV1),
+                ("duration_femtoseconds", ctypes.c_int64), ("capability_id", U8SpanV1),
+                ("activity_id", U8SpanV1), ("tx_power_mode_ids", U32SpanV1),
+                ("lookahead_femtoseconds", ctypes.c_int64)]
+
+
 # Pinned sentinel aliases ordinary zero relative start; not INT64_MAX.
 AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS = 0
 
@@ -1829,7 +1861,14 @@ ams_mel_rf_virtual_aperture_get_max_tx_attenuation = _LIBRARY.ams_mel_rf_virtual
 ams_mel_rf_virtual_aperture_get_max_tx_attenuation.argtypes = [RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_double), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_virtual_aperture_get_max_tx_attenuation.restype = ctypes.c_int32
 
+ams_mel_rf_virtual_aperture_submit_job_v2 = _LIBRARY.ams_mel_rf_virtual_aperture_submit_job_v2
+ams_mel_rf_virtual_aperture_submit_job_v2.argtypes = [
+    RfVaHandle, ctypes.POINTER(RfJobRequestConfigV2), ctypes.POINTER(RfJobRequestHandle),
+    CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+ams_mel_rf_virtual_aperture_submit_job_v2.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_submit_job_v2",
     "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
     "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power",
     "ams_mel_rf_virtual_aperture_get_tx_aperture_gain",
