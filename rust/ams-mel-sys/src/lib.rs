@@ -2,6 +2,80 @@
 
 use std::ffi::{c_char, c_void};
 
+#[repr(C)]
+pub struct AmsMelRfElementGroupSnapshot {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+pub type AmsMelRfElementGroupMode = u32;
+pub const AMS_MEL_RF_ELEMENT_GROUP_MODE_RX: AmsMelRfElementGroupMode = 0;
+pub const AMS_MEL_RF_ELEMENT_GROUP_MODE_TX: AmsMelRfElementGroupMode = 1;
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfElementGroupSnapshotOptionsV1 {
+    pub include_data_pipes: u32,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfDataPipeInfoV1 {
+    pub lookup_label: AmsMelStringViewV1,
+    pub label: AmsMelStringViewV1,
+    pub associated_endpoint_ids: AmsMelU64SpanV1,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfDataPipeInfoSpanV1 {
+    pub data: *const AmsMelRfDataPipeInfoV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfElementGroupDescriptorV1 {
+    pub lookup_label: AmsMelStringViewV1,
+    pub label: AmsMelStringViewV1,
+    pub mode: AmsMelRfElementGroupMode,
+    pub max_rf_bandwidth_hz: f64,
+    pub max_sample_rate_samples_per_second: f64,
+    pub max_data_rate_bits_per_second: f64,
+    pub max_duty_factor: f64,
+    pub data_pipes: AmsMelRfDataPipeInfoSpanV1,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfElementGroupDescriptorSpanV1 {
+    pub data: *const AmsMelRfElementGroupDescriptorV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmsMelRfElementGroupSnapshotV1 {
+    pub data_pipes_included: u32,
+    pub descriptors: AmsMelRfElementGroupDescriptorSpanV1,
+}
+unsafe extern "C" {
+    pub fn ams_mel_rf_virtual_aperture_get_element_groups(
+        va: *const AmsMelRfVa,
+        options: *const AmsMelRfElementGroupSnapshotOptionsV1,
+        output: *mut *mut AmsMelRfElementGroupSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_element_group_snapshot_view(
+        snapshot: *const AmsMelRfElementGroupSnapshot,
+        output: *mut *const AmsMelRfElementGroupSnapshotV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_element_group_snapshot_close(
+        snapshot: *mut *mut AmsMelRfElementGroupSnapshot,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
+
 /// Signal-only observer; no provider resource ownership. Raw ABI only.
 #[repr(C)]
 pub struct AmsMelRfVaStatusSubscription {

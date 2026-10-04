@@ -1,5 +1,8 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_rf_virtual_aperture_get_element_groups;
+        ams_mel_rf_element_group_snapshot_view;
+        ams_mel_rf_element_group_snapshot_close;
         ams_mel_get_abi_version;
         ams_mel_session_open;
         ams_mel_session_open_with_options;

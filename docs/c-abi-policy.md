@@ -1,5 +1,16 @@
 # Experimental C ABI policy
 
+Task 034E3 adds exactly three ABI 0.1 exports (169 -> 172), an opaque plain
+element-group snapshot and new versioned options/descriptor/pipe/span/view records.
+All original records/declarations stay frozen. uint32 RX/TX maps explicitly to
+the pinned uint8 enum; numeric doubles forward units/IEEE values unchanged.
+Creation requires valid 0/1 options and initially null output. Opted-out pipes
+are never queried; inclusion flag distinguishes omitted from queried-empty even
+for an empty outer collection. Unknown modes/null objects/malformed independent
+keys or labels reject the whole snapshot. Exceptions use existing mappings.
+Immutable borrowed nested views and null-idempotent consuming Close allocate/call
+no provider and work after DSO unload. See `task-034e3-rf-element-group-snapshots.md`.
+
 Task 034E2 adds exactly five ABI 0.1 exports (164 -> 169), one opaque observer,
 and `ams_mel_rf_va_status_subscription_statistics_v1` (four uint64 saturating
 counters, two uint32 Boolean flags). Original declarations/layouts remain frozen.

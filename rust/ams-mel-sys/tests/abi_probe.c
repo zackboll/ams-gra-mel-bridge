@@ -1010,6 +1010,39 @@ int main(void)
         ams_mel_status_t (*close)(ams_mel_rf_va_status_subscription **, char *, size_t, size_t *) = ams_mel_rf_va_status_subscription_close;
         (void)open; (void)wait; (void)statistics; (void)unsubscribe; (void)close;
     }
+    LAYOUT(ams_mel_rf_element_group_snapshot *);
+    LAYOUT(ams_mel_rf_element_group_mode_t);
+    VALUE(AMS_MEL_RF_ELEMENT_GROUP_MODE_RX); VALUE(AMS_MEL_RF_ELEMENT_GROUP_MODE_TX);
+    RECORD(ams_mel_rf_element_group_snapshot_options_v1,
+        FIELD(ams_mel_rf_element_group_snapshot_options_v1,include_data_pipes));
+    RECORD(ams_mel_rf_data_pipe_info_v1,
+        FIELD(ams_mel_rf_data_pipe_info_v1,lookup_label);
+        FIELD(ams_mel_rf_data_pipe_info_v1,label);
+        FIELD(ams_mel_rf_data_pipe_info_v1,associated_endpoint_ids));
+    RECORD(ams_mel_rf_data_pipe_info_span_v1,
+        FIELD(ams_mel_rf_data_pipe_info_span_v1,data);
+        FIELD(ams_mel_rf_data_pipe_info_span_v1,size));
+    RECORD(ams_mel_rf_element_group_descriptor_v1,
+        FIELD(ams_mel_rf_element_group_descriptor_v1,lookup_label);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,label);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,mode);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,max_rf_bandwidth_hz);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,max_sample_rate_samples_per_second);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,max_data_rate_bits_per_second);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,max_duty_factor);
+        FIELD(ams_mel_rf_element_group_descriptor_v1,data_pipes));
+    RECORD(ams_mel_rf_element_group_descriptor_span_v1,
+        FIELD(ams_mel_rf_element_group_descriptor_span_v1,data);
+        FIELD(ams_mel_rf_element_group_descriptor_span_v1,size));
+    RECORD(ams_mel_rf_element_group_snapshot_v1,
+        FIELD(ams_mel_rf_element_group_snapshot_v1,data_pipes_included);
+        FIELD(ams_mel_rf_element_group_snapshot_v1,descriptors));
+    {
+        ams_mel_status_t (*create)(const ams_mel_rf_virtual_aperture *, const ams_mel_rf_element_group_snapshot_options_v1 *, ams_mel_rf_element_group_snapshot **, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_get_element_groups;
+        ams_mel_status_t (*view)(const ams_mel_rf_element_group_snapshot *, const ams_mel_rf_element_group_snapshot_v1 **, char *, size_t, size_t *) = ams_mel_rf_element_group_snapshot_view;
+        ams_mel_status_t (*close)(ams_mel_rf_element_group_snapshot **, char *, size_t, size_t *) = ams_mel_rf_element_group_snapshot_close;
+        (void)create; (void)view; (void)close;
+    }
     VALUE(version.major); VALUE(version.minor);
     return 0;
 }

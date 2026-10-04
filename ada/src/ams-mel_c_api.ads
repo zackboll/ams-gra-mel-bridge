@@ -2584,4 +2584,57 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_close";
+   type RF_Element_Group_Snapshot_Handle is new System.Address;
+   Null_RF_Element_Group_Snapshot    : constant RF_Element_Group_Snapshot_Handle :=
+     RF_Element_Group_Snapshot_Handle (System.Null_Address);
+   subtype RF_Element_Group_Mode is Interfaces.Unsigned_32;
+   RF_Element_Group_Mode_RX          : constant RF_Element_Group_Mode := 0;
+   RF_Element_Group_Mode_TX          : constant RF_Element_Group_Mode := 1;
+   type RF_Element_Group_Snapshot_Options_V1 is record
+      Include_Data_Pipes : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Data_Pipe_Info_V1 is record
+      Lookup_Label, Label     : String_View_V1;
+      Associated_Endpoint_IDs : U64_Span_V1;
+   end record
+   with Convention => C;
+   subtype RF_Data_Pipe_Info_Span_V1 is Span_V1;
+   type RF_Element_Group_Descriptor_V1 is record
+      Lookup_Label, Label : String_View_V1;
+      Mode                : RF_Element_Group_Mode;
+      Max_RF_Bandwidth_Hz,
+      Max_Sample_Rate_Samples_Per_Second,
+      Max_Data_Rate_Bits_Per_Second,
+      Max_Duty_Factor     : Interfaces.C.double;
+      Data_Pipes          : RF_Data_Pipe_Info_Span_V1;
+   end record
+   with Convention => C;
+   subtype RF_Element_Group_Descriptor_Span_V1 is Span_V1;
+   type RF_Element_Group_Snapshot_V1 is record
+      Data_Pipes_Included : Interfaces.Unsigned_32;
+      Descriptors         : RF_Element_Group_Descriptor_Span_V1;
+   end record
+   with Convention => C;
+   function RF_VA_Get_Element_Groups
+     (VA                  : RF_VA_Handle;
+      Options             : access constant RF_Element_Group_Snapshot_Options_V1;
+      Output              : access RF_Element_Group_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_element_groups";
+   function RF_Element_Group_Snapshot_View
+     (Object              : RF_Element_Group_Snapshot_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_element_group_snapshot_view";
+   function RF_Element_Group_Snapshot_Close
+     (Object              : access RF_Element_Group_Snapshot_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_element_group_snapshot_close";
 end AMS.MEL_C_API;

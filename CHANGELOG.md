@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Task 034E3 adds three element-group snapshot exports (169 -> 172), one plain
+  nested owner and safe Ada ordinary values with checked copy-out. Actual
+  provider descriptors preserve independent map/returned labels, RX/TX, four
+  unnormalized double limits, deterministic outer-key order, aliases and opt-in
+  complete pipe labels/uint64 endpoint sets. Omitted and successfully empty
+  data remain distinct. Snapshots retain no provider graph or DSO. Claim, E1/E2,
+  Jobs and frozen records stay unchanged; ABI 0.1, 804 vendor blobs unchanged.
+  Raw Rust/private Python parity only; no association/routing/TX execution.
+
 - Task 034E2 adds exactly five VA subscription operations (164 -> 169), fixed
   saturating statistics, and a limited controlled safe Ada observer. Signal-only
   reference callbacks never query providers; pending notifications coalesce.
