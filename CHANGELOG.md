@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Task 034F1 adds one RX JobRequest v2 submit export (189 -> 190), ABI 0.1,
+  preserving all v1 declarations/layouts and the existing request/Job owners.
+  Multiple RX groups and pipe endpoint sets retain caller order. UTC input is
+  signed seconds plus canonical fractional femtoseconds (0 <= fs < 10^15),
+  never silently normalized; no min/max relationship check. Duration/lookahead
+  retain exact signed int64 values. Capability/activity IDs are arbitrary binary
+  vectors; instance selection preserves order/duplicates; TX power-mode IDs use
+  duplicate-collapsing set semantics. Safe Ada retains existing source APIs and
+  defaults, adds multi-group/pipe and scheduling/identity configuration, and uses
+  v2 submission with the shared hardened async path. Pointing/TX/JIB callbacks
+  remain deferred. Raw Rust/private Python parity only; vendor unchanged.
+
 - Task 034E6 adds four exact independent TX power query exports (185 -> 189),
   ABI 0.1 and frozen records unchanged, plus safe Ada Transmit_Power functions.
   Stable uint64 group/WeightType IDs reject values outside provider size_t before

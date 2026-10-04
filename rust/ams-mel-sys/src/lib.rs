@@ -2023,6 +2023,55 @@ pub struct AmsMelRfJobRequestConfigV1 {
     pub instance_selection: AmsMelU32SpanV1,
     pub rx_group: AmsMelRfRxElementGroupConfigV1,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfUtcTimeV1 {
+    pub seconds: i64,
+    pub fractional_femtoseconds: i64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxDataPipeEndpointConfigV1 {
+    pub data_pipe_label: AmsMelStringViewV1,
+    pub endpoint_ids: AmsMelU64SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxDataPipeEndpointConfigSpanV1 {
+    pub data: *const AmsMelRfRxDataPipeEndpointConfigV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxElementGroupConfigV2 {
+    pub label: AmsMelStringViewV1,
+    pub desired_duty_factor: f64,
+    pub expected_center_frequencies: AmsMelRfFrequencyRangeSpanV1,
+    pub data_pipe_endpoint_configs: AmsMelRfRxDataPipeEndpointConfigSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxElementGroupConfigSpanV2 {
+    pub data: *const AmsMelRfRxElementGroupConfigV2,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobRequestConfigV2 {
+    pub request_id: u32,
+    pub priority: u32,
+    pub precedence_within_priority: u32,
+    pub is_interruptable: u32,
+    pub instance_selection: AmsMelU32SpanV1,
+    pub rx_groups: AmsMelRfRxElementGroupConfigSpanV2,
+    pub min_start_time: AmsMelRfUtcTimeV1,
+    pub max_complete_time: AmsMelRfUtcTimeV1,
+    pub duration_femtoseconds: i64,
+    pub capability_id: AmsMelU8SpanV1,
+    pub activity_id: AmsMelU8SpanV1,
+    pub tx_power_mode_ids: AmsMelU32SpanV1,
+    pub lookahead_femtoseconds: i64,
+}
 // Pinned sentinel aliases ordinary zero relative start; not i64::MAX.
 pub const AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS: i64 = 0;
 #[repr(C)]
@@ -3188,6 +3237,14 @@ extern "C" {
     pub fn ams_mel_rf_virtual_aperture_submit_job(
         va: *mut AmsMelRfVa,
         config: *const AmsMelRfJobRequestConfigV1,
+        out_request: *mut *mut AmsMelRfJobRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_submit_job_v2(
+        va: *mut AmsMelRfVa,
+        config: *const AmsMelRfJobRequestConfigV2,
         out_request: *mut *mut AmsMelRfJobRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

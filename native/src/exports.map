@@ -148,6 +148,7 @@ AMS_MEL_0.1 {
         ams_mel_rf_va_instance_status_report_view;
         ams_mel_rf_va_instance_status_report_close;
         ams_mel_rf_virtual_aperture_submit_job;
+        ams_mel_rf_virtual_aperture_submit_job_v2;
         ams_mel_rf_job_request_wait;
         ams_mel_rf_job_request_claim;
         ams_mel_rf_job_request_close;

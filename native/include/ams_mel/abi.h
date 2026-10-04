@@ -2570,6 +2570,50 @@ typedef struct ams_mel_rf_job_request_config_v1 {
     ams_mel_u32_span_v1 instance_selection;
     ams_mel_rf_rx_element_group_config_v1 rx_group;
 } ams_mel_rf_job_request_config_v1;
+/* V1 above is frozen. V2 inputs are borrowed only during submission and copied
+ * before provider entry. UTC fractions must be canonical: 0 <= fs < 10^15;
+ * seconds use the full signed int64 domain. No normalization or time ordering
+ * check is performed. Duration/lookahead forward exact signed femtoseconds. */
+typedef struct ams_mel_rf_utc_time_v1 {
+    int64_t seconds;
+    int64_t fractional_femtoseconds;
+} ams_mel_rf_utc_time_v1;
+/* Each entry causes one addEndpointIDs call, in entry order. Labels are complete
+ * UTF-8 without NUL (empty allowed); endpoint sets are nonempty and duplicate
+ * IDs within an entry are invalid. Repeated labels cause repeated calls. */
+typedef struct ams_mel_rf_rx_data_pipe_endpoint_config_v1 {
+    ams_mel_string_view_v1 data_pipe_label;
+    ams_mel_u64_span_v1 endpoint_ids;
+} ams_mel_rf_rx_data_pipe_endpoint_config_v1;
+typedef struct ams_mel_rf_rx_data_pipe_endpoint_config_span_v1 {
+    const ams_mel_rf_rx_data_pipe_endpoint_config_v1 *data;
+    size_t size;
+} ams_mel_rf_rx_data_pipe_endpoint_config_span_v1;
+typedef struct ams_mel_rf_rx_element_group_config_v2 {
+    ams_mel_string_view_v1 label;
+    double desired_duty_factor;
+    ams_mel_rf_frequency_range_span_v1 expected_center_frequencies;
+    ams_mel_rf_rx_data_pipe_endpoint_config_span_v1 data_pipe_endpoint_configs;
+} ams_mel_rf_rx_element_group_config_v2;
+typedef struct ams_mel_rf_rx_element_group_config_span_v2 {
+    const ams_mel_rf_rx_element_group_config_v2 *data;
+    size_t size;
+} ams_mel_rf_rx_element_group_config_span_v2;
+typedef struct ams_mel_rf_job_request_config_v2 {
+    uint32_t request_id;
+    uint32_t priority;
+    uint32_t precedence_within_priority;
+    uint32_t is_interruptable; /* exactly 0 or 1 */
+    ams_mel_u32_span_v1 instance_selection; /* ordered vector, duplicates kept */
+    ams_mel_rf_rx_element_group_config_span_v2 rx_groups; /* nonempty, ordered */
+    ams_mel_rf_utc_time_v1 min_start_time;
+    ams_mel_rf_utc_time_v1 max_complete_time;
+    int64_t duration_femtoseconds;
+    ams_mel_u8_span_v1 capability_id; /* arbitrary bytes, empty allowed */
+    ams_mel_u8_span_v1 activity_id; /* arbitrary bytes, empty allowed */
+    ams_mel_u32_span_v1 tx_power_mode_ids; /* set: duplicates collapse */
+    int64_t lookahead_femtoseconds;
+} ams_mel_rf_job_request_config_v2;
 /* Pinned RF MEL 762ce84 uses numeric_limits<Femtoseconds>::max(), whose
  * count is zero, NOT the duration representation's maximum. This aliases
  * an ordinary zero relative start: callers cannot distinguish those intentions
@@ -3166,6 +3210,13 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_close(
  * Claim is unique; Job Close does not call finalize or cancelJob. */
 AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
     ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v1 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same async owner/lifecycle as v1. At least one RX group is required; identical
+ * labels are not deduplicated. No descriptor/DataPipe/capability lookup occurs.
+ * Pointing and MFADrivenControls callback fields retain upstream defaults. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v2 *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_wait(

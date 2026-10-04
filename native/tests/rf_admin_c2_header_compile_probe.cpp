@@ -20,6 +20,44 @@
 namespace rfmel = ams::iface::rfmel;
 // E6: actual pinned member signatures include size_t group IDs, not labels.
 using VA = rfmel::VirtualAperture;
+using JR = rfmel::JobRequest;
+using UTC = ams::util::math::UTCTime;
+using Femto = ams::util::math::Femtoseconds;
+static_assert(std::is_same_v<std::chrono::seconds::rep, int64_t>);
+static_assert(std::is_signed_v<std::chrono::seconds::rep> && sizeof(std::chrono::seconds::rep) == 8);
+static_assert(std::is_same_v<Femto::rep, int64_t> && std::is_signed_v<Femto::rep>);
+static_assert(std::femto::den == INT64_C(1000000000000000));
+static_assert(std::is_same_v<rfmel::Priority, uint32_t>);
+static_assert(std::is_same_v<rfmel::PrecedenceWithinPriority, uint32_t>);
+static_assert(std::is_same_v<rfmel::EndpointID, uint64_t>);
+static_assert(std::is_same_v<decltype(&JR::setPriority), void (JR::*)(uint32_t)>);
+static_assert(std::is_same_v<decltype(&JR::setPrecedenceWithinPriority), void (JR::*)(uint32_t)>);
+static_assert(std::is_same_v<decltype(&JR::setMinStartTime), void (JR::*)(UTC)>);
+static_assert(std::is_same_v<decltype(&JR::setMaxCompleteTime), void (JR::*)(UTC)>);
+static_assert(std::is_same_v<decltype(&JR::setDuration), void (JR::*)(Femto)>);
+static_assert(std::is_same_v<decltype(static_cast<void (JR::*)(std::shared_ptr<rfmel::ElementGroupCommand>)>(&JR::addElementGroup)), void (JR::*)(std::shared_ptr<rfmel::ElementGroupCommand>)>);
+static_assert(std::is_same_v<decltype(&JR::setCapabilityId), void (JR::*)(const std::vector<uint8_t>&)>);
+static_assert(std::is_same_v<decltype(&JR::setActivityId), void (JR::*)(const std::vector<uint8_t>&)>);
+static_assert(std::is_same_v<decltype(&JR::setRequestId), void (JR::*)(uint32_t)>);
+static_assert(std::is_same_v<decltype(&JR::setInstanceSelection), void (JR::*)(const std::vector<uint32_t>&)>);
+static_assert(std::is_same_v<decltype(&JR::setIsInterruptable), void (JR::*)(bool)>);
+static_assert(std::is_same_v<decltype(&JR::setTxPowerModeIDs), void (JR::*)(const std::set<uint32_t>&)>);
+static_assert(std::is_same_v<decltype(&JR::setLookAheadTime), void (JR::*)(Femto)>);
+static_assert(std::is_same_v<decltype(&JR::getPriority), uint32_t (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getPrecedenceWithinPriority), uint32_t (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getMinStartTime), UTC (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getMaxCompleteTime), UTC (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getDuration), Femto (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getElementGroups), const rfmel::ElementGroupCommandList& (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getCapabilityId), std::vector<uint8_t> (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getActivityId), std::vector<uint8_t> (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getRequestId), uint32_t (JR::*)() const>);
+static_assert(std::is_same_v<decltype(static_cast<const std::vector<uint32_t>& (JR::*)() const>(&JR::getInstanceSelection)), const std::vector<uint32_t>& (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getIsInterruptable), bool (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getTxPowerModeIDs), std::set<uint32_t> (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getLookAheadTime), const Femto (JR::*)() const>);
+static_assert(std::is_same_v<decltype(static_cast<std::shared_ptr<rfmel::ElementGroupCommand> (VA::*)(rfmel::ElementGroupLabel)>(&VA::createElementGroupCommand)), std::shared_ptr<rfmel::ElementGroupCommand> (VA::*)(rfmel::ElementGroupLabel)>);
+static_assert(std::is_same_v<decltype(&rfmel::ElementGroupCommand::addEndpointIDs), void (rfmel::ElementGroupCommand::*)(const std::set<uint64_t>&, rfmel::DataPipeLabel)>);
 static_assert(std::is_same_v<rfmel::TxPowerModeID, uint32_t>);
 static_assert(std::is_same_v<rfmel::VirtualApertureInstanceID, uint32_t>);
 static_assert(std::is_same_v<rfmel::WeightType, std::size_t>);
@@ -251,5 +289,10 @@ static_assert(std::is_same_v<decltype(&rfmel::JobDetail::extendJobEvent),
 static_assert(std::is_same_v<decltype(&rfmel::JobInterval::setJobIntervalStatusEnable), void (rfmel::JobInterval::*)(rfmel::JobIntervalStatusEnable)>);
 int rf_admin_c2_header_compile_probe()
 {
+    for (const auto seconds : {INT64_MIN, INT64_MAX}) {
+        const UTC time{std::chrono::seconds{seconds}, Femto{999999999999999}};
+        if (time.getIntegralSeconds().count() != seconds ||
+            time.getFractionalFemtoseconds().count() != 999999999999999) return 1;
+    }
     return rfmel::JobInterval{}.getIntervalStart() == rfmel::JobInterval::ContinueFromPrevious ? 0 : 1;
 }

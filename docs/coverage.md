@@ -1,5 +1,22 @@
 # Implementation coverage
 
+Task 034F1 extends native C and safe Ada RX JobRequest coverage to multiple
+ordered RX groups, multiple ordered RX pipe endpoint-set calls, duty/frequency
+ranges, priority/precedence, canonical min/max UTC components, exact signed
+duration, request ID, ordered instance-selection vector (duplicates retained),
+interruptable, binary capability/activity vectors, TX power-mode ID set and
+lookahead. Frozen native v1 remains supported and unchanged; safe Ada preserves
+source compatibility and historical provider-visible defaults while using v2.
+One additive export takes ABI 0.1 from 189 to 190; no new owner/vendor dependency,
+safe Rust v2 or public Python v2 API. Mock tests inspect exact provider getters,
+command call counts/order, validation, rollback and shared async retention.
+Squall two-group acceptance has a narrower interpretation limit: it validates
+RX groups and copies requestId, not the other scheduling/identity fields.
+**JobRequest is not complete.** Deferred: estimatedStabPoint, RX pointing angles,
+TX ElementGroupCommand fields/Job requests, MFADrivenControls/JIB callback
+machinery, rejection callbacks/context. No CachedWaveform/WaveformTxEndpoint,
+Weights, external/RDMA or VADB work is included. See the F1 task report.
+
 Task 034E6 implements all four VirtualAperture @RequiredIfTransmit calculations:
 getTxRadiatedPower (dBW), getTxPeakRadiatedPower (dBW), getTxApertureGain (dB),
 getMaxTxAttenuation (dB), in production C and safe Ada Transmit_Power. Scalar
