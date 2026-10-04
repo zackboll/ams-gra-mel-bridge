@@ -2470,6 +2470,82 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_id";
+   function RF_VA_Cached_Waveform_Supported
+     (Handle              : RF_VA_Handle;
+      Output              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_is_cached_waveform_supported";
+   function RF_VA_Dynamic_Weights_Supported
+     (Handle              : RF_VA_Handle;
+      Output              : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_dynamic_weights_supported";
+   type RF_VA_LF_List_Handle is new System.Address;
+   Null_RF_VA_LF_List                : constant RF_VA_LF_List_Handle :=
+     RF_VA_LF_List_Handle (System.Null_Address);
+   type RF_VA_LF_Status_Handle is new System.Address;
+   Null_RF_VA_LF_Status              : constant RF_VA_LF_Status_Handle :=
+     RF_VA_LF_Status_Handle (System.Null_Address);
+   type RF_VA_Local_Function_Info_V1 is record
+      Local_Function_Type_ID : Interfaces.Unsigned_32;
+      Instance_Count         : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   subtype RF_VA_Local_Function_Info_Span_V1 is Span_V1;
+   function RF_VA_Get_Local_Functions
+     (Handle              : RF_VA_Handle;
+      Output              : access RF_VA_LF_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_get_local_functions";
+   function RF_VA_LF_List_View
+     (Handle              : RF_VA_LF_List_Handle;
+      Output              : access RF_VA_Local_Function_Info_Span_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_local_function_list_view";
+   function RF_VA_LF_List_Close
+     (Handle              : access RF_VA_LF_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_local_function_list_close";
+   function RF_VA_Get_Local_Function_Status
+     (Handle                                 : RF_VA_Handle;
+      VA_Instance_ID, Local_Function_Type_ID : Interfaces.Unsigned_32;
+      Output                                 : access RF_VA_LF_Status_Handle;
+      Diagnostic                             : System.Address;
+      Diagnostic_Capacity                    : Size_T;
+      Diagnostic_Required                    : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_rf_virtual_aperture_get_local_function_status";
+   function RF_VA_LF_Status_View
+     (Handle              : RF_VA_LF_Status_Handle;
+      Output              : access Span_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_local_function_status_view";
+   function RF_VA_LF_Status_Close
+     (Handle              : access RF_VA_LF_Status_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_va_local_function_status_close";
    function RF_VA_Get_Status
      (Handle              : RF_VA_Handle;
       Output              : access Interfaces.Unsigned_32;

@@ -11,7 +11,7 @@
 #define D diagnostic, sizeof diagnostic, &required
 static char diagnostic[1024], lifetime[]="/tmp/ams-va-notify-XXXXXX";
 static size_t required;
-static unsigned (*last)(void), (*emit)(unsigned,unsigned,unsigned), (*queries)(unsigned), (*other)(unsigned);
+static unsigned (*last)(void), (*emit)(unsigned,unsigned,unsigned), (*queries)(unsigned), (*other)(unsigned), (*lf_queries)(unsigned);
 static size_t (*value)(unsigned,unsigned);
 static void (*hold_removal)(int,int);
 static void *library;
@@ -47,7 +47,10 @@ static ams_mel_rf_va_status_subscription_statistics_v1 stats(ams_mel_rf_va_statu
 static void poll_stopped(ams_mel_rf_va_status_subscription *s)
 { CHECK(ams_mel_rf_va_status_subscription_wait(s,0,D)==AMS_MEL_STREAM_STOPPED); }
 static void no_reads(const unsigned before[6])
-{ for(unsigned i=0;i<6;++i) CHECK(queries(i)==before[i]); }
+{
+    for(unsigned i=0;i<6;++i) CHECK(queries(i)==before[i]);
+    for(unsigned i=0;i<4;++i) CHECK(lf_queries(i)==0);
+}
 static void reset_log(void)
 { FILE *f=fopen(lifetime,"w"); CHECK(f && fclose(f)==0); }
 static void teardown_log(void)
@@ -336,6 +339,8 @@ int main(int argc,char **argv)
     *(void **)(&value)=dlsym(library,"mock_rf_va_notification_value");
     *(void **)(&emit)=dlsym(library,"mock_rf_va_notification_emit");
     *(void **)(&queries)=dlsym(library,"mock_rf_va_query_calls");
+    *(void **)(&lf_queries)=dlsym(library,"mock_rf_va_lf_calls");
+    CHECK(lf_queries);
     *(void **)(&other)=dlsym(library,"mock_rf_va_notification_other");
     *(void **)(&hold_removal)=dlsym(library,"mock_rf_va_notification_hold_removal");
     CHECK(last && value && emit && queries && other && hold_removal);

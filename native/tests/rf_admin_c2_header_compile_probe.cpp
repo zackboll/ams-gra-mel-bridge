@@ -18,6 +18,12 @@
 #include "../include/ams_mel/abi.h"
 
 namespace rfmel = ams::iface::rfmel;
+using LFCatalog = std::map<rfmel::LocalFunctionTypeID, std::size_t>;
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::isCachedWaveformSupported), bool (rfmel::VirtualAperture::*)() const>);
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::dynamicWeightsSupported), bool (rfmel::VirtualAperture::*)() const>);
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::getLocalFunctions), LFCatalog (rfmel::VirtualAperture::*)() const>);
+static_assert(std::is_same_v<LFCatalog::mapped_type, std::size_t>);
+static_assert(std::is_same_v<decltype(&rfmel::VirtualAperture::getLocalFunctionStatus), std::vector<rfmel::VirtualApertureStatus> (rfmel::VirtualAperture::*)(rfmel::VirtualApertureInstanceID, rfmel::LocalFunctionTypeID) const>);
 // 034E3: exact pinned by-value containers and const virtual getter signatures.
 using Descriptor = rfmel::ElementGroupDescriptor;
 using Pipe = rfmel::DataPipe;

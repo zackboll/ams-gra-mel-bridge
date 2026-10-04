@@ -2986,6 +2986,57 @@ typedef uint32_t ams_mel_rf_virtual_aperture_status_t;
 #define AMS_MEL_RF_VA_STATUS_DEGRADED UINT32_C(2)
 #define AMS_MEL_RF_VA_STATUS_FAILED UINT32_C(3)
 typedef struct ams_mel_rf_va_instance_list ams_mel_rf_va_instance_list;
+/* Required live capability methods. False is successful data, not unsupported.
+ * Each explicit call invokes the exact provider method once. Output is 0/1 on
+ * success and untouched on failure. Same-owner serialization includes Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_is_cached_waveform_supported(
+    const ams_mel_rf_virtual_aperture *va, uint32_t *out_supported, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_dynamic_weights_supported(
+    const ams_mel_rf_virtual_aperture *va, uint32_t *out_supported, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+typedef struct ams_mel_rf_va_local_function_info_v1 {
+    uint32_t local_function_type_id;
+    uint64_t instance_count; /* exact widening of upstream size_t */
+} ams_mel_rf_va_local_function_info_v1;
+typedef struct ams_mel_rf_va_local_function_info_span_v1 {
+    const ams_mel_rf_va_local_function_info_v1 *data;
+    size_t size;
+} ams_mel_rf_va_local_function_info_span_v1;
+typedef struct ams_mel_rf_va_local_function_list ams_mel_rf_va_local_function_list;
+typedef struct ams_mel_rf_va_local_function_status ams_mel_rf_va_local_function_status;
+/* @RequiredIfLFSupport: independent live calls, each exact method called once.
+ * No catalog/instance membership check or cross-call count reconciliation.
+ * Catalog preserves ascending map keys, including zero counts. Status preserves
+ * length/order/duplicates; index 0 is upstream LF instance 0. E1 reports are
+ * independent. Empty results succeed with {NULL,0}. Creation output must be
+ * initially NULL. Unknown status rejects the whole owner with PROVIDER_FAILED.
+ * bad_alloc => INTERNAL_ERROR; other exceptions => PROVIDER_EXCEPTION.
+ * Only bridge primitive storage survives creation: no new claim/worker/DSO pin.
+ * Views borrow until Close, even after VA/C2 destruction and provider unload.
+ * View/Close call no provider; Close consumes an owner and is null-idempotent. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_local_functions(
+    const ams_mel_rf_virtual_aperture *va, ams_mel_rf_va_local_function_list **out_snapshot,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_local_function_list_view(
+    const ams_mel_rf_va_local_function_list *snapshot,
+    ams_mel_rf_va_local_function_info_span_v1 *out_view,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_local_function_list_close(
+    ams_mel_rf_va_local_function_list **snapshot,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_get_local_function_status(
+    const ams_mel_rf_virtual_aperture *va, uint32_t va_instance_id, uint32_t local_function_type_id,
+    ams_mel_rf_va_local_function_status **out_snapshot,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Every u32 entry is validated in the existing ams_mel_rf_virtual_aperture_status_t
+ * domain (0..3), not a second LF enum. View outputs are untouched on failure. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_local_function_status_view(
+    const ams_mel_rf_va_local_function_status *snapshot, ams_mel_u32_span_v1 *out_view,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_va_local_function_status_close(
+    ams_mel_rf_va_local_function_status **snapshot,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_va_instance_status_report ams_mel_rf_va_instance_status_report;
 typedef struct ams_mel_rf_va_local_function_status_v1 {
     uint32_t local_function_type_id;

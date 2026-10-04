@@ -1748,7 +1748,52 @@ ams_mel_rf_element_group_snapshot_close = _LIBRARY.ams_mel_rf_element_group_snap
 ams_mel_rf_element_group_snapshot_close.argtypes = [ctypes.POINTER(RfElementGroupSnapshotHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_element_group_snapshot_close.restype = ctypes.c_int32
 
+RfVaLocalFunctionListHandle = ctypes.c_void_p
+RfVaLocalFunctionStatusHandle = ctypes.c_void_p
+
+
+class RfVaLocalFunctionInfoV1(ctypes.Structure):
+    _fields_ = [("local_function_type_id", ctypes.c_uint32), ("instance_count", ctypes.c_uint64)]
+
+
+class RfVaLocalFunctionInfoSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfVaLocalFunctionInfoV1)), ("size", ctypes.c_size_t)]
+
+
+ams_mel_rf_virtual_aperture_is_cached_waveform_supported = _LIBRARY.ams_mel_rf_virtual_aperture_is_cached_waveform_supported
+ams_mel_rf_virtual_aperture_is_cached_waveform_supported.argtypes = [RfVaHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_is_cached_waveform_supported.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_dynamic_weights_supported = _LIBRARY.ams_mel_rf_virtual_aperture_dynamic_weights_supported
+ams_mel_rf_virtual_aperture_dynamic_weights_supported.argtypes = [RfVaHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_dynamic_weights_supported.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_local_functions = _LIBRARY.ams_mel_rf_virtual_aperture_get_local_functions
+ams_mel_rf_virtual_aperture_get_local_functions.argtypes = [RfVaHandle, ctypes.POINTER(RfVaLocalFunctionListHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_local_functions.restype = ctypes.c_int32
+ams_mel_rf_va_local_function_list_view = _LIBRARY.ams_mel_rf_va_local_function_list_view
+ams_mel_rf_va_local_function_list_view.argtypes = [RfVaLocalFunctionListHandle, ctypes.POINTER(RfVaLocalFunctionInfoSpanV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_local_function_list_view.restype = ctypes.c_int32
+ams_mel_rf_va_local_function_list_close = _LIBRARY.ams_mel_rf_va_local_function_list_close
+ams_mel_rf_va_local_function_list_close.argtypes = [ctypes.POINTER(RfVaLocalFunctionListHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_local_function_list_close.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_get_local_function_status = _LIBRARY.ams_mel_rf_virtual_aperture_get_local_function_status
+ams_mel_rf_virtual_aperture_get_local_function_status.argtypes = [RfVaHandle, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(RfVaLocalFunctionStatusHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_virtual_aperture_get_local_function_status.restype = ctypes.c_int32
+ams_mel_rf_va_local_function_status_view = _LIBRARY.ams_mel_rf_va_local_function_status_view
+ams_mel_rf_va_local_function_status_view.argtypes = [RfVaLocalFunctionStatusHandle, ctypes.POINTER(U32SpanV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_local_function_status_view.restype = ctypes.c_int32
+ams_mel_rf_va_local_function_status_close = _LIBRARY.ams_mel_rf_va_local_function_status_close
+ams_mel_rf_va_local_function_status_close.argtypes = [ctypes.POINTER(RfVaLocalFunctionStatusHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_va_local_function_status_close.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_is_cached_waveform_supported",
+    "ams_mel_rf_virtual_aperture_dynamic_weights_supported",
+    "ams_mel_rf_virtual_aperture_get_local_functions",
+    "ams_mel_rf_va_local_function_list_view",
+    "ams_mel_rf_va_local_function_list_close",
+    "ams_mel_rf_virtual_aperture_get_local_function_status",
+    "ams_mel_rf_va_local_function_status_view",
+    "ams_mel_rf_va_local_function_status_close",
     "ams_mel_rf_virtual_aperture_get_element_groups",
     "ams_mel_rf_element_group_snapshot_view",
     "ams_mel_rf_element_group_snapshot_close",

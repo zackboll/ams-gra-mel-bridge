@@ -82,6 +82,28 @@ package body AMS.MEL.RF.C2.Virtual_Aperture_Queries is
       Check (C.RF_VA_Get_ID (Object.Handle, V'Access, D'Address, D'Length, null), D);
       return V;
    end Query_ID;
+   function Cached_Waveform_Supported (Object : Virtual_Aperture'Class) return Boolean is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      V : aliased Interfaces.Unsigned_32 := 0;
+   begin
+      Check
+        (C.RF_VA_Cached_Waveform_Supported (Object.Handle, V'Access, D'Address, D'Length, null), D);
+      if V > 1 then
+         raise Provider_Error with "invalid native capability Boolean";
+      end if;
+      return V = 1;
+   end Cached_Waveform_Supported;
+   function Dynamic_Weights_Supported (Object : Virtual_Aperture'Class) return Boolean is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      V : aliased Interfaces.Unsigned_32 := 0;
+   begin
+      Check
+        (C.RF_VA_Dynamic_Weights_Supported (Object.Handle, V'Access, D'Address, D'Length, null), D);
+      if V > 1 then
+         raise Provider_Error with "invalid native capability Boolean";
+      end if;
+      return V = 1;
+   end Dynamic_Weights_Supported;
    function Query_Status (Object : Virtual_Aperture'Class) return Status_Kind is
       D : aliased Diagnostic := [others => Interfaces.C.nul];
       V : aliased Interfaces.Unsigned_32 := 0;

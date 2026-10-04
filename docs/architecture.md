@@ -1,5 +1,16 @@
 # Architecture decisions
 
+Task 034E4 adds four exact synchronous provider query families under the existing
+VA claim, without holding lifecycle/notification/Job/queue locks. Required
+cached-waveform/dynamic-weights Booleans are not cached and False is data.
+Conditional LF catalog/status calls are independent of Claim, E1 reports, E2
+callbacks and E3 descriptors. Catalog map ordering/zero counts and vector
+ordering/duplicates survive copying; no cross-call reconciliation or atomic
+consistency. Primitive-only snapshots retain no provider/claim/DSO. Safe Ada
+controlled temporaries perform checked copy-out and close native owners before
+ordinary Ada values return. No new worker/pin/resource functionality. See
+`task-034e4-rf-va-capability-local-functions.md`.
+
 Task 034E3 copies VirtualAperture's by-value unordered descriptor map under the
 existing live VA claim, outside bridge locks. Validated unsigned UTF-8 outer keys
 sort before per-occurrence getter/copy; distinct returned labels and shared-object

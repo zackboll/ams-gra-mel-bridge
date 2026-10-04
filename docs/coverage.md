@@ -1,5 +1,20 @@
 # Implementation coverage
 
+Task 034E4 adds production C and safe Ada for required
+isCachedWaveformSupported/dynamicWeightsSupported and conditional
+getLocalFunctions/getLocalFunctionStatus. Mock-positive LF evidence covers
+independent calls, exact IDs/counts/order/duplicates, empty/zero-count data,
+changing values, unknown status, rollback and provider-independent snapshots.
+Pinned Squall returns false/false and empty map/vector: not positive LF support.
+VA read/query coverage now includes Claim info, BaseVA live status/instance
+queries/reports, status-change adaptation, descriptors, required capability
+Booleans and conditional LF queries. VirtualAperture is NOT complete. Deferred:
+VA DataPipes, descriptor command creation, static/dynamic Weights resources,
+TX power, cached-waveform allocation, dynamic TX endpoints, external/RDMA,
+VADB and full TX Job/Event support. ABI 0.1 adds eight exports (172 -> 180),
+raw Rust/private Python parity only; vendor 804 unchanged. Actual validation:
+`task-034e4-rf-va-capability-local-functions.md`.
+
 Task 034E3 represents getElementGroups plus all six mandatory descriptor getters
 and explicitly opt-in descriptor getDataPipes / pipe getLabel/getAssociatedEndpoints
 in production C and safe Ada ordinary values. Canonical unordered-map key order,

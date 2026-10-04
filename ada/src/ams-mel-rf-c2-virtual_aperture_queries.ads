@@ -8,6 +8,9 @@ package AMS.MEL.RF.C2.Virtual_Aperture_Queries is
    type Status_Kind is (None, Operational, Degraded, Failed);
    for Status_Kind use (None => 0, Operational => 1, Degraded => 2, Failed => 3);
    function Query_ID (Object : Virtual_Aperture'Class) return Interfaces.Unsigned_32;
+   --  Required live capability calls; False is successful provider data.
+   function Cached_Waveform_Supported (Object : Virtual_Aperture'Class) return Boolean;
+   function Dynamic_Weights_Supported (Object : Virtual_Aperture'Class) return Boolean;
    function Query_Status (Object : Virtual_Aperture'Class) return Status_Kind;
    function Query_Instance_Status
      (Object : Virtual_Aperture'Class; Instance_ID : Interfaces.Unsigned_32) return Status_Kind;

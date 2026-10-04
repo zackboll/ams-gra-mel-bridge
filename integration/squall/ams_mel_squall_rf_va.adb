@@ -5,6 +5,7 @@ with AMS.MEL.RF.C2;
 with AMS.MEL.RF.C2.Virtual_Aperture_Queries;
 with AMS.MEL.RF.C2.Virtual_Aperture_Notifications;
 with AMS.MEL.RF.C2.Element_Groups;
+with AMS.MEL.RF.C2.Local_Functions;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -14,6 +15,7 @@ procedure AMS_MEL_Squall_RF_VA is
    package Q renames C2.Virtual_Aperture_Queries;
    package N renames C2.Virtual_Aperture_Notifications;
    package E renames C2.Element_Groups;
+   package LF renames C2.Local_Functions;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
    use type Interfaces.Unsigned_32;
@@ -48,6 +50,8 @@ procedure AMS_MEL_Squall_RF_VA is
       end;
    end Descriptors;
    procedure Queries (VA : C2.Virtual_Aperture'Class) is
+      Catalog : constant LF.Local_Function_List := LF.Snapshot_Local_Functions (VA);
+      Statuses : constant LF.Status_List := LF.Snapshot_Local_Function_Status (VA, 0, 0);
       All_IDs      : constant Q.Instance_ID_List := Q.Snapshot_All_Instances (VA);
       Face         : constant Q.Instance_ID_List := Q.Snapshot_Instances (VA, 0);
       Unknown_Face : constant Q.Instance_ID_List :=
@@ -57,6 +61,10 @@ procedure AMS_MEL_Squall_RF_VA is
         Q.Snapshot_Instance_Status_Report (VA, Interfaces.Unsigned_32'Last);
    begin
       if Q.Query_ID (VA) /= 0
+        or else Q.Cached_Waveform_Supported (VA)
+        or else Q.Dynamic_Weights_Supported (VA)
+        or else LF.Count (Catalog) /= 0
+        or else LF.Count (Statuses) /= 0
         or else Q.Query_Status (VA) /= Q.Operational
         or else Q.Query_Instance_Status (VA, 0) /= Q.Operational
         or else Q.Query_Instance_Status (VA, Interfaces.Unsigned_32'Last) /= Q.Failed
@@ -103,6 +111,8 @@ begin
             Subscription : N.Subscription := N.Open (VA);
             Basic : constant E.Element_Group_List := E.Snapshot_Element_Groups (VA);
             Full : constant E.Element_Group_List := E.Snapshot_Element_Groups (VA, True);
+            Catalog : constant LF.Local_Function_List := LF.Snapshot_Local_Functions (VA);
+            Statuses : constant LF.Status_List := LF.Snapshot_Local_Function_Status (VA, 0, 0);
          begin
             C2.Close (Request);
             Queries (VA);
@@ -151,6 +161,9 @@ begin
                  Q.Snapshot_Instance_Status_Report (VA, Interfaces.Unsigned_32'Last);
             begin
                C2.Close (VA);
+               if LF.Count (Catalog) /= 0 or else LF.Count (Statuses) /= 0 then
+                  raise Program_Error with "copied Squall LF values changed after VA Close";
+               end if;
                Descriptors (Basic, False);
                Descriptors (Full, True);
                if Q.Count (IDs) /= 1
