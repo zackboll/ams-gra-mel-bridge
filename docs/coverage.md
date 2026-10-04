@@ -1,5 +1,16 @@
 # Implementation coverage
 
+Task 034E3 represents getElementGroups plus all six mandatory descriptor getters
+and explicitly opt-in descriptor getDataPipes / pipe getLabel/getAssociatedEndpoints
+in production C and safe Ada ordinary values. Canonical unordered-map key order,
+distinct labels, RX/TX, complete numerics, alias occurrences, uint64 endpoint sets,
+optionality/fail-closed semantics and provider-independent teardown are mock-tested.
+Pinned Squall RX/default-empty-pipe values are asserted in opt-in integration;
+no live route/association/TX-execution claim. ABI 0.1: three additions (169 -> 172),
+raw Rust/private Python only, vendor inventory 804 unchanged. VirtualAperture,
+DataPipe and RF MEL as a whole remain partial. See
+`task-034e3-rf-element-group-snapshots.md` for exact scope/evidence.
+
 Task 034E2 adapts both BaseVirtualAperture add/removeStatusCallback methods into
 one bounded coalescing notification registration per public VA. C + safe Ada
 provide Open, Wait, Statistics, explicit Unsubscribe and local Close. This is
