@@ -82,9 +82,28 @@ package AMS.MEL.RF.C2 is
      (Seconds, Fractional_Femtoseconds : Interfaces.Integer_64) return UTC_Time;
    function Seconds (Value : UTC_Time) return Interfaces.Integer_64;
    function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64;
+   --  Exact caller-selected coordinates: meters, meters/second and radians.
+   --  No conversion, normalization, physical range or finite-value checks.
+   type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);
+   type Pointing is private;
+   function Create_ECEF_Pointing
+     (Location_X_M, Location_Y_M, Location_Z_M       : Long_Float;
+      Velocity_X_MPS, Velocity_Y_MPS, Velocity_Z_MPS : Long_Float;
+      Time_Of_Validity                               : UTC_Time) return Pointing;
+   function Create_LLA_Pointing
+     (Latitude_Rad, Longitude_Rad, Altitude_M                  : Long_Float;
+      Velocity_North_MPS, Velocity_East_MPS, Velocity_Down_MPS : Long_Float;
+      Time_Of_Validity                                         : UTC_Time) return Pointing;
+   function Create_Platform_Relative_Pointing
+     (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
+   function Create_Face_Relative_Pointing (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
+   function Create_Baseline_Relative_Pointing (Conic_Rad : Long_Float) return Pointing;
+   procedure Append_Expected_Pointing (Group : in out RX_Element_Group_Config; Value : Pointing);
    type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;
    type Unsigned_32_Array is array (Natural range <>) of Interfaces.Unsigned_32;
    type Job_Config is private;
+   procedure Set_Estimated_Stab_Point (Config : in out Job_Config; Value : Pointing);
+   procedure Clear_Estimated_Stab_Point (Config : in out Job_Config);
    function Create_Job_Config
      (Request_ID, Priority       : Interfaces.Unsigned_32;
       Group                      : RX_Element_Group_Config;
@@ -278,18 +297,26 @@ private
       Endpoints : Endpoint_Vectors.Vector;
    end record;
    package Pipe_Vectors is new Ada.Containers.Vectors (Positive, Pipe_Config);
+   type UTC_Time is record
+      Seconds, Fraction : Interfaces.Integer_64 := 0;
+   end record;
+   type Pointing_Components is array (Positive range 1 .. 6) of Long_Float;
+   type Pointing is record
+      Kind       : Pointing_Kind := Face_Relative;
+      Components : Pointing_Components := [others => 0.0];
+      Time       : UTC_Time;
+   end record;
+   package Pointing_Vectors is new Ada.Containers.Vectors (Positive, Pointing);
    type RX_Element_Group_Config is record
       Label, Pipe : Ada.Strings.Unbounded.Unbounded_String;
       Duty        : Long_Float;
       Frequencies : Frequency_Vectors.Vector;
       Pipes       : Pipe_Vectors.Vector;
+      Pointings   : Pointing_Vectors.Vector;
    end record;
    package Group_Vectors is new Ada.Containers.Vectors (Positive, RX_Element_Group_Config);
    package Byte_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
-   type UTC_Time is record
-      Seconds, Fraction : Interfaces.Integer_64 := 0;
-   end record;
    type Job_Config is record
       ID, Priority, Precedence : Interfaces.Unsigned_32;
       Interruptable            : Boolean;
@@ -299,6 +326,8 @@ private
       Duration, Lookahead      : Interfaces.Integer_64 := 0;
       Capability, Activity     : Byte_Vectors.Vector;
       Power_Modes              : ID_Vectors.Vector;
+      Has_Estimated_Point      : Boolean := False;
+      Estimated_Point          : Pointing;
    end record;
    type Job_Result is record
       State : Request_Outcome := Created;
