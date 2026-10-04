@@ -1,5 +1,21 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034F2 adds **all five RF PointingType alternatives** and **RX JobRequest
+v3** in production C and safe Ada: ECEF, LLA, PlatformRelative, FaceRelative,
+and BaselineRelative. The caller selects the coordinates; meters, meters/second
+and radians pass unchanged, including signed zero/infinity/NaN. No geometric
+conversion, normalization or capability auto-gate occurs. Active ECEF/LLA UTC
+must be canonical; inactive payloads are ignored. Safe Ada offers five private
+value constructors, ordered `Append_Expected_Pointing`, and independent
+`Set_Estimated_Stab_Point`/`Clear_Estimated_Stab_Point`. Existing source APIs/defaults
+remain; Submit_Job privately uses v3. V1/v2 records/signatures are frozen, and
+all versions share one hardened async owner/pipeline. Exactly one additive export
+is measured (190 -> 191), ABI **0.1**, vendor unchanged; raw Rust/private Python
+parity only. Positive payload fidelity is mock evidence; pinned Squall accepts
+the setter calls/request without interpreting pointings. JobRequest is still
+**not complete**: TX execution/commands, MFADrivenControls/JIB and rejection
+callbacks/context remain deferred. See `docs/task-034f2-rf-job-pointing.md`.
+
 Task 034F1 adds **RX JobRequest v2** in production C and safe Ada: ordered
 multiple RX groups, ordered multiple DataPipe endpoint-set calls per group,
 priority/precedence, canonical two-component min/max UTC times, exact signed

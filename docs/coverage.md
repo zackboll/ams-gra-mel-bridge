@@ -1,6 +1,22 @@
 # Implementation coverage
 
-Task 034F1 extends native C and safe Ada RX JobRequest coverage to multiple
+Task 034F2 covers all five PointingType alternatives for independent estimated
+stab points and ordered RX expected pointing angles, in production C and safe Ada.
+Together with F1 this includes multiple RX groups, frequency ranges, multiple
+DataPipe endpoint sets, priority/precedence, min/max UTC, duration, request ID,
+instance selection, interruptable, binary capability/activity IDs, TX power-mode
+ID set and lookahead. Frozen native v1/v2 remain; safe Ada privately serializes v3
+with historical no-point defaults and source compatibility. One additive export,
+no new owner/vendor dependency, no safe Rust/public Python pointing API. Exact
+variant/component/order/duplicate/IEEE fidelity is mock-proven. Pinned Squall stores
+expected pointings but does not interpret them or estimatedStabPoint in requestJob;
+acceptance is not scheduling/geometry/hardware evidence. **JobRequest is still
+not complete.** Deferred: TX ElementGroupCommands (including command power), TX
+requests, MFADrivenControls/JIB machinery, rejection callbacks/context, Weights,
+CachedWaveform/WaveformTxEndpoint, external/RDMA and VADB. No conversion utilities
+or capability auto-gate. See `task-034f2-rf-job-pointing.md`.
+
+At the F1 checkpoint, Task 034F1 extended native C and safe Ada RX JobRequest coverage to multiple
 ordered RX groups, multiple ordered RX pipe endpoint-set calls, duty/frequency
 ranges, priority/precedence, canonical min/max UTC components, exact signed
 duration, request ID, ordered instance-selection vector (duplicates retained),
@@ -12,7 +28,8 @@ safe Rust v2 or public Python v2 API. Mock tests inspect exact provider getters,
 command call counts/order, validation, rollback and shared async retention.
 Squall two-group acceptance has a narrower interpretation limit: it validates
 RX groups and copies requestId, not the other scheduling/identity fields.
-**JobRequest is not complete.** Deferred: estimatedStabPoint, RX pointing angles,
+**JobRequest was not complete at F1.** EstimatedStabPoint and RX pointing angles
+are now covered by F2 above. Still deferred:
 TX ElementGroupCommand fields/Job requests, MFADrivenControls/JIB callback
 machinery, rejection callbacks/context. No CachedWaveform/WaveformTxEndpoint,
 Weights, external/RDMA or VADB work is included. See the F1 task report.

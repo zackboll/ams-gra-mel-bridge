@@ -1,5 +1,18 @@
 # Experimental C ABI policy
 
+Task 034F2 adds exactly ams_mel_rf_virtual_aperture_submit_job_v3; ABI 0.1 and
+all v1/v2 records/signatures remain frozen. New fixed records carry bridge tags
+ECEF=0, LLA=1, platform=2, face=3, baseline=4 (not an upstream enum or public union).
+Unknown kind/malformed spans/noncanonical active ECEF/LLA UTC/estimated flag >1
+reject before command creation/requestJob/publication. Inactive fields are ignored,
+including UTC. Active doubles pass unchanged without physical/finite checks,
+normalization or conversions; NaN payload bits are not promised. Expected points
+retain order/duplicates; empty spans make no calls. Estimated flag 0 neither
+validates nor sets its payload and never reads upstream default numeric vectors.
+Preparation allocation failure is INTERNAL_ERROR with no provider exposure. All
+versions use one existing request/Job owner and hardened async path. No capability
+query, callbacks/context or TX/resource expansion. Vendor unchanged.
+
 Task 034F1 adds exactly ams_mel_rf_virtual_aperture_submit_job_v2 (189 -> 190),
 ABI 0.1 unchanged. V1 Job records/signature/caller requirements are frozen.
 V2 uses the same request/wait/claim/close owners. All inputs are borrowed during
