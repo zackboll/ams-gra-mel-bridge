@@ -292,6 +292,11 @@ begin
       if Code /= 0 then
          raise Program_Error with "isolated RF DataPipe suite failed";
       end if;
+      Code :=
+        GNAT.OS_Lib.Spawn (Workspace_Root & "/ada/tests/bin/ams_mel_rf_transmit_power", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF transmit-power suite failed";
+      end if;
    end;
    Cleanup_Lifetime_Log;
    Ada.Text_IO.Put_Line ("PASS: Ada provider load/init/version/close/finalization contract");
