@@ -1,5 +1,20 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034E2 adds **signal-only, coalescing VA status-change subscriptions** in C
+and safe Ada `AMS.MEL.RF.C2.Virtual_Aperture_Notifications`. Subscribe first,
+query E1 on the application thread, wait, then query again: this is **not an
+atomic callback-time status snapshot**. The reference callback inspects no
+provider object and calls no getter or Ada/application code. Explicit
+Unsubscribe removes the exact key once while VA is live; local Close/finalization
+only stops the observer. VA Close automatically removes, may block in provider
+removal, and does not wait for callback quiescence. One attempt per public VA;
+each exposed attempt intentionally retains a small exact-callable/signal/DSO
+shell for process lifetime, never the VA/C2 graph. ABI remains **0.1**, with five
+additions (**169** production exports); all **804** vendor blobs remain unchanged.
+Raw Rust/private Python parity only. Mock-positive transitions and pinned Squall
+registration/removal/no-delivery evidence are distinct. See
+`docs/task-034e2-rf-va-status-subscriptions.md` for lifecycle and validation.
+
 Task 034E1 adds all six synchronous BaseVirtualAperture read/query methods in
 production C and safe Ada `AMS.MEL.RF.C2.Virtual_Aperture_Queries`. Fresh ID/status
 calls are distinct from immutable Claim-time VA info. Owned instance lists retain
@@ -8,7 +23,7 @@ value, including ordered LF groups and nested statuses. Calls are not an atomic
 multi-call transaction. Plain snapshots survive VA/C2/DSO teardown. Known Failed
 and Degraded are successful data; unknown status values fail closed. Ten additions
 bring ABI 0.1 to **164** production exports; all 804 vendor blobs are unchanged.
-Raw Rust/private Python parity only. VA callbacks, VADB, standalone LF queries,
+Raw Rust/private Python parity only. At that checkpoint VA callbacks, VADB, standalone LF queries,
 weights/TX/RDMA and other deferred surfaces are not started. See
 `docs/task-034e1-rf-va-status-queries.md`.
 

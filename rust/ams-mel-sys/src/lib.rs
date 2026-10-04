@@ -2,6 +2,59 @@
 
 use std::ffi::{c_char, c_void};
 
+/// Signal-only observer; no provider resource ownership. Raw ABI only.
+#[repr(C)]
+pub struct AmsMelRfVaStatusSubscription {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AmsMelRfVaStatusSubscriptionStatisticsV1 {
+    pub callback_entries: u64,
+    pub callbacks_coalesced: u64,
+    pub notifications_delivered: u64,
+    pub callbacks_after_stop: u64,
+    pub pending: u32,
+    pub stopped: u32,
+}
+unsafe extern "C" {
+    pub fn ams_mel_rf_va_status_subscription_open(
+        va: *mut AmsMelRfVa,
+        output: *mut *mut AmsMelRfVaStatusSubscription,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_status_subscription_wait(
+        subscription: *mut AmsMelRfVaStatusSubscription,
+        timeout_ms: u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_status_subscription_get_statistics(
+        subscription: *const AmsMelRfVaStatusSubscription,
+        output: *mut AmsMelRfVaStatusSubscriptionStatisticsV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_status_subscription_unsubscribe(
+        va: *mut AmsMelRfVa,
+        subscription: *mut AmsMelRfVaStatusSubscription,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_va_status_subscription_close(
+        subscription: *mut *mut AmsMelRfVaStatusSubscription,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
+
 pub type AmsMelStatus = i32;
 
 pub const AMS_MEL_OK: AmsMelStatus = 0;

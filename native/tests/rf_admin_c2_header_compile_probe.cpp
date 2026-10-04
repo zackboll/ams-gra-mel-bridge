@@ -21,6 +21,9 @@ namespace rfmel = ams::iface::rfmel;
 // Task 034E1: all six exact live methods, distinct set/vector getters, and
 // concrete report getters. In particular getLFStatus is a VALUE, not reference.
 using BaseVA = rfmel::BaseVirtualAperture;
+using VaCallback = std::function<void(BaseVA&)>;
+static_assert(std::is_same_v<decltype(&BaseVA::addStatusCallback), std::size_t (BaseVA::*)(const VaCallback&)>);
+static_assert(std::is_same_v<decltype(&BaseVA::removeStatusCallback), void (BaseVA::*)(std::size_t)>);
 using VAReport = const rfmel::VirtualApertureInstanceStatusReport&;
 using LFStatuses = std::map<rfmel::LocalFunctionTypeID, std::vector<rfmel::VirtualApertureStatus>>;
 static_assert(std::is_same_v<rfmel::VirtualApertureDefinitionID, uint32_t>);

@@ -12,6 +12,25 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_va_notification_signatures(self) -> None:
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+        s = _native.RfVaSubscriptionHandle
+        expected = {
+            "ams_mel_rf_va_status_subscription_open": [_native.RfVaHandle, ctypes.POINTER(s)],
+            "ams_mel_rf_va_status_subscription_wait": [s, ctypes.c_uint32],
+            "ams_mel_rf_va_status_subscription_get_statistics": [s, ctypes.POINTER(_native.RfVaSubscriptionStatisticsV1)],
+            "ams_mel_rf_va_status_subscription_unsubscribe": [_native.RfVaHandle, s],
+            "ams_mel_rf_va_status_subscription_close": [ctypes.POINTER(s)],
+        }
+        import ams_mel
+        for name, prefix in expected.items():
+            function = getattr(_native, name)
+            self.assertEqual(function.argtypes, [*prefix, *diagnostic])
+            self.assertIs(function.restype, ctypes.c_int32)
+            self.assertNotIn(name, ams_mel.__all__)
+        for name in ("RfVaSubscriptionHandle", "RfVaSubscriptionStatisticsV1"):
+            self.assertNotIn(name, ams_mel.__all__)
+
     def test_private_va_query_signatures(self) -> None:
         diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         va = _native.RfVaHandle
@@ -103,6 +122,11 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_rf_va_status_subscription_open",
+                "ams_mel_rf_va_status_subscription_wait",
+                "ams_mel_rf_va_status_subscription_get_statistics",
+                "ams_mel_rf_va_status_subscription_unsubscribe",
+                "ams_mel_rf_va_status_subscription_close",
                 "ams_mel_get_abi_version",
                 "ams_mel_session_open",
                 "ams_mel_session_open_with_options",
@@ -270,8 +294,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 164)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 164)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 169)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 169)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -279,7 +303,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 164)
+        self.assertEqual(len(exported), 169)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1411,6 +1435,11 @@ class AbiTests(unittest.TestCase):
         expected.extend(
             [
                 _native.AMS_MEL_OK,
+                ctypes.sizeof(_native.RfVaSubscriptionHandle),
+                ctypes.alignment(_native.RfVaSubscriptionHandle),
+                *self._layout(_native.RfVaSubscriptionStatisticsV1, 'callback_entries',
+                              'callbacks_coalesced', 'notifications_delivered',
+                              'callbacks_after_stop', 'pending', 'stopped'),
                 _native.AMS_MEL_ABI_VERSION_MAJOR,
                 _native.AMS_MEL_ABI_VERSION_MINOR,
                 _native.AMS_MEL_ABI_VERSION_MAJOR,
