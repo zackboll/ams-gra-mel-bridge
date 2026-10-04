@@ -228,7 +228,26 @@ struct ams_mel_rf_va_instance_status_report {
     ams_mel_rf_va_instance_status_report_v1 view{};
 };
 
+/* ONLY bridge storage. Provider objects occur only in the synchronous query's
+ * temporaries, destroyed before its live VA/existing claim can be released. */
+struct ElementGroupPipeStorage {
+    std::string key, label;
+    std::vector<std::uint64_t> endpoints;
+};
+struct ElementGroupStorage {
+    std::string key, label;
+    std::vector<ElementGroupPipeStorage> pipes;
+    std::vector<ams_mel_rf_data_pipe_info_v1> records;
+};
+struct ams_mel_rf_element_group_snapshot {
+    std::vector<ElementGroupStorage> storage;
+    std::vector<ams_mel_rf_element_group_descriptor_v1> records;
+    ams_mel_rf_element_group_snapshot_v1 view{};
+};
+
 namespace {
+static_assert(static_cast<unsigned>(rfmel::Mode::RX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_RX);
+static_assert(static_cast<unsigned>(rfmel::Mode::TX) == AMS_MEL_RF_ELEMENT_GROUP_MODE_TX);
 static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::None) == AMS_MEL_RF_VA_STATUS_NONE);
 static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::Operational) == AMS_MEL_RF_VA_STATUS_OPERATIONAL);
 static_assert(static_cast<unsigned>(rfmel::VirtualApertureStatus::Degraded) == AMS_MEL_RF_VA_STATUS_DEGRADED);
@@ -725,4 +744,117 @@ extern "C" ams_mel_status_t ams_mel_rf_va_status_subscription_unsubscribe(
     remove_va_callback(*va->va, *va->registration);
     write_diagnostic(va->registration->diagnostic.data(), diagnostic, capacity, required);
     return va->registration->removal_status;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_get_element_groups(
+    const ams_mel_rf_virtual_aperture *va,
+    const ams_mel_rf_element_group_snapshot_options_v1 *options,
+    ams_mel_rf_element_group_snapshot **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!va || !va->va || !options || options->include_data_pipes > 1 ||
+        !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    auto invalid = [&]() noexcept {
+        write_diagnostic("invalid element-group descriptor or DataPipe value", diagnostic, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    };
+    try {
+        const auto groups = va->va->getElementGroups(); // exactly one live call
+        using Entry = std::pair<const rfmel::ElementGroupLabel,
+                                std::shared_ptr<rfmel::ElementGroupDescriptor>>;
+        std::vector<const Entry *> ordered;
+        ordered.reserve(groups.size());
+        for (const auto& entry : groups) {
+            if (!valid_utf8(entry.first) || !entry.second) return invalid();
+            ordered.push_back(&entry);
+        }
+        std::sort(ordered.begin(), ordered.end(), [](const Entry *a, const Entry *b) {
+            return std::lexicographical_compare(a->first.begin(), a->first.end(),
+                b->first.begin(), b->first.end(), [](char x, char y) {
+                    return static_cast<unsigned char>(x) < static_cast<unsigned char>(y);
+                });
+        });
+        if (failpoint("element-owner")) throw std::bad_alloc{};
+        auto owner = std::make_unique<ams_mel_rf_element_group_snapshot>();
+        owner->storage.resize(ordered.size());
+        owner->records.resize(ordered.size());
+        for (std::size_t i = 0; i < ordered.size(); ++i) {
+            if (i == 1 && failpoint("element-descriptor")) throw std::bad_alloc{};
+            const auto& entry = *ordered[i];
+            auto& storage = owner->storage[i];
+            auto& record = owner->records[i];
+            storage.key = entry.first;
+            storage.label = entry.second->getElementGroupLabel();
+            if (!valid_utf8(storage.label)) return invalid();
+            switch (entry.second->getMode()) {
+            case rfmel::Mode::RX: record.mode = AMS_MEL_RF_ELEMENT_GROUP_MODE_RX; break;
+            case rfmel::Mode::TX: record.mode = AMS_MEL_RF_ELEMENT_GROUP_MODE_TX; break;
+            default: return invalid();
+            }
+            record.max_rf_bandwidth_hz = entry.second->getMaxRfBandwidth();
+            record.max_sample_rate_samples_per_second = entry.second->getMaxSampleRate();
+            record.max_data_rate_bits_per_second = entry.second->getMaxDataRate();
+            record.max_duty_factor = entry.second->getMaxDutyFactor();
+            if (options->include_data_pipes) {
+                const auto pipes = entry.second->getDataPipes();
+                storage.pipes.resize(pipes.size());
+                storage.records.resize(pipes.size());
+                std::size_t j = 0;
+                for (const auto& [key, pipe] : pipes) {
+                    if (j == 1 && failpoint("element-pipe")) throw std::bad_alloc{};
+                    if (!valid_utf8(key) || !pipe) return invalid();
+                    auto& target = storage.pipes[j++];
+                    target.key = key;
+                    target.label = pipe->getLabel();
+                    if (!valid_utf8(target.label)) return invalid();
+                    const auto endpoints = pipe->getAssociatedEndpoints();
+                    target.endpoints.assign(endpoints.begin(), endpoints.end());
+                    if (failpoint("element-endpoints")) throw std::bad_alloc{};
+                }
+            }
+        }
+        // No sorting, container growth or string moves after pointer publication.
+        auto string_view = [](const std::string& value) noexcept -> ams_mel_string_view_v1 {
+            return {value.empty() ? nullptr : value.data(), value.size()};
+        };
+        for (std::size_t i = 0; i < owner->storage.size(); ++i) {
+            auto& storage = owner->storage[i];
+            for (std::size_t j = 0; j < storage.pipes.size(); ++j) {
+                const auto& pipe = storage.pipes[j];
+                storage.records[j] = {string_view(pipe.key), string_view(pipe.label),
+                    {pipe.endpoints.empty() ? nullptr : pipe.endpoints.data(), pipe.endpoints.size()}};
+            }
+            auto& record = owner->records[i];
+            record.lookup_label = string_view(storage.key);
+            record.label = string_view(storage.label);
+            record.data_pipes = {storage.records.empty() ? nullptr : storage.records.data(), storage.records.size()};
+        }
+        owner->view = {options->include_data_pipes,
+            {owner->records.empty() ? nullptr : owner->records.data(), owner->records.size()}};
+        *output = owner.release();
+        return AMS_MEL_OK;
+    } catch (...) {
+        return translate_provider_exception("element-group snapshot exception",
+            "unknown element-group snapshot exception", diagnostic, capacity, required);
+    }
+}
+extern "C" ams_mel_status_t ams_mel_rf_element_group_snapshot_view(
+    const ams_mel_rf_element_group_snapshot *owner,
+    const ams_mel_rf_element_group_snapshot_v1 **output, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || !output || *output || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    *output = &owner->view;
+    return AMS_MEL_OK;
+}
+extern "C" ams_mel_status_t ams_mel_rf_element_group_snapshot_close(
+    ams_mel_rf_element_group_snapshot **owner, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    clear_diagnostic(diagnostic, capacity, required);
+    if (!owner || bad_diag(diagnostic, capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*owner, nullptr);
+    return AMS_MEL_OK;
 }

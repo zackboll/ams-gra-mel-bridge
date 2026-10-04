@@ -50,6 +50,26 @@ static int check_event(const ams_mel_rf_product_rx_event_v1 *view, uint64_t endp
     return EXIT_SUCCESS;
 }
 
+static int check_descriptors(ams_mel_rf_element_group_snapshot *owner, unsigned included)
+{
+    const ams_mel_rf_element_group_snapshot_v1 *view = NULL;
+    REQUIRE(ams_mel_rf_element_group_snapshot_view(owner, &view, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(view && view->data_pipes_included == included && view->descriptors.size == 1 && view->descriptors.data);
+    const ams_mel_rf_element_group_descriptor_v1 *g = view->descriptors.data;
+    REQUIRE(g->lookup_label.size == 1 && g->lookup_label.data[0] == '0');
+    REQUIRE(g->label.size == 1 && g->label.data[0] == '0' && g->mode == AMS_MEL_RF_ELEMENT_GROUP_MODE_RX);
+    REQUIRE(g->max_rf_bandwidth_hz == 2048000.0 && g->max_sample_rate_samples_per_second == 2048000.0);
+    REQUIRE(g->max_data_rate_bits_per_second == 65536000.0 && g->max_duty_factor == 1.0);
+    REQUIRE(g->data_pipes.size == (included ? 1U : 0U));
+    if (included) {
+        const ams_mel_rf_data_pipe_info_v1 *p = g->data_pipes.data;
+        REQUIRE(p && p->lookup_label.size == 7 && !memcmp(p->lookup_label.data, "default", 7));
+        REQUIRE(p->label.size == 7 && !memcmp(p->label.data, "default", 7));
+        REQUIRE(!p->associated_endpoint_ids.size && !p->associated_endpoint_ids.data);
+    } else REQUIRE(!g->data_pipes.data);
+    return EXIT_SUCCESS;
+}
+
 static size_t nonzero(const ams_mel_rf_product_rx_event_v1 *view)
 {
     size_t index, count = 0;
@@ -82,6 +102,7 @@ int main(int argc, char **argv)
     ams_mel_rf_va_status_subscription *va_subscription = NULL;
     ams_mel_rf_va_instance_list *va_instances = NULL;
     ams_mel_rf_va_instance_status_report *va_report = NULL;
+    ams_mel_rf_element_group_snapshot *descriptor_basic = NULL, *descriptor_full = NULL;
     ams_mel_rf_job_request *job_request = NULL;
     ams_mel_rf_job *job = NULL;
     ams_mel_rf_job_interval_status *status_stream = NULL;
@@ -165,6 +186,16 @@ int main(int argc, char **argv)
     REQUIRE(ams_mel_rf_va_status_subscription_wait(va_subscription, 0, diagnostic,
         sizeof diagnostic, NULL) == AMS_MEL_TIMEOUT);
     REQUIRE(ams_mel_rf_virtual_aperture_request_close(&va_request, NULL, 0, NULL) == AMS_MEL_OK);
+    {
+        ams_mel_rf_element_group_snapshot_options_v1 options = {0};
+        status = ams_mel_rf_virtual_aperture_get_element_groups(va, &options, &descriptor_basic, diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_OK) return failed("descriptor_basic", status, diagnostic);
+        options.include_data_pipes = 1;
+        status = ams_mel_rf_virtual_aperture_get_element_groups(va, &options, &descriptor_full, diagnostic, sizeof diagnostic, NULL);
+        if (status != AMS_MEL_OK) return failed("descriptor_full", status, diagnostic);
+        REQUIRE(check_descriptors(descriptor_basic, 0) == EXIT_SUCCESS);
+        REQUIRE(check_descriptors(descriptor_full, 1) == EXIT_SUCCESS);
+    }
     /* Pinned provider query-value evidence, not hardware health/transitions.
      * Retain plain snapshots across public VA/C2 Close below. This ProductRx
      * process has callback pins and is intentionally NOT DSO-unload evidence. */
@@ -254,6 +285,11 @@ int main(int argc, char **argv)
     puts("RF VA notifications: registration/automatic removal/no-delivery only; no real positive transition claim");
     status = ams_mel_rf_c2_close(&c2, diagnostic, sizeof diagnostic, NULL);
     if (status != AMS_MEL_OK) return failed("close_c2", status, diagnostic);
+    REQUIRE(check_descriptors(descriptor_basic, 0) == EXIT_SUCCESS);
+    REQUIRE(check_descriptors(descriptor_full, 1) == EXIT_SUCCESS);
+    REQUIRE(ams_mel_rf_element_group_snapshot_close(&descriptor_basic, NULL, 0, NULL) == AMS_MEL_OK);
+    REQUIRE(ams_mel_rf_element_group_snapshot_close(&descriptor_full, NULL, 0, NULL) == AMS_MEL_OK);
+    puts("RF descriptors: exact pinned RX limits and fresh default-empty pipe; no persistent route/association claim");
     {
         ams_mel_u32_span_v1 list = {NULL, 0};
         const ams_mel_rf_va_instance_status_report_v1 *report = NULL;

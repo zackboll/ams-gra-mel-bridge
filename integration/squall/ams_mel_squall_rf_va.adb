@@ -4,6 +4,7 @@ with AMS.MEL.RF.Admin;
 with AMS.MEL.RF.C2;
 with AMS.MEL.RF.C2.Virtual_Aperture_Queries;
 with AMS.MEL.RF.C2.Virtual_Aperture_Notifications;
+with AMS.MEL.RF.C2.Element_Groups;
 with AMS.MEL.Status;
 with Interfaces;
 
@@ -12,10 +13,40 @@ procedure AMS_MEL_Squall_RF_VA is
    package C2 renames AMS.MEL.RF.C2;
    package Q renames C2.Virtual_Aperture_Queries;
    package N renames C2.Virtual_Aperture_Notifications;
+   package E renames C2.Element_Groups;
    package Status renames AMS.MEL.Status;
    use type C2.Request_Outcome;
    use type Interfaces.Unsigned_32;
    use type Q.Status_Kind;
+   use type E.Element_Group_Mode;
+   procedure Descriptors (Value : E.Element_Group_List; Included : Boolean) is
+   begin
+      if E.Count (Value) /= 1 or else E.Data_Pipes_Included (Value) /= Included then
+         raise Program_Error with "Squall descriptor inclusion/count mismatch";
+      end if;
+      declare
+         G : constant E.Element_Group_Descriptor := E.Descriptor_At (Value, 1);
+      begin
+         if E.Lookup_Label (G) /= "0" or else E.Label (G) /= "0"
+           or else E.Mode (G) /= E.Receive
+           or else E.Max_RF_Bandwidth_Hz (G) /= 2_048_000.0
+           or else E.Max_Sample_Rate_Samples_Per_Second (G) /= 2_048_000.0
+           or else E.Max_Data_Rate_Bits_Per_Second (G) /= 65_536_000.0
+           or else E.Max_Duty_Factor (G) /= 1.0
+           or else E.Data_Pipes_Included (G) /= Included
+           or else E.Pipe_Count (G) /= (if Included then 1 else 0)
+         then
+            raise Program_Error with "Squall exact pinned descriptor values mismatch";
+         end if;
+         if Included then
+            declare P : constant E.Data_Pipe_Info := E.Pipe_At (G, 1); begin
+               if E.Lookup_Label (P) /= "default" or else E.Label (P) /= "default"
+                 or else E.Endpoint_Count (P) /= 0
+               then raise Program_Error with "Squall default pipe mismatch"; end if;
+            end;
+         end if;
+      end;
+   end Descriptors;
    procedure Queries (VA : C2.Virtual_Aperture'Class) is
       All_IDs      : constant Q.Instance_ID_List := Q.Snapshot_All_Instances (VA);
       Face         : constant Q.Instance_ID_List := Q.Snapshot_Instances (VA, 0);
@@ -70,9 +101,13 @@ begin
          declare
             VA           : C2.Virtual_Aperture := C2.Claim (Request);
             Subscription : N.Subscription := N.Open (VA);
+            Basic : constant E.Element_Group_List := E.Snapshot_Element_Groups (VA);
+            Full : constant E.Element_Group_List := E.Snapshot_Element_Groups (VA, True);
          begin
             C2.Close (Request);
             Queries (VA);
+            Descriptors (Basic, False);
+            Descriptors (Full, True);
             begin
                N.Wait_For_Change (Subscription, 0);
                raise Program_Error with "Squall unexpectedly emitted VA notification";
@@ -90,6 +125,8 @@ begin
             end if;
             C2.Close (Parent);
             Queries (VA);
+            Descriptors (E.Snapshot_Element_Groups (VA), False);
+            Descriptors (E.Snapshot_Element_Groups (VA, True), True);
             N.Unsubscribe (VA, Subscription);
             if not N.Is_Open (Subscription) or else not N.Statistics (Subscription).Stopped then
                raise Program_Error with "Squall VA unsubscribe did not stop observer";
@@ -114,6 +151,8 @@ begin
                  Q.Snapshot_Instance_Status_Report (VA, Interfaces.Unsigned_32'Last);
             begin
                C2.Close (VA);
+               Descriptors (Basic, False);
+               Descriptors (Full, True);
                if Q.Count (IDs) /= 1
                  or else Q.Instance_ID_At (IDs, 1) /= 0
                  or else Q.Instance_ID (Report) /= Interfaces.Unsigned_32'Last

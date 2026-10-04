@@ -1,5 +1,16 @@
 # Architecture decisions
 
+Task 034E3 copies VirtualAperture's by-value unordered descriptor map under the
+existing live VA claim, outside bridge locks. Validated unsigned UTF-8 outer keys
+sort before per-occurrence getter/copy; distinct returned labels and shared-object
+aliases remain. Conditional descriptor DataPipes are queried only by explicit
+option, never by capability inference or callback. Final-sized nested backing
+precedes pointer publication. Published owners contain only bridge values and
+retain no provider object/claim/DSO; Ada controlled temporaries perform checked
+deep copy-out into ordinary values with list/descriptor inclusion flags. Multiple
+getters are not an atomic provider transaction. No Claim/notification/Job lifecycle
+change or endpoint mutation. See `task-034e3-rf-element-group-snapshots.md`.
+
 Task 034E2 attaches a private registration-control record to the existing VA
 owner, without a shared provider-owner graph refactor. The public subscription
 contains only fixed bridge signal state. Its unnamed BaseVirtualAperture& callback

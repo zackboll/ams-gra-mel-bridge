@@ -1,5 +1,16 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034E3 adds provider-created **element-group descriptor value snapshots** in
+C and safe Ada `AMS.MEL.RF.C2.Element_Groups`. Mandatory RX/TX mode and four
+numeric limits are copied; descriptor-level DataPipe labels/endpoint sets are
+**explicitly opt-in** (Ada defaults false). Lookup keys stay distinct from
+returned labels; unordered outer entries use canonical unsigned UTF-8 key order.
+Plain nested values survive VA/C2/provider unload, without retaining provider
+objects or adding TX execution/routing/association support. ABI stays **0.1**,
+with exactly three additions (169 -> 172); frozen records and all 804 vendor
+blobs are unchanged. Raw Rust/private Python parity only. See
+`docs/task-034e3-rf-element-group-snapshots.md` for contracts and validation.
+
 Task 034E2 adds **signal-only, coalescing VA status-change subscriptions** in C
 and safe Ada `AMS.MEL.RF.C2.Virtual_Aperture_Notifications`. Subscribe first,
 query E1 on the application thread, wait, then query again: this is **not an

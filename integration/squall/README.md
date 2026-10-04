@@ -1,3 +1,19 @@
+# Task 034E3 descriptor evidence
+
+The safe Ada VA and C ProductRx paths assert descriptor-only and opted-in
+snapshots against Squall `b1015728f904c799fa0c07489fce48e78f67845f` and RF MEL
+`762ce84c5555dd0f3ea66f36b321fecf8839b89f`: key/label `0`, RX, 2,048,000 Hz
+bandwidth, 2,048,000 samples/second, 65,536,000 bits/second and duty 1.0.
+The pinned rf_environment source configuration/capability calculation establishes
+these numbers, not generic RF MEL. Opt-in returns key/label `default` with zero
+endpoint IDs; Squall constructs a fresh pipe, not proof of a persistent route.
+Basic omission and queried-empty inclusion are asserted separately. Ada repeats
+after public C2 Close and retains values after VA Close; C retains the native
+nested snapshot across public VA/C2 Close. Subscribe-first E2 behavior, explicit
+Unsubscribe/stop and existing Job/ProductRx assertions remain. These callback-pinned
+processes are not DSO-unload evidence. No association/equality call is used.
+An all-zero upstream capability fallback is a failure, never positive validation.
+
 # Real Squall IR MEL integration
 
 Task 034E2 rechecks SquallVirtualAperture at exact pin
