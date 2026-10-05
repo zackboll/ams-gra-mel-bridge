@@ -2157,6 +2157,47 @@ pub struct AmsMelRfJobRequestConfigV3 {
     pub estimated_stab_point: AmsMelRfPointingV1,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxElementGroupConfigV1 {
+    pub label: AmsMelStringViewV1,
+    pub tx_power_level: u32,
+    pub desired_duty_factor: f64,
+    pub expected_center_frequencies: AmsMelRfFrequencyRangeSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobElementGroupConfigV4 {
+    pub mode: AmsMelRfElementGroupMode,
+    pub rx: AmsMelRfRxElementGroupConfigV3,
+    pub tx: AmsMelRfTxElementGroupConfigV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobElementGroupConfigSpanV4 {
+    pub data: *const AmsMelRfJobElementGroupConfigV4,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobRequestConfigV4 {
+    pub request_id: u32,
+    pub priority: u32,
+    pub precedence_within_priority: u32,
+    pub is_interruptable: u32,
+    pub instance_selection: AmsMelU32SpanV1,
+    pub element_groups: AmsMelRfJobElementGroupConfigSpanV4,
+    pub min_start_time: AmsMelRfUtcTimeV1,
+    pub max_complete_time: AmsMelRfUtcTimeV1,
+    pub duration_femtoseconds: i64,
+    pub capability_id: AmsMelU8SpanV1,
+    pub activity_id: AmsMelU8SpanV1,
+    pub tx_power_mode_ids: AmsMelU32SpanV1,
+    pub lookahead_femtoseconds: i64,
+    pub has_estimated_stab_point: u32,
+    pub estimated_stab_point: AmsMelRfPointingV1,
+}
+
 // Pinned sentinel aliases ordinary zero relative start; not i64::MAX.
 pub const AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS: i64 = 0;
 #[repr(C)]
@@ -3338,6 +3379,14 @@ extern "C" {
     pub fn ams_mel_rf_virtual_aperture_submit_job_v3(
         va: *mut AmsMelRfVa,
         config: *const AmsMelRfJobRequestConfigV3,
+        out_request: *mut *mut AmsMelRfJobRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_submit_job_v4(
+        va: *mut AmsMelRfVa,
+        config: *const AmsMelRfJobRequestConfigV4,
         out_request: *mut *mut AmsMelRfJobRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

@@ -1403,6 +1403,36 @@ class RfJobRequestConfigV3(ctypes.Structure):
         ("estimated_stab_point", RfPointingV1),
     ]
 
+RfElementGroupMode = ctypes.c_uint32
+RF_ELEMENT_GROUP_MODE_RX, RF_ELEMENT_GROUP_MODE_TX = 0, 1
+
+
+class RfTxElementGroupConfigV1(ctypes.Structure):
+    _fields_ = [("label", StringViewV1), ("tx_power_level", ctypes.c_uint32),
+                ("desired_duty_factor", ctypes.c_double),
+                ("expected_center_frequencies", RfFrequencyRangeSpanV1)]
+
+
+class RfJobElementGroupConfigV4(ctypes.Structure):
+    _fields_ = [("mode", RfElementGroupMode), ("rx", RfRxElementGroupConfigV3),
+                ("tx", RfTxElementGroupConfigV1)]
+
+
+class RfJobElementGroupConfigSpanV4(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobElementGroupConfigV4)), ("size", ctypes.c_size_t)]
+
+
+class RfJobRequestConfigV4(ctypes.Structure):
+    _fields_ = [("request_id", ctypes.c_uint32), ("priority", ctypes.c_uint32),
+                ("precedence_within_priority", ctypes.c_uint32), ("is_interruptable", ctypes.c_uint32),
+                ("instance_selection", U32SpanV1), ("element_groups", RfJobElementGroupConfigSpanV4),
+                ("min_start_time", RfUtcTimeV1), ("max_complete_time", RfUtcTimeV1),
+                ("duration_femtoseconds", ctypes.c_int64), ("capability_id", U8SpanV1),
+                ("activity_id", U8SpanV1), ("tx_power_mode_ids", U32SpanV1),
+                ("lookahead_femtoseconds", ctypes.c_int64), ("has_estimated_stab_point", ctypes.c_uint32),
+                ("estimated_stab_point", RfPointingV1)]
+
+
 # Pinned sentinel aliases ordinary zero relative start; not INT64_MAX.
 AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS = 0
 
@@ -1831,8 +1861,6 @@ ams_mel_rf_va_status_subscription_close.argtypes = [ctypes.POINTER(RfVaSubscript
 ams_mel_rf_va_status_subscription_close.restype = ctypes.c_int32
 
 RfElementGroupSnapshotHandle = ctypes.c_void_p
-RfElementGroupMode = ctypes.c_uint32
-RF_ELEMENT_GROUP_MODE_RX, RF_ELEMENT_GROUP_MODE_TX = 0, 1
 
 
 class RfElementGroupSnapshotOptionsV1(ctypes.Structure):
@@ -1966,7 +1994,14 @@ ams_mel_rf_virtual_aperture_submit_job_v3.argtypes = [
     CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
 ams_mel_rf_virtual_aperture_submit_job_v3.restype = ctypes.c_int32
 
+ams_mel_rf_virtual_aperture_submit_job_v4 = _LIBRARY.ams_mel_rf_virtual_aperture_submit_job_v4
+ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
+    RfVaHandle, ctypes.POINTER(RfJobRequestConfigV4), ctypes.POINTER(RfJobRequestHandle),
+    CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
+
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_submit_job_v4",
     "ams_mel_rf_virtual_aperture_submit_job_v3",
     "ams_mel_rf_virtual_aperture_submit_job_v2",
     "ams_mel_rf_virtual_aperture_get_tx_radiated_power",

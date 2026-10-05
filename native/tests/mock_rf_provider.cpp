@@ -1026,6 +1026,26 @@ bool f1_failure(unsigned group, const char *stage)
     return selected && std::string{selected} == std::to_string(group) + ":" + stage;
 }
 bool f2_enabled() { return std::getenv("AMS_MEL_TEST_F2_CASE") != nullptr; }
+bool f3_enabled() { return std::getenv("AMS_MEL_TEST_F3_CASE") != nullptr; }
+bool f3_case(const char *value)
+{
+    const char *selected = std::getenv("AMS_MEL_TEST_F3_CASE");
+    return selected && std::strcmp(selected, value) == 0;
+}
+void f3_throw(unsigned group, const char *stage)
+{
+    const char *failure = std::getenv("AMS_MEL_TEST_F3_FAILURE");
+    if (!failure) return;
+    const auto prefix = std::to_string(group) + ":" + stage;
+    if (failure == prefix + "-std") throw std::runtime_error("F3 command exception");
+    if (failure == prefix + "-unknown") throw 17;
+    if (failure == prefix + "-alloc") throw std::bad_alloc{};
+}
+bool f3_failure(unsigned group, const char *stage)
+{
+    const char *failure = std::getenv("AMS_MEL_TEST_F3_FAILURE");
+    return failure && failure == std::to_string(group) + ":" + stage;
+}
 class MockRxCommand final : public rfmel::ElementGroupCommand {
 public:
     explicit MockRxCommand(std::string label, bool tx, bool throws, unsigned f1 = 0)
@@ -1036,12 +1056,17 @@ public:
     {
         record("rf_job_mode_checked"); ++mode_calls;
         operations.push_back('m');
+        if (f3_enabled()) {
+            f3_throw(f1_, "mode");
+            if (f3_failure(f1_, "mismatch")) return tx_ ? rfmel::Mode::RX : rfmel::Mode::TX;
+        }
         if (f1_failure(f1_, "mode")) throw std::runtime_error("F1 mode exception");
         return tx_ || f1_failure(f1_, "tx") ? rfmel::Mode::TX : rfmel::Mode::RX;
     }
     std::vector<rfmel::FrequencyRange> getExpectedCenterFrequencies() const override { return frequencies_; }
     std::vector<rfmel::FrequencyRange>& getRefExpectedCenterFrequencies() override { return frequencies_; }
-    rfmel::TxPowerLevel getTxPower() const override { forbidden("Job::getTxPower"); }
+    rfmel::TxPowerLevel getTxPower() const override
+    { if (!f3_enabled()) forbidden("Job::getTxPower"); return power_; }
     rfmel::DutyFactor getDesiredDutyFactor() const override { return duty_; }
     rfmel::DataPipeConnections getEndpointIDs() const override { return connections_; }
     rfmel::DataPipeConnections& getRefEndpointIDs() override { return connections_; }
@@ -1049,21 +1074,32 @@ public:
     {
         ++frequency_calls;
         operations.push_back('f');
+        if (f3_enabled()) f3_throw(f1_, "frequency");
         if (f1_failure(f1_, "frequency")) throw std::runtime_error("F1 frequency exception");
         frequencies_.push_back(range);
         record("rf_job_frequency_added");
     }
-    void setTxPower(rfmel::TxPowerLevel) override { forbidden("Job::setTxPower"); }
+    void setTxPower(rfmel::TxPowerLevel power) override
+    {
+        if (!f3_enabled() || !tx_) forbidden("Job::setTxPower");
+        ++tx_power_calls;
+        operations.push_back('t');
+        f3_throw(f1_, "power");
+        power_ = power;
+        record("rf_job_tx_power_set");
+    }
     void setDesiredDutyFactor(rfmel::DutyFactor duty) override
     {
         ++duty_calls;
         operations.push_back('d');
+        if (f3_enabled()) f3_throw(f1_, "duty");
         if (throws_ || f1_failure(f1_, "duty")) throw std::runtime_error("mock Job setter exception");
         duty_ = duty;
         record("rf_job_duty_set");
     }
     void addEndpointIDs(const std::set<rfmel::EndpointID>& ids, rfmel::DataPipeLabel pipe) override
     {
+        if (f3_enabled() && tx_) forbidden("TX::addEndpointIDs");
         ++endpoint_calls;
         operations.push_back('e');
         if (f1_failure(f1_, "endpoint")) throw std::runtime_error("F1 endpoint exception");
@@ -1074,7 +1110,7 @@ public:
     std::vector<rfmel::PointingType> getExpectedPointingAngles() override { return pointing_; }
     void addExpectedPointingAngle(const rfmel::PointingType& value) override
     {
-        if (!f2_enabled()) forbidden("Job::addPointing");
+        if ((!f2_enabled() && !f3_enabled()) || (f3_enabled() && tx_)) forbidden("Job::addPointing");
         ++pointing_calls;
         operations.push_back('p');
         record("rf_job_pointing_added");
@@ -1087,13 +1123,15 @@ public:
     std::vector<rfmel::PointingType>& getRefExpectedPointingAngles() override { return pointing_; }
     mutable unsigned mode_calls{};
     mutable std::vector<char> operations;
-    unsigned duty_calls{}, frequency_calls{}, endpoint_calls{}, pointing_calls{};
+    unsigned duty_calls{}, frequency_calls{}, endpoint_calls{}, pointing_calls{}, tx_power_calls{};
+    bool transmit() const noexcept { return tx_; }
     std::vector<std::pair<std::string, std::set<rfmel::EndpointID>>> endpoint_entries;
 private:
     std::string label_;
     bool tx_, throws_;
     unsigned f1_{};
     double duty_{1.0};
+    rfmel::TxPowerLevel power_{};
     std::vector<rfmel::FrequencyRange> frequencies_;
     rfmel::DataPipeConnections connections_;
     std::vector<rfmel::PointingType> pointing_;
@@ -1110,7 +1148,7 @@ void check_job_defaults(const rfmel::JobRequest& request, bool v1)
         request.getRequestRejectedCallback() || !context || *context != nullptr)
         throw std::runtime_error("Job deferred defaults changed");
     const char *f2 = std::getenv("AMS_MEL_TEST_F2_CASE");
-    if (!f2 || std::strcmp(f2, "clear") == 0) {
+    if ((!f2 || std::strcmp(f2, "clear") == 0) && !f3_enabled()) {
     if (point.index() != defaults.getEstimatedStabPoint().index())
         throw std::runtime_error("Job default variant changed");
     const auto& ecef = std::get<rfmel::ECEFPointing>(point);
@@ -1153,6 +1191,11 @@ void check_f1_request(const rfmel::JobRequest& request)
         } else if (i == 1) entries = {{"default", {9}}};
         if (command->endpoint_entries != entries) throw std::runtime_error("F1 endpoint call order/sets");
     }
+    record("rf_job_v2_groups_verified");
+}
+void check_f1_common(const rfmel::JobRequest& request)
+{
+    check_job_defaults(request, false);
     std::vector<uint32_t> instances{42, 0, 42, UINT32_MAX};
     std::vector<uint8_t> capability{0, 0xff, 0x80, 0, 7}, activity{0xde, 0xad, 0, 0xbe, 0xef};
     std::set<uint32_t> modes{7, 0x80000000U, UINT32_MAX};
@@ -1251,6 +1294,74 @@ void check_f2_request(const rfmel::JobRequest& request)
         for (unsigned p = 0; p < points.size(); ++p) check_f2_point(points[p], kinds[i][p]);
     }
     record("rf_job_v3_pointing_verified");
+}
+
+void check_f3_request(const rfmel::JobRequest& request)
+{
+    const auto& groups = request.getElementGroups();
+    const bool repeated = f3_case("repeated");
+    const bool tx_only = f3_case("tx-only");
+    const bool rx_only = f3_case("rx-only");
+    const std::vector<std::string> labels = repeated ? std::vector<std::string>{"same", "same", "same"} :
+        tx_only ? std::vector<std::string>{"tx/a"} : rx_only ? std::vector<std::string>{"rx/a"} :
+        std::vector<std::string>{"rx/a", "tx/a", "rx/b", "tx/b"};
+    if (groups.size() != labels.size()) throw std::runtime_error("F3 global group count");
+    std::vector<std::shared_ptr<rfmel::ElementGroupCommand>> rx, tx;
+    for (unsigned i = 0; i < groups.size(); ++i) {
+        auto command = std::dynamic_pointer_cast<MockRxCommand>(groups[i]);
+        const bool transmit = repeated ? i != 1 : tx_only || (!rx_only && i % 2 == 1);
+        if (!command || command->getElementGroupLabel() != labels[i] ||
+            command->transmit() != transmit || command->mode_calls != 1 || command->duty_calls != 1 ||
+            command->tx_power_calls != (transmit ? 1U : 0U))
+            throw std::runtime_error("F3 global order/mode/exact calls");
+        (transmit ? tx : rx).push_back(command);
+        std::vector<char> operations{'m', 'd'};
+        if (transmit) operations.push_back('t');
+        operations.insert(operations.end(), command->frequency_calls, 'f');
+        operations.insert(operations.end(), command->endpoint_calls, 'e');
+        operations.insert(operations.end(), command->pointing_calls, 'p');
+        if (command->operations != operations) throw std::runtime_error("F3 command ordering");
+        const auto frequencies = command->getExpectedCenterFrequencies();
+        if (transmit) {
+            if (command->endpoint_calls || command->pointing_calls ||
+                command->getEndpointIDs().size() != 0 || !command->getExpectedPointingAngles().empty())
+                throw std::runtime_error("F3 TX receive setters");
+            const bool last = !tx_only && (repeated ? i == 2 : i == 3);
+            std::uint32_t power = last ? UINT32_MAX : UINT32_C(0xDEADBEEF);
+            if (const char *selected = std::getenv("AMS_MEL_TEST_F3_POWER"))
+                power = static_cast<std::uint32_t>(std::stoull(selected));
+            if (command->getTxPower() != power || command->getDesiredDutyFactor() != (last ? 1.0 : 0.375) ||
+                frequencies.size() != (last ? 1U : 2U) || command->frequency_calls != frequencies.size())
+                throw std::runtime_error("F3 exact TX power/duty/ranges");
+            if (last) {
+                if (frequencies[0].getMinFrequency() != -1.25 || frequencies[0].getMaxFrequency() != 3.5)
+                    throw std::runtime_error("F3 final TX range");
+            } else if (frequencies[0].getMinFrequency() != 100000000.25 ||
+                frequencies[0].getMaxFrequency() != 100000001.5 ||
+                frequencies[1].getMinFrequency() != 915000000.0 || frequencies[1].getMaxFrequency() != 915000000.0)
+                throw std::runtime_error("F3 ordered TX double fidelity");
+        } else {
+            if (command->getDesiredDutyFactor() != 0.625 || frequencies.size() != 2 ||
+                command->frequency_calls != 2 || command->endpoint_calls != 2 || command->pointing_calls != 2 ||
+                frequencies[0].getMinFrequency() != 1000000.25 || frequencies[0].getMaxFrequency() != 2000000.5 ||
+                frequencies[1].getMinFrequency() != 987654321.125 || frequencies[1].getMaxFrequency() != 987654322.875 ||
+                command->endpoint_entries != std::vector<std::pair<std::string, std::set<rfmel::EndpointID>>>{
+                    {"products/β", {0, UINT64_C(0x8000000000000000), UINT64_MAX}}, {"secondary", {7, 42}}})
+                throw std::runtime_error("F3 retained RX ranges/endpoints");
+            const auto points = command->getExpectedPointingAngles();
+            check_f2_point(points[0], 0); check_f2_point(points[1], 2);
+        }
+    }
+    // Upstream filtering calls getMode again; exact bridge count checked above.
+    const auto rx_groups = request.getRxElementGroups(), tx_groups = request.getTxElementGroups();
+    if (rx_groups.size() != rx.size() || tx_groups.size() != tx.size())
+        throw std::runtime_error("F3 filtered counts");
+    for (unsigned i = 0; i < rx.size(); ++i)
+        if (rx_groups[i] != rx[i]) throw std::runtime_error("F3 RX relative order");
+    for (unsigned i = 0; i < tx.size(); ++i)
+        if (tx_groups[i] != tx[i]) throw std::runtime_error("F3 TX relative order");
+    check_f2_point(request.getEstimatedStabPoint(), 1, true);
+    record("rf_job_v4_mixed_verified");
 }
 
 using IntervalCallback = std::function<void(rfmel::JobIntervalStatus)>;
@@ -1621,14 +1732,19 @@ public:
     }
     mel::RequestFor<rfmel::JobDetail> requestJob(rfmel::JobRequest& request) override
     {
+        f3_command_index_ = 0;
         record("rf_job_requested");
         if (scenario_ == "c2:job-submit-throw") throw std::runtime_error("mock Job submit exception");
         if (scenario_ == "c2:f1") {
             if (f1_case("submit-std")) throw std::runtime_error("F1 requestJob exception");
             if (f1_case("submit-unknown")) throw 17;
             if (f1_case("submit-alloc")) throw std::bad_alloc{};
-            check_f1_request(request);
-            if (f2_enabled()) check_f2_request(request);
+            if (f3_enabled()) check_f3_request(request);
+            else {
+                check_f1_request(request);
+                if (f2_enabled()) check_f2_request(request);
+            }
+            check_f1_common(request);
         } else {
         check_job_defaults(request, true);
         const auto& groups = request.getElementGroups();
@@ -1731,6 +1847,16 @@ public:
     {
         record("rf_job_command_created");
         unsigned f1 = 0;
+        if (f3_enabled()) {
+            f1 = f3_case("repeated") ? ++f3_command_index_ :
+                label == "rx/a" ? 1U : label == "tx/a" ? (f3_case("tx-only") ? 1U : 2U) :
+                label == "rx/b" ? 3U : 4U;
+            f3_throw(f1, "create");
+            if (f3_failure(f1, "null")) return {};
+            bool tx = label.starts_with("tx/") || label.empty();
+            if (f3_case("repeated")) tx = f1 != 2;
+            return std::make_shared<MockRxCommand>(std::move(label), tx, false, f1);
+        }
         if (scenario_ == "c2:f1") {
             f1 = label == "rx/α" ? 1U : label.empty() ? 2U : 3U;
             if (f1_failure(f1, "create-std")) throw std::runtime_error("F1 create exception");
@@ -1812,6 +1938,7 @@ private:
         if (std::strcmp(failure, "long") == 0) throw std::runtime_error(std::string(800, 'Q'));
     }
     mutable unsigned status_sequence_{}, all_sequence_{}, report_sequence_{};
+    unsigned f3_command_index_{};
     bool fail_getter_{};
     std::string scenario_;
     std::shared_ptr<MockVaRegistration> notifications_;

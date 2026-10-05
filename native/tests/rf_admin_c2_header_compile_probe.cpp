@@ -41,6 +41,20 @@ static_assert(std::is_same_v<decltype(&LLAPoint::setAltitude), void (LLAPoint::*
 static_assert(std::is_same_v<decltype(AzEl::az), double> && std::is_same_v<decltype(AzEl::el), double>);
 static_assert(std::is_same_v<decltype(&JR::setEstimatedStabPoint), void (JR::*)(const Pointing&)>);
 using EGC = rfmel::ElementGroupCommand;
+static_assert(std::is_same_v<rfmel::TxPowerLevel, uint32_t>);
+static_assert(std::is_same_v<std::underlying_type_t<rfmel::Mode>, uint8_t>);
+static_assert(static_cast<uint8_t>(rfmel::Mode::RX) == 0);
+static_assert(static_cast<uint8_t>(rfmel::Mode::TX) == 1);
+static_assert(std::is_same_v<decltype(&EGC::setTxPower), void (EGC::*)(rfmel::TxPowerLevel)>);
+static_assert(std::is_same_v<decltype(&EGC::getTxPower), rfmel::TxPowerLevel (EGC::*)() const>);
+static_assert(std::is_same_v<decltype(&EGC::setDesiredDutyFactor), void (EGC::*)(rfmel::DutyFactor)>);
+static_assert(std::is_same_v<decltype(&EGC::getDesiredDutyFactor), rfmel::DutyFactor (EGC::*)() const>);
+static_assert(std::is_same_v<decltype(&EGC::addExpectedCenterFrequencies), void (EGC::*)(rfmel::FrequencyRange)>);
+static_assert(std::is_same_v<decltype(&JR::getElementGroups), const rfmel::ElementGroupCommandList& (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getRxElementGroups), const rfmel::ElementGroupCommandList (JR::*)() const>);
+static_assert(std::is_same_v<decltype(&JR::getTxElementGroups), const rfmel::ElementGroupCommandList (JR::*)() const>);
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::ElementGroupCommandList&>()[0]),
+    const std::shared_ptr<EGC>&>);
 static_assert(std::is_same_v<decltype(&EGC::addExpectedPointingAngle), void (EGC::*)(const Pointing&)>);
 static_assert(std::is_same_v<decltype(&EGC::getExpectedPointingAngles), std::vector<Pointing> (EGC::*)()>);
 using UTC = ams::util::math::UTCTime;

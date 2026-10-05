@@ -2684,6 +2684,47 @@ typedef struct ams_mel_rf_job_request_config_v3 {
     uint32_t has_estimated_stab_point; /* exactly 0 or 1; 0 ignores payload */
     ams_mel_rf_pointing_v1 estimated_stab_point;
 } ams_mel_rf_job_request_config_v3;
+/* Existing E3 mode domain, also used by the v4 command envelope. */
+typedef uint32_t ams_mel_rf_element_group_mode_t;
+#define AMS_MEL_RF_ELEMENT_GROUP_MODE_RX ((ams_mel_rf_element_group_mode_t)0)
+#define AMS_MEL_RF_ELEMENT_GROUP_MODE_TX ((ams_mel_rf_element_group_mode_t)1)
+/* TxPowerLevel is an opaque exact uint32, NOT a TxPowerModeID. Zero is valid.
+ * Labels are complete UTF-8 without NUL (empty allowed); duty is finite (0,1].
+ * Frequency bounds are finite and min <= max, retaining caller order. */
+typedef struct ams_mel_rf_tx_element_group_config_v1 {
+    ams_mel_string_view_v1 label;
+    uint32_t tx_power_level;
+    double desired_duty_factor;
+    ams_mel_rf_frequency_range_span_v1 expected_center_frequencies;
+} ams_mel_rf_tx_element_group_config_v1;
+/* Only the mode-selected payload is read or validated. Inactive bytes are
+ * ignored entirely. Unknown modes reject before provider command creation. */
+typedef struct ams_mel_rf_job_element_group_config_v4 {
+    ams_mel_rf_element_group_mode_t mode;
+    ams_mel_rf_rx_element_group_config_v3 rx;
+    ams_mel_rf_tx_element_group_config_v1 tx;
+} ams_mel_rf_job_element_group_config_v4;
+typedef struct ams_mel_rf_job_element_group_config_span_v4 {
+    const ams_mel_rf_job_element_group_config_v4 *data;
+    size_t size;
+} ams_mel_rf_job_element_group_config_span_v4;
+typedef struct ams_mel_rf_job_request_config_v4 {
+    uint32_t request_id;
+    uint32_t priority;
+    uint32_t precedence_within_priority;
+    uint32_t is_interruptable;
+    ams_mel_u32_span_v1 instance_selection;
+    ams_mel_rf_job_element_group_config_span_v4 element_groups;
+    ams_mel_rf_utc_time_v1 min_start_time;
+    ams_mel_rf_utc_time_v1 max_complete_time;
+    int64_t duration_femtoseconds;
+    ams_mel_u8_span_v1 capability_id;
+    ams_mel_u8_span_v1 activity_id;
+    ams_mel_u32_span_v1 tx_power_mode_ids;
+    int64_t lookahead_femtoseconds;
+    uint32_t has_estimated_stab_point;
+    ams_mel_rf_pointing_v1 estimated_stab_point;
+} ams_mel_rf_job_request_config_v4;
 /* Pinned RF MEL 762ce84 uses numeric_limits<Femtoseconds>::max(), whose
  * count is zero, NOT the duration representation's maximum. This aliases
  * an ordinary zero relative start: callers cannot distinguish those intentions
@@ -3300,6 +3341,14 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v3(
     ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v3 *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* One nonempty ordered mixed RX/TX sequence, including repeated labels.
+ * Same hardened submission/Wait/Claim/Close path. RX retains v3 behavior.
+ * TX calls duty, power, frequencies only: no endpoints or expected pointing.
+ * No capability lookup, callbacks, TX events, or TX interval execution. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v4(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v4 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_wait(
     const ams_mel_rf_job_request *request, uint32_t timeout_ms,
     ams_mel_rf_job_result_v1 *result, char *diagnostic,
@@ -3737,10 +3786,6 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_close(
  * IDs ascend unsigned numerically. Aliased objects remain separate occurrences.
  * Empty spans are {NULL, 0}. All pointers borrow snapshot-owned storage. */
 typedef struct ams_mel_rf_element_group_snapshot ams_mel_rf_element_group_snapshot;
-typedef uint32_t ams_mel_rf_element_group_mode_t;
-#define AMS_MEL_RF_ELEMENT_GROUP_MODE_RX ((ams_mel_rf_element_group_mode_t)0)
-#define AMS_MEL_RF_ELEMENT_GROUP_MODE_TX ((ams_mel_rf_element_group_mode_t)1)
-
 typedef struct ams_mel_rf_element_group_snapshot_options_v1 {
     uint32_t include_data_pipes; /* exactly 0 or 1; options pointer required */
 } ams_mel_rf_element_group_snapshot_options_v1;
