@@ -23,6 +23,7 @@ with AMS_MEL_RF_C2_Tests;
 with AMS_MEL_RF_Job_Tests;
 with AMS_MEL_RF_Job_V2;
 with AMS_MEL_RF_Job_Pointing;
+with AMS_MEL_RF_Job_TX_Groups;
 with AMS_MEL_RF_Admin_Tests;
 with AMS_MEL_RF_Product_Rx_Tests;
 with GNAT.OS_Lib;
@@ -252,6 +253,7 @@ begin
    AMS_MEL_RF_Job_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Job_V2.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Job_Pointing.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
+   AMS_MEL_RF_Job_TX_Groups.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Admin_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_Product_Rx_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    --  Separate process: permanent status registrations must not pin the mock

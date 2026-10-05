@@ -42,6 +42,20 @@ class AbiTests(unittest.TestCase):
                           _native.RF_POINTING_PLATFORM_RELATIVE, _native.RF_POINTING_FACE_RELATIVE,
                           _native.RF_POINTING_BASELINE_RELATIVE], list(range(5)))
 
+    def test_private_job_request_v4_signature(self) -> None:
+        function = _native.ams_mel_rf_virtual_aperture_submit_job_v4
+        self.assertEqual(function.argtypes, [
+            _native.RfVaHandle, ctypes.POINTER(_native.RfJobRequestConfigV4),
+            ctypes.POINTER(_native.RfJobRequestHandle), _native.CharPointer,
+            ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        import ams_mel
+        for name in ("ams_mel_rf_virtual_aperture_submit_job_v4", "RfJobRequestConfigV4",
+                     "RfUtcTimeV1", "RfTxElementGroupConfigV1", "RfJobElementGroupConfigV4", "RfJobElementGroupConfigSpanV4",
+                     "RfPointingV1", "RfPointingSpanV1", "RfVector3V1", "RfAzElV1",
+                     "RfEcefPointingV1", "RfLlaPointingV1", "RfPointingKind"):
+            self.assertNotIn(name, ams_mel.__all__)
+
     def test_private_transmit_power_signatures(self) -> None:
         diagnostic = [_native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
         va, u64, u32, f64 = _native.RfVaHandle, ctypes.c_uint64, ctypes.c_uint32, ctypes.c_double
@@ -230,6 +244,7 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_rf_virtual_aperture_submit_job_v4",
                 "ams_mel_rf_virtual_aperture_submit_job_v3",
                 "ams_mel_rf_virtual_aperture_submit_job_v2",
                 "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
@@ -424,8 +439,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 191)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 191)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 192)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 192)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -433,7 +448,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 191)
+        self.assertEqual(len(exported), 192)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1429,6 +1444,10 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfRxElementGroupConfigV3, 'group', 'expected_pointing_angles'))
         expected.extend(self._layout(_native.RfRxElementGroupConfigSpanV3, 'data', 'size'))
         expected.extend(self._layout(_native.RfJobRequestConfigV3, 'request_id', 'priority', 'precedence_within_priority', 'is_interruptable', 'instance_selection', 'rx_groups', 'min_start_time', 'max_complete_time', 'duration_femtoseconds', 'capability_id', 'activity_id', 'tx_power_mode_ids', 'lookahead_femtoseconds', 'has_estimated_stab_point', 'estimated_stab_point'))
+        expected.extend(self._layout(_native.RfTxElementGroupConfigV1, 'label', 'tx_power_level', 'desired_duty_factor', 'expected_center_frequencies'))
+        expected.extend(self._layout(_native.RfJobElementGroupConfigV4, 'mode', 'rx', 'tx'))
+        expected.extend(self._layout(_native.RfJobElementGroupConfigSpanV4, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobRequestConfigV4, 'request_id', 'priority', 'precedence_within_priority', 'is_interruptable', 'instance_selection', 'element_groups', 'min_start_time', 'max_complete_time', 'duration_femtoseconds', 'capability_id', 'activity_id', 'tx_power_mode_ids', 'lookahead_femtoseconds', 'has_estimated_stab_point', 'estimated_stab_point'))
         expected.extend(self._layout(_native.RfJobResultV1, 'error_code'))
         expected.extend(self._layout(_native.RfJobInfoV1,
                                      'actual_start_seconds', 'actual_start_femtoseconds',

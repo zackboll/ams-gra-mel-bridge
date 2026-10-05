@@ -615,6 +615,32 @@ package body AMS.MEL.RF.C2 is
    function Finite (Value : Long_Float) return Boolean
    is (Value <= Long_Float'Last and then Value >= Long_Float'First);
 
+   function Create_TX_Element_Group
+     (Label               : String;
+      TX_Power_Level      : Interfaces.Unsigned_32;
+      Desired_Duty_Factor : Long_Float := 1.0) return TX_Element_Group_Config is
+   begin
+      if not Valid_String (Label)
+        or else not Finite (Desired_Duty_Factor)
+        or else Desired_Duty_Factor <= 0.0
+        or else Desired_Duty_Factor > 1.0
+      then
+         raise Constraint_Error with "invalid TX group";
+      end if;
+      return
+        (US.To_Unbounded_String (Label),
+         TX_Power_Level,
+         Desired_Duty_Factor,
+         Frequency_Vectors.Empty_Vector);
+   end Create_TX_Element_Group;
+   procedure Append_Expected_Center_Frequency
+     (Group : in out TX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float) is
+   begin
+      if not Finite (Min_Hz) or else not Finite (Max_Hz) or else Min_Hz > Max_Hz then
+         raise Constraint_Error with "invalid frequency range";
+      end if;
+      Group.Frequencies.Append (Frequency_Range'(Min_Hz, Max_Hz));
+   end Append_Expected_Center_Frequency;
    function Create_RX_Element_Group
      (Label               : String;
       Desired_Duty_Factor : Long_Float := 1.0;
@@ -801,8 +827,13 @@ package body AMS.MEL.RF.C2 is
    procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config)
    is
    begin
-      Config.Groups.Append (Group);
+      Config.Groups.Append (Job_Group'(RX, Group));
    end Append_RX_Element_Group;
+   procedure Append_TX_Element_Group (Config : in out Job_Config; Group : TX_Element_Group_Config)
+   is
+   begin
+      Config.Groups.Append (Job_Group'(TX, Group));
+   end Append_TX_Element_Group;
    procedure Set_Min_Start_Time (Config : in out Job_Config; Value : UTC_Time) is
    begin
       Config.Min_Start := Value;
@@ -861,7 +892,27 @@ package body AMS.MEL.RF.C2 is
             Instances     => <>,
             others        => <>)
       do
-         Result.Groups.Append (Group);
+         Append_RX_Element_Group (Result, Group);
+         Result.Capability.Append (0);
+         Result.Activity.Append (0);
+         Result.Power_Modes.Append (0);
+      end return;
+   end Create_Job_Config;
+   function Create_Job_Config
+     (Request_ID, Priority       : Interfaces.Unsigned_32;
+      Group                      : TX_Element_Group_Config;
+      Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
+      Interruptable              : Boolean := False) return Job_Config is
+   begin
+      return
+         Result : Job_Config :=
+           (ID            => Request_ID,
+            Priority      => Priority,
+            Precedence    => Precedence_Within_Priority,
+            Interruptable => Interruptable,
+            others        => <>)
+      do
+         Append_TX_Element_Group (Result, Group);
          Result.Capability.Append (0);
          Result.Activity.Append (0);
          Result.Power_Modes.Append (0);
@@ -881,7 +932,7 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Raw_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
-      type Raw_Groups is array (Positive range <>) of aliased C.RF_RX_Element_Group_Config_V3
+      type Raw_Groups is array (Positive range <>) of aliased C.RF_Job_Element_Group_Config_V4
       with Convention => C;
       type Raw_Pointings is array (Positive range <>) of aliased C.RF_Pointing_V1
       with Convention => C;
@@ -904,15 +955,24 @@ package body AMS.MEL.RF.C2 is
       if not Is_Open (VA) then
          raise Provider_Error with "VirtualAperture is closed";
       end if;
-      for Group of Config.Groups loop
-         Frequency_Count := Frequency_Count + Natural (Group.Frequencies.Length);
-         Pointing_Count := Pointing_Count + Natural (Group.Pointings.Length);
-         for Pipe of Group.Pipes loop
-            if not Pipe.Endpoints.Is_Empty then
-               Pipe_Count := Pipe_Count + 1;
-               Endpoint_Count := Endpoint_Count + Natural (Pipe.Endpoints.Length);
-            end if;
-         end loop;
+      for Entry_Value of Config.Groups loop
+         if Entry_Value.Mode = TX then
+            Frequency_Count :=
+              Frequency_Count + Natural (Entry_Value.Transmit_Group.Frequencies.Length);
+         else
+            declare
+               Group : RX_Element_Group_Config renames Entry_Value.Receive_Group;
+            begin
+               Frequency_Count := Frequency_Count + Natural (Group.Frequencies.Length);
+               Pointing_Count := Pointing_Count + Natural (Group.Pointings.Length);
+               for Pipe of Group.Pipes loop
+                  if not Pipe.Endpoints.Is_Empty then
+                     Pipe_Count := Pipe_Count + 1;
+                     Endpoint_Count := Endpoint_Count + Natural (Pipe.Endpoints.Length);
+                  end if;
+               end loop;
+            end;
+         end if;
       end loop;
       for I in Instances'Range loop
          Instances (I) := Config.Instances (I);
@@ -929,7 +989,19 @@ package body AMS.MEL.RF.C2 is
       declare
          --  Final-sized backing arrays precede all pointer publication. Controlled
          --  strings clean up even when serialization or native submission raises.
-         Groups        : Raw_Groups (1 .. Natural (Config.Groups.Length));
+         --  Inactive native payloads are never read; initialize the full backing
+         --  deterministically nevertheless, rather than pass uninitialized bytes.
+         Groups        : Raw_Groups (1 .. Natural (Config.Groups.Length)) :=
+           [others =>
+              (Mode => C.RF_Element_Group_Mode_RX,
+               RX   =>
+                 (Group                    =>
+                    ((System.Null_Address, 0),
+                     0.0,
+                     (System.Null_Address, 0),
+                     (System.Null_Address, 0)),
+                  Expected_Pointing_Angles => (System.Null_Address, 0)),
+               TX   => ((System.Null_Address, 0), 0, 0.0, (System.Null_Address, 0)))];
          Pipes         : Raw_Pipes (1 .. Pipe_Count);
          Frequencies   : Raw_Frequencies (1 .. Frequency_Count);
          Endpoints     : Raw_Endpoints (1 .. Endpoint_Count);
@@ -937,7 +1009,7 @@ package body AMS.MEL.RF.C2 is
          Labels        : String_Owners (Groups'Range);
          Pipe_Labels   : String_Owners (Pipes'Range);
          G, F, P, E, Q : Positive := 1;
-         Raw           : aliased C.RF_Job_Request_Config_V3 :=
+         Raw           : aliased C.RF_Job_Request_Config_V4 :=
            (Request_ID                 => Config.ID,
             Priority                   => Config.Priority,
             Precedence_Within_Priority => Config.Precedence,
@@ -948,7 +1020,7 @@ package body AMS.MEL.RF.C2 is
                   then System.Null_Address
                   else Instances (Instances'First)'Address),
                Size => Instances'Length),
-            RX_Groups                  => (System.Null_Address, C.Size_T (Groups'Length)),
+            Element_Groups             => (System.Null_Address, C.Size_T (Groups'Length)),
             Min_Start_Time             => (Config.Min_Start.Seconds, Config.Min_Start.Fraction),
             Max_Complete_Time          =>
               (Config.Max_Complete.Seconds, Config.Max_Complete.Fraction),
@@ -969,60 +1041,85 @@ package body AMS.MEL.RF.C2 is
          if Config.Has_Estimated_Point then
             Raw.Estimated_Stab_Point := Raw_Pointing (Config.Estimated_Point);
          end if;
-         for Group of Config.Groups loop
-            declare
-               First_F : constant Positive := F;
-               First_P : constant Positive := P;
-               First_Q : constant Positive := Q;
-            begin
-               Labels (G).Value := CS.New_String (US.To_String (Group.Label));
-               for Range_Value of Group.Frequencies loop
-                  Frequencies (F) :=
-                    (Interfaces.C.double (Range_Value.Min_Hz),
-                     Interfaces.C.double (Range_Value.Max_Hz));
-                  F := F + 1;
-               end loop;
-               for Pipe of Group.Pipes loop
-                  if not Pipe.Endpoints.Is_Empty then
-                     declare
-                        First_E : constant Positive := E;
-                     begin
-                        Pipe_Labels (P).Value := CS.New_String (US.To_String (Pipe.Label));
-                        for ID of Pipe.Endpoints loop
-                           Endpoints (E) := ID;
-                           E := E + 1;
-                        end loop;
-                        Pipes (P) :=
-                          ((Pointer_Address (Pipe_Labels (P).Value),
-                            C.Size_T (US.Length (Pipe.Label))),
-                           (Endpoints (First_E)'Address, C.Size_T (E - First_E)));
-                        P := P + 1;
-                     end;
-                  end if;
-               end loop;
-               for Point of Group.Pointings loop
-                  Pointings (Q) := Raw_Pointing (Point);
-                  Q := Q + 1;
-               end loop;
-               Groups (G).Group :=
-                 ((Pointer_Address (Labels (G).Value), C.Size_T (US.Length (Group.Label))),
-                  Interfaces.C.double (Group.Duty),
-                  ((if F = First_F then System.Null_Address else Frequencies (First_F)'Address),
-                   C.Size_T (F - First_F)),
-                  ((if P = First_P then System.Null_Address else Pipes (First_P)'Address),
-                   C.Size_T (P - First_P)));
-               Groups (G).Expected_Pointing_Angles :=
-                 ((if Q = First_Q then System.Null_Address else Pointings (First_Q)'Address),
-                  C.Size_T (Q - First_Q));
-               G := G + 1;
-            end;
+         for Entry_Value of Config.Groups loop
+            if Entry_Value.Mode = TX then
+               declare
+                  Group   : TX_Element_Group_Config renames Entry_Value.Transmit_Group;
+                  First_F : constant Positive := F;
+               begin
+                  Labels (G).Value := CS.New_String (US.To_String (Group.Label));
+                  for Range_Value of Group.Frequencies loop
+                     Frequencies (F) :=
+                       (Interfaces.C.double (Range_Value.Min_Hz),
+                        Interfaces.C.double (Range_Value.Max_Hz));
+                     F := F + 1;
+                  end loop;
+                  Groups (G).Mode := C.RF_Element_Group_Mode_TX;
+                  Groups (G).TX :=
+                    ((Pointer_Address (Labels (G).Value), C.Size_T (US.Length (Group.Label))),
+                     Group.Power,
+                     Interfaces.C.double (Group.Duty),
+                     ((if F = First_F then System.Null_Address else Frequencies (First_F)'Address),
+                      C.Size_T (F - First_F)));
+                  G := G + 1;
+               end;
+            else
+               declare
+                  Group   : RX_Element_Group_Config renames Entry_Value.Receive_Group;
+                  First_F : constant Positive := F;
+                  First_P : constant Positive := P;
+                  First_Q : constant Positive := Q;
+               begin
+                  Labels (G).Value := CS.New_String (US.To_String (Group.Label));
+                  for Range_Value of Group.Frequencies loop
+                     Frequencies (F) :=
+                       (Interfaces.C.double (Range_Value.Min_Hz),
+                        Interfaces.C.double (Range_Value.Max_Hz));
+                     F := F + 1;
+                  end loop;
+                  for Pipe of Group.Pipes loop
+                     if not Pipe.Endpoints.Is_Empty then
+                        declare
+                           First_E : constant Positive := E;
+                        begin
+                           Pipe_Labels (P).Value := CS.New_String (US.To_String (Pipe.Label));
+                           for ID of Pipe.Endpoints loop
+                              Endpoints (E) := ID;
+                              E := E + 1;
+                           end loop;
+                           Pipes (P) :=
+                             ((Pointer_Address (Pipe_Labels (P).Value),
+                               C.Size_T (US.Length (Pipe.Label))),
+                              (Endpoints (First_E)'Address, C.Size_T (E - First_E)));
+                           P := P + 1;
+                        end;
+                     end if;
+                  end loop;
+                  for Point of Group.Pointings loop
+                     Pointings (Q) := Raw_Pointing (Point);
+                     Q := Q + 1;
+                  end loop;
+                  Groups (G).Mode := C.RF_Element_Group_Mode_RX;
+                  Groups (G).RX.Group :=
+                    ((Pointer_Address (Labels (G).Value), C.Size_T (US.Length (Group.Label))),
+                     Interfaces.C.double (Group.Duty),
+                     ((if F = First_F then System.Null_Address else Frequencies (First_F)'Address),
+                      C.Size_T (F - First_F)),
+                     ((if P = First_P then System.Null_Address else Pipes (First_P)'Address),
+                      C.Size_T (P - First_P)));
+                  Groups (G).RX.Expected_Pointing_Angles :=
+                    ((if Q = First_Q then System.Null_Address else Pointings (First_Q)'Address),
+                     C.Size_T (Q - First_Q));
+                  G := G + 1;
+               end;
+            end if;
          end loop;
          if Groups'Length > 0 then
-            Raw.RX_Groups.Data := Groups (1)'Address;
+            Raw.Element_Groups.Data := Groups (1)'Address;
          end if;
          return Result : Job_Request do
             Check
-              (C.RF_VA_Submit_Job_V3
+              (C.RF_VA_Submit_Job_V4
                  (VA.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
                D);
          end return;

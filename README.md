@@ -1,5 +1,20 @@
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
+Task 034F3 adds **ordered mixed RX/TX JobRequest v4 construction** in production
+C and safe Ada. One nonempty sequence preserves interleaving and repeated labels;
+only each envelope's selected payload is interpreted. RX retains all F1/F2
+fields, endpoints and pointings. TX supplies label, finite duty `(0,1]`, exact
+uint32 **TxPowerLevel** (not TxPowerModeID), and ordered finite frequency ranges.
+TX makes no endpoint/expected-pointing calls or capability queries. Safe Ada
+adds a private TX value, TX-only constructor overload and ordered TX append;
+existing RX source remains compatible, with private v4 serialization. V1/v2/v3
+records/signatures remain frozen; one additive submit export reuses the existing
+hardened async owner/pipeline, ABI **0.1**, vendor unchanged. Mock-positive TX
+construction is distinct from pinned receive-only Squall's TX mode-mismatch
+negative probe followed by positive RX submission. **No TX event execution**,
+TransmitEvent, TX intervals, modulation, Weights, waveform resources or callbacks
+are implemented here. See `docs/task-034f3-rf-job-tx-groups.md`.
+
 Task 034F2 adds **all five RF PointingType alternatives** and **RX JobRequest
 v3** in production C and safe Ada: ECEF, LLA, PlatformRelative, FaceRelative,
 and BaselineRelative. The caller selects the coordinates; meters, meters/second

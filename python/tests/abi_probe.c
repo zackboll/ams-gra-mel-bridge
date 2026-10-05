@@ -13,6 +13,10 @@ int main(void)
 {
     check_rf_local_function_signatures();
     check_rf_transmit_power_signatures();
+    ams_mel_status_t (*submit_v4)(ams_mel_rf_virtual_aperture *,
+        const ams_mel_rf_job_request_config_v4 *, ams_mel_rf_job_request **,
+        char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_submit_job_v4;
+    (void)submit_v4;
     ams_mel_abi_version_v1 version = {0, 0};
     ams_mel_status_t (*get_abi_version)(ams_mel_abi_version_v1 *) = ams_mel_get_abi_version;
     ams_mel_status_t (*session_open)(const char *, const char *, const char *,
@@ -738,6 +742,34 @@ int main(void)
         FIELD(ams_mel_rf_job_request_config_v3,lookahead_femtoseconds);
         FIELD(ams_mel_rf_job_request_config_v3,has_estimated_stab_point);
         FIELD(ams_mel_rf_job_request_config_v3,estimated_stab_point));
+    RECORD(ams_mel_rf_tx_element_group_config_v1,
+        FIELD(ams_mel_rf_tx_element_group_config_v1,label);
+        FIELD(ams_mel_rf_tx_element_group_config_v1,tx_power_level);
+        FIELD(ams_mel_rf_tx_element_group_config_v1,desired_duty_factor);
+        FIELD(ams_mel_rf_tx_element_group_config_v1,expected_center_frequencies));
+    RECORD(ams_mel_rf_job_element_group_config_v4,
+        FIELD(ams_mel_rf_job_element_group_config_v4,mode);
+        FIELD(ams_mel_rf_job_element_group_config_v4,rx);
+        FIELD(ams_mel_rf_job_element_group_config_v4,tx));
+    RECORD(ams_mel_rf_job_element_group_config_span_v4,
+        FIELD(ams_mel_rf_job_element_group_config_span_v4,data);
+        FIELD(ams_mel_rf_job_element_group_config_span_v4,size));
+    RECORD(ams_mel_rf_job_request_config_v4,
+        FIELD(ams_mel_rf_job_request_config_v4,request_id);
+        FIELD(ams_mel_rf_job_request_config_v4,priority);
+        FIELD(ams_mel_rf_job_request_config_v4,precedence_within_priority);
+        FIELD(ams_mel_rf_job_request_config_v4,is_interruptable);
+        FIELD(ams_mel_rf_job_request_config_v4,instance_selection);
+        FIELD(ams_mel_rf_job_request_config_v4,element_groups);
+        FIELD(ams_mel_rf_job_request_config_v4,min_start_time);
+        FIELD(ams_mel_rf_job_request_config_v4,max_complete_time);
+        FIELD(ams_mel_rf_job_request_config_v4,duration_femtoseconds);
+        FIELD(ams_mel_rf_job_request_config_v4,capability_id);
+        FIELD(ams_mel_rf_job_request_config_v4,activity_id);
+        FIELD(ams_mel_rf_job_request_config_v4,tx_power_mode_ids);
+        FIELD(ams_mel_rf_job_request_config_v4,lookahead_femtoseconds);
+        FIELD(ams_mel_rf_job_request_config_v4,has_estimated_stab_point);
+        FIELD(ams_mel_rf_job_request_config_v4,estimated_stab_point));
     RECORD(ams_mel_rf_job_result_v1,
         FIELD(ams_mel_rf_job_result_v1,error_code));
     RECORD(ams_mel_rf_job_info_v1,

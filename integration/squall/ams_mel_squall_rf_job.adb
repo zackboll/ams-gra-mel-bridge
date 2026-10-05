@@ -110,6 +110,29 @@ begin
             VA    : C2.Virtual_Aperture := C2.Claim (VA_Request);
          begin
             C2.Close (VA_Request);
+            --  Pinned Squall is receive-only. Its label "0" command reports RX,
+            --  so a valid TX-only request must fail before requestJob. This is
+            --  negative mode evidence, not TX scheduling or RF emission.
+            declare
+               Group : C2.TX_Element_Group_Config :=
+                 C2.Create_TX_Element_Group ("0", 16#DEAD_BEEF#, 0.375);
+            begin
+               C2.Append_Expected_Center_Frequency (Group, 915_000_000.0, 915_000_000.0);
+               begin
+                  declare
+                     Unexpected : C2.Job_Request :=
+                       C2.Submit_Job (VA, C2.Create_Job_Config (16#1234_5677#, 1, Group));
+                  begin
+                     C2.Close (Unexpected);
+                     raise Program_Error with "receive-only Squall accepted TX command";
+                  end;
+               exception
+                  when AMS.MEL.Provider_Error =>
+                     Ada.Text_IO.Put_Line
+                       ("PASS: pinned Squall receive-only TX/RX mode mismatch; no positive TX evidence");
+               end;
+            end;
+            --  Immediately retain the existing positive two-group RX flow.
             for Sequence in 0 .. 1 loop
                declare
                   ID      : constant Interfaces.Unsigned_32 :=

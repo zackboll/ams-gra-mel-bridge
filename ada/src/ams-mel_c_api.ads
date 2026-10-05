@@ -1866,6 +1866,43 @@ private package AMS.MEL_C_API is
       Estimated_Stab_Point                                               : RF_Pointing_V1;
    end record
    with Convention => C;
+   subtype RF_Element_Group_Mode is Interfaces.Unsigned_32;
+   RF_Element_Group_Mode_RX                                                 :
+     constant RF_Element_Group_Mode := 0;
+   RF_Element_Group_Mode_TX                                                 :
+     constant RF_Element_Group_Mode := 1;
+   type RF_TX_Element_Group_Config_V1 is record
+      Label                       : String_View_V1;
+      TX_Power_Level              : Interfaces.Unsigned_32;
+      Desired_Duty_Factor         : Interfaces.C.double;
+      Expected_Center_Frequencies : RF_Frequency_Range_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Element_Group_Config_V4 is record
+      Mode : RF_Element_Group_Mode;
+      RX   : RF_RX_Element_Group_Config_V3;
+      TX   : RF_TX_Element_Group_Config_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Element_Group_Config_Span_V4 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Request_Config_V4 is record
+      Request_ID, Priority, Precedence_Within_Priority, Is_Interruptable : Interfaces.Unsigned_32;
+      Instance_Selection                                                 : U32_Span_V1;
+      Element_Groups                                                     :
+        RF_Job_Element_Group_Config_Span_V4;
+      Min_Start_Time, Max_Complete_Time                                  : RF_UTC_Time_V1;
+      Duration_Femtoseconds                                              : Interfaces.Integer_64;
+      Capability_ID, Activity_ID                                         : U8_Span_V1;
+      TX_Power_Mode_IDs                                                  : U32_Span_V1;
+      Lookahead_Femtoseconds                                             : Interfaces.Integer_64;
+      Has_Estimated_Stab_Point                                           : Interfaces.Unsigned_32;
+      Estimated_Stab_Point                                               : RF_Pointing_V1;
+   end record
+   with Convention => C;
    type RF_Receive_Event_Config_V1 is record
       Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String_View_V1;
@@ -2268,6 +2305,14 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job_v3";
+   function RF_VA_Submit_Job_V4
+     (Handle              : RF_VA_Handle;
+      Config              : access constant RF_Job_Request_Config_V4;
+      Output              : access RF_Job_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job_v4";
    function RF_Job_Request_Wait
      (Handle              : RF_Job_Request_Handle;
       Timeout_MS          : Interfaces.Unsigned_32;
@@ -2841,9 +2886,6 @@ private package AMS.MEL_C_API is
    type RF_Element_Group_Snapshot_Handle is new System.Address;
    Null_RF_Element_Group_Snapshot            : constant RF_Element_Group_Snapshot_Handle :=
      RF_Element_Group_Snapshot_Handle (System.Null_Address);
-   subtype RF_Element_Group_Mode is Interfaces.Unsigned_32;
-   RF_Element_Group_Mode_RX                  : constant RF_Element_Group_Mode := 0;
-   RF_Element_Group_Mode_TX                  : constant RF_Element_Group_Mode := 1;
    type RF_Element_Group_Snapshot_Options_V1 is record
       Include_Data_Pipes : Interfaces.Unsigned_32;
    end record

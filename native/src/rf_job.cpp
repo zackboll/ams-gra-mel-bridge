@@ -1,4 +1,4 @@
-/* Ordered provider-created RX commands and one C2 child claim per async Job. */
+/* Ordered provider-created RX/TX commands and one C2 child claim per async Job. */
 #include <ams_mel/abi.h>
 #include "internal/provider_common.hpp"
 #include "internal/rf_va_job_parent.hpp"
@@ -603,6 +603,8 @@ struct PreparedGroup {
     std::vector<rfmel::FrequencyRange> frequencies;
     std::vector<PreparedPipe> pipes;
     std::vector<rfmel::PointingType> pointings;
+    rfmel::Mode mode{rfmel::Mode::RX};
+    rfmel::TxPowerLevel power{};
 };
 bool canonical(ams_mel_rf_utc_time_v1 time) noexcept
 { return time.fractional_femtoseconds >= 0 && time.fractional_femtoseconds < INT64_C(1000000000000000); }
@@ -735,9 +737,13 @@ ams_mel_status_t submit_extended_job(
     if (bad_diag(diagnostic, capacity) || !va || !config || !out_request || *out_request)
         return AMS_MEL_INVALID_ARGUMENT;
     const auto& value = *config;
+    const auto inputs = [&] {
+        if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v4>) return value.element_groups;
+        else return value.rx_groups;
+    }();
     if (value.is_interruptable > 1U || !canonical(value.min_start_time) ||
-        !canonical(value.max_complete_time) || !value.rx_groups.size ||
-        !span_ok(value.rx_groups.size, value.rx_groups.data, sizeof(*value.rx_groups.data)) ||
+        !canonical(value.max_complete_time) || !inputs.size ||
+        !span_ok(inputs.size, inputs.data, sizeof(*inputs.data)) ||
         !span_ok(value.instance_selection.size, value.instance_selection.data, sizeof(std::uint32_t)) ||
         !span_ok(value.capability_id.size, value.capability_id.data, sizeof(std::uint8_t)) ||
         !span_ok(value.activity_id.size, value.activity_id.data, sizeof(std::uint8_t)) ||
@@ -749,7 +755,7 @@ ams_mel_status_t submit_extended_job(
     std::set<rfmel::TxPowerModeID> modes;
     std::optional<rfmel::PointingType> estimated;
     try {
-        if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) {
+        if constexpr (!std::is_same_v<Config, ams_mel_rf_job_request_config_v2>) {
             if (failpoint("pointing-preparation")) throw std::bad_alloc{};
             if (value.has_estimated_stab_point > 1U) return AMS_MEL_INVALID_ARGUMENT;
             if (value.has_estimated_stab_point) {
@@ -757,11 +763,37 @@ ams_mel_status_t submit_extended_job(
                 estimated.emplace(prepare_pointing(value.estimated_stab_point));
             }
         }
-        groups.reserve(value.rx_groups.size);
-        for (std::size_t i = 0; i < value.rx_groups.size; ++i) {
-            const auto& input = value.rx_groups.data[i];
+        groups.reserve(inputs.size);
+        for (std::size_t i = 0; i < inputs.size; ++i) {
+            const auto& envelope = inputs.data[i];
+            if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v4>) {
+                if (envelope.mode != AMS_MEL_RF_ELEMENT_GROUP_MODE_RX &&
+                    envelope.mode != AMS_MEL_RF_ELEMENT_GROUP_MODE_TX) return AMS_MEL_INVALID_ARGUMENT;
+                if (envelope.mode == AMS_MEL_RF_ELEMENT_GROUP_MODE_TX) {
+                    const auto& tx = envelope.tx;
+                    if (!valid_view(tx.label) || !std::isfinite(tx.desired_duty_factor) ||
+                        tx.desired_duty_factor <= 0.0 || tx.desired_duty_factor > 1.0 ||
+                        !span_ok(tx.expected_center_frequencies.size, tx.expected_center_frequencies.data,
+                                 sizeof(*tx.expected_center_frequencies.data))) return AMS_MEL_INVALID_ARGUMENT;
+                    PreparedGroup prepared{copy_view(tx.label), tx.desired_duty_factor, {}, {}, {},
+                                           rfmel::Mode::TX, tx.tx_power_level};
+                    prepared.frequencies.reserve(tx.expected_center_frequencies.size);
+                    for (std::size_t f = 0; f < tx.expected_center_frequencies.size; ++f) {
+                        const auto& range = tx.expected_center_frequencies.data[f];
+                        if (!std::isfinite(range.min_hz) || !std::isfinite(range.max_hz) ||
+                            range.min_hz > range.max_hz) return AMS_MEL_INVALID_ARGUMENT;
+                        prepared.frequencies.emplace_back(range.min_hz, range.max_hz);
+                    }
+                    groups.push_back(std::move(prepared));
+                    continue; // Never access the inactive RX payload.
+                }
+            }
+            const auto& input = [&]() -> const auto& {
+                if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v4>) return envelope.rx;
+                else return envelope;
+            }();
             const auto& group = [&]() -> const ams_mel_rf_rx_element_group_config_v2& {
-                if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) return input.group;
+                if constexpr (!std::is_same_v<Config, ams_mel_rf_job_request_config_v2>) return input.group;
                 else return input;
             }();
             if (!valid_view(group.label) || !std::isfinite(group.desired_duty_factor) ||
@@ -790,7 +822,7 @@ ams_mel_status_t submit_extended_job(
                         return AMS_MEL_INVALID_ARGUMENT;
                 prepared.pipes.push_back(std::move(association));
             }
-            if constexpr (std::is_same_v<Config, ams_mel_rf_job_request_config_v3>) {
+            if constexpr (!std::is_same_v<Config, ams_mel_rf_job_request_config_v2>) {
                 const auto points = input.expected_pointing_angles;
                 if (!span_ok(points.size, points.data, sizeof(*points.data))) return AMS_MEL_INVALID_ARGUMENT;
                 prepared.pointings.reserve(points.size);
@@ -830,11 +862,14 @@ ams_mel_status_t submit_extended_job(
         if (estimated) request.setEstimatedStabPoint(*estimated);
         for (const auto& group : groups) {
             auto command = provider.createElementGroupCommand(group.label);
-            if (!command || command->getMode() != rfmel::Mode::RX) return false;
+            if (!command || command->getMode() != group.mode) return false;
             command->setDesiredDutyFactor(group.duty);
+            if (group.mode == rfmel::Mode::TX) command->setTxPower(group.power);
             for (const auto& range : group.frequencies) command->addExpectedCenterFrequencies(range);
-            for (const auto& pipe : group.pipes) command->addEndpointIDs(pipe.endpoints, pipe.label);
-            for (const auto& point : group.pointings) command->addExpectedPointingAngle(point);
+            if (group.mode == rfmel::Mode::RX) {
+                for (const auto& pipe : group.pipes) command->addEndpointIDs(pipe.endpoints, pipe.label);
+                for (const auto& point : group.pointings) command->addExpectedPointingAngle(point);
+            }
             request.addElementGroup(command);
         }
         return true;
@@ -851,6 +886,14 @@ extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
 }
 extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v3(
     ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v3 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return submit_extended_job(va, config, out_request, diagnostic, capacity, required);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v4(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v4 *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     std::size_t capacity, std::size_t *required) noexcept
 {

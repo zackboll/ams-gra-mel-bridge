@@ -1,5 +1,21 @@
 # Architecture decisions
 
+Task 034F3 extends the existing prepared-group builder and submit_prepared path,
+not the async/claim/retention architecture. V4 carries one ordered nonempty mixed
+RX/TX sequence with a fixed FFI envelope; only the active mode payload is read.
+Strings, frequency vectors, RX endpoint sets/pointings, common binary IDs/instance
+vector/power-mode set and estimated pointing are prepared before provider-parent
+acquisition. RX preserves mode/duty/frequency/endpoint/pointing order; TX uses
+mode/duty/TxPowerLevel/frequency order, never receive-only setters. Each occurrence
+creates/adds exactly one command. Mismatch fails without requestJob or fallback;
+command/JobRequest destruction precedes VA/C2 claim release. No hidden E1-E6/MFA/
+Weights query or capability auto-gate. Safe Ada uses a private variant vector for
+global append order and privately serializes v4; frozen C v1/v2/v3 remain. TX
+requirements describe/reserve groups only, not TransmitEvent or TX intervals.
+Positive TX construction is mock evidence; receive-only pinned Squall's valid TX
+input fails the command mode check, then its RX flow remains positive evidence.
+Vendor unchanged. See `task-034f3-rf-job-tx-groups.md`.
+
 Task 034F2 adds ordinary bridge-prepared PointingType values before provider-parent
 acquisition, not provider pointing owners. A fixed C record uses stable bridge
 tags 0..4 for the exact pinned variant alternatives ECEF/LLA/platform/face/baseline.
