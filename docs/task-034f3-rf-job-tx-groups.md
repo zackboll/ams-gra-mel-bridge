@@ -204,7 +204,7 @@ native tree was rebuilt before focused/full repetitions, with unchanged source.
 | make check-ada-format | pass |
 | alr -C ada build | pass |
 | alr -C ada/tests run | pass in task temporary namespace |
-| make test-rust | pass: 104 tests + 4 compile-fail doctests |
+| make test-rust | pass: 76 tests + 4 compile-fail doctests |
 | cargo check --manifest-path rust/Cargo.toml --workspace | pass |
 | cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings | pass |
 | cargo fmt --manifest-path rust/Cargo.toml --all -- --check | pass |
