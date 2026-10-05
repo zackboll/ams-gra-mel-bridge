@@ -63,6 +63,15 @@ package AMS.MEL.RF.C2 is
    function Is_Single_Group (Object : Virtual_Aperture) return Boolean;
    procedure Close (Object : in out Virtual_Aperture);
    type RX_Element_Group_Config is private;
+   --  TX JobRequest requirements only; this does not execute a TX interval.
+   --  Power is exact provider-defined TxPowerLevel, not a TxPowerModeID.
+   type TX_Element_Group_Config is private;
+   function Create_TX_Element_Group
+     (Label               : String;
+      TX_Power_Level      : Interfaces.Unsigned_32;
+      Desired_Duty_Factor : Long_Float := 1.0) return TX_Element_Group_Config;
+   procedure Append_Expected_Center_Frequency
+     (Group : in out TX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float);
    function Create_RX_Element_Group
      (Label               : String;
       Desired_Duty_Factor : Long_Float := 1.0;
@@ -110,6 +119,13 @@ package AMS.MEL.RF.C2 is
       Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
       Interruptable              : Boolean := False) return Job_Config;
    procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32);
+   function Create_Job_Config
+     (Request_ID, Priority       : Interfaces.Unsigned_32;
+      Group                      : TX_Element_Group_Config;
+      Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
+      Interruptable              : Boolean := False) return Job_Config;
+   --  Append calls define one global order across RX/TX, including duplicates.
+   procedure Append_TX_Element_Group (Config : in out Job_Config; Group : TX_Element_Group_Config);
    procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config);
    procedure Set_Min_Start_Time (Config : in out Job_Config; Value : UTC_Time);
    procedure Set_Max_Complete_Time (Config : in out Job_Config; Value : UTC_Time);
@@ -314,7 +330,23 @@ private
       Pipes       : Pipe_Vectors.Vector;
       Pointings   : Pointing_Vectors.Vector;
    end record;
-   package Group_Vectors is new Ada.Containers.Vectors (Positive, RX_Element_Group_Config);
+   type TX_Element_Group_Config is record
+      Label       : Ada.Strings.Unbounded.Unbounded_String;
+      Power       : Interfaces.Unsigned_32;
+      Duty        : Long_Float;
+      Frequencies : Frequency_Vectors.Vector;
+   end record;
+   type Group_Mode is (RX, TX);
+   type Job_Group (Mode : Group_Mode := RX) is record
+      case Mode is
+         when RX =>
+            Receive_Group : RX_Element_Group_Config;
+
+         when TX =>
+            Transmit_Group : TX_Element_Group_Config;
+      end case;
+   end record;
+   package Group_Vectors is new Ada.Containers.Vectors (Positive, Job_Group);
    package Byte_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
    type Job_Config is record
