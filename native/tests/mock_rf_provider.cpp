@@ -734,7 +734,24 @@ private:
 };
 
 struct UnloadRecorder {
-    ~UnloadRecorder() { record("library_unloaded"); }
+    ~UnloadRecorder() noexcept
+    {
+        record("library_unloaded");
+        /* Test-only, reference-neutral completion notification. No allocation or
+         * new loader/file handle; malformed descriptors simply disable it. */
+        const char *value=std::getenv("AMS_MEL_TEST_UNLOAD_FD");
+        if (!value || !*value) return;
+        int fd=0;
+        for (const char *p=value; *p; ++p) {
+            if (*p<'0' || *p>'9') return;
+            const int digit=*p-'0';
+            if (fd>(std::numeric_limits<int>::max()-digit)/10) return;
+            fd=fd*10+digit;
+        }
+        const char marker='U';
+        ssize_t written;
+        do { written=write(fd,&marker,1); } while (written<0 && errno==EINTR);
+    }
 } unload_recorder;
 
 class FactoryFailure final : public std::exception {
