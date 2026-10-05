@@ -1,3 +1,19 @@
+# Task 034F3 mixed JobRequest construction evidence
+
+Safe Ada Job and unchanged safe Ada ProductRx now privately submit v4; the C
+ProductRx application deliberately retains frozen v1 activation. The two-group
+F2 RX Job path and pointings remain unchanged. A valid TX-only safe Ada config
+with label `0`, power `0xDEADBEEF`, duty `0.375`, and 915 MHz point range is first
+attempted: pinned Squall creates an RX command, so the bridge raises Provider_Error
+before requestJob, then immediately executes the existing positive RX flow.
+At exact Squall pin `b1015728f904c799fa0c07489fce48e78f67845f`, supportsTransmit
+returns false (SquallC2MEL.cc:243), command getMode returns RX (:170), and requestJob
+rejects non-RX (:411). This is **real pinned-provider receive-only/mode-mismatch
+negative evidence**, not positive TX submission, scheduling or RF emission.
+TX-positive construction remains mock evidence. No TransmitEvent/TX intervals,
+Weights, waveform resources, callbacks, RDMA or VADB work is included; vendor
+unchanged. See `../../docs/task-034f3-rf-job-tx-groups.md` for actual results.
+
 # Task 034F2 RX JobRequest pointing evidence
 
 The existing safe Ada two-group Job application now supplies FaceRelative/ECEF

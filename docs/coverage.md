@@ -1,5 +1,23 @@
 # Implementation coverage
 
+Task 034F3 completes the non-callback RX/TX ElementGroupCommand JobRequest
+construction profile in production C and safe Ada. V4 supports RX-only, TX-only
+and one ordered mixed sequence, including repeated labels. TX label/duty/exact
+uint32 TxPowerLevel/ordered frequency ranges are covered; TX has no endpoint or
+expected-pointing calls. TxPowerLevel is distinct from the common TxPowerModeID
+set and is not physically interpreted. All F1/F2 common fields and five estimated
+PointingType alternatives remain, as do RX endpoints and five ordered expected
+PointingType alternatives. Active-only envelope validation, rollback/mismatch,
+shared async retention and raw Rust/private Python parity are covered. Safe Ada
+retains legacy RX constructors while using private v4 submission. C v1/v2/v3
+remain frozen. No capability gate or vendor expansion. Mock-positive TX request
+construction is **not TX execution**; pinned Squall is receive-only, providing a
+negative TX mode probe and subsequent RX success, not positive TX evidence.
+Still deferred: TransmitEvent, TX JobInterval sequences, modulation, JobEvent
+stab-point use for TX, Weights, CachedWaveform/WaveformTxEndpoint,
+MFADrivenControls/JIB/rejection callbacks/context, external/RDMA and VADB.
+See `task-034f3-rf-job-tx-groups.md` for measured validation.
+
 Task 034F2 covers all five PointingType alternatives for independent estimated
 stab points and ordered RX expected pointing angles, in production C and safe Ada.
 Together with F1 this includes multiple RX groups, frequency ranges, multiple

@@ -1,5 +1,17 @@
 # Experimental C ABI policy
 
+Task 034F3 adds exactly ams_mel_rf_virtual_aperture_submit_job_v4, with ABI 0.1
+and frozen v1/v2/v3 records/signatures. One nonempty ordered envelope span reuses
+the existing E3 RX=0/TX=1 mode domain. Only the selected RX-v3/TX-v1 payload is
+validated/copied; inactive bytes are ignored. TX label is complete UTF-8 without
+NUL (empty valid); duty finite (0,1]; frequencies finite min<=max in caller order.
+TxPowerLevel is exact uint32 including zero, high bit and MAX, never a mode ID,
+clamped value, capability lookup or physical conversion. RX retains F1/F2 rules.
+TX command sequence is create/getMode/duty/power/frequencies/addElementGroup;
+no endpoint/expected-pointing setter. Mismatch is PROVIDER_FAILED with no requestJob.
+Existing preparation, exception, ownership/timeout/claim/retention policies apply.
+No new async owner, callback or TX execution semantics; vendor unchanged.
+
 Task 034F2 adds exactly ams_mel_rf_virtual_aperture_submit_job_v3; ABI 0.1 and
 all v1/v2 records/signatures remain frozen. New fixed records carry bridge tags
 ECEF=0, LLA=1, platform=2, face=3, baseline=4 (not an upstream enum or public union).

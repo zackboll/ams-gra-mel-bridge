@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Task 034F3 adds one JobRequest v4 submit export and fixed ordered mixed RX/TX
+  envelopes, preserving frozen v1/v2/v3 and ABI 0.1. Active payloads alone are
+  validated/copied. TX forwards exact uint32 TxPowerLevel, duty and frequencies;
+  no TX endpoint or expected-pointing calls. Safe Ada adds TX group construction,
+  TX-only Job constructor and interleaved append without changing legacy RX source.
+  Existing hardened async/rollback path and all common/RX F1/F2 fields remain.
+  Raw Rust/private Python parity only, vendor unchanged. Mock-positive TX request
+  construction is not TX execution; pinned Squall remains receive-only and adds
+  negative TX mode evidence before its unchanged positive RX flow.
+
 - Task 034F2 adds complete five-alternative RF pointing construction and one
   JobRequest v3 submit export, preserving frozen v1/v2 and ABI 0.1. Fixed tagged
   records carry exact meters/mps/radians; ECEF/NED vectors are explicitly assigned.
