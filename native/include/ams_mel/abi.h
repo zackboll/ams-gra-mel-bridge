@@ -2614,6 +2614,76 @@ typedef struct ams_mel_rf_job_request_config_v2 {
     ams_mel_u32_span_v1 tx_power_mode_ids; /* set: duplicates collapse */
     int64_t lookahead_femtoseconds;
 } ams_mel_rf_job_request_config_v2;
+/* V1/V2 are frozen. These bridge tags select the exact pinned PointingType
+ * variant, not an upstream enum. No coordinate/unit conversion or physical
+ * validation is performed; active doubles include signed zero/infinity/NaN.
+ * Only the selected payload is active. All other payloads are ignored. */
+typedef uint32_t ams_mel_rf_pointing_kind_t;
+#define AMS_MEL_RF_POINTING_ECEF UINT32_C(0)
+#define AMS_MEL_RF_POINTING_LLA UINT32_C(1)
+#define AMS_MEL_RF_POINTING_PLATFORM_RELATIVE UINT32_C(2)
+#define AMS_MEL_RF_POINTING_FACE_RELATIVE UINT32_C(3)
+#define AMS_MEL_RF_POINTING_BASELINE_RELATIVE UINT32_C(4)
+typedef struct ams_mel_rf_vector3_v1 {
+    double x;
+    double y;
+    double z;
+} ams_mel_rf_vector3_v1;
+typedef struct ams_mel_rf_az_el_v1 {
+    double azimuth_rad;
+    double elevation_rad;
+} ams_mel_rf_az_el_v1;
+typedef struct ams_mel_rf_ecef_pointing_v1 {
+    ams_mel_rf_vector3_v1 location_m;
+    ams_mel_rf_vector3_v1 velocity_mps;
+    ams_mel_rf_utc_time_v1 time_of_validity;
+} ams_mel_rf_ecef_pointing_v1;
+typedef struct ams_mel_rf_lla_pointing_v1 {
+    double latitude_rad;
+    double longitude_rad;
+    double altitude_m;
+    double velocity_north_mps;
+    double velocity_east_mps;
+    double velocity_down_mps;
+    ams_mel_rf_utc_time_v1 time_of_validity;
+} ams_mel_rf_lla_pointing_v1;
+typedef struct ams_mel_rf_pointing_v1 {
+    ams_mel_rf_pointing_kind_t kind;
+    ams_mel_rf_ecef_pointing_v1 ecef;
+    ams_mel_rf_lla_pointing_v1 lla;
+    ams_mel_rf_az_el_v1 platform_relative;
+    ams_mel_rf_az_el_v1 face_relative;
+    double baseline_relative_conic_rad;
+} ams_mel_rf_pointing_v1;
+typedef struct ams_mel_rf_pointing_span_v1 {
+    const ams_mel_rf_pointing_v1 *data;
+    size_t size;
+} ams_mel_rf_pointing_span_v1;
+typedef struct ams_mel_rf_rx_element_group_config_v3 {
+    ams_mel_rf_rx_element_group_config_v2 group;
+    ams_mel_rf_pointing_span_v1 expected_pointing_angles;
+} ams_mel_rf_rx_element_group_config_v3;
+typedef struct ams_mel_rf_rx_element_group_config_span_v3 {
+    const ams_mel_rf_rx_element_group_config_v3 *data;
+    size_t size;
+} ams_mel_rf_rx_element_group_config_span_v3;
+typedef struct ams_mel_rf_job_request_config_v3 {
+    uint32_t request_id;
+    uint32_t priority;
+    uint32_t precedence_within_priority;
+    uint32_t is_interruptable; /* exactly 0 or 1 */
+    ams_mel_u32_span_v1 instance_selection;
+    ams_mel_rf_rx_element_group_config_span_v3 rx_groups;
+    ams_mel_rf_utc_time_v1 min_start_time;
+    ams_mel_rf_utc_time_v1 max_complete_time;
+    int64_t duration_femtoseconds;
+    ams_mel_u8_span_v1 capability_id;
+    ams_mel_u8_span_v1 activity_id;
+    ams_mel_u32_span_v1 tx_power_mode_ids;
+    int64_t lookahead_femtoseconds;
+    uint32_t has_estimated_stab_point; /* exactly 0 or 1; 0 ignores payload */
+    ams_mel_rf_pointing_v1 estimated_stab_point;
+} ams_mel_rf_job_request_config_v3;
 /* Pinned RF MEL 762ce84 uses numeric_limits<Femtoseconds>::max(), whose
  * count is zero, NOT the duration representation's maximum. This aliases
  * an ordinary zero relative start: callers cannot distinguish those intentions
@@ -3217,6 +3287,17 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job(
  * Pointing and MFADrivenControls callback fields retain upstream defaults. */
 AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v2(
     ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v2 *config,
+    ams_mel_rf_job_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same hardened async path/owners as v1/v2, with independent optional estimated
+ * point and ordered RX group pointings (duplicates retained). Empty spans make
+ * no pointing calls. Unknown kinds and noncanonical active ECEF/LLA UTC reject
+ * before provider command creation; inactive payloads/times are not validated.
+ * No capability auto-gate. Provider requestJob decides semantic validity.
+ * With has_estimated_stab_point=0 the upstream default is never read or set.
+ * MFADrivenControls/callback fields remain untouched. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_virtual_aperture_submit_job_v3(
+    ams_mel_rf_virtual_aperture *va, const ams_mel_rf_job_request_config_v3 *config,
     ams_mel_rf_job_request **out_request, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_request_wait(

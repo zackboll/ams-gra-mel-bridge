@@ -896,6 +896,14 @@ fn rf_job_signatures_match_the_c_header() {
     ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_submit_job_v2;
     let _: unsafe extern "C" fn(
         *mut AmsMelRfVa,
+        *const AmsMelRfJobRequestConfigV3,
+        *mut *mut AmsMelRfJobRequest,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_virtual_aperture_submit_job_v3;
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfVa,
         *const AmsMelRfJobRequestConfigV1,
         *mut *mut AmsMelRfJobRequest,
         *mut c_char,
@@ -1090,8 +1098,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 190);
-    assert_eq!(exported.len(), 190);
+    assert_eq!(declared.len(), 191);
+    assert_eq!(exported.len(), 191);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2281,6 +2289,72 @@ fn declarations_match_the_c_header() {
         activity_id,
         tx_power_mode_ids,
         lookahead_femtoseconds
+    );
+    expected.extend([
+        size_of::<AmsMelRfPointingKind>(),
+        align_of::<AmsMelRfPointingKind>(),
+        AMS_MEL_RF_POINTING_ECEF as usize,
+        AMS_MEL_RF_POINTING_LLA as usize,
+        AMS_MEL_RF_POINTING_PLATFORM_RELATIVE as usize,
+        AMS_MEL_RF_POINTING_FACE_RELATIVE as usize,
+        AMS_MEL_RF_POINTING_BASELINE_RELATIVE as usize,
+    ]);
+    layout!(expected, AmsMelRfVector3V1, x, y, z);
+    layout!(expected, AmsMelRfAzElV1, azimuth_rad, elevation_rad);
+    layout!(
+        expected,
+        AmsMelRfEcefPointingV1,
+        location_m,
+        velocity_mps,
+        time_of_validity
+    );
+    layout!(
+        expected,
+        AmsMelRfLlaPointingV1,
+        latitude_rad,
+        longitude_rad,
+        altitude_m,
+        velocity_north_mps,
+        velocity_east_mps,
+        velocity_down_mps,
+        time_of_validity
+    );
+    layout!(
+        expected,
+        AmsMelRfPointingV1,
+        kind,
+        ecef,
+        lla,
+        platform_relative,
+        face_relative,
+        baseline_relative_conic_rad
+    );
+    layout!(expected, AmsMelRfPointingSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfRxElementGroupConfigV3,
+        group,
+        expected_pointing_angles
+    );
+    layout!(expected, AmsMelRfRxElementGroupConfigSpanV3, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobRequestConfigV3,
+        request_id,
+        priority,
+        precedence_within_priority,
+        is_interruptable,
+        instance_selection,
+        rx_groups,
+        min_start_time,
+        max_complete_time,
+        duration_femtoseconds,
+        capability_id,
+        activity_id,
+        tx_power_mode_ids,
+        lookahead_femtoseconds,
+        has_estimated_stab_point,
+        estimated_stab_point
     );
     layout!(expected, AmsMelRfJobResultV1, error_code);
     layout!(

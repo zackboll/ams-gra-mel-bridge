@@ -21,6 +21,28 @@ namespace rfmel = ams::iface::rfmel;
 // E6: actual pinned member signatures include size_t group IDs, not labels.
 using VA = rfmel::VirtualAperture;
 using JR = rfmel::JobRequest;
+using Pointing = rfmel::PointingType;
+static_assert(std::is_same_v<Pointing, std::variant<rfmel::ECEFPointing, rfmel::LLAPointing,
+    rfmel::PlatformRelativePointing, rfmel::FaceRelativePointing, rfmel::BaselineRelativePointing>>);
+static_assert(std::variant_size_v<Pointing> == 5);
+static_assert(std::is_same_v<std::variant_alternative_t<0, Pointing>, rfmel::ECEFPointing>);
+static_assert(std::is_same_v<std::variant_alternative_t<1, Pointing>, rfmel::LLAPointing>);
+static_assert(std::is_same_v<std::variant_alternative_t<2, Pointing>, rfmel::PlatformRelativePointing>);
+static_assert(std::is_same_v<std::variant_alternative_t<3, Pointing>, rfmel::FaceRelativePointing>);
+static_assert(std::is_same_v<std::variant_alternative_t<4, Pointing>, rfmel::BaselineRelativePointing>);
+static_assert(std::is_same_v<EcefPoint, boost::numeric::ublas::c_vector<double, 3>>);
+static_assert(std::is_same_v<EcefVelocity, EcefPoint> && std::is_same_v<NedVelocity, EcefPoint>);
+static_assert(std::is_same_v<decltype(&LLAPoint::getLatitude), double (LLAPoint::*)() const>);
+static_assert(std::is_same_v<decltype(&LLAPoint::getLongitude), double (LLAPoint::*)() const>);
+static_assert(std::is_same_v<decltype(&LLAPoint::getAltitude), double (LLAPoint::*)() const>);
+static_assert(std::is_same_v<decltype(&LLAPoint::setLatitude), void (LLAPoint::*)(double)>);
+static_assert(std::is_same_v<decltype(&LLAPoint::setLongitude), void (LLAPoint::*)(double)>);
+static_assert(std::is_same_v<decltype(&LLAPoint::setAltitude), void (LLAPoint::*)(double)>);
+static_assert(std::is_same_v<decltype(AzEl::az), double> && std::is_same_v<decltype(AzEl::el), double>);
+static_assert(std::is_same_v<decltype(&JR::setEstimatedStabPoint), void (JR::*)(const Pointing&)>);
+using EGC = rfmel::ElementGroupCommand;
+static_assert(std::is_same_v<decltype(&EGC::addExpectedPointingAngle), void (EGC::*)(const Pointing&)>);
+static_assert(std::is_same_v<decltype(&EGC::getExpectedPointingAngles), std::vector<Pointing> (EGC::*)()>);
 using UTC = ams::util::math::UTCTime;
 using Femto = ams::util::math::Femtoseconds;
 static_assert(std::is_same_v<std::chrono::seconds::rep, int64_t>);

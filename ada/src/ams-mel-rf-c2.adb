@@ -633,7 +633,8 @@ package body AMS.MEL.RF.C2 is
          Pipe        => US.To_Unbounded_String (Data_Pipe_Label),
          Duty        => Desired_Duty_Factor,
          Frequencies => <>,
-         Pipes       => <>);
+         Pipes       => <>,
+         Pointings   => <>);
    end Create_RX_Element_Group;
    procedure Append_Expected_Center_Frequency
      (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float) is
@@ -685,6 +686,118 @@ package body AMS.MEL.RF.C2 is
    is (Value.Seconds);
    function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64
    is (Value.Fraction);
+   function Create_ECEF_Pointing
+     (Location_X_M, Location_Y_M, Location_Z_M       : Long_Float;
+      Velocity_X_MPS, Velocity_Y_MPS, Velocity_Z_MPS : Long_Float;
+      Time_Of_Validity                               : UTC_Time) return Pointing
+   is
+      pragma Validity_Checks ("F");
+   begin
+      return
+        (ECEF,
+         [Location_X_M, Location_Y_M, Location_Z_M, Velocity_X_MPS, Velocity_Y_MPS, Velocity_Z_MPS],
+         Time_Of_Validity);
+   end Create_ECEF_Pointing;
+   function Create_LLA_Pointing
+     (Latitude_Rad, Longitude_Rad, Altitude_M                  : Long_Float;
+      Velocity_North_MPS, Velocity_East_MPS, Velocity_Down_MPS : Long_Float;
+      Time_Of_Validity                                         : UTC_Time) return Pointing
+   is
+      pragma Validity_Checks ("F");
+   begin
+      return
+        (LLA,
+         [Latitude_Rad,
+          Longitude_Rad,
+          Altitude_M,
+          Velocity_North_MPS,
+          Velocity_East_MPS,
+          Velocity_Down_MPS],
+         Time_Of_Validity);
+   end Create_LLA_Pointing;
+   function Create_Platform_Relative_Pointing
+     (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing
+   is
+      pragma Validity_Checks ("F");
+   begin
+      return (Platform_Relative, [Azimuth_Rad, Elevation_Rad, others => 0.0], (0, 0));
+   end Create_Platform_Relative_Pointing;
+   function Create_Face_Relative_Pointing (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing
+   is
+      pragma Validity_Checks ("F");
+   begin
+      return (Face_Relative, [Azimuth_Rad, Elevation_Rad, others => 0.0], (0, 0));
+   end Create_Face_Relative_Pointing;
+   function Create_Baseline_Relative_Pointing (Conic_Rad : Long_Float) return Pointing is
+      pragma Validity_Checks ("F");
+   begin
+      return (Baseline_Relative, [Conic_Rad, others => 0.0], (0, 0));
+   end Create_Baseline_Relative_Pointing;
+   procedure Append_Expected_Pointing (Group : in out RX_Element_Group_Config; Value : Pointing) is
+   begin
+      Group.Pointings.Append (Value);
+   end Append_Expected_Pointing;
+   procedure Set_Estimated_Stab_Point (Config : in out Job_Config; Value : Pointing) is
+   begin
+      Config.Estimated_Point := Value;
+      Config.Has_Estimated_Point := True;
+   end Set_Estimated_Stab_Point;
+   procedure Clear_Estimated_Stab_Point (Config : in out Job_Config) is
+   begin
+      Config.Has_Estimated_Point := False;
+   end Clear_Estimated_Stab_Point;
+   function Raw_Pointing (Value : Pointing) return C.RF_Pointing_V1 is
+      pragma Validity_Checks ("F");
+      pragma
+        Compile_Time_Error
+          (Long_Float'Digits < Interfaces.C.double'Digits
+             or else Long_Float'Machine_Mantissa < Interfaces.C.double'Machine_Mantissa
+             or else Long_Float'Machine_Emax < Interfaces.C.double'Machine_Emax
+             or else Long_Float'Machine_Emin > Interfaces.C.double'Machine_Emin
+             or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
+           "Pointing requires Long_Float to represent normal C double values");
+      function To_C (Number : Long_Float) return Interfaces.C.double is
+         pragma Validity_Checks ("F");
+      begin
+         return Interfaces.C.double (Number);
+      end To_C;
+      Numbers : Pointing_Components renames Value.Components;
+      Result  : C.RF_Pointing_V1 :=
+        (Kind                        => Interfaces.Unsigned_32 (Pointing_Kind'Pos (Value.Kind)),
+         ECEF                        => ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0, 0)),
+         LLA                         => (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, (0, 0)),
+         Platform_Relative           => (0.0, 0.0),
+         Face_Relative               => (0.0, 0.0),
+         Baseline_Relative_Conic_Rad => 0.0);
+   begin
+      case Value.Kind is
+         when ECEF              =>
+            Result.ECEF :=
+              ((To_C (Numbers (1)), To_C (Numbers (2)), To_C (Numbers (3))),
+               (To_C (Numbers (4)), To_C (Numbers (5)), To_C (Numbers (6))),
+               (Value.Time.Seconds, Value.Time.Fraction));
+
+         when LLA               =>
+            Result.LLA :=
+              (To_C (Numbers (1)),
+               To_C (Numbers (2)),
+               To_C (Numbers (3)),
+               To_C (Numbers (4)),
+               To_C (Numbers (5)),
+               To_C (Numbers (6)),
+               (Value.Time.Seconds, Value.Time.Fraction));
+
+         when Platform_Relative =>
+            Result.Platform_Relative := (To_C (Numbers (1)), To_C (Numbers (2)));
+
+         when Face_Relative     =>
+            Result.Face_Relative := (To_C (Numbers (1)), To_C (Numbers (2)));
+
+         when Baseline_Relative =>
+            Result.Baseline_Relative_Conic_Rad := To_C (Numbers (1));
+      end case;
+      return Result;
+   end Raw_Pointing;
    procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config)
    is
    begin
@@ -768,29 +881,32 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Raw_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
-      type Raw_Groups is array (Positive range <>) of aliased C.RF_RX_Element_Group_Config_V2
+      type Raw_Groups is array (Positive range <>) of aliased C.RF_RX_Element_Group_Config_V3
+      with Convention => C;
+      type Raw_Pointings is array (Positive range <>) of aliased C.RF_Pointing_V1
       with Convention => C;
       type Raw_Pipes is array (Positive range <>) of aliased C.RF_RX_Data_Pipe_Endpoint_Config_V1
       with Convention => C;
       type String_Owners is array (Positive range <>) of String_Owner;
-      Frequency_Count, Pipe_Count, Endpoint_Count : Natural := 0;
-      Instances                                   :
+      Frequency_Count, Pipe_Count, Endpoint_Count, Pointing_Count : Natural := 0;
+      Instances                                                   :
         Raw_Instances (1 .. Natural (Config.Instances.Length));
-      Modes                                       :
+      Modes                                                       :
         Raw_Instances (1 .. Natural (Config.Power_Modes.Length));
-      Capability                                  :
+      Capability                                                  :
         Raw_Bytes (1 .. Natural (Config.Capability.Length));
-      Activity                                    :
+      Activity                                                    :
         Raw_Bytes (1 .. Natural (Config.Activity.Length));
-      D                                           : aliased Fixed_Diagnostic :=
+      D                                                           : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
-      R                                           : aliased C.Size_T := 0;
+      R                                                           : aliased C.Size_T := 0;
    begin
       if not Is_Open (VA) then
          raise Provider_Error with "VirtualAperture is closed";
       end if;
       for Group of Config.Groups loop
          Frequency_Count := Frequency_Count + Natural (Group.Frequencies.Length);
+         Pointing_Count := Pointing_Count + Natural (Group.Pointings.Length);
          for Pipe of Group.Pipes loop
             if not Pipe.Endpoints.Is_Empty then
                Pipe_Count := Pipe_Count + 1;
@@ -813,14 +929,15 @@ package body AMS.MEL.RF.C2 is
       declare
          --  Final-sized backing arrays precede all pointer publication. Controlled
          --  strings clean up even when serialization or native submission raises.
-         Groups      : Raw_Groups (1 .. Natural (Config.Groups.Length));
-         Pipes       : Raw_Pipes (1 .. Pipe_Count);
-         Frequencies : Raw_Frequencies (1 .. Frequency_Count);
-         Endpoints   : Raw_Endpoints (1 .. Endpoint_Count);
-         Labels      : String_Owners (Groups'Range);
-         Pipe_Labels : String_Owners (Pipes'Range);
-         G, F, P, E  : Positive := 1;
-         Raw         : aliased C.RF_Job_Request_Config_V2 :=
+         Groups        : Raw_Groups (1 .. Natural (Config.Groups.Length));
+         Pipes         : Raw_Pipes (1 .. Pipe_Count);
+         Frequencies   : Raw_Frequencies (1 .. Frequency_Count);
+         Endpoints     : Raw_Endpoints (1 .. Endpoint_Count);
+         Pointings     : Raw_Pointings (1 .. Pointing_Count);
+         Labels        : String_Owners (Groups'Range);
+         Pipe_Labels   : String_Owners (Pipes'Range);
+         G, F, P, E, Q : Positive := 1;
+         Raw           : aliased C.RF_Job_Request_Config_V3 :=
            (Request_ID                 => Config.ID,
             Priority                   => Config.Priority,
             Precedence_Within_Priority => Config.Precedence,
@@ -845,12 +962,18 @@ package body AMS.MEL.RF.C2 is
             TX_Power_Mode_IDs          =>
               ((if Modes'Length = 0 then System.Null_Address else Modes (1)'Address),
                C.Size_T (Modes'Length)),
-            Lookahead_Femtoseconds     => Config.Lookahead);
+            Lookahead_Femtoseconds     => Config.Lookahead,
+            Has_Estimated_Stab_Point   => (if Config.Has_Estimated_Point then 1 else 0),
+            Estimated_Stab_Point       => Raw_Pointing (Pointing'(others => <>)));
       begin
+         if Config.Has_Estimated_Point then
+            Raw.Estimated_Stab_Point := Raw_Pointing (Config.Estimated_Point);
+         end if;
          for Group of Config.Groups loop
             declare
                First_F : constant Positive := F;
                First_P : constant Positive := P;
+               First_Q : constant Positive := Q;
             begin
                Labels (G).Value := CS.New_String (US.To_String (Group.Label));
                for Range_Value of Group.Frequencies loop
@@ -877,13 +1000,20 @@ package body AMS.MEL.RF.C2 is
                      end;
                   end if;
                end loop;
-               Groups (G) :=
+               for Point of Group.Pointings loop
+                  Pointings (Q) := Raw_Pointing (Point);
+                  Q := Q + 1;
+               end loop;
+               Groups (G).Group :=
                  ((Pointer_Address (Labels (G).Value), C.Size_T (US.Length (Group.Label))),
                   Interfaces.C.double (Group.Duty),
                   ((if F = First_F then System.Null_Address else Frequencies (First_F)'Address),
                    C.Size_T (F - First_F)),
                   ((if P = First_P then System.Null_Address else Pipes (First_P)'Address),
                    C.Size_T (P - First_P)));
+               Groups (G).Expected_Pointing_Angles :=
+                 ((if Q = First_Q then System.Null_Address else Pointings (First_Q)'Address),
+                  C.Size_T (Q - First_Q));
                G := G + 1;
             end;
          end loop;
@@ -892,7 +1022,7 @@ package body AMS.MEL.RF.C2 is
          end if;
          return Result : Job_Request do
             Check
-              (C.RF_VA_Submit_Job_V2
+              (C.RF_VA_Submit_Job_V3
                  (VA.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
                D);
          end return;

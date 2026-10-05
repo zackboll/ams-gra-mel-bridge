@@ -1,3 +1,19 @@
+# Task 034F2 RX JobRequest pointing evidence
+
+The existing safe Ada two-group Job application now supplies FaceRelative/ECEF
+to group 1, PlatformRelative/BaselineRelative to group 2 and independent estimated
+LLA. Frequencies/duties and lifecycle assertions remain. Rechecked exact pin
+`b1015728f904c799fa0c07489fce48e78f67845f`: SquallC2MEL.cc:183..185 stores expected
+PointingType values; requestJob:395..453 does not inspect either pointing field.
+Successful real integration therefore means **real Squall ElementGroupCommand
+accepted bridge-issued addExpectedPointingAngle calls and requestJob accepted the
+completed request**, not geometry validation, scheduling use, estimated-stab use
+or hardware pointing. Positive component fidelity comes from the existing mock.
+C ProductRx retains frozen v1 activation unchanged. Safe Ada ProductRx source is
+unchanged and uses v3 internally with no explicit estimated/expected points.
+No TX/JIB/RDMA/VADB/Weights/resources or vendor expansion. See
+`../../docs/task-034f2-rf-job-pointing.md` for actual results.
+
 # Task 034F1 RX JobRequest v2 evidence
 
 Safe Ada Job integration constructs two ordered RX groups, both using pinned

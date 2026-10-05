@@ -1,5 +1,22 @@
 # Architecture decisions
 
+Task 034F2 adds ordinary bridge-prepared PointingType values before provider-parent
+acquisition, not provider pointing owners. A fixed C record uses stable bridge
+tags 0..4 for the exact pinned variant alternatives ECEF/LLA/platform/face/baseline.
+Only active fields are read/validated; only ECEF/LLA UTC needs canonical fractions.
+Every ECEF and NED c_vector component is explicitly assigned; default ECEF numeric
+storage is never read or claimed zero. No geodesy, coordinate/unit conversion,
+normalization, finite checks or capability gate occurs. Ordered group pointings
+follow duty/frequency/endpoint calls and precede addElementGroup; estimated stab
+point is independent and set only when enabled. Frozen v1/v2 and additive v3 share
+the exact submit_prepared worker/retention/publication path. Safe Ada owns numeric
+values/vectors and final-sized raw backing privately, with default no-point behavior.
+TX commands/execution, MFADrivenControls/JIB and rejection callbacks/context,
+Weights/resources, external/RDMA and VADB remain deferred. Pinned Squall stores
+expected points but requestJob does not inspect either pointing field; positive
+fidelity is mock evidence, real-provider acceptance is narrower. Vendor unchanged.
+See `task-034f2-rf-job-pointing.md` for measured validation.
+
 Task 034F1 adds an RX JobRequest v2 profile without a second request owner.
 Both submit exports share parent acquisition, requestJob/future validation,
 worker launch, publication, abandonment and emergency retention. Strings,

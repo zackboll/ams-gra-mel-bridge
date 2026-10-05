@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Task 034F2 adds complete five-alternative RF pointing construction and one
+  JobRequest v3 submit export, preserving frozen v1/v2 and ABI 0.1. Fixed tagged
+  records carry exact meters/mps/radians; ECEF/NED vectors are explicitly assigned.
+  Canonical UTC is required only for active ECEF/LLA; inactive fields are ignored.
+  Ordered RX expected pointings preserve duplicates, independent estimated stab
+  point is optional, and no coordinate conversion/capability auto-gate occurs.
+  Safe Ada adds five constructors, group append and estimated set/clear controls
+  while retaining legacy defaults/source APIs. Shared async owners/retention remain.
+  Raw Rust/private Python parity only; vendor unchanged. Mock fidelity differs
+  from pinned Squall acceptance, not geometry/scheduling/hardware evidence. No
+  TX/JIB/RDMA/VADB/Weights/resource expansion.
+
 - Task 034F1 adds one RX JobRequest v2 submit export (189 -> 190), ABI 0.1,
   preserving all v1 declarations/layouts and the existing request/Job owners.
   Multiple RX groups and pipe endpoint sets retain caller order. UTC input is

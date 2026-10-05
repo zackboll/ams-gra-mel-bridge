@@ -59,7 +59,17 @@ procedure AMS_MEL_Squall_RF_Job is
       --  Pinned rf_environment advertises only its active 915 MHz point range.
       C2.Append_Expected_Center_Frequency (First, 915_000_000.0, 915_000_000.0);
       C2.Append_Expected_Center_Frequency (Second, 915_000_000.0, 915_000_000.0);
+      --  Pinned Squall stores these calls but does not interpret their geometry.
+      C2.Append_Expected_Pointing (First, C2.Create_Face_Relative_Pointing (1.5, -0.5));
+      C2.Append_Expected_Pointing
+        (First, C2.Create_ECEF_Pointing (1.25, -2.5, 3.75, -4.5, 5.625, -6.75,
+                                       C2.Create_UTC_Time (-7, 123456789012345)));
+      C2.Append_Expected_Pointing (Second, C2.Create_Platform_Relative_Pointing (-0.75, 0.25));
+      C2.Append_Expected_Pointing (Second, C2.Create_Baseline_Relative_Pointing (-2.25));
       return Config : C2.Job_Config := C2.Create_Job_Config (ID, 1, First) do
+         C2.Set_Estimated_Stab_Point
+           (Config, C2.Create_LLA_Pointing (-8.125, 9.25, -999.5, -21.25, 22.5, -23.75,
+                                          C2.Create_UTC_Time (42, 999999999999999)));
          C2.Append_RX_Element_Group (Config, Second);
          C2.Set_Min_Start_Time (Config, C2.Create_UTC_Time (-5, 123456789012345));
          C2.Set_Max_Complete_Time (Config, C2.Create_UTC_Time (42, 999999999999999));
@@ -222,5 +232,7 @@ begin
       Admin.Close (Control);
    end;
    Ada.Text_IO.Put_Line
-     ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle");
+      ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle; real Squall " &
+       "ElementGroupCommand accepted bridge-issued addExpectedPointingAngle calls " &
+       "and requestJob accepted the completed request (not geometry/scheduling evidence)");
 end AMS_MEL_Squall_RF_Job;

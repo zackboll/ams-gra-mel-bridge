@@ -2072,6 +2072,91 @@ pub struct AmsMelRfJobRequestConfigV2 {
     pub tx_power_mode_ids: AmsMelU32SpanV1,
     pub lookahead_femtoseconds: i64,
 }
+pub type AmsMelRfPointingKind = u32;
+pub const AMS_MEL_RF_POINTING_ECEF: AmsMelRfPointingKind = 0;
+pub const AMS_MEL_RF_POINTING_LLA: AmsMelRfPointingKind = 1;
+pub const AMS_MEL_RF_POINTING_PLATFORM_RELATIVE: AmsMelRfPointingKind = 2;
+pub const AMS_MEL_RF_POINTING_FACE_RELATIVE: AmsMelRfPointingKind = 3;
+pub const AMS_MEL_RF_POINTING_BASELINE_RELATIVE: AmsMelRfPointingKind = 4;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfVector3V1 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfAzElV1 {
+    pub azimuth_rad: f64,
+    pub elevation_rad: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfEcefPointingV1 {
+    pub location_m: AmsMelRfVector3V1,
+    pub velocity_mps: AmsMelRfVector3V1,
+    pub time_of_validity: AmsMelRfUtcTimeV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfLlaPointingV1 {
+    pub latitude_rad: f64,
+    pub longitude_rad: f64,
+    pub altitude_m: f64,
+    pub velocity_north_mps: f64,
+    pub velocity_east_mps: f64,
+    pub velocity_down_mps: f64,
+    pub time_of_validity: AmsMelRfUtcTimeV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPointingV1 {
+    pub kind: AmsMelRfPointingKind,
+    pub ecef: AmsMelRfEcefPointingV1,
+    pub lla: AmsMelRfLlaPointingV1,
+    pub platform_relative: AmsMelRfAzElV1,
+    pub face_relative: AmsMelRfAzElV1,
+    pub baseline_relative_conic_rad: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPointingSpanV1 {
+    pub data: *const AmsMelRfPointingV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxElementGroupConfigV3 {
+    pub group: AmsMelRfRxElementGroupConfigV2,
+    pub expected_pointing_angles: AmsMelRfPointingSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfRxElementGroupConfigSpanV3 {
+    pub data: *const AmsMelRfRxElementGroupConfigV3,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobRequestConfigV3 {
+    pub request_id: u32,
+    pub priority: u32,
+    pub precedence_within_priority: u32,
+    pub is_interruptable: u32,
+    pub instance_selection: AmsMelU32SpanV1,
+    pub rx_groups: AmsMelRfRxElementGroupConfigSpanV3,
+    pub min_start_time: AmsMelRfUtcTimeV1,
+    pub max_complete_time: AmsMelRfUtcTimeV1,
+    pub duration_femtoseconds: i64,
+    pub capability_id: AmsMelU8SpanV1,
+    pub activity_id: AmsMelU8SpanV1,
+    pub tx_power_mode_ids: AmsMelU32SpanV1,
+    pub lookahead_femtoseconds: i64,
+    pub has_estimated_stab_point: u32,
+    pub estimated_stab_point: AmsMelRfPointingV1,
+}
+
 // Pinned sentinel aliases ordinary zero relative start; not i64::MAX.
 pub const AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS: i64 = 0;
 #[repr(C)]
@@ -3245,6 +3330,14 @@ extern "C" {
     pub fn ams_mel_rf_virtual_aperture_submit_job_v2(
         va: *mut AmsMelRfVa,
         config: *const AmsMelRfJobRequestConfigV2,
+        out_request: *mut *mut AmsMelRfJobRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_virtual_aperture_submit_job_v3(
+        va: *mut AmsMelRfVa,
+        config: *const AmsMelRfJobRequestConfigV3,
         out_request: *mut *mut AmsMelRfJobRequest,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

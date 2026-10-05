@@ -685,6 +685,63 @@ int main(void)
         FIELD(ams_mel_rf_job_request_config_v2,activity_id);
         FIELD(ams_mel_rf_job_request_config_v2,tx_power_mode_ids);
         FIELD(ams_mel_rf_job_request_config_v2,lookahead_femtoseconds));
+    LAYOUT(ams_mel_rf_pointing_kind_t);
+    VALUE(AMS_MEL_RF_POINTING_ECEF);
+    VALUE(AMS_MEL_RF_POINTING_LLA);
+    VALUE(AMS_MEL_RF_POINTING_PLATFORM_RELATIVE);
+    VALUE(AMS_MEL_RF_POINTING_FACE_RELATIVE);
+    VALUE(AMS_MEL_RF_POINTING_BASELINE_RELATIVE);
+    RECORD(ams_mel_rf_vector3_v1,
+        FIELD(ams_mel_rf_vector3_v1,x);
+        FIELD(ams_mel_rf_vector3_v1,y);
+        FIELD(ams_mel_rf_vector3_v1,z));
+    RECORD(ams_mel_rf_az_el_v1,
+        FIELD(ams_mel_rf_az_el_v1,azimuth_rad);
+        FIELD(ams_mel_rf_az_el_v1,elevation_rad));
+    RECORD(ams_mel_rf_ecef_pointing_v1,
+        FIELD(ams_mel_rf_ecef_pointing_v1,location_m);
+        FIELD(ams_mel_rf_ecef_pointing_v1,velocity_mps);
+        FIELD(ams_mel_rf_ecef_pointing_v1,time_of_validity));
+    RECORD(ams_mel_rf_lla_pointing_v1,
+        FIELD(ams_mel_rf_lla_pointing_v1,latitude_rad);
+        FIELD(ams_mel_rf_lla_pointing_v1,longitude_rad);
+        FIELD(ams_mel_rf_lla_pointing_v1,altitude_m);
+        FIELD(ams_mel_rf_lla_pointing_v1,velocity_north_mps);
+        FIELD(ams_mel_rf_lla_pointing_v1,velocity_east_mps);
+        FIELD(ams_mel_rf_lla_pointing_v1,velocity_down_mps);
+        FIELD(ams_mel_rf_lla_pointing_v1,time_of_validity));
+    RECORD(ams_mel_rf_pointing_v1,
+        FIELD(ams_mel_rf_pointing_v1,kind);
+        FIELD(ams_mel_rf_pointing_v1,ecef);
+        FIELD(ams_mel_rf_pointing_v1,lla);
+        FIELD(ams_mel_rf_pointing_v1,platform_relative);
+        FIELD(ams_mel_rf_pointing_v1,face_relative);
+        FIELD(ams_mel_rf_pointing_v1,baseline_relative_conic_rad));
+    RECORD(ams_mel_rf_pointing_span_v1,
+        FIELD(ams_mel_rf_pointing_span_v1,data);
+        FIELD(ams_mel_rf_pointing_span_v1,size));
+    RECORD(ams_mel_rf_rx_element_group_config_v3,
+        FIELD(ams_mel_rf_rx_element_group_config_v3,group);
+        FIELD(ams_mel_rf_rx_element_group_config_v3,expected_pointing_angles));
+    RECORD(ams_mel_rf_rx_element_group_config_span_v3,
+        FIELD(ams_mel_rf_rx_element_group_config_span_v3,data);
+        FIELD(ams_mel_rf_rx_element_group_config_span_v3,size));
+    RECORD(ams_mel_rf_job_request_config_v3,
+        FIELD(ams_mel_rf_job_request_config_v3,request_id);
+        FIELD(ams_mel_rf_job_request_config_v3,priority);
+        FIELD(ams_mel_rf_job_request_config_v3,precedence_within_priority);
+        FIELD(ams_mel_rf_job_request_config_v3,is_interruptable);
+        FIELD(ams_mel_rf_job_request_config_v3,instance_selection);
+        FIELD(ams_mel_rf_job_request_config_v3,rx_groups);
+        FIELD(ams_mel_rf_job_request_config_v3,min_start_time);
+        FIELD(ams_mel_rf_job_request_config_v3,max_complete_time);
+        FIELD(ams_mel_rf_job_request_config_v3,duration_femtoseconds);
+        FIELD(ams_mel_rf_job_request_config_v3,capability_id);
+        FIELD(ams_mel_rf_job_request_config_v3,activity_id);
+        FIELD(ams_mel_rf_job_request_config_v3,tx_power_mode_ids);
+        FIELD(ams_mel_rf_job_request_config_v3,lookahead_femtoseconds);
+        FIELD(ams_mel_rf_job_request_config_v3,has_estimated_stab_point);
+        FIELD(ams_mel_rf_job_request_config_v3,estimated_stab_point));
     RECORD(ams_mel_rf_job_result_v1,
         FIELD(ams_mel_rf_job_result_v1,error_code));
     RECORD(ams_mel_rf_job_info_v1,

@@ -1309,6 +1309,100 @@ class RfJobRequestConfigV2(ctypes.Structure):
                 ("lookahead_femtoseconds", ctypes.c_int64)]
 
 
+RfPointingKind = ctypes.c_uint32
+RF_POINTING_ECEF = 0
+RF_POINTING_LLA = 1
+RF_POINTING_PLATFORM_RELATIVE = 2
+RF_POINTING_FACE_RELATIVE = 3
+RF_POINTING_BASELINE_RELATIVE = 4
+
+
+class RfVector3V1(ctypes.Structure):
+    _fields_ = [
+        ("x", ctypes.c_double),
+        ("y", ctypes.c_double),
+        ("z", ctypes.c_double),
+    ]
+
+
+class RfAzElV1(ctypes.Structure):
+    _fields_ = [
+        ("azimuth_rad", ctypes.c_double),
+        ("elevation_rad", ctypes.c_double),
+    ]
+
+
+class RfEcefPointingV1(ctypes.Structure):
+    _fields_ = [
+        ("location_m", RfVector3V1),
+        ("velocity_mps", RfVector3V1),
+        ("time_of_validity", RfUtcTimeV1),
+    ]
+
+
+class RfLlaPointingV1(ctypes.Structure):
+    _fields_ = [
+        ("latitude_rad", ctypes.c_double),
+        ("longitude_rad", ctypes.c_double),
+        ("altitude_m", ctypes.c_double),
+        ("velocity_north_mps", ctypes.c_double),
+        ("velocity_east_mps", ctypes.c_double),
+        ("velocity_down_mps", ctypes.c_double),
+        ("time_of_validity", RfUtcTimeV1),
+    ]
+
+
+class RfPointingV1(ctypes.Structure):
+    _fields_ = [
+        ("kind", RfPointingKind),
+        ("ecef", RfEcefPointingV1),
+        ("lla", RfLlaPointingV1),
+        ("platform_relative", RfAzElV1),
+        ("face_relative", RfAzElV1),
+        ("baseline_relative_conic_rad", ctypes.c_double),
+    ]
+
+
+class RfPointingSpanV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfPointingV1)),
+        ("size", ctypes.c_size_t),
+    ]
+
+
+class RfRxElementGroupConfigV3(ctypes.Structure):
+    _fields_ = [
+        ("group", RfRxElementGroupConfigV2),
+        ("expected_pointing_angles", RfPointingSpanV1),
+    ]
+
+
+class RfRxElementGroupConfigSpanV3(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfRxElementGroupConfigV3)),
+        ("size", ctypes.c_size_t),
+    ]
+
+
+class RfJobRequestConfigV3(ctypes.Structure):
+    _fields_ = [
+        ("request_id", ctypes.c_uint32),
+        ("priority", ctypes.c_uint32),
+        ("precedence_within_priority", ctypes.c_uint32),
+        ("is_interruptable", ctypes.c_uint32),
+        ("instance_selection", U32SpanV1),
+        ("rx_groups", RfRxElementGroupConfigSpanV3),
+        ("min_start_time", RfUtcTimeV1),
+        ("max_complete_time", RfUtcTimeV1),
+        ("duration_femtoseconds", ctypes.c_int64),
+        ("capability_id", U8SpanV1),
+        ("activity_id", U8SpanV1),
+        ("tx_power_mode_ids", U32SpanV1),
+        ("lookahead_femtoseconds", ctypes.c_int64),
+        ("has_estimated_stab_point", ctypes.c_uint32),
+        ("estimated_stab_point", RfPointingV1),
+    ]
+
 # Pinned sentinel aliases ordinary zero relative start; not INT64_MAX.
 AMS_MEL_RF_JOB_INTERVAL_CONTINUE_FROM_PREVIOUS_FS = 0
 
@@ -1866,8 +1960,14 @@ ams_mel_rf_virtual_aperture_submit_job_v2.argtypes = [
     RfVaHandle, ctypes.POINTER(RfJobRequestConfigV2), ctypes.POINTER(RfJobRequestHandle),
     CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
 ams_mel_rf_virtual_aperture_submit_job_v2.restype = ctypes.c_int32
+ams_mel_rf_virtual_aperture_submit_job_v3 = _LIBRARY.ams_mel_rf_virtual_aperture_submit_job_v3
+ams_mel_rf_virtual_aperture_submit_job_v3.argtypes = [
+    RfVaHandle, ctypes.POINTER(RfJobRequestConfigV3), ctypes.POINTER(RfJobRequestHandle),
+    CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+ams_mel_rf_virtual_aperture_submit_job_v3.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_rf_virtual_aperture_submit_job_v3",
     "ams_mel_rf_virtual_aperture_submit_job_v2",
     "ams_mel_rf_virtual_aperture_get_tx_radiated_power",
     "ams_mel_rf_virtual_aperture_get_tx_peak_radiated_power",

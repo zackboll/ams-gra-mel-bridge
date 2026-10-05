@@ -1799,6 +1799,73 @@ private package AMS.MEL_C_API is
       Lookahead_Femtoseconds                                             : Interfaces.Integer_64;
    end record
    with Convention => C;
+   subtype RF_Pointing_Kind is Interfaces.Unsigned_32;
+   RF_Pointing_ECEF                                                         :
+     constant RF_Pointing_Kind := 0;
+   RF_Pointing_LLA                                                          :
+     constant RF_Pointing_Kind := 1;
+   RF_Pointing_Platform_Relative                                            :
+     constant RF_Pointing_Kind := 2;
+   RF_Pointing_Face_Relative                                                :
+     constant RF_Pointing_Kind := 3;
+   RF_Pointing_Baseline_Relative                                            :
+     constant RF_Pointing_Kind := 4;
+   type RF_Vector3_V1 is record
+      X, Y, Z : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Az_El_V1 is record
+      Azimuth_Rad, Elevation_Rad : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_ECEF_Pointing_V1 is record
+      Location_M, Velocity_MPS : RF_Vector3_V1;
+      Time_Of_Validity         : RF_UTC_Time_V1;
+   end record
+   with Convention => C;
+   type RF_LLA_Pointing_V1 is record
+      Latitude_Rad, Longitude_Rad, Altitude_M                  : Interfaces.C.double;
+      Velocity_North_MPS, Velocity_East_MPS, Velocity_Down_MPS : Interfaces.C.double;
+      Time_Of_Validity                                         : RF_UTC_Time_V1;
+   end record
+   with Convention => C;
+   type RF_Pointing_V1 is record
+      Kind                             : RF_Pointing_Kind;
+      ECEF                             : RF_ECEF_Pointing_V1;
+      LLA                              : RF_LLA_Pointing_V1;
+      Platform_Relative, Face_Relative : RF_Az_El_V1;
+      Baseline_Relative_Conic_Rad      : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Pointing_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_RX_Element_Group_Config_V3 is record
+      Group                    : RF_RX_Element_Group_Config_V2;
+      Expected_Pointing_Angles : RF_Pointing_Span_V1;
+   end record
+   with Convention => C;
+   type RF_RX_Element_Group_Config_Span_V3 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Request_Config_V3 is record
+      Request_ID, Priority, Precedence_Within_Priority, Is_Interruptable : Interfaces.Unsigned_32;
+      Instance_Selection                                                 : U32_Span_V1;
+      RX_Groups                                                          :
+        RF_RX_Element_Group_Config_Span_V3;
+      Min_Start_Time, Max_Complete_Time                                  : RF_UTC_Time_V1;
+      Duration_Femtoseconds                                              : Interfaces.Integer_64;
+      Capability_ID, Activity_ID                                         : U8_Span_V1;
+      TX_Power_Mode_IDs                                                  : U32_Span_V1;
+      Lookahead_Femtoseconds                                             : Interfaces.Integer_64;
+      Has_Estimated_Stab_Point                                           : Interfaces.Unsigned_32;
+      Estimated_Stab_Point                                               : RF_Pointing_V1;
+   end record
+   with Convention => C;
    type RF_Receive_Event_Config_V1 is record
       Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String_View_V1;
@@ -2193,6 +2260,14 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job_v2";
+   function RF_VA_Submit_Job_V3
+     (Handle              : RF_VA_Handle;
+      Config              : access constant RF_Job_Request_Config_V3;
+      Output              : access RF_Job_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_virtual_aperture_submit_job_v3";
    function RF_Job_Request_Wait
      (Handle              : RF_Job_Request_Handle;
       Timeout_MS          : Interfaces.Unsigned_32;
