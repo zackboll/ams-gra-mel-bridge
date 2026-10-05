@@ -268,12 +268,29 @@ with the matrix evidence, ensuring stress-tested source remains unchanged.
 
 ## Publication and hosted evidence
 
-Final push and PR evidence is recorded after their actual workflows complete.
-Push tests the literal corrective source commit; pull_request tests GitHub's
-synthetic merge commit. The PR must remain open, non-draft, unmerged, with
-auto-merge disabled. No PR merge-ref result is described as literal-source-head
-testing. This report's hosted completion record may use a separate normal
-documentation-only commit; no amend or force-push is used.
+Corrective source commit:
+`02b89d77d00c45594b3f53a480acca2dd13cfcee`,
+`Stabilize RF Job abandonment cleanup observation`.
+PR [#78](https://github.com/zackboll/ams-gra-mel-bridge/pull/78) targets main and
+remains open, non-draft, unmerged, with auto-merge disabled.
+
+| Completed workflow | Actual checkout | Result |
+| --- | --- | --- |
+| [Push 37260299801](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/37260299801) | literal source `02b89d77d00c45594b3f53a480acca2dd13cfcee` | **8/8** |
+| [PR 37260328513](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/37260328513) | synthetic `refs/pull/78/merge`, `7ac17ab228da2b1edf62b3cee9af1055236be7c0` | **8/8** |
+
+All four native configurations, Ada/direct-GPR and formatting, build-tree
+isolation, Rust, and Python passed on both. Blocking `gh run watch --exit-status`
+commands returned 0. Actual native checkout SHA and unchanged parallel-4/
+repeat-until-fail-50 command were verified from job logs, not merely workflow
+headSha metadata. No retry, rerun, or timeout increase was needed.
+
+This normal documentation-only completion commit records those source-change
+workflow results. Its final push/PR workflow IDs, literal and synthetic checkout
+SHAs, all-eight-job results, and local/remote/PR-head equality are retained in
+`build/corrective-evidence/finalization/` and the PR completion comment after
+the final blocking watches. No amend or force-push is used. PR merge-ref testing
+is never described as literal-source-head testing; the PR is left for review.
 
 ## Environment and evidence preservation
 
@@ -283,4 +300,8 @@ filesystem. Task logs and compiler temporary storage use disk-backed
 `build/corrective-evidence/tmp`; unchanged legacy test lifetime-log templates
 still use `/tmp`. All earlier failed experiments and stop evidence remain
 preserved. No timeout increase, sleep, retry, CI weakening, or production change
-is used to obtain passing results.
+is used to obtain passing results. No ENOSPC or environment-only failure occurred
+during the final matrix or aggregate gates; `/tmp` retained more than 9 GiB free
+and the repository filesystem about 850 GiB free. Earlier investigation failures
+and diagnostic probe exclusions remain preserved separately, not counted as
+passing validation or product failures.
