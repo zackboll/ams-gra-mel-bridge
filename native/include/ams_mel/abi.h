@@ -2816,6 +2816,68 @@ typedef struct ams_mel_rf_job_interval_config_span_v3 {
     const ams_mel_rf_job_interval_config_v3 *data;
     size_t size;
 } ams_mel_rf_job_interval_config_span_v3;
+/* Value-only RX controls. Doubles are forwarded without normalization or finite
+ * checks. Polarization contains 0..2 ordered Stokes values. Booleans are 0/1;
+ * enums must be known. Counts must fit size_t, with no relationship checks.
+ * Activity ID is arbitrary binary data; TX power mode is not TxPowerLevel.
+ * All spans are borrowed during synchronous Add. Older profiles remain frozen. */
+typedef uint32_t ams_mel_rf_execution_type_t;
+#define AMS_MEL_RF_EXECUTION_NORMAL UINT32_C(0)
+#define AMS_MEL_RF_EXECUTION_CONDITIONAL UINT32_C(1)
+typedef uint32_t ams_mel_rf_event_termination_type_t;
+#define AMS_MEL_RF_EVENT_TERMINATION_INHIBIT UINT32_C(0)
+#define AMS_MEL_RF_EVENT_TERMINATION_CANCEL UINT32_C(1)
+typedef struct ams_mel_rf_stokes_vector_v1 {
+    double s0;
+    double s1;
+    double s2;
+    double s3;
+} ams_mel_rf_stokes_vector_v1;
+typedef struct ams_mel_rf_stokes_vector_span_v1 {
+    const ams_mel_rf_stokes_vector_v1 *data;
+    size_t size;
+} ams_mel_rf_stokes_vector_span_v1;
+typedef struct ams_mel_rf_receive_event_config_v3 {
+    ams_mel_rf_receive_event_config_v2 event;
+    ams_mel_rf_stokes_vector_span_v1 polarization;
+    uint32_t polarization_beam_steer_correction;
+    double phase_offset_rad;
+    ams_mel_rf_execution_type_t execution_type;
+    ams_mel_rf_event_termination_type_t termination_type;
+    uint32_t allow_delay_start;
+    uint64_t iteration_hold_count;
+    uint64_t iteration_termination_count;
+    uint32_t channelization_enabled;
+} ams_mel_rf_receive_event_config_v3;
+typedef struct ams_mel_rf_receive_event_config_span_v3 {
+    const ams_mel_rf_receive_event_config_v3 *data;
+    size_t size;
+} ams_mel_rf_receive_event_config_span_v3;
+typedef struct ams_mel_rf_job_interval_config_v4 {
+    int64_t interval_start_femtoseconds;
+    uint32_t interval_id;
+    int64_t interval_starting_gap_femtoseconds;
+    int64_t sequence_duration_femtoseconds;
+    uint64_t sequence_repeat_count;
+    int64_t calibration_duration_femtoseconds;
+    int64_t interval_ending_gap_femtoseconds;
+    uint32_t phase_coherence_with_prior;
+    uint64_t iterations_per_signal;
+    double max_data_rate_bps;
+    double max_sample_rate_hz;
+    uint32_t job_details_id;
+    ams_mel_rf_job_interval_status_enable_t status_enable;
+    ams_mel_rf_pointing_span_v1 stab_points;
+    ams_mel_rf_receive_event_config_span_v3 receive_events;
+    uint32_t tx_power_mode_id;
+    ams_mel_u8_span_v1 activity_id;
+    ams_mel_rf_execution_type_t execution_type;
+} ams_mel_rf_job_interval_config_v4;
+typedef struct ams_mel_rf_job_interval_config_span_v4 {
+    const ams_mel_rf_job_interval_config_v4 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v4;
+
 typedef uint32_t ams_mel_rf_job_interval_completion_status_t;
 #define AMS_MEL_RF_INTERVAL_COMPLETION_NONE UINT32_C(0)
 #define AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL UINT32_C(1)
@@ -2935,6 +2997,10 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
  * quantization, retry or TX construction. Provider semantic validation is final. */
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v3 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 intervals,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_result_v1 {

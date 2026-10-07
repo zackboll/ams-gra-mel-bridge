@@ -3857,3 +3857,87 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+pub type AmsMelRfExecutionTypeT = u32;
+pub type AmsMelRfEventTerminationTypeT = u32;
+pub const AMS_MEL_RF_EXECUTION_NORMAL: AmsMelRfExecutionTypeT = 0;
+pub const AMS_MEL_RF_EXECUTION_CONDITIONAL: AmsMelRfExecutionTypeT = 1;
+pub const AMS_MEL_RF_EVENT_TERMINATION_INHIBIT: AmsMelRfEventTerminationTypeT = 0;
+pub const AMS_MEL_RF_EVENT_TERMINATION_CANCEL: AmsMelRfEventTerminationTypeT = 1;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfStokesVectorV1 {
+    pub s0: f64,
+    pub s1: f64,
+    pub s2: f64,
+    pub s3: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfStokesVectorSpanV1 {
+    pub data: *const AmsMelRfStokesVectorV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigV3 {
+    pub event: AmsMelRfReceiveEventConfigV2,
+    pub polarization: AmsMelRfStokesVectorSpanV1,
+    pub polarization_beam_steer_correction: u32,
+    pub phase_offset_rad: f64,
+    pub execution_type: AmsMelRfExecutionTypeT,
+    pub termination_type: AmsMelRfEventTerminationTypeT,
+    pub allow_delay_start: u32,
+    pub iteration_hold_count: u64,
+    pub iteration_termination_count: u64,
+    pub channelization_enabled: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigSpanV3 {
+    pub data: *const AmsMelRfReceiveEventConfigV3,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV4 {
+    pub interval_start_femtoseconds: i64,
+    pub interval_id: u32,
+    pub interval_starting_gap_femtoseconds: i64,
+    pub sequence_duration_femtoseconds: i64,
+    pub sequence_repeat_count: u64,
+    pub calibration_duration_femtoseconds: i64,
+    pub interval_ending_gap_femtoseconds: i64,
+    pub phase_coherence_with_prior: u32,
+    pub iterations_per_signal: u64,
+    pub max_data_rate_bps: f64,
+    pub max_sample_rate_hz: f64,
+    pub job_details_id: u32,
+    pub status_enable: u32,
+    pub stab_points: AmsMelRfPointingSpanV1,
+    pub receive_events: AmsMelRfReceiveEventConfigSpanV3,
+    pub tx_power_mode_id: u32,
+    pub activity_id: AmsMelU8SpanV1,
+    pub execution_type: AmsMelRfExecutionTypeT,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV4 {
+    pub data: *const AmsMelRfJobIntervalConfigV4,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v4(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV4,
+        diagnostic: *mut std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

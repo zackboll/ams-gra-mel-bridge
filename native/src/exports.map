@@ -159,6 +159,7 @@ AMS_MEL_0.1 {
         ams_mel_rf_job_add_rx_intervals;
         ams_mel_rf_job_add_rx_intervals_v2;
         ams_mel_rf_job_add_rx_intervals_v3;
+        ams_mel_rf_job_add_rx_intervals_v4;
         ams_mel_rf_job_interval_status_open;
         ams_mel_rf_job_interval_status_receive;
         ams_mel_rf_job_interval_status_get_counters;

@@ -415,7 +415,8 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool spatial = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
+    constexpr bool controls = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
+    constexpr bool spatial = controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
     const auto input_at = [&](std::size_t i) -> const auto& {
         if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
         else return inputs.data[i];
@@ -430,6 +431,11 @@ ams_mel_status_t add_rx_intervals(
         const auto& input = input_at(i);
         if (mode_at(i) > AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION) return AMS_MEL_INVALID_ARGUMENT;
         enabled = enabled || mode_at(i) != AMS_MEL_RF_INTERVAL_STATUS_NEVER;
+        if constexpr (controls) {
+            if (input.execution_type > AMS_MEL_RF_EXECUTION_CONDITIONAL ||
+                !span_ok(input.activity_id.size, input.activity_id.data, sizeof(*input.activity_id.data)))
+                return AMS_MEL_INVALID_ARGUMENT;
+        }
         if (input.phase_coherence_with_prior > 1U || !fits_count(input.sequence_repeat_count) ||
             !fits_count(input.iterations_per_signal) ||
             !span_ok(input.receive_events.size, input.receive_events.data, sizeof(*input.receive_events.data)))
@@ -442,18 +448,32 @@ ams_mel_status_t add_rx_intervals(
         }
         for (std::size_t e = 0; e < input.receive_events.size; ++e) {
             const auto& envelope = input.receive_events.data[e];
+            const auto& spatial_event = [&]() -> const auto& {
+                if constexpr (controls) return envelope.event;
+                else return envelope;
+            }();
             const auto& event = [&]() -> const auto& {
-                if constexpr (spatial) return envelope.event;
+                if constexpr (spatial) return spatial_event.event;
                 else return envelope;
             }();
             if (!valid_view(event.element_group_label) || !fits_count(event.agc_processing_iterations) ||
                 !fits_count(event.ignored_post_agc_iterations)) return AMS_MEL_INVALID_ARGUMENT;
             if constexpr (spatial) {
-                const auto groups = envelope.applicable_rx_element_groups;
-                if (!fits_count(envelope.stab_point_index) ||
+                const auto groups = spatial_event.applicable_rx_element_groups;
+                if (!fits_count(spatial_event.stab_point_index) ||
                     !span_ok(groups.size, groups.data, sizeof(*groups.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t g = 0; g < groups.size; ++g)
                     if (!fits_count(groups.data[g])) return AMS_MEL_INVALID_ARGUMENT;
+            }
+            if constexpr (controls) {
+                if (!span_ok(envelope.polarization.size, envelope.polarization.data,
+                             sizeof(*envelope.polarization.data)) || envelope.polarization.size > 2U ||
+                    envelope.polarization_beam_steer_correction > 1U || envelope.allow_delay_start > 1U ||
+                    envelope.channelization_enabled > 1U ||
+                    envelope.execution_type > AMS_MEL_RF_EXECUTION_CONDITIONAL ||
+                    envelope.termination_type > AMS_MEL_RF_EVENT_TERMINATION_CANCEL ||
+                    !fits_count(envelope.iteration_hold_count) ||
+                    !fits_count(envelope.iteration_termination_count)) return AMS_MEL_INVALID_ARGUMENT;
             }
         }
     }
@@ -477,8 +497,12 @@ ams_mel_status_t add_rx_intervals(
             events.reserve(input.receive_events.size);
             for (std::size_t e = 0; e < input.receive_events.size; ++e) {
                 const auto& envelope = input.receive_events.data[e];
+                const auto& spatial_event = [&]() -> const auto& {
+                    if constexpr (controls) return envelope.event;
+                    else return envelope;
+                }();
                 const auto& config = [&]() -> const auto& {
-                    if constexpr (spatial) return envelope.event;
+                    if constexpr (spatial) return spatial_event.event;
                     else return envelope;
                 }();
                 rfmel::ReceiveEvent event;
@@ -493,11 +517,28 @@ ams_mel_status_t add_rx_intervals(
                 event.setMaxExtensionDuration(Fs{config.max_extension_femtoseconds});
                 if constexpr (spatial) {
                     std::vector<std::size_t> groups;
-                    groups.reserve(envelope.applicable_rx_element_groups.size);
-                    for (std::size_t g = 0; g < envelope.applicable_rx_element_groups.size; ++g)
-                        groups.push_back(static_cast<std::size_t>(envelope.applicable_rx_element_groups.data[g]));
-                    event.setStabPointIndex(static_cast<std::size_t>(envelope.stab_point_index));
+                    groups.reserve(spatial_event.applicable_rx_element_groups.size);
+                    for (std::size_t g = 0; g < spatial_event.applicable_rx_element_groups.size; ++g)
+                        groups.push_back(static_cast<std::size_t>(spatial_event.applicable_rx_element_groups.data[g]));
+                    event.setStabPointIndex(static_cast<std::size_t>(spatial_event.stab_point_index));
                     event.setApplicableRxElementGroups(groups);
+                }
+                if constexpr (controls) {
+                    std::vector<rfmel::StokesVector> polarization;
+                    polarization.reserve(envelope.polarization.size);
+                    for (std::size_t p = 0; p < envelope.polarization.size; ++p) {
+                        const auto& s = envelope.polarization.data[p];
+                        polarization.push_back(rfmel::StokesVector{s.s0, s.s1, s.s2, s.s3});
+                    }
+                    event.setPolarization(polarization);
+                    event.setPolarizationBeemSteerCorrectionEnabled(envelope.polarization_beam_steer_correction != 0U);
+                    event.setPhaseOffset(envelope.phase_offset_rad);
+                    event.setExecutionType(static_cast<rfmel::ExecutionType>(envelope.execution_type));
+                    event.setEventTerminationType(static_cast<rfmel::JobEvent::EventTerminationType>(envelope.termination_type));
+                    event.setAllowDelayStart(envelope.allow_delay_start != 0U);
+                    event.setIterationHoldCount(static_cast<std::size_t>(envelope.iteration_hold_count));
+                    event.setIterationTerminationCount(static_cast<std::size_t>(envelope.iteration_termination_count));
+                    event.setChannelizationEnabled(envelope.channelization_enabled != 0U);
                 }
                 events.push_back(std::move(event));
             }
@@ -525,6 +566,14 @@ ams_mel_status_t add_rx_intervals(
                     points.push_back(prepare_pointing(input.stab_points.data[p]));
                 interval.setStabPoints(points);
             }
+            if constexpr (controls) {
+                std::vector<std::uint8_t> activity;
+                if (input.activity_id.size)
+                    activity.assign(input.activity_id.data, input.activity_id.data + input.activity_id.size);
+                interval.setTxPowerModeID(input.tx_power_mode_id);
+                interval.setActivityId(activity);
+                interval.setExecutionType(static_cast<rfmel::ExecutionType>(input.execution_type));
+            }
             intervals.push_back(std::move(interval));
         }
         return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
@@ -549,6 +598,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v3 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(
