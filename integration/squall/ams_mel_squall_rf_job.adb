@@ -164,16 +164,21 @@ begin
                            Intervals : C2.RX_Job_Interval_List;
                         begin
                            C2.Set_Interval_Status_Enable (Interval, C2.Always);
-                           C2.Append_RX_Event
-                             (Interval,
-                              C2.Create_RX_Receive_Event
-                                (1,
-                                 "0",
-                                 0,
-                                 1_000_000_000,
-                                 100_000_000.0,
-                                 1_000_000.0,
-                                 Max_Extension_Femtoseconds => 500_000_000));
+                           C2.Append_Stab_Point (Interval, C2.Create_Face_Relative_Pointing (0.1, -0.2));
+                           C2.Append_Stab_Point (Interval, C2.Create_ECEF_Pointing
+                             (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, C2.Create_UTC_Time (7, 8)));
+                           C2.Append_Stab_Point (Interval, C2.Create_LLA_Pointing
+                             (0.1, 0.2, 300.0, 4.0, 5.0, 6.0, C2.Create_UTC_Time (7, 8)));
+                           declare
+                              Event : C2.RX_Receive_Event_Config := C2.Create_RX_Receive_Event
+                                (1, "0", 0, 1_000_000_000, 100_000_000.0, 1_000_000.0,
+                                 Max_Extension_Femtoseconds => 500_000_000);
+                           begin
+                              C2.Set_Stab_Point_Index (Event, 1);
+                              C2.Append_Applicable_RX_Element_Group (Event, 0);
+                              C2.Append_Applicable_RX_Element_Group (Event, 0);
+                              C2.Append_RX_Event (Interval, Event);
+                           end;
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
@@ -257,5 +262,7 @@ begin
    Ada.Text_IO.Put_Line
       ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle; real Squall " &
        "ElementGroupCommand accepted bridge-issued addExpectedPointingAngle calls " &
-       "and requestJob accepted the completed request (not geometry/scheduling evidence)");
+       "and requestJob accepted the completed request; real provider accepted " &
+       "addJobIntervals containing bridge-constructed spatial values; payload " &
+       "fidelity and spatial semantics are mock evidence only");
 end AMS_MEL_Squall_RF_Job;

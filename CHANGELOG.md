@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Task 034F4: additive RX receive-event v2 and JobInterval v3 spatial controls,
+  one `ams_mel_rf_job_add_rx_intervals_v3` export, safe Ada-owned ordered stab
+  points/group indices and portable event index. Frozen v1/v2 and ABI 0.1 remain.
+  Reuses F2 Pointing conversion; active UTC only, no numeric normalization or
+  local index relationship checks. Raw Ada/Rust/private Python parity; no safe
+  Rust/public Python feature or TX execution. Pinned interval applicable-group
+  contract mismatch remains deferred; Squall no-op acceptance has narrow meaning.
+
 - Task 034F3 adds one JobRequest v4 submit export and fixed ordered mixed RX/TX
   envelopes, preserving frozen v1/v2/v3 and ABI 0.1. Active payloads alone are
   validated/copied. TX forwards exact uint32 TxPowerLevel, duty and frequencies;

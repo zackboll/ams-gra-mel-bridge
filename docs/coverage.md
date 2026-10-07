@@ -1,5 +1,18 @@
 # Implementation coverage
 
+Task 034F4 adds RX JobInterval spatial association: ordered stabilization
+PointingType values (all five F2 alternatives), event stab-point index, ordered
+duplicate-preserving applicable RX group indices. Native C, safe Ada and raw
+Ada/Rust/private Python are covered; frozen C interval v1/v2 retain spatial
+defaults. Only size_t representability is checked for portable uint64 indices,
+not relationships with point/group counts. Active ECEF/LLA UTC must be canonical;
+inactive UTC is ignored and active doubles are forwarded without finite checks.
+Status Never/Always/OnException retain v2 local-registration gating. No queries or
+auto-quantization. Pinned Squall Add is no-op acceptance, not geometry, steering,
+scheduling or provider index validation. TX intervals and all unrelated event/
+resource fields remain deferred, including the inconsistent pinned interval
+applicable-group setter/getter and endpoints. See the task report for actual checks.
+
 Task 034F3 completes the non-callback RX/TX ElementGroupCommand JobRequest
 construction profile in production C and safe Ada. V4 supports RX-only, TX-only
 and one ordered mixed sequence, including repeated labels. TX label/duty/exact
