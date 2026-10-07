@@ -156,6 +156,27 @@ package AMS.MEL.RF.C2 is
    --  remapping is performed. Matching this value does not prove scheduling.
    Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 := 0;
    type RX_Receive_Event_Config is private;
+   type Execution_Type is (Normal, Conditional);
+   for Execution_Type use (Normal => 0, Conditional => 1);
+   type Event_Termination_Type is (Inhibit_Event, Cancel_Event);
+   for Event_Termination_Type use (Inhibit_Event => 0, Cancel_Event => 1);
+   --  Ordered copied Stokes values, no normalization or finite checks. A third
+   --  append raises Constraint_Error. Provider semantic validation remains final.
+   procedure Append_Polarization
+     (Event : in out RX_Receive_Event_Config; S0, S1, S2, S3 : Long_Float);
+   procedure Set_Polarization_Beam_Steer_Correction
+     (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   procedure Set_Phase_Offset_Radians (Event : in out RX_Receive_Event_Config; Value : Long_Float);
+   procedure Set_Event_Execution_Type
+     (Event : in out RX_Receive_Event_Config; Value : Execution_Type);
+   procedure Set_Event_Termination_Type
+     (Event : in out RX_Receive_Event_Config; Value : Event_Termination_Type);
+   procedure Set_Allow_Delay_Start (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   procedure Set_Iteration_Hold_Count
+     (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64);
+   procedure Set_Iteration_Termination_Count
+     (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64);
+   procedure Set_Channelization_Enabled (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
    --  Portable provider indices, not labels. No local count/range relationship
    --  is inferred. Applicable group order and duplicates are preserved.
    procedure Set_Stab_Point_Index
@@ -173,6 +194,12 @@ package AMS.MEL.RF.C2 is
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
    type RX_Job_Interval_Config is private;
+   procedure Set_Interval_TX_Power_Mode_ID
+     (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32);
+   procedure Set_Interval_Activity_ID
+     (Interval : in out RX_Job_Interval_Config; Value : Byte_Array);
+   procedure Set_Interval_Execution_Type
+     (Interval : in out RX_Job_Interval_Config; Value : Execution_Type);
    procedure Append_Stab_Point (Interval : in out RX_Job_Interval_Config; Value : Pointing);
    type Interval_Status_Enable is (Never, Always, On_Exception);
    for Interval_Status_Enable use (Never => 0, Always => 1, On_Exception => 2);
@@ -249,6 +276,24 @@ package AMS.MEL.RF.C2 is
 private
    pragma
      Compile_Time_Error
+       (Execution_Type'Enum_Rep (Normal) /= Integer (AMS.MEL_C_API.RF_Execution_Normal),
+        "RF execution representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Execution_Type'Enum_Rep (Conditional) /= Integer (AMS.MEL_C_API.RF_Execution_Conditional),
+        "RF execution representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Event_Termination_Type'Enum_Rep (Inhibit_Event)
+          /= Integer (AMS.MEL_C_API.RF_Event_Termination_Inhibit),
+        "RF execution representation mismatch");
+   pragma
+     Compile_Time_Error
+       (Event_Termination_Type'Enum_Rep (Cancel_Event)
+          /= Integer (AMS.MEL_C_API.RF_Event_Termination_Cancel),
+        "RF execution representation mismatch");
+   pragma
+     Compile_Time_Error
        (Interval_Status_Enable'Enum_Rep (Never) /= Integer (AMS.MEL_C_API.Rf_Interval_Status_Never),
         "RF reporting enum representation mismatch");
    pragma
@@ -282,6 +327,10 @@ private
    package Pointing_Vectors is new Ada.Containers.Vectors (Positive, Pointing);
    package RX_Index_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Unsigned_64, Interfaces."=");
+   type Stokes_Components is array (Positive range 1 .. 4) of Long_Float;
+   package Stokes_Vectors is new Ada.Containers.Vectors (Positive, Stokes_Components);
+   package Byte_Vectors is new
+     Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
    type RX_Receive_Event_Config is record
       Event_ID                                               : Interfaces.Unsigned_32;
       Label                                                  :
@@ -292,6 +341,15 @@ private
       Max_Extension_Femtoseconds                             : Interfaces.Integer_64;
       Stab_Point_Index                                       : Interfaces.Unsigned_64 := 0;
       Applicable_RX_Element_Groups                           : RX_Index_Vectors.Vector;
+      Polarization                                           : Stokes_Vectors.Vector;
+      Beam_Correction                                        : Boolean := False;
+      Phase_Offset                                           : Long_Float := 0.0;
+      Execution                                              : Execution_Type := Normal;
+      Termination                                            : Event_Termination_Type :=
+        Inhibit_Event;
+      Allow_Delay                                            : Boolean := False;
+      Hold_Count, Termination_Count                          : Interfaces.Unsigned_64 := 0;
+      Channelization                                         : Boolean := False;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
    type RX_Job_Interval_Config is record
@@ -307,6 +365,9 @@ private
       Events                                       : RX_Event_Vectors.Vector;
       Status_Enable                                : Interval_Status_Enable := Never;
       Stab_Points                                  : Pointing_Vectors.Vector;
+      TX_Power_Mode                                : Interfaces.Unsigned_32 := 0;
+      Activity                                     : Byte_Vectors.Vector;
+      Execution                                    : Execution_Type := Normal;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record
@@ -359,8 +420,6 @@ private
       end case;
    end record;
    package Group_Vectors is new Ada.Containers.Vectors (Positive, Job_Group);
-   package Byte_Vectors is new
-     Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
    type Job_Config is record
       ID, Priority, Precedence : Interfaces.Unsigned_32;
       Interruptable            : Boolean;
