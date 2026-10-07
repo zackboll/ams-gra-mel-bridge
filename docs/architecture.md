@@ -1,5 +1,26 @@
 # Architecture decisions
 
+Task 034F5 adds value-only RX receive-event v3 / JobInterval v4 controls through
+one new export, `ams_mel_rf_job_add_rx_intervals_v4`. Shared execution values are
+Normal=0 and Conditional=1; event termination is Inhibit=0 / Cancel=1. Ordered
+polarization consists of zero, one or two four-double Stokes values, without
+normalization or finite/range checks. Phase radians and Stokes doubles retain
+signed zero, infinities and NaN classification. Boolean encodings are exactly
+0/1; uint64 iteration counts must fit provider size_t. No execution/termination,
+count/repeat, event/interval, activity or TX mode relationships are inferred.
+Activity IDs are arbitrary copied binary bytes; uint32 TX Power Mode ID is not
+TxPowerLevel. All values are prepared before the single provider Add, with no
+hidden queries; existing status-registration/lifetime/lock/error paths remain.
+Older event v1/v2 and interval v1/v2/v3 records/signatures remain frozen, ABI 0.1.
+Safe Ada owns backing and privately serializes v4; raw Ada/Rust/private Python
+match, with no safe Rust or public Python F5 API. Pinned Squall Add is a no-op:
+real-provider acceptance is not execution/polarization/channelization evidence.
+Weights (provider pointer ownership), PulseDetectionSettings (cohesive conditional
+settings), Modulation (resource variants), endpoints and the inconsistent pinned
+interval applicable-group setter/getter remain deferred. No TX events/intervals,
+LF/context/ProductStream/RDMA/VADB expansion. See `docs/task-034f5-rf-rx-event-controls.md`.
+
+
 Task 034F4 extends only the existing RX Add path with ordinary prepared spatial
 values, not provider owners, claims, workers or lifetime paths. Receive-event v2
 adds uint64 stab index and ordered size_t-compatible group indices; explicit
