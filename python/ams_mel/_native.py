@@ -2163,6 +2163,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_interval_status_event_view",
     "ams_mel_rf_job_interval_status_event_close",
     "ams_mel_rf_job_add_rx_intervals_v2",
+    "ams_mel_rf_job_add_rx_intervals_v3",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2195,3 +2196,45 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_product_rx_event_view",
     "ams_mel_rf_product_rx_event_close",
 )
+
+class RfReceiveEventConfigV2(ctypes.Structure):
+    _fields_ = [
+        ("event", RfReceiveEventConfigV1),
+        ("stab_point_index", ctypes.c_uint64),
+        ("applicable_rx_element_groups", U64SpanV1),
+    ]
+
+class RfReceiveEventConfigSpanV2(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfReceiveEventConfigV2)),
+        ("size", ctypes.c_size_t),
+    ]
+
+class RfJobIntervalConfigV3(ctypes.Structure):
+    _fields_ = [
+        ("interval_start_femtoseconds", ctypes.c_int64),
+        ("interval_id", ctypes.c_uint32),
+        ("interval_starting_gap_femtoseconds", ctypes.c_int64),
+        ("sequence_duration_femtoseconds", ctypes.c_int64),
+        ("sequence_repeat_count", ctypes.c_uint64),
+        ("calibration_duration_femtoseconds", ctypes.c_int64),
+        ("interval_ending_gap_femtoseconds", ctypes.c_int64),
+        ("phase_coherence_with_prior", ctypes.c_uint32),
+        ("iterations_per_signal", ctypes.c_uint64),
+        ("max_data_rate_bps", ctypes.c_double),
+        ("max_sample_rate_hz", ctypes.c_double),
+        ("job_details_id", ctypes.c_uint32),
+        ("status_enable", ctypes.c_uint32),
+        ("stab_points", RfPointingSpanV1),
+        ("receive_events", RfReceiveEventConfigSpanV2),
+    ]
+
+class RfJobIntervalConfigSpanV3(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfJobIntervalConfigV3)),
+        ("size", ctypes.c_size_t),
+    ]
+
+ams_mel_rf_job_add_rx_intervals_v3 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v3
+ams_mel_rf_job_add_rx_intervals_v3.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV3, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v3.restype = ctypes.c_int32

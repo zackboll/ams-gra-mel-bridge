@@ -1,3 +1,17 @@
+# RX JobInterval spatial controls (Task 034F4)
+
+Safe Ada adds `Set_Stab_Point_Index`, `Append_Applicable_RX_Element_Group`,
+and `Append_Stab_Point` to the existing RX configuration types. Existing source
+keeps empty spatial vectors and index zero. Private serialization uses additive
+JobInterval v3 / receive-event v2; C v1/v2 records and exports remain frozen.
+Ordered Pointing values and group indices preserve duplicates; uint64 indices
+must fit provider size_t but are not locally checked against any group/point
+count. F2 active-only UTC and exact-double policy applies. Status gating remains
+v2. No queries, auto-quantization, TX intervals or resource APIs are added.
+Pinned Squall Add is a no-op: real acceptance is not spatial semantic evidence.
+The inconsistent JobInterval applicable-group setter/getter is deferred.
+See [the task report](docs/task-034f4-rf-interval-spatial-controls.md).
+
 # AMS MEL — Language Bridge for Ada/SPARK, Rust, and Python GRA Skills
 
 Task 034F3 adds **ordered mixed RX/TX JobRequest v4 construction** in production

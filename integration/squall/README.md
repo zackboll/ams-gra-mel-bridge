@@ -1,3 +1,19 @@
+# Task 034F4 RX JobInterval spatial acceptance
+
+The first safe Ada RX interval now contains ordered FaceRelative/ECEF/LLA stab
+points; its RX event selects stab index 1 and applicable RX groups `[0, 0]`.
+Existing status stream, extension, flush, cancel-remaining, final cancel and
+parent-first assertions remain. Exact Squall pin
+`b1015728f904c799fa0c07489fce48e78f67845f` declares `addJobIntervals` as an empty
+method in `interfaces/squall-rf-mel-impl/src/SquallC2MEL.h:107`.
+Evidence means **real provider accepted addJobIntervals containing bridge-constructed
+spatial values; payload fidelity and spatial semantics are mock evidence only**.
+It cannot prove geometry use, point/group index validation, beam steering or
+scheduling. C ProductRx direct v1 and safe Ada ProductRx source remain unchanged.
+The interval applicable-group setter/getter mismatch is not bound; TX intervals,
+endpoints, Weights/LF/ProductStream/RDMA/VADB remain deferred. See
+`../../docs/task-034f4-rf-interval-spatial-controls.md` for measured validation.
+
 # Task 034F3 mixed JobRequest construction evidence
 
 Safe Ada Job and unchanged safe Ada ProductRx now privately submit v4; the C

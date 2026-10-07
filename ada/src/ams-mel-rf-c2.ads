@@ -156,6 +156,12 @@ package AMS.MEL.RF.C2 is
    --  remapping is performed. Matching this value does not prove scheduling.
    Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 := 0;
    type RX_Receive_Event_Config is private;
+   --  Portable provider indices, not labels. No local count/range relationship
+   --  is inferred. Applicable group order and duplicates are preserved.
+   procedure Set_Stab_Point_Index
+     (Event : in out RX_Receive_Event_Config; Index : Interfaces.Unsigned_64);
+   procedure Append_Applicable_RX_Element_Group
+     (Event : in out RX_Receive_Event_Config; Element_Group_Index : Interfaces.Unsigned_64);
    function Create_RX_Receive_Event
      (Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String;
@@ -167,6 +173,7 @@ package AMS.MEL.RF.C2 is
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
    type RX_Job_Interval_Config is private;
+   procedure Append_Stab_Point (Interval : in out RX_Job_Interval_Config; Value : Pointing);
    type Interval_Status_Enable is (Never, Always, On_Exception);
    for Interval_Status_Enable use (Never => 0, Always => 1, On_Exception => 2);
    procedure Set_Interval_Status_Enable
@@ -263,6 +270,18 @@ private
      Compile_Time_Error
        (Cancel_Error'Enum_Rep (None) /= Integer (AMS.MEL_C_API.RF_Cancel_Error_None),
         "RF CancelError representation mismatch");
+   type UTC_Time is record
+      Seconds, Fraction : Interfaces.Integer_64 := 0;
+   end record;
+   type Pointing_Components is array (Positive range 1 .. 6) of Long_Float;
+   type Pointing is record
+      Kind       : Pointing_Kind := Face_Relative;
+      Components : Pointing_Components := [others => 0.0];
+      Time       : UTC_Time;
+   end record;
+   package Pointing_Vectors is new Ada.Containers.Vectors (Positive, Pointing);
+   package RX_Index_Vectors is new
+     Ada.Containers.Vectors (Positive, Interfaces.Unsigned_64, Interfaces."=");
    type RX_Receive_Event_Config is record
       Event_ID                                               : Interfaces.Unsigned_32;
       Label                                                  :
@@ -271,6 +290,8 @@ private
       Center_Frequency_Hz, Sample_Frequency_Hz               : Long_Float;
       AGC_Processing_Iterations, Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64;
       Max_Extension_Femtoseconds                             : Interfaces.Integer_64;
+      Stab_Point_Index                                       : Interfaces.Unsigned_64 := 0;
+      Applicable_RX_Element_Groups                           : RX_Index_Vectors.Vector;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
    type RX_Job_Interval_Config is record
@@ -285,6 +306,7 @@ private
       Max_Data_Rate_BPS, Max_Sample_Rate_Hz        : Long_Float;
       Events                                       : RX_Event_Vectors.Vector;
       Status_Enable                                : Interval_Status_Enable := Never;
+      Stab_Points                                  : Pointing_Vectors.Vector;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record
@@ -313,16 +335,6 @@ private
       Endpoints : Endpoint_Vectors.Vector;
    end record;
    package Pipe_Vectors is new Ada.Containers.Vectors (Positive, Pipe_Config);
-   type UTC_Time is record
-      Seconds, Fraction : Interfaces.Integer_64 := 0;
-   end record;
-   type Pointing_Components is array (Positive range 1 .. 6) of Long_Float;
-   type Pointing is record
-      Kind       : Pointing_Kind := Face_Relative;
-      Components : Pointing_Components := [others => 0.0];
-      Time       : UTC_Time;
-   end record;
-   package Pointing_Vectors is new Ada.Containers.Vectors (Positive, Pointing);
    type RX_Element_Group_Config is record
       Label, Pipe : Ada.Strings.Unbounded.Unbounded_String;
       Duty        : Long_Float;

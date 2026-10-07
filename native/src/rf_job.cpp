@@ -373,6 +373,10 @@ static_assert(rfmel::JobInterval::ContinueFromPrevious.count() ==
               "C continuation constant must exactly match pinned RF MEL");
 bool fits_count(std::uint64_t value) noexcept
 { return value <= std::numeric_limits<std::size_t>::max(); }
+static_assert(std::numeric_limits<std::size_t>::digits <= 64);
+// One shared F2 implementation for JobRequest and JobInterval values.
+bool valid_pointing(const ams_mel_rf_pointing_v1& value) noexcept;
+rfmel::PointingType prepare_pointing(const ams_mel_rf_pointing_v1& value);
 template<class Operation>
 ams_mel_status_t interval_command(ams_mel_rf_job *job, bool require_unfinalized,
     Operation operation, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
@@ -411,9 +415,10 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    const auto input_at = [&](std::size_t i) -> const ams_mel_rf_job_interval_config_v1& {
-        if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) return inputs.data[i];
-        else return inputs.data[i].interval;
+    constexpr bool spatial = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
+    const auto input_at = [&](std::size_t i) -> const auto& {
+        if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
+        else return inputs.data[i];
     };
     const auto mode_at = [&](std::size_t i) -> std::uint32_t {
         if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) {
@@ -429,10 +434,27 @@ ams_mel_status_t add_rx_intervals(
             !fits_count(input.iterations_per_signal) ||
             !span_ok(input.receive_events.size, input.receive_events.data, sizeof(*input.receive_events.data)))
             return AMS_MEL_INVALID_ARGUMENT;
+        if constexpr (spatial) {
+            if (!span_ok(input.stab_points.size, input.stab_points.data, sizeof(*input.stab_points.data)))
+                return AMS_MEL_INVALID_ARGUMENT;
+            for (std::size_t p = 0; p < input.stab_points.size; ++p)
+                if (!valid_pointing(input.stab_points.data[p])) return AMS_MEL_INVALID_ARGUMENT;
+        }
         for (std::size_t e = 0; e < input.receive_events.size; ++e) {
-            const auto& event = input.receive_events.data[e];
+            const auto& envelope = input.receive_events.data[e];
+            const auto& event = [&]() -> const auto& {
+                if constexpr (spatial) return envelope.event;
+                else return envelope;
+            }();
             if (!valid_view(event.element_group_label) || !fits_count(event.agc_processing_iterations) ||
                 !fits_count(event.ignored_post_agc_iterations)) return AMS_MEL_INVALID_ARGUMENT;
+            if constexpr (spatial) {
+                const auto groups = envelope.applicable_rx_element_groups;
+                if (!fits_count(envelope.stab_point_index) ||
+                    !span_ok(groups.size, groups.data, sizeof(*groups.data))) return AMS_MEL_INVALID_ARGUMENT;
+                for (std::size_t g = 0; g < groups.size; ++g)
+                    if (!fits_count(groups.data[g])) return AMS_MEL_INVALID_ARGUMENT;
+            }
         }
     }
     try {
@@ -445,13 +467,20 @@ ams_mel_status_t add_rx_intervals(
             }
         }
         std::vector<rfmel::JobInterval> intervals;
+        if constexpr (spatial) {
+            if (failpoint("interval-spatial-allocation")) throw std::bad_alloc{};
+        }
         intervals.reserve(inputs.size);
         for (std::size_t i = 0; i < inputs.size; ++i) {
             const auto& input = input_at(i);
             std::vector<rfmel::ReceiveEvent> events;
             events.reserve(input.receive_events.size);
             for (std::size_t e = 0; e < input.receive_events.size; ++e) {
-                const auto& config = input.receive_events.data[e];
+                const auto& envelope = input.receive_events.data[e];
+                const auto& config = [&]() -> const auto& {
+                    if constexpr (spatial) return envelope.event;
+                    else return envelope;
+                }();
                 rfmel::ReceiveEvent event;
                 event.setEventID(config.event_id);
                 event.setElementGroupLabel(copy_view(config.element_group_label));
@@ -462,6 +491,14 @@ ams_mel_status_t add_rx_intervals(
                 event.setNumIterationProcessingAGC(static_cast<std::size_t>(config.agc_processing_iterations));
                 event.setNumIterationIgnoredPostAGC(static_cast<std::size_t>(config.ignored_post_agc_iterations));
                 event.setMaxExtensionDuration(Fs{config.max_extension_femtoseconds});
+                if constexpr (spatial) {
+                    std::vector<std::size_t> groups;
+                    groups.reserve(envelope.applicable_rx_element_groups.size);
+                    for (std::size_t g = 0; g < envelope.applicable_rx_element_groups.size; ++g)
+                        groups.push_back(static_cast<std::size_t>(envelope.applicable_rx_element_groups.data[g]));
+                    event.setStabPointIndex(static_cast<std::size_t>(envelope.stab_point_index));
+                    event.setApplicableRxElementGroups(groups);
+                }
                 events.push_back(std::move(event));
             }
             rfmel::Sequence sequence;
@@ -481,6 +518,13 @@ ams_mel_status_t add_rx_intervals(
             interval.setMaxSampleRateHZ(input.max_sample_rate_hz);
             interval.setJobDetailsId(input.job_details_id);
             interval.setJobIntervalStatusEnable(static_cast<rfmel::JobIntervalStatusEnable>(mode_at(i)));
+            if constexpr (spatial) {
+                std::vector<rfmel::PointingType> points;
+                points.reserve(input.stab_points.size);
+                for (std::size_t p = 0; p < input.stab_points.size; ++p)
+                    points.push_back(prepare_pointing(input.stab_points.data[p]));
+                interval.setStabPoints(points);
+            }
             intervals.push_back(std::move(interval));
         }
         return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
@@ -490,7 +534,8 @@ ams_mel_status_t add_rx_intervals(
         return AMS_MEL_INTERNAL_ERROR;
     } catch (...) {
         write_diagnostic("Job interval construction exception", diagnostic, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        if constexpr (spatial) return AMS_MEL_INTERNAL_ERROR;
+        else return AMS_MEL_PROVIDER_EXCEPTION;
     }
 }
 }
@@ -500,6 +545,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v2 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v3 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

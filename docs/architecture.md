@@ -1,5 +1,20 @@
 # Architecture decisions
 
+Task 034F4 extends only the existing RX Add path with ordinary prepared spatial
+values, not provider owners, claims, workers or lifetime paths. Receive-event v2
+adds uint64 stab index and ordered size_t-compatible group indices; explicit
+JobInterval v3 carries the existing scalar/status fields, shared F2 Pointing span
+and the v2 event span. All validation/value construction precedes the single
+provider Add. The same F2 helpers implement both JobRequest and JobInterval.
+Safe Ada uses its existing Pointing representation/serializer and final-sized
+Ada-owned borrowed backing; old source defaults to zero index/empty vectors.
+v1/v2 leave pinned spatial defaults untouched. No index-count relationships,
+capability queries, quantization or TX are inferred. Existing status gate remains.
+Pinned Squall Add is a no-op; fidelity/spatial semantics are mock evidence only.
+JobInterval setApplicableElementGroups writes applicableElementGroupLabels while
+getApplicableElementGroups returns dataPaths; binding this mismatch and interval
+endpoints is explicitly deferred. See `task-034f4-rf-interval-spatial-controls.md`.
+
 Task 034F3 extends the existing prepared-group builder and submit_prepared path,
 not the async/claim/retention architecture. V4 carries one ordered nonempty mixed
 RX/TX sequence with a fixed FFI envelope; only the active mode payload is read.

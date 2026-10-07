@@ -3809,3 +3809,51 @@ unsafe extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigV2 {
+    pub event: AmsMelRfReceiveEventConfigV1,
+    pub stab_point_index: u64,
+    pub applicable_rx_element_groups: AmsMelU64SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigSpanV2 {
+    pub data: *const AmsMelRfReceiveEventConfigV2,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV3 {
+    pub interval_start_femtoseconds: i64,
+    pub interval_id: u32,
+    pub interval_starting_gap_femtoseconds: i64,
+    pub sequence_duration_femtoseconds: i64,
+    pub sequence_repeat_count: u64,
+    pub calibration_duration_femtoseconds: i64,
+    pub interval_ending_gap_femtoseconds: i64,
+    pub phase_coherence_with_prior: u32,
+    pub iterations_per_signal: u64,
+    pub max_data_rate_bps: f64,
+    pub max_sample_rate_hz: f64,
+    pub job_details_id: u32,
+    pub status_enable: u32,
+    pub stab_points: AmsMelRfPointingSpanV1,
+    pub receive_events: AmsMelRfReceiveEventConfigSpanV2,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV3 {
+    pub data: *const AmsMelRfJobIntervalConfigV3,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v3(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV3,
+        diagnostic: *mut std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

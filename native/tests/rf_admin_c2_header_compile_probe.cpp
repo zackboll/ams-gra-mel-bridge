@@ -22,6 +22,19 @@ namespace rfmel = ams::iface::rfmel;
 using VA = rfmel::VirtualAperture;
 using JR = rfmel::JobRequest;
 using Pointing = rfmel::PointingType;
+using JI = rfmel::JobInterval;
+using RE = rfmel::ReceiveEvent;
+static_assert(std::is_same_v<decltype(&JI::setStabPoints), void (JI::*)(const std::vector<Pointing>&)>);
+static_assert(std::is_same_v<decltype(static_cast<const std::vector<Pointing>& (JI::*)() const>(&JI::getStabPoints)), const std::vector<Pointing>& (JI::*)() const>);
+// The inherited member's declaring class is JobEvent, not ReceiveEvent.
+static_assert(std::is_same_v<decltype(&RE::setStabPointIndex), void (rfmel::JobEvent::*)(size_t)>);
+static_assert(std::is_same_v<decltype(&RE::getStabPointIndex), size_t (rfmel::JobEvent::*)() const>);
+static_assert(std::is_same_v<decltype(&RE::setApplicableRxElementGroups), void (RE::*)(const std::vector<size_t>&)>);
+static_assert(std::is_same_v<decltype(&RE::getApplicableRxElementGroups), const std::vector<size_t>& (RE::*)() const>);
+static_assert(std::numeric_limits<size_t>::digits <= 64);
+// Observable pinned mismatch: setter takes labels but getter returns dataPaths.
+static_assert(std::is_same_v<decltype(&JI::setApplicableElementGroups), void (JI::*)(const std::vector<rfmel::ElementGroupLabel>&)>);
+static_assert(std::is_same_v<decltype(&JI::getApplicableElementGroups), const rfmel::ElementGroupToEndpointConnections& (JI::*)() const>);
 static_assert(std::is_same_v<Pointing, std::variant<rfmel::ECEFPointing, rfmel::LLAPointing,
     rfmel::PlatformRelativePointing, rfmel::FaceRelativePointing, rfmel::BaselineRelativePointing>>);
 static_assert(std::variant_size_v<Pointing> == 5);
@@ -325,6 +338,10 @@ static_assert(std::is_same_v<decltype(&rfmel::JobDetail::extendJobEvent),
 static_assert(std::is_same_v<decltype(&rfmel::JobInterval::setJobIntervalStatusEnable), void (rfmel::JobInterval::*)(rfmel::JobIntervalStatusEnable)>);
 int rf_admin_c2_header_compile_probe()
 {
+    JI mismatch;
+    mismatch.setApplicableElementGroups({"not-a-data-path"});
+    if (mismatch.getApplicableElementGroups().size() != 0) return 1;
+    if (sizeof(size_t) > sizeof(uint64_t)) return 1;
     for (const auto seconds : {INT64_MIN, INT64_MAX}) {
         const UTC time{std::chrono::seconds{seconds}, Femto{999999999999999}};
         if (time.getIntegralSeconds().count() != seconds ||

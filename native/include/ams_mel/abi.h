@@ -2782,6 +2782,40 @@ typedef struct ams_mel_rf_job_interval_config_span_v2 {
     const ams_mel_rf_job_interval_config_v2 *data;
     size_t size;
 } ams_mel_rf_job_interval_config_span_v2;
+/* Spatial RX profile. All spans are borrowed only during Add; NULL/zero is
+ * valid. Pointings retain the F2 active-only UTC policy and exact doubles.
+ * Indices must fit provider size_t; no relationship/count validation occurs.
+ * Ordered pointings and group indices preserve duplicates. v1/v2 are frozen. */
+typedef struct ams_mel_rf_receive_event_config_v2 {
+    ams_mel_rf_receive_event_config_v1 event;
+    uint64_t stab_point_index;
+    ams_mel_u64_span_v1 applicable_rx_element_groups;
+} ams_mel_rf_receive_event_config_v2;
+typedef struct ams_mel_rf_receive_event_config_span_v2 {
+    const ams_mel_rf_receive_event_config_v2 *data;
+    size_t size;
+} ams_mel_rf_receive_event_config_span_v2;
+typedef struct ams_mel_rf_job_interval_config_v3 {
+    int64_t interval_start_femtoseconds;
+    uint32_t interval_id;
+    int64_t interval_starting_gap_femtoseconds;
+    int64_t sequence_duration_femtoseconds;
+    uint64_t sequence_repeat_count;
+    int64_t calibration_duration_femtoseconds;
+    int64_t interval_ending_gap_femtoseconds;
+    uint32_t phase_coherence_with_prior;
+    uint64_t iterations_per_signal;
+    double max_data_rate_bps;
+    double max_sample_rate_hz;
+    uint32_t job_details_id;
+    ams_mel_rf_job_interval_status_enable_t status_enable;
+    ams_mel_rf_pointing_span_v1 stab_points;
+    ams_mel_rf_receive_event_config_span_v2 receive_events;
+} ams_mel_rf_job_interval_config_v3;
+typedef struct ams_mel_rf_job_interval_config_span_v3 {
+    const ams_mel_rf_job_interval_config_v3 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v3;
 typedef uint32_t ams_mel_rf_job_interval_completion_status_t;
 #define AMS_MEL_RF_INTERVAL_COMPLETION_NONE UINT32_C(0)
 #define AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL UINT32_C(1)
@@ -2894,6 +2928,13 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_interval_status_event_close(
  * v1 remains Never. No incoming notification filtering by reporting mode. */
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v2(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v2 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Same ownership, lifecycle and locally usable status-registration gate as v2.
+ * All values are prepared before the single provider Add; no hidden queries,
+ * quantization, retry or TX construction. Provider semantic validation is final. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v3 intervals,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_result_v1 {

@@ -1248,7 +1248,10 @@ void check_f2_point(const rfmel::PointingType& point, unsigned kind, bool estima
 {
     if (point.index() != kind) throw std::runtime_error("F2 exact variant/order");
     const char *selected = std::getenv("AMS_MEL_TEST_F2_CASE");
-    const bool special = selected && std::strcmp(selected, "special") == 0 && !estimated;
+    const char *spatial = std::getenv("AMS_MEL_TEST_F4_CASE");
+    const bool spatial_special = spatial && std::strcmp(spatial, "special") == 0;
+    const bool special = ((selected && std::strcmp(selected, "special") == 0) ||
+                         spatial_special) && !estimated;
     auto same = [](double actual, double expected) {
         return std::isnan(expected) ? std::isnan(actual) : actual == expected &&
             (expected != 0.0 || std::signbit(actual) == std::signbit(expected));
@@ -1268,21 +1271,22 @@ void check_f2_point(const rfmel::PointingType& point, unsigned kind, bool estima
             throw std::runtime_error("F2 ECEF UTC");
     } else if (kind == 1) {
         const auto& p = std::get<rfmel::LLAPointing>(point);
-        require(p.getLocation().getLatitude(), estimated ? -8.125 : 0.125);
-        require(p.getLocation().getLongitude(), estimated ? 9.25 : -1.25);
-        require(p.getLocation().getAltitude(), estimated ? -999.5 : 12345.5);
-        const double velocity[]{estimated ? -21.25 : 11.25, estimated ? 22.5 : -12.5, estimated ? -23.75 : 13.75};
+        require(p.getLocation().getLatitude(), estimated ? -8.125 : spatial_special ? -0.0 : 0.125);
+        require(p.getLocation().getLongitude(), estimated ? 9.25 : spatial_special ? INFINITY : -1.25);
+        require(p.getLocation().getAltitude(), estimated ? -999.5 : spatial_special ? -INFINITY : 12345.5);
+        const double velocity[]{estimated ? -21.25 : spatial_special ? NAN : 11.25,
+            estimated ? 22.5 : -12.5, estimated ? -23.75 : 13.75};
         for (unsigned i = 0; i < 3; ++i) require(p.getVelocity()[i], velocity[i]);
         if (p.getTimeOfValidity().getIntegralSeconds().count() != (estimated ? INT64_MIN : 42) ||
             p.getTimeOfValidity().getFractionalFemtoseconds().count() != (estimated ? 0 : 999999999999999))
             throw std::runtime_error("F2 LLA UTC");
     } else if (kind == 2) {
         const auto& p = std::get<rfmel::PlatformRelativePointing>(point).getLocation();
-        require(p.az, -0.75); require(p.el, 0.25);
+        require(p.az, spatial_special ? -INFINITY : -0.75); require(p.el, spatial_special ? INFINITY : 0.25);
     } else if (kind == 3) {
         const auto& p = std::get<rfmel::FaceRelativePointing>(point).getLocation();
         require(p.az, special ? NAN : 1.5); require(p.el, special ? -0.0 : -0.5);
-    } else require(std::get<rfmel::BaselineRelativePointing>(point).getLocation(), -2.25);
+    } else require(std::get<rfmel::BaselineRelativePointing>(point).getLocation(), spatial_special ? -0.0 : -2.25);
 }
 void check_f2_request(const rfmel::JobRequest& request)
 {
@@ -1493,6 +1497,13 @@ public:
     }
     void interval_failure(const char *operation)
     {
+        // Task-owned injection permits explicit recovery on the SAME Job.
+        if (std::strcmp(operation, "add") == 0) {
+            const char *failure = std::getenv("AMS_MEL_TEST_F4_ADD_FAILURE");
+            if (failure && std::strcmp(failure, "std") == 0) throw std::runtime_error("F4 Add exception");
+            if (failure && std::strcmp(failure, "unknown") == 0) throw 42;
+            if (failure && std::strcmp(failure, "alloc") == 0) throw std::bad_alloc{};
+        }
         const auto prefix = std::string{"c2:"} + operation;
         if (scenario_ == prefix + "-throw") throw std::runtime_error(std::string(900, 'x') + " µ end");
         if (scenario_ == prefix + "-unknown") throw 42;
@@ -2605,6 +2616,79 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_
 { return interval_fidelity(false); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity_v2(void)
 { return interval_fidelity(true); }
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_fidelity_v3(void)
+{
+    std::lock_guard lock{interval_mutex};
+    if (latest_intervals.size() != 2) return 0;
+    const auto& a = latest_intervals[0];
+    const auto& b = latest_intervals[1];
+    const auto& events = a.getSequence().getRxEvents();
+    if (a.getIntervalID() != 0x10203040U || a.getIntervalStart().count() != 0 ||
+        a.getIntervalStartingGap().count() != -111 || a.getSequence().getDuration().count() != 9876543210123LL ||
+        a.getSequenceRepeatCount() != 0x100000003ULL || a.getCalDuration().count() != 222 ||
+        a.getIntervalEndingGap().count() != -333 || !a.getPhaseCoherenceWithPrior() ||
+        a.getIterationsPerSignal() != 0x100000005ULL || a.getMaxDataRateBps() != 123456789.25 ||
+        a.getMaxSampleRateHZ() != 2500000.5 || a.getJobDetailsID() != 0xabcdef01U ||
+        a.getStabPoints().size() != 4 || b.getStabPoints().size() != 2 || events.size() != 2 ||
+        !b.getSequence().getRxEvents().empty()) return 0;
+    try {
+        const unsigned kinds[]{0, 2, 3, 3};
+        for (unsigned i = 0; i < 4; ++i) check_f2_point(a.getStabPoints()[i], kinds[i]);
+        check_f2_point(b.getStabPoints()[0], 1);
+        check_f2_point(b.getStabPoints()[1], 4);
+    } catch (...) { return 0; }
+    const auto& x = events[0]; const auto& y = events[1];
+    if (x.getEventID() != 0x80000001U || x.getElementGroupLabel() != "rx/µ-main" ||
+        x.getStart().count() != -123 || x.getDuration().count() != 456789 ||
+        x.getCenterFrequency() != 987654321.125 || x.getSampleFrequency() != 2000000.5 ||
+        x.getNumIterationProcessingAGC() != 0x100000007ULL || x.getNumIterationIgnoredPostAGC() != 3 ||
+        x.getMaxExtensionDuration().count() != -999 || x.getStabPointIndex() != 1 ||
+        x.getApplicableRxElementGroups() != std::vector<size_t>{2, 0, 2} ||
+        y.getEventID() != UINT32_MAX || y.getElementGroupLabel() != "β-secondary" ||
+        y.getStart().count() != 777 || y.getDuration().count() != -888 ||
+        y.getCenterFrequency() != 0 || !std::signbit(y.getCenterFrequency()) ||
+        !std::isinf(y.getSampleFrequency()) || std::signbit(y.getSampleFrequency()) ||
+        y.getNumIterationProcessingAGC() != 0 || y.getNumIterationIgnoredPostAGC() != 0x100000009ULL ||
+        y.getMaxExtensionDuration().count() != INT64_MAX - 1 || y.getStabPointIndex() != 999 ||
+        y.getApplicableRxElementGroups() != std::vector<size_t>{7, 7, 1}) return 0;
+    if (b.getIntervalStart().count() != -1 || b.getIntervalID() != 42 ||
+        b.getIntervalStartingGap().count() != 12 || b.getSequence().getDuration().count() != -13 ||
+        b.getSequenceRepeatCount() != 2 || b.getCalDuration().count() != -14 ||
+        b.getIntervalEndingGap().count() != 15 || b.getPhaseCoherenceWithPrior() ||
+        b.getIterationsPerSignal() != 3 || !std::isnan(b.getMaxDataRateBps()) ||
+        !std::isinf(b.getMaxSampleRateHZ()) || b.getJobDetailsID() != 43) return 0;
+    const char *mode = std::getenv("AMS_MEL_TEST_F4_STATUS");
+    const bool enabled = mode && std::strcmp(mode, "enabled") == 0;
+    for (const auto& interval : latest_intervals) {
+        if (interval.getJobIntervalStatusEnable() != (enabled ? (&interval == &a ?
+            rfmel::JobIntervalStatusEnable::Always : rfmel::JobIntervalStatusEnable::OnException) :
+            rfmel::JobIntervalStatusEnable::Never) || interval.getApplicableElementGroups().size() != 0 ||
+            interval.getEndpoints().size() != 0 || !interval.getLfCommands().empty() ||
+            !interval.getActivityId().empty() || interval.getTxPowerModeID() != 0 ||
+            !interval.getModulations().empty() || !interval.getSequence().getTxEvents().empty()) return 0;
+    }
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_boundary(void)
+{
+    std::lock_guard lock{interval_mutex};
+    if (latest_intervals.size() != 1 || !latest_intervals[0].getStabPoints().empty() ||
+        latest_intervals[0].getSequence().getRxEvents().size() != 1) return 0;
+    const auto& event = latest_intervals[0].getSequence().getRxEvents()[0];
+    return event.getStabPointIndex() == SIZE_MAX &&
+        event.getApplicableRxElementGroups() == std::vector<size_t>{SIZE_MAX, 0, SIZE_MAX};
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_safe_defaults(void)
+{
+    std::lock_guard lock{interval_mutex};
+    if (latest_intervals.size() != 1 || !latest_intervals[0].getStabPoints().empty() ||
+        latest_intervals[0].getSequence().getRxEvents().size() != 1) return 0;
+    const auto& interval = latest_intervals[0];
+    const auto& event = interval.getSequence().getRxEvents()[0];
+    return interval.getIntervalID() == 1 && interval.getSequence().getDuration().count() == 2 &&
+        interval.getJobIntervalStatusEnable() == rfmel::JobIntervalStatusEnable::Never &&
+        event.getStabPointIndex() == 0 && event.getApplicableRxElementGroups().empty();
+}
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_start_boundary(void)
 {
     std::lock_guard lock{interval_mutex};
