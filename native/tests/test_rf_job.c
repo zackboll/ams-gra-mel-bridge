@@ -1,8 +1,9 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <math.h>
-#include <sched.h>
+#include <poll.h>
 #include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,13 +36,97 @@ static unsigned mock_call(const char *symbol)
     CHECK(lib); *(void **)(&operation)=dlsym(lib,symbol); CHECK(operation);
     result=operation(); CHECK(dlclose(lib)==0); return result;
 }
-static unsigned mock_wait(unsigned baseline)
+/* One test-owned DSO reference spans baseline, asynchronous completion and wait.
+ * A fresh dlopen after worker cleanup would observe fresh mock static counters. */
+struct mock_job_observer {
+    void *library;
+    int unload_pipe[2];
+    unsigned (*shutdown_count)(void);
+    unsigned (*wait_shutdown_after)(unsigned);
+    unsigned (*complete)(void);
+    unsigned (*destruction_count)(void);
+    unsigned (*wait_destroy_after)(unsigned);
+};
+static struct mock_job_observer mock_job_observer_open(const char *completion)
 {
-    void *lib=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL);
-    unsigned (*operation)(unsigned);
-    unsigned result;
-    CHECK(lib); *(void **)(&operation)=dlsym(lib,"mock_rf_job_wait_shutdown_after"); CHECK(operation);
-    result=operation(baseline); CHECK(dlclose(lib)==0); return result;
+    struct mock_job_observer observer={0};
+    char descriptor[32];
+    CHECK(getenv("AMS_MEL_TEST_UNLOAD_FD")==NULL);
+    CHECK(pipe(observer.unload_pipe)==0);
+    for (unsigned i=0;i<2;++i)
+        CHECK(fcntl(observer.unload_pipe[i],F_SETFD,FD_CLOEXEC)==0);
+    CHECK(fcntl(observer.unload_pipe[1],F_SETFL,O_NONBLOCK)==0);
+    int length=snprintf(descriptor,sizeof descriptor,"%d",observer.unload_pipe[1]);
+    CHECK(length>0 && (size_t)length<sizeof descriptor);
+    CHECK(setenv("AMS_MEL_TEST_UNLOAD_FD",descriptor,1)==0);
+    observer.library=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL);
+    CHECK(observer.library);
+    *(void **)(&observer.shutdown_count)=dlsym(observer.library,"mock_rf_job_shutdown_count");
+    *(void **)(&observer.wait_shutdown_after)=dlsym(observer.library,"mock_rf_job_wait_shutdown_after");
+    *(void **)(&observer.complete)=dlsym(observer.library,completion);
+    *(void **)(&observer.destruction_count)=dlsym(observer.library,"mock_rf_extension_destructions");
+    *(void **)(&observer.wait_destroy_after)=dlsym(observer.library,"mock_rf_extension_wait_destroy");
+    CHECK(observer.shutdown_count && observer.wait_shutdown_after && observer.complete &&
+          observer.destruction_count && observer.wait_destroy_after);
+    return observer;
+}
+static void assert_no_unload(const struct mock_job_observer *observer)
+{
+    struct pollfd notification={observer->unload_pipe[0],POLLIN,0};
+    CHECK(poll(&notification,1,0)==0 && notification.revents==0);
+}
+static void wait_for_unload(const struct mock_job_observer *observer)
+{
+    struct pollfd notification={observer->unload_pipe[0],POLLIN,0};
+    /* Distinct test-only unload barrier; provider cleanup waits remain unchanged. */
+    int ready=poll(&notification,1,3000);
+    if (ready!=1) fprintf(stderr,"unload notification failed (%d), log: %s\n",ready,logfile());
+    CHECK(ready==1 && notification.revents==POLLIN);
+    char markers[2];
+    CHECK(read(observer->unload_pipe[0],markers,sizeof markers)==1 && markers[0]=='U');
+    assert_no_unload(observer);
+}
+static void check_job_cleanup_order(int unloaded)
+{
+    const char *events=logfile();
+    const char *job=strstr(events,"rf_job_destroyed\n");
+    const char *va=strstr(events,"rf_va_destroyed\n");
+    const char *shutdown=strstr(events,"rf_c2_shutdown\n");
+    const char *c2=strstr(events,"rf_c2_destroyed\n");
+    const char *dso=strstr(events,"library_unloaded\n");
+    if (!(job && va && shutdown && c2 && job<va && va<shutdown && shutdown<c2 &&
+          (unloaded ? dso && c2<dso : !dso)))
+        fprintf(stderr,"abandon log: %s\n",events);
+    CHECK(job && va && shutdown && c2 && job<va && va<shutdown && shutdown<c2);
+    CHECK(unloaded ? dso && c2<dso : !dso);
+    CHECK(!strstr(events,"rf_job_cancel\n") && !strstr(events,"rf_forbidden_call\n"));
+    CHECK(count("rf_job_destroyed\n")==1 && count("rf_va_destroyed\n")==1 &&
+          count("rf_c2_shutdown\n")==1 && count("rf_c2_destroyed\n")==1 &&
+          count("library_unloaded\n")== (unsigned)unloaded);
+}
+static void mock_job_observer_finish(struct mock_job_observer *observer,
+                                     unsigned shutdown, unsigned destruction)
+{
+    unsigned completed=observer->wait_shutdown_after(shutdown);
+    if (!completed) fprintf(stderr,"shutdown timeout, count=%u baseline=%u, log: %s\n",
+                            observer->shutdown_count(),shutdown,logfile());
+    CHECK(completed==1);
+    /* Shutdown notification precedes C2 destruction; use its existing barrier. */
+    completed=observer->wait_destroy_after(destruction);
+    if (!completed) fprintf(stderr,"destruction timeout, count=%u baseline=%u, log: %s\n",
+                            observer->destruction_count(),destruction,logfile());
+    CHECK(completed==1);
+    check_job_cleanup_order(0);
+    assert_no_unload(observer);
+    CHECK(dlclose(observer->library)==0);
+    observer->library=NULL;
+    observer->shutdown_count=NULL; observer->wait_shutdown_after=NULL;
+    observer->complete=NULL; observer->destruction_count=NULL; observer->wait_destroy_after=NULL;
+    wait_for_unload(observer);
+    check_job_cleanup_order(1);
+    CHECK(unsetenv("AMS_MEL_TEST_UNLOAD_FD")==0);
+    CHECK(close(observer->unload_pipe[0])==0 && close(observer->unload_pipe[1])==0);
+    *observer=(struct mock_job_observer){0};
 }
 static const ams_mel_string_view_v1 local[]={{"alpha",5},{"µ-local",8},{"",0}};
 static ams_mel_uci_id_v1 capabilities[3];
@@ -361,7 +446,8 @@ static void lifecycle_tests(void)
     /* Abandonment leaves the future, detail, VA, claim and DSO with worker. */
     {
         ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
-        unsigned shutdown=mock_call("mock_rf_job_shutdown_count");
+        struct mock_job_observer observer=mock_job_observer_open("mock_rf_job_resolve_finalize");
+        unsigned shutdown=observer.shutdown_count(), destruction=observer.destruction_count();
         reset(); ams_mel_rf_job *job=claimed("c2:finalize-abandon",&c2,&va);
         CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
         CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
@@ -369,34 +455,24 @@ static void lifecycle_tests(void)
         CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK && !job);
         CHECK(!strstr(logfile(),"rf_job_destroyed\n") && !strstr(logfile(),"rf_c2_shutdown\n") &&
               !strstr(logfile(),"library_unloaded\n"));
-        CHECK(mock_call("mock_rf_job_resolve_finalize")==1);
-        CHECK(mock_wait(shutdown)==1);
-        for (unsigned spin=0;spin<1000000 && !strstr(logfile(),"library_unloaded\n");++spin)
-            CHECK(sched_yield()==0);
-        const char *events=logfile();
-        const char *detail=strstr(events,"rf_job_destroyed\n");
-        const char *va_end=strstr(events,"rf_va_destroyed\n");
-        const char *c2_end=strstr(events,"rf_c2_shutdown\n");
-        const char *dso=strstr(events,"library_unloaded\n");
-        if (!(detail && va_end && c2_end && dso && detail<va_end && va_end<c2_end && c2_end<dso))
-            fprintf(stderr,"abandon log: %s\n",events);
-        CHECK(detail && va_end && c2_end && dso && detail<va_end && va_end<c2_end && c2_end<dso);
-        CHECK(!strstr(events,"rf_job_cancel\n"));
+        CHECK(observer.complete()==1);
+        mock_job_observer_finish(&observer,shutdown,destruction);
     }
-    {
-        ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
-        ams_mel_rf_job_status_t status=99;
-        ams_mel_rf_job_cancel_result_v1 result={0};
-        reset(); ams_mel_rf_job *job=claimed("c2:finalize-shutdown-throw",&c2,&va);
-        CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
-        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
-        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
-        CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
-        CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_OK &&
-              status==AMS_MEL_RF_JOB_STATUS_COMPLETE);
-        CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_EXCEPTION);
-        CHECK(count("rf_c2_shutdown\n")==1 && !strstr(logfile(),"library_unloaded\n"));
-    }
+}
+static void finalize_shutdown_throw_retention_case(void)
+{
+    ams_mel_rf_c2 *c2=NULL; ams_mel_rf_virtual_aperture *va=NULL;
+    ams_mel_rf_job_status_t status=99;
+    ams_mel_rf_job_cancel_result_v1 result={0};
+    reset(); ams_mel_rf_job *job=claimed("c2:finalize-shutdown-throw",&c2,&va);
+    CHECK(ams_mel_rf_job_finalize(job,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_job_cancel(job,&result,diag,sizeof diag,&required)==AMS_MEL_OK);
+    CHECK(ams_mel_rf_job_wait_status(job,3000,&status,diag,sizeof diag,&required)==AMS_MEL_OK &&
+          status==AMS_MEL_RF_JOB_STATUS_COMPLETE);
+    CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_PROVIDER_EXCEPTION);
+    CHECK(count("rf_c2_shutdown\n")==1 && !strstr(logfile(),"library_unloaded\n"));
 }
 static void retention_case(const char *failure)
 {
@@ -447,7 +523,11 @@ int main(int argc, char **argv)
     capabilities[0].descriptive_label=(ams_mel_string_view_v1){"first",5};
     capabilities[1].uuid[0]=0xff; capabilities[1].descriptive_label=(ams_mel_string_view_v1){"",0};
     capabilities[2].uuid[15]=0x80; capabilities[2].descriptive_label=(ams_mel_string_view_v1){"µ-third",8};
-    if (argc==2) { retention_case(argv[1]); CHECK(unlink(path)==0); return 0; }
+    if (argc==2) {
+        if (!strcmp(argv[1],"finalize-shutdown-retained")) finalize_shutdown_throw_retention_case();
+        else retention_case(argv[1]);
+        CHECK(unlink(path)==0); return 0;
+    }
     CHECK(argc==1);
     isolated_retention(argv[0],"worker-launch");
     isolated_retention(argv[0],"post-provider-allocation");
@@ -455,6 +535,8 @@ int main(int argc, char **argv)
     isolated_retention(argv[0],"finalize-worker-launch");
     interval_tests();
     lifecycle_tests();
+    /* Throwing shutdown deliberately retains its DSO; isolate it with fork/exec. */
+    isolated_retention(argv[0],"finalize-shutdown-retained");
     ams_mel_rf_c2 *c2=NULL;
     ams_mel_rf_virtual_aperture *va=NULL;
     ams_mel_rf_job_request *r=NULL;
@@ -490,14 +572,17 @@ int main(int argc, char **argv)
     CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
     CHECK(count("rf_c2_shutdown\n")==1);
 
-    unsigned baseline=mock_call("mock_rf_job_shutdown_count");
-    reset(); open_va("c2:job-delayed",&c2,&va); r=submit(va);
-    CHECK(ams_mel_rf_job_request_close(&r,diag,sizeof diag,&required)==AMS_MEL_OK);
-    CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK);
-    CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK);
-    CHECK(mock_call("mock_rf_job_release_one")==1);
-    CHECK(mock_wait(baseline)==1);
-    CHECK(count("rf_job_destroyed\n")==1 && count("rf_c2_shutdown\n")==1);
+    {
+        struct mock_job_observer observer=mock_job_observer_open("mock_rf_job_release_one");
+        unsigned shutdown=observer.shutdown_count(), destruction=observer.destruction_count();
+        reset(); open_va("c2:job-delayed",&c2,&va); r=submit(va);
+        CHECK(ams_mel_rf_job_request_close(&r,diag,sizeof diag,&required)==AMS_MEL_OK && !r);
+        CHECK(ams_mel_rf_virtual_aperture_close(&va,diag,sizeof diag,&required)==AMS_MEL_OK && !va);
+        CHECK(ams_mel_rf_c2_close(&c2,diag,sizeof diag,&required)==AMS_MEL_OK && !c2);
+        CHECK(!strstr(logfile(),"rf_c2_shutdown\n") && !strstr(logfile(),"library_unloaded\n"));
+        CHECK(observer.complete()==1);
+        mock_job_observer_finish(&observer,shutdown,destruction);
+    }
 
     reset(); open_va("c2:job-ok",&c2,&va);
     ams_mel_rf_job_request_config_v1 invalid=config;
@@ -616,6 +701,7 @@ int main(int argc, char **argv)
     CHECK(ams_mel_rf_job_close(&job,diag,sizeof diag,&required)==AMS_MEL_OK);
     CHECK(count("rf_c2_shutdown\n")==1);
 
+    /* Intentional retention is safe here: no later scenario requires DSO unload. */
     reset(); open_va("c2:job-shutdown-throw",&c2,&va); r=submit(va);
     CHECK(mock_call("mock_rf_job_release_one")==1);
     CHECK(wait_for(r,&result)==AMS_MEL_OK);
