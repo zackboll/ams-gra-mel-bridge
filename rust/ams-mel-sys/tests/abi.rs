@@ -5,6 +5,16 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn interval_spatial_signature() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV3,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v3;
+}
+#[test]
 fn transmit_power_signatures_match_c() {
     use std::ffi::c_char;
     let _: unsafe extern "C" fn(
@@ -1106,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 192);
-    assert_eq!(exported.len(), 192);
+    assert_eq!(declared.len(), 193);
+    assert_eq!(exported.len(), 193);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2614,6 +2624,35 @@ fn declarations_match_the_c_header() {
         status_enable
     );
     layout!(expected, AmsMelRfJobIntervalConfigSpanV2, data, size);
+    layout!(
+        expected,
+        AmsMelRfReceiveEventConfigV2,
+        event,
+        stab_point_index,
+        applicable_rx_element_groups
+    );
+    layout!(expected, AmsMelRfReceiveEventConfigSpanV2, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobIntervalConfigV3,
+        interval_start_femtoseconds,
+        interval_id,
+        interval_starting_gap_femtoseconds,
+        sequence_duration_femtoseconds,
+        sequence_repeat_count,
+        calibration_duration_femtoseconds,
+        interval_ending_gap_femtoseconds,
+        phase_coherence_with_prior,
+        iterations_per_signal,
+        max_data_rate_bps,
+        max_sample_rate_hz,
+        job_details_id,
+        status_enable,
+        stab_points,
+        receive_events
+    );
+    layout!(expected, AmsMelRfJobIntervalConfigSpanV3, data, size);
+
     layout!(
         expected,
         AmsMelRfJobEventLogEntryV1,

@@ -995,6 +995,34 @@ int main(void)
     RECORD(ams_mel_rf_job_interval_config_span_v2,
         FIELD(ams_mel_rf_job_interval_config_span_v2,data);
         FIELD(ams_mel_rf_job_interval_config_span_v2,size));
+    RECORD(ams_mel_rf_receive_event_config_v2,
+        FIELD(ams_mel_rf_receive_event_config_v2,event);
+        FIELD(ams_mel_rf_receive_event_config_v2,stab_point_index);
+        FIELD(ams_mel_rf_receive_event_config_v2,applicable_rx_element_groups));
+    RECORD(ams_mel_rf_receive_event_config_span_v2,
+        FIELD(ams_mel_rf_receive_event_config_span_v2,data);
+        FIELD(ams_mel_rf_receive_event_config_span_v2,size));
+    RECORD(ams_mel_rf_job_interval_config_v3,
+        FIELD(ams_mel_rf_job_interval_config_v3,interval_start_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v3,interval_id);
+        FIELD(ams_mel_rf_job_interval_config_v3,interval_starting_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v3,sequence_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v3,sequence_repeat_count);
+        FIELD(ams_mel_rf_job_interval_config_v3,calibration_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v3,interval_ending_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v3,phase_coherence_with_prior);
+        FIELD(ams_mel_rf_job_interval_config_v3,iterations_per_signal);
+        FIELD(ams_mel_rf_job_interval_config_v3,max_data_rate_bps);
+        FIELD(ams_mel_rf_job_interval_config_v3,max_sample_rate_hz);
+        FIELD(ams_mel_rf_job_interval_config_v3,job_details_id);
+        FIELD(ams_mel_rf_job_interval_config_v3,status_enable);
+        FIELD(ams_mel_rf_job_interval_config_v3,stab_points);
+        FIELD(ams_mel_rf_job_interval_config_v3,receive_events));
+    RECORD(ams_mel_rf_job_interval_config_span_v3,
+        FIELD(ams_mel_rf_job_interval_config_span_v3,data);
+        FIELD(ams_mel_rf_job_interval_config_span_v3,size));
+    { ams_mel_status_t (*add_v3)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v3, char *, size_t, size_t *) = ams_mel_rf_job_add_rx_intervals_v3; (void)add_v3; }
+
     RECORD(ams_mel_rf_job_event_log_entry_v1,
         FIELD(ams_mel_rf_job_event_log_entry_v1,event_id);
         FIELD(ams_mel_rf_job_event_log_entry_v1,trigger);

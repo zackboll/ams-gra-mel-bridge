@@ -115,7 +115,9 @@ package body AMS.MEL.RF.C2 is
          Sample_Frequency_Hz,
          AGC_Processing_Iterations,
          Ignored_Post_AGC_Iterations,
-         Max_Extension_Femtoseconds);
+         Max_Extension_Femtoseconds,
+         0,
+         RX_Index_Vectors.Empty_Vector);
    end Create_RX_Receive_Event;
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
@@ -146,7 +148,8 @@ package body AMS.MEL.RF.C2 is
          Max_Data_Rate_BPS,
          Max_Sample_Rate_Hz,
          RX_Event_Vectors.Empty_Vector,
-         Never);
+         Never,
+         Pointing_Vectors.Empty_Vector);
    end Create_RX_Job_Interval;
    procedure Set_Interval_Status_Enable
      (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable) is
@@ -166,45 +169,88 @@ package body AMS.MEL.RF.C2 is
    function Job_Interval_Count (Intervals : RX_Job_Interval_List) return Natural
    is (Natural (Intervals.Values.Length));
 
+   function Raw_Pointing (Value : Pointing) return C.RF_Pointing_V1;
+   procedure Set_Stab_Point_Index
+     (Event : in out RX_Receive_Event_Config; Index : Interfaces.Unsigned_64) is
+   begin
+      Event.Stab_Point_Index := Index;
+   end Set_Stab_Point_Index;
+   procedure Append_Applicable_RX_Element_Group
+     (Event : in out RX_Receive_Event_Config; Element_Group_Index : Interfaces.Unsigned_64) is
+   begin
+      Event.Applicable_RX_Element_Groups.Append (Element_Group_Index);
+   end Append_Applicable_RX_Element_Group;
+   procedure Append_Stab_Point (Interval : in out RX_Job_Interval_Config; Value : Pointing) is
+   begin
+      Interval.Stab_Points.Append (Value);
+   end Append_Stab_Point;
+
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V1
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V3
       with Convention => C;
-      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V1
+      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V2
+      with Convention => C;
+      type Native_Points is array (Positive range <>) of aliased C.RF_Pointing_V1
+      with Convention => C;
+      type Native_Indices is array (Positive range <>) of aliased Interfaces.Unsigned_64
       with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
-      type Native_Intervals_V2 is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V2
-      with Convention => C;
-      Enabled     : Boolean := False;
-      Count       : constant Natural := Job_Interval_Count (Intervals);
-      Event_Count : Natural := 0;
-      D           : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
-      R           : aliased C.Size_T := 0;
+      Count                                 : constant Natural := Job_Interval_Count (Intervals);
+      Event_Count, Point_Count, Group_Count : Natural := 0;
+      D                                     : aliased Fixed_Diagnostic :=
+        [others => Interfaces.C.nul];
+      R                                     : aliased C.Size_T := 0;
    begin
       for Interval of Intervals.Values loop
          Event_Count := Event_Count + Natural (Interval.Events.Length);
-         Enabled := Enabled or Interval.Status_Enable /= Never;
+         Point_Count := Point_Count + Natural (Interval.Stab_Points.Length);
+         for Event of Interval.Events loop
+            Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
+         end loop;
       end loop;
-      --  All backing arrays have their final sizes before any span is assigned.
-      --  Controlled label owners release every allocation on return or exception.
+      --  Final-sized Ada-owned backing lives through the synchronous borrowed Add.
+      --  Controlled label owners clean up on normal return and exceptions.
       declare
-         Configs    : Native_Intervals (1 .. Count);
-         Configs_V2 : Native_Intervals_V2 (1 .. Count);
-         Events     : Native_Events (1 .. Event_Count);
-         Strings    : Labels (1 .. Event_Count);
-         Next_Event : Positive := 1;
-         I          : Positive := 1;
-         Span       : C.RF_Job_Interval_Config_Span_V1 := (System.Null_Address, C.Size_T (Count));
+         Configs                               : Native_Intervals (1 .. Count);
+         Events                                : Native_Events (1 .. Event_Count);
+         Points                                : Native_Points (1 .. Point_Count);
+         Groups                                : Native_Indices (1 .. Group_Count);
+         Strings                               : Labels (1 .. Event_Count);
+         Next_Event, Next_Point, Next_Group, I : Positive := 1;
+         Span                                  : C.RF_Job_Interval_Config_Span_V3 :=
+           (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
             declare
                First_Event : constant Positive := Next_Event;
-               Event_Span  : C.RF_Receive_Event_Config_Span_V1 :=
+               First_Point : constant Positive := Next_Point;
+               Event_Span  : C.RF_Receive_Event_Config_Span_V2 :=
                  (System.Null_Address, C.Size_T (Interval.Events.Length));
+               Point_Span  : C.RF_Pointing_Span_V1 :=
+                 (System.Null_Address, C.Size_T (Interval.Stab_Points.Length));
             begin
+               for Value of Interval.Stab_Points loop
+                  Points (Next_Point) := Raw_Pointing (Value);
+                  Next_Point := Next_Point + 1;
+               end loop;
+               if Point_Span.Size > 0 then
+                  Point_Span.Data := Points (First_Point)'Address;
+               end if;
                for Event of Interval.Events loop
                   Strings (Next_Event).Value := CS.New_String (US.To_String (Event.Label));
-                  Events (Next_Event) :=
+                  Events (Next_Event).Applicable_RX_Element_Groups :=
+                    (System.Null_Address, C.Size_T (Event.Applicable_RX_Element_Groups.Length));
+                  if not Event.Applicable_RX_Element_Groups.Is_Empty then
+                     Events (Next_Event).Applicable_RX_Element_Groups.Data :=
+                       Groups (Next_Group)'Address;
+                  end if;
+                  for Value of Event.Applicable_RX_Element_Groups loop
+                     Groups (Next_Group) := Value;
+                     Next_Group := Next_Group + 1;
+                  end loop;
+                  Events (Next_Event).Stab_Point_Index := Event.Stab_Point_Index;
+                  Events (Next_Event).Event :=
                     (Event.Event_ID,
                      (Pointer_Address (Strings (Next_Event).Value),
                       C.Size_T (US.Length (Event.Label))),
@@ -233,28 +279,17 @@ package body AMS.MEL.RF.C2 is
                   Interfaces.C.double (Interval.Max_Data_Rate_BPS),
                   Interfaces.C.double (Interval.Max_Sample_Rate_Hz),
                   Interval.Job_Details_ID,
+                  Interval_Status_Enable'Enum_Rep (Interval.Status_Enable),
+                  Point_Span,
                   Event_Span);
-               Configs_V2 (I) :=
-                 (Configs (I), Interval_Status_Enable'Enum_Rep (Interval.Status_Enable));
                I := I + 1;
             end;
          end loop;
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         if Enabled then
-            Check
-              (C.RF_Job_Add_RX_Intervals_V2
-                 (Object.Handle,
-                  (Configs_V2 (1)'Address, C.Size_T (Count)),
-                  D'Address,
-                  D'Length,
-                  R'Access),
-               D);
-         else
-            Check
-              (C.RF_Job_Add_RX_Intervals (Object.Handle, Span, D'Address, D'Length, R'Access), D);
-         end if;
+         Check
+           (C.RF_Job_Add_RX_Intervals_V3 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

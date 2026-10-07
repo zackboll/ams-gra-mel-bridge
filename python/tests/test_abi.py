@@ -12,6 +12,17 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_interval_spatial_signature(self) -> None:
+        function = _native.ams_mel_rf_job_add_rx_intervals_v3
+        self.assertEqual(function.argtypes, [
+            _native.RfJobHandle, _native.RfJobIntervalConfigSpanV3,
+            _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        import ams_mel
+        for name in ("ams_mel_rf_job_add_rx_intervals_v3", "RfJobIntervalConfigV3",
+                     "RfJobIntervalConfigSpanV3", "RfReceiveEventConfigV2",
+                     "RfReceiveEventConfigSpanV2"):
+            self.assertNotIn(name, ams_mel.__all__)
     def test_private_job_request_v2_signature(self) -> None:
         function = _native.ams_mel_rf_virtual_aperture_submit_job_v2
         self.assertEqual(function.argtypes, [
@@ -406,6 +417,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_job_interval_status_event_view",
                 "ams_mel_rf_job_interval_status_event_close",
                 "ams_mel_rf_job_add_rx_intervals_v2",
+                "ams_mel_rf_job_add_rx_intervals_v3",
 
                 "ams_mel_rf_job_flush",
                 "ams_mel_rf_job_cancel_remaining_intervals",
@@ -439,8 +451,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 192)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 192)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 193)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 193)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -448,7 +460,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 192)
+        self.assertEqual(len(exported), 193)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1562,6 +1574,11 @@ class AbiTests(unittest.TestCase):
         )
         expected.extend(self._layout(_native.RfJobIntervalConfigV2, 'interval', 'status_enable'))
         expected.extend(self._layout(_native.RfJobIntervalConfigSpanV2, 'data', 'size'))
+        expected.extend(self._layout(_native.RfReceiveEventConfigV2, 'event', 'stab_point_index', 'applicable_rx_element_groups'))
+        expected.extend(self._layout(_native.RfReceiveEventConfigSpanV2, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigV3, 'interval_start_femtoseconds', 'interval_id', 'interval_starting_gap_femtoseconds', 'sequence_duration_femtoseconds', 'sequence_repeat_count', 'calibration_duration_femtoseconds', 'interval_ending_gap_femtoseconds', 'phase_coherence_with_prior', 'iterations_per_signal', 'max_data_rate_bps', 'max_sample_rate_hz', 'job_details_id', 'status_enable', 'stab_points', 'receive_events'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV3, 'data', 'size'))
+
         expected.extend(self._layout(_native.RfJobEventLogEntryV1, 'event_id', 'trigger', 'time_seconds', 'time_fractional_femtoseconds'))
         expected.extend(self._layout(_native.RfJobEventLogSpanV1, 'data', 'size'))
         expected.extend(self._layout(_native.RfJobIntervalStatusV1, 'interval_id', 'completion_status', 'event_log', 'activity_id'))
