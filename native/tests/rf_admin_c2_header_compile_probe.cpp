@@ -380,3 +380,67 @@ int rf_admin_c2_header_compile_probe()
     }
     return rfmel::JobInterval{}.getIntervalStart() == rfmel::JobInterval::ContinueFromPrevious ? 0 : 1;
 }
+
+namespace r = ams::iface::rfmel;
+using S = r::PulseDetectionSettings;
+using M = r::PulseDetectionMofN;
+using T = r::PulseDetectionThreshold;
+using R = r::PulseDetectionThresholdReference;
+using A = r::PulseDetectionTimeTagAmplitudeThreshold;
+using F = ams::util::math::Femtoseconds;
+static_assert(std::is_same_v<std::underlying_type_t<R>, uint8_t>);
+static_assert(std::is_same_v<std::underlying_type_t<A>, uint8_t>);
+static_assert(static_cast<unsigned>(R::DBQ) == 0);
+static_assert(static_cast<unsigned>(R::DB_ABOVE_NOISE) == 1);
+static_assert(static_cast<unsigned>(R::DB_BELOW_SATURATION) == 2);
+static_assert(static_cast<unsigned>(A::TIMETAG_50_PERCENT) == 0);
+static_assert(static_cast<unsigned>(A::TIMETAG_90_PERCENT) == 1);
+static_assert(std::is_same_v<F::rep, int64_t>);
+static_assert(std::ratio_equal_v<F::period, std::femto>);
+#define METHOD(C, N, ...) static_assert(std::is_same_v<decltype(&C::N), __VA_ARGS__>)
+METHOD(M, setm, void (M::*)(uint8_t));
+METHOD(M, setn, void (M::*)(uint8_t));
+METHOD(M, getm, uint8_t (M::*)() const);
+METHOD(M, getn, uint8_t (M::*)() const);
+METHOD(T, setleadingEdgeDb, void (T::*)(double));
+METHOD(T, setTrailingEdgeDb, void (T::*)(double));
+METHOD(T, getleadingEdgeDb, double (T::*)() const);
+METHOD(T, getTrailingEdgeDb, double (T::*)() const);
+METHOD(S, setReference, void (S::*)(const R&));
+METHOD(S, getReference, R (S::*)() const);
+METHOD(S, setLeadingEdgeMofN, void (S::*)(const M&));
+METHOD(S, getLeadingEdgeMofN, M (S::*)() const);
+METHOD(S, setTrailingEdgeMofN, void (S::*)(const M&));
+METHOD(S, getTrailingEdgeMofN, M (S::*)() const);
+METHOD(S, setMinPulseWidth, void (S::*)(const F&));
+METHOD(S, getMinPulseWidth, F (S::*)() const);
+METHOD(S, setTimetagAmplitudeThreshold, void (S::*)(const A&));
+METHOD(S, getTimetagAmplitudeThreshold, A (S::*)() const);
+METHOD(S, setThresholds, void (S::*)(const std::vector<T>&));
+METHOD(S, getThresholds, std::vector<T> (S::*)() const);
+METHOD(r::ReceiveEvent, setPulseDetectionSettings, void (r::JobEvent::*)(const S&));
+METHOD(r::ReceiveEvent, getPulseDetectionSettings, const S& (r::JobEvent::*)() const);
+static_assert(std::is_copy_constructible_v<S> && std::is_copy_assignable_v<S>);
+static_assert(std::is_copy_constructible_v<M> && std::is_copy_assignable_v<M>);
+static_assert(std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>);
+bool defaults(const S& s) {
+ return s.getReference() == R::DBQ && s.getLeadingEdgeMofN().getm() == 0 &&
+ s.getLeadingEdgeMofN().getn() == 0 && s.getTrailingEdgeMofN().getm() == 0 &&
+ s.getTrailingEdgeMofN().getn() == 0 && s.getMinPulseWidth().count() == 0 &&
+ s.getTimetagAmplitudeThreshold() == A::TIMETAG_50_PERCENT && s.getThresholds().empty();
+}
+int pulse_detection_header_probe() {
+ S s; r::ReceiveEvent e;
+ if (!defaults(s) || !defaults(e.getPulseDetectionSettings())) return 1;
+ M m; m.setm(255); m.setn(0); s.setLeadingEdgeMofN(m);
+ T t; t.setleadingEdgeDb(12.25); t.setTrailingEdgeDb(-3.5);
+ s.setThresholds({t, t}); s.setMinPulseWidth(F{INT64_MIN});
+ S copy{s}; S assigned; assigned = copy; e.setPulseDetectionSettings(assigned);
+ const auto& got = e.getPulseDetectionSettings();
+ if (got.getLeadingEdgeMofN().getm() != 255 || got.getLeadingEdgeMofN().getn() != 0 ||
+ got.getMinPulseWidth().count() != INT64_MIN || got.getThresholds().size() != 2 ||
+ got.getThresholds()[1].getleadingEdgeDb() != 12.25 ||
+ got.getThresholds()[0].getTrailingEdgeDb() != -3.5) return 2;
+ std::puts("PASS: pulse signatures, enum values, defaults and value copying");
+ return 0;
+}

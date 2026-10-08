@@ -3941,3 +3941,90 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+pub type AmsMelRfPulseThresholdReferenceT = u32;
+pub const AMS_MEL_RF_PD_REFERENCE_DBQ: u32 = 0;
+pub const AMS_MEL_RF_PD_REFERENCE_DB_ABOVE_NOISE: u32 = 1;
+pub const AMS_MEL_RF_PD_REFERENCE_DB_BELOW_SATURATION: u32 = 2;
+pub type AmsMelRfPulseTimetagThresholdT = u32;
+pub const AMS_MEL_RF_PD_TIMETAG_50_PERCENT: u32 = 0;
+pub const AMS_MEL_RF_PD_TIMETAG_90_PERCENT: u32 = 1;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPulseMOfNV1 {
+    pub m: u8,
+    pub n: u8,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPulseThresholdV1 {
+    pub leading_edge_db: f64,
+    pub trailing_edge_db: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPulseThresholdSpanV1 {
+    pub data: *const AmsMelRfPulseThresholdV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfPulseDetectionSettingsV1 {
+    pub reference: AmsMelRfPulseThresholdReferenceT,
+    pub leading_edge_m_of_n: AmsMelRfPulseMOfNV1,
+    pub trailing_edge_m_of_n: AmsMelRfPulseMOfNV1,
+    pub min_pulse_width_femtoseconds: i64,
+    pub timetag_amplitude_threshold: AmsMelRfPulseTimetagThresholdT,
+    pub thresholds: AmsMelRfPulseThresholdSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigV4 {
+    pub event: AmsMelRfReceiveEventConfigV3,
+    pub has_pulse_detection_settings: u32,
+    pub pulse_detection_settings: AmsMelRfPulseDetectionSettingsV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfReceiveEventConfigSpanV4 {
+    pub data: *const AmsMelRfReceiveEventConfigV4,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV5 {
+    pub interval_start_femtoseconds: i64,
+    pub interval_id: u32,
+    pub interval_starting_gap_femtoseconds: i64,
+    pub sequence_duration_femtoseconds: i64,
+    pub sequence_repeat_count: u64,
+    pub calibration_duration_femtoseconds: i64,
+    pub interval_ending_gap_femtoseconds: i64,
+    pub phase_coherence_with_prior: u32,
+    pub iterations_per_signal: u64,
+    pub max_data_rate_bps: f64,
+    pub max_sample_rate_hz: f64,
+    pub job_details_id: u32,
+    pub status_enable: u32,
+    pub stab_points: AmsMelRfPointingSpanV1,
+    pub receive_events: AmsMelRfReceiveEventConfigSpanV4,
+    pub tx_power_mode_id: u32,
+    pub activity_id: AmsMelU8SpanV1,
+    pub execution_type: AmsMelRfExecutionTypeT,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV5 {
+    pub data: *const AmsMelRfJobIntervalConfigV5,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v5(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV5,
+        diagnostic: *mut std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

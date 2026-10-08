@@ -9,6 +9,12 @@
 #define LAYOUT(type) VALUE(sizeof(type)); VALUE(_Alignof(type))
 #define FIELD(type, field) VALUE(offsetof(type, field))
 
+_Static_assert(AMS_MEL_RF_PD_REFERENCE_DBQ == 0, "DBQ");
+_Static_assert(AMS_MEL_RF_PD_REFERENCE_DB_ABOVE_NOISE == 1, "noise");
+_Static_assert(AMS_MEL_RF_PD_REFERENCE_DB_BELOW_SATURATION == 2, "saturation");
+_Static_assert(AMS_MEL_RF_PD_TIMETAG_50_PERCENT == 0, "50 percent");
+_Static_assert(AMS_MEL_RF_PD_TIMETAG_90_PERCENT == 1, "90 percent");
+
 int main(void)
 {
     check_rf_local_function_signatures();
@@ -1079,6 +1085,53 @@ int main(void)
         FIELD(ams_mel_rf_job_interval_config_span_v4,data);
         FIELD(ams_mel_rf_job_interval_config_span_v4,size));
     { ams_mel_status_t (*add_v4)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v4, char *, size_t, size_t *) = ams_mel_rf_job_add_rx_intervals_v4; (void)add_v4; }
+    RECORD(ams_mel_rf_pulse_m_of_n_v1,
+        FIELD(ams_mel_rf_pulse_m_of_n_v1,m);
+        FIELD(ams_mel_rf_pulse_m_of_n_v1,n));
+    RECORD(ams_mel_rf_pulse_threshold_v1,
+        FIELD(ams_mel_rf_pulse_threshold_v1,leading_edge_db);
+        FIELD(ams_mel_rf_pulse_threshold_v1,trailing_edge_db));
+    RECORD(ams_mel_rf_pulse_threshold_span_v1,
+        FIELD(ams_mel_rf_pulse_threshold_span_v1,data);
+        FIELD(ams_mel_rf_pulse_threshold_span_v1,size));
+    RECORD(ams_mel_rf_pulse_detection_settings_v1,
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,reference);
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,leading_edge_m_of_n);
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,trailing_edge_m_of_n);
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,min_pulse_width_femtoseconds);
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,timetag_amplitude_threshold);
+        FIELD(ams_mel_rf_pulse_detection_settings_v1,thresholds));
+    RECORD(ams_mel_rf_receive_event_config_v4,
+        FIELD(ams_mel_rf_receive_event_config_v4,event);
+        FIELD(ams_mel_rf_receive_event_config_v4,has_pulse_detection_settings);
+        FIELD(ams_mel_rf_receive_event_config_v4,pulse_detection_settings));
+    RECORD(ams_mel_rf_receive_event_config_span_v4,
+        FIELD(ams_mel_rf_receive_event_config_span_v4,data);
+        FIELD(ams_mel_rf_receive_event_config_span_v4,size));
+    RECORD(ams_mel_rf_job_interval_config_v5,
+        FIELD(ams_mel_rf_job_interval_config_v5,interval_start_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v5,interval_id);
+        FIELD(ams_mel_rf_job_interval_config_v5,interval_starting_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v5,sequence_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v5,sequence_repeat_count);
+        FIELD(ams_mel_rf_job_interval_config_v5,calibration_duration_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v5,interval_ending_gap_femtoseconds);
+        FIELD(ams_mel_rf_job_interval_config_v5,phase_coherence_with_prior);
+        FIELD(ams_mel_rf_job_interval_config_v5,iterations_per_signal);
+        FIELD(ams_mel_rf_job_interval_config_v5,max_data_rate_bps);
+        FIELD(ams_mel_rf_job_interval_config_v5,max_sample_rate_hz);
+        FIELD(ams_mel_rf_job_interval_config_v5,job_details_id);
+        FIELD(ams_mel_rf_job_interval_config_v5,status_enable);
+        FIELD(ams_mel_rf_job_interval_config_v5,stab_points);
+        FIELD(ams_mel_rf_job_interval_config_v5,receive_events);
+        FIELD(ams_mel_rf_job_interval_config_v5,tx_power_mode_id);
+        FIELD(ams_mel_rf_job_interval_config_v5,activity_id);
+        FIELD(ams_mel_rf_job_interval_config_v5,execution_type));
+    RECORD(ams_mel_rf_job_interval_config_span_v5,
+        FIELD(ams_mel_rf_job_interval_config_span_v5,data);
+        FIELD(ams_mel_rf_job_interval_config_span_v5,size));
+    { ams_mel_status_t (*add_v5)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v5, char *, size_t, size_t *) = ams_mel_rf_job_add_rx_intervals_v5; (void)add_v5; }
+
     RECORD(ams_mel_rf_job_event_log_entry_v1,
         FIELD(ams_mel_rf_job_event_log_entry_v1,event_id);
         FIELD(ams_mel_rf_job_event_log_entry_v1,trigger);

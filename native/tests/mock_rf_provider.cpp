@@ -2556,6 +2556,16 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_flush_cal
 { return job_flush_calls.load(); }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_remaining_calls(void)
 { return job_remaining_calls.load(); }
+static bool pulse_defaults(const rfmel::ReceiveEvent& event)
+{
+    const auto& s = event.getPulseDetectionSettings();
+    return s.getReference() == rfmel::PulseDetectionThresholdReference::DBQ &&
+        s.getLeadingEdgeMofN().getm() == 0 && s.getLeadingEdgeMofN().getn() == 0 &&
+        s.getTrailingEdgeMofN().getm() == 0 && s.getTrailingEdgeMofN().getn() == 0 &&
+        s.getMinPulseWidth().count() == 0 &&
+        s.getTimetagAmplitudeThreshold() == rfmel::PulseDetectionTimeTagAmplitudeThreshold::TIMETAG_50_PERCENT &&
+        s.getThresholds().empty();
+}
 static unsigned interval_fidelity(bool enabled)
 {
     std::lock_guard lock{interval_mutex};
@@ -2600,7 +2610,7 @@ static unsigned interval_fidelity(bool enabled)
             interval.getExecutionType() != rfmel::ExecutionType::Normal ||
             !interval.getModulations().empty() || !interval.getSequence().getTxEvents().empty()) return 0;
         for (const auto& event : interval.getSequence().getRxEvents()) {
-            if (event.getDirection() != rfmel::JobEvent::Direction::Receive ||
+            if (!pulse_defaults(event) || event.getDirection() != rfmel::JobEvent::Direction::Receive ||
                 !event.getPolarization().empty() || event.getPolarizationBeemSteerCorrection() ||
                 event.getPhaseOffset() != 0 || event.getStabPointIndex() != 0 || !event.getWeights().empty() ||
                 event.getExecutionType() != rfmel::ExecutionType::Normal ||
@@ -2802,4 +2812,47 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f5_safe_fidel
         e.getAllowDelayStart() && e.getIterationHoldCount() == SIZE_MAX &&
         e.getIterationTerminationCount() == 0x8000000000000000ULL && e.getChannelizationEnabled() &&
         e.getStabPointIndex() == 999 && e.getApplicableRxElementGroups() == std::vector<size_t>{2, 0, 2};
+}
+
+/* F6 observations use only copied provider values and their published getters. */
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f6_scalar(unsigned i, unsigned e, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& s = latest_intervals.at(i).getSequence().getRxEvents().at(e).getPulseDetectionSettings();
+    switch (field) {
+    case 0: return static_cast<unsigned>(s.getReference());
+    case 1: return s.getLeadingEdgeMofN().getm();
+    case 2: return s.getLeadingEdgeMofN().getn();
+    case 3: return s.getTrailingEdgeMofN().getm();
+    case 4: return s.getTrailingEdgeMofN().getn();
+    case 5: return s.getMinPulseWidth().count();
+    case 6: return static_cast<unsigned>(s.getTimetagAmplitudeThreshold());
+    case 7: return static_cast<int64_t>(s.getThresholds().size());
+    default: return -1;
+    }
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f6_double(unsigned i, unsigned e, unsigned t, unsigned edge)
+{
+    std::lock_guard lock{interval_mutex};
+    static unsigned revision = std::numeric_limits<unsigned>::max(), cached_i = std::numeric_limits<unsigned>::max(), cached_e = std::numeric_limits<unsigned>::max();
+    static std::vector<rfmel::PulseDetectionThreshold> values;
+    if (revision != job_add_calls.load() || cached_i != i || cached_e != e) {
+        values = latest_intervals.at(i).getSequence().getRxEvents().at(e).getPulseDetectionSettings().getThresholds();
+        revision = job_add_calls.load(); cached_i = i; cached_e = e;
+    }
+    return edge ? values.at(t).getTrailingEdgeDb() : values.at(t).getleadingEdgeDb();
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f6_defaults(void)
+{
+    std::lock_guard lock{interval_mutex};
+    for (const auto& i : latest_intervals) for (const auto& e : i.getSequence().getRxEvents()) {
+        const auto& s = e.getPulseDetectionSettings();
+        if (s.getReference() != rfmel::PulseDetectionThresholdReference::DBQ ||
+            s.getLeadingEdgeMofN().getm() || s.getLeadingEdgeMofN().getn() ||
+            s.getTrailingEdgeMofN().getm() || s.getTrailingEdgeMofN().getn() ||
+            s.getMinPulseWidth().count() ||
+            s.getTimetagAmplitudeThreshold() != rfmel::PulseDetectionTimeTagAmplitudeThreshold::TIMETAG_50_PERCENT ||
+            !s.getThresholds().empty()) return 0;
+    }
+    return 1;
 }

@@ -116,6 +116,7 @@ static void verify(ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 s
             }
         }
     }
+    CHECK(mock("mock_rf_f6_defaults")==1);
     no_queries();
 }
 int main(void)

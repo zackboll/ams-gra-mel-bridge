@@ -415,7 +415,8 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool controls = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
+    constexpr bool pulse = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v5>;
+    constexpr bool controls = pulse || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
     constexpr bool spatial = controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
     const auto input_at = [&](std::size_t i) -> const auto& {
         if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
@@ -447,7 +448,21 @@ ams_mel_status_t add_rx_intervals(
                 if (!valid_pointing(input.stab_points.data[p])) return AMS_MEL_INVALID_ARGUMENT;
         }
         for (std::size_t e = 0; e < input.receive_events.size; ++e) {
-            const auto& envelope = input.receive_events.data[e];
+            const auto& supplied = input.receive_events.data[e];
+            if constexpr (pulse) {
+                if (supplied.has_pulse_detection_settings > 1U) return AMS_MEL_INVALID_ARGUMENT;
+                if (supplied.has_pulse_detection_settings == 1U) {
+                    const auto& settings = supplied.pulse_detection_settings;
+                    if (settings.reference > AMS_MEL_RF_PD_REFERENCE_DB_BELOW_SATURATION ||
+                        settings.timetag_amplitude_threshold > AMS_MEL_RF_PD_TIMETAG_90_PERCENT ||
+                        !span_ok(settings.thresholds.size, settings.thresholds.data,
+                                 sizeof(*settings.thresholds.data))) return AMS_MEL_INVALID_ARGUMENT;
+                }
+            }
+            const auto& envelope = [&]() -> const auto& {
+                if constexpr (pulse) return supplied.event;
+                else return supplied;
+            }();
             const auto& spatial_event = [&]() -> const auto& {
                 if constexpr (controls) return envelope.event;
                 else return envelope;
@@ -496,7 +511,11 @@ ams_mel_status_t add_rx_intervals(
             std::vector<rfmel::ReceiveEvent> events;
             events.reserve(input.receive_events.size);
             for (std::size_t e = 0; e < input.receive_events.size; ++e) {
-                const auto& envelope = input.receive_events.data[e];
+                const auto& supplied = input.receive_events.data[e];
+                const auto& envelope = [&]() -> const auto& {
+                    if constexpr (pulse) return supplied.event;
+                    else return supplied;
+                }();
                 const auto& spatial_event = [&]() -> const auto& {
                     if constexpr (controls) return envelope.event;
                     else return envelope;
@@ -539,6 +558,32 @@ ams_mel_status_t add_rx_intervals(
                     event.setIterationHoldCount(static_cast<std::size_t>(envelope.iteration_hold_count));
                     event.setIterationTerminationCount(static_cast<std::size_t>(envelope.iteration_termination_count));
                     event.setChannelizationEnabled(envelope.channelization_enabled != 0U);
+                }
+                if constexpr (pulse) {
+                    if (supplied.has_pulse_detection_settings == 1U) {
+                        const auto& config_pulse = supplied.pulse_detection_settings;
+                        rfmel::PulseDetectionSettings settings;
+                        settings.setReference(static_cast<rfmel::PulseDetectionThresholdReference>(config_pulse.reference));
+                        rfmel::PulseDetectionMofN leading, trailing;
+                        leading.setm(config_pulse.leading_edge_m_of_n.m);
+                        leading.setn(config_pulse.leading_edge_m_of_n.n);
+                        settings.setLeadingEdgeMofN(leading);
+                        trailing.setm(config_pulse.trailing_edge_m_of_n.m);
+                        trailing.setn(config_pulse.trailing_edge_m_of_n.n);
+                        settings.setTrailingEdgeMofN(trailing);
+                        settings.setMinPulseWidth(Fs{config_pulse.min_pulse_width_femtoseconds});
+                        settings.setTimetagAmplitudeThreshold(static_cast<rfmel::PulseDetectionTimeTagAmplitudeThreshold>(config_pulse.timetag_amplitude_threshold));
+                        std::vector<rfmel::PulseDetectionThreshold> thresholds;
+                        thresholds.reserve(config_pulse.thresholds.size);
+                        for (std::size_t t = 0; t < config_pulse.thresholds.size; ++t) {
+                            rfmel::PulseDetectionThreshold threshold;
+                            threshold.setleadingEdgeDb(config_pulse.thresholds.data[t].leading_edge_db);
+                            threshold.setTrailingEdgeDb(config_pulse.thresholds.data[t].trailing_edge_db);
+                            thresholds.push_back(threshold);
+                        }
+                        settings.setThresholds(thresholds);
+                        event.setPulseDetectionSettings(settings);
+                    }
                 }
                 events.push_back(std::move(event));
             }
@@ -602,6 +647,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(
