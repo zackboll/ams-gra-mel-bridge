@@ -198,6 +198,15 @@ begin
                               C2.Append_Applicable_RX_Element_Group (Event, 0);
                               C2.Append_RX_Event (Interval, Event);
                            end;
+                           declare
+                              Command : C2.Local_Function_Command :=
+                                C2.Create_Local_Function_Command (0, 0);
+                           begin
+                              C2.Append_Local_Function_Write (Command, 0, 1);
+                              C2.Append_Local_Function_Write (Command, 8, 16#1234_5678#);
+                              C2.Append_Interval_Local_Function_Command (Interval, Command);
+                           end;
+                           -- Pinned Squall Add is a no-op: acceptance, not hardware writes.
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
