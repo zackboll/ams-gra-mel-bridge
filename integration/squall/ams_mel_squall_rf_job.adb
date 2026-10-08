@@ -184,6 +184,13 @@ begin
                               C2.Set_Iteration_Hold_Count (Event, 1);
                               C2.Set_Iteration_Termination_Count (Event, 2);
                               C2.Set_Channelization_Enabled (Event, True);
+                              declare
+                                 Pulse : C2.Pulse_Detection_Settings := C2.Create_Pulse_Detection_Settings
+                                   (C2.DB_Above_Noise, 2, 3, 1, 2, 1_000_000, C2.At_50_Percent);
+                              begin
+                                 C2.Append_Pulse_Detection_Threshold (Pulse, 6.0, 3.0);
+                                 C2.Set_Pulse_Detection_Settings (Event, Pulse);
+                              end;
                               C2.Set_Interval_TX_Power_Mode_ID (Interval, 0);
                               C2.Set_Interval_Activity_ID (Interval, [16#DE#, 16#AD#, 0, 16#BE#, 16#EF#]);
                               C2.Set_Interval_Execution_Type (Interval, C2.Normal);
