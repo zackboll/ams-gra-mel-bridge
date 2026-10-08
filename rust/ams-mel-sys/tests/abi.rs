@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 194);
-    assert_eq!(exported.len(), 194);
+    assert_eq!(declared.len(), 195);
+    assert_eq!(exported.len(), 195);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2692,6 +2692,55 @@ fn declarations_match_the_c_header() {
         execution_type
     );
     layout!(expected, AmsMelRfJobIntervalConfigSpanV4, data, size);
+    layout!(expected, AmsMelRfPulseMOfNV1, m, n);
+    layout!(
+        expected,
+        AmsMelRfPulseThresholdV1,
+        leading_edge_db,
+        trailing_edge_db
+    );
+    layout!(expected, AmsMelRfPulseThresholdSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfPulseDetectionSettingsV1,
+        reference,
+        leading_edge_m_of_n,
+        trailing_edge_m_of_n,
+        min_pulse_width_femtoseconds,
+        timetag_amplitude_threshold,
+        thresholds
+    );
+    layout!(
+        expected,
+        AmsMelRfReceiveEventConfigV4,
+        event,
+        has_pulse_detection_settings,
+        pulse_detection_settings
+    );
+    layout!(expected, AmsMelRfReceiveEventConfigSpanV4, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobIntervalConfigV5,
+        interval_start_femtoseconds,
+        interval_id,
+        interval_starting_gap_femtoseconds,
+        sequence_duration_femtoseconds,
+        sequence_repeat_count,
+        calibration_duration_femtoseconds,
+        interval_ending_gap_femtoseconds,
+        phase_coherence_with_prior,
+        iterations_per_signal,
+        max_data_rate_bps,
+        max_sample_rate_hz,
+        job_details_id,
+        status_enable,
+        stab_points,
+        receive_events,
+        tx_power_mode_id,
+        activity_id,
+        execution_type
+    );
+    layout!(expected, AmsMelRfJobIntervalConfigSpanV5, data, size);
 
     layout!(
         expected,
@@ -3084,5 +3133,26 @@ fn event_controls_signature() {
             AMS_MEL_RF_EVENT_TERMINATION_CANCEL
         ],
         [0, 1, 0, 1]
+    );
+}
+
+#[test]
+fn pulse_detection_signature() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV5,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v5;
+    assert_eq!(
+        [
+            AMS_MEL_RF_PD_REFERENCE_DBQ,
+            AMS_MEL_RF_PD_REFERENCE_DB_ABOVE_NOISE,
+            AMS_MEL_RF_PD_REFERENCE_DB_BELOW_SATURATION,
+            AMS_MEL_RF_PD_TIMETAG_50_PERCENT,
+            AMS_MEL_RF_PD_TIMETAG_90_PERCENT
+        ],
+        [0, 1, 2, 0, 1]
     );
 }

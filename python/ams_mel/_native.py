@@ -2165,6 +2165,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_rx_intervals_v2",
     "ams_mel_rf_job_add_rx_intervals_v3",
     "ams_mel_rf_job_add_rx_intervals_v4",
+    "ams_mel_rf_job_add_rx_intervals_v5",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2310,3 +2311,59 @@ class RfJobIntervalConfigSpanV4(ctypes.Structure):
 ams_mel_rf_job_add_rx_intervals_v4 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v4
 ams_mel_rf_job_add_rx_intervals_v4.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV4, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v4.restype = ctypes.c_int32
+
+RF_PD_REFERENCE_DBQ = 0
+RF_PD_REFERENCE_DB_ABOVE_NOISE = 1
+RF_PD_REFERENCE_DB_BELOW_SATURATION = 2
+RF_PD_TIMETAG_50_PERCENT = 0
+RF_PD_TIMETAG_90_PERCENT = 1
+class RfPulseMOfNV1(ctypes.Structure):
+    _fields_ = [("m", ctypes.c_uint8), ("n", ctypes.c_uint8)]
+class RfPulseThresholdV1(ctypes.Structure):
+    _fields_ = [("leading_edge_db", ctypes.c_double), ("trailing_edge_db", ctypes.c_double)]
+class RfPulseThresholdSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfPulseThresholdV1)), ("size", ctypes.c_size_t)]
+class RfPulseDetectionSettingsV1(ctypes.Structure):
+    _fields_ = [("reference", ctypes.c_uint32),
+                ("leading_edge_m_of_n", RfPulseMOfNV1),
+                ("trailing_edge_m_of_n", RfPulseMOfNV1),
+                ("min_pulse_width_femtoseconds", ctypes.c_int64),
+                ("timetag_amplitude_threshold", ctypes.c_uint32),
+                ("thresholds", RfPulseThresholdSpanV1)]
+class RfReceiveEventConfigV4(ctypes.Structure):
+    _fields_ = [("event", RfReceiveEventConfigV3),
+                ("has_pulse_detection_settings", ctypes.c_uint32),
+                ("pulse_detection_settings", RfPulseDetectionSettingsV1)]
+class RfReceiveEventConfigSpanV4(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfReceiveEventConfigV4)), ("size", ctypes.c_size_t)]
+class RfJobIntervalConfigV5(ctypes.Structure):
+    _fields_ = [
+        ("interval_start_femtoseconds", ctypes.c_int64),
+        ("interval_id", ctypes.c_uint32),
+        ("interval_starting_gap_femtoseconds", ctypes.c_int64),
+        ("sequence_duration_femtoseconds", ctypes.c_int64),
+        ("sequence_repeat_count", ctypes.c_uint64),
+        ("calibration_duration_femtoseconds", ctypes.c_int64),
+        ("interval_ending_gap_femtoseconds", ctypes.c_int64),
+        ("phase_coherence_with_prior", ctypes.c_uint32),
+        ("iterations_per_signal", ctypes.c_uint64),
+        ("max_data_rate_bps", ctypes.c_double),
+        ("max_sample_rate_hz", ctypes.c_double),
+        ("job_details_id", ctypes.c_uint32),
+        ("status_enable", ctypes.c_uint32),
+        ("stab_points", RfPointingSpanV1),
+        ("receive_events", RfReceiveEventConfigSpanV4),
+        ("tx_power_mode_id", ctypes.c_uint32),
+        ("activity_id", U8SpanV1),
+        ("execution_type", ctypes.c_uint32),
+    ]
+
+class RfJobIntervalConfigSpanV5(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfJobIntervalConfigV5)),
+        ("size", ctypes.c_size_t),
+    ]
+
+ams_mel_rf_job_add_rx_intervals_v5 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v5
+ams_mel_rf_job_add_rx_intervals_v5.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV5, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v5.restype = ctypes.c_int32

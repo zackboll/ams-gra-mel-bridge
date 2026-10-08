@@ -27,6 +27,53 @@ package body AMS.MEL.RF.C2 is
    package US renames Ada.Strings.Unbounded;
    use type Interfaces.C.char;
 
+   pragma
+     Compile_Time_Error
+       (Pulse_Threshold_Reference'Enum_Rep (DBQ) /= C.RF_PD_Reference_DBQ
+          or else Pulse_Threshold_Reference'Enum_Rep (DB_Above_Noise)
+                  /= C.RF_PD_Reference_DB_Above_Noise
+          or else Pulse_Threshold_Reference'Enum_Rep (DB_Below_Saturation)
+                  /= C.RF_PD_Reference_DB_Below_Saturation
+          or else Pulse_Time_Tag_Threshold'Enum_Rep (At_50_Percent) /= C.RF_PD_Timetag_50_Percent
+          or else Pulse_Time_Tag_Threshold'Enum_Rep (At_90_Percent) /= C.RF_PD_Timetag_90_Percent,
+        "pulse enum representation mismatch");
+
+   function Create_Pulse_Detection_Settings
+     (Reference                                    : Pulse_Threshold_Reference;
+      Leading_M, Leading_N, Trailing_M, Trailing_N : Interfaces.Unsigned_8;
+      Min_Pulse_Width_Femtoseconds                 : Interfaces.Integer_64;
+      Time_Tag_Threshold                           : Pulse_Time_Tag_Threshold)
+      return Pulse_Detection_Settings is
+   begin
+      return
+        (Reference,
+         Leading_M,
+         Leading_N,
+         Trailing_M,
+         Trailing_N,
+         Min_Pulse_Width_Femtoseconds,
+         Time_Tag_Threshold,
+         Pulse_Threshold_Vectors.Empty_Vector);
+   end Create_Pulse_Detection_Settings;
+
+   procedure Append_Pulse_Detection_Threshold
+     (Settings : in out Pulse_Detection_Settings; Leading_Edge_DB, Trailing_Edge_DB : Long_Float) is
+   begin
+      Settings.Thresholds.Append (Pulse_Threshold'(Leading_Edge_DB, Trailing_Edge_DB));
+   end Append_Pulse_Detection_Threshold;
+
+   procedure Set_Pulse_Detection_Settings
+     (Event : in out RX_Receive_Event_Config; Settings : Pulse_Detection_Settings) is
+   begin
+      Event.Pulse_Settings := Settings;
+      Event.Has_Pulse_Settings := True;
+   end Set_Pulse_Detection_Settings;
+
+   procedure Clear_Pulse_Detection_Settings (Event : in out RX_Receive_Event_Config) is
+   begin
+      Event.Has_Pulse_Settings := False;
+   end Clear_Pulse_Detection_Settings;
+
    type Diagnostic is array (C.Size_T range <>) of aliased Interfaces.C.char with Convention => C;
    subtype Fixed_Diagnostic is Diagnostic (0 .. 511);
    type String_Owner is new Ada.Finalization.Limited_Controlled with record
@@ -263,9 +310,9 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V4
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V5
       with Convention => C;
-      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V3
+      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V4
       with Convention => C;
       type Native_Points is array (Positive range <>) of aliased C.RF_Pointing_V1
       with Convention => C;
@@ -273,11 +320,14 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Native_Stokes is array (Positive range <>) of aliased C.RF_Stokes_Vector_V1
       with Convention => C;
+      type Native_Thresholds is array (Positive range <>) of aliased C.RF_Pulse_Threshold_V1
+      with Convention => C;
       type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
       Count                                 : constant Natural := Job_Interval_Count (Intervals);
       Event_Count, Point_Count, Group_Count : Natural := 0;
+      Threshold_Count                       : Natural := 0;
       Stokes_Count, Byte_Count              : Natural := 0;
       D                                     : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
@@ -288,6 +338,10 @@ package body AMS.MEL.RF.C2 is
          Event_Count := Event_Count + Natural (Interval.Events.Length);
          Point_Count := Point_Count + Natural (Interval.Stab_Points.Length);
          for Event of Interval.Events loop
+            if Event.Has_Pulse_Settings then
+               Threshold_Count :=
+                 Threshold_Count + Natural (Event.Pulse_Settings.Thresholds.Length);
+            end if;
             Stokes_Count := Stokes_Count + Natural (Event.Polarization.Length);
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
@@ -300,11 +354,13 @@ package body AMS.MEL.RF.C2 is
          Points                                : Native_Points (1 .. Point_Count);
          Groups                                : Native_Indices (1 .. Group_Count);
          Stokes                                : Native_Stokes (1 .. Stokes_Count);
+         Thresholds                            : Native_Thresholds (1 .. Threshold_Count);
+         Next_Threshold                        : Positive := 1;
          Bytes                                 : Native_Bytes (1 .. Byte_Count);
          Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V4 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V5 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -313,7 +369,7 @@ package body AMS.MEL.RF.C2 is
                First_Point   : constant Positive := Next_Point;
                Activity_Span : C.U8_Span_V1 :=
                  (System.Null_Address, C.Size_T (Interval.Activity.Length));
-               Event_Span    : C.RF_Receive_Event_Config_Span_V3 :=
+               Event_Span    : C.RF_Receive_Event_Config_Span_V4 :=
                  (System.Null_Address, C.Size_T (Interval.Events.Length));
                Point_Span    : C.RF_Pointing_Span_V1 :=
                  (System.Null_Address, C.Size_T (Interval.Stab_Points.Length));
@@ -334,18 +390,18 @@ package body AMS.MEL.RF.C2 is
                end if;
                for Event of Interval.Events loop
                   Strings (Next_Event).Value := CS.New_String (US.To_String (Event.Label));
-                  Events (Next_Event).Event.Applicable_RX_Element_Groups :=
+                  Events (Next_Event).Event.Event.Applicable_RX_Element_Groups :=
                     (System.Null_Address, C.Size_T (Event.Applicable_RX_Element_Groups.Length));
                   if not Event.Applicable_RX_Element_Groups.Is_Empty then
-                     Events (Next_Event).Event.Applicable_RX_Element_Groups.Data :=
+                     Events (Next_Event).Event.Event.Applicable_RX_Element_Groups.Data :=
                        Groups (Next_Group)'Address;
                   end if;
                   for Value of Event.Applicable_RX_Element_Groups loop
                      Groups (Next_Group) := Value;
                      Next_Group := Next_Group + 1;
                   end loop;
-                  Events (Next_Event).Event.Stab_Point_Index := Event.Stab_Point_Index;
-                  Events (Next_Event).Event.Event :=
+                  Events (Next_Event).Event.Event.Stab_Point_Index := Event.Stab_Point_Index;
+                  Events (Next_Event).Event.Event.Event :=
                     (Event.Event_ID,
                      (Pointer_Address (Strings (Next_Event).Value),
                       C.Size_T (US.Length (Event.Label))),
@@ -356,10 +412,10 @@ package body AMS.MEL.RF.C2 is
                      Event.AGC_Processing_Iterations,
                      Event.Ignored_Post_AGC_Iterations,
                      Event.Max_Extension_Femtoseconds);
-                  Events (Next_Event).Polarization :=
+                  Events (Next_Event).Event.Polarization :=
                     (System.Null_Address, C.Size_T (Event.Polarization.Length));
                   if not Event.Polarization.Is_Empty then
-                     Events (Next_Event).Polarization.Data := Stokes (Next_Stokes)'Address;
+                     Events (Next_Event).Event.Polarization.Data := Stokes (Next_Stokes)'Address;
                   end if;
                   for Value of Event.Polarization loop
                      Stokes (Next_Stokes) :=
@@ -369,16 +425,47 @@ package body AMS.MEL.RF.C2 is
                         Interfaces.C.double (Value (4)));
                      Next_Stokes := Next_Stokes + 1;
                   end loop;
-                  Events (Next_Event).Polarization_Beam_Steer_Correction :=
+                  Events (Next_Event).Event.Polarization_Beam_Steer_Correction :=
                     Boolean'Pos (Event.Beam_Correction);
-                  Events (Next_Event).Phase_Offset_Rad := Interfaces.C.double (Event.Phase_Offset);
-                  Events (Next_Event).Execution_Type := Execution_Type'Enum_Rep (Event.Execution);
-                  Events (Next_Event).Termination_Type :=
+                  Events (Next_Event).Event.Phase_Offset_Rad :=
+                    Interfaces.C.double (Event.Phase_Offset);
+                  Events (Next_Event).Event.Execution_Type :=
+                    Execution_Type'Enum_Rep (Event.Execution);
+                  Events (Next_Event).Event.Termination_Type :=
                     Event_Termination_Type'Enum_Rep (Event.Termination);
-                  Events (Next_Event).Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
-                  Events (Next_Event).Iteration_Hold_Count := Event.Hold_Count;
-                  Events (Next_Event).Iteration_Termination_Count := Event.Termination_Count;
-                  Events (Next_Event).Channelization_Enabled := Boolean'Pos (Event.Channelization);
+                  Events (Next_Event).Event.Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
+                  Events (Next_Event).Event.Iteration_Hold_Count := Event.Hold_Count;
+                  Events (Next_Event).Event.Iteration_Termination_Count := Event.Termination_Count;
+                  Events (Next_Event).Event.Channelization_Enabled :=
+                    Boolean'Pos (Event.Channelization);
+                  Events (Next_Event).Has_Pulse_Detection_Settings :=
+                    Boolean'Pos (Event.Has_Pulse_Settings);
+                  Events (Next_Event).Pulse_Detection_Settings :=
+                    (0, (0, 0), (0, 0), 0, 0, (System.Null_Address, 0));
+                  if Event.Has_Pulse_Settings then
+                     declare
+                        Settings       : Pulse_Detection_Settings renames Event.Pulse_Settings;
+                        Threshold_Span : C.RF_Pulse_Threshold_Span_V1 :=
+                          (System.Null_Address, C.Size_T (Settings.Thresholds.Length));
+                     begin
+                        if not Settings.Thresholds.Is_Empty then
+                           Threshold_Span.Data := Thresholds (Next_Threshold)'Address;
+                        end if;
+                        for Value of Settings.Thresholds loop
+                           Thresholds (Next_Threshold) :=
+                             (Interfaces.C.double (Value.Leading_Edge_DB),
+                              Interfaces.C.double (Value.Trailing_Edge_DB));
+                           Next_Threshold := Next_Threshold + 1;
+                        end loop;
+                        Events (Next_Event).Pulse_Detection_Settings :=
+                          (Pulse_Threshold_Reference'Enum_Rep (Settings.Reference),
+                           (Settings.Leading_M, Settings.Leading_N),
+                           (Settings.Trailing_M, Settings.Trailing_N),
+                           Settings.Min_Pulse_Width_Femtoseconds,
+                           Pulse_Time_Tag_Threshold'Enum_Rep (Settings.Time_Tag_Threshold),
+                           Threshold_Span);
+                     end;
+                  end if;
                   Next_Event := Next_Event + 1;
                end loop;
                if Event_Span.Size > 0 then
@@ -410,7 +497,7 @@ package body AMS.MEL.RF.C2 is
             Span.Data := Configs (1)'Address;
          end if;
          Check
-           (C.RF_Job_Add_RX_Intervals_V4 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+           (C.RF_Job_Add_RX_Intervals_V5 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

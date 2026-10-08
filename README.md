@@ -1,5 +1,23 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+Task 034F6 adds optional value-only OEM pulse settings to RX events via
+ReceiveEvent v4 / JobInterval v5 and exactly `ams_mel_rf_job_add_rx_intervals_v5`.
+Presence 0 ignores the entire inactive payload without calling the pulse setter;
+presence 1 validates enum domains and threshold span structure. Defaults remain
+DBQ, M/N 0/0, width 0 fs, 50-percent time tag, empty thresholds. Reference values
+are DBQ=0, DB_ABOVE_NOISE=1, DB_BELOW_SATURATION=2; time-tag values are 50%=0,
+90%=1. Ordered duplicate thresholds preserve all IEEE doubles; M/N accepts all
+uint8 combinations and signed int64 femtoseconds pass exactly without physical
+validation, quantization or capability queries. All values precede one provider
+Add, with existing status/lifetime gates and exception mapping. Safe Ada owns
+copyable vectors and final-sized synchronous backing; raw Ada/Rust/private
+Python match, without a safe Rust or public Python API. Older profiles are frozen,
+ABI remains 0.1. Pinned Squall Add is a no-op: acceptance is not pulse detection,
+PDW generation, threshold interpretation or hardware support. No TX, modulation,
+Weights, ProductStreamParams, LF/context, endpoints, RDMA or VADB implementation.
+See `docs/task-034f6-rf-rx-pulse-detection.md` for layouts and validation evidence.
+
+
 Task 034F5 adds value-only RX receive-event v3 / JobInterval v4 controls through
 one new export, `ams_mel_rf_job_add_rx_intervals_v4`. Shared execution values are
 Normal=0 and Conditional=1; event termination is Inhibit=0 / Cancel=1. Ordered

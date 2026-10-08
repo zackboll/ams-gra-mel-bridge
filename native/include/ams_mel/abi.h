@@ -2878,6 +2878,72 @@ typedef struct ams_mel_rf_job_interval_config_span_v4 {
     size_t size;
 } ams_mel_rf_job_interval_config_span_v4;
 
+/* Optional OEM pulse configuration: value construction only, not detection.
+ * Active enums/spans are structurally validated. M/N, signed femtoseconds and
+ * all IEEE doubles pass unchanged. Threshold order and duplicates are retained.
+ * Presence 0 ignores the entire payload and leaves upstream defaults untouched.
+ * All input storage is borrowed only during synchronous Add. */
+typedef uint32_t ams_mel_rf_pulse_threshold_reference_t;
+#define AMS_MEL_RF_PD_REFERENCE_DBQ UINT32_C(0)
+#define AMS_MEL_RF_PD_REFERENCE_DB_ABOVE_NOISE UINT32_C(1)
+#define AMS_MEL_RF_PD_REFERENCE_DB_BELOW_SATURATION UINT32_C(2)
+typedef uint32_t ams_mel_rf_pulse_timetag_threshold_t;
+#define AMS_MEL_RF_PD_TIMETAG_50_PERCENT UINT32_C(0)
+#define AMS_MEL_RF_PD_TIMETAG_90_PERCENT UINT32_C(1)
+typedef struct ams_mel_rf_pulse_m_of_n_v1 {
+    uint8_t m;
+    uint8_t n;
+} ams_mel_rf_pulse_m_of_n_v1;
+typedef struct ams_mel_rf_pulse_threshold_v1 {
+    double leading_edge_db;
+    double trailing_edge_db;
+} ams_mel_rf_pulse_threshold_v1;
+typedef struct ams_mel_rf_pulse_threshold_span_v1 {
+    const ams_mel_rf_pulse_threshold_v1 *data;
+    size_t size;
+} ams_mel_rf_pulse_threshold_span_v1;
+typedef struct ams_mel_rf_pulse_detection_settings_v1 {
+    ams_mel_rf_pulse_threshold_reference_t reference;
+    ams_mel_rf_pulse_m_of_n_v1 leading_edge_m_of_n;
+    ams_mel_rf_pulse_m_of_n_v1 trailing_edge_m_of_n;
+    int64_t min_pulse_width_femtoseconds;
+    ams_mel_rf_pulse_timetag_threshold_t timetag_amplitude_threshold;
+    ams_mel_rf_pulse_threshold_span_v1 thresholds;
+} ams_mel_rf_pulse_detection_settings_v1;
+typedef struct ams_mel_rf_receive_event_config_v4 {
+    ams_mel_rf_receive_event_config_v3 event;
+    uint32_t has_pulse_detection_settings;
+    ams_mel_rf_pulse_detection_settings_v1 pulse_detection_settings;
+} ams_mel_rf_receive_event_config_v4;
+typedef struct ams_mel_rf_receive_event_config_span_v4 {
+    const ams_mel_rf_receive_event_config_v4 *data;
+    size_t size;
+} ams_mel_rf_receive_event_config_span_v4;
+typedef struct ams_mel_rf_job_interval_config_v5 {
+    int64_t interval_start_femtoseconds;
+    uint32_t interval_id;
+    int64_t interval_starting_gap_femtoseconds;
+    int64_t sequence_duration_femtoseconds;
+    uint64_t sequence_repeat_count;
+    int64_t calibration_duration_femtoseconds;
+    int64_t interval_ending_gap_femtoseconds;
+    uint32_t phase_coherence_with_prior;
+    uint64_t iterations_per_signal;
+    double max_data_rate_bps;
+    double max_sample_rate_hz;
+    uint32_t job_details_id;
+    ams_mel_rf_job_interval_status_enable_t status_enable;
+    ams_mel_rf_pointing_span_v1 stab_points;
+    ams_mel_rf_receive_event_config_span_v4 receive_events;
+    uint32_t tx_power_mode_id;
+    ams_mel_u8_span_v1 activity_id;
+    ams_mel_rf_execution_type_t execution_type;
+} ams_mel_rf_job_interval_config_v5;
+typedef struct ams_mel_rf_job_interval_config_span_v5 {
+    const ams_mel_rf_job_interval_config_v5 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v5;
+
 typedef uint32_t ams_mel_rf_job_interval_completion_status_t;
 #define AMS_MEL_RF_INTERVAL_COMPLETION_NONE UINT32_C(0)
 #define AMS_MEL_RF_INTERVAL_COMPLETION_READY_FOR_NEXT_JOB_INTERVAL UINT32_C(1)
@@ -3001,6 +3067,10 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v3(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 intervals,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_result_v1 {

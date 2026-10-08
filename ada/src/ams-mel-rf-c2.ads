@@ -155,7 +155,23 @@ package AMS.MEL.RF.C2 is
    --  INT64_MAX is not the pinned continuation sentinel. No quantization or
    --  remapping is performed. Matching this value does not prove scheduling.
    Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 := 0;
+   type Pulse_Threshold_Reference is (DBQ, DB_Above_Noise, DB_Below_Saturation);
+   for Pulse_Threshold_Reference use (DBQ => 0, DB_Above_Noise => 1, DB_Below_Saturation => 2);
+   type Pulse_Time_Tag_Threshold is (At_50_Percent, At_90_Percent);
+   for Pulse_Time_Tag_Threshold use (At_50_Percent => 0, At_90_Percent => 1);
+   type Pulse_Detection_Settings is private;
+   function Create_Pulse_Detection_Settings
+     (Reference                                    : Pulse_Threshold_Reference;
+      Leading_M, Leading_N, Trailing_M, Trailing_N : Interfaces.Unsigned_8;
+      Min_Pulse_Width_Femtoseconds                 : Interfaces.Integer_64;
+      Time_Tag_Threshold                           : Pulse_Time_Tag_Threshold)
+      return Pulse_Detection_Settings;
+   procedure Append_Pulse_Detection_Threshold
+     (Settings : in out Pulse_Detection_Settings; Leading_Edge_DB, Trailing_Edge_DB : Long_Float);
    type RX_Receive_Event_Config is private;
+   procedure Set_Pulse_Detection_Settings
+     (Event : in out RX_Receive_Event_Config; Settings : Pulse_Detection_Settings);
+   procedure Clear_Pulse_Detection_Settings (Event : in out RX_Receive_Event_Config);
    type Execution_Type is (Normal, Conditional);
    for Execution_Type use (Normal => 0, Conditional => 1);
    type Event_Termination_Type is (Inhibit_Event, Cancel_Event);
@@ -331,6 +347,17 @@ private
    package Stokes_Vectors is new Ada.Containers.Vectors (Positive, Stokes_Components);
    package Byte_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Unsigned_8, Interfaces."=");
+   type Pulse_Threshold is record
+      Leading_Edge_DB, Trailing_Edge_DB : Long_Float;
+   end record;
+   package Pulse_Threshold_Vectors is new Ada.Containers.Vectors (Positive, Pulse_Threshold);
+   type Pulse_Detection_Settings is record
+      Reference                                    : Pulse_Threshold_Reference := DBQ;
+      Leading_M, Leading_N, Trailing_M, Trailing_N : Interfaces.Unsigned_8 := 0;
+      Min_Pulse_Width_Femtoseconds                 : Interfaces.Integer_64 := 0;
+      Time_Tag_Threshold                           : Pulse_Time_Tag_Threshold := At_50_Percent;
+      Thresholds                                   : Pulse_Threshold_Vectors.Vector;
+   end record;
    type RX_Receive_Event_Config is record
       Event_ID                                               : Interfaces.Unsigned_32;
       Label                                                  :
@@ -350,6 +377,8 @@ private
       Allow_Delay                                            : Boolean := False;
       Hold_Count, Termination_Count                          : Interfaces.Unsigned_64 := 0;
       Channelization                                         : Boolean := False;
+      Has_Pulse_Settings                                     : Boolean := False;
+      Pulse_Settings                                         : Pulse_Detection_Settings;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
    type RX_Job_Interval_Config is record

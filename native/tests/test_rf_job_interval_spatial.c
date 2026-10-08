@@ -209,6 +209,7 @@ int main(void)
         CHECK(ams_mel_rf_job_add_rx_intervals_v3(job,span,D)==AMS_MEL_PROVIDER_FAILED);
         CHECK(mock("mock_rf_job_add_calls")==before);
         if(repeat%2) { ams_mel_rf_job_status_t status=0; CHECK(ams_mel_rf_job_wait_status(job,3000,&status,D)==AMS_MEL_OK); }
+        CHECK(mock("mock_rf_f6_defaults")==1);
         no_queries();
         CHECK(ams_mel_rf_job_close(&job,D)==AMS_MEL_OK);
         CHECK(ams_mel_rf_virtual_aperture_close(&va,D)==AMS_MEL_OK);
@@ -228,6 +229,7 @@ int main(void)
         CHECK(mock("mock_rf_job_add_calls")==before);
         intervals[0].status_enable=AMS_MEL_RF_INTERVAL_STATUS_NEVER;
         CHECK(ams_mel_rf_job_add_rx_intervals_v3(job,span,D)==AMS_MEL_OK);
+        CHECK(mock("mock_rf_f6_defaults")==1);
         no_queries();
         CHECK(ams_mel_rf_job_close(&job,D)==AMS_MEL_OK);
         CHECK(ams_mel_rf_virtual_aperture_close(&va,D)==AMS_MEL_OK);
