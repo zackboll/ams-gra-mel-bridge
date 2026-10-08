@@ -2052,6 +2052,76 @@ private package AMS.MEL_C_API is
       Size : Size_T;
    end record
    with Convention => C_Pass_By_Copy;
+   subtype RF_Pulse_Threshold_Reference is Interfaces.Unsigned_32;
+   RF_PD_Reference_DBQ                                                      :
+     constant RF_Pulse_Threshold_Reference := 0;
+   RF_PD_Reference_DB_Above_Noise                                           :
+     constant RF_Pulse_Threshold_Reference := 1;
+   RF_PD_Reference_DB_Below_Saturation                                      :
+     constant RF_Pulse_Threshold_Reference := 2;
+   subtype RF_Pulse_Timetag_Threshold is Interfaces.Unsigned_32;
+   RF_PD_Timetag_50_Percent                                                 :
+     constant RF_Pulse_Timetag_Threshold := 0;
+   RF_PD_Timetag_90_Percent                                                 :
+     constant RF_Pulse_Timetag_Threshold := 1;
+   type RF_Pulse_M_Of_N_V1 is record
+      M, N : Interfaces.Unsigned_8;
+   end record
+   with Convention => C;
+   type RF_Pulse_Threshold_V1 is record
+      Leading_Edge_DB, Trailing_Edge_DB : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Pulse_Threshold_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Pulse_Detection_Settings_V1 is record
+      Reference                                 : RF_Pulse_Threshold_Reference;
+      Leading_Edge_M_Of_N, Trailing_Edge_M_Of_N : RF_Pulse_M_Of_N_V1;
+      Min_Pulse_Width_Femtoseconds              : Interfaces.Integer_64;
+      Timetag_Amplitude_Threshold               : RF_Pulse_Timetag_Threshold;
+      Thresholds                                : RF_Pulse_Threshold_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Receive_Event_Config_V4 is record
+      Event                        : RF_Receive_Event_Config_V3;
+      Has_Pulse_Detection_Settings : Interfaces.Unsigned_32;
+      Pulse_Detection_Settings     : RF_Pulse_Detection_Settings_V1;
+   end record
+   with Convention => C;
+   type RF_Receive_Event_Config_Span_V4 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V5 is record
+      Interval_Start_Femtoseconds        : Interfaces.Integer_64;
+      Interval_ID                        : Interfaces.Unsigned_32;
+      Interval_Starting_Gap_Femtoseconds : Interfaces.Integer_64;
+      Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
+      Sequence_Repeat_Count              : Interfaces.Unsigned_64;
+      Calibration_Duration_Femtoseconds  : Interfaces.Integer_64;
+      Interval_Ending_Gap_Femtoseconds   : Interfaces.Integer_64;
+      Phase_Coherence_With_Prior         : Interfaces.Unsigned_32;
+      Iterations_Per_Signal              : Interfaces.Unsigned_64;
+      Max_Data_Rate_BPS                  : Interfaces.C.double;
+      Max_Sample_Rate_Hz                 : Interfaces.C.double;
+      Job_Details_ID                     : Interfaces.Unsigned_32;
+      Status_Enable                      : Interfaces.Unsigned_32;
+      Stab_Points                        : RF_Pointing_Span_V1;
+      Receive_Events                     : RF_Receive_Event_Config_Span_V4;
+      TX_Power_Mode_ID                   : Interfaces.Unsigned_32;
+      Activity_ID                        : U8_Span_V1;
+      Execution_Type                     : RF_Execution_Type;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V5 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
    Rf_Interval_Status_Never                                                 :
      constant Interfaces.Unsigned_32 := 0;
    Rf_Interval_Status_Always                                                :
@@ -2220,6 +2290,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v4";
+   function RF_Job_Add_RX_Intervals_V5
+     (Handle              : RF_Job_Handle;
+      Intervals           : RF_Job_Interval_Config_Span_V5;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v5";
    type RF_Job_Info_V1 is record
       Actual_Start_Seconds            : Interfaces.Integer_64;
       Actual_Start_Femtoseconds       : Interfaces.Integer_64;
