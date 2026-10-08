@@ -2164,6 +2164,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_interval_status_event_close",
     "ams_mel_rf_job_add_rx_intervals_v2",
     "ams_mel_rf_job_add_rx_intervals_v3",
+    "ams_mel_rf_job_add_rx_intervals_v4",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2238,3 +2239,74 @@ class RfJobIntervalConfigSpanV3(ctypes.Structure):
 ams_mel_rf_job_add_rx_intervals_v3 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v3
 ams_mel_rf_job_add_rx_intervals_v3.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV3, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v3.restype = ctypes.c_int32
+
+RF_EXECUTION_NORMAL = 0
+RF_EXECUTION_CONDITIONAL = 1
+RF_EVENT_TERMINATION_INHIBIT = 0
+RF_EVENT_TERMINATION_CANCEL = 1
+
+class RfStokesVectorV1(ctypes.Structure):
+    _fields_ = [
+        ("s0", ctypes.c_double),
+        ("s1", ctypes.c_double),
+        ("s2", ctypes.c_double),
+        ("s3", ctypes.c_double),
+    ]
+
+class RfStokesVectorSpanV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfStokesVectorV1)),
+        ("size", ctypes.c_size_t),
+    ]
+
+class RfReceiveEventConfigV3(ctypes.Structure):
+    _fields_ = [
+        ("event", RfReceiveEventConfigV2),
+        ("polarization", RfStokesVectorSpanV1),
+        ("polarization_beam_steer_correction", ctypes.c_uint32),
+        ("phase_offset_rad", ctypes.c_double),
+        ("execution_type", ctypes.c_uint32),
+        ("termination_type", ctypes.c_uint32),
+        ("allow_delay_start", ctypes.c_uint32),
+        ("iteration_hold_count", ctypes.c_uint64),
+        ("iteration_termination_count", ctypes.c_uint64),
+        ("channelization_enabled", ctypes.c_uint32),
+    ]
+
+class RfReceiveEventConfigSpanV3(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfReceiveEventConfigV3)),
+        ("size", ctypes.c_size_t),
+    ]
+
+class RfJobIntervalConfigV4(ctypes.Structure):
+    _fields_ = [
+        ("interval_start_femtoseconds", ctypes.c_int64),
+        ("interval_id", ctypes.c_uint32),
+        ("interval_starting_gap_femtoseconds", ctypes.c_int64),
+        ("sequence_duration_femtoseconds", ctypes.c_int64),
+        ("sequence_repeat_count", ctypes.c_uint64),
+        ("calibration_duration_femtoseconds", ctypes.c_int64),
+        ("interval_ending_gap_femtoseconds", ctypes.c_int64),
+        ("phase_coherence_with_prior", ctypes.c_uint32),
+        ("iterations_per_signal", ctypes.c_uint64),
+        ("max_data_rate_bps", ctypes.c_double),
+        ("max_sample_rate_hz", ctypes.c_double),
+        ("job_details_id", ctypes.c_uint32),
+        ("status_enable", ctypes.c_uint32),
+        ("stab_points", RfPointingSpanV1),
+        ("receive_events", RfReceiveEventConfigSpanV3),
+        ("tx_power_mode_id", ctypes.c_uint32),
+        ("activity_id", U8SpanV1),
+        ("execution_type", ctypes.c_uint32),
+    ]
+
+class RfJobIntervalConfigSpanV4(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfJobIntervalConfigV4)),
+        ("size", ctypes.c_size_t),
+    ]
+
+ams_mel_rf_job_add_rx_intervals_v4 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v4
+ams_mel_rf_job_add_rx_intervals_v4.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV4, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v4.restype = ctypes.c_int32

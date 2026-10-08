@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 193);
-    assert_eq!(exported.len(), 193);
+    assert_eq!(declared.len(), 194);
+    assert_eq!(exported.len(), 194);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -2652,6 +2652,46 @@ fn declarations_match_the_c_header() {
         receive_events
     );
     layout!(expected, AmsMelRfJobIntervalConfigSpanV3, data, size);
+    layout!(expected, AmsMelRfStokesVectorV1, s0, s1, s2, s3);
+    layout!(expected, AmsMelRfStokesVectorSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelRfReceiveEventConfigV3,
+        event,
+        polarization,
+        polarization_beam_steer_correction,
+        phase_offset_rad,
+        execution_type,
+        termination_type,
+        allow_delay_start,
+        iteration_hold_count,
+        iteration_termination_count,
+        channelization_enabled
+    );
+    layout!(expected, AmsMelRfReceiveEventConfigSpanV3, data, size);
+    layout!(
+        expected,
+        AmsMelRfJobIntervalConfigV4,
+        interval_start_femtoseconds,
+        interval_id,
+        interval_starting_gap_femtoseconds,
+        sequence_duration_femtoseconds,
+        sequence_repeat_count,
+        calibration_duration_femtoseconds,
+        interval_ending_gap_femtoseconds,
+        phase_coherence_with_prior,
+        iterations_per_signal,
+        max_data_rate_bps,
+        max_sample_rate_hz,
+        job_details_id,
+        status_enable,
+        stab_points,
+        receive_events,
+        tx_power_mode_id,
+        activity_id,
+        execution_type
+    );
+    layout!(expected, AmsMelRfJobIntervalConfigSpanV4, data, size);
 
     layout!(
         expected,
@@ -3025,4 +3065,24 @@ fn interval_status_signatures() {
         usize,
         *mut usize,
     ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v2;
+}
+
+#[test]
+fn event_controls_signature() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV4,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v4;
+    assert_eq!(
+        [
+            AMS_MEL_RF_EXECUTION_NORMAL,
+            AMS_MEL_RF_EXECUTION_CONDITIONAL,
+            AMS_MEL_RF_EVENT_TERMINATION_INHIBIT,
+            AMS_MEL_RF_EVENT_TERMINATION_CANCEL
+        ],
+        [0, 1, 0, 1]
+    );
 }

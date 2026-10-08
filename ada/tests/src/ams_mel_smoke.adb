@@ -264,6 +264,12 @@ begin
    begin
       Code :=
         GNAT.OS_Lib.Spawn
+          (Workspace_Root & "/ada/tests/bin/ams_mel_rf_event_controls_focused", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF event controls suite failed";
+      end if;
+      Code :=
+        GNAT.OS_Lib.Spawn
           (Workspace_Root & "/ada/tests/bin/ams_mel_rf_interval_spatial_focused", Arguments);
       if Code /= 0 then
          raise Program_Error with "isolated RF interval spatial suite failed";

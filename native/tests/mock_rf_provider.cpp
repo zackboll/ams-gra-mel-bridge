@@ -2667,6 +2667,17 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_
             !interval.getActivityId().empty() || interval.getTxPowerModeID() != 0 ||
             !interval.getModulations().empty() || !interval.getSequence().getTxEvents().empty()) return 0;
     }
+    for (const auto& interval : latest_intervals) {
+        if (interval.getExecutionType() != rfmel::ExecutionType::Normal) return 0;
+        for (const auto& event : interval.getSequence().getRxEvents()) {
+            if (!event.getPolarization().empty() || event.getPolarizationBeemSteerCorrection() ||
+                event.getPhaseOffset() != 0 || !event.getWeights().empty() ||
+                event.getExecutionType() != rfmel::ExecutionType::Normal ||
+                event.getEventTerminationType() != rfmel::JobEvent::EventTerminationType::InhibitEvent ||
+                event.getAllowDelayStart() || event.getIterationHoldCount() != 0 ||
+                event.getIterationTerminationCount() != 0 || event.getChannelizationEnabled()) return 0;
+        }
+    }
     return 1;
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_boundary(void)
@@ -2721,4 +2732,74 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_status_mode(u
     std::lock_guard lock{interval_mutex};
     return index < latest_intervals.size() ?
         static_cast<unsigned>(latest_intervals[index].getJobIntervalStatusEnable()) : 99U;
+}
+
+/* F5 test-only independent observations of the copied provider payload. */
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f5_scalar(unsigned interval, unsigned event, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& i = latest_intervals.at(interval);
+    if (field == 0) return i.getTxPowerModeID();
+    if (field == 1) return static_cast<unsigned>(i.getExecutionType());
+    if (field == 2) return i.getActivityId().size();
+    if (field == 3) return i.getStabPoints().size();
+    const auto& e = i.getSequence().getRxEvents().at(event);
+    switch (field) {
+    case 4: return e.getPolarization().size();
+    case 5: return e.getPolarizationBeemSteerCorrection();
+    case 6: return static_cast<unsigned>(e.getExecutionType());
+    case 7: return static_cast<unsigned>(e.getEventTerminationType());
+    case 8: return e.getAllowDelayStart();
+    case 9: return e.getIterationHoldCount();
+    case 10: return e.getIterationTerminationCount();
+    case 11: return e.getChannelizationEnabled();
+    case 12: return e.getStabPointIndex();
+    case 13: return e.getApplicableRxElementGroups().size();
+    case 14: return e.getWeights().empty();
+    default: return UINT64_MAX;
+    }
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f5_double(unsigned interval, unsigned event, unsigned vector, unsigned component)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& e = latest_intervals.at(interval).getSequence().getRxEvents().at(event);
+    return component == 4 ? e.getPhaseOffset() : e.getPolarization().at(vector).at(component);
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f5_byte(unsigned interval, unsigned index)
+{
+    std::lock_guard lock{interval_mutex};
+    return latest_intervals.at(interval).getActivityId().at(index);
+}
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f5_safe_fidelity(void)
+{
+    std::lock_guard lock{interval_mutex};
+    const char *value = std::getenv("AMS_MEL_TEST_F5_POLARIZATIONS");
+    if (!value || latest_intervals.size() != 1) return 0;
+    const unsigned count = static_cast<unsigned>(std::strtoul(value, nullptr, 10));
+    const auto& i = latest_intervals[0];
+    if (i.getSequence().getRxEvents().size() != 1) return 0;
+    const auto& e = i.getSequence().getRxEvents()[0];
+    if (e.getPolarization().size() != count || !e.getWeights().empty() ||
+        !i.getModulations().empty() || !i.getLfCommands().empty() || i.getEndpoints().size() != 0) return 0;
+    if (!count) return i.getTxPowerModeID() == 0 && i.getActivityId().empty() &&
+        i.getExecutionType() == rfmel::ExecutionType::Normal && i.getStabPoints().empty() &&
+        !e.getPolarizationBeemSteerCorrection() && e.getPhaseOffset() == 0 &&
+        e.getExecutionType() == rfmel::ExecutionType::Normal &&
+        e.getEventTerminationType() == rfmel::JobEvent::EventTerminationType::InhibitEvent &&
+        !e.getAllowDelayStart() && !e.getIterationHoldCount() && !e.getIterationTerminationCount() &&
+        !e.getChannelizationEnabled();
+    for (unsigned p = 0; p < count; ++p) {
+        const auto& v = e.getPolarization()[p];
+        if (v[0] != p + 1 || v[1] != 0 || !std::signbit(v[1]) || v[2] != 2.25 || v[3] != -3.5) return 0;
+    }
+    return i.getTxPowerModeID() == 0xdeadbeefU &&
+        i.getActivityId() == std::vector<uint8_t>{0, 0xff, 0x80, 0, 0x7f} &&
+        i.getExecutionType() == rfmel::ExecutionType::Conditional && i.getStabPoints().size() == 1 &&
+        e.getPolarizationBeemSteerCorrection() && e.getPhaseOffset() == 0 && std::signbit(e.getPhaseOffset()) &&
+        e.getExecutionType() == rfmel::ExecutionType::Conditional &&
+        e.getEventTerminationType() == rfmel::JobEvent::EventTerminationType::CancelEvent &&
+        e.getAllowDelayStart() && e.getIterationHoldCount() == SIZE_MAX &&
+        e.getIterationTerminationCount() == 0x8000000000000000ULL && e.getChannelizationEnabled() &&
+        e.getStabPointIndex() == 999 && e.getApplicableRxElementGroups() == std::vector<size_t>{2, 0, 2};
 }

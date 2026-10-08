@@ -92,6 +92,71 @@ package body AMS.MEL.RF.C2 is
       end if;
    end Check;
 
+   procedure Append_Polarization
+     (Event : in out RX_Receive_Event_Config; S0, S1, S2, S3 : Long_Float) is
+   begin
+      if Natural (Event.Polarization.Length) = 2 then
+         raise Constraint_Error with "at most two polarization values";
+      end if;
+      Event.Polarization.Append (Stokes_Components'(S0, S1, S2, S3));
+   end Append_Polarization;
+   procedure Set_Polarization_Beam_Steer_Correction
+     (Event : in out RX_Receive_Event_Config; Enabled : Boolean) is
+   begin
+      Event.Beam_Correction := Enabled;
+   end Set_Polarization_Beam_Steer_Correction;
+   procedure Set_Phase_Offset_Radians (Event : in out RX_Receive_Event_Config; Value : Long_Float)
+   is
+   begin
+      Event.Phase_Offset := Value;
+   end Set_Phase_Offset_Radians;
+   procedure Set_Event_Execution_Type
+     (Event : in out RX_Receive_Event_Config; Value : Execution_Type) is
+   begin
+      Event.Execution := Value;
+   end Set_Event_Execution_Type;
+   procedure Set_Event_Termination_Type
+     (Event : in out RX_Receive_Event_Config; Value : Event_Termination_Type) is
+   begin
+      Event.Termination := Value;
+   end Set_Event_Termination_Type;
+   procedure Set_Allow_Delay_Start (Event : in out RX_Receive_Event_Config; Enabled : Boolean) is
+   begin
+      Event.Allow_Delay := Enabled;
+   end Set_Allow_Delay_Start;
+   procedure Set_Iteration_Hold_Count
+     (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64) is
+   begin
+      Event.Hold_Count := Count;
+   end Set_Iteration_Hold_Count;
+   procedure Set_Iteration_Termination_Count
+     (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64) is
+   begin
+      Event.Termination_Count := Count;
+   end Set_Iteration_Termination_Count;
+   procedure Set_Channelization_Enabled (Event : in out RX_Receive_Event_Config; Enabled : Boolean)
+   is
+   begin
+      Event.Channelization := Enabled;
+   end Set_Channelization_Enabled;
+   procedure Set_Interval_TX_Power_Mode_ID
+     (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32) is
+   begin
+      Interval.TX_Power_Mode := Value;
+   end Set_Interval_TX_Power_Mode_ID;
+   procedure Set_Interval_Activity_ID (Interval : in out RX_Job_Interval_Config; Value : Byte_Array)
+   is
+   begin
+      Interval.Activity.Clear;
+      for Item of Value loop
+         Interval.Activity.Append (Item);
+      end loop;
+   end Set_Interval_Activity_ID;
+   procedure Set_Interval_Execution_Type
+     (Interval : in out RX_Job_Interval_Config; Value : Execution_Type) is
+   begin
+      Interval.Execution := Value;
+   end Set_Interval_Execution_Type;
    function Create_RX_Receive_Event
      (Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String;
@@ -117,7 +182,8 @@ package body AMS.MEL.RF.C2 is
          Ignored_Post_AGC_Iterations,
          Max_Extension_Femtoseconds,
          0,
-         RX_Index_Vectors.Empty_Vector);
+         RX_Index_Vectors.Empty_Vector,
+         others => <>);
    end Create_RX_Receive_Event;
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
@@ -149,7 +215,8 @@ package body AMS.MEL.RF.C2 is
          Max_Sample_Rate_Hz,
          RX_Event_Vectors.Empty_Vector,
          Never,
-         Pointing_Vectors.Empty_Vector);
+         Pointing_Vectors.Empty_Vector,
+         others => <>);
    end Create_RX_Job_Interval;
    procedure Set_Interval_Status_Enable
      (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable) is
@@ -186,26 +253,42 @@ package body AMS.MEL.RF.C2 is
    end Append_Stab_Point;
 
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
+      pragma Validity_Checks ("F");
+      pragma
+        Compile_Time_Error
+          (Long_Float'Digits < Interfaces.C.double'Digits
+             or else Long_Float'Machine_Mantissa < Interfaces.C.double'Machine_Mantissa
+             or else Long_Float'Machine_Emax < Interfaces.C.double'Machine_Emax
+             or else Long_Float'Machine_Emin > Interfaces.C.double'Machine_Emin
+             or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
+           "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V3
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V4
       with Convention => C;
-      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V2
+      type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V3
       with Convention => C;
       type Native_Points is array (Positive range <>) of aliased C.RF_Pointing_V1
       with Convention => C;
       type Native_Indices is array (Positive range <>) of aliased Interfaces.Unsigned_64
       with Convention => C;
+      type Native_Stokes is array (Positive range <>) of aliased C.RF_Stokes_Vector_V1
+      with Convention => C;
+      type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
+      with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
       Count                                 : constant Natural := Job_Interval_Count (Intervals);
       Event_Count, Point_Count, Group_Count : Natural := 0;
+      Stokes_Count, Byte_Count              : Natural := 0;
       D                                     : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
       R                                     : aliased C.Size_T := 0;
    begin
       for Interval of Intervals.Values loop
+         Byte_Count := Byte_Count + Natural (Interval.Activity.Length);
          Event_Count := Event_Count + Natural (Interval.Events.Length);
          Point_Count := Point_Count + Natural (Interval.Stab_Points.Length);
          for Event of Interval.Events loop
+            Stokes_Count := Stokes_Count + Natural (Event.Polarization.Length);
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
@@ -216,20 +299,32 @@ package body AMS.MEL.RF.C2 is
          Events                                : Native_Events (1 .. Event_Count);
          Points                                : Native_Points (1 .. Point_Count);
          Groups                                : Native_Indices (1 .. Group_Count);
+         Stokes                                : Native_Stokes (1 .. Stokes_Count);
+         Bytes                                 : Native_Bytes (1 .. Byte_Count);
+         Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V3 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V4 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
             declare
-               First_Event : constant Positive := Next_Event;
-               First_Point : constant Positive := Next_Point;
-               Event_Span  : C.RF_Receive_Event_Config_Span_V2 :=
+               First_Event   : constant Positive := Next_Event;
+               First_Point   : constant Positive := Next_Point;
+               Activity_Span : C.U8_Span_V1 :=
+                 (System.Null_Address, C.Size_T (Interval.Activity.Length));
+               Event_Span    : C.RF_Receive_Event_Config_Span_V3 :=
                  (System.Null_Address, C.Size_T (Interval.Events.Length));
-               Point_Span  : C.RF_Pointing_Span_V1 :=
+               Point_Span    : C.RF_Pointing_Span_V1 :=
                  (System.Null_Address, C.Size_T (Interval.Stab_Points.Length));
             begin
+               if Activity_Span.Size > 0 then
+                  Activity_Span.Data := Bytes (Next_Byte)'Address;
+               end if;
+               for Value of Interval.Activity loop
+                  Bytes (Next_Byte) := Value;
+                  Next_Byte := Next_Byte + 1;
+               end loop;
                for Value of Interval.Stab_Points loop
                   Points (Next_Point) := Raw_Pointing (Value);
                   Next_Point := Next_Point + 1;
@@ -239,18 +334,18 @@ package body AMS.MEL.RF.C2 is
                end if;
                for Event of Interval.Events loop
                   Strings (Next_Event).Value := CS.New_String (US.To_String (Event.Label));
-                  Events (Next_Event).Applicable_RX_Element_Groups :=
+                  Events (Next_Event).Event.Applicable_RX_Element_Groups :=
                     (System.Null_Address, C.Size_T (Event.Applicable_RX_Element_Groups.Length));
                   if not Event.Applicable_RX_Element_Groups.Is_Empty then
-                     Events (Next_Event).Applicable_RX_Element_Groups.Data :=
+                     Events (Next_Event).Event.Applicable_RX_Element_Groups.Data :=
                        Groups (Next_Group)'Address;
                   end if;
                   for Value of Event.Applicable_RX_Element_Groups loop
                      Groups (Next_Group) := Value;
                      Next_Group := Next_Group + 1;
                   end loop;
-                  Events (Next_Event).Stab_Point_Index := Event.Stab_Point_Index;
-                  Events (Next_Event).Event :=
+                  Events (Next_Event).Event.Stab_Point_Index := Event.Stab_Point_Index;
+                  Events (Next_Event).Event.Event :=
                     (Event.Event_ID,
                      (Pointer_Address (Strings (Next_Event).Value),
                       C.Size_T (US.Length (Event.Label))),
@@ -261,6 +356,29 @@ package body AMS.MEL.RF.C2 is
                      Event.AGC_Processing_Iterations,
                      Event.Ignored_Post_AGC_Iterations,
                      Event.Max_Extension_Femtoseconds);
+                  Events (Next_Event).Polarization :=
+                    (System.Null_Address, C.Size_T (Event.Polarization.Length));
+                  if not Event.Polarization.Is_Empty then
+                     Events (Next_Event).Polarization.Data := Stokes (Next_Stokes)'Address;
+                  end if;
+                  for Value of Event.Polarization loop
+                     Stokes (Next_Stokes) :=
+                       (Interfaces.C.double (Value (1)),
+                        Interfaces.C.double (Value (2)),
+                        Interfaces.C.double (Value (3)),
+                        Interfaces.C.double (Value (4)));
+                     Next_Stokes := Next_Stokes + 1;
+                  end loop;
+                  Events (Next_Event).Polarization_Beam_Steer_Correction :=
+                    Boolean'Pos (Event.Beam_Correction);
+                  Events (Next_Event).Phase_Offset_Rad := Interfaces.C.double (Event.Phase_Offset);
+                  Events (Next_Event).Execution_Type := Execution_Type'Enum_Rep (Event.Execution);
+                  Events (Next_Event).Termination_Type :=
+                    Event_Termination_Type'Enum_Rep (Event.Termination);
+                  Events (Next_Event).Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
+                  Events (Next_Event).Iteration_Hold_Count := Event.Hold_Count;
+                  Events (Next_Event).Iteration_Termination_Count := Event.Termination_Count;
+                  Events (Next_Event).Channelization_Enabled := Boolean'Pos (Event.Channelization);
                   Next_Event := Next_Event + 1;
                end loop;
                if Event_Span.Size > 0 then
@@ -281,7 +399,10 @@ package body AMS.MEL.RF.C2 is
                   Interval.Job_Details_ID,
                   Interval_Status_Enable'Enum_Rep (Interval.Status_Enable),
                   Point_Span,
-                  Event_Span);
+                  Event_Span,
+                  Interval.TX_Power_Mode,
+                  Activity_Span,
+                  Execution_Type'Enum_Rep (Interval.Execution));
                I := I + 1;
             end;
          end loop;
@@ -289,7 +410,7 @@ package body AMS.MEL.RF.C2 is
             Span.Data := Configs (1)'Address;
          end if;
          Check
-           (C.RF_Job_Add_RX_Intervals_V3 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+           (C.RF_Job_Add_RX_Intervals_V4 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

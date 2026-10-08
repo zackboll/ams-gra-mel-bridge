@@ -175,6 +175,18 @@ begin
                                  Max_Extension_Femtoseconds => 500_000_000);
                            begin
                               C2.Set_Stab_Point_Index (Event, 1);
+                              C2.Append_Polarization (Event, 1.0, 0.0, 0.0, 1.0);
+                              C2.Set_Polarization_Beam_Steer_Correction (Event, True);
+                              C2.Set_Phase_Offset_Radians (Event, 0.25);
+                              C2.Set_Event_Execution_Type (Event, C2.Conditional);
+                              C2.Set_Event_Termination_Type (Event, C2.Cancel_Event);
+                              C2.Set_Allow_Delay_Start (Event, True);
+                              C2.Set_Iteration_Hold_Count (Event, 1);
+                              C2.Set_Iteration_Termination_Count (Event, 2);
+                              C2.Set_Channelization_Enabled (Event, True);
+                              C2.Set_Interval_TX_Power_Mode_ID (Interval, 0);
+                              C2.Set_Interval_Activity_ID (Interval, [16#DE#, 16#AD#, 0, 16#BE#, 16#EF#]);
+                              C2.Set_Interval_Execution_Type (Interval, C2.Normal);
                               C2.Append_Applicable_RX_Element_Group (Event, 0);
                               C2.Append_Applicable_RX_Element_Group (Event, 0);
                               C2.Append_RX_Event (Interval, Event);
