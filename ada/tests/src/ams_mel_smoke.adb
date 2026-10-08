@@ -264,6 +264,12 @@ begin
    begin
       Code :=
         GNAT.OS_Lib.Spawn
+          (Workspace_Root & "/ada/tests/bin/ams_mel_rf_lf_commands_focused", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF LF commands suite failed";
+      end if;
+      Code :=
+        GNAT.OS_Lib.Spawn
           (Workspace_Root & "/ada/tests/bin/ams_mel_rf_pulse_detection_focused", Arguments);
       if Code /= 0 then
          raise Program_Error with "isolated RF pulse settings suite failed";

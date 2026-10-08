@@ -260,6 +260,7 @@ package body AMS.MEL.RF.C2 is
          Phase_Coherence_With_Prior,
          Max_Data_Rate_BPS,
          Max_Sample_Rate_Hz,
+         Local_Function_Command_Vectors.Empty_Vector,
          RX_Event_Vectors.Empty_Vector,
          Never,
          Pointing_Vectors.Empty_Vector,
@@ -299,6 +300,22 @@ package body AMS.MEL.RF.C2 is
       Interval.Stab_Points.Append (Value);
    end Append_Stab_Point;
 
+   function Create_Local_Function_Command
+     (Local_Function_Type_ID : Interfaces.Unsigned_32; Instance : Interfaces.Unsigned_64)
+      return Local_Function_Command is
+   begin
+      return (Local_Function_Type_ID, Instance, Local_Function_Write_Vectors.Empty_Vector);
+   end Create_Local_Function_Command;
+   procedure Append_Local_Function_Write
+     (Command : in out Local_Function_Command; Address, Value : Interfaces.Unsigned_64) is
+   begin
+      Command.Writes.Append (Local_Function_Write'(Address, Value));
+   end Append_Local_Function_Write;
+   procedure Append_Interval_Local_Function_Command
+     (Interval : in out RX_Job_Interval_Config; Command : Local_Function_Command) is
+   begin
+      Interval.Commands.Append (Command);
+   end Append_Interval_Local_Function_Command;
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
       pragma Validity_Checks ("F");
       pragma
@@ -310,8 +327,13 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V5
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V6
       with Convention => C;
+      type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
+      with Convention => C;
+      type Native_LF_Writes is array (Positive range <>) of aliased C.RF_LF_Address_Value_V1
+      with Convention => C;
+      Command_Count, Write_Count            : Natural := 0;
       type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V4
       with Convention => C;
       type Native_Points is array (Positive range <>) of aliased C.RF_Pointing_V1
@@ -334,6 +356,10 @@ package body AMS.MEL.RF.C2 is
       R                                     : aliased C.Size_T := 0;
    begin
       for Interval of Intervals.Values loop
+         Command_Count := Command_Count + Natural (Interval.Commands.Length);
+         for Command of Interval.Commands loop
+            Write_Count := Write_Count + Natural (Command.Writes.Length);
+         end loop;
          Byte_Count := Byte_Count + Natural (Interval.Activity.Length);
          Event_Count := Event_Count + Natural (Interval.Events.Length);
          Point_Count := Point_Count + Natural (Interval.Stab_Points.Length);
@@ -349,6 +375,9 @@ package body AMS.MEL.RF.C2 is
       --  Final-sized Ada-owned backing lives through the synchronous borrowed Add.
       --  Controlled label owners clean up on normal return and exceptions.
       declare
+         Commands                              : Native_LF_Commands (1 .. Command_Count);
+         Writes                                : Native_LF_Writes (1 .. Write_Count);
+         Next_Command, Next_Write              : Positive := 1;
          Configs                               : Native_Intervals (1 .. Count);
          Events                                : Native_Events (1 .. Event_Count);
          Points                                : Native_Points (1 .. Point_Count);
@@ -360,7 +389,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V5 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V6 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -471,7 +500,7 @@ package body AMS.MEL.RF.C2 is
                if Event_Span.Size > 0 then
                   Event_Span.Data := Events (First_Event)'Address;
                end if;
-               Configs (I) :=
+               Configs (I).Interval :=
                  (Interval.Interval_Start_Femtoseconds,
                   Interval.Interval_ID,
                   Interval.Interval_Starting_Gap_Femtoseconds,
@@ -490,6 +519,25 @@ package body AMS.MEL.RF.C2 is
                   Interval.TX_Power_Mode,
                   Activity_Span,
                   Execution_Type'Enum_Rep (Interval.Execution));
+               Configs (I).Local_Function_Commands :=
+                 (System.Null_Address, C.Size_T (Interval.Commands.Length));
+               if not Interval.Commands.Is_Empty then
+                  Configs (I).Local_Function_Commands.Data := Commands (Next_Command)'Address;
+               end if;
+               for Command of Interval.Commands loop
+                  Commands (Next_Command) :=
+                    (Command.Type_ID,
+                     Command.Instance,
+                     (System.Null_Address, C.Size_T (Command.Writes.Length)));
+                  if not Command.Writes.Is_Empty then
+                     Commands (Next_Command).Address_Values.Data := Writes (Next_Write)'Address;
+                  end if;
+                  for Write of Command.Writes loop
+                     Writes (Next_Write) := (Write.Address, Write.Value);
+                     Next_Write := Next_Write + 1;
+                  end loop;
+                  Next_Command := Next_Command + 1;
+               end loop;
                I := I + 1;
             end;
          end loop;
@@ -497,7 +545,7 @@ package body AMS.MEL.RF.C2 is
             Span.Data := Configs (1)'Address;
          end if;
          Check
-           (C.RF_Job_Add_RX_Intervals_V5 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+           (C.RF_Job_Add_RX_Intervals_V6 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

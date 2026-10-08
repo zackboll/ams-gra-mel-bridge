@@ -5,7 +5,7 @@ project AMS_MEL_Tests is
    for Source_Dirs use ("src");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
-    for Main use ("ams_mel_rf_pulse_detection_focused.adb", "ams_mel_rf_event_controls_focused.adb", "ams_mel_rf_interval_spatial_focused.adb", "ams_mel_smoke.adb", "ams_mel_rf_pointing_focused.adb", "ams_mel_rf_tx_groups_focused.adb", "ams_mel_rf_interval_status.adb", "ams_mel_rf_job_extension.adb", "ams_mel_rf_va_queries.adb", "ams_mel_rf_va_notifications.adb", "ams_mel_rf_element_groups.adb", "ams_mel_rf_local_functions.adb", "ams_mel_rf_data_pipes.adb", "ams_mel_rf_transmit_power.adb");
+    for Main use ("ams_mel_rf_lf_commands_focused.adb", "ams_mel_rf_pulse_detection_focused.adb", "ams_mel_rf_event_controls_focused.adb", "ams_mel_rf_interval_spatial_focused.adb", "ams_mel_smoke.adb", "ams_mel_rf_pointing_focused.adb", "ams_mel_rf_tx_groups_focused.adb", "ams_mel_rf_interval_status.adb", "ams_mel_rf_job_extension.adb", "ams_mel_rf_va_queries.adb", "ams_mel_rf_va_notifications.adb", "ams_mel_rf_element_groups.adb", "ams_mel_rf_local_functions.adb", "ams_mel_rf_data_pipes.adb", "ams_mel_rf_transmit_power.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use

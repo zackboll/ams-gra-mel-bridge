@@ -209,7 +209,15 @@ package AMS.MEL.RF.C2 is
       AGC_Processing_Iterations   : Interfaces.Unsigned_64 := 0;
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
+   type Local_Function_Command is private;
+   function Create_Local_Function_Command
+     (Local_Function_Type_ID : Interfaces.Unsigned_32; Instance : Interfaces.Unsigned_64)
+      return Local_Function_Command;
+   procedure Append_Local_Function_Write
+     (Command : in out Local_Function_Command; Address, Value : Interfaces.Unsigned_64);
    type RX_Job_Interval_Config is private;
+   procedure Append_Interval_Local_Function_Command
+     (Interval : in out RX_Job_Interval_Config; Command : Local_Function_Command);
    procedure Set_Interval_TX_Power_Mode_ID
      (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32);
    procedure Set_Interval_Activity_ID
@@ -381,6 +389,18 @@ private
       Pulse_Settings                                         : Pulse_Detection_Settings;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
+   type Local_Function_Write is record
+      Address, Value : Interfaces.Unsigned_64;
+   end record;
+   package Local_Function_Write_Vectors is new
+     Ada.Containers.Vectors (Positive, Local_Function_Write);
+   type Local_Function_Command is record
+      Type_ID  : Interfaces.Unsigned_32;
+      Instance : Interfaces.Unsigned_64;
+      Writes   : Local_Function_Write_Vectors.Vector;
+   end record;
+   package Local_Function_Command_Vectors is new
+     Ada.Containers.Vectors (Positive, Local_Function_Command);
    type RX_Job_Interval_Config is record
       Interval_ID, Job_Details_ID                  : Interfaces.Unsigned_32;
       Interval_Start_Femtoseconds,
@@ -391,6 +411,7 @@ private
       Sequence_Repeat_Count, Iterations_Per_Signal : Interfaces.Unsigned_64;
       Phase_Coherence_With_Prior                   : Boolean;
       Max_Data_Rate_BPS, Max_Sample_Rate_Hz        : Long_Float;
+      Commands                                     : Local_Function_Command_Vectors.Vector;
       Events                                       : RX_Event_Vectors.Vector;
       Status_Enable                                : Interval_Status_Enable := Never;
       Stab_Points                                  : Pointing_Vectors.Vector;
