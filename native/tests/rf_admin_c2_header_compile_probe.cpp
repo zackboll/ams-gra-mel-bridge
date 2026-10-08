@@ -444,3 +444,38 @@ int pulse_detection_header_probe() {
  std::puts("PASS: pulse signatures, enum values, defaults and value copying");
  return 0;
 }
+
+using LFAV = r::LFAddressValue;
+using LFC = r::LocalFunctionCommand;
+static_assert(std::is_same_v<r::LocalFunctionAddress, uint64_t>);
+static_assert(std::is_same_v<r::LocalFunctionValue, uint64_t>);
+static_assert(std::is_same_v<r::LocalFunctionTypeID, uint32_t>);
+METHOD(LFAV, setLfAddress, void (LFAV::*)(uint64_t));
+METHOD(LFAV, getLfAddress, uint64_t (LFAV::*)() const);
+METHOD(LFAV, setLfValue, void (LFAV::*)(uint64_t));
+METHOD(LFAV, getLfValue, uint64_t (LFAV::*)() const);
+METHOD(LFC, setLfType, void (LFC::*)(uint32_t));
+METHOD(LFC, getLfType, uint32_t (LFC::*)() const);
+METHOD(LFC, setLfInstance, void (LFC::*)(size_t));
+METHOD(LFC, getLfInstance, size_t (LFC::*)() const);
+METHOD(LFC, setLfAddrValues, void (LFC::*)(const std::vector<LFAV>&));
+static_assert(std::is_same_v<decltype(static_cast<const std::vector<LFAV>& (LFC::*)() const>(&LFC::getLfAddrValues)), const std::vector<LFAV>& (LFC::*)() const>);
+METHOD(JI, setLfCommands, void (JI::*)(const std::vector<LFC>&));
+static_assert(std::is_same_v<decltype(static_cast<const std::vector<LFC>& (JI::*)() const>(&JI::getLfCommands)), const std::vector<LFC>& (JI::*)() const>);
+static_assert(sizeof(size_t) <= sizeof(uint64_t));
+static_assert(sizeof(r::LocalFunctionTypeID) == 4);
+#define LF_VALUE(T) static_assert(std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T> && std::is_move_constructible_v<T> && std::is_move_assignable_v<T>)
+LF_VALUE(LFAV); LF_VALUE(LFC); LF_VALUE(JI);
+int lf_header_probe() {
+    LFAV write; LFC command; JI interval;
+    if (write.getLfAddress() || write.getLfValue() || command.getLfType() ||
+        command.getLfInstance() || !command.getLfAddrValues().empty() ||
+        !interval.getLfCommands().empty()) return 1;
+    write.setLfAddress(UINT64_MAX); write.setLfValue(UINT64_MAX);
+    command.setLfType(UINT32_MAX); command.setLfInstance(SIZE_MAX);
+    command.setLfAddrValues({write, write}); interval.setLfCommands({command, command});
+    LFC copy{command}; LFC assigned; assigned = copy;
+    LFC moved{std::move(copy)}; assigned = std::move(moved);
+    return assigned.getLfInstance() == SIZE_MAX && interval.getLfCommands().size() == 2 &&
+        interval.getLfCommands()[1].getLfAddrValues()[1].getLfValue() == UINT64_MAX ? 0 : 2;
+}

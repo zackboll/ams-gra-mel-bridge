@@ -3069,6 +3069,39 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v4 intervals,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* RX interval LF commands are copied values, not hardware address pointers.
+ * Ordered duplicates are retained. Input backing is borrowed only during Add.
+ * OK means provider normal return, not LF availability or hardware execution. */
+typedef struct ams_mel_rf_lf_address_value_v1 {
+    uint64_t address;
+    uint64_t value;
+} ams_mel_rf_lf_address_value_v1;
+typedef struct ams_mel_rf_lf_address_value_span_v1 {
+    const ams_mel_rf_lf_address_value_v1 *data;
+    size_t size;
+} ams_mel_rf_lf_address_value_span_v1;
+typedef struct ams_mel_rf_lf_command_v1 {
+    uint32_t local_function_type_id;
+    uint64_t local_function_instance;
+    ams_mel_rf_lf_address_value_span_v1 address_values;
+} ams_mel_rf_lf_command_v1;
+typedef struct ams_mel_rf_lf_command_span_v1 {
+    const ams_mel_rf_lf_command_v1 *data;
+    size_t size;
+} ams_mel_rf_lf_command_span_v1;
+typedef struct ams_mel_rf_job_interval_config_v6 {
+    ams_mel_rf_job_interval_config_v5 interval;
+    ams_mel_rf_lf_command_span_v1 local_function_commands;
+} ams_mel_rf_job_interval_config_v6;
+typedef struct ams_mel_rf_job_interval_config_span_v6 {
+    const ams_mel_rf_job_interval_config_v6 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v6;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v6(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v6 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 intervals,
     char *diagnostic, size_t diagnostic_capacity,

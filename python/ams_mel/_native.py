@@ -2166,6 +2166,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_rx_intervals_v3",
     "ams_mel_rf_job_add_rx_intervals_v4",
     "ams_mel_rf_job_add_rx_intervals_v5",
+    "ams_mel_rf_job_add_rx_intervals_v6",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2367,3 +2368,25 @@ class RfJobIntervalConfigSpanV5(ctypes.Structure):
 ams_mel_rf_job_add_rx_intervals_v5 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v5
 ams_mel_rf_job_add_rx_intervals_v5.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV5, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v5.restype = ctypes.c_int32
+
+class RfLfAddressValueV1(ctypes.Structure):
+    _fields_ = [("address", ctypes.c_uint64), ("value", ctypes.c_uint64)]
+
+class RfLfAddressValueSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfLfAddressValueV1)), ("size", ctypes.c_size_t)]
+
+class RfLfCommandV1(ctypes.Structure):
+    _fields_ = [("local_function_type_id", ctypes.c_uint32), ("local_function_instance", ctypes.c_uint64), ("address_values", RfLfAddressValueSpanV1)]
+
+class RfLfCommandSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfLfCommandV1)), ("size", ctypes.c_size_t)]
+
+class RfJobIntervalConfigV6(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV5), ("local_function_commands", RfLfCommandSpanV1)]
+
+class RfJobIntervalConfigSpanV6(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV6)), ("size", ctypes.c_size_t)]
+
+ams_mel_rf_job_add_rx_intervals_v6 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v6
+ams_mel_rf_job_add_rx_intervals_v6.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV6, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v6.restype = ctypes.c_int32

@@ -76,6 +76,7 @@ static void verify(ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 s
     unsigned before=mock("mock_rf_job_add_calls");
     CHECK(ams_mel_rf_job_add_rx_intervals_v5(job,span,D)==AMS_MEL_OK);
     CHECK(mock("mock_rf_job_add_calls")==before+1);
+    CHECK(mock("mock_rf_lf_defaults")==1);
     for(unsigned i=0;i<span.size;++i) for(unsigned e=0;e<span.data[i].receive_events.size;++e) {
         void *lib=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL);
         int64_t (*get_scalar)(unsigned,unsigned,unsigned);

@@ -2693,7 +2693,7 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_interval_
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_boundary(void)
 {
     std::lock_guard lock{interval_mutex};
-    if (latest_intervals.size() != 1 || !latest_intervals[0].getStabPoints().empty() ||
+    if (latest_intervals.size() != 1 || !latest_intervals[0].getLfCommands().empty() || !latest_intervals[0].getStabPoints().empty() ||
         latest_intervals[0].getSequence().getRxEvents().size() != 1) return 0;
     const auto& event = latest_intervals[0].getSequence().getRxEvents()[0];
     return event.getStabPointIndex() == SIZE_MAX &&
@@ -2702,7 +2702,7 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_b
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_spatial_safe_defaults(void)
 {
     std::lock_guard lock{interval_mutex};
-    if (latest_intervals.size() != 1 || !latest_intervals[0].getStabPoints().empty() ||
+    if (latest_intervals.size() != 1 || !latest_intervals[0].getLfCommands().empty() || !latest_intervals[0].getStabPoints().empty() ||
         latest_intervals[0].getSequence().getRxEvents().size() != 1) return 0;
     const auto& interval = latest_intervals[0];
     const auto& event = interval.getSequence().getRxEvents()[0];
@@ -2815,6 +2815,13 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f5_safe_fidel
 }
 
 /* F6 observations use only copied provider values and their published getters. */
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_lf_defaults(void)
+{
+    std::lock_guard lock{interval_mutex};
+    for (const auto& interval : latest_intervals)
+        if (!interval.getLfCommands().empty()) return 0;
+    return 1;
+}
 extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f6_scalar(unsigned i, unsigned e, unsigned field)
 {
     std::lock_guard lock{interval_mutex};
@@ -2845,6 +2852,7 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f6_double(unsig
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f6_defaults(void)
 {
     std::lock_guard lock{interval_mutex};
+    for (const auto& i : latest_intervals) if (!i.getLfCommands().empty()) return 0;
     for (const auto& i : latest_intervals) for (const auto& e : i.getSequence().getRxEvents()) {
         const auto& s = e.getPulseDetectionSettings();
         if (s.getReference() != rfmel::PulseDetectionThresholdReference::DBQ ||
@@ -2855,4 +2863,19 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_f6_defaults(v
             !s.getThresholds().empty()) return 0;
     }
     return 1;
+}
+
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f7_value(
+    unsigned i, unsigned c, unsigned w, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& commands = latest_intervals.at(i).getLfCommands();
+    if (field == 0) return commands.size();
+    const auto& command = commands.at(c);
+    if (field == 1) return command.getLfType();
+    if (field == 2) return command.getLfInstance();
+    const auto& writes = command.getLfAddrValues();
+    if (field == 3) return writes.size();
+    if (field == 4) return writes.at(w).getLfAddress();
+    return writes.at(w).getLfValue();
 }
