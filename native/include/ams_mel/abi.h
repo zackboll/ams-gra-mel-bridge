@@ -3140,6 +3140,35 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 intervals,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Value-only endpoint association map. Exact UTF-8 labels (including empty)
+ * and uint64 IDs are copied; the last occurrence of a composite label key wins.
+ * Map iteration order is unspecified. No endpoint creation, association calls,
+ * routing, memory registration, transfer or cross-object validation occurs.
+ * Presence 0 ignores the entire span; 1 sets the complete map once, even empty;
+ * other values are invalid. This does not set applicable-element-group labels
+ * or change ProductStreamParams. Older profiles retain the empty map default. */
+typedef struct ams_mel_rf_interval_endpoint_connection_v1 {
+    ams_mel_string_view_v1 element_group_label;
+    ams_mel_string_view_v1 data_pipe_label;
+    uint64_t endpoint_id;
+} ams_mel_rf_interval_endpoint_connection_v1;
+typedef struct ams_mel_rf_interval_endpoint_connection_span_v1 {
+    const ams_mel_rf_interval_endpoint_connection_v1 *data;
+    size_t size;
+} ams_mel_rf_interval_endpoint_connection_span_v1;
+typedef struct ams_mel_rf_job_interval_config_v8 {
+    ams_mel_rf_job_interval_config_v7 interval;
+    uint32_t has_endpoint_connections;
+    ams_mel_rf_interval_endpoint_connection_span_v1 endpoint_connections;
+} ams_mel_rf_job_interval_config_v8;
+typedef struct ams_mel_rf_job_interval_config_span_v8 {
+    const ams_mel_rf_job_interval_config_v8 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v8;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v8(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v8 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_rf_job_result_v1;

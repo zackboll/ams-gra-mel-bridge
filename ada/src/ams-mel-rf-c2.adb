@@ -341,6 +341,35 @@ package body AMS.MEL.RF.C2 is
    begin
       Interval.Has_Product_Stream_Params := False;
    end Clear_Interval_Product_Stream_Params;
+   function Create_Endpoint_Connections return Endpoint_Connections is
+   begin
+      return (Values => Endpoint_Connection_Vectors.Empty_Vector);
+   end Create_Endpoint_Connections;
+   procedure Append_Endpoint_Connection
+     (Connections                          : in out Endpoint_Connections;
+      Element_Group_Label, Data_Pipe_Label : String;
+      Endpoint_ID                          : Interfaces.Unsigned_64) is
+   begin
+      if not Valid_String (Element_Group_Label) or else not Valid_String (Data_Pipe_Label) then
+         raise Constraint_Error with "invalid endpoint connection label";
+      end if;
+      Connections.Values.Append
+        (Endpoint_Connection'
+           (US.To_Unbounded_String (Element_Group_Label),
+            US.To_Unbounded_String (Data_Pipe_Label),
+            Endpoint_ID));
+   end Append_Endpoint_Connection;
+   procedure Set_Interval_Endpoint_Connections
+     (Interval : in out RX_Job_Interval_Config; Connections : Endpoint_Connections) is
+   begin
+      Interval.Connections := Connections;
+      Interval.Has_Endpoint_Connections := True;
+   end Set_Interval_Endpoint_Connections;
+   procedure Clear_Interval_Endpoint_Connections (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.Connections.Values.Clear;
+      Interval.Has_Endpoint_Connections := False;
+   end Clear_Interval_Endpoint_Connections;
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
       pragma Validity_Checks ("F");
       pragma
@@ -352,7 +381,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V7
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V8
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -374,6 +403,10 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
+      Connection_Count                      : Natural := 0;
+      type Native_Connections is
+        array (Positive range <>) of aliased C.RF_Interval_Endpoint_Connection_V1
+      with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
       Count                                 : constant Natural := Job_Interval_Count (Intervals);
       Event_Count, Point_Count, Group_Count : Natural := 0;
@@ -384,6 +417,9 @@ package body AMS.MEL.RF.C2 is
       R                                     : aliased C.Size_T := 0;
    begin
       for Interval of Intervals.Values loop
+         if Interval.Has_Endpoint_Connections then
+            Connection_Count := Connection_Count + Natural (Interval.Connections.Values.Length);
+         end if;
          if Interval.Has_Product_Stream_Params then
             Stream_Group_Count :=
               Stream_Group_Count + Natural (Interval.Product_Stream.RX_Groups.Length);
@@ -411,6 +447,9 @@ package body AMS.MEL.RF.C2 is
          Commands                              : Native_LF_Commands (1 .. Command_Count);
          Writes                                : Native_LF_Writes (1 .. Write_Count);
          Next_Command, Next_Write              : Positive := 1;
+         Connections                           : Native_Connections (1 .. Connection_Count);
+         Group_Labels, Pipe_Labels             : Labels (1 .. Connection_Count);
+         Next_Connection                       : Positive := 1;
          Configs                               : Native_Intervals (1 .. Count);
          Stream_Groups                         : Native_Indices (1 .. Stream_Group_Count);
          Endpoints                             : Native_Endpoints (1 .. Endpoint_Count);
@@ -425,7 +464,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V7 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V8 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -536,7 +575,7 @@ package body AMS.MEL.RF.C2 is
                if Event_Span.Size > 0 then
                   Event_Span.Data := Events (First_Event)'Address;
                end if;
-               Configs (I).Interval.Interval :=
+               Configs (I).Interval.Interval.Interval :=
                  (Interval.Interval_Start_Femtoseconds,
                   Interval.Interval_ID,
                   Interval.Interval_Starting_Gap_Femtoseconds,
@@ -555,10 +594,10 @@ package body AMS.MEL.RF.C2 is
                   Interval.TX_Power_Mode,
                   Activity_Span,
                   Execution_Type'Enum_Rep (Interval.Execution));
-               Configs (I).Interval.Local_Function_Commands :=
+               Configs (I).Interval.Interval.Local_Function_Commands :=
                  (System.Null_Address, C.Size_T (Interval.Commands.Length));
                if not Interval.Commands.Is_Empty then
-                  Configs (I).Interval.Local_Function_Commands.Data :=
+                  Configs (I).Interval.Interval.Local_Function_Commands.Data :=
                     Commands (Next_Command)'Address;
                end if;
                for Command of Interval.Commands loop
@@ -575,28 +614,32 @@ package body AMS.MEL.RF.C2 is
                   end loop;
                   Next_Command := Next_Command + 1;
                end loop;
-               Configs (I).Has_Product_Stream_Params :=
+               Configs (I).Interval.Has_Product_Stream_Params :=
                  Boolean'Pos (Interval.Has_Product_Stream_Params);
-               Configs (I).Product_Stream_Params :=
+               Configs (I).Interval.Product_Stream_Params :=
                  ((System.Null_Address, 0), (System.Null_Address, 0));
                if Interval.Has_Product_Stream_Params then
                   declare
                      Params : Product_Stream_Params renames Interval.Product_Stream;
                   begin
-                     Configs (I).Product_Stream_Params.Applicable_RX_Element_Groups.Size :=
+                     Configs (I).Interval.Product_Stream_Params.Applicable_RX_Element_Groups.Size :=
                        C.Size_T (Params.RX_Groups.Length);
                      if not Params.RX_Groups.Is_Empty then
-                        Configs (I).Product_Stream_Params.Applicable_RX_Element_Groups.Data :=
+                        Configs (I)
+                          .Interval
+                          .Product_Stream_Params
+                          .Applicable_RX_Element_Groups
+                          .Data :=
                           Stream_Groups (Next_Stream_Group)'Address;
                      end if;
                      for Index of Params.RX_Groups loop
                         Stream_Groups (Next_Stream_Group) := Index;
                         Next_Stream_Group := Next_Stream_Group + 1;
                      end loop;
-                     Configs (I).Product_Stream_Params.Endpoints.Size :=
+                     Configs (I).Interval.Product_Stream_Params.Endpoints.Size :=
                        C.Size_T (Params.Endpoints.Length);
                      if not Params.Endpoints.Is_Empty then
-                        Configs (I).Product_Stream_Params.Endpoints.Data :=
+                        Configs (I).Interval.Product_Stream_Params.Endpoints.Data :=
                           Endpoints (Next_Endpoint)'Address;
                      end if;
                      for Endpoint of Params.Endpoints loop
@@ -606,6 +649,29 @@ package body AMS.MEL.RF.C2 is
                      end loop;
                   end;
                end if;
+               Configs (I).Has_Endpoint_Connections :=
+                 Boolean'Pos (Interval.Has_Endpoint_Connections);
+               Configs (I).Endpoint_Connections := (System.Null_Address, 0);
+               if Interval.Has_Endpoint_Connections then
+                  Configs (I).Endpoint_Connections.Size :=
+                    C.Size_T (Interval.Connections.Values.Length);
+                  if not Interval.Connections.Values.Is_Empty then
+                     Configs (I).Endpoint_Connections.Data := Connections (Next_Connection)'Address;
+                  end if;
+                  for Connection of Interval.Connections.Values loop
+                     Group_Labels (Next_Connection).Value :=
+                       CS.New_String (US.To_String (Connection.Group_Label));
+                     Pipe_Labels (Next_Connection).Value :=
+                       CS.New_String (US.To_String (Connection.Pipe_Label));
+                     Connections (Next_Connection) :=
+                       ((Pointer_Address (Group_Labels (Next_Connection).Value),
+                         C.Size_T (US.Length (Connection.Group_Label))),
+                        (Pointer_Address (Pipe_Labels (Next_Connection).Value),
+                         C.Size_T (US.Length (Connection.Pipe_Label))),
+                        Connection.ID);
+                     Next_Connection := Next_Connection + 1;
+                  end loop;
+               end if;
                I := I + 1;
             end;
          end loop;
@@ -613,7 +679,7 @@ package body AMS.MEL.RF.C2 is
             Span.Data := Configs (1)'Address;
          end if;
          Check
-           (C.RF_Job_Add_RX_Intervals_V7 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+           (C.RF_Job_Add_RX_Intervals_V8 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

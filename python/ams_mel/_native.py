@@ -2168,6 +2168,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_rx_intervals_v5",
     "ams_mel_rf_job_add_rx_intervals_v6",
     "ams_mel_rf_job_add_rx_intervals_v7",
+    "ams_mel_rf_job_add_rx_intervals_v8",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2410,3 +2411,15 @@ class RfJobIntervalConfigSpanV7(ctypes.Structure):
 ams_mel_rf_job_add_rx_intervals_v7 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v7
 ams_mel_rf_job_add_rx_intervals_v7.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV7, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v7.restype = ctypes.c_int32
+
+class RfIntervalEndpointConnectionV1(ctypes.Structure):
+    _fields_ = [("element_group_label", StringViewV1), ("data_pipe_label", StringViewV1), ("endpoint_id", ctypes.c_uint64)]
+class RfIntervalEndpointConnectionSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfIntervalEndpointConnectionV1)), ("size", ctypes.c_size_t)]
+class RfJobIntervalConfigV8(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV7), ("has_endpoint_connections", ctypes.c_uint32), ("endpoint_connections", RfIntervalEndpointConnectionSpanV1)]
+class RfJobIntervalConfigSpanV8(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV8)), ("size", ctypes.c_size_t)]
+ams_mel_rf_job_add_rx_intervals_v8 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v8
+ams_mel_rf_job_add_rx_intervals_v8.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV8, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v8.restype = ctypes.c_int32
