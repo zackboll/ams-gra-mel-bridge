@@ -144,3 +144,38 @@ and ProductRx compatibility. Rust workspace tests pass, raw sys ABI 25/25;
 workspace cargo check, Clippy warnings-as-errors and rustfmt check pass.
 Python passed 128/128. Build-tree isolation passed with complete 281/281 suites.
 Further final validation results are recorded after completion of the remaining gates.
+
+### Completed integration and aggregate gates
+
+`make check` passed on the final implementation, including direct-GPR Ada,
+F8 50/50 and all older suites. Native and safe Ada F8 focused final-source
+executables both passed 50/50. All four pinned Squall targets passed:
+
+| Target | Control / Couloir metrics / health / RF metrics / data ports |
+| --- | --- |
+| safe Ada VA | 31203 / 31318 / 31313 / 31314 / 31601 |
+| safe Ada Job | 32203 / 32318 / 32313 / 32314 / 32601 |
+| direct C ProductRx | 33203 / 33318 / 33313 / 33314 / 33601 |
+| safe Ada ProductRx | 34203 / 34318 / 34313 / 34314 / 34601 |
+
+Job accepted bridge-constructed ProductStreamParams; no data-plane claim.
+Direct C ProductRx retained eight products, zero drops/malformed/allocation
+failures; safe Ada retained its eight-product compatibility assertions. No
+unrelated container was stopped and no TIME_WAIT workaround was needed.
+
+An initial repeat-50 attempt after provider-only builds encountered a partial
+native test tree and missing executables (Not Run). That log is preserved,
+not counted as passing. A complete task-owned isolated Debug tree was rebuilt
+before the replacement parallel repeat-50 run. No source or test contract was
+weakened; vendor, IR implementation and PR #78 abandonment test are unchanged.
+Disk-backed task-owned TMPDIR avoided interference with unrelated /tmp contents.
+A manual link attempted during tree reconfiguration also failed for a temporarily
+missing library; final isolated focused executables subsequently passed.
+
+Normal implementation commits: `c5ae867f95e1b97b45f06ce4d6e74ce5a1bf9620`
+(native/raw), `c84bc43dad0735c0bae5f26a0a4dc1652698d2db` (safe Ada),
+`aabd130b5c5aa229a73e2bb2866c9ab60719a956` (stronger nested/batch tests),
+`c7c4313294f8e243201e5cf9c4d574b6b1736228` (contract/integration docs).
+PR: https://github.com/zackboll/ams-gra-mel-bridge/pull/83, open/non-draft,
+unmerged and auto-merge disabled. Publication/hosted final results are recorded
+on the PR; literal push source and PR synthetic merge checkouts are distinguished.
