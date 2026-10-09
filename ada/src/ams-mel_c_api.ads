@@ -2122,6 +2122,43 @@ private package AMS.MEL_C_API is
       Size : Size_T;
    end record
    with Convention => C_Pass_By_Copy;
+   type RF_LF_Address_Value_V1 is record
+      Address, Value : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   type RF_LF_Address_Value_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_LF_Command_V1 is record
+      Local_Function_Type_ID  : Interfaces.Unsigned_32;
+      Local_Function_Instance : Interfaces.Unsigned_64;
+      Address_Values          : RF_LF_Address_Value_Span_V1;
+   end record
+   with Convention => C;
+   type RF_LF_Command_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V6 is record
+      Interval                : RF_Job_Interval_Config_V5;
+      Local_Function_Commands : RF_LF_Command_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V6 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_RX_Intervals_V6
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V6;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v6";
    Rf_Interval_Status_Never                                                 :
      constant Interfaces.Unsigned_32 := 0;
    Rf_Interval_Status_Always                                                :

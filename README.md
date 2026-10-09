@@ -1,5 +1,16 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+Task 034F7 adds copied RX JobInterval Local Function commands through nested
+JobInterval v6 and `ams_mel_rf_job_add_rx_intervals_v6` (ABI remains 0.1).
+Safe Ada owns copyable ordered command/write vectors; raw Ada/Rust/private
+Python mirror the C records. Full uint64 addresses/values are numeric values,
+never dereferenced. Instances must fit provider size_t. No capability or
+hardware validation is performed. Older v1–v5 profiles retain empty LF commands.
+Pinned Squall Add is a no-op: normal return is acceptance, not hardware writes.
+The upstream `@RequiredIfLFSupport` boundary does not imply every MFA supports LF.
+See `docs/task-034f7-rf-interval-lf-commands.md` for contract and evidence.
+
+
 Task 034F6 adds optional value-only OEM pulse settings to RX events via
 ReceiveEvent v4 / JobInterval v5 and exactly `ams_mel_rf_job_add_rx_intervals_v5`.
 Presence 0 ignores the entire inactive payload without calling the pulse setter;

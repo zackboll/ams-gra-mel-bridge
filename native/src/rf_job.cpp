@@ -415,21 +415,34 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool pulse = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v5>;
+    constexpr bool lf = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v6>;
+    constexpr bool pulse = lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v5>;
     constexpr bool controls = pulse || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
     constexpr bool spatial = controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
     const auto input_at = [&](std::size_t i) -> const auto& {
-        if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
+        if constexpr (lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
         else return inputs.data[i];
     };
     const auto mode_at = [&](std::size_t i) -> std::uint32_t {
         if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) {
             (void)i; return AMS_MEL_RF_INTERVAL_STATUS_NEVER;
-        } else return inputs.data[i].status_enable;
+        } else if constexpr (lf) return inputs.data[i].interval.status_enable;
+        else return inputs.data[i].status_enable;
     };
     bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
         const auto& input = input_at(i);
+        if constexpr (lf) {
+            const auto commands = inputs.data[i].local_function_commands;
+            if (!span_ok(commands.size, commands.data, sizeof(*commands.data)))
+                return AMS_MEL_INVALID_ARGUMENT;
+            for (std::size_t c = 0; c < commands.size; ++c) {
+                const auto& command = commands.data[c];
+                if (!fits_count(command.local_function_instance) ||
+                    !span_ok(command.address_values.size, command.address_values.data,
+                             sizeof(*command.address_values.data))) return AMS_MEL_INVALID_ARGUMENT;
+            }
+        }
         if (mode_at(i) > AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION) return AMS_MEL_INVALID_ARGUMENT;
         enabled = enabled || mode_at(i) != AMS_MEL_RF_INTERVAL_STATUS_NEVER;
         if constexpr (controls) {
@@ -619,6 +632,31 @@ ams_mel_status_t add_rx_intervals(
                 interval.setActivityId(activity);
                 interval.setExecutionType(static_cast<rfmel::ExecutionType>(input.execution_type));
             }
+            if constexpr (lf) {
+                const auto supplied = inputs.data[i].local_function_commands;
+                if (supplied.size) {
+                    if (failpoint("interval-lf-allocation")) throw std::bad_alloc{};
+                    std::vector<rfmel::LocalFunctionCommand> commands;
+                    commands.reserve(supplied.size);
+                    for (std::size_t c = 0; c < supplied.size; ++c) {
+                        const auto& source = supplied.data[c];
+                        rfmel::LocalFunctionCommand command;
+                        command.setLfType(source.local_function_type_id);
+                        command.setLfInstance(static_cast<std::size_t>(source.local_function_instance));
+                        std::vector<rfmel::LFAddressValue> writes;
+                        writes.reserve(source.address_values.size);
+                        for (std::size_t w = 0; w < source.address_values.size; ++w) {
+                            rfmel::LFAddressValue write;
+                            write.setLfAddress(source.address_values.data[w].address);
+                            write.setLfValue(source.address_values.data[w].value);
+                            writes.push_back(write);
+                        }
+                        command.setLfAddrValues(writes);
+                        commands.push_back(std::move(command));
+                    }
+                    interval.setLfCommands(commands);
+                }
+            }
             intervals.push_back(std::move(interval));
         }
         return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
@@ -651,6 +689,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v4(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v6(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v6 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

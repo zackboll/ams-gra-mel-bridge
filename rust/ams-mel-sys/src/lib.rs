@@ -4028,3 +4028,55 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfLfAddressValueV1 {
+    pub address: u64,
+    pub value: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfLfAddressValueSpanV1 {
+    pub data: *const AmsMelRfLfAddressValueV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfLfCommandV1 {
+    pub local_function_type_id: u32,
+    pub local_function_instance: u64,
+    pub address_values: AmsMelRfLfAddressValueSpanV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfLfCommandSpanV1 {
+    pub data: *const AmsMelRfLfCommandV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV6 {
+    pub interval: AmsMelRfJobIntervalConfigV5,
+    pub local_function_commands: AmsMelRfLfCommandSpanV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV6 {
+    pub data: *const AmsMelRfJobIntervalConfigV6,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v6(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV6,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

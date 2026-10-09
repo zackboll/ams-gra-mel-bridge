@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 195);
-    assert_eq!(exported.len(), 195);
+    assert_eq!(declared.len(), 196);
+    assert_eq!(exported.len(), 196);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3155,4 +3155,62 @@ fn pulse_detection_signature() {
         ],
         [0, 1, 2, 0, 1]
     );
+}
+
+#[test]
+fn lf_commands_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV6,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v6;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!("ams-mel-lf-layout-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/lf_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfLfAddressValueV1>(),
+        align_of::<AmsMelRfLfAddressValueV1>(),
+        offset_of!(AmsMelRfLfAddressValueV1, address),
+        offset_of!(AmsMelRfLfAddressValueV1, value),
+        size_of::<AmsMelRfLfAddressValueSpanV1>(),
+        align_of::<AmsMelRfLfAddressValueSpanV1>(),
+        offset_of!(AmsMelRfLfAddressValueSpanV1, data),
+        offset_of!(AmsMelRfLfAddressValueSpanV1, size),
+        size_of::<AmsMelRfLfCommandV1>(),
+        align_of::<AmsMelRfLfCommandV1>(),
+        offset_of!(AmsMelRfLfCommandV1, local_function_type_id),
+        offset_of!(AmsMelRfLfCommandV1, local_function_instance),
+        offset_of!(AmsMelRfLfCommandV1, address_values),
+        size_of::<AmsMelRfLfCommandSpanV1>(),
+        align_of::<AmsMelRfLfCommandSpanV1>(),
+        offset_of!(AmsMelRfLfCommandSpanV1, data),
+        offset_of!(AmsMelRfLfCommandSpanV1, size),
+        size_of::<AmsMelRfJobIntervalConfigV6>(),
+        align_of::<AmsMelRfJobIntervalConfigV6>(),
+        offset_of!(AmsMelRfJobIntervalConfigV6, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV6, local_function_commands),
+        size_of::<AmsMelRfJobIntervalConfigSpanV6>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV6>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV6, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV6, size),
+    ];
+    assert_eq!(actual, expected);
 }
