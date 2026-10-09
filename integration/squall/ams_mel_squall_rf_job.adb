@@ -207,6 +207,14 @@ begin
                               C2.Append_Interval_Local_Function_Command (Interval, Command);
                            end;
                            -- Pinned Squall Add is a no-op: acceptance, not hardware writes.
+                           declare
+                              Params : C2.Product_Stream_Params := C2.Create_Product_Stream_Params;
+                           begin
+                              C2.Append_Product_Stream_RX_Group (Params, 0);
+                              C2.Append_Product_Stream_Endpoint (Params, 0, 0, 0);
+                              C2.Set_Interval_Product_Stream_Params (Interval, Params);
+                           end;
+                           -- ProductStream acceptance is not registered memory or transfer evidence.
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
@@ -291,6 +299,6 @@ begin
       ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle; real Squall " &
        "ElementGroupCommand accepted bridge-issued addExpectedPointingAngle calls " &
        "and requestJob accepted the completed request; real provider accepted " &
-       "addJobIntervals containing bridge-constructed spatial values; payload " &
-       "fidelity and spatial semantics are mock evidence only");
+       "addJobIntervals containing bridge-constructed spatial and ProductStreamParams values; " &
+       "payload fidelity is mock evidence only; no memory registration or data transfer proof");
 end AMS_MEL_Squall_RF_Job;

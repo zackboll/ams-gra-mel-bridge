@@ -1,5 +1,16 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+Task 034F8 adds copied RX JobInterval ProductStreamParams through nested v7 and
+exactly `ams_mel_rf_job_add_rx_intervals_v7` (ABI 0.1). Safe Ada owns ordered,
+copyable group and endpoint values; raw Ada/Rust/private Python mirror the ABI.
+Presence 0 ignores inactive payloads; 1 copies even empty vectors. Numeric uint64
+addresses are not owned pointers or registered memory. Caller/provider enforce
+published JobRequest endpoint size/ordered-ID matching and storage lifetime;
+structural acceptance does not establish hardware safety. No endpoint creation,
+registration, routing or transfer is implemented. Older v1–v6 stay default-empty.
+Pinned Squall Add is a no-op. See `docs/task-034f8-rf-product-stream-params.md`.
+
+
 Task 034F7 adds copied RX JobInterval Local Function commands through nested
 JobInterval v6 and `ams_mel_rf_job_add_rx_intervals_v6` (ABI remains 0.1).
 Safe Ada owns copyable ordered command/write vectors; raw Ada/Rust/private
