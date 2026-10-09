@@ -216,6 +216,19 @@ package AMS.MEL.RF.C2 is
    procedure Append_Local_Function_Write
      (Command : in out Local_Function_Command; Address, Value : Interfaces.Unsigned_64);
    type RX_Job_Interval_Config is private;
+   --  Owned value configuration only. Numeric addresses are not access values;
+   --  application/provider remain responsible for endpoint matching, registered
+   --  writable storage and its execution lifetime. No memory-safety guarantee.
+   type Product_Stream_Params is private;
+   function Create_Product_Stream_Params return Product_Stream_Params;
+   procedure Append_Product_Stream_RX_Group
+     (Params : in out Product_Stream_Params; Index : Interfaces.Unsigned_64);
+   procedure Append_Product_Stream_Endpoint
+     (Params                                : in out Product_Stream_Params;
+      Endpoint_ID, Start_Address, Max_Bytes : Interfaces.Unsigned_64);
+   procedure Set_Interval_Product_Stream_Params
+     (Interval : in out RX_Job_Interval_Config; Params : Product_Stream_Params);
+   procedure Clear_Interval_Product_Stream_Params (Interval : in out RX_Job_Interval_Config);
    procedure Append_Interval_Local_Function_Command
      (Interval : in out RX_Job_Interval_Config; Command : Local_Function_Command);
    procedure Set_Interval_TX_Power_Mode_ID
@@ -401,6 +414,15 @@ private
    end record;
    package Local_Function_Command_Vectors is new
      Ada.Containers.Vectors (Positive, Local_Function_Command);
+   type Product_Stream_Endpoint is record
+      Endpoint_ID, Start_Address, Max_Bytes : Interfaces.Unsigned_64;
+   end record;
+   package Product_Stream_Endpoint_Vectors is new
+     Ada.Containers.Vectors (Positive, Product_Stream_Endpoint);
+   type Product_Stream_Params is record
+      RX_Groups : RX_Index_Vectors.Vector;
+      Endpoints : Product_Stream_Endpoint_Vectors.Vector;
+   end record;
    type RX_Job_Interval_Config is record
       Interval_ID, Job_Details_ID                  : Interfaces.Unsigned_32;
       Interval_Start_Femtoseconds,
@@ -418,6 +440,8 @@ private
       TX_Power_Mode                                : Interfaces.Unsigned_32 := 0;
       Activity                                     : Byte_Vectors.Vector;
       Execution                                    : Execution_Type := Normal;
+      Has_Product_Stream_Params                    : Boolean := False;
+      Product_Stream                               : Product_Stream_Params;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record

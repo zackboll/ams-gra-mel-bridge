@@ -2879,3 +2879,20 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f7_value(
     if (field == 4) return writes.at(w).getLfAddress();
     return writes.at(w).getLfValue();
 }
+
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f8_value(
+    unsigned i, unsigned index, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& interval = latest_intervals.at(i);
+    const auto& params = interval.getEndpointParameters();
+    if (field == 0) return params.getApplicableRxElementGroups().size();
+    if (field == 1) return params.getEndpoints().size();
+    if (field == 2) return params.getApplicableRxElementGroups().at(index);
+    if (field == 6) return interval.getEndpoints().size();
+    if (field == 7) return interval.getApplicableElementGroups().size();
+    const auto& endpoint = params.getEndpoints().at(index);
+    if (field == 3) return endpoint.getEndpointID();
+    if (field == 4) return endpoint.getStartAddress();
+    return endpoint.getMaxBytes();
+}

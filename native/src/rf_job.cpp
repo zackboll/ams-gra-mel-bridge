@@ -415,25 +415,44 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool lf = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v6>;
+    constexpr bool product = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v7>;
+    constexpr bool lf = product || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v6>;
     constexpr bool pulse = lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v5>;
     constexpr bool controls = pulse || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
     constexpr bool spatial = controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
     const auto input_at = [&](std::size_t i) -> const auto& {
-        if constexpr (lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
+        if constexpr (product) return inputs.data[i].interval.interval;
+        else if constexpr (lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
+        else return inputs.data[i];
+    };
+    const auto supplied_at = [&](std::size_t i) -> const auto& {
+        if constexpr (product) return inputs.data[i].interval;
         else return inputs.data[i];
     };
     const auto mode_at = [&](std::size_t i) -> std::uint32_t {
         if constexpr (std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v1>) {
             (void)i; return AMS_MEL_RF_INTERVAL_STATUS_NEVER;
-        } else if constexpr (lf) return inputs.data[i].interval.status_enable;
+        } else if constexpr (lf) return input_at(i).status_enable;
         else return inputs.data[i].status_enable;
     };
     bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
         const auto& input = input_at(i);
+        if constexpr (product) {
+            const auto& source = inputs.data[i];
+            if (source.has_product_stream_params > 1U) return AMS_MEL_INVALID_ARGUMENT;
+            if (source.has_product_stream_params) {
+                const auto& params = source.product_stream_params;
+                const auto groups = params.applicable_rx_element_groups;
+                if (!span_ok(groups.size, groups.data, sizeof(*groups.data)) ||
+                    !span_ok(params.endpoints.size, params.endpoints.data, sizeof(*params.endpoints.data)))
+                    return AMS_MEL_INVALID_ARGUMENT;
+                for (std::size_t g = 0; g < groups.size; ++g)
+                    if (!fits_count(groups.data[g])) return AMS_MEL_INVALID_ARGUMENT;
+            }
+        }
         if constexpr (lf) {
-            const auto commands = inputs.data[i].local_function_commands;
+            const auto commands = supplied_at(i).local_function_commands;
             if (!span_ok(commands.size, commands.data, sizeof(*commands.data)))
                 return AMS_MEL_INVALID_ARGUMENT;
             for (std::size_t c = 0; c < commands.size; ++c) {
@@ -633,7 +652,7 @@ ams_mel_status_t add_rx_intervals(
                 interval.setExecutionType(static_cast<rfmel::ExecutionType>(input.execution_type));
             }
             if constexpr (lf) {
-                const auto supplied = inputs.data[i].local_function_commands;
+                const auto supplied = supplied_at(i).local_function_commands;
                 if (supplied.size) {
                     if (failpoint("interval-lf-allocation")) throw std::bad_alloc{};
                     std::vector<rfmel::LocalFunctionCommand> commands;
@@ -655,6 +674,30 @@ ams_mel_status_t add_rx_intervals(
                         commands.push_back(std::move(command));
                     }
                     interval.setLfCommands(commands);
+                }
+            }
+            if constexpr (product) {
+                if (inputs.data[i].has_product_stream_params) {
+                    if (failpoint("interval-product-stream-allocation")) throw std::bad_alloc{};
+                    const auto& source = inputs.data[i].product_stream_params;
+                    rfmel::ProductStreamParams params;
+                    std::vector<std::size_t> groups;
+                    groups.reserve(source.applicable_rx_element_groups.size);
+                    for (std::size_t g = 0; g < source.applicable_rx_element_groups.size; ++g)
+                        groups.push_back(static_cast<std::size_t>(source.applicable_rx_element_groups.data[g]));
+                    params.setApplicableRxElementGroups(groups);
+                    std::vector<rfmel::EndpointParameters> endpoints;
+                    endpoints.reserve(source.endpoints.size);
+                    for (std::size_t e = 0; e < source.endpoints.size; ++e) {
+                        const auto& value = source.endpoints.data[e];
+                        rfmel::EndpointParameters endpoint;
+                        endpoint.setEndpointID(value.endpoint_id);
+                        endpoint.setStartAddress(value.start_address);
+                        endpoint.setMaxBytes(value.max_bytes);
+                        endpoints.push_back(endpoint);
+                    }
+                    params.setEndpoints(endpoints);
+                    interval.setEndpointParameters(params);
                 }
             }
             intervals.push_back(std::move(interval));
@@ -693,6 +736,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v6(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v6 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v7(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v7 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

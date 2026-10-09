@@ -2159,6 +2159,38 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v6";
+   type RF_Product_Stream_Endpoint_V1 is record
+      Endpoint_ID, Start_Address, Max_Bytes : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   type RF_Product_Stream_Endpoint_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Product_Stream_Params_V1 is record
+      Applicable_RX_Element_Groups : U64_Span_V1;
+      Endpoints                    : RF_Product_Stream_Endpoint_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V7 is record
+      Interval                  : RF_Job_Interval_Config_V6;
+      Has_Product_Stream_Params : Interfaces.Unsigned_32;
+      Product_Stream_Params     : RF_Product_Stream_Params_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V7 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_RX_Intervals_V7
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V7;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v7";
    Rf_Interval_Status_Never                                                 :
      constant Interfaces.Unsigned_32 := 0;
    Rf_Interval_Status_Always                                                :
