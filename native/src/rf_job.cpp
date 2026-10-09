@@ -415,25 +415,33 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool endpoint_map = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v8>;
+    constexpr bool tx = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
+    constexpr bool endpoint_map = tx || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v8>;
     constexpr bool product = endpoint_map || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v7>;
     constexpr bool lf = product || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v6>;
     constexpr bool pulse = lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v5>;
     constexpr bool controls = pulse || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v4>;
     constexpr bool spatial = controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v3>;
     const auto input_at = [&](std::size_t i) -> const auto& {
-        if constexpr (endpoint_map) return inputs.data[i].interval.interval.interval;
+        if constexpr (tx) return inputs.data[i].interval.interval.interval.interval;
+        else if constexpr (endpoint_map) return inputs.data[i].interval.interval.interval;
         else if constexpr (product) return inputs.data[i].interval.interval;
         else if constexpr (lf || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v2>) return inputs.data[i].interval;
         else return inputs.data[i];
     };
     const auto supplied_at = [&](std::size_t i) -> const auto& {
-        if constexpr (endpoint_map) return inputs.data[i].interval.interval;
+        if constexpr (tx) return inputs.data[i].interval.interval.interval;
+        else if constexpr (endpoint_map) return inputs.data[i].interval.interval;
         else if constexpr (product) return inputs.data[i].interval;
         else return inputs.data[i];
     };
     const auto product_at = [&](std::size_t i) -> const auto& {
-        if constexpr (endpoint_map) return inputs.data[i].interval;
+        if constexpr (tx) return inputs.data[i].interval.interval;
+        else if constexpr (endpoint_map) return inputs.data[i].interval;
+        else return inputs.data[i];
+    };
+    const auto endpoint_at = [&](std::size_t i) -> const auto& {
+        if constexpr (tx) return inputs.data[i].interval;
         else return inputs.data[i];
     };
     const auto mode_at = [&](std::size_t i) -> std::uint32_t {
@@ -445,8 +453,24 @@ ams_mel_status_t add_rx_intervals(
     bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
         const auto& input = input_at(i);
-        if constexpr (endpoint_map) {
+        if constexpr (tx) {
             const auto& source = inputs.data[i];
+            if (source.has_transmit_events > 1U) return AMS_MEL_INVALID_ARGUMENT;
+            if (source.has_transmit_events) {
+                const auto events = source.transmit_events;
+                if (!span_ok(events.size, events.data, sizeof(*events.data))) return AMS_MEL_INVALID_ARGUMENT;
+                for (std::size_t e = 0; e < events.size; ++e) {
+                    const auto& event = events.data[e];
+                    const auto groups = event.applicable_tx_element_groups;
+                    if (!valid_view(event.element_group_label) || !fits_count(event.stab_point_index) ||
+                        !span_ok(groups.size, groups.data, sizeof(*groups.data))) return AMS_MEL_INVALID_ARGUMENT;
+                    for (std::size_t g = 0; g < groups.size; ++g)
+                        if (!fits_count(groups.data[g])) return AMS_MEL_INVALID_ARGUMENT;
+                }
+            }
+        }
+        if constexpr (endpoint_map) {
+            const auto& source = endpoint_at(i);
             if (source.has_endpoint_connections > 1U) return AMS_MEL_INVALID_ARGUMENT;
             if (source.has_endpoint_connections) {
                 const auto entries = source.endpoint_connections;
@@ -641,6 +665,34 @@ ams_mel_status_t add_rx_intervals(
             rfmel::Sequence sequence;
             sequence.setDuration(Fs{input.sequence_duration_femtoseconds});
             sequence.setRxEvents(events);
+            if constexpr (tx) {
+                if (inputs.data[i].has_transmit_events) {
+                    if (failpoint("interval-tx-allocation")) throw std::bad_alloc{};
+                    std::vector<rfmel::TransmitEvent> transmit;
+                    const auto source = inputs.data[i].transmit_events;
+                    transmit.reserve(source.size);
+                    for (std::size_t e = 0; e < source.size; ++e) {
+                        const auto& config = source.data[e];
+                        rfmel::TransmitEvent event;
+                        event.setEventID(config.event_id);
+                        event.setElementGroupLabel(copy_view(config.element_group_label));
+                        event.setStart(Fs{config.start_femtoseconds});
+                        event.setDuration(Fs{config.duration_femtoseconds});
+                        event.setCenterFrequency(config.center_frequency_hz);
+                        event.setStabPointIndex(static_cast<std::size_t>(config.stab_point_index));
+                        std::vector<std::size_t> groups;
+                        groups.reserve(config.applicable_tx_element_groups.size);
+                        for (std::size_t g = 0; g < config.applicable_tx_element_groups.size; ++g)
+                            groups.push_back(static_cast<std::size_t>(config.applicable_tx_element_groups.data[g]));
+                        event.setApplicableTxElementGroups(groups);
+                        event.setTxAtten_dB(config.tx_attenuation_db);
+                        event.setRiseDuration(Fs{config.rise_duration_femtoseconds});
+                        event.setFallDuration(Fs{config.fall_duration_femtoseconds});
+                        transmit.push_back(std::move(event));
+                    }
+                    sequence.setTxEvents(transmit);
+                }
+            }
             rfmel::JobInterval interval;
             interval.setIntervalStart(Fs{input.interval_start_femtoseconds});
             interval.setIntervalID(input.interval_id);
@@ -720,10 +772,10 @@ ams_mel_status_t add_rx_intervals(
                 }
             }
             if constexpr (endpoint_map) {
-                if (inputs.data[i].has_endpoint_connections) {
+                if (endpoint_at(i).has_endpoint_connections) {
                     if (failpoint("interval-endpoint-map-allocation")) throw std::bad_alloc{};
                     rfmel::ElementGroupToEndpointConnections connections;
-                    const auto entries = inputs.data[i].endpoint_connections;
+                    const auto entries = endpoint_at(i).endpoint_connections;
                     for (std::size_t e = 0; e < entries.size; ++e) {
                         const auto& entry = entries.data[e];
                         connections[copy_view(entry.element_group_label)].insert_or_assign(
@@ -776,6 +828,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v7(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v8(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v8 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

@@ -169,6 +169,24 @@ package AMS.MEL.RF.C2 is
    procedure Append_Pulse_Detection_Threshold
      (Settings : in out Pulse_Detection_Settings; Leading_Edge_DB, Trailing_Edge_DB : Long_Float);
    type RX_Receive_Event_Config is private;
+   type TX_Transmit_Event_Config is private;
+   function Create_TX_Transmit_Event
+     (Event_ID                                  : Interfaces.Unsigned_32;
+      Element_Group_Label                       : String;
+      Start_Femtoseconds, Duration_Femtoseconds : Interfaces.Integer_64;
+      Center_Frequency_Hz                       : Long_Float;
+      TX_Attenuation_DB                         : Long_Float := 0.0;
+      Rise_Duration_Femtoseconds                : Interfaces.Integer_64 := 0;
+      Fall_Duration_Femtoseconds                : Interfaces.Integer_64 := 0)
+      return TX_Transmit_Event_Config;
+   procedure Set_Event_Stabilization_Point_Index
+     (Event : in out TX_Transmit_Event_Config; Index : Interfaces.Unsigned_64);
+   procedure Append_Applicable_TX_Element_Group
+     (Event : in out TX_Transmit_Event_Config; Element_Group_Index : Interfaces.Unsigned_64);
+   procedure Set_TX_Attenuation_DB (Event : in out TX_Transmit_Event_Config; Value : Long_Float);
+   procedure Set_TX_Edge_Durations
+     (Event                                : in out TX_Transmit_Event_Config;
+      Rise_Femtoseconds, Fall_Femtoseconds : Interfaces.Integer_64);
    procedure Set_Pulse_Detection_Settings
      (Event : in out RX_Receive_Event_Config; Settings : Pulse_Detection_Settings);
    procedure Clear_Pulse_Detection_Settings (Event : in out RX_Receive_Event_Config);
@@ -269,6 +287,11 @@ package AMS.MEL.RF.C2 is
       Max_Sample_Rate_Hz                 : Long_Float := 0.0) return RX_Job_Interval_Config;
    procedure Append_RX_Event
      (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config);
+   procedure Append_TX_Event
+     (Interval : in out RX_Job_Interval_Config; Event : TX_Transmit_Event_Config);
+   --  Set empty expresses presence; Clear restores absence.
+   procedure Set_Empty_TX_Events (Interval : in out RX_Job_Interval_Config);
+   procedure Clear_TX_Events (Interval : in out RX_Job_Interval_Config);
    type RX_Job_Interval_List is private;
    procedure Append_Job_Interval
      (Intervals : in out RX_Job_Interval_List; Interval : RX_Job_Interval_Config);
@@ -278,6 +301,8 @@ package AMS.MEL.RF.C2 is
    --  Cancel_Remaining is repeatable, including during/after Finalize, until
    --  full Cancel has been attempted. Failures raise Provider_Error; no retry.
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List);
+   procedure Add_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List)
+   renames Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job);
    procedure Cancel_Remaining_Job_Intervals (Object : in out Job);
    --  Repeatable, including before/during/after Finalize, until full Cancel
@@ -413,6 +438,17 @@ private
       Pulse_Settings                                         : Pulse_Detection_Settings;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
+   type TX_Transmit_Event_Config is record
+      Event_ID                                               : Interfaces.Unsigned_32;
+      Label                                                  :
+        Ada.Strings.Unbounded.Unbounded_String;
+      Start_Femtoseconds, Duration_Femtoseconds              : Interfaces.Integer_64;
+      Center_Frequency_Hz, TX_Attenuation_DB                 : Long_Float;
+      Rise_Duration_Femtoseconds, Fall_Duration_Femtoseconds : Interfaces.Integer_64;
+      Stab_Point_Index                                       : Interfaces.Unsigned_64 := 0;
+      Groups                                                 : RX_Index_Vectors.Vector;
+   end record;
+   package TX_Event_Vectors is new Ada.Containers.Vectors (Positive, TX_Transmit_Event_Config);
    type Local_Function_Write is record
       Address, Value : Interfaces.Unsigned_64;
    end record;
@@ -464,6 +500,8 @@ private
       Product_Stream                               : Product_Stream_Params;
       Has_Endpoint_Connections                     : Boolean := False;
       Connections                                  : Endpoint_Connections;
+      Has_TX_Events                                : Boolean := False;
+      TX_Events                                    : TX_Event_Vectors.Vector;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record
