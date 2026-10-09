@@ -84,6 +84,17 @@ static unsigned status_mode(void)
     *(void **)(&fn)=dlsym(lib,"mock_rf_status_mode"); CHECK(fn);
     unsigned result=fn(0); CHECK(dlclose(lib)==0); return result;
 }
+static void previous_fields(void)
+{
+    void *lib=dlopen(AMS_MEL_TEST_MOCK_RF_PROVIDER,RTLD_NOW|RTLD_LOCAL); CHECK(lib);
+    uint64_t (*scalar)(unsigned,unsigned,unsigned);
+    int64_t (*pulse)(unsigned,unsigned,unsigned);
+    *(void **)(&scalar)=dlsym(lib,"mock_rf_f5_scalar"); CHECK(scalar);
+    *(void **)(&pulse)=dlsym(lib,"mock_rf_f6_scalar"); CHECK(pulse);
+    CHECK(scalar(0,0,3)==1 && scalar(0,0,4)==1 && scalar(0,0,6)==AMS_MEL_RF_EXECUTION_CONDITIONAL);
+    CHECK(scalar(0,0,12)==999 && scalar(0,0,13)==3 && pulse(0,0,7)==1);
+    CHECK(dlclose(lib)==0);
+}
 static void invalid(ams_mel_rf_job *job,ams_mel_rf_job_interval_config_span_v7 span)
 {
     unsigned before=mock("mock_rf_job_add_calls");
@@ -93,6 +104,7 @@ static void invalid(ams_mel_rf_job *job,ams_mel_rf_job_interval_config_span_v7 s
 static void verify(ams_mel_rf_job *job,ams_mel_rf_job_interval_config_span_v7 span)
 {
     CHECK(ams_mel_rf_job_add_rx_intervals_v7(job,span,D)==AMS_MEL_OK);
+    previous_fields();
     for(unsigned i=0;i<span.size;++i) {
         CHECK(value(i,0,6)==0 && value(i,0,7)==0);
         if(!span.data[i].has_product_stream_params) {
@@ -172,6 +184,9 @@ int main(void)
         intervals[4].product_stream_params.endpoints=(ams_mel_rf_product_stream_endpoint_span_v1){eps,4};
         ams_mel_rf_job_interval_config_span_v7 span={intervals,5};
         verify(job,span);
+        uint64_t inactive_index=UINT64_MAX;
+        intervals[1].product_stream_params.applicable_rx_element_groups=(ams_mel_u64_span_v1){&inactive_index,1};
+        verify(job,span);
         CHECK(lf_value(0)==1 && lf_value(1)==UINT32_MAX && lf_value(2)==SIZE_MAX &&
               lf_value(3)==1 && lf_value(4)==UINT64_MAX && lf_value(5)==UINT64_MAX);
         groups[0]=1; eps[1]=(ams_mel_rf_product_stream_endpoint_v1){1,1,1};
@@ -191,6 +206,8 @@ int main(void)
         intervals[4].product_stream_params.endpoints=(ams_mel_rf_product_stream_endpoint_span_v1){NULL,1}; invalid(job,span);
         intervals[4].product_stream_params.endpoints=(ams_mel_rf_product_stream_endpoint_span_v1){eps,SIZE_MAX/sizeof(*eps)+1}; invalid(job,span);
         intervals[4].product_stream_params.endpoints=(ams_mel_rf_product_stream_endpoint_span_v1){eps,4};
+        intervals[4].product_stream_params.applicable_rx_element_groups=(ams_mel_u64_span_v1){NULL,1}; invalid(job,span);
+        intervals[4].product_stream_params.applicable_rx_element_groups=(ams_mel_u64_span_v1){NULL,0};
         intervals[4].interval.local_function_commands=(ams_mel_rf_lf_command_span_v1){NULL,1}; invalid(job,span);
         intervals[4].interval.local_function_commands=(ams_mel_rf_lf_command_span_v1){NULL,0};
         if(sizeof(size_t)<8) { groups[0]=UINT64_MAX; invalid(job,span); groups[0]=2; }
@@ -222,8 +239,10 @@ int main(void)
         CHECK(status_mode()==AMS_MEL_RF_INTERVAL_STATUS_ON_EXCEPTION);
         const char *failures[]={"std","unknown","alloc"};
         for(unsigned f=0;f<3;++f) {
+            before=mock("mock_rf_job_add_calls");
             CHECK(setenv("AMS_MEL_TEST_F4_ADD_FAILURE",failures[f],1)==0);
             CHECK(ams_mel_rf_job_add_rx_intervals_v7(job,span,D)==(f==2?AMS_MEL_INTERNAL_ERROR:AMS_MEL_PROVIDER_EXCEPTION));
+            CHECK(mock("mock_rf_job_add_calls")==before+1);
             CHECK(unsetenv("AMS_MEL_TEST_F4_ADD_FAILURE")==0); verify(job,span);
         }
         CHECK(ams_mel_rf_job_interval_status_close(&stream,D)==AMS_MEL_OK);
