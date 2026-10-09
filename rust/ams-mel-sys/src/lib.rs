@@ -4071,6 +4071,47 @@ pub struct AmsMelRfJobIntervalConfigSpanV6 {
     pub data: *const AmsMelRfJobIntervalConfigV6,
     pub size: usize,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductStreamEndpointV1 {
+    pub endpoint_id: u64,
+    pub start_address: u64,
+    pub max_bytes: u64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductStreamEndpointSpanV1 {
+    pub data: *const AmsMelRfProductStreamEndpointV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductStreamParamsV1 {
+    pub applicable_rx_element_groups: AmsMelU64SpanV1,
+    pub endpoints: AmsMelRfProductStreamEndpointSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV7 {
+    pub interval: AmsMelRfJobIntervalConfigV6,
+    pub has_product_stream_params: u32,
+    pub product_stream_params: AmsMelRfProductStreamParamsV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV7 {
+    pub data: *const AmsMelRfJobIntervalConfigV7,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v7(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV7,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
 extern "C" {
     pub fn ams_mel_rf_job_add_rx_intervals_v6(
         job: *mut AmsMelRfJob,

@@ -2167,6 +2167,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_rx_intervals_v4",
     "ams_mel_rf_job_add_rx_intervals_v5",
     "ams_mel_rf_job_add_rx_intervals_v6",
+    "ams_mel_rf_job_add_rx_intervals_v7",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2390,3 +2391,22 @@ class RfJobIntervalConfigSpanV6(ctypes.Structure):
 ams_mel_rf_job_add_rx_intervals_v6 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v6
 ams_mel_rf_job_add_rx_intervals_v6.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV6, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_rx_intervals_v6.restype = ctypes.c_int32
+
+class RfProductStreamEndpointV1(ctypes.Structure):
+    _fields_ = [("endpoint_id", ctypes.c_uint64), ("start_address", ctypes.c_uint64), ("max_bytes", ctypes.c_uint64)]
+
+class RfProductStreamEndpointSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfProductStreamEndpointV1)), ("size", ctypes.c_size_t)]
+
+class RfProductStreamParamsV1(ctypes.Structure):
+    _fields_ = [("applicable_rx_element_groups", U64SpanV1), ("endpoints", RfProductStreamEndpointSpanV1)]
+
+class RfJobIntervalConfigV7(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV6), ("has_product_stream_params", ctypes.c_uint32), ("product_stream_params", RfProductStreamParamsV1)]
+
+class RfJobIntervalConfigSpanV7(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV7)), ("size", ctypes.c_size_t)]
+
+ams_mel_rf_job_add_rx_intervals_v7 = _LIBRARY.ams_mel_rf_job_add_rx_intervals_v7
+ams_mel_rf_job_add_rx_intervals_v7.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV7, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_rx_intervals_v7.restype = ctypes.c_int32

@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 196);
-    assert_eq!(exported.len(), 196);
+    assert_eq!(declared.len(), 197);
+    assert_eq!(exported.len(), 197);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3211,6 +3211,64 @@ fn lf_commands_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV6>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV6, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV6, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn product_stream_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV7,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_rx_intervals_v7;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!(
+        "ams-mel-product-stream-layout-{}",
+        std::process::id()
+    ));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/product_stream_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfProductStreamEndpointV1>(),
+        align_of::<AmsMelRfProductStreamEndpointV1>(),
+        offset_of!(AmsMelRfProductStreamEndpointV1, endpoint_id),
+        offset_of!(AmsMelRfProductStreamEndpointV1, start_address),
+        offset_of!(AmsMelRfProductStreamEndpointV1, max_bytes),
+        size_of::<AmsMelRfProductStreamEndpointSpanV1>(),
+        align_of::<AmsMelRfProductStreamEndpointSpanV1>(),
+        offset_of!(AmsMelRfProductStreamEndpointSpanV1, data),
+        offset_of!(AmsMelRfProductStreamEndpointSpanV1, size),
+        size_of::<AmsMelRfProductStreamParamsV1>(),
+        align_of::<AmsMelRfProductStreamParamsV1>(),
+        offset_of!(AmsMelRfProductStreamParamsV1, applicable_rx_element_groups),
+        offset_of!(AmsMelRfProductStreamParamsV1, endpoints),
+        size_of::<AmsMelRfJobIntervalConfigV7>(),
+        align_of::<AmsMelRfJobIntervalConfigV7>(),
+        offset_of!(AmsMelRfJobIntervalConfigV7, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV7, has_product_stream_params),
+        offset_of!(AmsMelRfJobIntervalConfigV7, product_stream_params),
+        size_of::<AmsMelRfJobIntervalConfigSpanV7>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV7>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV7, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV7, size),
     ];
     assert_eq!(actual, expected);
 }

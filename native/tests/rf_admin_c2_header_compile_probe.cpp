@@ -479,3 +479,37 @@ int lf_header_probe() {
     return assigned.getLfInstance() == SIZE_MAX && interval.getLfCommands().size() == 2 &&
         interval.getLfCommands()[1].getLfAddrValues()[1].getLfValue() == UINT64_MAX ? 0 : 2;
 }
+
+using EP = r::EndpointParameters;
+using PSP = r::ProductStreamParams;
+static_assert(std::is_same_v<r::EndpointID, uint64_t>);
+METHOD(EP, setEndpointID, void (EP::*)(uint64_t));
+METHOD(EP, getEndpointID, uint64_t (EP::*)() const);
+METHOD(EP, setStartAddress, void (EP::*)(uint64_t));
+METHOD(EP, getStartAddress, uint64_t (EP::*)() const);
+METHOD(EP, setMaxBytes, void (EP::*)(uint64_t));
+METHOD(EP, getMaxBytes, uint64_t (EP::*)() const);
+METHOD(PSP, setApplicableRxElementGroups, void (PSP::*)(const std::vector<size_t>&));
+METHOD(PSP, getApplicableRxElementGroups, const std::vector<size_t>& (PSP::*)() const);
+METHOD(PSP, setEndpoints, void (PSP::*)(const std::vector<EP>&));
+static_assert(std::is_same_v<decltype(static_cast<const std::vector<EP>& (PSP::*)() const>(&PSP::getEndpoints)), const std::vector<EP>& (PSP::*)() const>);
+METHOD(JI, setEndpointParameters, void (JI::*)(const PSP&));
+METHOD(JI, getEndpointParameters, const PSP& (JI::*)() const);
+LF_VALUE(EP); LF_VALUE(PSP);
+int product_stream_header_probe() {
+    EP endpoint; PSP params; JI interval;
+    if (endpoint.getEndpointID() || endpoint.getStartAddress() || endpoint.getMaxBytes() ||
+        !params.getEndpoints().empty() || !params.getApplicableRxElementGroups().empty() ||
+        !interval.getEndpointParameters().getEndpoints().empty()) return 1;
+    endpoint.setEndpointID(UINT64_MAX); endpoint.setStartAddress(UINT64_MAX); endpoint.setMaxBytes(UINT64_MAX);
+    params.setApplicableRxElementGroups({SIZE_MAX, 0, SIZE_MAX});
+    params.setEndpoints({endpoint, endpoint});
+    PSP copy{params}; PSP assigned; assigned = copy;
+    PSP moved{std::move(copy)}; assigned = std::move(moved);
+    interval.setEndpointParameters(assigned);
+    assigned.setEndpoints({}); params.setApplicableRxElementGroups({});
+    const auto& got = interval.getEndpointParameters();
+    return got.getEndpoints().size() == 2 && got.getEndpoints()[1].getEndpointID() == UINT64_MAX &&
+        got.getEndpoints()[1].getStartAddress() == UINT64_MAX && got.getEndpoints()[1].getMaxBytes() == UINT64_MAX &&
+        got.getApplicableRxElementGroups() == std::vector<size_t>{SIZE_MAX, 0, SIZE_MAX} ? 0 : 2;
+}

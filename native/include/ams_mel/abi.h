@@ -3102,6 +3102,40 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v6(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Copied numeric product destination configuration, not owned/registered memory.
+ * Caller/provider must enforce the published JobRequest endpoint-vector size and
+ * corresponding ID matching contract and storage lifetime. No local matching,
+ * address dereference/arithmetic, registration or transfer occurs. Order and
+ * duplicates are retained; RX indices must fit provider size_t.
+ * Presence 0 ignores all payload bytes; 1 copies even empty vectors; other values
+ * are invalid. Structural acceptance does not establish hardware memory safety. */
+typedef struct ams_mel_rf_product_stream_endpoint_v1 {
+    uint64_t endpoint_id;
+    uint64_t start_address;
+    uint64_t max_bytes;
+} ams_mel_rf_product_stream_endpoint_v1;
+typedef struct ams_mel_rf_product_stream_endpoint_span_v1 {
+    const ams_mel_rf_product_stream_endpoint_v1 *data;
+    size_t size;
+} ams_mel_rf_product_stream_endpoint_span_v1;
+typedef struct ams_mel_rf_product_stream_params_v1 {
+    ams_mel_u64_span_v1 applicable_rx_element_groups;
+    ams_mel_rf_product_stream_endpoint_span_v1 endpoints;
+} ams_mel_rf_product_stream_params_v1;
+typedef struct ams_mel_rf_job_interval_config_v7 {
+    ams_mel_rf_job_interval_config_v6 interval;
+    uint32_t has_product_stream_params;
+    ams_mel_rf_product_stream_params_v1 product_stream_params;
+} ams_mel_rf_job_interval_config_v7;
+typedef struct ams_mel_rf_job_interval_config_span_v7 {
+    const ams_mel_rf_job_interval_config_v7 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v7;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v7(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v7 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v5(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v5 intervals,
     char *diagnostic, size_t diagnostic_capacity,
