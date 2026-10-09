@@ -221,8 +221,16 @@ begin
                               end;
                            end;
                            -- Map/ProductStream acceptance is not routing, registered memory or transfer evidence.
+                           declare
+                              TX : C2.TX_Transmit_Event_Config := C2.Create_TX_Transmit_Event
+                                (41, "tx-config-only", 0, 1_000_000, 1_000_000.0, 3.0);
+                           begin
+                              C2.Append_Applicable_TX_Element_Group (TX, 0);
+                              C2.Append_TX_Event (Interval, TX);
+                           end;
+                           --  Squall Add is a no-op; acceptance is not TX fidelity or execution.
                            C2.Append_Job_Interval (Intervals, Interval);
-                           C2.Add_RX_Job_Intervals (Object, Intervals);
+                           C2.Add_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
                         end;
                         begin

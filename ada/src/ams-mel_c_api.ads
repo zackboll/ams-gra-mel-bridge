@@ -2219,6 +2219,40 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_rx_intervals_v8";
+   type RF_TX_Event_Config_V1 is record
+      Event_ID                                               : Interfaces.Unsigned_32;
+      Element_Group_Label                                    : String_View_V1;
+      Start_Femtoseconds, Duration_Femtoseconds              : Interfaces.Integer_64;
+      Center_Frequency_Hz                                    : Interfaces.C.double;
+      Stab_Point_Index                                       : Interfaces.Unsigned_64;
+      Applicable_TX_Element_Groups                           : U64_Span_V1;
+      TX_Attenuation_DB                                      : Interfaces.C.double;
+      Rise_Duration_Femtoseconds, Fall_Duration_Femtoseconds : Interfaces.Integer_64;
+   end record
+   with Convention => C;
+   type RF_TX_Event_Config_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V9 is record
+      Interval            : RF_Job_Interval_Config_V8;
+      Has_Transmit_Events : Interfaces.Unsigned_32;
+      Transmit_Events     : RF_TX_Event_Config_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V9 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_Intervals_V9
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V9;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v9";
    Rf_Interval_Status_Never                                                 :
      constant Interfaces.Unsigned_32 := 0;
    Rf_Interval_Status_Always                                                :

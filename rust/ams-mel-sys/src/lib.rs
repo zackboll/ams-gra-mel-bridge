@@ -4148,6 +4148,48 @@ pub struct AmsMelRfJobIntervalConfigSpanV8 {
     pub data: *const AmsMelRfJobIntervalConfigV8,
     pub size: usize,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigV1 {
+    pub event_id: u32,
+    pub element_group_label: AmsMelStringViewV1,
+    pub start_femtoseconds: i64,
+    pub duration_femtoseconds: i64,
+    pub center_frequency_hz: f64,
+    pub stab_point_index: u64,
+    pub applicable_tx_element_groups: AmsMelU64SpanV1,
+    pub tx_attenuation_db: f64,
+    pub rise_duration_femtoseconds: i64,
+    pub fall_duration_femtoseconds: i64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigSpanV1 {
+    pub data: *const AmsMelRfTxEventConfigV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV9 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV9 {
+    pub data: *const AmsMelRfJobIntervalConfigV9,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v9(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV9,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
 extern "C" {
     pub fn ams_mel_rf_job_add_rx_intervals_v8(
         job: *mut AmsMelRfJob,

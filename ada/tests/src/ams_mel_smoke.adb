@@ -270,6 +270,12 @@ begin
       end if;
       Code :=
         GNAT.OS_Lib.Spawn
+          (Workspace_Root & "/ada/tests/bin/ams_mel_rf_tx_events_focused", Arguments);
+      if Code /= 0 then
+         raise Program_Error with "isolated RF TX event suite failed";
+      end if;
+      Code :=
+        GNAT.OS_Lib.Spawn
           (Workspace_Root & "/ada/tests/bin/ams_mel_rf_endpoint_map_focused", Arguments);
       if Code /= 0 then
          raise Program_Error with "isolated RF endpoint map suite failed";
