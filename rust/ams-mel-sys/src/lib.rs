@@ -4121,3 +4121,39 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfIntervalEndpointConnectionV1 {
+    pub element_group_label: AmsMelStringViewV1,
+    pub data_pipe_label: AmsMelStringViewV1,
+    pub endpoint_id: u64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfIntervalEndpointConnectionSpanV1 {
+    pub data: *const AmsMelRfIntervalEndpointConnectionV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV8 {
+    pub interval: AmsMelRfJobIntervalConfigV7,
+    pub has_endpoint_connections: u32,
+    pub endpoint_connections: AmsMelRfIntervalEndpointConnectionSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV8 {
+    pub data: *const AmsMelRfJobIntervalConfigV8,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_rx_intervals_v8(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV8,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

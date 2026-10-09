@@ -2896,3 +2896,22 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f8_value(
     if (field == 4) return endpoint.getStartAddress();
     return endpoint.getMaxBytes();
 }
+
+/* F9 observes getEndpoints(), never treats the broken applicable-label getter
+ * as a vector. Test-only lookups have no production export or header. */
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f9_value(
+    unsigned i, const char *group, const char *pipe, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& map = latest_intervals.at(i).getEndpoints();
+    if (field == 0) return map.size();
+    for (const auto& entry : map) {
+        if (entry.first == group) {
+            if (field == 1) return entry.second.size();
+            const auto found = entry.second.find(pipe);
+            if (field == 2) return found != entry.second.end();
+            return found == entry.second.end() ? 0 : found->second;
+        }
+    }
+    return 0;
+}

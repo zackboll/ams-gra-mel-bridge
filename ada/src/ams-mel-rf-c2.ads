@@ -220,6 +220,17 @@ package AMS.MEL.RF.C2 is
    --  application/provider remain responsible for endpoint matching, registered
    --  writable storage and its execution lifetime. No memory-safety guarantee.
    type Product_Stream_Params is private;
+   --  Exact copied labels; last composite-key occurrence wins at submission.
+   --  No endpoint creation, DataPipe association or applicable-label setup.
+   type Endpoint_Connections is private;
+   function Create_Endpoint_Connections return Endpoint_Connections;
+   procedure Append_Endpoint_Connection
+     (Connections                          : in out Endpoint_Connections;
+      Element_Group_Label, Data_Pipe_Label : String;
+      Endpoint_ID                          : Interfaces.Unsigned_64);
+   procedure Set_Interval_Endpoint_Connections
+     (Interval : in out RX_Job_Interval_Config; Connections : Endpoint_Connections);
+   procedure Clear_Interval_Endpoint_Connections (Interval : in out RX_Job_Interval_Config);
    function Create_Product_Stream_Params return Product_Stream_Params;
    procedure Append_Product_Stream_RX_Group
      (Params : in out Product_Stream_Params; Index : Interfaces.Unsigned_64);
@@ -423,6 +434,15 @@ private
       RX_Groups : RX_Index_Vectors.Vector;
       Endpoints : Product_Stream_Endpoint_Vectors.Vector;
    end record;
+   type Endpoint_Connection is record
+      Group_Label, Pipe_Label : Ada.Strings.Unbounded.Unbounded_String;
+      ID                      : Interfaces.Unsigned_64;
+   end record;
+   package Endpoint_Connection_Vectors is new
+     Ada.Containers.Vectors (Positive, Endpoint_Connection);
+   type Endpoint_Connections is record
+      Values : Endpoint_Connection_Vectors.Vector;
+   end record;
    type RX_Job_Interval_Config is record
       Interval_ID, Job_Details_ID                  : Interfaces.Unsigned_32;
       Interval_Start_Femtoseconds,
@@ -442,6 +462,8 @@ private
       Execution                                    : Execution_Type := Normal;
       Has_Product_Stream_Params                    : Boolean := False;
       Product_Stream                               : Product_Stream_Params;
+      Has_Endpoint_Connections                     : Boolean := False;
+      Connections                                  : Endpoint_Connections;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record

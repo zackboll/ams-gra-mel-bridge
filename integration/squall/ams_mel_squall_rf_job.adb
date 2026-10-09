@@ -213,8 +213,14 @@ begin
                               C2.Append_Product_Stream_RX_Group (Params, 0);
                               C2.Append_Product_Stream_Endpoint (Params, 0, 0, 0);
                               C2.Set_Interval_Product_Stream_Params (Interval, Params);
+                              declare
+                                 Connections : C2.Endpoint_Connections := C2.Create_Endpoint_Connections;
+                              begin
+                                 C2.Append_Endpoint_Connection (Connections, "0", "default", 0);
+                                 C2.Set_Interval_Endpoint_Connections (Interval, Connections);
+                              end;
                            end;
-                           -- ProductStream acceptance is not registered memory or transfer evidence.
+                           -- Map/ProductStream acceptance is not routing, registered memory or transfer evidence.
                            C2.Append_Job_Interval (Intervals, Interval);
                            C2.Add_RX_Job_Intervals (Object, Intervals);
                            C2.Flush_Job (Object);
@@ -299,6 +305,6 @@ begin
       ("PASS: safe Ada Squall RF two Jobs and parent-first lifecycle; real Squall " &
        "ElementGroupCommand accepted bridge-issued addExpectedPointingAngle calls " &
        "and requestJob accepted the completed request; real provider accepted " &
-       "addJobIntervals containing bridge-constructed spatial and ProductStreamParams values; " &
+       "addJobIntervals containing bridge-constructed spatial, ProductStreamParams and endpoint-map values; " &
        "payload fidelity is mock evidence only; no memory registration or data transfer proof");
 end AMS_MEL_Squall_RF_Job;

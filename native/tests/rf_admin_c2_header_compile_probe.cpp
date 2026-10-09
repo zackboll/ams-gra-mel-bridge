@@ -513,3 +513,30 @@ int product_stream_header_probe() {
         got.getEndpoints()[1].getStartAddress() == UINT64_MAX && got.getEndpoints()[1].getMaxBytes() == UINT64_MAX &&
         got.getApplicableRxElementGroups() == std::vector<size_t>{SIZE_MAX, 0, SIZE_MAX} ? 0 : 2;
 }
+
+#include <rfmel/jobs/JobInterval.h>
+#include <type_traits>
+namespace endpoint_map_probe {
+using namespace ams::iface::rfmel;
+using Inner = std::unordered_map<DataPipeLabel, EndpointID>;
+using Outer = std::unordered_map<ElementGroupLabel, Inner>;
+using Map = ElementGroupToEndpointConnections;
+static_assert(std::is_same_v<EndpointID,uint64_t>);
+static_assert(std::is_same_v<DataPipeLabel,std::string> && std::is_same_v<ElementGroupLabel,std::string>);
+static_assert(std::is_same_v<decltype(&Map::operator[]),Inner& (Map::*)(const ElementGroupLabel&)>);
+static_assert(std::is_same_v<decltype(&Map::insert_or_assign),void (Map::*)(const ElementGroupLabel&,const Inner&)>);
+static_assert(std::is_same_v<decltype(&Map::size),Outer::size_type (Map::*)() const noexcept>);
+static_assert(std::is_same_v<decltype(&Map::clear),void (Map::*)()>);
+static_assert(std::is_same_v<decltype(std::declval<Map&>().begin()),Outer::iterator>);
+static_assert(std::is_same_v<decltype(std::declval<Map&>().end()),Outer::iterator>);
+static_assert(std::is_same_v<decltype(std::declval<const Map&>().begin()),Outer::const_iterator>);
+static_assert(std::is_same_v<decltype(std::declval<const Map&>().end()),Outer::const_iterator>);
+static_assert(std::is_copy_constructible_v<Map> && std::is_move_constructible_v<Map>);
+static_assert(std::is_copy_assignable_v<Map> && std::is_move_assignable_v<Map>);
+static_assert(std::is_same_v<decltype(&JobInterval::setEndpoints),void (JobInterval::*)(const Map&)>);
+static_assert(std::is_same_v<decltype(static_cast<const Map& (JobInterval::*)() const>(&JobInterval::getEndpoints)),const Map& (JobInterval::*)() const>);
+static_assert(std::is_same_v<decltype(&JobInterval::addEndpoint),void (JobInterval::*)(const ElementGroupLabel&,EndpointID,DataPipeLabel)>);
+static_assert(std::is_same_v<decltype(&JobInterval::addEndpoints),void (JobInterval::*)(const ElementGroupLabel&,const Inner&)>);
+int endpoint_map_header_probe() { Map m; m["rx/A"].insert_or_assign("IQ",1); m["rx/A"].insert_or_assign("IQ",UINT64_MAX); Map copy(m), moved(std::move(copy)); copy=moved; m=std::move(copy); JobInterval i; i.setEndpoints(m); m.clear(); return i.getEndpoints().begin()->second.at("IQ") == UINT64_MAX && i.getApplicableElementGroups().size()==1 ? 0:1; }
+
+}

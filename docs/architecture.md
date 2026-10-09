@@ -1,5 +1,19 @@
 # Architecture decisions
 
+Task 034F9 adds the value-only RX JobInterval endpoint association map through
+nested v8 and exactly `ams_mel_rf_job_add_rx_intervals_v8` (ABI remains 0.1).
+Exact UTF-8 element-group/data-pipe labels and full uint64 endpoint IDs are
+copied into the pinned nested map; last composite-key occurrence wins, with no
+iteration-order promise. Presence 0 ignores the entire span; 1 replaces the map
+once, even empty. Safe Ada owns copyable values; raw Ada/Rust/private Python
+mirror the ABI. F8 ProductStreamParams are separate and unchanged; applicable
+interval labels remain deferred because the pinned getter incorrectly returns
+the endpoint map. No endpoint creation, DataPipe association, RDMA, registration,
+routing, transfer or cross-object validation is performed. Older v1–v7 maps
+remain empty. Pinned Squall Add acceptance is not hardware/fidelity evidence.
+See `docs/task-034f9-rf-interval-endpoint-map.md`.
+
+
 Task 034F8 adds copied RX JobInterval ProductStreamParams through nested v7 and
 exactly `ams_mel_rf_job_add_rx_intervals_v7` (ABI 0.1). Safe Ada owns ordered,
 copyable group and endpoint values; raw Ada/Rust/private Python mirror the ABI.
