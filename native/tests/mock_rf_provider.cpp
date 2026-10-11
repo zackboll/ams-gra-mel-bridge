@@ -2906,6 +2906,8 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f10_value(
     if (field == 0) return events.size();
     if (field == 1) return sequence.getRxEvents().size();
     if (field == 14) return sequence.getRxEvents().at(e).getEventID();
+    if (field == 15) return latest_intervals.at(i).getIntervalID();
+    if (field == 16) return static_cast<uint64_t>(latest_intervals.at(i).getIntervalStart().count());
     const auto& event = events.at(e);
     if (field == 2) return event.getEventID();
     if (field == 3) return event.getStabPointIndex();
@@ -2941,6 +2943,15 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f11_value(
     case 5: return event.getIterationHoldCount();
     case 6: return event.getIterationTerminationCount();
     case 7: return event.getChannelizationEnabled();
+    case 9: {
+        const auto& pd = event.getPulseDetectionSettings();
+        return pd.getReference() == rfmel::PulseDetectionSettings{}.getReference() &&
+            pd.getLeadingEdgeMofN().getm() == 0 && pd.getLeadingEdgeMofN().getn() == 0 &&
+            pd.getTrailingEdgeMofN().getm() == 0 && pd.getTrailingEdgeMofN().getn() == 0 &&
+            pd.getMinPulseWidth().count() == 0 &&
+            pd.getTimetagAmplitudeThreshold() == rfmel::PulseDetectionSettings{}.getTimetagAmplitudeThreshold() &&
+            pd.getThresholds().empty();
+    }
     default: return event.getDirection() == rfmel::JobEvent::Direction::Transmit;
     }
 }

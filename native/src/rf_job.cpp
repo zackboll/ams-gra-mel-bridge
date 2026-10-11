@@ -13,6 +13,10 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdlib>
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+#include <cstdio>
+#include <exception>
+#endif
 #include <cstring>
 #include <future>
 #include <limits>
@@ -88,6 +92,24 @@ bool failpoint(const char *name) noexcept
     return false;
 #endif
 }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+void qualification_trace(const char *text) noexcept
+{
+    if (const char *path = std::getenv("AMS_MEL_TEST_RF_TX_TRACE")) {
+        if (auto *file = std::fopen(path, "a")) {
+            std::fprintf(file, "%s\n", text);
+            std::fclose(file);
+        }
+    }
+}
+struct QualificationUnwind {
+    int exceptions = std::uncaught_exceptions();
+    ~QualificationUnwind() {
+        if (std::uncaught_exceptions() > exceptions)
+            qualification_trace("preparation-unwound");
+    }
+};
+#endif
 ams_mel_status_t status(Kind kind) noexcept
 {
     switch (kind) {
@@ -593,12 +615,24 @@ ams_mel_status_t add_rx_intervals(
                 return AMS_MEL_PROVIDER_FAILED;
             }
         }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        QualificationUnwind qualification_unwind;
+#endif
         std::vector<rfmel::JobInterval> intervals;
         if constexpr (spatial) {
             if (failpoint("interval-spatial-allocation")) throw std::bad_alloc{};
         }
         intervals.reserve(inputs.size);
         for (std::size_t i = 0; i < inputs.size; ++i) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+            if constexpr (tx_controls) {
+                if (i == 1 && failpoint("later-tx-interval")) {
+                    qualification_trace("later-tx-interval: preceding interval complete");
+                    throw std::bad_alloc{};
+                }
+                qualification_trace(inputs.data[i].has_transmit_events ? "tx-present" : "tx-absent");
+            }
+#endif
             const auto& input = input_at(i);
             std::vector<rfmel::ReceiveEvent> events;
             events.reserve(input.receive_events.size);
@@ -709,6 +743,12 @@ ams_mel_status_t add_rx_intervals(
                             const auto& control = source.data[e];
                             std::vector<rfmel::StokesVector> polarization;
                             polarization.reserve(control.polarization.size);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                            if (e == 1 && !transmit.empty() && failpoint("later-tx-polarization")) {
+                                qualification_trace("later-tx-polarization: preceding event complete");
+                                throw std::bad_alloc{};
+                            }
+#endif
                             for (std::size_t p = 0; p < control.polarization.size; ++p) {
                                 const auto& s = control.polarization.data[p];
                                 polarization.push_back(rfmel::StokesVector{s.s0, s.s1, s.s2, s.s3});
@@ -726,6 +766,9 @@ ams_mel_status_t add_rx_intervals(
                         transmit.push_back(std::move(event));
                     }
                     sequence.setTxEvents(transmit);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    qualification_trace("setTxEvents");
+#endif
                 }
             }
             rfmel::JobInterval interval;
