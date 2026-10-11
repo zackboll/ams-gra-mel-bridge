@@ -4199,3 +4199,47 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigV2 {
+    pub event: AmsMelRfTxEventConfigV1,
+    pub polarization: AmsMelRfStokesVectorSpanV1,
+    pub polarization_beam_steer_correction: u32,
+    pub phase_offset_rad: f64,
+    pub execution_type: AmsMelRfExecutionTypeT,
+    pub termination_type: AmsMelRfEventTerminationTypeT,
+    pub allow_delay_start: u32,
+    pub iteration_hold_count: u64,
+    pub iteration_termination_count: u64,
+    pub channelization_enabled: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigSpanV2 {
+    pub data: *const AmsMelRfTxEventConfigV2,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV10 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV2,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV10 {
+    pub data: *const AmsMelRfJobIntervalConfigV10,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v10(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV10,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

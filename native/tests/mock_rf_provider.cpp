@@ -2927,6 +2927,32 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f10_double(
     const auto& event = latest_intervals.at(i).getSequence().getTxEvents().at(e);
     return field == 0 ? event.getCenterFrequency() : event.getTxAtten_dB();
 }
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f11_value(
+    unsigned i, unsigned e, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& event = latest_intervals.at(i).getSequence().getTxEvents().at(e);
+    switch (field) {
+    case 0: return event.getPolarization().size();
+    case 1: return event.getPolarizationBeemSteerCorrection();
+    case 2: return static_cast<uint64_t>(event.getExecutionType());
+    case 3: return static_cast<uint64_t>(event.getEventTerminationType());
+    case 4: return event.getAllowDelayStart();
+    case 5: return event.getIterationHoldCount();
+    case 6: return event.getIterationTerminationCount();
+    case 7: return event.getChannelizationEnabled();
+    default: return event.getDirection() == rfmel::JobEvent::Direction::Transmit;
+    }
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f11_double(
+    unsigned i, unsigned e, unsigned vector, unsigned component)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& event = latest_intervals.at(i).getSequence().getTxEvents().at(e);
+    if (component == 4) return event.getPhaseOffset();
+    const auto& stokes = event.getPolarization().at(vector);
+    return stokes.at(component);
+}
 /* F9 observes getEndpoints(), never treats the broken applicable-label getter
  * as a vector. Test-only lookups have no production export or header. */
 extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f9_value(

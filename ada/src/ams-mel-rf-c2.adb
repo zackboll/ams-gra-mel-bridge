@@ -186,6 +186,53 @@ package body AMS.MEL.RF.C2 is
    begin
       Event.Channelization := Enabled;
    end Set_Channelization_Enabled;
+   procedure Append_Polarization
+     (Event : in out TX_Transmit_Event_Config; S0, S1, S2, S3 : Long_Float) is
+   begin
+      if Natural (Event.Polarization.Length) = 2 then
+         raise Constraint_Error with "at most two polarization values";
+      end if;
+      Event.Polarization.Append (Stokes_Components'(S0, S1, S2, S3));
+   end Append_Polarization;
+   procedure Set_Polarization_Beam_Steer_Correction
+     (Event : in out TX_Transmit_Event_Config; Enabled : Boolean) is
+   begin
+      Event.Beam_Correction := Enabled;
+   end Set_Polarization_Beam_Steer_Correction;
+   procedure Set_Phase_Offset_Radians (Event : in out TX_Transmit_Event_Config; Value : Long_Float)
+   is
+   begin
+      Event.Phase_Offset := Value;
+   end Set_Phase_Offset_Radians;
+   procedure Set_Event_Execution_Type
+     (Event : in out TX_Transmit_Event_Config; Value : Execution_Type) is
+   begin
+      Event.Execution := Value;
+   end Set_Event_Execution_Type;
+   procedure Set_Event_Termination_Type
+     (Event : in out TX_Transmit_Event_Config; Value : Event_Termination_Type) is
+   begin
+      Event.Termination := Value;
+   end Set_Event_Termination_Type;
+   procedure Set_Allow_Delay_Start (Event : in out TX_Transmit_Event_Config; Enabled : Boolean) is
+   begin
+      Event.Allow_Delay := Enabled;
+   end Set_Allow_Delay_Start;
+   procedure Set_Iteration_Hold_Count
+     (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64) is
+   begin
+      Event.Hold_Count := Count;
+   end Set_Iteration_Hold_Count;
+   procedure Set_Iteration_Termination_Count
+     (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64) is
+   begin
+      Event.Termination_Count := Count;
+   end Set_Iteration_Termination_Count;
+   procedure Set_Channelization_Enabled (Event : in out TX_Transmit_Event_Config; Enabled : Boolean)
+   is
+   begin
+      Event.Channelization := Enabled;
+   end Set_Channelization_Enabled;
    procedure Set_Interval_TX_Power_Mode_ID
      (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32) is
    begin
@@ -255,7 +302,8 @@ package body AMS.MEL.RF.C2 is
          Rise_Duration_Femtoseconds,
          Fall_Duration_Femtoseconds,
          0,
-         RX_Index_Vectors.Empty_Vector);
+         RX_Index_Vectors.Empty_Vector,
+         others => <>);
    end Create_TX_Transmit_Event;
    procedure Set_Event_Stabilization_Point_Index
      (Event : in out TX_Transmit_Event_Config; Index : Interfaces.Unsigned_64) is
@@ -443,7 +491,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V9
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V10
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -466,7 +514,7 @@ package body AMS.MEL.RF.C2 is
       type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
       TX_Count, TX_Group_Count              : Natural := 0;
-      type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V1
+      type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V2
       with Convention => C;
       Connection_Count                      : Natural := 0;
       type Native_Connections is
@@ -480,11 +528,22 @@ package body AMS.MEL.RF.C2 is
       D                                     : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
       R                                     : aliased C.Size_T := 0;
+      procedure Check_Backing_Size (Elements : Natural; Element_Bits : Natural) is
+         Bytes : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64 (Element_Bits / 8);
+      begin
+         if Bytes = 0
+           or else Interfaces.Unsigned_64 (Elements)
+                   > Interfaces.Unsigned_64 (C.Size_T'Last) / Bytes
+         then
+            raise Constraint_Error with "interval backing size exceeds native size_t";
+         end if;
+      end Check_Backing_Size;
    begin
       for Interval of Intervals.Values loop
          TX_Count := TX_Count + Natural (Interval.TX_Events.Length);
          for Event of Interval.TX_Events loop
             TX_Group_Count := TX_Group_Count + Natural (Event.Groups.Length);
+            Stokes_Count := Stokes_Count + Natural (Event.Polarization.Length);
          end loop;
          if Interval.Has_Endpoint_Connections then
             Connection_Count := Connection_Count + Natural (Interval.Connections.Values.Length);
@@ -510,6 +569,10 @@ package body AMS.MEL.RF.C2 is
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
+      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V10'Size);
+      Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V2'Size);
+      Check_Backing_Size (TX_Group_Count, Interfaces.Unsigned_64'Size);
+      Check_Backing_Size (Stokes_Count, C.RF_Stokes_Vector_V1'Size);
       --  Final-sized Ada-owned backing lives through the synchronous borrowed Add.
       --  Controlled label owners clean up on normal return and exceptions.
       declare
@@ -537,7 +600,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V9 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V10 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -760,7 +823,7 @@ package body AMS.MEL.RF.C2 is
                end if;
                for Event of Interval.TX_Events loop
                   TX_Strings (Next_TX).Value := CS.New_String (US.To_String (Event.Label));
-                  TX_Events (Next_TX) :=
+                  TX_Events (Next_TX).Event :=
                     (Event.Event_ID,
                      (Pointer_Address (TX_Strings (Next_TX).Value),
                       C.Size_T (US.Length (Event.Label))),
@@ -773,13 +836,36 @@ package body AMS.MEL.RF.C2 is
                      Event.Rise_Duration_Femtoseconds,
                      Event.Fall_Duration_Femtoseconds);
                   if not Event.Groups.Is_Empty then
-                     TX_Events (Next_TX).Applicable_TX_Element_Groups.Data :=
+                     TX_Events (Next_TX).Event.Applicable_TX_Element_Groups.Data :=
                        TX_Groups (Next_TX_Group)'Address;
                   end if;
                   for Group of Event.Groups loop
                      TX_Groups (Next_TX_Group) := Group;
                      Next_TX_Group := Next_TX_Group + 1;
                   end loop;
+                  TX_Events (Next_TX).Polarization :=
+                    (System.Null_Address, C.Size_T (Event.Polarization.Length));
+                  if not Event.Polarization.Is_Empty then
+                     TX_Events (Next_TX).Polarization.Data := Stokes (Next_Stokes)'Address;
+                  end if;
+                  for Value of Event.Polarization loop
+                     Stokes (Next_Stokes) :=
+                       (Interfaces.C.double (Value (1)),
+                        Interfaces.C.double (Value (2)),
+                        Interfaces.C.double (Value (3)),
+                        Interfaces.C.double (Value (4)));
+                     Next_Stokes := Next_Stokes + 1;
+                  end loop;
+                  TX_Events (Next_TX).Polarization_Beam_Steer_Correction :=
+                    Boolean'Pos (Event.Beam_Correction);
+                  TX_Events (Next_TX).Phase_Offset_Rad := Interfaces.C.double (Event.Phase_Offset);
+                  TX_Events (Next_TX).Execution_Type := Execution_Type'Pos (Event.Execution);
+                  TX_Events (Next_TX).Termination_Type :=
+                    Event_Termination_Type'Pos (Event.Termination);
+                  TX_Events (Next_TX).Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
+                  TX_Events (Next_TX).Iteration_Hold_Count := Event.Hold_Count;
+                  TX_Events (Next_TX).Iteration_Termination_Count := Event.Termination_Count;
+                  TX_Events (Next_TX).Channelization_Enabled := Boolean'Pos (Event.Channelization);
                   Next_TX := Next_TX + 1;
                end loop;
                I := I + 1;
@@ -788,7 +874,7 @@ package body AMS.MEL.RF.C2 is
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         Check (C.RF_Job_Add_Intervals_V9 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         Check (C.RF_Job_Add_Intervals_V10 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

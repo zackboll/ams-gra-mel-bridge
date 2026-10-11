@@ -3191,6 +3191,39 @@ typedef struct ams_mel_rf_job_interval_config_span_v9 {
     const ams_mel_rf_job_interval_config_v9 *data;
     size_t size;
 } ams_mel_rf_job_interval_config_span_v9;
+/* Common JobEvent controls; polarization contains zero, one or two ordered
+ * Stokes vectors. Boolean encodings are exactly 0/1; counts fit size_t.
+ * IEEE doubles are copied without normalization (NaN payload not promised). */
+typedef struct ams_mel_rf_tx_event_config_v2 {
+    ams_mel_rf_tx_event_config_v1 event;
+    ams_mel_rf_stokes_vector_span_v1 polarization;
+    uint32_t polarization_beam_steer_correction;
+    double phase_offset_rad;
+    ams_mel_rf_execution_type_t execution_type;
+    ams_mel_rf_event_termination_type_t termination_type;
+    uint32_t allow_delay_start;
+    uint64_t iteration_hold_count;
+    uint64_t iteration_termination_count;
+    uint32_t channelization_enabled;
+} ams_mel_rf_tx_event_config_v2;
+typedef struct ams_mel_rf_tx_event_config_span_v2 {
+    const ams_mel_rf_tx_event_config_v2 *data;
+    size_t size;
+} ams_mel_rf_tx_event_config_span_v2;
+/* Deliberately based on v8: one authoritative TX-v2 collection, not a v9
+ * override. Neither TX-v1/v2 arrays nor v9/v10 intervals are interchangeable. */
+typedef struct ams_mel_rf_job_interval_config_v10 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v2 transmit_events;
+} ams_mel_rf_job_interval_config_v10;
+typedef struct ams_mel_rf_job_interval_config_span_v10 {
+    const ams_mel_rf_job_interval_config_v10 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v10;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v10(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v10 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

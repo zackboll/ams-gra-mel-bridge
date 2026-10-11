@@ -242,6 +242,29 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end if;
       return Result;
    end TX_Value;
+   function TX_Control (I, E, Field : Interfaces.C.unsigned) return Interfaces.Unsigned_64 is
+      type Access_Value is
+        access function (I, E, F : Interfaces.C.unsigned) return Interfaces.Unsigned_64
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Access_Value);
+      Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f11_value");
+      Handle  : constant System.Address := DL_Open (Name, 2);
+      Address : constant System.Address := DL_Sym (Handle, Symbol);
+      Result  : Interfaces.Unsigned_64;
+   begin
+      if Handle = System.Null_Address or else Address = System.Null_Address then
+         raise Program_Error;
+      end if;
+      Result := Convert (Address) (I, E, Field);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end TX_Control;
    function TX_Number (I, E, Field : Interfaces.C.unsigned) return Interfaces.C.double is
       type Access_Value is
         access function (I, E, F : Interfaces.C.unsigned) return Interfaces.C.double
@@ -265,6 +288,29 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end if;
       return Result;
    end TX_Number;
+   function TX_Component (I, E, Vector, Field : Interfaces.C.unsigned) return Interfaces.C.double is
+      type Access_Value is
+        access function (I, E, V, F : Interfaces.C.unsigned) return Interfaces.C.double
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Access_Value);
+      Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f11_double");
+      Handle  : constant System.Address := DL_Open (Name, 2);
+      Address : constant System.Address := DL_Sym (Handle, Symbol);
+      Result  : Interfaces.C.double;
+   begin
+      if Handle = System.Null_Address or else Address = System.Null_Address then
+         raise Program_Error;
+      end if;
+      Result := Convert (Address) (I, E, Vector, Field);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end TX_Component;
    procedure Send_Empty (Object : in out C2.Job) is
       Absent : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
       Empty  : C2.RX_Job_Interval_Config := Absent;
@@ -346,7 +392,26 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          C2.Set_Event_Stabilization_Point_Index (TX, Interfaces.Unsigned_64'Last);
          C2.Append_Applicable_TX_Element_Group (TX, 0);
          C2.Append_Applicable_TX_Element_Group (TX, Interfaces.Unsigned_64'Last);
+         C2.Append_Polarization (TX, 1.0, -2.0, 3.0, 4.0);
+         C2.Append_Polarization (TX, 5.0, 6.0, -7.0, 8.0);
+         begin
+            C2.Append_Polarization (TX, 0.0, 0.0, 0.0, 0.0);
+            raise Program_Error with "third TX polarization accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         C2.Set_Polarization_Beam_Steer_Correction (TX, True);
+         C2.Set_Phase_Offset_Radians (TX, -2.5);
+         C2.Set_Event_Execution_Type (TX, C2.Conditional);
+         C2.Set_Event_Termination_Type (TX, C2.Cancel_Event);
+         C2.Set_Allow_Delay_Start (TX, True);
+         C2.Set_Iteration_Hold_Count (TX, Interfaces.Unsigned_64 (Interfaces.C.size_t'Last));
+         C2.Set_Iteration_Termination_Count (TX, 1);
+         C2.Set_Channelization_Enabled (TX, True);
          Saved := TX;
+         C2.Set_Phase_Offset_Radians (TX, 99.0);
+         C2.Set_Event_Execution_Type (TX, C2.Normal);
          C2.Set_TX_Attenuation_DB (TX, 9.0);
          C2.Set_TX_Edge_Durations (TX, 1, 2);
          C2.Append_Applicable_TX_Element_Group (TX, 42);
@@ -464,6 +529,30 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       C2.Append_Job_Interval (List, Interval);
       C2.Append_Job_Interval (List, Interval);
       C2.Add_RX_Job_Intervals (Object, List);
+      if not Clear then
+         if TX_Control (0, 0, 0) /= 2
+           or else TX_Control (0, 0, 1) /= 1
+           or else TX_Control (0, 0, 2) /= 1
+           or else TX_Control (0, 0, 3) /= 1
+           or else TX_Control (0, 0, 4) /= 1
+           or else TX_Control (0, 0, 5) /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+           or else TX_Control (0, 0, 6) /= 1
+           or else TX_Control (0, 0, 7) /= 1
+         then
+            raise Program_Error with "TX common controls fidelity";
+         end if;
+      end if;
+
+      if not Clear then
+         if TX_Component (0, 0, 0, 4) /= -2.5
+           or else TX_Component (0, 0, 0, 0) /= 1.0
+           or else TX_Component (0, 0, 0, 1) /= -2.0
+           or else TX_Component (0, 0, 1, 2) /= -7.0
+           or else TX_Component (0, 0, 1, 3) /= 8.0
+         then
+            raise Program_Error with "owned TX Stokes and phase copy";
+         end if;
+      end if;
       for I in Interfaces.C.unsigned range 0 .. 1 loop
          if TX_Value (I, 0, 0, 0) /= (if Clear then 0 else 2) or else TX_Value (I, 0, 1, 0) /= 2
          then

@@ -226,6 +226,15 @@ begin
                                 (41, "tx-config-only", 0, 1_000_000, 1_000_000.0, 3.0);
                            begin
                               C2.Append_Applicable_TX_Element_Group (TX, 0);
+                              C2.Append_Polarization (TX, 1.0, -2.0, 3.0, 4.0);
+                              C2.Set_Polarization_Beam_Steer_Correction (TX, True);
+                              C2.Set_Phase_Offset_Radians (TX, -0.25);
+                              C2.Set_Event_Execution_Type (TX, C2.Conditional);
+                              C2.Set_Event_Termination_Type (TX, C2.Cancel_Event);
+                              C2.Set_Allow_Delay_Start (TX, True);
+                              C2.Set_Iteration_Hold_Count (TX, 1);
+                              C2.Set_Iteration_Termination_Count (TX, 2);
+                              C2.Set_Channelization_Enabled (TX, True);
                               C2.Append_TX_Event (Interval, TX);
                            end;
                            --  Squall Add is a no-op; acceptance is not TX fidelity or execution.

@@ -28,6 +28,22 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfJobIntervalConfigSpanV9, 'data', 'size'))
         self.assertEqual(actual, expected)
 
+    def test_private_tx_controls_abi(self) -> None:
+        function = _native.ams_mel_rf_job_add_intervals_v10
+        self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV10, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"), str(root / "native/tests/tx_controls_layout_probe.c"), "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = []
+        expected.extend(self._layout(_native.RfTxEventConfigV2, 'event', 'polarization', 'polarization_beam_steer_correction', 'phase_offset_rad', 'execution_type', 'termination_type', 'allow_delay_start', 'iteration_hold_count', 'iteration_termination_count', 'channelization_enabled'))
+        expected.extend(self._layout(_native.RfTxEventConfigSpanV2, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigV10, 'interval', 'has_transmit_events', 'transmit_events'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV10, 'data', 'size'))
+        self.assertEqual(actual, expected)
+
     def test_private_endpoint_map_abi(self) -> None:
         function = _native.ams_mel_rf_job_add_rx_intervals_v8
         self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV8, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
@@ -503,6 +519,7 @@ class AbiTests(unittest.TestCase):
     "ams_mel_rf_job_add_rx_intervals_v7",
     "ams_mel_rf_job_add_rx_intervals_v8",
                 "ams_mel_rf_job_add_intervals_v9",
+                "ams_mel_rf_job_add_intervals_v10",
 
                 "ams_mel_rf_job_flush",
                 "ams_mel_rf_job_cancel_remaining_intervals",
@@ -536,8 +553,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 199)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 199)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 200)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 200)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -545,7 +562,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 199)
+        self.assertEqual(len(exported), 200)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

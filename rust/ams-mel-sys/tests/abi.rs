@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 199);
-    assert_eq!(exported.len(), 199);
+    assert_eq!(declared.len(), 200);
+    assert_eq!(exported.len(), 200);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3382,6 +3382,65 @@ fn tx_events_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV9>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV9, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV9, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn tx_controls_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV10,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_intervals_v10;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable =
+        env::temp_dir().join(format!("ams-mel-tx-controls-layout-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/tx_controls_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfTxEventConfigV2>(),
+        align_of::<AmsMelRfTxEventConfigV2>(),
+        offset_of!(AmsMelRfTxEventConfigV2, event),
+        offset_of!(AmsMelRfTxEventConfigV2, polarization),
+        offset_of!(AmsMelRfTxEventConfigV2, polarization_beam_steer_correction),
+        offset_of!(AmsMelRfTxEventConfigV2, phase_offset_rad),
+        offset_of!(AmsMelRfTxEventConfigV2, execution_type),
+        offset_of!(AmsMelRfTxEventConfigV2, termination_type),
+        offset_of!(AmsMelRfTxEventConfigV2, allow_delay_start),
+        offset_of!(AmsMelRfTxEventConfigV2, iteration_hold_count),
+        offset_of!(AmsMelRfTxEventConfigV2, iteration_termination_count),
+        offset_of!(AmsMelRfTxEventConfigV2, channelization_enabled),
+        size_of::<AmsMelRfTxEventConfigSpanV2>(),
+        align_of::<AmsMelRfTxEventConfigSpanV2>(),
+        offset_of!(AmsMelRfTxEventConfigSpanV2, data),
+        offset_of!(AmsMelRfTxEventConfigSpanV2, size),
+        size_of::<AmsMelRfJobIntervalConfigV10>(),
+        align_of::<AmsMelRfJobIntervalConfigV10>(),
+        offset_of!(AmsMelRfJobIntervalConfigV10, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV10, has_transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV10, transmit_events),
+        size_of::<AmsMelRfJobIntervalConfigSpanV10>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV10>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV10, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV10, size),
     ];
     assert_eq!(actual, expected);
 }
