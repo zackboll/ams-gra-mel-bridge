@@ -3161,6 +3161,39 @@ typedef struct ams_mel_rf_job_interval_config_v8 {
     uint32_t has_endpoint_connections;
     ams_mel_rf_interval_endpoint_connection_span_v1 endpoint_connections;
 } ams_mel_rf_job_interval_config_v8;
+/* Borrowed values copied synchronously. Indices must fit provider size_t.
+ * Signed femtoseconds and IEEE doubles are forwarded without normalization.
+ * Modulation remains {-1}; weights and waveform resources remain untouched. */
+typedef struct ams_mel_rf_tx_event_config_v1 {
+    uint32_t event_id;
+    ams_mel_string_view_v1 element_group_label;
+    int64_t start_femtoseconds;
+    int64_t duration_femtoseconds;
+    double center_frequency_hz;
+    uint64_t stab_point_index;
+    ams_mel_u64_span_v1 applicable_tx_element_groups;
+    double tx_attenuation_db;
+    int64_t rise_duration_femtoseconds;
+    int64_t fall_duration_femtoseconds;
+} ams_mel_rf_tx_event_config_v1;
+typedef struct ams_mel_rf_tx_event_config_span_v1 {
+    const ams_mel_rf_tx_event_config_v1 *data;
+    size_t size;
+} ams_mel_rf_tx_event_config_span_v1;
+/* Presence 0 ignores the TX span entirely; 1 copies even an empty collection.
+ * RX and TX vectors have independent ordering, not global interleaving. */
+typedef struct ams_mel_rf_job_interval_config_v9 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v1 transmit_events;
+} ams_mel_rf_job_interval_config_v9;
+typedef struct ams_mel_rf_job_interval_config_span_v9 {
+    const ams_mel_rf_job_interval_config_v9 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v9;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 typedef struct ams_mel_rf_job_interval_config_span_v8 {
     const ams_mel_rf_job_interval_config_v8 *data;
     size_t size;

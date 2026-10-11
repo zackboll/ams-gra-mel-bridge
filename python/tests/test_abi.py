@@ -12,6 +12,22 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_tx_events_abi(self) -> None:
+        function = _native.ams_mel_rf_job_add_intervals_v9
+        self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV9, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"), str(root / "native/tests/tx_events_layout_probe.c"), "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = []
+        expected.extend(self._layout(_native.RfTxEventConfigV1, 'event_id', 'element_group_label', 'start_femtoseconds', 'duration_femtoseconds', 'center_frequency_hz', 'stab_point_index', 'applicable_tx_element_groups', 'tx_attenuation_db', 'rise_duration_femtoseconds', 'fall_duration_femtoseconds'))
+        expected.extend(self._layout(_native.RfTxEventConfigSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigV9, 'interval', 'has_transmit_events', 'transmit_events'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV9, 'data', 'size'))
+        self.assertEqual(actual, expected)
+
     def test_private_endpoint_map_abi(self) -> None:
         function = _native.ams_mel_rf_job_add_rx_intervals_v8
         self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV8, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
@@ -486,6 +502,7 @@ class AbiTests(unittest.TestCase):
     "ams_mel_rf_job_add_rx_intervals_v6",
     "ams_mel_rf_job_add_rx_intervals_v7",
     "ams_mel_rf_job_add_rx_intervals_v8",
+                "ams_mel_rf_job_add_intervals_v9",
 
                 "ams_mel_rf_job_flush",
                 "ams_mel_rf_job_cancel_remaining_intervals",
@@ -519,8 +536,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 198)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 198)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 199)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 199)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -528,7 +545,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 198)
+        self.assertEqual(len(exported), 199)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

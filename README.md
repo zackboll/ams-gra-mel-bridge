@@ -1,5 +1,22 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+## Task 034F10 — value-only RF transmit events
+
+JobInterval v9 nests frozen v8 and adds an optional ordered TX event collection.
+Exactly `ams_mel_rf_job_add_intervals_v9` is added (198 → 199 exports; ABI 0.1).
+RX-only, TX-only and mixed sequences use independent copied event vectors; no
+cross-vector interleaving is implied. Presence 0 ignores inactive contents;
+presence 1 replaces TX events once, including empty. UTF-8/NUL-free labels,
+uint32 IDs, signed int64 femtoseconds, IEEE doubles and size_t-fit uint64 indices
+are copied without physical validation or hidden capability queries. Upstream
+modulation remains {-1}; weights and waveform resources remain untouched.
+Safe Ada owns copyable TX_Transmit_Event_Config values and synchronous backing;
+Add_Job_Intervals is a general alias retaining Add_RX_Job_Intervals compatibility.
+Raw Ada, Rust sys and private Python mirror the ABI. This configures values,
+not RF emission, waveform execution, routing or transfer. Squall Add is a no-op.
+See `docs/task-034f10-rf-tx-events.md` for contracts, evidence and exclusions.
+
+
 Task 034F8 adds copied RX JobInterval ProductStreamParams through nested v7 and
 exactly `ams_mel_rf_job_add_rx_intervals_v7` (ABI 0.1). Safe Ada owns ordered,
 copyable group and endpoint values; raw Ada/Rust/private Python mirror the ABI.

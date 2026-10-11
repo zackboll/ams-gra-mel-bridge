@@ -232,6 +232,68 @@ package body AMS.MEL.RF.C2 is
          RX_Index_Vectors.Empty_Vector,
          others => <>);
    end Create_RX_Receive_Event;
+   function Create_TX_Transmit_Event
+     (Event_ID                                  : Interfaces.Unsigned_32;
+      Element_Group_Label                       : String;
+      Start_Femtoseconds, Duration_Femtoseconds : Interfaces.Integer_64;
+      Center_Frequency_Hz                       : Long_Float;
+      TX_Attenuation_DB                         : Long_Float := 0.0;
+      Rise_Duration_Femtoseconds                : Interfaces.Integer_64 := 0;
+      Fall_Duration_Femtoseconds                : Interfaces.Integer_64 := 0)
+      return TX_Transmit_Event_Config is
+   begin
+      if not Valid_String (Element_Group_Label) then
+         raise Constraint_Error with "Element_Group_Label contains embedded NUL";
+      end if;
+      return
+        (Event_ID,
+         US.To_Unbounded_String (Element_Group_Label),
+         Start_Femtoseconds,
+         Duration_Femtoseconds,
+         Center_Frequency_Hz,
+         TX_Attenuation_DB,
+         Rise_Duration_Femtoseconds,
+         Fall_Duration_Femtoseconds,
+         0,
+         RX_Index_Vectors.Empty_Vector);
+   end Create_TX_Transmit_Event;
+   procedure Set_Event_Stabilization_Point_Index
+     (Event : in out TX_Transmit_Event_Config; Index : Interfaces.Unsigned_64) is
+   begin
+      Event.Stab_Point_Index := Index;
+   end Set_Event_Stabilization_Point_Index;
+   procedure Append_Applicable_TX_Element_Group
+     (Event : in out TX_Transmit_Event_Config; Element_Group_Index : Interfaces.Unsigned_64) is
+   begin
+      Event.Groups.Append (Element_Group_Index);
+   end Append_Applicable_TX_Element_Group;
+   procedure Set_TX_Attenuation_DB (Event : in out TX_Transmit_Event_Config; Value : Long_Float) is
+   begin
+      Event.TX_Attenuation_DB := Value;
+   end Set_TX_Attenuation_DB;
+   procedure Set_TX_Edge_Durations
+     (Event                                : in out TX_Transmit_Event_Config;
+      Rise_Femtoseconds, Fall_Femtoseconds : Interfaces.Integer_64) is
+   begin
+      Event.Rise_Duration_Femtoseconds := Rise_Femtoseconds;
+      Event.Fall_Duration_Femtoseconds := Fall_Femtoseconds;
+   end Set_TX_Edge_Durations;
+   procedure Append_TX_Event
+     (Interval : in out RX_Job_Interval_Config; Event : TX_Transmit_Event_Config) is
+   begin
+      Interval.TX_Events.Append (Event);
+      Interval.Has_TX_Events := True;
+   end Append_TX_Event;
+   procedure Set_Empty_TX_Events (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.TX_Events.Clear;
+      Interval.Has_TX_Events := True;
+   end Set_Empty_TX_Events;
+   procedure Clear_TX_Events (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.TX_Events.Clear;
+      Interval.Has_TX_Events := False;
+   end Clear_TX_Events;
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
       Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
@@ -381,7 +443,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V8
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V9
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -403,6 +465,9 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
+      TX_Count, TX_Group_Count              : Natural := 0;
+      type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V1
+      with Convention => C;
       Connection_Count                      : Natural := 0;
       type Native_Connections is
         array (Positive range <>) of aliased C.RF_Interval_Endpoint_Connection_V1
@@ -417,6 +482,10 @@ package body AMS.MEL.RF.C2 is
       R                                     : aliased C.Size_T := 0;
    begin
       for Interval of Intervals.Values loop
+         TX_Count := TX_Count + Natural (Interval.TX_Events.Length);
+         for Event of Interval.TX_Events loop
+            TX_Group_Count := TX_Group_Count + Natural (Event.Groups.Length);
+         end loop;
          if Interval.Has_Endpoint_Connections then
             Connection_Count := Connection_Count + Natural (Interval.Connections.Values.Length);
          end if;
@@ -450,6 +519,10 @@ package body AMS.MEL.RF.C2 is
          Connections                           : Native_Connections (1 .. Connection_Count);
          Group_Labels, Pipe_Labels             : Labels (1 .. Connection_Count);
          Next_Connection                       : Positive := 1;
+         TX_Events                             : Native_TX_Events (1 .. TX_Count);
+         TX_Strings                            : Labels (1 .. TX_Count);
+         TX_Groups                             : Native_Indices (1 .. TX_Group_Count);
+         Next_TX, Next_TX_Group                : Positive := 1;
          Configs                               : Native_Intervals (1 .. Count);
          Stream_Groups                         : Native_Indices (1 .. Stream_Group_Count);
          Endpoints                             : Native_Endpoints (1 .. Endpoint_Count);
@@ -464,7 +537,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                : Positive := 1;
          Strings                               : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V8 :=
+         Span                                  : C.RF_Job_Interval_Config_Span_V9 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -575,7 +648,7 @@ package body AMS.MEL.RF.C2 is
                if Event_Span.Size > 0 then
                   Event_Span.Data := Events (First_Event)'Address;
                end if;
-               Configs (I).Interval.Interval.Interval :=
+               Configs (I).Interval.Interval.Interval.Interval :=
                  (Interval.Interval_Start_Femtoseconds,
                   Interval.Interval_ID,
                   Interval.Interval_Starting_Gap_Femtoseconds,
@@ -594,10 +667,10 @@ package body AMS.MEL.RF.C2 is
                   Interval.TX_Power_Mode,
                   Activity_Span,
                   Execution_Type'Enum_Rep (Interval.Execution));
-               Configs (I).Interval.Interval.Local_Function_Commands :=
+               Configs (I).Interval.Interval.Interval.Local_Function_Commands :=
                  (System.Null_Address, C.Size_T (Interval.Commands.Length));
                if not Interval.Commands.Is_Empty then
-                  Configs (I).Interval.Interval.Local_Function_Commands.Data :=
+                  Configs (I).Interval.Interval.Interval.Local_Function_Commands.Data :=
                     Commands (Next_Command)'Address;
                end if;
                for Command of Interval.Commands loop
@@ -614,18 +687,24 @@ package body AMS.MEL.RF.C2 is
                   end loop;
                   Next_Command := Next_Command + 1;
                end loop;
-               Configs (I).Interval.Has_Product_Stream_Params :=
+               Configs (I).Interval.Interval.Has_Product_Stream_Params :=
                  Boolean'Pos (Interval.Has_Product_Stream_Params);
-               Configs (I).Interval.Product_Stream_Params :=
+               Configs (I).Interval.Interval.Product_Stream_Params :=
                  ((System.Null_Address, 0), (System.Null_Address, 0));
                if Interval.Has_Product_Stream_Params then
                   declare
                      Params : Product_Stream_Params renames Interval.Product_Stream;
                   begin
-                     Configs (I).Interval.Product_Stream_Params.Applicable_RX_Element_Groups.Size :=
+                     Configs (I)
+                       .Interval
+                       .Interval
+                       .Product_Stream_Params
+                       .Applicable_RX_Element_Groups
+                       .Size :=
                        C.Size_T (Params.RX_Groups.Length);
                      if not Params.RX_Groups.Is_Empty then
                         Configs (I)
+                          .Interval
                           .Interval
                           .Product_Stream_Params
                           .Applicable_RX_Element_Groups
@@ -636,10 +715,10 @@ package body AMS.MEL.RF.C2 is
                         Stream_Groups (Next_Stream_Group) := Index;
                         Next_Stream_Group := Next_Stream_Group + 1;
                      end loop;
-                     Configs (I).Interval.Product_Stream_Params.Endpoints.Size :=
+                     Configs (I).Interval.Interval.Product_Stream_Params.Endpoints.Size :=
                        C.Size_T (Params.Endpoints.Length);
                      if not Params.Endpoints.Is_Empty then
-                        Configs (I).Interval.Product_Stream_Params.Endpoints.Data :=
+                        Configs (I).Interval.Interval.Product_Stream_Params.Endpoints.Data :=
                           Endpoints (Next_Endpoint)'Address;
                      end if;
                      for Endpoint of Params.Endpoints loop
@@ -649,14 +728,15 @@ package body AMS.MEL.RF.C2 is
                      end loop;
                   end;
                end if;
-               Configs (I).Has_Endpoint_Connections :=
+               Configs (I).Interval.Has_Endpoint_Connections :=
                  Boolean'Pos (Interval.Has_Endpoint_Connections);
-               Configs (I).Endpoint_Connections := (System.Null_Address, 0);
+               Configs (I).Interval.Endpoint_Connections := (System.Null_Address, 0);
                if Interval.Has_Endpoint_Connections then
-                  Configs (I).Endpoint_Connections.Size :=
+                  Configs (I).Interval.Endpoint_Connections.Size :=
                     C.Size_T (Interval.Connections.Values.Length);
                   if not Interval.Connections.Values.Is_Empty then
-                     Configs (I).Endpoint_Connections.Data := Connections (Next_Connection)'Address;
+                     Configs (I).Interval.Endpoint_Connections.Data :=
+                       Connections (Next_Connection)'Address;
                   end if;
                   for Connection of Interval.Connections.Values loop
                      Group_Labels (Next_Connection).Value :=
@@ -672,14 +752,43 @@ package body AMS.MEL.RF.C2 is
                      Next_Connection := Next_Connection + 1;
                   end loop;
                end if;
+               Configs (I).Has_Transmit_Events := Boolean'Pos (Interval.Has_TX_Events);
+               Configs (I).Transmit_Events :=
+                 (System.Null_Address, C.Size_T (Interval.TX_Events.Length));
+               if not Interval.TX_Events.Is_Empty then
+                  Configs (I).Transmit_Events.Data := TX_Events (Next_TX)'Address;
+               end if;
+               for Event of Interval.TX_Events loop
+                  TX_Strings (Next_TX).Value := CS.New_String (US.To_String (Event.Label));
+                  TX_Events (Next_TX) :=
+                    (Event.Event_ID,
+                     (Pointer_Address (TX_Strings (Next_TX).Value),
+                      C.Size_T (US.Length (Event.Label))),
+                     Event.Start_Femtoseconds,
+                     Event.Duration_Femtoseconds,
+                     Interfaces.C.double (Event.Center_Frequency_Hz),
+                     Event.Stab_Point_Index,
+                     (System.Null_Address, C.Size_T (Event.Groups.Length)),
+                     Interfaces.C.double (Event.TX_Attenuation_DB),
+                     Event.Rise_Duration_Femtoseconds,
+                     Event.Fall_Duration_Femtoseconds);
+                  if not Event.Groups.Is_Empty then
+                     TX_Events (Next_TX).Applicable_TX_Element_Groups.Data :=
+                       TX_Groups (Next_TX_Group)'Address;
+                  end if;
+                  for Group of Event.Groups loop
+                     TX_Groups (Next_TX_Group) := Group;
+                     Next_TX_Group := Next_TX_Group + 1;
+                  end loop;
+                  Next_TX := Next_TX + 1;
+               end loop;
                I := I + 1;
             end;
          end loop;
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         Check
-           (C.RF_Job_Add_RX_Intervals_V8 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         Check (C.RF_Job_Add_Intervals_V9 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is
