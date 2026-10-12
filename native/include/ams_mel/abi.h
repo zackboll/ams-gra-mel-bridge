@@ -3224,6 +3224,61 @@ typedef struct ams_mel_rf_job_interval_config_span_v10 {
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v10(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v10 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Bridge tags, not native variant indices. Only the selected payload is read.
+ * Values configure a provider; they do not execute modulation or transmit RF. */
+typedef uint32_t ams_mel_rf_modulation_kind_t;
+#define AMS_MEL_RF_MODULATION_TONE UINT32_C(0)
+#define AMS_MEL_RF_MODULATION_PHASE_CODE UINT32_C(1)
+#define AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY UINT32_C(2)
+typedef struct ams_mel_double_span_v1 {
+    const double *data;
+    size_t size;
+} ams_mel_double_span_v1;
+typedef struct ams_mel_i32_span_v1 {
+    const int32_t *data;
+    size_t size;
+} ams_mel_i32_span_v1;
+typedef struct ams_mel_rf_modulation_config_v1 {
+    ams_mel_rf_modulation_kind_t kind;
+    int64_t chip_duration_femtoseconds;
+    ams_mel_double_span_v1 phase_chips_rad;
+    double frequency_extent_hz;
+} ams_mel_rf_modulation_config_v1;
+typedef struct ams_mel_rf_modulation_config_span_v1 {
+    const ams_mel_rf_modulation_config_v1 *data;
+    size_t size;
+} ams_mel_rf_modulation_config_span_v1;
+/* Presence 0 retains {-1}; 1 copies even empty. Ordered zero-based references
+ * resolve only in the same interval's active table. -1 means no modulation;
+ * other negative values and out-of-table nonnegative values reject. */
+typedef struct ams_mel_rf_tx_event_config_v3 {
+    ams_mel_rf_tx_event_config_v2 event;
+    uint32_t has_modulation_indices;
+    ams_mel_i32_span_v1 modulation_indices;
+} ams_mel_rf_tx_event_config_v3;
+typedef struct ams_mel_rf_tx_event_config_span_v3 {
+    const ams_mel_rf_tx_event_config_v3 *data;
+    size_t size;
+} ams_mel_rf_tx_event_config_span_v3;
+/* A single TX collection over frozen v8, not v10. All presence flags are 0/1;
+ * 0 ignores payload entirely, 1 copies even empty. Definitions and phase chips
+ * are owned by prepared native values before synchronous provider Add. Signed
+ * femtoseconds and IEEE doubles pass without physical validation or arithmetic.
+ * Caller/provider enforce chip-count and LFM execution obligations. */
+typedef struct ams_mel_rf_job_interval_config_v11 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v1 modulations;
+} ams_mel_rf_job_interval_config_v11;
+typedef struct ams_mel_rf_job_interval_config_span_v11 {
+    const ams_mel_rf_job_interval_config_v11 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v11;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v11(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v11 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

@@ -2897,6 +2897,37 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f8_value(
     return endpoint.getMaxBytes();
 }
 
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f12_value(
+    unsigned i, unsigned m, unsigned field, unsigned n)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& interval = latest_intervals.at(i);
+    if (field == 0) return static_cast<int64_t>(interval.getModulations().size());
+    if (field == 5) return static_cast<int64_t>(interval.getSequence().getTxEvents().at(m).getModIndex().size());
+    if (field == 6) return interval.getSequence().getTxEvents().at(m).getModIndex().at(n);
+    const auto& modulation = interval.getModulations().at(m);
+    if (field == 1) return std::holds_alternative<rfmel::CommonModulations>(modulation);
+    const auto& common = std::get<rfmel::CommonModulations>(modulation);
+    if (field == 2) {
+        if (std::holds_alternative<rfmel::Tone>(common)) return 0;
+        if (std::holds_alternative<rfmel::PhaseCode>(common)) return 1;
+        if (std::holds_alternative<rfmel::LinearFrequencyModulation>(common)) return 2;
+        return -1;
+    }
+    const auto& phase = std::get<rfmel::PhaseCode>(common);
+    if (field == 3) return phase.getChipDuration().count();
+    return static_cast<int64_t>(phase.getPhaseChipData().size());
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f12_double(
+    unsigned i, unsigned m, unsigned n)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& common = std::get<rfmel::CommonModulations>(latest_intervals.at(i).getModulations().at(m));
+    if (std::holds_alternative<rfmel::PhaseCode>(common))
+        return std::get<rfmel::PhaseCode>(common).getPhaseChipData().at(n);
+    return std::get<rfmel::LinearFrequencyModulation>(common).getFrequencyExtent();
+}
+
 extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f10_value(
     unsigned i, unsigned e, unsigned field, unsigned g)
 {

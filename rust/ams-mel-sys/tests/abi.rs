@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 200);
-    assert_eq!(exported.len(), 200);
+    assert_eq!(declared.len(), 201);
+    assert_eq!(exported.len(), 201);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3441,6 +3441,78 @@ fn tx_controls_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV10>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV10, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV10, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn modulations_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV11,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_intervals_v11;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable =
+        env::temp_dir().join(format!("ams-mel-modulations-layout-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/modulations_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelDoubleSpanV1>(),
+        align_of::<AmsMelDoubleSpanV1>(),
+        offset_of!(AmsMelDoubleSpanV1, data),
+        offset_of!(AmsMelDoubleSpanV1, size),
+        size_of::<AmsMelI32SpanV1>(),
+        align_of::<AmsMelI32SpanV1>(),
+        offset_of!(AmsMelI32SpanV1, data),
+        offset_of!(AmsMelI32SpanV1, size),
+        size_of::<AmsMelRfModulationConfigV1>(),
+        align_of::<AmsMelRfModulationConfigV1>(),
+        offset_of!(AmsMelRfModulationConfigV1, kind),
+        offset_of!(AmsMelRfModulationConfigV1, chip_duration_femtoseconds),
+        offset_of!(AmsMelRfModulationConfigV1, phase_chips_rad),
+        offset_of!(AmsMelRfModulationConfigV1, frequency_extent_hz),
+        size_of::<AmsMelRfModulationConfigSpanV1>(),
+        align_of::<AmsMelRfModulationConfigSpanV1>(),
+        offset_of!(AmsMelRfModulationConfigSpanV1, data),
+        offset_of!(AmsMelRfModulationConfigSpanV1, size),
+        size_of::<AmsMelRfTxEventConfigV3>(),
+        align_of::<AmsMelRfTxEventConfigV3>(),
+        offset_of!(AmsMelRfTxEventConfigV3, event),
+        offset_of!(AmsMelRfTxEventConfigV3, has_modulation_indices),
+        offset_of!(AmsMelRfTxEventConfigV3, modulation_indices),
+        size_of::<AmsMelRfTxEventConfigSpanV3>(),
+        align_of::<AmsMelRfTxEventConfigSpanV3>(),
+        offset_of!(AmsMelRfTxEventConfigSpanV3, data),
+        offset_of!(AmsMelRfTxEventConfigSpanV3, size),
+        size_of::<AmsMelRfJobIntervalConfigV11>(),
+        align_of::<AmsMelRfJobIntervalConfigV11>(),
+        offset_of!(AmsMelRfJobIntervalConfigV11, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV11, has_transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV11, transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV11, has_modulations),
+        offset_of!(AmsMelRfJobIntervalConfigV11, modulations),
+        size_of::<AmsMelRfJobIntervalConfigSpanV11>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV11>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV11, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV11, size),
     ];
     assert_eq!(actual, expected);
 }

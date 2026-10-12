@@ -170,6 +170,26 @@ package AMS.MEL.RF.C2 is
      (Settings : in out Pulse_Detection_Settings; Leading_Edge_DB, Trailing_Edge_DB : Long_Float);
    type RX_Receive_Event_Config is private;
    type TX_Transmit_Event_Config is private;
+   type Modulation_Config is private;
+   type Modulation_Table is private;
+   type Phase_Chip_Array is array (Positive range <>) of Long_Float;
+   subtype Modulation_Index is
+     Interfaces.Integer_32 range Interfaces."-" (1) .. Interfaces.Integer_32'Last;
+   No_Modulation                       : constant Modulation_Index := Interfaces."-" (1);
+   function Tone return Modulation_Config;
+   function Phase_Code
+     (Chip_Duration_Femtoseconds : Interfaces.Integer_64; Phases_Rad : Phase_Chip_Array)
+      return Modulation_Config;
+   function Linear_Frequency_Modulation (Frequency_Extent_Hz : Long_Float) return Modulation_Config;
+   procedure Append_Phase_Chip (Config : in out Modulation_Config; Phase_Rad : Long_Float);
+   procedure Replace_Phase_Chips (Config : in out Modulation_Config; Phases_Rad : Phase_Chip_Array);
+   --  Returned index is zero-based, independent of Ada container indexing.
+   procedure Append_Modulation
+     (Table : in out Modulation_Table; Config : Modulation_Config; Index : out Modulation_Index);
+   procedure Append_Modulation_Reference
+     (Event : in out TX_Transmit_Event_Config; Index : Modulation_Index);
+   procedure Clear_Modulation_References (Event : in out TX_Transmit_Event_Config);
+   procedure Set_Empty_Modulation_References (Event : in out TX_Transmit_Event_Config);
    function Create_TX_Transmit_Event
      (Event_ID                                  : Interfaces.Unsigned_32;
       Element_Group_Label                       : String;
@@ -305,6 +325,9 @@ package AMS.MEL.RF.C2 is
      (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config);
    procedure Append_TX_Event
      (Interval : in out RX_Job_Interval_Config; Event : TX_Transmit_Event_Config);
+   procedure Set_Modulations (Interval : in out RX_Job_Interval_Config; Table : Modulation_Table);
+   procedure Clear_Modulations (Interval : in out RX_Job_Interval_Config);
+   procedure Set_Empty_Modulations (Interval : in out RX_Job_Interval_Config);
    --  Set empty expresses presence; Clear restores absence.
    procedure Set_Empty_TX_Events (Interval : in out RX_Job_Interval_Config);
    procedure Clear_TX_Events (Interval : in out RX_Job_Interval_Config);
@@ -454,6 +477,19 @@ private
       Pulse_Settings                                         : Pulse_Detection_Settings;
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
+   package Phase_Chip_Vectors is new Ada.Containers.Vectors (Positive, Long_Float);
+   package Modulation_Index_Vectors is new
+     Ada.Containers.Vectors (Positive, Interfaces.Integer_32, Interfaces."=");
+   type Modulation_Config is record
+      Kind     : Natural range 0 .. 2 := 0;
+      Duration : Interfaces.Integer_64 := 0;
+      Phases   : Phase_Chip_Vectors.Vector;
+      Extent   : Long_Float := 0.0;
+   end record;
+   package Modulation_Vectors is new Ada.Containers.Vectors (Positive, Modulation_Config);
+   type Modulation_Table is record
+      Values : Modulation_Vectors.Vector;
+   end record;
    type TX_Transmit_Event_Config is record
       Event_ID                                               : Interfaces.Unsigned_32;
       Label                                                  :
@@ -463,6 +499,8 @@ private
       Rise_Duration_Femtoseconds, Fall_Duration_Femtoseconds : Interfaces.Integer_64;
       Stab_Point_Index                                       : Interfaces.Unsigned_64 := 0;
       Groups                                                 : RX_Index_Vectors.Vector;
+      Has_Modulation_Indices                                 : Boolean := False;
+      Modulation_Indices                                     : Modulation_Index_Vectors.Vector;
       Polarization                                           : Stokes_Vectors.Vector;
       Beam_Correction                                        : Boolean := False;
       Phase_Offset                                           : Long_Float := 0.0;
@@ -528,6 +566,8 @@ private
       Connections                                  : Endpoint_Connections;
       Has_TX_Events                                : Boolean := False;
       TX_Events                                    : TX_Event_Vectors.Vector;
+      Has_Modulations                              : Boolean := False;
+      Modulations                                  : Modulation_Table;
    end record;
    package RX_Interval_Vectors is new Ada.Containers.Vectors (Positive, RX_Job_Interval_Config);
    type RX_Job_Interval_List is record

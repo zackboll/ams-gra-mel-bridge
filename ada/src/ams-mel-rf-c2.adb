@@ -332,6 +332,83 @@ package body AMS.MEL.RF.C2 is
       Interval.TX_Events.Append (Event);
       Interval.Has_TX_Events := True;
    end Append_TX_Event;
+   function Tone return Modulation_Config is
+   begin
+      return (others => <>);
+   end Tone;
+   procedure Replace_Phase_Chips (Config : in out Modulation_Config; Phases_Rad : Phase_Chip_Array)
+   is
+      Copy : Phase_Chip_Vectors.Vector;
+   begin
+      if Config.Kind /= 1 then
+         raise Constraint_Error with "phase operation requires PhaseCode";
+      end if;
+      for Value of Phases_Rad loop
+         Copy.Append (Value);
+      end loop;
+      Config.Phases := Copy;
+   end Replace_Phase_Chips;
+   function Phase_Code
+     (Chip_Duration_Femtoseconds : Interfaces.Integer_64; Phases_Rad : Phase_Chip_Array)
+      return Modulation_Config
+   is
+      Result : Modulation_Config :=
+        (Kind => 1, Duration => Chip_Duration_Femtoseconds, others => <>);
+   begin
+      Replace_Phase_Chips (Result, Phases_Rad);
+      return Result;
+   end Phase_Code;
+   function Linear_Frequency_Modulation (Frequency_Extent_Hz : Long_Float) return Modulation_Config
+   is
+   begin
+      return (Kind => 2, Extent => Frequency_Extent_Hz, others => <>);
+   end Linear_Frequency_Modulation;
+   procedure Append_Phase_Chip (Config : in out Modulation_Config; Phase_Rad : Long_Float) is
+   begin
+      if Config.Kind /= 1 then
+         raise Constraint_Error with "phase operation requires PhaseCode";
+      end if;
+      Config.Phases.Append (Phase_Rad);
+   end Append_Phase_Chip;
+   procedure Append_Modulation
+     (Table : in out Modulation_Table; Config : Modulation_Config; Index : out Modulation_Index)
+   is
+      Position : constant Modulation_Index := Modulation_Index (Table.Values.Length);
+   begin
+      Table.Values.Append (Config);
+      Index := Position;
+   end Append_Modulation;
+   procedure Set_Modulations (Interval : in out RX_Job_Interval_Config; Table : Modulation_Table) is
+   begin
+      Interval.Modulations := Table;
+      Interval.Has_Modulations := True;
+   end Set_Modulations;
+   procedure Clear_Modulations (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.Modulations.Values.Clear;
+      Interval.Has_Modulations := False;
+   end Clear_Modulations;
+   procedure Set_Empty_Modulations (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.Modulations.Values.Clear;
+      Interval.Has_Modulations := True;
+   end Set_Empty_Modulations;
+   procedure Append_Modulation_Reference
+     (Event : in out TX_Transmit_Event_Config; Index : Modulation_Index) is
+   begin
+      Event.Modulation_Indices.Append (Index);
+      Event.Has_Modulation_Indices := True;
+   end Append_Modulation_Reference;
+   procedure Clear_Modulation_References (Event : in out TX_Transmit_Event_Config) is
+   begin
+      Event.Modulation_Indices.Clear;
+      Event.Has_Modulation_Indices := False;
+   end Clear_Modulation_References;
+   procedure Set_Empty_Modulation_References (Event : in out TX_Transmit_Event_Config) is
+   begin
+      Event.Modulation_Indices.Clear;
+      Event.Has_Modulation_Indices := True;
+   end Set_Empty_Modulation_References;
    procedure Set_Empty_TX_Events (Interval : in out RX_Job_Interval_Config) is
    begin
       Interval.TX_Events.Clear;
@@ -491,14 +568,14 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V10
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V11
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
       type Native_LF_Writes is array (Positive range <>) of aliased C.RF_LF_Address_Value_V1
       with Convention => C;
-      Command_Count, Write_Count            : Natural := 0;
-      Stream_Group_Count, Endpoint_Count    : Natural := 0;
+      Command_Count, Write_Count                     : Natural := 0;
+      Stream_Group_Count, Endpoint_Count             : Natural := 0;
       type Native_Endpoints is array (Positive range <>) of aliased C.RF_Product_Stream_Endpoint_V1
       with Convention => C;
       type Native_Events is array (Positive range <>) of aliased C.RF_Receive_Event_Config_V4
@@ -513,21 +590,29 @@ package body AMS.MEL.RF.C2 is
       with Convention => C;
       type Native_Bytes is array (Positive range <>) of aliased Interfaces.Unsigned_8
       with Convention => C;
-      TX_Count, TX_Group_Count              : Natural := 0;
-      type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V2
+      TX_Count, TX_Group_Count                       : Natural := 0;
+      type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V3
       with Convention => C;
-      Connection_Count                      : Natural := 0;
+      type Native_Modulations is array (Positive range <>) of aliased C.RF_Modulation_Config_V1
+      with Convention => C;
+      type Native_Phases is array (Positive range <>) of aliased Interfaces.C.double
+      with Convention => C;
+      type Native_Modulation_Indices is array (Positive range <>) of aliased Interfaces.Integer_32
+      with Convention => C;
+      Modulation_Count, Phase_Count, Reference_Count : Natural := 0;
+      Connection_Count                               : Natural := 0;
       type Native_Connections is
         array (Positive range <>) of aliased C.RF_Interval_Endpoint_Connection_V1
       with Convention => C;
       type Labels is array (Positive range <>) of String_Owner;
-      Count                                 : constant Natural := Job_Interval_Count (Intervals);
-      Event_Count, Point_Count, Group_Count : Natural := 0;
-      Threshold_Count                       : Natural := 0;
-      Stokes_Count, Byte_Count              : Natural := 0;
-      D                                     : aliased Fixed_Diagnostic :=
+      Count                                          : constant Natural :=
+        Job_Interval_Count (Intervals);
+      Event_Count, Point_Count, Group_Count          : Natural := 0;
+      Threshold_Count                                : Natural := 0;
+      Stokes_Count, Byte_Count                       : Natural := 0;
+      D                                              : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
-      R                                     : aliased C.Size_T := 0;
+      R                                              : aliased C.Size_T := 0;
       procedure Check_Backing_Size (Elements : Natural; Element_Bits : Natural) is
          Bytes : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64 (Element_Bits / 8);
       begin
@@ -540,8 +625,27 @@ package body AMS.MEL.RF.C2 is
       end Check_Backing_Size;
    begin
       for Interval of Intervals.Values loop
+         if Interval.Has_Modulations then
+            Modulation_Count := Modulation_Count + Natural (Interval.Modulations.Values.Length);
+            for Config of Interval.Modulations.Values loop
+               Phase_Count := Phase_Count + Natural (Config.Phases.Length);
+            end loop;
+         end if;
          TX_Count := TX_Count + Natural (Interval.TX_Events.Length);
          for Event of Interval.TX_Events loop
+            if Event.Has_Modulation_Indices then
+               Reference_Count := Reference_Count + Natural (Event.Modulation_Indices.Length);
+               for Index of Event.Modulation_Indices loop
+                  if Index >= 0
+                    and then (not Interval.Has_Modulations
+                              or else Interfaces.Unsigned_64 (Index)
+                                      >= Interfaces.Unsigned_64
+                                           (Interval.Modulations.Values.Length))
+                  then
+                     raise Constraint_Error with "modulation reference outside same interval table";
+                  end if;
+               end loop;
+            end if;
             TX_Group_Count := TX_Group_Count + Natural (Event.Groups.Length);
             Stokes_Count := Stokes_Count + Natural (Event.Polarization.Length);
          end loop;
@@ -569,38 +673,46 @@ package body AMS.MEL.RF.C2 is
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
-      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V10'Size);
-      Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V2'Size);
+      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V11'Size);
+      Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V3'Size);
+      Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V1'Size);
+      Check_Backing_Size (Phase_Count, Interfaces.C.double'Size);
+      Check_Backing_Size (Reference_Count, Interfaces.Integer_32'Size);
       Check_Backing_Size (TX_Group_Count, Interfaces.Unsigned_64'Size);
       Check_Backing_Size (Stokes_Count, C.RF_Stokes_Vector_V1'Size);
       --  Final-sized Ada-owned backing lives through the synchronous borrowed Add.
       --  Controlled label owners clean up on normal return and exceptions.
       declare
-         Commands                              : Native_LF_Commands (1 .. Command_Count);
-         Writes                                : Native_LF_Writes (1 .. Write_Count);
-         Next_Command, Next_Write              : Positive := 1;
-         Connections                           : Native_Connections (1 .. Connection_Count);
-         Group_Labels, Pipe_Labels             : Labels (1 .. Connection_Count);
-         Next_Connection                       : Positive := 1;
-         TX_Events                             : Native_TX_Events (1 .. TX_Count);
-         TX_Strings                            : Labels (1 .. TX_Count);
-         TX_Groups                             : Native_Indices (1 .. TX_Group_Count);
-         Next_TX, Next_TX_Group                : Positive := 1;
-         Configs                               : Native_Intervals (1 .. Count);
-         Stream_Groups                         : Native_Indices (1 .. Stream_Group_Count);
-         Endpoints                             : Native_Endpoints (1 .. Endpoint_Count);
-         Next_Stream_Group, Next_Endpoint      : Positive := 1;
-         Events                                : Native_Events (1 .. Event_Count);
-         Points                                : Native_Points (1 .. Point_Count);
-         Groups                                : Native_Indices (1 .. Group_Count);
-         Stokes                                : Native_Stokes (1 .. Stokes_Count);
-         Thresholds                            : Native_Thresholds (1 .. Threshold_Count);
-         Next_Threshold                        : Positive := 1;
-         Bytes                                 : Native_Bytes (1 .. Byte_Count);
-         Next_Stokes, Next_Byte                : Positive := 1;
-         Strings                               : Labels (1 .. Event_Count);
-         Next_Event, Next_Point, Next_Group, I : Positive := 1;
-         Span                                  : C.RF_Job_Interval_Config_Span_V10 :=
+         Commands                                    : Native_LF_Commands (1 .. Command_Count);
+         Writes                                      : Native_LF_Writes (1 .. Write_Count);
+         Next_Command, Next_Write                    : Positive := 1;
+         Connections                                 : Native_Connections (1 .. Connection_Count);
+         Group_Labels, Pipe_Labels                   : Labels (1 .. Connection_Count);
+         Next_Connection                             : Positive := 1;
+         TX_Events                                   : Native_TX_Events (1 .. TX_Count);
+         Modulations                                 : Native_Modulations (1 .. Modulation_Count);
+         Phases                                      : Native_Phases (1 .. Phase_Count);
+         References                                  :
+           Native_Modulation_Indices (1 .. Reference_Count);
+         Next_Modulation, Next_Phase, Next_Reference : Positive := 1;
+         TX_Strings                                  : Labels (1 .. TX_Count);
+         TX_Groups                                   : Native_Indices (1 .. TX_Group_Count);
+         Next_TX, Next_TX_Group                      : Positive := 1;
+         Configs                                     : Native_Intervals (1 .. Count);
+         Stream_Groups                               : Native_Indices (1 .. Stream_Group_Count);
+         Endpoints                                   : Native_Endpoints (1 .. Endpoint_Count);
+         Next_Stream_Group, Next_Endpoint            : Positive := 1;
+         Events                                      : Native_Events (1 .. Event_Count);
+         Points                                      : Native_Points (1 .. Point_Count);
+         Groups                                      : Native_Indices (1 .. Group_Count);
+         Stokes                                      : Native_Stokes (1 .. Stokes_Count);
+         Thresholds                                  : Native_Thresholds (1 .. Threshold_Count);
+         Next_Threshold                              : Positive := 1;
+         Bytes                                       : Native_Bytes (1 .. Byte_Count);
+         Next_Stokes, Next_Byte                      : Positive := 1;
+         Strings                                     : Labels (1 .. Event_Count);
+         Next_Event, Next_Point, Next_Group, I       : Positive := 1;
+         Span                                        : C.RF_Job_Interval_Config_Span_V11 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -816,6 +928,30 @@ package body AMS.MEL.RF.C2 is
                   end loop;
                end if;
                Configs (I).Has_Transmit_Events := Boolean'Pos (Interval.Has_TX_Events);
+               Configs (I).Has_Modulations := Boolean'Pos (Interval.Has_Modulations);
+               Configs (I).Modulations := (System.Null_Address, 0);
+               if Interval.Has_Modulations then
+                  Configs (I).Modulations.Size := C.Size_T (Interval.Modulations.Values.Length);
+                  if not Interval.Modulations.Values.Is_Empty then
+                     Configs (I).Modulations.Data := Modulations (Next_Modulation)'Address;
+                  end if;
+                  for Config of Interval.Modulations.Values loop
+                     Modulations (Next_Modulation) :=
+                       (Interfaces.Unsigned_32 (Config.Kind),
+                        Config.Duration,
+                        (System.Null_Address, C.Size_T (Config.Phases.Length)),
+                        Interfaces.C.double (Config.Extent));
+                     if not Config.Phases.Is_Empty then
+                        Modulations (Next_Modulation).Phase_Chips_Rad.Data :=
+                          Phases (Next_Phase)'Address;
+                     end if;
+                     for Value of Config.Phases loop
+                        Phases (Next_Phase) := Interfaces.C.double (Value);
+                        Next_Phase := Next_Phase + 1;
+                     end loop;
+                     Next_Modulation := Next_Modulation + 1;
+                  end loop;
+               end if;
                Configs (I).Transmit_Events :=
                  (System.Null_Address, C.Size_T (Interval.TX_Events.Length));
                if not Interval.TX_Events.Is_Empty then
@@ -823,7 +959,7 @@ package body AMS.MEL.RF.C2 is
                end if;
                for Event of Interval.TX_Events loop
                   TX_Strings (Next_TX).Value := CS.New_String (US.To_String (Event.Label));
-                  TX_Events (Next_TX).Event :=
+                  TX_Events (Next_TX).Event.Event :=
                     (Event.Event_ID,
                      (Pointer_Address (TX_Strings (Next_TX).Value),
                       C.Size_T (US.Length (Event.Label))),
@@ -836,17 +972,17 @@ package body AMS.MEL.RF.C2 is
                      Event.Rise_Duration_Femtoseconds,
                      Event.Fall_Duration_Femtoseconds);
                   if not Event.Groups.Is_Empty then
-                     TX_Events (Next_TX).Event.Applicable_TX_Element_Groups.Data :=
+                     TX_Events (Next_TX).Event.Event.Applicable_TX_Element_Groups.Data :=
                        TX_Groups (Next_TX_Group)'Address;
                   end if;
                   for Group of Event.Groups loop
                      TX_Groups (Next_TX_Group) := Group;
                      Next_TX_Group := Next_TX_Group + 1;
                   end loop;
-                  TX_Events (Next_TX).Polarization :=
+                  TX_Events (Next_TX).Event.Polarization :=
                     (System.Null_Address, C.Size_T (Event.Polarization.Length));
                   if not Event.Polarization.Is_Empty then
-                     TX_Events (Next_TX).Polarization.Data := Stokes (Next_Stokes)'Address;
+                     TX_Events (Next_TX).Event.Polarization.Data := Stokes (Next_Stokes)'Address;
                   end if;
                   for Value of Event.Polarization loop
                      Stokes (Next_Stokes) :=
@@ -856,16 +992,30 @@ package body AMS.MEL.RF.C2 is
                         Interfaces.C.double (Value (4)));
                      Next_Stokes := Next_Stokes + 1;
                   end loop;
-                  TX_Events (Next_TX).Polarization_Beam_Steer_Correction :=
+                  TX_Events (Next_TX).Event.Polarization_Beam_Steer_Correction :=
                     Boolean'Pos (Event.Beam_Correction);
-                  TX_Events (Next_TX).Phase_Offset_Rad := Interfaces.C.double (Event.Phase_Offset);
-                  TX_Events (Next_TX).Execution_Type := Execution_Type'Pos (Event.Execution);
-                  TX_Events (Next_TX).Termination_Type :=
+                  TX_Events (Next_TX).Event.Phase_Offset_Rad :=
+                    Interfaces.C.double (Event.Phase_Offset);
+                  TX_Events (Next_TX).Event.Execution_Type := Execution_Type'Pos (Event.Execution);
+                  TX_Events (Next_TX).Event.Termination_Type :=
                     Event_Termination_Type'Pos (Event.Termination);
-                  TX_Events (Next_TX).Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
-                  TX_Events (Next_TX).Iteration_Hold_Count := Event.Hold_Count;
-                  TX_Events (Next_TX).Iteration_Termination_Count := Event.Termination_Count;
-                  TX_Events (Next_TX).Channelization_Enabled := Boolean'Pos (Event.Channelization);
+                  TX_Events (Next_TX).Event.Allow_Delay_Start := Boolean'Pos (Event.Allow_Delay);
+                  TX_Events (Next_TX).Event.Iteration_Hold_Count := Event.Hold_Count;
+                  TX_Events (Next_TX).Event.Iteration_Termination_Count := Event.Termination_Count;
+                  TX_Events (Next_TX).Event.Channelization_Enabled :=
+                    Boolean'Pos (Event.Channelization);
+                  TX_Events (Next_TX).Has_Modulation_Indices :=
+                    Boolean'Pos (Event.Has_Modulation_Indices);
+                  TX_Events (Next_TX).Modulation_Indices :=
+                    (System.Null_Address, C.Size_T (Event.Modulation_Indices.Length));
+                  if not Event.Modulation_Indices.Is_Empty then
+                     TX_Events (Next_TX).Modulation_Indices.Data :=
+                       References (Next_Reference)'Address;
+                  end if;
+                  for Index of Event.Modulation_Indices loop
+                     References (Next_Reference) := Index;
+                     Next_Reference := Next_Reference + 1;
+                  end loop;
                   Next_TX := Next_TX + 1;
                end loop;
                I := I + 1;
@@ -874,7 +1024,7 @@ package body AMS.MEL.RF.C2 is
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         Check (C.RF_Job_Add_Intervals_V10 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         Check (C.RF_Job_Add_Intervals_V11 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

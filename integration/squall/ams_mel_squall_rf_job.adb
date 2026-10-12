@@ -225,6 +225,21 @@ begin
                               TX : C2.TX_Transmit_Event_Config := C2.Create_TX_Transmit_Event
                                 (41, "tx-config-only", 0, 1_000_000, 1_000_000.0, 3.0);
                            begin
+                              declare
+                                 Table : C2.Modulation_Table;
+                                 Index : C2.Modulation_Index;
+                              begin
+                                 C2.Append_Modulation (Table, C2.Tone, Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation
+                                   (Table, C2.Phase_Code (1_000_000, [0.0, 0.5, 0.0]), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation
+                                   (Table, C2.Linear_Frequency_Modulation (1_000.0), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation_Reference (TX, C2.No_Modulation);
+                                 C2.Set_Modulations (Interval, Table);
+                              end;
                               C2.Append_Applicable_TX_Element_Group (TX, 0);
                               C2.Append_Polarization (TX, 1.0, -2.0, 3.0, 4.0);
                               C2.Set_Polarization_Beam_Steer_Correction (TX, True);
