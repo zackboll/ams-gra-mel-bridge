@@ -1,0 +1,53 @@
+#include <ams_mel/abi.h>
+#include <stdio.h>
+typedef ams_mel_status_t (*signature)(ams_mel_rf_job *, ams_mel_rf_job_interval_config_span_v13, char *, size_t, size_t *);
+_Static_assert(_Generic(&ams_mel_rf_job_add_intervals_v13, signature: 1, default: 0), "v13 by-value span");
+int main(void) {
+printf("%zu %zu ", sizeof(ams_mel_rf_waveform_profile_params_v1), _Alignof(ams_mel_rf_waveform_profile_params_v1));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, chip_duration_femtoseconds));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_phase));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_delta_phase));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_frequency_offset));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_delta_frequency));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_frequency_slope));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, update_amplitude_factor));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, phase_deg));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, delta_phase_deg));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, frequency_offset_hz));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, delta_frequency_hz));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, frequency_slope_hz_sec));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_v1, amplitude_factor));
+printf("%zu %zu ", sizeof(ams_mel_rf_waveform_profile_params_span_v1), _Alignof(ams_mel_rf_waveform_profile_params_span_v1));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_span_v1, data));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_params_span_v1, size));
+printf("%zu %zu ", sizeof(ams_mel_rf_waveform_profile_iterations_v1), _Alignof(ams_mel_rf_waveform_profile_iterations_v1));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_iterations_v1, num_chip_iterations));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_iterations_v1, waveform_profile_index));
+printf("%zu %zu ", sizeof(ams_mel_rf_waveform_profile_iterations_span_v1), _Alignof(ams_mel_rf_waveform_profile_iterations_span_v1));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_iterations_span_v1, data));
+printf("%zu ", offsetof(ams_mel_rf_waveform_profile_iterations_span_v1, size));
+printf("%zu %zu ", sizeof(ams_mel_rf_event_waveform_profile_pattern_v1), _Alignof(ams_mel_rf_event_waveform_profile_pattern_v1));
+printf("%zu ", offsetof(ams_mel_rf_event_waveform_profile_pattern_v1, steps));
+printf("%zu %zu ", sizeof(ams_mel_rf_event_waveform_profile_pattern_span_v1), _Alignof(ams_mel_rf_event_waveform_profile_pattern_span_v1));
+printf("%zu ", offsetof(ams_mel_rf_event_waveform_profile_pattern_span_v1, data));
+printf("%zu ", offsetof(ams_mel_rf_event_waveform_profile_pattern_span_v1, size));
+printf("%zu %zu ", sizeof(ams_mel_rf_custom_waveform_config_v1), _Alignof(ams_mel_rf_custom_waveform_config_v1));
+printf("%zu ", offsetof(ams_mel_rf_custom_waveform_config_v1, profiles));
+printf("%zu ", offsetof(ams_mel_rf_custom_waveform_config_v1, patterns));
+printf("%zu %zu ", sizeof(ams_mel_rf_modulation_config_v3), _Alignof(ams_mel_rf_modulation_config_v3));
+printf("%zu ", offsetof(ams_mel_rf_modulation_config_v3, modulation));
+printf("%zu ", offsetof(ams_mel_rf_modulation_config_v3, custom_waveform));
+printf("%zu %zu ", sizeof(ams_mel_rf_modulation_config_span_v3), _Alignof(ams_mel_rf_modulation_config_span_v3));
+printf("%zu ", offsetof(ams_mel_rf_modulation_config_span_v3, data));
+printf("%zu ", offsetof(ams_mel_rf_modulation_config_span_v3, size));
+printf("%zu %zu ", sizeof(ams_mel_rf_job_interval_config_v13), _Alignof(ams_mel_rf_job_interval_config_v13));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_v13, interval));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_v13, has_transmit_events));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_v13, transmit_events));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_v13, has_modulations));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_v13, modulations));
+printf("%zu %zu ", sizeof(ams_mel_rf_job_interval_config_span_v13), _Alignof(ams_mel_rf_job_interval_config_span_v13));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_span_v13, data));
+printf("%zu ", offsetof(ams_mel_rf_job_interval_config_span_v13, size));
+puts(""); return 0;
+}

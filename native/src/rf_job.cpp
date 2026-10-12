@@ -437,11 +437,20 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool binary = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
+    constexpr bool custom = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v13>;
+    constexpr bool binary = custom || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
     constexpr bool modulation = binary || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
-    const auto modulation_at = [](const auto& supplied) -> const auto& {
+    const auto binary_at = [](const auto& supplied) -> const auto& {
+        if constexpr (custom) return supplied.modulation;
+        else return supplied;
+    };
+    const auto modulation_at = [&](const auto& envelope) -> const auto& {
+        const auto& supplied = binary_at(envelope);
         if constexpr (binary) return supplied.modulation;
         else return supplied;
+    };
+    const auto custom_at = [](const auto& supplied) -> const auto& {
+        return supplied.custom_waveform;
     };
     constexpr bool tx_controls = modulation || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
     constexpr bool tx = tx_controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
@@ -499,7 +508,8 @@ ams_mel_status_t add_rx_intervals(
                 if (!span_ok(table.size, table.data, sizeof(*table.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t m = 0; m < table.size; ++m) {
                     const auto& value = modulation_at(table.data[m]);
-                    constexpr auto last_kind = binary ? AMS_MEL_RF_MODULATION_CPFSK_PULSE : AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY;
+                    constexpr auto last_kind = custom ? AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM :
+                        binary ? AMS_MEL_RF_MODULATION_CPFSK_PULSE : AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY;
                     if (value.kind > last_kind) return AMS_MEL_INVALID_ARGUMENT;
                     if (value.kind == AMS_MEL_RF_MODULATION_PHASE_CODE &&
                         !span_ok(value.phase_chips_rad.size, value.phase_chips_rad.data,
@@ -507,7 +517,7 @@ ams_mel_status_t add_rx_intervals(
                     if constexpr (binary) {
                         if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING ||
                             value.kind == AMS_MEL_RF_MODULATION_CPFSK_PULSE) {
-                            const auto bits = table.data[m].binary_data;
+                            const auto bits = binary_at(table.data[m]).binary_data;
                             if (!span_ok(bits.size, bits.data, sizeof(*bits.data))) return AMS_MEL_INVALID_ARGUMENT;
                             if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING &&
                                 (!fits_count(input.sequence_repeat_count) ||
@@ -515,6 +525,37 @@ ams_mel_status_t add_rx_intervals(
                                 return AMS_MEL_INVALID_ARGUMENT;
                             for (std::size_t b = 0; b < bits.size; ++b)
                                 if (bits.data[b] > 1U) return AMS_MEL_INVALID_ARGUMENT;
+                        }
+                    }
+                    if constexpr (custom) {
+                        if (value.kind == AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM) {
+                            const auto& waveform = custom_at(table.data[m]);
+                            const auto profiles = waveform.profiles;
+                            const auto patterns = waveform.patterns;
+                            if (!span_ok(profiles.size, profiles.data, sizeof(*profiles.data)) ||
+                                !span_ok(patterns.size, patterns.data, sizeof(*patterns.data)))
+                                return AMS_MEL_INVALID_ARGUMENT;
+                            for (std::size_t p = 0; p < profiles.size; ++p) {
+                                const auto& profile = profiles.data[p];
+                                if (profile.update_phase > 1U || profile.update_delta_phase > 1U ||
+                                    profile.update_frequency_offset > 1U || profile.update_delta_frequency > 1U ||
+                                    profile.update_frequency_slope > 1U || profile.update_amplitude_factor > 1U)
+                                    return AMS_MEL_INVALID_ARGUMENT;
+                            }
+                            for (std::size_t p = 0; p < patterns.size; ++p) {
+                                const auto steps = patterns.data[p].steps;
+                                if (!span_ok(steps.size, steps.data, sizeof(*steps.data)))
+                                    return AMS_MEL_INVALID_ARGUMENT;
+                                for (std::size_t s = 0; s < steps.size; ++s) {
+                                    const auto& step = steps.data[s];
+                                    if (step.waveform_profile_index < 0 ||
+                                        static_cast<std::uint64_t>(step.waveform_profile_index) >= profiles.size ||
+                                        static_cast<std::int64_t>(step.waveform_profile_index) > std::numeric_limits<int>::max() ||
+                                        static_cast<std::int64_t>(step.num_chip_iterations) < std::numeric_limits<int>::min() ||
+                                        static_cast<std::int64_t>(step.num_chip_iterations) > std::numeric_limits<int>::max())
+                                        return AMS_MEL_INVALID_ARGUMENT;
+                                }
+                            }
                         }
                     }
                 }
@@ -678,7 +719,7 @@ ams_mel_status_t add_rx_intervals(
                         const auto index = event.modulation_indices.data[n];
                         if (index < 0) continue;
                         const auto m = static_cast<std::size_t>(index);
-                        if (source.modulations.data[m].modulation.kind != AMS_MEL_RF_MODULATION_ON_OFF_KEYING) continue;
+                        if (modulation_at(source.modulations.data[m]).kind != AMS_MEL_RF_MODULATION_ON_OFF_KEYING) continue;
                         if (owners[m] != std::numeric_limits<std::size_t>::max() && owners[m] != e)
                             return AMS_MEL_INVALID_ARGUMENT;
                         owners[m] = e;
@@ -893,7 +934,8 @@ ams_mel_status_t add_rx_intervals(
                                 }
 #endif
                                 std::vector<bool> bits;
-                                const auto source = supplied.data[m].binary_data;
+                                const auto& payload = binary_at(supplied.data[m]);
+                                const auto source = payload.binary_data;
                                 bits.reserve(source.size);
                                 for (std::size_t b = 0; b < source.size; ++b) {
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -910,12 +952,60 @@ ams_mel_status_t add_rx_intervals(
                                         std::in_place_type<rfmel::OnOffKeying>, ook);
                                 } else {
                                     rfmel::CpfskPulse cpfsk{bits,
-                                        Fs{supplied.data[m].pulse_duration_femtoseconds},
+                                        Fs{payload.pulse_duration_femtoseconds},
                                         Fs{value.chip_duration_femtoseconds},
-                                        supplied.data[m].frequency_offset_hz};
+                                        payload.frequency_offset_hz};
                                     table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
                                         std::in_place_type<rfmel::CpfskPulse>, cpfsk);
                                 }
+                                continue;
+                            }
+                        }
+                        if constexpr (custom) {
+                            if (value.kind == AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM) {
+                                const auto& source = custom_at(supplied.data[m]);
+                                std::vector<rfmel::WaveformProfileParams> profiles;
+                                profiles.reserve(source.profiles.size);
+                                for (std::size_t p = 0; p < source.profiles.size; ++p) {
+                                    const auto& s = source.profiles.data[p];
+                                    rfmel::WaveformProfileParams profile;
+                                    profile.setChipDuration(Fs{s.chip_duration_femtoseconds});
+                                    profile.setUpdatePhase(s.update_phase != 0U);
+                                    profile.setUpdateDeltaPhase(s.update_delta_phase != 0U);
+                                    profile.setUpdateFrequencyOffset(s.update_frequency_offset != 0U);
+                                    profile.setUpdateDeltaFrequency(s.update_delta_frequency != 0U);
+                                    profile.setUpdateFrequencySlope(s.update_frequency_slope != 0U);
+                                    profile.setUpdateAmplitudeFactor(s.update_amplitude_factor != 0U);
+                                    profile.setPhaseDeg(s.phase_deg);
+                                    profile.setDeltaPhaseDeg(s.delta_phase_deg);
+                                    profile.setFrequencyOffsetHz(s.frequency_offset_hz);
+                                    profile.setDeltaFrequencyHz(s.delta_frequency_hz);
+                                    profile.setFrequencySlopeHzSec(s.frequency_slope_hz_sec);
+                                    profile.setAmplitudeFactor(s.amplitude_factor);
+                                    profiles.push_back(profile);
+                                }
+                                std::vector<rfmel::EventWaveformProfilePattern> patterns;
+                                patterns.reserve(source.patterns.size);
+                                for (std::size_t p = 0; p < source.patterns.size; ++p) {
+                                    const auto steps_source = source.patterns.data[p].steps;
+                                    std::vector<rfmel::WaveformProfileIterations> steps;
+                                    steps.reserve(steps_source.size);
+                                    for (std::size_t s = 0; s < steps_source.size; ++s) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                        if (!patterns.empty() && s == steps_source.size / 2 && failpoint("later-custom-step")) {
+                                            qualification_trace("later-custom-step: preceding pattern complete");
+                                            throw std::bad_alloc{};
+                                        }
+#endif
+                                        const auto& step = steps_source.data[s];
+                                        steps.emplace_back(static_cast<int>(step.num_chip_iterations),
+                                                           static_cast<int>(step.waveform_profile_index));
+                                    }
+                                    patterns.emplace_back(steps);
+                                }
+                                rfmel::CustomWaveform waveform{patterns, profiles};
+                                table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                    std::in_place_type<rfmel::CustomWaveform>, waveform);
                                 continue;
                             }
                         }
@@ -1094,6 +1184,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v11(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v12(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v12 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v13(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v13 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

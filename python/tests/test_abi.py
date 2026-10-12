@@ -12,6 +12,29 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_custom_waveform_abi(self) -> None:
+        function = _native.ams_mel_rf_job_add_intervals_v13
+        self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV13, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
+        self.assertIs(function.restype, ctypes.c_int32)
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror", "-I" + str(root / "native/include"), str(root / "native/tests/custom_waveform_layout_probe.c"), "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = []
+        expected.extend(self._layout(_native.RfWaveformProfileParamsV1, 'chip_duration_femtoseconds', 'update_phase', 'update_delta_phase', 'update_frequency_offset', 'update_delta_frequency', 'update_frequency_slope', 'update_amplitude_factor', 'phase_deg', 'delta_phase_deg', 'frequency_offset_hz', 'delta_frequency_hz', 'frequency_slope_hz_sec', 'amplitude_factor'))
+        expected.extend(self._layout(_native.RfWaveformProfileParamsSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfWaveformProfileIterationsV1, 'num_chip_iterations', 'waveform_profile_index'))
+        expected.extend(self._layout(_native.RfWaveformProfileIterationsSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfEventWaveformProfilePatternV1, 'steps'))
+        expected.extend(self._layout(_native.RfEventWaveformProfilePatternSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfCustomWaveformConfigV1, 'profiles', 'patterns'))
+        expected.extend(self._layout(_native.RfModulationConfigV3, 'modulation', 'custom_waveform'))
+        expected.extend(self._layout(_native.RfModulationConfigSpanV3, 'data', 'size'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigV13, 'interval', 'has_transmit_events', 'transmit_events', 'has_modulations', 'modulations'))
+        expected.extend(self._layout(_native.RfJobIntervalConfigSpanV13, 'data', 'size'))
+        self.assertEqual(actual, expected)
+
     def test_private_tx_events_abi(self) -> None:
         function = _native.ams_mel_rf_job_add_intervals_v9
         self.assertEqual(function.argtypes, [_native.RfJobHandle, _native.RfJobIntervalConfigSpanV9, _native.CharPointer, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)])
@@ -558,6 +581,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_job_add_intervals_v10",
                 "ams_mel_rf_job_add_intervals_v11",
                 "ams_mel_rf_job_add_intervals_v12",
+                "ams_mel_rf_job_add_intervals_v13",
 
                 "ams_mel_rf_job_flush",
                 "ams_mel_rf_job_cancel_remaining_intervals",
@@ -591,8 +615,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 202)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 202)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 203)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 203)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -600,7 +624,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 202)
+        self.assertEqual(len(exported), 203)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

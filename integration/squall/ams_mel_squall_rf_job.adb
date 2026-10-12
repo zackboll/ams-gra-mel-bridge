@@ -246,6 +246,22 @@ begin
                                    (Table, C2.CPFSK_Pulse ([True, False, True], 1_000_000, 250_000, -125.0), Index);
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Set_Modulations (Interval, Table);
+                                 declare
+                                    Profiles : C2.Waveform_Profile_Table;
+                                    Patterns : C2.Waveform_Pattern_List;
+                                    Pattern : C2.Event_Waveform_Pattern;
+                                    Profile_Index : C2.Waveform_Profile_Index;
+                                    Profile : C2.Waveform_Profile := C2.Create_Waveform_Profile (1_000_000);
+                                 begin
+                                    C2.Set_Phase_Degrees (Profile, 90.0, True);
+                                    C2.Set_Amplitude_Factor (Profile, 0.5, True);
+                                    C2.Append_Profile (Profiles, Profile, Profile_Index);
+                                    C2.Append_Step (Pattern, Profile_Index, 1);
+                                    C2.Append_Pattern (Patterns, Pattern);
+                                    C2.Append_Modulation (Table, C2.Custom_Waveform (Profiles, Patterns), Index);
+                                    C2.Append_Modulation_Reference (TX, Index);
+                                    C2.Set_Modulations (Interval, Table);
+                                 end;
                               end;
                               C2.Append_Applicable_TX_Element_Group (TX, 0);
                               C2.Append_Polarization (TX, 1.0, -2.0, 3.0, 4.0);

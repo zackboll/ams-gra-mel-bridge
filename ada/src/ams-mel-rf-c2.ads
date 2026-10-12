@@ -172,6 +172,45 @@ package AMS.MEL.RF.C2 is
    type TX_Transmit_Event_Config is private;
    type Modulation_Config is private;
    type Modulation_Table is private;
+   --  Owned configuration values only, not executable waveform validation.
+   --  Degrees stay degrees; false update flags retain their numeric values.
+   subtype Waveform_Profile_Index is Interfaces.Integer_32 range 0 .. Interfaces.Integer_32'Last;
+   type Waveform_Profile is private;
+   type Waveform_Profile_Table is private;
+   type Event_Waveform_Pattern is private;
+   type Waveform_Pattern_List is private;
+   function Create_Waveform_Profile
+     (Chip_Duration_Femtoseconds : Interfaces.Integer_64 := 0) return Waveform_Profile;
+   procedure Set_Chip_Duration_Femtoseconds
+     (Profile : in out Waveform_Profile; Value : Interfaces.Integer_64);
+   procedure Set_Phase_Degrees
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Set_Delta_Phase_Degrees
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Set_Frequency_Offset_Hz
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Set_Delta_Frequency_Hz
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Set_Frequency_Slope_Hz_Sec
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Set_Amplitude_Factor
+     (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   procedure Append_Profile
+     (Table   : in out Waveform_Profile_Table;
+      Profile : Waveform_Profile;
+      Index   : out Waveform_Profile_Index);
+   procedure Append_Step
+     (Pattern             : in out Event_Waveform_Pattern;
+      Profile_Index       : Waveform_Profile_Index;
+      Num_Chip_Iterations : Interfaces.Integer_32 := 1);
+   procedure Append_Pattern
+     (Patterns : in out Waveform_Pattern_List; Pattern : Event_Waveform_Pattern);
+   function Custom_Waveform
+     (Profiles : Waveform_Profile_Table; Patterns : Waveform_Pattern_List) return Modulation_Config;
+   procedure Replace_Custom_Waveform_Profiles
+     (Config : in out Modulation_Config; Profiles : Waveform_Profile_Table);
+   procedure Replace_Custom_Waveform_Patterns
+     (Config : in out Modulation_Config; Patterns : Waveform_Pattern_List);
    type Phase_Chip_Array is array (Positive range <>) of Long_Float;
    subtype Modulation_Index is
      Interfaces.Integer_32 range Interfaces."-" (1) .. Interfaces.Integer_32'Last;
@@ -494,14 +533,48 @@ private
    package Modulation_Boolean_Vectors is new Ada.Containers.Vectors (Positive, Boolean);
    package Modulation_Index_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Integer_32, Interfaces."=");
+   type Waveform_Profile is record
+      Duration                : Interfaces.Integer_64 := 0;
+      Update_Phase,
+      Update_Delta_Phase,
+      Update_Frequency_Offset,
+      Update_Delta_Frequency,
+      Update_Frequency_Slope,
+      Update_Amplitude_Factor : Boolean := False;
+      Phase_Degrees,
+      Delta_Phase_Degrees,
+      Frequency_Offset_Hz,
+      Delta_Frequency_Hz,
+      Frequency_Slope_Hz_Sec,
+      Amplitude_Factor        : Long_Float := 0.0;
+   end record;
+   package Waveform_Profile_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Profile);
+   type Waveform_Profile_Table is record
+      Values : Waveform_Profile_Vectors.Vector;
+   end record;
+   type Waveform_Step is record
+      Iterations : Interfaces.Integer_32;
+      Index      : Waveform_Profile_Index;
+   end record;
+   package Waveform_Step_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Step);
+   type Event_Waveform_Pattern is record
+      Steps : Waveform_Step_Vectors.Vector;
+   end record;
+   package Waveform_Pattern_Vectors is new
+     Ada.Containers.Vectors (Positive, Event_Waveform_Pattern);
+   type Waveform_Pattern_List is record
+      Values : Waveform_Pattern_Vectors.Vector;
+   end record;
    type Modulation_Config is record
-      Kind             : Natural range 0 .. 4 := 0;
+      Kind             : Natural range 0 .. 5 := 0;
       Duration         : Interfaces.Integer_64 := 0;
       Phases           : Phase_Chip_Vectors.Vector;
       Extent           : Long_Float := 0.0;
       Binary_Data      : Modulation_Boolean_Vectors.Vector;
       Pulse_Duration   : Interfaces.Integer_64 := 0;
       Frequency_Offset : Long_Float := 0.0;
+      Profiles         : Waveform_Profile_Table;
+      Patterns         : Waveform_Pattern_List;
    end record;
    package Modulation_Vectors is new Ada.Containers.Vectors (Positive, Modulation_Config);
    type Modulation_Table is record

@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 202);
-    assert_eq!(exported.len(), 202);
+    assert_eq!(declared.len(), 203);
+    assert_eq!(exported.len(), 203);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3570,6 +3570,99 @@ fn binary_modulations_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV12>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV12, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV12, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn custom_waveform_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV13,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_intervals_v13;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!(
+        "ams-mel-custom-waveform-layout-{}",
+        std::process::id()
+    ));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/custom_waveform_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfWaveformProfileParamsV1>(),
+        align_of::<AmsMelRfWaveformProfileParamsV1>(),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, chip_duration_femtoseconds),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_phase),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_delta_phase),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_frequency_offset),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_delta_frequency),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_frequency_slope),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, update_amplitude_factor),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, phase_deg),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, delta_phase_deg),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, frequency_offset_hz),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, delta_frequency_hz),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, frequency_slope_hz_sec),
+        offset_of!(AmsMelRfWaveformProfileParamsV1, amplitude_factor),
+        size_of::<AmsMelRfWaveformProfileParamsSpanV1>(),
+        align_of::<AmsMelRfWaveformProfileParamsSpanV1>(),
+        offset_of!(AmsMelRfWaveformProfileParamsSpanV1, data),
+        offset_of!(AmsMelRfWaveformProfileParamsSpanV1, size),
+        size_of::<AmsMelRfWaveformProfileIterationsV1>(),
+        align_of::<AmsMelRfWaveformProfileIterationsV1>(),
+        offset_of!(AmsMelRfWaveformProfileIterationsV1, num_chip_iterations),
+        offset_of!(AmsMelRfWaveformProfileIterationsV1, waveform_profile_index),
+        size_of::<AmsMelRfWaveformProfileIterationsSpanV1>(),
+        align_of::<AmsMelRfWaveformProfileIterationsSpanV1>(),
+        offset_of!(AmsMelRfWaveformProfileIterationsSpanV1, data),
+        offset_of!(AmsMelRfWaveformProfileIterationsSpanV1, size),
+        size_of::<AmsMelRfEventWaveformProfilePatternV1>(),
+        align_of::<AmsMelRfEventWaveformProfilePatternV1>(),
+        offset_of!(AmsMelRfEventWaveformProfilePatternV1, steps),
+        size_of::<AmsMelRfEventWaveformProfilePatternSpanV1>(),
+        align_of::<AmsMelRfEventWaveformProfilePatternSpanV1>(),
+        offset_of!(AmsMelRfEventWaveformProfilePatternSpanV1, data),
+        offset_of!(AmsMelRfEventWaveformProfilePatternSpanV1, size),
+        size_of::<AmsMelRfCustomWaveformConfigV1>(),
+        align_of::<AmsMelRfCustomWaveformConfigV1>(),
+        offset_of!(AmsMelRfCustomWaveformConfigV1, profiles),
+        offset_of!(AmsMelRfCustomWaveformConfigV1, patterns),
+        size_of::<AmsMelRfModulationConfigV3>(),
+        align_of::<AmsMelRfModulationConfigV3>(),
+        offset_of!(AmsMelRfModulationConfigV3, modulation),
+        offset_of!(AmsMelRfModulationConfigV3, custom_waveform),
+        size_of::<AmsMelRfModulationConfigSpanV3>(),
+        align_of::<AmsMelRfModulationConfigSpanV3>(),
+        offset_of!(AmsMelRfModulationConfigSpanV3, data),
+        offset_of!(AmsMelRfModulationConfigSpanV3, size),
+        size_of::<AmsMelRfJobIntervalConfigV13>(),
+        align_of::<AmsMelRfJobIntervalConfigV13>(),
+        offset_of!(AmsMelRfJobIntervalConfigV13, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV13, has_transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV13, transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV13, has_modulations),
+        offset_of!(AmsMelRfJobIntervalConfigV13, modulations),
+        size_of::<AmsMelRfJobIntervalConfigSpanV13>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV13>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV13, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV13, size),
     ];
     assert_eq!(actual, expected);
 }

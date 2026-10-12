@@ -1801,16 +1801,11 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    subtype RF_Pointing_Kind is Interfaces.Unsigned_32;
-   RF_Pointing_ECEF                                                         :
-     constant RF_Pointing_Kind := 0;
-   RF_Pointing_LLA                                                          :
-     constant RF_Pointing_Kind := 1;
-   RF_Pointing_Platform_Relative                                            :
-     constant RF_Pointing_Kind := 2;
-   RF_Pointing_Face_Relative                                                :
-     constant RF_Pointing_Kind := 3;
-   RF_Pointing_Baseline_Relative                                            :
-     constant RF_Pointing_Kind := 4;
+   RF_Pointing_ECEF                    : constant RF_Pointing_Kind := 0;
+   RF_Pointing_LLA                     : constant RF_Pointing_Kind := 1;
+   RF_Pointing_Platform_Relative       : constant RF_Pointing_Kind := 2;
+   RF_Pointing_Face_Relative           : constant RF_Pointing_Kind := 3;
+   RF_Pointing_Baseline_Relative       : constant RF_Pointing_Kind := 4;
    type RF_Vector3_V1 is record
       X, Y, Z : Interfaces.C.double;
    end record
@@ -1868,10 +1863,8 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    subtype RF_Element_Group_Mode is Interfaces.Unsigned_32;
-   RF_Element_Group_Mode_RX                                                 :
-     constant RF_Element_Group_Mode := 0;
-   RF_Element_Group_Mode_TX                                                 :
-     constant RF_Element_Group_Mode := 1;
+   RF_Element_Group_Mode_RX            : constant RF_Element_Group_Mode := 0;
+   RF_Element_Group_Mode_TX            : constant RF_Element_Group_Mode := 1;
    type RF_TX_Element_Group_Config_V1 is record
       Label                       : String_View_V1;
       TX_Power_Level              : Interfaces.Unsigned_32;
@@ -1991,15 +1984,11 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C_Pass_By_Copy;
    subtype RF_Execution_Type is Interfaces.Unsigned_32;
-   RF_Execution_Normal                                                      :
-     constant RF_Execution_Type := 0;
-   RF_Execution_Conditional                                                 :
-     constant RF_Execution_Type := 1;
+   RF_Execution_Normal                 : constant RF_Execution_Type := 0;
+   RF_Execution_Conditional            : constant RF_Execution_Type := 1;
    subtype RF_Event_Termination_Type is Interfaces.Unsigned_32;
-   RF_Event_Termination_Inhibit                                             :
-     constant RF_Event_Termination_Type := 0;
-   RF_Event_Termination_Cancel                                              :
-     constant RF_Event_Termination_Type := 1;
+   RF_Event_Termination_Inhibit        : constant RF_Event_Termination_Type := 0;
+   RF_Event_Termination_Cancel         : constant RF_Event_Termination_Type := 1;
    type RF_Stokes_Vector_V1 is record
       S0, S1, S2, S3 : Interfaces.C.double;
    end record
@@ -2054,17 +2043,12 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C_Pass_By_Copy;
    subtype RF_Pulse_Threshold_Reference is Interfaces.Unsigned_32;
-   RF_PD_Reference_DBQ                                                      :
-     constant RF_Pulse_Threshold_Reference := 0;
-   RF_PD_Reference_DB_Above_Noise                                           :
-     constant RF_Pulse_Threshold_Reference := 1;
-   RF_PD_Reference_DB_Below_Saturation                                      :
-     constant RF_Pulse_Threshold_Reference := 2;
+   RF_PD_Reference_DBQ                 : constant RF_Pulse_Threshold_Reference := 0;
+   RF_PD_Reference_DB_Above_Noise      : constant RF_Pulse_Threshold_Reference := 1;
+   RF_PD_Reference_DB_Below_Saturation : constant RF_Pulse_Threshold_Reference := 2;
    subtype RF_Pulse_Timetag_Threshold is Interfaces.Unsigned_32;
-   RF_PD_Timetag_50_Percent                                                 :
-     constant RF_Pulse_Timetag_Threshold := 0;
-   RF_PD_Timetag_90_Percent                                                 :
-     constant RF_Pulse_Timetag_Threshold := 1;
+   RF_PD_Timetag_50_Percent            : constant RF_Pulse_Timetag_Threshold := 0;
+   RF_PD_Timetag_90_Percent            : constant RF_Pulse_Timetag_Threshold := 1;
    type RF_Pulse_M_Of_N_V1 is record
       M, N : Interfaces.Unsigned_8;
    end record
@@ -2290,8 +2274,7 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v10";
-   Rf_Interval_Status_Never                                                 :
-     constant Interfaces.Unsigned_32 := 0;
+   Rf_Interval_Status_Never            : constant Interfaces.Unsigned_32 := 0;
    type Double_Span_V1 is record
       Data : System.Address;
       Size : Size_T;
@@ -2345,12 +2328,9 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v11";
-   Rf_Modulation_Tone                                                       :
-     constant Interfaces.Unsigned_32 := 0;
-   Rf_Modulation_On_Off_Keying                                              :
-     constant Interfaces.Unsigned_32 := 3;
-   Rf_Modulation_CPFSK_Pulse                                                :
-     constant Interfaces.Unsigned_32 := 4;
+   Rf_Modulation_Tone                  : constant Interfaces.Unsigned_32 := 0;
+   Rf_Modulation_On_Off_Keying         : constant Interfaces.Unsigned_32 := 3;
+   Rf_Modulation_CPFSK_Pulse           : constant Interfaces.Unsigned_32 := 4;
    type RF_Modulation_Config_V2 is record
       Modulation                  : RF_Modulation_Config_V1;
       Binary_Data                 : U32_Span_V1;
@@ -2383,6 +2363,84 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v12";
+
+   Rf_Modulation_Custom_Waveform                                            :
+     constant Interfaces.Unsigned_32 := 5;
+   type RF_waveform_profile_params_v1 is record
+      chip_duration_femtoseconds : Interfaces.Integer_64;
+      update_phase               : Interfaces.Unsigned_32;
+      update_delta_phase         : Interfaces.Unsigned_32;
+      update_frequency_offset    : Interfaces.Unsigned_32;
+      update_delta_frequency     : Interfaces.Unsigned_32;
+      update_frequency_slope     : Interfaces.Unsigned_32;
+      update_amplitude_factor    : Interfaces.Unsigned_32;
+      phase_deg                  : Interfaces.C.double;
+      delta_phase_deg            : Interfaces.C.double;
+      frequency_offset_hz        : Interfaces.C.double;
+      delta_frequency_hz         : Interfaces.C.double;
+      frequency_slope_hz_sec     : Interfaces.C.double;
+      amplitude_factor           : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_waveform_profile_params_span_v1 is record
+      data : System.Address;
+      size : Size_T;
+   end record
+   with Convention => C;
+   type RF_waveform_profile_iterations_v1 is record
+      num_chip_iterations    : Interfaces.Integer_32;
+      waveform_profile_index : Interfaces.Integer_32;
+   end record
+   with Convention => C;
+   type RF_waveform_profile_iterations_span_v1 is record
+      data : System.Address;
+      size : Size_T;
+   end record
+   with Convention => C;
+   type RF_event_waveform_profile_pattern_v1 is record
+      steps : RF_waveform_profile_iterations_span_v1;
+   end record
+   with Convention => C;
+   type RF_event_waveform_profile_pattern_span_v1 is record
+      data : System.Address;
+      size : Size_T;
+   end record
+   with Convention => C;
+   type RF_custom_waveform_config_v1 is record
+      profiles : RF_waveform_profile_params_span_v1;
+      patterns : RF_event_waveform_profile_pattern_span_v1;
+   end record
+   with Convention => C;
+   type RF_modulation_config_v3 is record
+      modulation      : RF_modulation_config_v2;
+      custom_waveform : RF_custom_waveform_config_v1;
+   end record
+   with Convention => C;
+   type RF_modulation_config_span_v3 is record
+      data : System.Address;
+      size : Size_T;
+   end record
+   with Convention => C;
+   type RF_job_interval_config_v13 is record
+      interval            : RF_job_interval_config_v8;
+      has_transmit_events : Interfaces.Unsigned_32;
+      transmit_events     : RF_tx_event_config_span_v3;
+      has_modulations     : Interfaces.Unsigned_32;
+      modulations         : RF_modulation_config_span_v3;
+   end record
+   with Convention => C;
+   type RF_job_interval_config_span_v13 is record
+      data : System.Address;
+      size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_Intervals_V13
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V13;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v13";
    Rf_Modulation_Phase_Code                                                 :
      constant Interfaces.Unsigned_32 := 1;
    Rf_Modulation_Linear_Frequency                                           :
