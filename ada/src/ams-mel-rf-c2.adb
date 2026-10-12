@@ -363,6 +363,64 @@ package body AMS.MEL.RF.C2 is
    begin
       return (Kind => 2, Extent => Frequency_Extent_Hz, others => <>);
    end Linear_Frequency_Modulation;
+   procedure Replace_Binary_Data
+     (Config : in out Modulation_Config; Data : Modulation_Boolean_Array; Kind : Natural)
+   is
+      Copy : Modulation_Boolean_Vectors.Vector;
+   begin
+      if Config.Kind /= Kind then
+         raise Constraint_Error with "binary operation requires matching modulation kind";
+      end if;
+      for Value of Data loop
+         Copy.Append (Value);
+      end loop;
+      Config.Binary_Data := Copy;
+   end Replace_Binary_Data;
+   procedure Replace_OOK_Pulse_Enables
+     (Config : in out Modulation_Config; Pulse_Enabled : Modulation_Boolean_Array) is
+   begin
+      Replace_Binary_Data (Config, Pulse_Enabled, 3);
+   end Replace_OOK_Pulse_Enables;
+   procedure Replace_CPFSK_Chips
+     (Config : in out Modulation_Config; Chip_Data : Modulation_Boolean_Array) is
+   begin
+      Replace_Binary_Data (Config, Chip_Data, 4);
+   end Replace_CPFSK_Chips;
+   procedure Append_OOK_Pulse_Enable (Config : in out Modulation_Config; Enabled : Boolean) is
+   begin
+      if Config.Kind /= 3 then
+         raise Constraint_Error with "pulse enable operation requires OOK";
+      end if;
+      Config.Binary_Data.Append (Enabled);
+   end Append_OOK_Pulse_Enable;
+   procedure Append_CPFSK_Chip (Config : in out Modulation_Config; Chip : Boolean) is
+   begin
+      if Config.Kind /= 4 then
+         raise Constraint_Error with "chip operation requires CPFSK";
+      end if;
+      Config.Binary_Data.Append (Chip);
+   end Append_CPFSK_Chip;
+   function On_Off_Keying (Pulse_Enabled : Modulation_Boolean_Array) return Modulation_Config is
+      Result : Modulation_Config := (Kind => 3, others => <>);
+   begin
+      Replace_OOK_Pulse_Enables (Result, Pulse_Enabled);
+      return Result;
+   end On_Off_Keying;
+   function CPFSK_Pulse
+     (Chip_Data                                               : Modulation_Boolean_Array;
+      Pulse_Duration_Femtoseconds, Chip_Duration_Femtoseconds : Interfaces.Integer_64;
+      Frequency_Offset_Hz                                     : Long_Float) return Modulation_Config
+   is
+      Result : Modulation_Config :=
+        (Kind             => 4,
+         Duration         => Chip_Duration_Femtoseconds,
+         Pulse_Duration   => Pulse_Duration_Femtoseconds,
+         Frequency_Offset => Frequency_Offset_Hz,
+         others           => <>);
+   begin
+      Replace_CPFSK_Chips (Result, Chip_Data);
+      return Result;
+   end CPFSK_Pulse;
    procedure Append_Phase_Chip (Config : in out Modulation_Config; Phase_Rad : Long_Float) is
    begin
       if Config.Kind /= 1 then
@@ -568,7 +626,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V11
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V12
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -593,13 +651,16 @@ package body AMS.MEL.RF.C2 is
       TX_Count, TX_Group_Count                       : Natural := 0;
       type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V3
       with Convention => C;
-      type Native_Modulations is array (Positive range <>) of aliased C.RF_Modulation_Config_V1
+      type Native_Modulations is array (Positive range <>) of aliased C.RF_Modulation_Config_V2
       with Convention => C;
       type Native_Phases is array (Positive range <>) of aliased Interfaces.C.double
       with Convention => C;
       type Native_Modulation_Indices is array (Positive range <>) of aliased Interfaces.Integer_32
       with Convention => C;
       Modulation_Count, Phase_Count, Reference_Count : Natural := 0;
+      type Native_Binary_Data is array (Positive range <>) of aliased Interfaces.Unsigned_32
+      with Convention => C;
+      Binary_Count                                   : Natural := 0;
       Connection_Count                               : Natural := 0;
       type Native_Connections is
         array (Positive range <>) of aliased C.RF_Interval_Endpoint_Connection_V1
@@ -629,6 +690,7 @@ package body AMS.MEL.RF.C2 is
             Modulation_Count := Modulation_Count + Natural (Interval.Modulations.Values.Length);
             for Config of Interval.Modulations.Values loop
                Phase_Count := Phase_Count + Natural (Config.Phases.Length);
+               Binary_Count := Binary_Count + Natural (Config.Binary_Data.Length);
             end loop;
          end if;
          TX_Count := TX_Count + Natural (Interval.TX_Events.Length);
@@ -673,13 +735,23 @@ package body AMS.MEL.RF.C2 is
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
-      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V11'Size);
+      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V12'Size);
       Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V3'Size);
-      Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V1'Size);
+      Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V2'Size);
+      Check_Backing_Size (Binary_Count, Interfaces.Unsigned_32'Size);
       Check_Backing_Size (Phase_Count, Interfaces.C.double'Size);
       Check_Backing_Size (Reference_Count, Interfaces.Integer_32'Size);
       Check_Backing_Size (TX_Group_Count, Interfaces.Unsigned_64'Size);
       Check_Backing_Size (Stokes_Count, C.RF_Stokes_Vector_V1'Size);
+      -- Cursors advance once past the final element. Reject that overflow
+      -- before allocating any backing or publishing addresses.
+      if Modulation_Count = Natural'Last
+        or else Binary_Count = Natural'Last
+        or else Phase_Count = Natural'Last
+        or else Reference_Count = Natural'Last
+      then
+         raise Constraint_Error with "modulation backing cursor exceeds Ada index range";
+      end if;
       --  Final-sized Ada-owned backing lives through the synchronous borrowed Add.
       --  Controlled label owners clean up on normal return and exceptions.
       declare
@@ -695,6 +767,8 @@ package body AMS.MEL.RF.C2 is
          References                                  :
            Native_Modulation_Indices (1 .. Reference_Count);
          Next_Modulation, Next_Phase, Next_Reference : Positive := 1;
+         Binary_Data                                 : Native_Binary_Data (1 .. Binary_Count);
+         Next_Binary                                 : Positive := 1;
          TX_Strings                                  : Labels (1 .. TX_Count);
          TX_Groups                                   : Native_Indices (1 .. TX_Group_Count);
          Next_TX, Next_TX_Group                      : Positive := 1;
@@ -712,7 +786,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                      : Positive := 1;
          Strings                                     : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I       : Positive := 1;
-         Span                                        : C.RF_Job_Interval_Config_Span_V11 :=
+         Span                                        : C.RF_Job_Interval_Config_Span_V12 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -937,12 +1011,23 @@ package body AMS.MEL.RF.C2 is
                   end if;
                   for Config of Interval.Modulations.Values loop
                      Modulations (Next_Modulation) :=
-                       (Interfaces.Unsigned_32 (Config.Kind),
-                        Config.Duration,
-                        (System.Null_Address, C.Size_T (Config.Phases.Length)),
-                        Interfaces.C.double (Config.Extent));
+                       ((Interfaces.Unsigned_32 (Config.Kind),
+                         Config.Duration,
+                         (System.Null_Address, C.Size_T (Config.Phases.Length)),
+                         Interfaces.C.double (Config.Extent)),
+                        (System.Null_Address, C.Size_T (Config.Binary_Data.Length)),
+                        Config.Pulse_Duration,
+                        Interfaces.C.double (Config.Frequency_Offset));
+                     if not Config.Binary_Data.Is_Empty then
+                        Modulations (Next_Modulation).Binary_Data.Data :=
+                          Binary_Data (Next_Binary)'Address;
+                     end if;
+                     for Value of Config.Binary_Data loop
+                        Binary_Data (Next_Binary) := Boolean'Pos (Value);
+                        Next_Binary := Next_Binary + 1;
+                     end loop;
                      if not Config.Phases.Is_Empty then
-                        Modulations (Next_Modulation).Phase_Chips_Rad.Data :=
+                        Modulations (Next_Modulation).Modulation.Phase_Chips_Rad.Data :=
                           Phases (Next_Phase)'Address;
                      end if;
                      for Value of Config.Phases loop
@@ -1024,7 +1109,15 @@ package body AMS.MEL.RF.C2 is
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
-         Check (C.RF_Job_Add_Intervals_V11 (Object.Handle, Span, D'Address, D'Length, R'Access), D);
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.RF_Job_Add_Intervals_V12 (Object.Handle, Span, D'Address, D'Length, R'Access);
+         begin
+            if Code = C.Invalid_Argument then
+               raise Constraint_Error with "invalid final interval configuration";
+            end if;
+            Check (Code, D);
+         end;
       end;
    end Add_RX_Job_Intervals;
    procedure Flush_Job (Object : in out Job) is

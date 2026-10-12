@@ -238,6 +238,13 @@ begin
                                    (Table, C2.Linear_Frequency_Modulation (1_000.0), Index);
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Append_Modulation_Reference (TX, C2.No_Modulation);
+                                 -- Default repeat count is one; this OOK entry
+                                 -- belongs only to this TX event position.
+                                 C2.Append_Modulation (Table, C2.On_Off_Keying ([True]), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation
+                                   (Table, C2.CPFSK_Pulse ([True, False, True], 1_000_000, 250_000, -125.0), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
                                  C2.Set_Modulations (Interval, Table);
                               end;
                               C2.Append_Applicable_TX_Element_Group (TX, 0);

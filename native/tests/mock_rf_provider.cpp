@@ -2928,6 +2928,45 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f12_double(
     return std::get<rfmel::LinearFrequencyModulation>(common).getFrequencyExtent();
 }
 
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f13_value(
+    unsigned i, unsigned m, unsigned field, unsigned n)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& interval = latest_intervals.at(i);
+    if (field == 0) return static_cast<int64_t>(interval.getModulations().size());
+    if (field == 5) return static_cast<int64_t>(interval.getSequence().getTxEvents().at(m).getModIndex().size());
+    if (field == 6) return interval.getSequence().getTxEvents().at(m).getModIndex().at(n);
+    const auto& modulation = interval.getModulations().at(m);
+    if (field == 1) return std::holds_alternative<rfmel::CommonModulations>(modulation);
+    const auto& common = std::get<rfmel::CommonModulations>(modulation);
+    if (field == 2) {
+        if (std::holds_alternative<rfmel::Tone>(common)) return 0;
+        if (std::holds_alternative<rfmel::PhaseCode>(common)) return 1;
+        if (std::holds_alternative<rfmel::LinearFrequencyModulation>(common)) return 2;
+        if (std::holds_alternative<rfmel::OnOffKeying>(common)) return 3;
+        if (std::holds_alternative<rfmel::CpfskPulse>(common)) return 4;
+        return -1;
+    }
+    if (std::holds_alternative<rfmel::OnOffKeying>(common)) {
+        const auto& bits = std::get<rfmel::OnOffKeying>(common).getPulseEnabled();
+        if (field == 4) return static_cast<int64_t>(bits.size());
+        return bits.at(n) ? 1 : 0;
+    }
+    // Pinned getters are non-const. Observe an independent mutable copy.
+    auto cpfsk = std::get<rfmel::CpfskPulse>(common);
+    if (field == 3) return cpfsk.getChipDuration().count();
+    if (field == 7) return cpfsk.getPulseDuration().count();
+    if (field == 4) return static_cast<int64_t>(cpfsk.getChipData().size());
+    return cpfsk.getChipData().at(n) ? 1 : 0;
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f13_double(unsigned i, unsigned m)
+{
+    std::lock_guard lock{interval_mutex};
+    auto cpfsk = std::get<rfmel::CpfskPulse>(std::get<rfmel::CommonModulations>(
+        latest_intervals.at(i).getModulations().at(m)));
+    return cpfsk.getFrequencyOffset();
+}
+
 extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f10_value(
     unsigned i, unsigned e, unsigned field, unsigned g)
 {

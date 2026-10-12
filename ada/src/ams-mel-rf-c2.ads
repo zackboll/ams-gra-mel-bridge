@@ -177,6 +177,19 @@ package AMS.MEL.RF.C2 is
      Interfaces.Integer_32 range Interfaces."-" (1) .. Interfaces.Integer_32'Last;
    No_Modulation                       : constant Modulation_Index := Interfaces."-" (1);
    function Tone return Modulation_Config;
+   type Modulation_Boolean_Array is array (Positive range <>) of Boolean;
+   function On_Off_Keying (Pulse_Enabled : Modulation_Boolean_Array) return Modulation_Config;
+   function CPFSK_Pulse
+     (Chip_Data                                               : Modulation_Boolean_Array;
+      Pulse_Duration_Femtoseconds, Chip_Duration_Femtoseconds : Interfaces.Integer_64;
+      Frequency_Offset_Hz                                     : Long_Float)
+      return Modulation_Config;
+   procedure Append_OOK_Pulse_Enable (Config : in out Modulation_Config; Enabled : Boolean);
+   procedure Replace_OOK_Pulse_Enables
+     (Config : in out Modulation_Config; Pulse_Enabled : Modulation_Boolean_Array);
+   procedure Append_CPFSK_Chip (Config : in out Modulation_Config; Chip : Boolean);
+   procedure Replace_CPFSK_Chips
+     (Config : in out Modulation_Config; Chip_Data : Modulation_Boolean_Array);
    function Phase_Code
      (Chip_Duration_Femtoseconds : Interfaces.Integer_64; Phases_Rad : Phase_Chip_Array)
       return Modulation_Config;
@@ -478,13 +491,17 @@ private
    end record;
    package RX_Event_Vectors is new Ada.Containers.Vectors (Positive, RX_Receive_Event_Config);
    package Phase_Chip_Vectors is new Ada.Containers.Vectors (Positive, Long_Float);
+   package Modulation_Boolean_Vectors is new Ada.Containers.Vectors (Positive, Boolean);
    package Modulation_Index_Vectors is new
      Ada.Containers.Vectors (Positive, Interfaces.Integer_32, Interfaces."=");
    type Modulation_Config is record
-      Kind     : Natural range 0 .. 2 := 0;
-      Duration : Interfaces.Integer_64 := 0;
-      Phases   : Phase_Chip_Vectors.Vector;
-      Extent   : Long_Float := 0.0;
+      Kind             : Natural range 0 .. 4 := 0;
+      Duration         : Interfaces.Integer_64 := 0;
+      Phases           : Phase_Chip_Vectors.Vector;
+      Extent           : Long_Float := 0.0;
+      Binary_Data      : Modulation_Boolean_Vectors.Vector;
+      Pulse_Duration   : Interfaces.Integer_64 := 0;
+      Frequency_Offset : Long_Float := 0.0;
    end record;
    package Modulation_Vectors is new Ada.Containers.Vectors (Positive, Modulation_Config);
    type Modulation_Table is record

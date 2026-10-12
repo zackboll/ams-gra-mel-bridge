@@ -2172,6 +2172,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_intervals_v9",
     "ams_mel_rf_job_add_intervals_v10",
     "ams_mel_rf_job_add_intervals_v11",
+    "ams_mel_rf_job_add_intervals_v12",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2495,3 +2496,20 @@ class RfJobIntervalConfigSpanV11(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v11 = _LIBRARY.ams_mel_rf_job_add_intervals_v11
 ams_mel_rf_job_add_intervals_v11.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV11, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v11.restype = ctypes.c_int32
+
+AMS_MEL_RF_MODULATION_ON_OFF_KEYING = 3
+AMS_MEL_RF_MODULATION_CPFSK_PULSE = 4
+class RfModulationConfigV2(ctypes.Structure):
+    _fields_ = [("modulation", RfModulationConfigV1), ("binary_data", U32SpanV1),
+                ("pulse_duration_femtoseconds", ctypes.c_int64), ("frequency_offset_hz", ctypes.c_double)]
+class RfModulationConfigSpanV2(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfModulationConfigV2)), ("size", ctypes.c_size_t)]
+class RfJobIntervalConfigV12(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV8), ("has_transmit_events", ctypes.c_uint32),
+                ("transmit_events", RfTxEventConfigSpanV3), ("has_modulations", ctypes.c_uint32),
+                ("modulations", RfModulationConfigSpanV2)]
+class RfJobIntervalConfigSpanV12(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV12)), ("size", ctypes.c_size_t)]
+ams_mel_rf_job_add_intervals_v12 = _LIBRARY.ams_mel_rf_job_add_intervals_v12
+ams_mel_rf_job_add_intervals_v12.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV12, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v12.restype = ctypes.c_int32
