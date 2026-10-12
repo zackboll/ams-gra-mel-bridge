@@ -16,6 +16,7 @@ procedure AMS_MEL_RF_TX_Events_Focused is
    package Status renames AMS.MEL.RF.C2.Interval_Status;
    use type C2.Request_Outcome;
    use type Interfaces.C.int;
+   use type Interfaces.C.unsigned;
    use type System.Address;
    function DL_Open
      (Path : Interfaces.C.Strings.chars_ptr; Flags : Interfaces.C.int) return System.Address
@@ -74,6 +75,7 @@ procedure AMS_MEL_RF_TX_Events_Focused is
    function To_Number is new Ada.Unchecked_Conversion (System.Address, Number_Access);
    use type Interfaces.Integer_64;
    use type Interfaces.Unsigned_64;
+   use type Interfaces.Unsigned_32;
    use type Interfaces.C.double;
    pragma Validity_Checks ("F");
    function IEEE is new Ada.Unchecked_Conversion (Interfaces.Unsigned_64, Long_Float);
@@ -242,6 +244,29 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end if;
       return Result;
    end TX_Value;
+   function TX_Control (I, E, Field : Interfaces.C.unsigned) return Interfaces.Unsigned_64 is
+      type Access_Value is
+        access function (I, E, F : Interfaces.C.unsigned) return Interfaces.Unsigned_64
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Access_Value);
+      Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f11_value");
+      Handle  : constant System.Address := DL_Open (Name, 2);
+      Address : constant System.Address := DL_Sym (Handle, Symbol);
+      Result  : Interfaces.Unsigned_64;
+   begin
+      if Handle = System.Null_Address or else Address = System.Null_Address then
+         raise Program_Error;
+      end if;
+      Result := Convert (Address) (I, E, Field);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end TX_Control;
    function TX_Number (I, E, Field : Interfaces.C.unsigned) return Interfaces.C.double is
       type Access_Value is
         access function (I, E, F : Interfaces.C.unsigned) return Interfaces.C.double
@@ -265,6 +290,374 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end if;
       return Result;
    end TX_Number;
+   function TX_Component (I, E, Vector, Field : Interfaces.C.unsigned) return Interfaces.C.double is
+      type Access_Value is
+        access function (I, E, V, F : Interfaces.C.unsigned) return Interfaces.C.double
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Access_Value);
+      Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f11_double");
+      Handle  : constant System.Address := DL_Open (Name, 2);
+      Address : constant System.Address := DL_Sym (Handle, Symbol);
+      Result  : Interfaces.C.double;
+   begin
+      if Handle = System.Null_Address or else Address = System.Null_Address then
+         raise Program_Error;
+      end if;
+      Result := Convert (Address) (I, E, Vector, Field);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end TX_Component;
+   function RX_Observation (I, F : Interfaces.C.unsigned) return Interfaces.Integer_64 is
+      Name   : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f5_scalar");
+      Handle : constant System.Address := DL_Open (Name, 2);
+      Fn     : constant Scalar_Access := To_Scalar (DL_Sym (Handle, Symbol));
+      Result : Interfaces.Integer_64;
+   begin
+      if Fn = null then
+         raise Program_Error;
+      end if;
+      Result := Fn (I, 0, F);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end RX_Observation;
+   function RX_Phase (I : Interfaces.C.unsigned) return Interfaces.C.double is
+      Name   : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f5_double");
+      Handle : constant System.Address := DL_Open (Name, 2);
+      Fn     : constant Number_Access := To_Number (DL_Sym (Handle, Symbol));
+      Result : Interfaces.C.double;
+   begin
+      if Fn = null then
+         raise Program_Error;
+      end if;
+      Result := Fn (I, 0, 0, 4);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if DL_Close (Handle) /= 0 then
+         raise Program_Error;
+      end if;
+      return Result;
+   end RX_Phase;
+   --  Independent public-value ownership and asymmetric common-control fixture.
+   procedure Send_Distinct (Object : in out C2.Job) is
+      List, Saved_List : C2.RX_Job_Interval_List;
+      type Doubles is array (Natural range <>) of Long_Float;
+      Phases           : constant Doubles :=
+        [-0.0, IEEE (16#7FF0_0000_0000_0000#), IEEE (16#7FF8_0000_0000_0001#), -4.25];
+      type Counts is array (Natural range <>) of Natural;
+      Sizes            : constant Counts := [2, 1, 0, 2];
+      type Matrix is
+        array (Natural range 0 .. 3, Natural range 0 .. 1, Natural range 0 .. 3) of Long_Float;
+      Values           : Matrix;
+      function Label (K : Natural) return String
+      is ("TX/β/" & Character'Val (Character'Pos ('A') + K));
+      procedure Equal_Number (Actual : Interfaces.C.double; Expected : Long_Float) is
+      begin
+         if Expected /= Expected then
+            if Actual = Actual then
+               raise Program_Error with "NaN classification lost";
+            end if;
+         elsif Actual /= Interfaces.C.double (Expected) then
+            raise Program_Error with "TX IEEE value lost";
+         elsif Expected = 0.0 then
+            if Bits (Actual) /= Bits (Interfaces.C.double (Expected)) then
+               raise Program_Error with "TX signed zero lost";
+            end if;
+         end if;
+      end Equal_Number;
+   begin
+      for K in 0 .. 3 loop
+         for V in 0 .. 1 loop
+            for C in 0 .. 3 loop
+               Values (K, V, C) := Long_Float (1 + K * 20 + V * 4 + C);
+            end loop;
+         end loop;
+      end loop;
+      Values (0, 0, 1) := -0.0;
+      Values (0, 0, 2) := IEEE (16#7FF0_0000_0000_0000#);
+      Values (0, 0, 3) := IEEE (16#7FF8_0000_0000_0001#);
+      Values (1, 0, 2) := IEEE (16#FFF0_0000_0000_0000#);
+      for I in 0 .. 1 loop
+         declare
+            Interval : C2.RX_Job_Interval_Config :=
+              C2.Create_RX_Job_Interval (10 + Interfaces.Unsigned_32 (I), 20);
+            Copy     : C2.RX_Job_Interval_Config;
+            RX       : C2.RX_Receive_Event_Config :=
+              C2.Create_RX_Receive_Event
+                (80 + Interfaces.Unsigned_32 (I), "retained RX", -9, 11, 12.5, 2.0);
+         begin
+            C2.Set_Phase_Offset_Radians (RX, 3.25 + Long_Float (I));
+            C2.Set_Iteration_Hold_Count (RX, 9 + Interfaces.Unsigned_64 (I));
+            C2.Set_Event_Execution_Type (RX, C2.Normal);
+            C2.Set_Event_Termination_Type (RX, C2.Cancel_Event);
+            C2.Append_RX_Event (Interval, RX);
+            for E in 0 .. 1 loop
+               declare
+                  K     : constant Natural := I * 2 + E;
+                  TX    : C2.TX_Transmit_Event_Config :=
+                    C2.Create_TX_Transmit_Event
+                      (17 + Interfaces.Unsigned_32 (K),
+                       Label (K),
+                       -7 - Interfaces.Integer_64 (K),
+                       11 + Interfaces.Integer_64 (K),
+                       100.25 + Long_Float (K),
+                       -12.5 - Long_Float (K),
+                       3 + Interfaces.Integer_64 (K),
+                       -3 - Interfaces.Integer_64 (K));
+                  Saved : C2.TX_Transmit_Event_Config;
+               begin
+                  C2.Set_Event_Stabilization_Point_Index
+                    (TX,
+                     Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+                     - Interfaces.Unsigned_64 (K));
+                  C2.Append_Applicable_TX_Element_Group (TX, 0);
+                  C2.Append_Applicable_TX_Element_Group
+                    (TX, Interfaces.Unsigned_64 (Interfaces.C.size_t'Last));
+                  for V in 1 .. Sizes (K) loop
+                     C2.Append_Polarization
+                       (TX,
+                        Values (K, V - 1, 0),
+                        Values (K, V - 1, 1),
+                        Values (K, V - 1, 2),
+                        Values (K, V - 1, 3));
+                  end loop;
+                  if Sizes (K) = 2 then
+                     begin
+                        C2.Append_Polarization (TX, 99.0, 98.0, 97.0, 96.0);
+                        raise Program_Error with "third append accepted";
+                     exception
+                        when Constraint_Error =>
+                           null;
+                     end;
+                  end if;
+                  C2.Set_Polarization_Beam_Steer_Correction (TX, K mod 2 = 1);
+                  C2.Set_Phase_Offset_Radians (TX, Phases (K));
+                  C2.Set_Event_Execution_Type (TX, C2.Execution_Type'Val (K mod 2));
+                  C2.Set_Event_Termination_Type (TX, C2.Event_Termination_Type'Val (1 - K mod 2));
+                  C2.Set_Allow_Delay_Start (TX, I = 1);
+                  C2.Set_Channelization_Enabled (TX, K = 0 or K = 3);
+                  C2.Set_Iteration_Hold_Count
+                    (TX,
+                     Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+                     - Interfaces.Unsigned_64 (K));
+                  C2.Set_Iteration_Termination_Count (TX, 2 + Interfaces.Unsigned_64 (K));
+                  Saved := TX;
+                  C2.Set_Phase_Offset_Radians (TX, 999.0);
+                  C2.Set_TX_Attenuation_DB (TX, 999.0);
+                  C2.Append_TX_Event (Interval, Saved);
+                  C2.Set_Phase_Offset_Radians (Saved, 888.0);
+                  C2.Set_TX_Edge_Durations (Saved, 888, 888);
+               end;
+            end loop;
+            Copy := Interval;
+            C2.Clear_TX_Events (Interval);
+            C2.Append_Job_Interval (List, Copy);
+            C2.Set_Empty_TX_Events (Copy);
+         end;
+      end loop;
+      Saved_List := List;
+      declare
+         Extra : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (99, 99);
+      begin
+         C2.Append_Job_Interval (List, Extra);
+      end;
+      if C2.Job_Interval_Count (Saved_List) /= 2 then
+         raise Program_Error with "list copy aliased";
+      end if;
+      C2.Add_Job_Intervals (Object, Saved_List);
+      for I in Interfaces.C.unsigned range 0 .. 1 loop
+         if TX_Value (I, 0, 0, 0) /= 2
+           or else TX_Value (I, 0, 1, 0) /= 1
+           or else TX_Value (I, 0, 14, 0) /= 80 + Interfaces.Unsigned_64 (I)
+           or else RX_Observation (I, 9) /= 9 + Interfaces.Integer_64 (I)
+           or else RX_Observation (I, 6) /= 0
+           or else RX_Observation (I, 7) /= 1
+           or else RX_Phase (I) /= 3.25 + Interfaces.C.double (I)
+         then
+            raise Program_Error with "RX retention";
+         end if;
+         for E in Interfaces.C.unsigned range 0 .. 1 loop
+            declare
+               K        : constant Natural := Natural (I * 2 + E);
+               Expected : constant array (Natural range 0 .. 8) of Interfaces.Unsigned_64 :=
+                 [Interfaces.Unsigned_64 (Sizes (K)),
+                  Interfaces.Unsigned_64 (K mod 2),
+                  Interfaces.Unsigned_64 (K mod 2),
+                  Interfaces.Unsigned_64 (1 - K mod 2),
+                  Interfaces.Unsigned_64 (I),
+                  Interfaces.Unsigned_64 (Interfaces.C.size_t'Last) - Interfaces.Unsigned_64 (K),
+                  2 + Interfaces.Unsigned_64 (K),
+                  (if K = 0 or K = 3 then 1 else 0),
+                  1];
+               Text     : constant String := Label (K);
+            begin
+               for F in Expected'Range loop
+                  if TX_Control (I, E, Interfaces.C.unsigned (F)) /= Expected (F) then
+                     raise Program_Error with "asymmetric TX control";
+                  end if;
+               end loop;
+               Equal_Number (TX_Component (I, E, 0, 4), Phases (K));
+               for V in 1 .. Sizes (K) loop
+                  for C in 0 .. 3 loop
+                     Equal_Number
+                       (TX_Component
+                          (I, E, Interfaces.C.unsigned (V - 1), Interfaces.C.unsigned (C)),
+                        Values (K, V - 1, C));
+                  end loop;
+               end loop;
+               if TX_Value (I, E, 2, 0) /= 17 + Interfaces.Unsigned_64 (K)
+                 or else TX_Value (I, E, 3, 0)
+                         /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+                            - Interfaces.Unsigned_64 (K)
+                 or else TX_Value (I, E, 6, 0)
+                         /= Interfaces.Unsigned_64'Last - 6 - Interfaces.Unsigned_64 (K)
+                 or else TX_Value (I, E, 7, 0) /= 11 + Interfaces.Unsigned_64 (K)
+                 or else TX_Value (I, E, 8, 0) /= 3 + Interfaces.Unsigned_64 (K)
+                 or else TX_Value (I, E, 9, 0)
+                         /= Interfaces.Unsigned_64'Last - 2 - Interfaces.Unsigned_64 (K)
+                 or else TX_Control (I, E, 9) /= 1
+                 or else TX_Value (I, E, 4, 0) /= 2
+                 or else TX_Value (I, E, 5, 0) /= 0
+                 or else TX_Value (I, E, 5, 1) /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+                 or else TX_Value (I, E, 10, 0) /= 1
+                 or else TX_Value (I, E, 11, 0) /= 1
+                 or else TX_Value (I, E, 12, 0) /= Text'Length
+               then
+                  raise Program_Error with "TX inherited ownership";
+               end if;
+               for C in Text'Range loop
+                  if TX_Value (I, E, 13, Interfaces.C.unsigned (C - Text'First))
+                    /= Character'Pos (Text (C))
+                  then
+                     raise Program_Error with "TX label ownership";
+                  end if;
+               end loop;
+               Equal_Number (TX_Number (I, E, 0), 100.25 + Long_Float (K));
+               Equal_Number (TX_Number (I, E, 1), -12.5 - Long_Float (K));
+            end;
+         end loop;
+      end loop;
+      --  Toggle each Boolean/enum alone through the public API: a swapped setter
+      --  cannot pass merely because two fields share a value in another fixture.
+      for Field in Interfaces.C.unsigned range 1 .. 7 loop
+         if Field /= 5 and Field /= 6 then
+            declare
+               TX : C2.TX_Transmit_Event_Config :=
+                 C2.Create_TX_Transmit_Event (77, "independent", 0, 1, 1.0);
+            begin
+               for Enabled in reverse Boolean loop
+                  case Field is
+                     when 1      =>
+                        C2.Set_Polarization_Beam_Steer_Correction (TX, Enabled);
+
+                     when 2      =>
+                        C2.Set_Event_Execution_Type
+                          (TX, (if Enabled then C2.Conditional else C2.Normal));
+
+                     when 3      =>
+                        C2.Set_Event_Termination_Type
+                          (TX, (if Enabled then C2.Cancel_Event else C2.Inhibit_Event));
+
+                     when 4      =>
+                        C2.Set_Allow_Delay_Start (TX, Enabled);
+
+                     when others =>
+                        C2.Set_Channelization_Enabled (TX, Enabled);
+                  end case;
+                  declare
+                     Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
+                     One      : C2.RX_Job_Interval_List;
+                  begin
+                     C2.Append_TX_Event (Interval, TX);
+                     C2.Append_Job_Interval (One, Interval);
+                     C2.Add_Job_Intervals (Object, One);
+                     for F in Interfaces.C.unsigned range 0 .. 7 loop
+                        if TX_Control (0, 0, F) /= (if F = Field and Enabled then 1 else 0) then
+                           raise Program_Error with "independent public control setter";
+                        end if;
+                     end loop;
+                  end;
+               end loop;
+            end;
+         end if;
+      end loop;
+      --  Observe Clear and explicit empty separately, including presence evidence
+      --  emitted only by the test-enabled facade, not inferred from vector size.
+      for Explicit_Empty in Boolean loop
+         declare
+            Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
+            TX       : constant C2.TX_Transmit_Event_Config :=
+              C2.Create_TX_Transmit_Event (7, "clear source", 0, 1, 1.0);
+            RX       : C2.RX_Receive_Event_Config :=
+              C2.Create_RX_Receive_Event (91, "RX survives", 0, 1, 2.0, 3.0);
+            Only     : C2.RX_Job_Interval_List;
+            File     : Ada.Text_IO.File_Type;
+            Trace    : constant String :=
+              Ada.Environment_Variables.Value ("AMS_MEL_TEST_PROVIDER_DIR")
+              & "/f11-ada-presence.log";
+         begin
+            C2.Set_Iteration_Hold_Count (RX, 37);
+            C2.Append_RX_Event (Interval, RX);
+            C2.Append_TX_Event (Interval, TX);
+            C2.Append_Job_Interval (Only, Interval);
+            C2.Add_Job_Intervals (Object, Only);
+            declare
+               Cleared : C2.RX_Job_Interval_List;
+            begin
+               if Explicit_Empty then
+                  C2.Set_Empty_TX_Events (Interval);
+               else
+                  C2.Clear_TX_Events (Interval);
+               end if;
+               Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Trace);
+               Ada.Text_IO.Close (File);
+               Ada.Environment_Variables.Set ("AMS_MEL_TEST_RF_TX_TRACE", Trace);
+               C2.Append_Job_Interval (Cleared, Interval);
+               C2.Add_RX_Job_Intervals (Object, Cleared);
+               Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_TX_TRACE");
+               Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Trace);
+               --  Text_IO.Create/Close emits an empty line before the C trace.
+               if Ada.Text_IO.Get_Line (File) /= "" then
+                  raise Program_Error with "unexpected trace prefix";
+               end if;
+               if Ada.Text_IO.Get_Line (File)
+                 /= (if Explicit_Empty then "tx-present" else "tx-absent")
+               then
+                  raise Program_Error with "TX presence semantics";
+               end if;
+               if Explicit_Empty then
+                  if Ada.Text_IO.Get_Line (File) /= "setTxEvents" then
+                     raise Program_Error with "explicit empty setter not reached";
+                  end if;
+               end if;
+               if not Ada.Text_IO.End_Of_File (File) then
+                  raise Program_Error with "unexpected TX setter calls";
+               end if;
+               Ada.Text_IO.Delete (File);
+               if TX_Value (0, 0, 0, 0) /= 0
+                 or else TX_Value (0, 0, 1, 0) /= 1
+                 or else TX_Value (0, 0, 14, 0) /= 91
+                 or else RX_Observation (0, 9) /= 37
+               then
+                  raise Program_Error with "clear discarded RX";
+               end if;
+            end;
+         end;
+      end loop;
+   end Send_Distinct;
    procedure Send_Empty (Object : in out C2.Job) is
       Absent : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
       Empty  : C2.RX_Job_Interval_Config := Absent;
@@ -343,10 +736,31 @@ procedure AMS_MEL_RF_TX_Events_Focused is
               Interfaces.Integer_64'First);
          Saved : C2.TX_Transmit_Event_Config;
       begin
-         C2.Set_Event_Stabilization_Point_Index (TX, Interfaces.Unsigned_64'Last);
+         C2.Set_Event_Stabilization_Point_Index
+           (TX, Interfaces.Unsigned_64 (Interfaces.C.size_t'Last));
          C2.Append_Applicable_TX_Element_Group (TX, 0);
-         C2.Append_Applicable_TX_Element_Group (TX, Interfaces.Unsigned_64'Last);
+         C2.Append_Applicable_TX_Element_Group
+           (TX, Interfaces.Unsigned_64 (Interfaces.C.size_t'Last));
+         C2.Append_Polarization (TX, 1.0, -2.0, 3.0, 4.0);
+         C2.Append_Polarization (TX, 5.0, 6.0, -7.0, 8.0);
+         begin
+            C2.Append_Polarization (TX, 0.0, 0.0, 0.0, 0.0);
+            raise Program_Error with "third TX polarization accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         C2.Set_Polarization_Beam_Steer_Correction (TX, True);
+         C2.Set_Phase_Offset_Radians (TX, -2.5);
+         C2.Set_Event_Execution_Type (TX, C2.Conditional);
+         C2.Set_Event_Termination_Type (TX, C2.Cancel_Event);
+         C2.Set_Allow_Delay_Start (TX, True);
+         C2.Set_Iteration_Hold_Count (TX, Interfaces.Unsigned_64 (Interfaces.C.size_t'Last));
+         C2.Set_Iteration_Termination_Count (TX, 1);
+         C2.Set_Channelization_Enabled (TX, True);
          Saved := TX;
+         C2.Set_Phase_Offset_Radians (TX, 99.0);
+         C2.Set_Event_Execution_Type (TX, C2.Normal);
          C2.Set_TX_Attenuation_DB (TX, 9.0);
          C2.Set_TX_Edge_Durations (TX, 1, 2);
          C2.Append_Applicable_TX_Element_Group (TX, 42);
@@ -464,6 +878,30 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       C2.Append_Job_Interval (List, Interval);
       C2.Append_Job_Interval (List, Interval);
       C2.Add_RX_Job_Intervals (Object, List);
+      if not Clear then
+         if TX_Control (0, 0, 0) /= 2
+           or else TX_Control (0, 0, 1) /= 1
+           or else TX_Control (0, 0, 2) /= 1
+           or else TX_Control (0, 0, 3) /= 1
+           or else TX_Control (0, 0, 4) /= 1
+           or else TX_Control (0, 0, 5) /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
+           or else TX_Control (0, 0, 6) /= 1
+           or else TX_Control (0, 0, 7) /= 1
+         then
+            raise Program_Error with "TX common controls fidelity";
+         end if;
+      end if;
+
+      if not Clear then
+         if TX_Component (0, 0, 0, 4) /= -2.5
+           or else TX_Component (0, 0, 0, 0) /= 1.0
+           or else TX_Component (0, 0, 0, 1) /= -2.0
+           or else TX_Component (0, 0, 1, 2) /= -7.0
+           or else TX_Component (0, 0, 1, 3) /= 8.0
+         then
+            raise Program_Error with "owned TX Stokes and phase copy";
+         end if;
+      end if;
       for I in Interfaces.C.unsigned range 0 .. 1 loop
          if TX_Value (I, 0, 0, 0) /= (if Clear then 0 else 2) or else TX_Value (I, 0, 1, 0) /= 2
          then
@@ -472,9 +910,9 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          if not Clear then
             for E in Interfaces.C.unsigned range 0 .. 1 loop
                if TX_Value (I, E, 2, 0) /= Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
-                 or else TX_Value (I, E, 3, 0) /= Interfaces.Unsigned_64'Last
+                 or else TX_Value (I, E, 3, 0) /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
                  or else TX_Value (I, E, 4, 0) /= 2
-                 or else TX_Value (I, E, 5, 1) /= Interfaces.Unsigned_64'Last
+                 or else TX_Value (I, E, 5, 1) /= Interfaces.Unsigned_64 (Interfaces.C.size_t'Last)
                  or else TX_Value (I, E, 6, 0) /= 16#8000_0000_0000_0000#
                  or else TX_Value (I, E, 7, 0) /= 16#7FFF_FFFF_FFFF_FFFF#
                  or else TX_Value (I, E, 8, 0) /= 16#7FFF_FFFF_FFFF_FFFF#
@@ -578,6 +1016,7 @@ begin
             declare
                Object : C2.Job := C2.Claim (Request);
             begin
+               Send_Distinct (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");

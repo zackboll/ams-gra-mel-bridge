@@ -13,6 +13,10 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdlib>
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+#include <cstdio>
+#include <exception>
+#endif
 #include <cstring>
 #include <future>
 #include <limits>
@@ -88,6 +92,24 @@ bool failpoint(const char *name) noexcept
     return false;
 #endif
 }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+void qualification_trace(const char *text) noexcept
+{
+    if (const char *path = std::getenv("AMS_MEL_TEST_RF_TX_TRACE")) {
+        if (auto *file = std::fopen(path, "a")) {
+            std::fprintf(file, "%s\n", text);
+            std::fclose(file);
+        }
+    }
+}
+struct QualificationUnwind {
+    int exceptions = std::uncaught_exceptions();
+    ~QualificationUnwind() {
+        if (std::uncaught_exceptions() > exceptions)
+            qualification_trace("preparation-unwound");
+    }
+};
+#endif
 ams_mel_status_t status(Kind kind) noexcept
 {
     switch (kind) {
@@ -415,7 +437,12 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool tx = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
+    constexpr bool tx_controls = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
+    constexpr bool tx = tx_controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
+    const auto tx_event_at = [](const auto& envelope) -> const auto& {
+        if constexpr (tx_controls) return envelope.event;
+        else return envelope;
+    };
     constexpr bool endpoint_map = tx || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v8>;
     constexpr bool product = endpoint_map || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v7>;
     constexpr bool lf = product || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v6>;
@@ -460,7 +487,19 @@ ams_mel_status_t add_rx_intervals(
                 const auto events = source.transmit_events;
                 if (!span_ok(events.size, events.data, sizeof(*events.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t e = 0; e < events.size; ++e) {
-                    const auto& event = events.data[e];
+                    const auto& event = tx_event_at(events.data[e]);
+                    if constexpr (tx_controls) {
+                        const auto& control = events.data[e];
+                        if (control.polarization.size > 2U ||
+                            !span_ok(control.polarization.size, control.polarization.data,
+                                     sizeof(*control.polarization.data)) ||
+                            control.polarization_beam_steer_correction > 1U ||
+                            control.allow_delay_start > 1U || control.channelization_enabled > 1U ||
+                            control.execution_type > AMS_MEL_RF_EXECUTION_CONDITIONAL ||
+                            control.termination_type > AMS_MEL_RF_EVENT_TERMINATION_CANCEL ||
+                            !fits_count(control.iteration_hold_count) ||
+                            !fits_count(control.iteration_termination_count)) return AMS_MEL_INVALID_ARGUMENT;
+                    }
                     const auto groups = event.applicable_tx_element_groups;
                     if (!valid_view(event.element_group_label) || !fits_count(event.stab_point_index) ||
                         !span_ok(groups.size, groups.data, sizeof(*groups.data))) return AMS_MEL_INVALID_ARGUMENT;
@@ -576,12 +615,24 @@ ams_mel_status_t add_rx_intervals(
                 return AMS_MEL_PROVIDER_FAILED;
             }
         }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        QualificationUnwind qualification_unwind;
+#endif
         std::vector<rfmel::JobInterval> intervals;
         if constexpr (spatial) {
             if (failpoint("interval-spatial-allocation")) throw std::bad_alloc{};
         }
         intervals.reserve(inputs.size);
         for (std::size_t i = 0; i < inputs.size; ++i) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+            if constexpr (tx_controls) {
+                if (i == 1 && failpoint("later-tx-interval")) {
+                    qualification_trace("later-tx-interval: preceding interval complete");
+                    throw std::bad_alloc{};
+                }
+                qualification_trace(inputs.data[i].has_transmit_events ? "tx-present" : "tx-absent");
+            }
+#endif
             const auto& input = input_at(i);
             std::vector<rfmel::ReceiveEvent> events;
             events.reserve(input.receive_events.size);
@@ -672,7 +723,7 @@ ams_mel_status_t add_rx_intervals(
                     const auto source = inputs.data[i].transmit_events;
                     transmit.reserve(source.size);
                     for (std::size_t e = 0; e < source.size; ++e) {
-                        const auto& config = source.data[e];
+                        const auto& config = tx_event_at(source.data[e]);
                         rfmel::TransmitEvent event;
                         event.setEventID(config.event_id);
                         event.setElementGroupLabel(copy_view(config.element_group_label));
@@ -688,9 +739,36 @@ ams_mel_status_t add_rx_intervals(
                         event.setTxAtten_dB(config.tx_attenuation_db);
                         event.setRiseDuration(Fs{config.rise_duration_femtoseconds});
                         event.setFallDuration(Fs{config.fall_duration_femtoseconds});
+                        if constexpr (tx_controls) {
+                            const auto& control = source.data[e];
+                            std::vector<rfmel::StokesVector> polarization;
+                            polarization.reserve(control.polarization.size);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                            if (e == 1 && !transmit.empty() && failpoint("later-tx-polarization")) {
+                                qualification_trace("later-tx-polarization: preceding event complete");
+                                throw std::bad_alloc{};
+                            }
+#endif
+                            for (std::size_t p = 0; p < control.polarization.size; ++p) {
+                                const auto& s = control.polarization.data[p];
+                                polarization.push_back(rfmel::StokesVector{s.s0, s.s1, s.s2, s.s3});
+                            }
+                            event.setPolarization(polarization);
+                            event.setPolarizationBeemSteerCorrectionEnabled(control.polarization_beam_steer_correction != 0U);
+                            event.setPhaseOffset(control.phase_offset_rad);
+                            event.setExecutionType(static_cast<rfmel::ExecutionType>(control.execution_type));
+                            event.setEventTerminationType(static_cast<rfmel::JobEvent::EventTerminationType>(control.termination_type));
+                            event.setAllowDelayStart(control.allow_delay_start != 0U);
+                            event.setIterationHoldCount(static_cast<std::size_t>(control.iteration_hold_count));
+                            event.setIterationTerminationCount(static_cast<std::size_t>(control.iteration_termination_count));
+                            event.setChannelizationEnabled(control.channelization_enabled != 0U);
+                        }
                         transmit.push_back(std::move(event));
                     }
                     sequence.setTxEvents(transmit);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    qualification_trace("setTxEvents");
+#endif
                 }
             }
             rfmel::JobInterval interval;
@@ -832,6 +910,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_rx_intervals_v8(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v10(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v10 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

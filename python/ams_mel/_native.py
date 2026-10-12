@@ -2170,6 +2170,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_rx_intervals_v7",
     "ams_mel_rf_job_add_rx_intervals_v8",
     "ams_mel_rf_job_add_intervals_v9",
+    "ams_mel_rf_job_add_intervals_v10",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2441,3 +2442,28 @@ class RfJobIntervalConfigSpanV9(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v9 = _LIBRARY.ams_mel_rf_job_add_intervals_v9
 ams_mel_rf_job_add_intervals_v9.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV9, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v9.restype = ctypes.c_int32
+
+class RfTxEventConfigV2(ctypes.Structure):
+    _fields_ = [
+        ("event", RfTxEventConfigV1),
+        ("polarization", RfStokesVectorSpanV1),
+        ("polarization_beam_steer_correction", ctypes.c_uint32),
+        ("phase_offset_rad", ctypes.c_double),
+        ("execution_type", ctypes.c_uint32),
+        ("termination_type", ctypes.c_uint32),
+        ("allow_delay_start", ctypes.c_uint32),
+        ("iteration_hold_count", ctypes.c_uint64),
+        ("iteration_termination_count", ctypes.c_uint64),
+        ("channelization_enabled", ctypes.c_uint32),
+    ]
+
+class RfTxEventConfigSpanV2(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfTxEventConfigV2)), ("size", ctypes.c_size_t)]
+class RfJobIntervalConfigV10(ctypes.Structure):
+    _fields_ = [("interval", RfJobIntervalConfigV8), ("has_transmit_events", ctypes.c_uint32),
+                ("transmit_events", RfTxEventConfigSpanV2)]
+class RfJobIntervalConfigSpanV10(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV10)), ("size", ctypes.c_size_t)]
+ams_mel_rf_job_add_intervals_v10 = _LIBRARY.ams_mel_rf_job_add_intervals_v10
+ams_mel_rf_job_add_intervals_v10.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV10, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v10.restype = ctypes.c_int32

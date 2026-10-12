@@ -211,6 +211,22 @@ package AMS.MEL.RF.C2 is
    procedure Set_Iteration_Termination_Count
      (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64);
    procedure Set_Channelization_Enabled (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   procedure Append_Polarization
+     (Event : in out TX_Transmit_Event_Config; S0, S1, S2, S3 : Long_Float);
+   procedure Set_Polarization_Beam_Steer_Correction
+     (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
+   procedure Set_Phase_Offset_Radians (Event : in out TX_Transmit_Event_Config; Value : Long_Float);
+   procedure Set_Event_Execution_Type
+     (Event : in out TX_Transmit_Event_Config; Value : Execution_Type);
+   procedure Set_Event_Termination_Type
+     (Event : in out TX_Transmit_Event_Config; Value : Event_Termination_Type);
+   procedure Set_Allow_Delay_Start (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
+   procedure Set_Iteration_Hold_Count
+     (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64);
+   procedure Set_Iteration_Termination_Count
+     (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64);
+   procedure Set_Channelization_Enabled
+     (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
    --  Portable provider indices, not labels. No local count/range relationship
    --  is inferred. Applicable group order and duplicates are preserved.
    procedure Set_Stab_Point_Index
@@ -447,6 +463,16 @@ private
       Rise_Duration_Femtoseconds, Fall_Duration_Femtoseconds : Interfaces.Integer_64;
       Stab_Point_Index                                       : Interfaces.Unsigned_64 := 0;
       Groups                                                 : RX_Index_Vectors.Vector;
+      Polarization                                           : Stokes_Vectors.Vector;
+      Beam_Correction                                        : Boolean := False;
+      Phase_Offset                                           : Long_Float := 0.0;
+      Execution                                              : Execution_Type := Normal;
+      Termination                                            : Event_Termination_Type :=
+        Inhibit_Event;
+      Allow_Delay                                            : Boolean := False;
+      Hold_Count, Termination_Count                          : Interfaces.Unsigned_64 := 0;
+      Channelization                                         : Boolean := False;
+
    end record;
    package TX_Event_Vectors is new Ada.Containers.Vectors (Positive, TX_Transmit_Event_Config);
    type Local_Function_Write is record

@@ -1,5 +1,21 @@
 # Architecture decisions
 
+## Task 034F11 — RF TX JobEvent common controls
+
+TX event v2 adds owned polarization, beam correction, phase radians, execution,
+termination, delay, iteration counts and channelization. JobInterval v10 nests
+**v8**, not v9, and carries one authoritative TX-v2 collection. V9/TX-v1 and all
+previous profiles remain frozen with original defaults. Exactly one export,
+`ams_mel_rf_job_add_intervals_v10`, extends ABI 0.1 (199 → 200). Zero/one/two ordered
+Stokes vectors, exact 0/1 booleans/enums and size_t-fit counts are validated;
+IEEE doubles are forwarded without normalization. Safe Ada TX overloads own
+copyable values and synchronous backing; both Add names use v10. Raw Ada, Rust
+sys and private Python mirror the additive ABI. This configures values only:
+Conditional does not implement a trigger API, and Squall's no-op Add acceptance
+is not TX fidelity or RF emission evidence. See
+`docs/task-034f11-rf-tx-event-controls.md` for contract, layouts and qualification.
+
+
 ## Task 034F10 — value-only RF transmit events
 
 JobInterval v9 nests frozen v8 and adds an optional ordered TX event collection.
