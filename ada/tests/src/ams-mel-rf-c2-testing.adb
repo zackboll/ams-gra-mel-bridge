@@ -16,6 +16,10 @@ package body AMS.MEL.RF.C2.Testing is
       function Zero_Modulation is new Zero (C.RF_Modulation_Config_V1);
       function Zero_Event is new Zero (C.RF_TX_Event_Config_V3);
       function Zero_Interval is new Zero (C.RF_Job_Interval_Config_V11);
+      function Zero_Binary is new Zero (C.RF_Modulation_Config_V2);
+      function Zero_V12 is new Zero (C.RF_Job_Interval_Config_V12);
+      Binary     : constant C.RF_Modulation_Config_V2 := Zero_Binary;
+      V12        : constant C.RF_Job_Interval_Config_V12 := Zero_V12;
       Modulation : constant C.RF_Modulation_Config_V1 := Zero_Modulation;
       Event      : constant C.RF_TX_Event_Config_V3 := Zero_Event;
       Interval   : constant C.RF_Job_Interval_Config_V11 := Zero_Interval;
@@ -23,6 +27,26 @@ package body AMS.MEL.RF.C2.Testing is
       --  The actual compiled C layout probe qualifies these LP64 measurements.
       --  Do not count this conditional check as narrower-target runtime evidence.
       if C.Size_T'Size = 64 then
+         if C.RF_Modulation_Config_V2'Object_Size /= 576
+           or else C.RF_Modulation_Config_V2'Alignment /= 8
+           or else Binary.Modulation'Position /= 0
+           or else Binary.Binary_Data'Position /= 40
+           or else Binary.Pulse_Duration_Femtoseconds'Position /= 56
+           or else Binary.Frequency_Offset_Hz'Position /= 64
+           or else C.RF_Modulation_Config_Span_V2'Object_Size /= 128
+           or else C.RF_Modulation_Config_Span_V2'Alignment /= 8
+           or else C.RF_Job_Interval_Config_V12'Object_Size /= 2304
+           or else C.RF_Job_Interval_Config_V12'Alignment /= 8
+           or else V12.Interval'Position /= 0
+           or else V12.Has_Transmit_Events'Position /= 240
+           or else V12.Transmit_Events'Position /= 248
+           or else V12.Has_Modulations'Position /= 264
+           or else V12.Modulations'Position /= 272
+           or else C.RF_Job_Interval_Config_Span_V12'Object_Size /= 128
+           or else C.RF_Job_Interval_Config_Span_V12'Alignment /= 8
+         then
+            raise Program_Error with "binary modulation C/Ada representation mismatch";
+         end if;
          if C.Double_Span_V1'Object_Size /= 128
            or else C.Double_Span_V1'Alignment /= 8
            or else C.I32_Span_V1'Object_Size /= 128

@@ -1,5 +1,24 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+## Task 034F13 — copied RF OOK and CPFSK values
+
+Adds OnOffKeying and CpfskPulse as copied configuration values through interval
+v12 and exactly `ams_mel_rf_job_add_intervals_v12` (ABI 0.1, 201 → 202 exports).
+Bridge tags 3/4 are not native variant indices. The fixed modulation-v2 record
+nests frozen v1; unpacked uint32 elements must be exactly 0/1. V12 nests frozen
+v8 and reuses TX-v3, with one authoritative table. V11 remains three-alternative.
+Only active payload fields are read. OOK lengths match the final interval repeat
+count; one OOK table index belongs to at most one TX event position (repeated
+references within that event remain valid). Equal-valued entries and separate
+intervals are independent. CPFSK and earlier alternatives remain shareable.
+Safe Ada owns Boolean vectors, supports kind-guarded append/replace operations,
+and both Add names serialize v12. Submission validates final relationships;
+invalid input raises Constraint_Error before provider Add. Exact signed int64
+femtoseconds and IEEE Hz values are forwarded without physical calculations.
+This is not waveform synthesis, scheduling execution, IQ generation, hardware
+transmission or RF emission. See `docs/task-034f13-rf-binary-modulations.md`.
+
+
 Task 034F12 adds value-only Tone, PhaseCode (signed int64 femtoseconds and
 ordered radians), and LinearFrequencyModulation (Hz extent). Interval v11
 nests frozen v8 and has one TX-v3 collection plus an interval-local owned table.

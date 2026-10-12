@@ -3279,6 +3279,43 @@ typedef struct ams_mel_rf_job_interval_config_span_v11 {
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v11(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v11 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Binary tags are bridge values, not native variant indices. V11 remains
+ * limited to Tone, PhaseCode and LFM. Binary data is unpacked: each uint32_t
+ * element must be exactly 0 or 1; size counts logical values, not bytes. */
+#define AMS_MEL_RF_MODULATION_ON_OFF_KEYING UINT32_C(3)
+#define AMS_MEL_RF_MODULATION_CPFSK_PULSE UINT32_C(4)
+typedef struct ams_mel_rf_modulation_config_v2 {
+    ams_mel_rf_modulation_config_v1 modulation;
+    ams_mel_u32_span_v1 binary_data;
+    int64_t pulse_duration_femtoseconds;
+    double frequency_offset_hz;
+} ams_mel_rf_modulation_config_v2;
+typedef struct ams_mel_rf_modulation_config_span_v2 {
+    const ams_mel_rf_modulation_config_v2 *data;
+    size_t size;
+} ams_mel_rf_modulation_config_span_v2;
+/* Active fields: Tone kind only; PhaseCode chip duration/phase radians;
+ * LFM frequency extent; OOK binary data; CPFSK binary data, chip duration,
+ * pulse duration and frequency offset. All inactive fields are ignored.
+ * Every active OOK length must match the final interval repeat count, even
+ * if unused. One OOK table index may belong to only one TX event position;
+ * repeated references within that event are valid. Equal-valued entries and
+ * entries in separate intervals are independent. Empty/zero is structural
+ * consistency only, not a provider execution promise. */
+typedef struct ams_mel_rf_job_interval_config_v12 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v2 modulations;
+} ams_mel_rf_job_interval_config_v12;
+typedef struct ams_mel_rf_job_interval_config_span_v12 {
+    const ams_mel_rf_job_interval_config_v12 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v12;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v12(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v12 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

@@ -437,7 +437,12 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool modulation = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
+    constexpr bool binary = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
+    constexpr bool modulation = binary || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
+    const auto modulation_at = [](const auto& supplied) -> const auto& {
+        if constexpr (binary) return supplied.modulation;
+        else return supplied;
+    };
     constexpr bool tx_controls = modulation || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
     constexpr bool tx = tx_controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
     const auto tx_control_at = [](const auto& envelope) -> const auto& {
@@ -493,11 +498,25 @@ ams_mel_status_t add_rx_intervals(
                 const auto table = source.modulations;
                 if (!span_ok(table.size, table.data, sizeof(*table.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t m = 0; m < table.size; ++m) {
-                    const auto& value = table.data[m];
-                    if (value.kind > AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY) return AMS_MEL_INVALID_ARGUMENT;
+                    const auto& value = modulation_at(table.data[m]);
+                    constexpr auto last_kind = binary ? AMS_MEL_RF_MODULATION_CPFSK_PULSE : AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY;
+                    if (value.kind > last_kind) return AMS_MEL_INVALID_ARGUMENT;
                     if (value.kind == AMS_MEL_RF_MODULATION_PHASE_CODE &&
                         !span_ok(value.phase_chips_rad.size, value.phase_chips_rad.data,
                                  sizeof(*value.phase_chips_rad.data))) return AMS_MEL_INVALID_ARGUMENT;
+                    if constexpr (binary) {
+                        if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING ||
+                            value.kind == AMS_MEL_RF_MODULATION_CPFSK_PULSE) {
+                            const auto bits = table.data[m].binary_data;
+                            if (!span_ok(bits.size, bits.data, sizeof(*bits.data))) return AMS_MEL_INVALID_ARGUMENT;
+                            if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING &&
+                                (!fits_count(input.sequence_repeat_count) ||
+                                 bits.size != static_cast<std::size_t>(input.sequence_repeat_count)))
+                                return AMS_MEL_INVALID_ARGUMENT;
+                            for (std::size_t b = 0; b < bits.size; ++b)
+                                if (bits.data[b] > 1U) return AMS_MEL_INVALID_ARGUMENT;
+                        }
+                    }
                 }
             }
         }
@@ -644,6 +663,29 @@ ams_mel_status_t add_rx_intervals(
         }
     }
     try {
+        if constexpr (binary) {
+            // Structural validation above makes all active table/reference reads
+            // safe. Scratch allocation belongs inside the exception barrier.
+            for (std::size_t i = 0; i < inputs.size; ++i) {
+                const auto& source = inputs.data[i];
+                if (!source.has_modulations || !source.has_transmit_events) continue;
+                std::vector<std::size_t> owners(source.modulations.size,
+                    std::numeric_limits<std::size_t>::max());
+                for (std::size_t e = 0; e < source.transmit_events.size; ++e) {
+                    const auto& event = source.transmit_events.data[e];
+                    if (!event.has_modulation_indices) continue;
+                    for (std::size_t n = 0; n < event.modulation_indices.size; ++n) {
+                        const auto index = event.modulation_indices.data[n];
+                        if (index < 0) continue;
+                        const auto m = static_cast<std::size_t>(index);
+                        if (source.modulations.data[m].modulation.kind != AMS_MEL_RF_MODULATION_ON_OFF_KEYING) continue;
+                        if (owners[m] != std::numeric_limits<std::size_t>::max() && owners[m] != e)
+                            return AMS_MEL_INVALID_ARGUMENT;
+                        owners[m] = e;
+                    }
+                }
+            }
+        }
         if (enabled) {
             std::lock_guard lock{job->state->mutex};
             if (!job->state->status_registration_returned ||
@@ -840,7 +882,43 @@ ams_mel_status_t add_rx_intervals(
                             throw std::bad_alloc{};
                         }
 #endif
-                        const auto& value = supplied.data[m];
+                        const auto& value = modulation_at(supplied.data[m]);
+                        if constexpr (binary) {
+                            if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING ||
+                                value.kind == AMS_MEL_RF_MODULATION_CPFSK_PULSE) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                if (m > 0 && failpoint("later-binary-definition")) {
+                                    qualification_trace("later-binary-definition: preceding value complete");
+                                    throw std::bad_alloc{};
+                                }
+#endif
+                                std::vector<bool> bits;
+                                const auto source = supplied.data[m].binary_data;
+                                bits.reserve(source.size);
+                                for (std::size_t b = 0; b < source.size; ++b) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                    if (m > 0 && b == source.size / 2 && failpoint("later-binary-vector")) {
+                                        qualification_trace("later-binary-vector: preparation reached");
+                                        throw std::bad_alloc{};
+                                    }
+#endif
+                                    bits.push_back(source.data[b] == 1U);
+                                }
+                                if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING) {
+                                    rfmel::OnOffKeying ook{bits};
+                                    table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                        std::in_place_type<rfmel::OnOffKeying>, ook);
+                                } else {
+                                    rfmel::CpfskPulse cpfsk{bits,
+                                        Fs{supplied.data[m].pulse_duration_femtoseconds},
+                                        Fs{value.chip_duration_femtoseconds},
+                                        supplied.data[m].frequency_offset_hz};
+                                    table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                        std::in_place_type<rfmel::CpfskPulse>, cpfsk);
+                                }
+                                continue;
+                            }
+                        }
                         if (value.kind == AMS_MEL_RF_MODULATION_TONE) {
                             table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
                                 std::in_place_type<rfmel::Tone>);
@@ -1012,6 +1090,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v10(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v11(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v11 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v12(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v12 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

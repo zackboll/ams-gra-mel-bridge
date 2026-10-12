@@ -4248,6 +4248,8 @@ pub type AmsMelRfModulationKindT = u32;
 pub const AMS_MEL_RF_MODULATION_TONE: AmsMelRfModulationKindT = 0;
 pub const AMS_MEL_RF_MODULATION_PHASE_CODE: AmsMelRfModulationKindT = 1;
 pub const AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY: AmsMelRfModulationKindT = 2;
+pub const AMS_MEL_RF_MODULATION_ON_OFF_KEYING: AmsMelRfModulationKindT = 3;
+pub const AMS_MEL_RF_MODULATION_CPFSK_PULSE: AmsMelRfModulationKindT = 4;
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelDoubleSpanV1 {
@@ -4302,7 +4304,43 @@ pub struct AmsMelRfJobIntervalConfigSpanV11 {
     pub data: *const AmsMelRfJobIntervalConfigV11,
     pub size: usize,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigV2 {
+    pub modulation: AmsMelRfModulationConfigV1,
+    pub binary_data: AmsMelU32SpanV1,
+    pub pulse_duration_femtoseconds: i64,
+    pub frequency_offset_hz: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigSpanV2 {
+    pub data: *const AmsMelRfModulationConfigV2,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV12 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV2,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV12 {
+    pub data: *const AmsMelRfJobIntervalConfigV12,
+    pub size: usize,
+}
 extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v12(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV12,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_rf_job_add_intervals_v11(
         job: *mut AmsMelRfJob,
         intervals: AmsMelRfJobIntervalConfigSpanV11,

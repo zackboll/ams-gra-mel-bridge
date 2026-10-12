@@ -660,6 +660,262 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   procedure Send_Binary_Modulations (Object : in out C2.Job) is
+      type Observation_Access is
+        access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
+      with Convention => C;
+      type Double_Access is
+        access function (I, M : Interfaces.C.unsigned) return Interfaces.C.double
+      with Convention => C;
+      function To_Observation is new Ada.Unchecked_Conversion (System.Address, Observation_Access);
+      function To_Double is new Ada.Unchecked_Conversion (System.Address, Double_Access);
+      Name        : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Library     : constant System.Address := DL_Open (Name, 2);
+      function Symbol (Text : String) return System.Address is
+         S      : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Text);
+         Result : constant System.Address := DL_Sym (Library, S);
+      begin
+         Interfaces.C.Strings.Free (S);
+         if Result = System.Null_Address then
+            raise Program_Error with "binary observer missing";
+         end if;
+         return Result;
+      end Symbol;
+      Observe     : constant Observation_Access := To_Observation (Symbol ("mock_rf_f13_value"));
+      Number      : constant Double_Access := To_Double (Symbol ("mock_rf_f13_double"));
+      TX_Number   : constant Number_Access := To_Number (Symbol ("mock_rf_f11_double"));
+      RX_Number   : constant Number_Access := To_Number (Symbol ("mock_rf_f5_double"));
+      List, Saved : C2.RX_Job_Interval_List;
+      procedure Require (Condition : Boolean) is
+      begin
+         if not Condition then
+            raise Program_Error with "public Ada binary modulation fidelity";
+         end if;
+      end Require;
+      procedure Check_Bits (I, M : Interfaces.C.unsigned; Values : C2.Modulation_Boolean_Array) is
+      begin
+         Require (Observe (I, M, 1, 0) = 1);
+         Require (Observe (I, M, 4, 0) = Values'Length);
+         for N in Values'Range loop
+            Require
+              (Observe (I, M, 8, Interfaces.C.unsigned (N - Values'First))
+               = Boolean'Pos (Values (N)));
+         end loop;
+      end Check_Bits;
+      procedure Submit_One (Config : C2.Modulation_Config; Count : Interfaces.Unsigned_64) is
+         Interval : C2.RX_Job_Interval_Config :=
+           C2.Create_RX_Job_Interval (21, 19, Sequence_Repeat_Count => Count);
+         Table    : C2.Modulation_Table;
+         Index    : C2.Modulation_Index;
+         One      : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Modulation (Table, Config, Index);
+         C2.Set_Modulations (Interval, Table);
+         C2.Append_Job_Interval (One, Interval);
+         C2.Add_Job_Intervals (Object, One);
+      end Submit_One;
+      procedure Reject_Shared_OOK is
+         Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (91, 19);
+         Table    : C2.Modulation_Table;
+         Index    : C2.Modulation_Index;
+         Invalid  : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Modulation (Table, C2.On_Off_Keying ([True]), Index);
+         for E in 1 .. 2 loop
+            declare
+               Event : C2.TX_Transmit_Event_Config :=
+                 C2.Create_TX_Transmit_Event (7, "same ID", 1, 3, 17.5);
+            begin
+               C2.Append_Modulation_Reference (Event, Index);
+               C2.Append_TX_Event (Interval, Event);
+            end;
+         end loop;
+         C2.Set_Modulations (Interval, Table);
+         C2.Append_Job_Interval (Invalid, Interval);
+         begin
+            C2.Add_Job_Intervals (Object, Invalid);
+            raise Program_Error with "shared OOK accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end Reject_Shared_OOK;
+   begin
+      Interfaces.C.Strings.Free (Name);
+      AMS.MEL.RF.C2.Testing.Check_Modulation_Representation;
+      declare
+         Source : C2.Modulation_Boolean_Array (1 .. 5) := [True, False, False, True, False];
+         Chips  : C2.Modulation_Boolean_Array (1 .. 7) :=
+           [False, True, False, True, True, False, False];
+         OOK    : C2.Modulation_Config := C2.On_Off_Keying (Source);
+         CPFSK  : C2.Modulation_Config :=
+           C2.CPFSK_Pulse (Chips, Interfaces.Integer_64'First, Interfaces.Integer_64'Last, -0.0);
+      begin
+         for I in 0 .. 1 loop
+            declare
+               Interval : C2.RX_Job_Interval_Config :=
+                 C2.Create_RX_Job_Interval
+                   (Interfaces.Unsigned_32 (40 + I),
+                    71,
+                    Sequence_Repeat_Count => Interfaces.Unsigned_64 (5 - 2 * I));
+               Table    : C2.Modulation_Table;
+               Index    : C2.Modulation_Index;
+               RX       : C2.RX_Receive_Event_Config :=
+                 C2.Create_RX_Receive_Event (81, "binary RX", -9, 11, 12.5, 2.0);
+            begin
+               if I = 1 then
+                  C2.Replace_OOK_Pulse_Enables (OOK, [False, True, True]);
+                  CPFSK := C2.CPFSK_Pulse ([True, False, True, False], 37, -59, -7.25);
+               end if;
+               C2.Append_Modulation (Table, C2.Tone, Index);
+               C2.Append_Modulation (Table, OOK, Index);
+               Require (Index = 1);
+               C2.Append_Modulation (Table, CPFSK, Index);
+               C2.Append_Modulation (Table, OOK, Index);
+               C2.Append_Modulation (Table, C2.Linear_Frequency_Modulation (13.5), Index);
+               C2.Append_Modulation (Table, C2.Phase_Code (17, [1.25, -2.5]), Index);
+               for E in 0 .. 1 loop
+                  declare
+                     Event : C2.TX_Transmit_Event_Config :=
+                       C2.Create_TX_Transmit_Event (7, "duplicate ID", 1, 3, 17.5);
+                  begin
+                     C2.Append_Modulation_Reference (Event, C2.Modulation_Index (1 + 2 * E));
+                     C2.Append_Modulation_Reference (Event, C2.No_Modulation);
+                     C2.Append_Modulation_Reference (Event, 2);
+                     C2.Append_Modulation_Reference (Event, C2.Modulation_Index (1 + 2 * E));
+                     C2.Append_Modulation_Reference (Event, 5);
+                     C2.Append_Polarization (Event, 1.0, -2.0, 3.0, -4.0);
+                     C2.Append_TX_Event (Interval, Event);
+                  end;
+               end loop;
+               C2.Append_Polarization (RX, 5.0, -6.0, 7.0, -8.0);
+               C2.Append_RX_Event (Interval, RX);
+               C2.Set_Modulations (Interval, Table);
+               C2.Append_Job_Interval (List, Interval);
+            end;
+         end loop;
+         Saved := List;
+         for N in Source'Range loop
+            Source (N) := not Source (N);
+         end loop;
+         for N in Chips'Range loop
+            Chips (N) := not Chips (N);
+         end loop;
+         C2.Replace_CPFSK_Chips (CPFSK, []);
+         C2.Replace_OOK_Pulse_Enables (OOK, []);
+      end;
+      C2.Add_Job_Intervals (Object, Saved);
+      Check_Bits (0, 1, [True, False, False, True, False]);
+      Check_Bits (0, 3, [True, False, False, True, False]);
+      Check_Bits (0, 2, [False, True, False, True, True, False, False]);
+      Check_Bits (1, 1, [False, True, True]);
+      Check_Bits (1, 3, [False, True, True]);
+      Check_Bits (1, 2, [True, False, True, False]);
+      Reject_Shared_OOK;
+      Check_Bits (1, 2, [True, False, True, False]);
+      Require (Observe (0, 2, 2, 0) = 4 and Observe (0, 1, 2, 0) = 3);
+      Require (Observe (0, 2, 3, 0) = Interfaces.Integer_64'Last);
+      Require (Observe (0, 2, 7, 0) = Interfaces.Integer_64'First);
+      Require (Observe (1, 2, 3, 0) = -59 and Observe (1, 2, 7, 0) = 37);
+      Require (Bits (Number (0, 2)) = Bits (Interfaces.C.double (-0.0)) and Number (1, 2) = -7.25);
+      for I in 0 .. 1 loop
+         for E in 0 .. 1 loop
+            Require (TX_Number (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 0, 0) = 1.0);
+            Require (TX_Number (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 0, 1) = -2.0);
+            Require (TX_Number (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 0, 2) = 3.0);
+            Require (TX_Number (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 0, 3) = -4.0);
+            Require (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 5, 0) = 5);
+            Require
+              (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 6, 0)
+               = Interfaces.Integer_64 (1 + 2 * E));
+            Require (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 6, 1) = -1);
+            Require (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 6, 2) = 2);
+            Require
+              (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 6, 3)
+               = Interfaces.Integer_64 (1 + 2 * E));
+            Require (Observe (Interfaces.C.unsigned (I), Interfaces.C.unsigned (E), 6, 4) = 5);
+         end loop;
+         Require (RX_Number (Interfaces.C.unsigned (I), 0, 0, 0) = 5.0);
+         Require (RX_Number (Interfaces.C.unsigned (I), 0, 0, 1) = -6.0);
+         Require (RX_Number (Interfaces.C.unsigned (I), 0, 0, 2) = 7.0);
+         Require (RX_Number (Interfaces.C.unsigned (I), 0, 0, 3) = -8.0);
+      end loop;
+      declare
+         Config : C2.Modulation_Config := C2.On_Off_Keying ([]);
+      begin
+         Submit_One (Config, 0);
+         C2.Append_OOK_Pulse_Enable (Config, True);
+         Submit_One (Config, 1);
+         Check_Bits (0, 0, [True]);
+         begin
+            C2.Replace_CPFSK_Chips (Config, [False]);
+            raise Program_Error with "wrong kind accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         Submit_One (Config, 1);
+         Check_Bits (0, 0, [True]);
+         begin
+            Submit_One (Config, 2);
+            raise Program_Error with "OOK mismatch accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         Check_Bits (0, 0, [True]);
+         C2.Replace_OOK_Pulse_Enables (Config, [False, True, False]);
+         Submit_One (Config, 3);
+         Check_Bits (0, 0, [False, True, False]);
+         Config := C2.CPFSK_Pulse ([], -31, 47, 19.25);
+         C2.Append_CPFSK_Chip (Config, False);
+         C2.Append_CPFSK_Chip (Config, True);
+         Submit_One (Config, 1);
+         Check_Bits (0, 0, [False, True]);
+         C2.Replace_CPFSK_Chips (Config, [True]);
+         Submit_One (Config, 1);
+         Check_Bits (0, 0, [True]);
+         C2.Replace_CPFSK_Chips (Config, []);
+         Submit_One (Config, 1);
+         Check_Bits (0, 0, []);
+         for Length in 63 .. 65 loop
+            declare
+               Boundary : C2.Modulation_Boolean_Array (1 .. Length);
+            begin
+               for N in Boundary'Range loop
+                  Boundary (N) := N mod 2 = 0;
+               end loop;
+               Config := C2.On_Off_Keying (Boundary);
+               Submit_One (Config, Interfaces.Unsigned_64 (Length));
+               Check_Bits (0, 0, Boundary);
+               Config := C2.CPFSK_Pulse (Boundary, -31, 47, 19.25);
+               Submit_One (Config, 1);
+               Check_Bits (0, 0, Boundary);
+            end;
+         end loop;
+         declare
+            Values : constant C2.Phase_Chip_Array :=
+              [IEEE (16#7FF0_0000_0000_0000#),
+               IEEE (16#FFF0_0000_0000_0000#),
+               IEEE (16#7FF8_0000_0000_0001#)];
+         begin
+            for Value of Values loop
+               Config := C2.CPFSK_Pulse ([True], -31, 47, Value);
+               Submit_One (Config, 1);
+               if Value /= Value then
+                  Require (Number (0, 0) /= Number (0, 0));
+               else
+                  Require (Number (0, 0) = Interfaces.C.double (Value));
+               end if;
+            end loop;
+         end;
+      end;
+      C2.Add_RX_Job_Intervals (Object, List);
+      Check_Bits (1, 2, [True, False, True, False]);
+      if DL_Close (Library) /= 0 then
+         raise Program_Error;
+      end if;
+   end Send_Binary_Modulations;
    procedure Send_Modulations (Object : in out C2.Job) is
       type Observation_Access is
         access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
@@ -1488,6 +1744,7 @@ begin
             begin
                Send_Distinct (Object);
                Send_Modulations (Object);
+               Send_Binary_Modulations (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");
