@@ -664,134 +664,469 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       type Observation_Access is
         access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
       with Convention => C;
-      function Convert is new Ada.Unchecked_Conversion (System.Address, Observation_Access);
-      Library_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
-      Symbol_Name  : Interfaces.C.Strings.chars_ptr :=
-        Interfaces.C.Strings.New_String ("mock_rf_f12_value");
-      Library      : constant System.Address := DL_Open (Library_Name, 2);
-      Observe      : constant Observation_Access := Convert (DL_Sym (Library, Symbol_Name));
-      List         : C2.RX_Job_Interval_List;
+      type Double_Access is
+        access function (I, M, N : Interfaces.C.unsigned) return Interfaces.C.double
+      with Convention => C;
+      type Count_Access is access function return Interfaces.C.unsigned with Convention => C;
+      function To_Observation is new Ada.Unchecked_Conversion (System.Address, Observation_Access);
+      function To_Double is new Ada.Unchecked_Conversion (System.Address, Double_Access);
+      function To_Count is new Ada.Unchecked_Conversion (System.Address, Count_Access);
+      Library_Name      : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Library           : constant System.Address := DL_Open (Library_Name, 2);
+      function Symbol (Name : String) return System.Address is
+         Text    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Name);
+         Address : constant System.Address := DL_Sym (Library, Text);
+      begin
+         Interfaces.C.Strings.Free (Text);
+         if Address = System.Null_Address then
+            raise Program_Error with "modulation observer missing: " & Name;
+         end if;
+         return Address;
+      end Symbol;
+      Observe           : constant Observation_Access :=
+        To_Observation (Symbol ("mock_rf_f12_value"));
+      Number            : constant Double_Access := To_Double (Symbol ("mock_rf_f12_double"));
+      Add_Count         : constant Count_Access := To_Count (Symbol ("mock_rf_job_add_calls"));
+      Positive_Infinity : constant Long_Float := IEEE (16#7FF0_0000_0000_0000#);
+      Negative_Infinity : constant Long_Float := IEEE (16#FFF0_0000_0000_0000#);
+      Quiet_NaN         : constant Long_Float := IEEE (16#7FF8_0000_0000_0001#);
+      First_Chips       : constant C2.Phase_Chip_Array :=
+        [1.25, -2.5, 0.0, -0.0, Positive_Infinity, Negative_Infinity, Quiet_NaN, 1.25];
+      Second_Chips      : constant C2.Phase_Chip_Array := [-7.75, 3.5, -7.75];
+      type References is array (Positive range <>) of C2.Modulation_Index;
+      First_References  : constant References := [2, C2.No_Modulation, 1, 2, 0];
+      Second_References : constant References := [1, 0, C2.No_Modulation, 1];
+      List, Saved_List  : C2.RX_Job_Interval_List;
+      procedure Require (Condition : Boolean; Message : String) is
+      begin
+         if not Condition then
+            raise Program_Error with "modulation: " & Message;
+         end if;
+      end Require;
+      procedure Equal_Number (Actual : Interfaces.C.double; Expected : Long_Float) is
+      begin
+         if Expected /= Expected then
+            Require (Actual /= Actual, "NaN classification");
+         else
+            Require (Actual = Interfaces.C.double (Expected), "numeric value");
+            if Expected = 0.0 then
+               Require (Bits (Actual) = Bits (Interfaces.C.double (Expected)), "signed zero");
+            end if;
+         end if;
+      end Equal_Number;
+      procedure Check_Kind (I, M : Interfaces.C.unsigned; Kind : Interfaces.Integer_64) is
+      begin
+         Require (Observe (I, M, 1, 0) = 1, "outer CommonModulations alternative");
+         Require (Observe (I, M, 2, 0) = Kind, "inner selected alternative");
+      end Check_Kind;
+      procedure Check_Phase
+        (I, M     : Interfaces.C.unsigned;
+         Duration : Interfaces.Integer_64;
+         Chips    : C2.Phase_Chip_Array) is
+      begin
+         Check_Kind (I, M, 1);
+         Require (Observe (I, M, 3, 0) = Duration, "chip duration");
+         Require (Observe (I, M, 4, 0) = Chips'Length, "phase count");
+         for N in Chips'Range loop
+            Equal_Number (Number (I, M, Interfaces.C.unsigned (N - Chips'First)), Chips (N));
+         end loop;
+      end Check_Phase;
+      procedure Check_LFM (I, M : Interfaces.C.unsigned; Extent : Long_Float) is
+      begin
+         Check_Kind (I, M, 2);
+         Equal_Number (Number (I, M, 0), Extent);
+      end Check_LFM;
+      procedure Check_References (I, E : Interfaces.C.unsigned; Values : References) is
+      begin
+         Require (Observe (I, E, 5, 0) = Values'Length, "reference count");
+         for N in Values'Range loop
+            Require
+              (Observe (I, E, 6, Interfaces.C.unsigned (N - Values'First))
+               = Interfaces.Integer_64 (Values (N)),
+               "every ordered reference");
+         end loop;
+      end Check_References;
+      function Mixed_Interval (ID : Natural) return C2.RX_Job_Interval_Config is
+         Result : C2.RX_Job_Interval_Config :=
+           C2.Create_RX_Job_Interval
+             (Interfaces.Unsigned_32 (ID),
+              20,
+              Interval_Start_Femtoseconds => Interfaces.Integer_64 (ID));
+         RX     : C2.RX_Receive_Event_Config :=
+           C2.Create_RX_Receive_Event
+             (Interfaces.Unsigned_32 (80 + ID), "modulation RX", -9, 11, 12.5, 2.0);
+      begin
+         C2.Set_Phase_Offset_Radians (RX, 3.25 + Long_Float (ID));
+         C2.Set_Iteration_Hold_Count (RX, Interfaces.Unsigned_64 (9 + ID));
+         C2.Append_Polarization (RX, Long_Float (ID + 1), -2.0, 3.0, -4.0);
+         C2.Append_RX_Event (Result, RX);
+         return Result;
+      end Mixed_Interval;
+      function TX_Event (ID : Natural; Values : References) return C2.TX_Transmit_Event_Config is
+         Result : C2.TX_Transmit_Event_Config :=
+           C2.Create_TX_Transmit_Event
+             (Interfaces.Unsigned_32 (ID), "modulation TX", -7, 11, 100.25, -12.5, 3, -3);
+      begin
+         C2.Append_Polarization (Result, Long_Float (ID + 1), -5.0, 6.0, -7.0);
+         C2.Set_Phase_Offset_Radians (Result, -4.25 - Long_Float (ID));
+         C2.Set_Iteration_Hold_Count (Result, Interfaces.Unsigned_64 (ID + 2));
+         C2.Set_Channelization_Enabled (Result, True);
+         for Value of Values loop
+            C2.Append_Modulation_Reference (Result, Value);
+         end loop;
+         return Result;
+      end TX_Event;
+      procedure Check_Mixed
+        (I : Interfaces.C.unsigned; ID, Event_ID : Natural; E : Interfaces.C.unsigned := 0)
+      is
+         RX_Value : Number_Access;
+      begin
+         Require
+           (TX_Value (I, 0, 1, 0) = 1
+            and then TX_Value (I, 0, 14, 0) = Interfaces.Unsigned_64 (80 + ID),
+            "retained RX association");
+         Require (TX_Value (I, 0, 15, 0) = Interfaces.Unsigned_64 (ID), "interval association");
+         Require
+           (RX_Observation (I, 4) = 1
+            and then RX_Observation (I, 9) = Interfaces.Integer_64 (9 + ID),
+            "RX controls");
+         Equal_Number (RX_Phase (I), 3.25 + Long_Float (ID));
+         RX_Value := To_Number (Symbol ("mock_rf_f5_double"));
+         for C in Interfaces.C.unsigned range 0 .. 3 loop
+            Equal_Number
+              (RX_Value (I, 0, 0, C),
+               (case C is
+                  when 0      => Long_Float (ID + 1),
+                  when 1      => -2.0,
+                  when 2      => 3.0,
+                  when others => -4.0));
+         end loop;
+         Require (TX_Value (I, E, 2, 0) = Interfaces.Unsigned_64 (Event_ID), "TX association");
+         Require
+           (TX_Control (I, E, 0) = 1
+            and then TX_Control (I, E, 5) = Interfaces.Unsigned_64 (Event_ID + 2)
+            and then TX_Control (I, E, 7) = 1,
+            "retained TX controls");
+         Equal_Number (TX_Component (I, E, 0, 4), -4.25 - Long_Float (Event_ID));
+         for C in Interfaces.C.unsigned range 0 .. 3 loop
+            Equal_Number
+              (TX_Component (I, E, 0, C),
+               (case C is
+                  when 0      => Long_Float (Event_ID + 1),
+                  when 1      => -5.0,
+                  when 2      => 6.0,
+                  when others => -7.0));
+         end loop;
+         Equal_Number (TX_Number (I, E, 0), 100.25);
+         Equal_Number (TX_Number (I, E, 1), -12.5);
+      end Check_Mixed;
+      procedure Submit (Interval : C2.RX_Job_Interval_Config; RX_Name : Boolean := False) is
+         Fresh : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Job_Interval (Fresh, Interval);
+         if RX_Name then
+            C2.Add_RX_Job_Intervals (Object, Fresh);
+         else
+            C2.Add_Job_Intervals (Object, Fresh);
+         end if;
+      end Submit;
+      procedure Check_Asymmetric is
+      begin
+         Require (Observe (0, 0, 0, 0) = 3 and then Observe (1, 0, 0, 0) = 3, "table sizes");
+         Check_Kind (0, 0, 0);
+         Check_Phase (0, 1, Interfaces.Integer_64'First, First_Chips);
+         Check_LFM (0, 2, 4.25);
+         Check_LFM (1, 0, -7.5);
+         Check_Phase (1, 1, Interfaces.Integer_64'Last, Second_Chips);
+         Check_LFM (1, 2, Negative_Infinity);
+         Check_References (0, 0, First_References);
+         Check_References (0, 1, [C2.No_Modulation]);
+         Check_References (1, 0, Second_References);
+         Check_References (1, 1, []);
+         Check_Mixed (0, 10, 20);
+         Check_Mixed (1, 11, 22);
+         Check_Mixed (0, 10, 21, 1);
+         Check_Mixed (1, 11, 23, 1);
+         Require
+           (TX_Value (0, 1, 2, 0) = 21 and then TX_Value (1, 1, 2, 0) = 23,
+            "second TX association");
+      end Check_Asymmetric;
+      procedure Check_Trace (Interval : C2.RX_Job_Interval_Config; Tables, Indices : Natural) is
+         File                     : Ada.Text_IO.File_Type;
+         Trace                    : constant String := Path & ".corrective-modulations.trace";
+         Table_Calls, Index_Calls : Natural := 0;
+      begin
+         Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Trace);
+         Ada.Text_IO.Close (File);
+         Ada.Environment_Variables.Set ("AMS_MEL_TEST_RF_TX_TRACE", Trace);
+         Submit (Interval, True);
+         Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_TX_TRACE");
+         Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Trace);
+         while not Ada.Text_IO.End_Of_File (File) loop
+            declare
+               Line : constant String := Ada.Text_IO.Get_Line (File);
+            begin
+               if Line = "setModulations" then
+                  Table_Calls := Table_Calls + 1;
+               end if;
+               if Line = "setModIndex" then
+                  Index_Calls := Index_Calls + 1;
+               end if;
+            end;
+         end loop;
+         Ada.Text_IO.Delete (File);
+         Require
+           (Table_Calls = Tables and then Index_Calls = Indices, "absence/empty setter trace");
+         Check_Mixed (0, 30, 31);
+      end Check_Trace;
    begin
-      C2.Testing.Check_Modulation_Representation;
       Interfaces.C.Strings.Free (Library_Name);
-      Interfaces.C.Strings.Free (Symbol_Name);
-      if Library = System.Null_Address then
-         raise Program_Error with "modulation mock unavailable";
-      end if;
+      Require (Library /= System.Null_Address, "mock unavailable");
+      C2.Testing.Check_Modulation_Representation;
+      --  All source scopes end before observation of every copied entry/event.
       for I in 0 .. 1 loop
          declare
-            Table    : C2.Modulation_Table;
+            Source   : C2.Phase_Chip_Array (1 .. (if I = 0 then 8 else 3)) :=
+              (if I = 0 then First_Chips else Second_Chips);
             Phase    : C2.Modulation_Config :=
               C2.Phase_Code
                 ((if I = 0 then Interfaces.Integer_64'First else Interfaces.Integer_64'Last),
-                 [1.25 + Long_Float (I), -2.5, 1.25 + Long_Float (I)]);
-            Interval : C2.RX_Job_Interval_Config :=
-              C2.Create_RX_Job_Interval (Interfaces.Unsigned_32 (I), 0);
+                 Source);
+            Table    : C2.Modulation_Table;
+            Interval : C2.RX_Job_Interval_Config := Mixed_Interval (10 + I);
             Index    : C2.Modulation_Index;
          begin
-            if I = 0 then
-               C2.Append_Modulation (Table, C2.Tone, Index);
-            else
-               C2.Append_Modulation (Table, C2.Linear_Frequency_Modulation (-7.5), Index);
-            end if;
-            if Index /= 0 then
-               raise Program_Error with "nonzero first modulation index";
-            end if;
+            for N in Source'Range loop
+               Source (N) := 99.0;
+            end loop;
+            C2.Append_Modulation
+              (Table, (if I = 0 then C2.Tone else C2.Linear_Frequency_Modulation (-7.5)), Index);
+            Require (Index = 0, "zero-based append index");
             C2.Append_Modulation (Table, Phase, Index);
             C2.Replace_Phase_Chips (Phase, [99.0]);
             C2.Append_Modulation
-              (Table, C2.Linear_Frequency_Modulation (4.25 + Long_Float (I)), Index);
+              (Table,
+               C2.Linear_Frequency_Modulation ((if I = 0 then 4.25 else Negative_Infinity)),
+               Index);
             C2.Set_Modulations (Interval, Table);
             C2.Append_Modulation (Table, C2.Tone, Index);
             for E in 0 .. 1 loop
                declare
                   Event : C2.TX_Transmit_Event_Config :=
-                    C2.Create_TX_Transmit_Event
-                      (Interfaces.Unsigned_32 (10 * I + E), "modulations", 0, 10, 100.0);
+                    TX_Event
+                      (20 + 2 * I + E,
+                       (if E = 0
+                        then (if I = 0 then First_References else Second_References)
+                        else []));
                begin
-                  if E = 0 then
-                     C2.Append_Modulation_Reference (Event, 2 - C2.Modulation_Index (I));
-                     C2.Append_Modulation_Reference (Event, C2.No_Modulation);
-                     C2.Append_Modulation_Reference (Event, 1);
-                     C2.Append_Modulation_Reference (Event, 2 - C2.Modulation_Index (I));
-                  elsif I = 1 then
+                  if E = 1 and I = 1 then
                      C2.Set_Empty_Modulation_References (Event);
                   end if;
                   C2.Append_TX_Event (Interval, Event);
                   C2.Clear_Modulation_References (Event);
+                  C2.Append_Modulation_Reference (Event, 0);
                end;
             end loop;
             C2.Append_Job_Interval (List, Interval);
             C2.Clear_Modulations (Interval);
          end;
       end loop;
+      Saved_List := List;
       declare
-         Copy : constant C2.RX_Job_Interval_List := List;
+         Extra : constant C2.RX_Job_Interval_Config := Mixed_Interval (99);
       begin
-         C2.Add_Job_Intervals (Object, Copy);
+         C2.Append_Job_Interval (List, Extra);
       end;
-      for I in Interfaces.C.unsigned range 0 .. 1 loop
-         if Observe (I, 0, 0, 0) /= 3
-           or else Observe (I, 0, 1, 0) /= 1
-           or else Observe (I, 0, 2, 0) /= (if I = 0 then 0 else 2)
-           or else Observe (I, 1, 2, 0) /= 1
-           or else Observe (I, 2, 2, 0) /= 2
-           or else Observe (I, 1, 3, 0)
-                   /= (if I = 0 then Interfaces.Integer_64'First else Interfaces.Integer_64'Last)
-           or else Observe (I, 1, 4, 0) /= 3
-           or else Observe (I, 0, 5, 0) /= 4
-           or else Observe (I, 0, 6, 1) /= -1
-           or else Observe (I, 0, 6, 0) /= 2 - Interfaces.Integer_64 (I)
-           or else Observe (I, 0, 6, 3) /= 2 - Interfaces.Integer_64 (I)
-         then
-            raise Program_Error with "owned modulation serialization";
-         end if;
-      end loop;
-      if Observe (0, 1, 5, 0) /= 1
-        or else Observe (0, 1, 6, 0) /= -1
-        or else Observe (1, 1, 5, 0) /= 0
-      then
-         raise Program_Error with "absent/empty modulation references";
-      end if;
+      C2.Add_Job_Intervals (Object, Saved_List);
+      Check_Asymmetric;
+      C2.Add_Job_Intervals (Object, List);
+      Check_Asymmetric;
+      Require
+        (TX_Value (2, 0, 15, 0) = 99 and then TX_Value (2, 0, 14, 0) = 179,
+         "mutated source list submitted independently");
+      C2.Add_RX_Job_Intervals (Object, Saved_List);
+      Check_Asymmetric;
+      --  Submit BOTH retained and mutated source values, not just a length check.
       declare
-         Interval   : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (7, 0);
-         Event      : C2.TX_Transmit_Event_Config :=
-           C2.Create_TX_Transmit_Event (8, "invalid", 0, 0, 0.0);
-         Invalid    : C2.RX_Job_Interval_List;
-         Wrong_Kind : C2.Modulation_Config := C2.Tone;
+         Source             : C2.Phase_Chip_Array := [8.5, -9.25, 8.5];
+         Phase              : C2.Modulation_Config := C2.Phase_Code (-17, Source);
+         Retained, Modified : C2.Modulation_Table;
+         Original, Changed  : C2.RX_Job_Interval_Config := Mixed_Interval (30);
+         Event              : C2.TX_Transmit_Event_Config := TX_Event (31, [0]);
+         Index              : C2.Modulation_Index;
+         procedure Submit_Phase (Config : C2.Modulation_Config; Expected : C2.Phase_Chip_Array) is
+            Table    : C2.Modulation_Table;
+            Interval : C2.RX_Job_Interval_Config := Mixed_Interval (30);
+            Position : C2.Modulation_Index;
+         begin
+            C2.Append_Modulation (Table, Config, Position);
+            C2.Append_Modulation
+              (Table, C2.Linear_Frequency_Modulation (Positive_Infinity), Position);
+            C2.Set_Modulations (Interval, Table);
+            C2.Append_TX_Event (Interval, Event);
+            Submit (Interval);
+            Check_Phase (0, 0, -17, Expected);
+            Check_LFM (0, 1, Positive_Infinity);
+            Check_Mixed (0, 30, 31);
+         end Submit_Phase;
       begin
+         Source (1) := 77.0;
+         Submit_Phase (Phase, [8.5, -9.25, 8.5]);
+         Submit_Phase (C2.Phase_Code (-17, Source), [77.0, -9.25, 8.5]);
+         C2.Append_Modulation (Retained, Phase, Index);
+         C2.Append_Modulation (Retained, C2.Linear_Frequency_Modulation (-0.0), Index);
+         C2.Set_Modulations (Original, Retained);
+         C2.Append_TX_Event (Original, Event);
+         declare
+            Saved_Table     : constant C2.Modulation_Table := Retained;
+            Source_Interval : C2.RX_Job_Interval_Config := Mixed_Interval (30);
          begin
-            C2.Append_Phase_Chip (Wrong_Kind, 99.0);
-            raise Program_Error with "Tone phase append accepted";
-         exception
-            when Constraint_Error =>
-               null;
+            C2.Append_Modulation (Retained, C2.Linear_Frequency_Modulation (6.125), Index);
+            C2.Set_Modulations (Source_Interval, Retained);
+            C2.Append_TX_Event (Source_Interval, Event);
+            Submit (Source_Interval);
+            Require (Observe (0, 0, 0, 0) = 3, "source table mutation after Set");
+            Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+            Check_LFM (0, 1, -0.0);
+            Check_LFM (0, 2, 6.125);
+            Submit (Original);
+            Require (Observe (0, 0, 0, 0) = 2, "Set retained independent table");
+            Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+            Check_LFM (0, 1, -0.0);
+            Retained := Saved_Table;
          end;
+         C2.Append_Phase_Chip (Phase, -11.5);
+         Submit_Phase (Phase, [8.5, -9.25, 8.5, -11.5]);
+         C2.Replace_Phase_Chips (Phase, [2.25]);
+         Submit_Phase (Phase, [2.25]);
+         C2.Replace_Phase_Chips (Phase, [0.0, -0.0, Quiet_NaN, Negative_Infinity, 5.5]);
+         Submit_Phase (Phase, [0.0, -0.0, Quiet_NaN, Negative_Infinity, 5.5]);
+         C2.Replace_Phase_Chips (Phase, []);
+         Submit_Phase (Phase, []);
+         Submit (Original);
+         Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+         Check_LFM (0, 1, -0.0);
+         Modified := Retained;
+         C2.Append_Modulation (Modified, C2.Linear_Frequency_Modulation (Quiet_NaN), Index);
+         C2.Append_Modulation (Modified, C2.Linear_Frequency_Modulation (0.0), Index);
+         Changed := Original;
+         C2.Set_Modulations (Changed, Modified);
+         Submit (Changed, True);
+         Require (Observe (0, 0, 0, 0) = 4, "modified source table");
+         Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+         Check_LFM (0, 1, -0.0);
+         Check_LFM (0, 2, Quiet_NaN);
+         Check_LFM (0, 3, 0.0);
+         Submit (Original);
+         Require (Observe (0, 0, 0, 0) = 2, "retained table copy");
+         Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+         Check_LFM (0, 1, -0.0);
+         C2.Append_Modulation_Reference (Event, 1);
+         C2.Clear_TX_Events (Changed);
+         C2.Append_TX_Event (Changed, Event);
+         Submit (Changed);
+         Check_References (0, 0, [0, 1]);
+         Submit (Original);
+         Check_References (0, 0, [0]);
+         Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+         Check_LFM (0, 1, -0.0);
+         --  Every presence mutation is appended into a fresh submitted list.
+         for Empty in Boolean loop
+            Changed := Original;
+            if Empty then
+               C2.Set_Empty_Modulation_References (Event);
+            else
+               C2.Clear_Modulation_References (Event);
+            end if;
+            C2.Clear_TX_Events (Changed);
+            C2.Append_TX_Event (Changed, Event);
+            Check_Trace (Changed, 1, (if Empty then 1 else 0));
+            Check_References (0, 0, (if Empty then [] else [C2.No_Modulation]));
+            Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+            Check_LFM (0, 1, -0.0);
+            --  Compatible references when removing the table.
+            if Empty then
+               C2.Set_Empty_Modulations (Changed);
+            else
+               C2.Clear_Modulations (Changed);
+            end if;
+            Check_Trace (Changed, (if Empty then 1 else 0), (if Empty then 1 else 0));
+            Require (Observe (0, 0, 0, 0) = 0, "clear/empty table");
+            Check_References (0, 0, (if Empty then [] else [C2.No_Modulation]));
+            --  Start next iteration with genuinely populated references.
+            Event := TX_Event (31, [0, 1]);
+         end loop;
+         C2.Clear_Modulation_References (Event);
+         C2.Append_Modulation_Reference (Event, 1);
+         Changed := Original;
+         C2.Clear_TX_Events (Changed);
+         C2.Append_TX_Event (Changed, Event);
+         Submit (Changed);
+         Check_References (0, 0, [1]);
+         --  Final-table shrink must not resolve via another interval/prior Add.
+         declare
+            Shrunk  : C2.Modulation_Table;
+            Invalid : C2.RX_Job_Interval_List;
+            Before  : constant Interfaces.C.unsigned := Add_Count.all;
          begin
-            C2.Replace_Phase_Chips (Wrong_Kind, [99.0]);
-            raise Program_Error with "Tone phase replace accepted";
-         exception
-            when Constraint_Error =>
-               null;
+            C2.Append_Modulation (Shrunk, C2.Tone, Index);
+            C2.Set_Modulations (Changed, Shrunk);
+            C2.Append_Job_Interval (Invalid, Changed);
+            C2.Append_Job_Interval (Invalid, Original);
+            begin
+               C2.Add_RX_Job_Intervals (Object, Invalid);
+               raise Program_Error with "final-table shrink accepted";
+            exception
+               when Constraint_Error =>
+                  null;
+            end;
+            Require (Add_Count.all = Before, "rejection entered provider Add");
+            Check_References (0, 0, [1]);
+            Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+            Check_LFM (0, 1, -0.0);
+            Check_Mixed (0, 30, 31);
+            C2.Set_Modulations (Changed, Retained);
+            Submit (Changed, True);
+            Check_References (0, 0, [1]);
+            Check_Phase (0, 0, -17, [8.5, -9.25, 8.5]);
+            Check_LFM (0, 1, -0.0);
          end;
-         C2.Append_Modulation_Reference (Event, 0);
-         C2.Append_TX_Event (Interval, Event);
-         C2.Append_Job_Interval (Invalid, Interval);
-         begin
-            C2.Add_RX_Job_Intervals (Object, Invalid);
-            raise Program_Error with "absent-table reference accepted";
-         exception
-            when Constraint_Error =>
-               null;
-         end;
-         if Observe (0, 0, 0, 0) /= 3 or else Observe (1, 0, 0, 0) /= 3 then
-            raise Program_Error with "rejection changed accepted values";
-         end if;
-         C2.Add_RX_Job_Intervals (Object, List);
+         for Kind in 0 .. 1 loop
+            declare
+               Wrong    : C2.Modulation_Config :=
+                 (if Kind = 0 then C2.Tone else C2.Linear_Frequency_Modulation (-6.75));
+               Table    : C2.Modulation_Table;
+               Interval : C2.RX_Job_Interval_Config := Mixed_Interval (30);
+            begin
+               begin
+                  C2.Append_Phase_Chip (Wrong, 99.0);
+                  raise Program_Error with "wrong-kind append accepted";
+               exception
+                  when Constraint_Error =>
+                     null;
+               end;
+               begin
+                  C2.Replace_Phase_Chips (Wrong, [99.0]);
+                  raise Program_Error with "wrong-kind replace accepted";
+               exception
+                  when Constraint_Error =>
+                     null;
+               end;
+               C2.Append_Modulation (Table, Wrong, Index);
+               C2.Set_Modulations (Interval, Table);
+               C2.Clear_Modulation_References (Event);
+               C2.Append_TX_Event (Interval, Event);
+               Submit (Interval);
+               if Kind = 0 then
+                  Check_Kind (0, 0, 0);
+               else
+                  Check_LFM (0, 0, -6.75);
+               end if;
+               Check_Mixed (0, 30, 31);
+            end;
+         end loop;
       end;
-      if DL_Close (Library) /= 0 then
-         raise Program_Error with "modulation mock close";
-      end if;
+      Require (DL_Close (Library) = 0, "mock close");
    end Send_Modulations;
    procedure Send_Empty (Object : in out C2.Job) is
       Absent : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
