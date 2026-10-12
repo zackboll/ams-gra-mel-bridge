@@ -2,6 +2,7 @@ with Ada.Strings.Fixed;
 with AMS.MEL;
 with AMS.MEL.IR;
 with AMS.MEL.RF.C2;
+with AMS.MEL.RF.C2.Testing;
 with AMS.MEL.RF.C2.Interval_Status;
 with Ada.Environment_Variables;
 with Ada.Text_IO;
@@ -15,6 +16,7 @@ procedure AMS_MEL_RF_TX_Events_Focused is
    package C2 renames AMS.MEL.RF.C2;
    package Status renames AMS.MEL.RF.C2.Interval_Status;
    use type C2.Request_Outcome;
+   use type Interfaces.Integer_32;
    use type Interfaces.C.int;
    use type Interfaces.C.unsigned;
    use type System.Address;
@@ -658,6 +660,139 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   procedure Send_Modulations (Object : in out C2.Job) is
+      type Observation_Access is
+        access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Observation_Access);
+      Library_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol_Name  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f12_value");
+      Library      : constant System.Address := DL_Open (Library_Name, 2);
+      Observe      : constant Observation_Access := Convert (DL_Sym (Library, Symbol_Name));
+      List         : C2.RX_Job_Interval_List;
+   begin
+      C2.Testing.Check_Modulation_Representation;
+      Interfaces.C.Strings.Free (Library_Name);
+      Interfaces.C.Strings.Free (Symbol_Name);
+      if Library = System.Null_Address then
+         raise Program_Error with "modulation mock unavailable";
+      end if;
+      for I in 0 .. 1 loop
+         declare
+            Table    : C2.Modulation_Table;
+            Phase    : C2.Modulation_Config :=
+              C2.Phase_Code
+                ((if I = 0 then Interfaces.Integer_64'First else Interfaces.Integer_64'Last),
+                 [1.25 + Long_Float (I), -2.5, 1.25 + Long_Float (I)]);
+            Interval : C2.RX_Job_Interval_Config :=
+              C2.Create_RX_Job_Interval (Interfaces.Unsigned_32 (I), 0);
+            Index    : C2.Modulation_Index;
+         begin
+            if I = 0 then
+               C2.Append_Modulation (Table, C2.Tone, Index);
+            else
+               C2.Append_Modulation (Table, C2.Linear_Frequency_Modulation (-7.5), Index);
+            end if;
+            if Index /= 0 then
+               raise Program_Error with "nonzero first modulation index";
+            end if;
+            C2.Append_Modulation (Table, Phase, Index);
+            C2.Replace_Phase_Chips (Phase, [99.0]);
+            C2.Append_Modulation
+              (Table, C2.Linear_Frequency_Modulation (4.25 + Long_Float (I)), Index);
+            C2.Set_Modulations (Interval, Table);
+            C2.Append_Modulation (Table, C2.Tone, Index);
+            for E in 0 .. 1 loop
+               declare
+                  Event : C2.TX_Transmit_Event_Config :=
+                    C2.Create_TX_Transmit_Event
+                      (Interfaces.Unsigned_32 (10 * I + E), "modulations", 0, 10, 100.0);
+               begin
+                  if E = 0 then
+                     C2.Append_Modulation_Reference (Event, 2 - C2.Modulation_Index (I));
+                     C2.Append_Modulation_Reference (Event, C2.No_Modulation);
+                     C2.Append_Modulation_Reference (Event, 1);
+                     C2.Append_Modulation_Reference (Event, 2 - C2.Modulation_Index (I));
+                  elsif I = 1 then
+                     C2.Set_Empty_Modulation_References (Event);
+                  end if;
+                  C2.Append_TX_Event (Interval, Event);
+                  C2.Clear_Modulation_References (Event);
+               end;
+            end loop;
+            C2.Append_Job_Interval (List, Interval);
+            C2.Clear_Modulations (Interval);
+         end;
+      end loop;
+      declare
+         Copy : constant C2.RX_Job_Interval_List := List;
+      begin
+         C2.Add_Job_Intervals (Object, Copy);
+      end;
+      for I in Interfaces.C.unsigned range 0 .. 1 loop
+         if Observe (I, 0, 0, 0) /= 3
+           or else Observe (I, 0, 1, 0) /= 1
+           or else Observe (I, 0, 2, 0) /= (if I = 0 then 0 else 2)
+           or else Observe (I, 1, 2, 0) /= 1
+           or else Observe (I, 2, 2, 0) /= 2
+           or else Observe (I, 1, 3, 0)
+                   /= (if I = 0 then Interfaces.Integer_64'First else Interfaces.Integer_64'Last)
+           or else Observe (I, 1, 4, 0) /= 3
+           or else Observe (I, 0, 5, 0) /= 4
+           or else Observe (I, 0, 6, 1) /= -1
+           or else Observe (I, 0, 6, 0) /= 2 - Interfaces.Integer_64 (I)
+           or else Observe (I, 0, 6, 3) /= 2 - Interfaces.Integer_64 (I)
+         then
+            raise Program_Error with "owned modulation serialization";
+         end if;
+      end loop;
+      if Observe (0, 1, 5, 0) /= 1
+        or else Observe (0, 1, 6, 0) /= -1
+        or else Observe (1, 1, 5, 0) /= 0
+      then
+         raise Program_Error with "absent/empty modulation references";
+      end if;
+      declare
+         Interval   : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (7, 0);
+         Event      : C2.TX_Transmit_Event_Config :=
+           C2.Create_TX_Transmit_Event (8, "invalid", 0, 0, 0.0);
+         Invalid    : C2.RX_Job_Interval_List;
+         Wrong_Kind : C2.Modulation_Config := C2.Tone;
+      begin
+         begin
+            C2.Append_Phase_Chip (Wrong_Kind, 99.0);
+            raise Program_Error with "Tone phase append accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         begin
+            C2.Replace_Phase_Chips (Wrong_Kind, [99.0]);
+            raise Program_Error with "Tone phase replace accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         C2.Append_Modulation_Reference (Event, 0);
+         C2.Append_TX_Event (Interval, Event);
+         C2.Append_Job_Interval (Invalid, Interval);
+         begin
+            C2.Add_RX_Job_Intervals (Object, Invalid);
+            raise Program_Error with "absent-table reference accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         if Observe (0, 0, 0, 0) /= 3 or else Observe (1, 0, 0, 0) /= 3 then
+            raise Program_Error with "rejection changed accepted values";
+         end if;
+         C2.Add_RX_Job_Intervals (Object, List);
+      end;
+      if DL_Close (Library) /= 0 then
+         raise Program_Error with "modulation mock close";
+      end if;
+   end Send_Modulations;
    procedure Send_Empty (Object : in out C2.Job) is
       Absent : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
       Empty  : C2.RX_Job_Interval_Config := Absent;
@@ -1017,6 +1152,7 @@ begin
                Object : C2.Job := C2.Claim (Request);
             begin
                Send_Distinct (Object);
+               Send_Modulations (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");

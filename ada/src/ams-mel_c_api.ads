@@ -2291,6 +2291,65 @@ private package AMS.MEL_C_API is
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v10";
    Rf_Interval_Status_Never                                                 :
      constant Interfaces.Unsigned_32 := 0;
+   type Double_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type I32_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_V1 is record
+      Kind                       : Interfaces.Unsigned_32;
+      Chip_Duration_Femtoseconds : Interfaces.Integer_64;
+      Phase_Chips_Rad            : Double_Span_V1;
+      Frequency_Extent_Hz        : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_TX_Event_Config_V3 is record
+      Event                  : RF_TX_Event_Config_V2;
+      Has_Modulation_Indices : Interfaces.Unsigned_32;
+      Modulation_Indices     : I32_Span_V1;
+   end record
+   with Convention => C;
+   type RF_TX_Event_Config_Span_V3 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V11 is record
+      Interval            : RF_Job_Interval_Config_V8;
+      Has_Transmit_Events : Interfaces.Unsigned_32;
+      Transmit_Events     : RF_TX_Event_Config_Span_V3;
+      Has_Modulations     : Interfaces.Unsigned_32;
+      Modulations         : RF_Modulation_Config_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V11 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_Intervals_V11
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V11;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v11";
+   Rf_Modulation_Tone                                                       :
+     constant Interfaces.Unsigned_32 := 0;
+   Rf_Modulation_Phase_Code                                                 :
+     constant Interfaces.Unsigned_32 := 1;
+   Rf_Modulation_Linear_Frequency                                           :
+     constant Interfaces.Unsigned_32 := 2;
    Rf_Interval_Status_Always                                                :
      constant Interfaces.Unsigned_32 := 1;
    Rf_Interval_Status_On_Exception                                          :

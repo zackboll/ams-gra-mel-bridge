@@ -437,9 +437,15 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool tx_controls = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
+    constexpr bool modulation = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
+    constexpr bool tx_controls = modulation || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
     constexpr bool tx = tx_controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
-    const auto tx_event_at = [](const auto& envelope) -> const auto& {
+    const auto tx_control_at = [](const auto& envelope) -> const auto& {
+        if constexpr (modulation) return envelope.event;
+        else return envelope;
+    };
+    const auto tx_event_at = [&](const auto& supplied) -> const auto& {
+        const auto& envelope = tx_control_at(supplied);
         if constexpr (tx_controls) return envelope.event;
         else return envelope;
     };
@@ -480,6 +486,21 @@ ams_mel_status_t add_rx_intervals(
     bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
         const auto& input = input_at(i);
+        if constexpr (modulation) {
+            const auto& source = inputs.data[i];
+            if (source.has_modulations > 1U) return AMS_MEL_INVALID_ARGUMENT;
+            if (source.has_modulations) {
+                const auto table = source.modulations;
+                if (!span_ok(table.size, table.data, sizeof(*table.data))) return AMS_MEL_INVALID_ARGUMENT;
+                for (std::size_t m = 0; m < table.size; ++m) {
+                    const auto& value = table.data[m];
+                    if (value.kind > AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY) return AMS_MEL_INVALID_ARGUMENT;
+                    if (value.kind == AMS_MEL_RF_MODULATION_PHASE_CODE &&
+                        !span_ok(value.phase_chips_rad.size, value.phase_chips_rad.data,
+                                 sizeof(*value.phase_chips_rad.data))) return AMS_MEL_INVALID_ARGUMENT;
+                }
+            }
+        }
         if constexpr (tx) {
             const auto& source = inputs.data[i];
             if (source.has_transmit_events > 1U) return AMS_MEL_INVALID_ARGUMENT;
@@ -489,7 +510,7 @@ ams_mel_status_t add_rx_intervals(
                 for (std::size_t e = 0; e < events.size; ++e) {
                     const auto& event = tx_event_at(events.data[e]);
                     if constexpr (tx_controls) {
-                        const auto& control = events.data[e];
+                        const auto& control = tx_control_at(events.data[e]);
                         if (control.polarization.size > 2U ||
                             !span_ok(control.polarization.size, control.polarization.data,
                                      sizeof(*control.polarization.data)) ||
@@ -499,6 +520,22 @@ ams_mel_status_t add_rx_intervals(
                             control.termination_type > AMS_MEL_RF_EVENT_TERMINATION_CANCEL ||
                             !fits_count(control.iteration_hold_count) ||
                             !fits_count(control.iteration_termination_count)) return AMS_MEL_INVALID_ARGUMENT;
+                    }
+                    if constexpr (modulation) {
+                        const auto& supplied = events.data[e];
+                        if (supplied.has_modulation_indices > 1U) return AMS_MEL_INVALID_ARGUMENT;
+                        if (supplied.has_modulation_indices) {
+                            const auto indices = supplied.modulation_indices;
+                            if (!span_ok(indices.size, indices.data, sizeof(*indices.data))) return AMS_MEL_INVALID_ARGUMENT;
+                            for (std::size_t n = 0; n < indices.size; ++n) {
+                                const auto index = indices.data[n];
+                                if (index < -1) return AMS_MEL_INVALID_ARGUMENT;
+                                if (index >= 0 &&
+                                    (static_cast<std::uint64_t>(index) > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) ||
+                                     !source.has_modulations ||
+                                     static_cast<std::uint64_t>(index) >= source.modulations.size)) return AMS_MEL_INVALID_ARGUMENT;
+                            }
+                        }
                     }
                     const auto groups = event.applicable_tx_element_groups;
                     if (!valid_view(event.element_group_label) || !fits_count(event.stab_point_index) ||
@@ -740,7 +777,7 @@ ams_mel_status_t add_rx_intervals(
                         event.setRiseDuration(Fs{config.rise_duration_femtoseconds});
                         event.setFallDuration(Fs{config.fall_duration_femtoseconds});
                         if constexpr (tx_controls) {
-                            const auto& control = source.data[e];
+                            const auto& control = tx_control_at(source.data[e]);
                             std::vector<rfmel::StokesVector> polarization;
                             polarization.reserve(control.polarization.size);
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -763,6 +800,25 @@ ams_mel_status_t add_rx_intervals(
                             event.setIterationTerminationCount(static_cast<std::size_t>(control.iteration_termination_count));
                             event.setChannelizationEnabled(control.channelization_enabled != 0U);
                         }
+                        if constexpr (modulation) {
+                            const auto& supplied = source.data[e];
+                            if (supplied.has_modulation_indices) {
+                                std::vector<int> indices;
+                                indices.reserve(supplied.modulation_indices.size);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                if (e == 1 && failpoint("later-modulation-references")) {
+                                    qualification_trace("later-modulation-references: preceding event complete");
+                                    throw std::bad_alloc{};
+                                }
+#endif
+                                for (std::size_t n = 0; n < supplied.modulation_indices.size; ++n)
+                                    indices.push_back(static_cast<int>(supplied.modulation_indices.data[n]));
+                                event.setModIndex(indices);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                qualification_trace("setModIndex");
+#endif
+                            }
+                        }
                         transmit.push_back(std::move(event));
                     }
                     sequence.setTxEvents(transmit);
@@ -772,6 +828,44 @@ ams_mel_status_t add_rx_intervals(
                 }
             }
             rfmel::JobInterval interval;
+            if constexpr (modulation) {
+                if (inputs.data[i].has_modulations) {
+                    std::vector<rfmel::Modulation> table;
+                    const auto supplied = inputs.data[i].modulations;
+                    table.reserve(supplied.size);
+                    for (std::size_t m = 0; m < supplied.size; ++m) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                        if (i == 0 && m == 2 && failpoint("later-modulation-definition")) {
+                            qualification_trace("later-modulation-definition: preceding PhaseCode complete");
+                            throw std::bad_alloc{};
+                        }
+#endif
+                        const auto& value = supplied.data[m];
+                        if (value.kind == AMS_MEL_RF_MODULATION_TONE) {
+                            table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                std::in_place_type<rfmel::Tone>);
+                        } else if (value.kind == AMS_MEL_RF_MODULATION_PHASE_CODE) {
+                            std::vector<double> chips;
+                            if (value.phase_chips_rad.size)
+                                chips.assign(value.phase_chips_rad.data, value.phase_chips_rad.data + value.phase_chips_rad.size);
+                            rfmel::PhaseCode phase;
+                            phase.setChipDuration(Fs{value.chip_duration_femtoseconds});
+                            phase.setPhaseChipData(chips);
+                            table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                std::in_place_type<rfmel::PhaseCode>, phase);
+                        } else {
+                            rfmel::LinearFrequencyModulation lfm_value;
+                            lfm_value.setFrequencyExtent(value.frequency_extent_hz);
+                            table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                std::in_place_type<rfmel::LinearFrequencyModulation>, lfm_value);
+                        }
+                    }
+                    interval.setModulations(table);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    qualification_trace("setModulations");
+#endif
+                }
+            }
             interval.setIntervalStart(Fs{input.interval_start_femtoseconds});
             interval.setIntervalID(input.interval_id);
             interval.setIntervalStartingGap(Fs{input.interval_starting_gap_femtoseconds});
@@ -914,6 +1008,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v10(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v10 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v11(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v11 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(

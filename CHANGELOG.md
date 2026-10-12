@@ -1,5 +1,24 @@
 # Changelog
 
+## Task 034F12 — RF value-only modulations and TX references
+
+Task 034F12 adds value-only Tone, PhaseCode (signed int64 femtoseconds and
+ordered radians), and LinearFrequencyModulation (Hz extent). Interval v11
+nests frozen v8 and has one TX-v3 collection plus an interval-local owned table.
+Exactly `ams_mel_rf_job_add_intervals_v11` extends ABI 0.1 (200 → 201).
+Active-only payloads preserve IEEE values; presence distinguishes absent,
+explicit empty, and defaults. Ordered zero-based references preserve repetition;
+-1 is no modulation, other negatives reject, and nonnegative references must
+identify the same interval's active table. Explicit Tone and -1 remain distinct.
+Safe Ada owns copied values (`Tone`, `Phase_Code`, `Linear_Frequency_Modulation`,
+`Modulation_Table`, `Append_Modulation` with returned zero-based index, and
+`No_Modulation`); both Add names serialize v11. V9/v10 and earlier ABI profiles
+are frozen. No waveform synthesis, IQ generation, RF emission, resource-backed
+modulation or capability gate is provided. Provider/application enforce pinned
+chip-count and LFM execution obligations. See
+`docs/task-034f12-rf-value-modulations.md` for contracts and measured evidence.
+
+
 ## Task 034F11 — RF TX JobEvent common controls
 
 TX event v2 adds owned polarization, beam correction, phase radians, execution,

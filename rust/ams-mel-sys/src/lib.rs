@@ -4243,3 +4243,71 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+pub type AmsMelRfModulationKindT = u32;
+pub const AMS_MEL_RF_MODULATION_TONE: AmsMelRfModulationKindT = 0;
+pub const AMS_MEL_RF_MODULATION_PHASE_CODE: AmsMelRfModulationKindT = 1;
+pub const AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY: AmsMelRfModulationKindT = 2;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelDoubleSpanV1 {
+    pub data: *const f64,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelI32SpanV1 {
+    pub data: *const i32,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigV1 {
+    pub kind: AmsMelRfModulationKindT,
+    pub chip_duration_femtoseconds: i64,
+    pub phase_chips_rad: AmsMelDoubleSpanV1,
+    pub frequency_extent_hz: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigSpanV1 {
+    pub data: *const AmsMelRfModulationConfigV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigV3 {
+    pub event: AmsMelRfTxEventConfigV2,
+    pub has_modulation_indices: u32,
+    pub modulation_indices: AmsMelI32SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfTxEventConfigSpanV3 {
+    pub data: *const AmsMelRfTxEventConfigV3,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV11 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV11 {
+    pub data: *const AmsMelRfJobIntervalConfigV11,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v11(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV11,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
