@@ -195,6 +195,7 @@ begin
                               end;
                               C2.Set_Interval_TX_Power_Mode_ID (Interval, 0);
                               C2.Set_Interval_Activity_ID (Interval, [16#DE#, 16#AD#, 0, 16#BE#, 16#EF#]);
+                              C2.Set_Interval_User_Context (Interval, [0, 16#80#, 16#FF#, 1, 0]);
                               C2.Set_Interval_Execution_Type (Interval, C2.Normal);
                               C2.Append_Applicable_RX_Element_Group (Event, 0);
                               C2.Append_Applicable_RX_Element_Group (Event, 0);

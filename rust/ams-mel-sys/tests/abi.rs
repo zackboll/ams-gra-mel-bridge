@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 205);
-    assert_eq!(exported.len(), 205);
+    assert_eq!(declared.len(), 206);
+    assert_eq!(exported.len(), 206);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3794,6 +3794,55 @@ fn waveform_stream_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV15>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV15, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV15, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn user_context_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV16,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_intervals_v16;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!(
+        "ams-mel-user-context-layout-{}",
+        std::process::id()
+    ));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/user_context_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfJobIntervalConfigV16>(),
+        align_of::<AmsMelRfJobIntervalConfigV16>(),
+        offset_of!(AmsMelRfJobIntervalConfigV16, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV16, has_transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV16, transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV16, has_modulations),
+        offset_of!(AmsMelRfJobIntervalConfigV16, modulations),
+        offset_of!(AmsMelRfJobIntervalConfigV16, has_user_context),
+        offset_of!(AmsMelRfJobIntervalConfigV16, user_context),
+        size_of::<AmsMelRfJobIntervalConfigSpanV16>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV16>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV16, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV16, size),
     ];
     assert_eq!(actual, expected);
 }

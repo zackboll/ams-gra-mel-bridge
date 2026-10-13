@@ -78,6 +78,7 @@ procedure AMS_MEL_RF_TX_Events_Focused is
    function To_Scalar is new Ada.Unchecked_Conversion (System.Address, Scalar_Access);
    function To_Number is new Ada.Unchecked_Conversion (System.Address, Number_Access);
    use type Interfaces.Integer_64;
+   use type Interfaces.Unsigned_8;
    use type Interfaces.Unsigned_64;
    use type Interfaces.Unsigned_32;
    use type Interfaces.C.double;
@@ -662,6 +663,7 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   function Context_Value (I, Operation, N : Natural) return Interfaces.Integer_64;
    procedure Send_Waveform_Streams (Object : in out C2.Job) is
       type Getter is access function (I, M, F : Interfaces.C.unsigned) return Interfaces.Unsigned_64
       with Convention => C;
@@ -722,6 +724,8 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       C2.Append_Modulation (Table, C2.Waveform_Stream (0, 0, 0), Index);
       C2.Append_Modulation_Reference (TX, Index);
       C2.Append_Modulation (Table, C2.Waveform_Buffer_I8 ([(1, -2)]), Index);
+      C2.Set_Interval_Activity_ID (Interval, [19, 0, 31, 255]);
+      C2.Set_Interval_User_Context (Interval, [0, 16#80#, 16#FF#, 1, 0]);
       C2.Append_Modulation (Table, C2.Phase_Code (-37, [-0.25, 1.5]), Index);
       declare
          Profiles      : C2.Waveform_Profile_Table;
@@ -766,6 +770,17 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end;
       C2.Add_Job_Intervals (Object, List);
       Require (Observe (0, 0) = 1);
+      Require (Context_Value (0, 0, 0) = 5);
+      Require
+        (Context_Value (0, 1, 0) = 0
+         and Context_Value (0, 1, 1) = 128
+         and Context_Value (0, 1, 2) = 255
+         and Context_Value (0, 1, 3) = 1
+         and Context_Value (0, 1, 4) = 0);
+      Require (Context_Value (0, 2, 0) = 4 and Context_Value (0, 3, 2) = 31);
+      Require (Context_Value (0, 20, 2) = 1 and Context_Value (0, 21, 4) = 1);
+      Require (Context_Value (0, 22, 3) = 1);
+      Require (Context_Value (0, 23, 0) = 1 and Context_Value (0, 24, 0) = 1);
       Require (Observe (0, 7) = 3);
       Require (Observe (0, 8) = 0 and Observe (0, 9) = 0 and Observe (0, 10) = 1);
       Require (Observe (0, 1) = Interfaces.Unsigned_64'Last);
@@ -2039,6 +2054,197 @@ procedure AMS_MEL_RF_TX_Events_Focused is
       end;
       Require (DL_Close (Library) = 0, "mock close");
    end Send_Modulations;
+   function Context_Value (I, Operation, N : Natural) return Interfaces.Integer_64 is
+      Name   : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Symbol : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("mock_rf_f17_value");
+      Handle : constant System.Address := DL_Open (Name, 2);
+      Scalar : constant Scalar_Access := To_Scalar (DL_Sym (Handle, Symbol));
+      Result : Interfaces.Integer_64;
+      Closed : Interfaces.C.int;
+   begin
+      if Handle = System.Null_Address or else Scalar = null then
+         raise Program_Error with "context observations unavailable";
+      end if;
+      Result :=
+        Scalar
+          (Interfaces.C.unsigned (I), Interfaces.C.unsigned (Operation), Interfaces.C.unsigned (N));
+      Closed := DL_Close (Handle);
+      Interfaces.C.Strings.Free (Name);
+      Interfaces.C.Strings.Free (Symbol);
+      if Closed /= 0 then
+         raise Program_Error with "context observation close failed";
+      end if;
+      return Result;
+   end Context_Value;
+
+   procedure Send_User_Context (Object : in out C2.Job) is
+      Binary           : constant C2.Byte_Array := [0, 16#80#, 16#FF#, 1, 0];
+      Longer           : C2.Byte_Array (0 .. 256);
+      Interval         : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (101, 20);
+      Saved            : C2.RX_Job_Interval_Config;
+      List, Saved_List : C2.RX_Job_Interval_List;
+      procedure Observe_Context (I : Natural; Expected : C2.Byte_Array) is
+         N : Natural := 0;
+      begin
+         if Context_Value (I, 0, 0) /= Interfaces.Integer_64 (Expected'Length) then
+            raise Program_Error with "context length fidelity";
+         end if;
+         for Byte of Expected loop
+            if Context_Value (I, 1, N) /= Interfaces.Integer_64 (Byte) then
+               raise Program_Error with "context byte fidelity";
+            end if;
+            N := N + 1;
+         end loop;
+      end Observe_Context;
+      procedure Submit (Value : C2.RX_Job_Interval_Config; Expected : C2.Byte_Array) is
+         Only : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Job_Interval (Only, Value);
+         C2.Add_RX_Job_Intervals (Object, Only);
+         Observe_Context (0, Expected);
+      end Submit;
+      procedure Trace_Presence (Value : C2.RX_Job_Interval_Config; Expected : Natural) is
+         Only  : C2.RX_Job_Interval_List;
+         File  : Ada.Text_IO.File_Type;
+         Trace : constant String := Path & ".f17-presence.trace";
+         Calls : Natural := 0;
+      begin
+         Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Trace);
+         Ada.Text_IO.Close (File);
+         Ada.Environment_Variables.Set ("AMS_MEL_TEST_RF_TX_TRACE", Trace);
+         C2.Append_Job_Interval (Only, Value);
+         C2.Add_Job_Intervals (Object, Only);
+         Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_TX_TRACE");
+         Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Trace);
+         while not Ada.Text_IO.End_Of_File (File) loop
+            if Ada.Text_IO.Get_Line (File) = "setUserDefinedContextData" then
+               Calls := Calls + 1;
+            end if;
+         end loop;
+         Ada.Text_IO.Close (File);
+         if Calls /= Expected then
+            raise Program_Error with "context setter presence";
+         end if;
+      end Trace_Presence;
+   begin
+      for N in Longer'Range loop
+         Longer (N) := Interfaces.Unsigned_8 ((N * 37 + N / 3) mod 256);
+      end loop;
+      Trace_Presence (Interval, 0);
+      declare
+         Source : C2.Byte_Array := Binary;
+      begin
+         C2.Set_Interval_User_Context (Interval, Source);
+         Source := [others => 23];
+         if Source (Source'First) /= 23 then
+            raise Program_Error with "source mutation failed";
+         end if;
+      end;
+      C2.Set_Interval_Activity_ID (Interval, [19, 0, 31, 255]);
+      Saved := Interval;
+      Submit (Saved, Binary);
+      C2.Append_Job_Interval (List, Interval);
+      C2.Append_Job_Interval (List, Interval);
+      Interval := C2.Create_RX_Job_Interval (102, 30);
+      C2.Set_Empty_Interval_User_Context (Interval);
+      C2.Append_Job_Interval (List, Interval);
+      Interval := C2.Create_RX_Job_Interval (103, 40);
+      C2.Set_Interval_User_Context (Interval, Longer);
+      C2.Append_Job_Interval (List, Interval);
+      Interval := C2.Create_RX_Job_Interval (104, 50);
+      C2.Clear_Interval_User_Context (Interval);
+      C2.Append_Job_Interval (List, Interval);
+      Saved_List := List;
+      C2.Append_Job_Interval (List, Saved);
+      C2.Set_Interval_User_Context (Interval, [7]);
+      C2.Append_Interval_User_Context_Byte (Interval, 16#FF#);
+      Submit (Interval, [7, 16#FF#]);
+      Submit (Saved, Binary);
+      Trace_Presence (Saved, 1);
+      for Pass in 1 .. 2 loop
+         C2.Add_Job_Intervals (Object, Saved_List);
+         Observe_Context (0, Binary);
+         Observe_Context (1, Binary);
+         Observe_Context (2, []);
+         Observe_Context (3, Longer);
+         if Context_Value (0, 5, 0) /= 101
+           or else Context_Value (2, 5, 0) /= 102
+           or else Context_Value (3, 5, 0) /= 103
+           or else Context_Value (4, 5, 0) /= 104
+         then
+            raise Program_Error with "context interval association";
+         end if;
+         if Context_Value (0, 2, 0) /= 4
+           or else Context_Value (0, 3, 2) /= 31
+           or else Context_Value (0, 4, 0) /= 1
+         then
+            raise Program_Error with "Activity/context separation or native independent copy";
+         end if;
+         Observe_Context (0, Binary);
+      end loop;
+      for Partial_Copy in Boolean loop
+         declare
+            File             : Ada.Text_IO.File_Type;
+            Trace            : constant String := Path & ".f17-failure.trace";
+            Reached, Unwound : Boolean := False;
+            Before           : constant Interfaces.Integer_64 := Context_Value (0, 10, 0);
+         begin
+            Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Trace);
+            Ada.Text_IO.Close (File);
+            Ada.Environment_Variables.Set ("AMS_MEL_TEST_RF_TX_TRACE", Trace);
+            Ada.Environment_Variables.Set
+              ("AMS_MEL_TEST_RF_JOB_FAILURE",
+               (if Partial_Copy then "later-context-copy" else "later-context-prepared"));
+            begin
+               C2.Add_Job_Intervals (Object, Saved_List);
+               raise Program_Error with "context preparation failure accepted";
+            exception
+               when AMS.MEL.Provider_Error =>
+                  null;
+            end;
+            Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_JOB_FAILURE");
+            Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_TX_TRACE");
+            Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Trace);
+            while not Ada.Text_IO.End_Of_File (File) loop
+               declare
+                  Line : constant String := Ada.Text_IO.Get_Line (File);
+               begin
+                  Reached :=
+                    Reached
+                    or else Line
+                            = (if Partial_Copy
+                               then "later-context-copy: partial copy reached"
+                               else "later-context-prepared: preceding context complete");
+                  Unwound := Unwound or else Line = "preparation-unwound";
+               end;
+            end loop;
+            Ada.Text_IO.Close (File);
+            if not Reached or else not Unwound or else Context_Value (0, 10, 0) /= Before then
+               raise Program_Error with "context failure reach/unwind";
+            end if;
+            Observe_Context (0, Binary);
+            Observe_Context (3, Longer);
+            C2.Add_Job_Intervals (Object, Saved_List);
+            Observe_Context (0, Binary);
+         end;
+      end loop;
+      C2.Set_Interval_User_Context (Interval, Longer);
+      Submit (Interval, Longer);
+      C2.Set_Interval_User_Context (Interval, [0]);
+      Submit (Interval, [0]);
+      C2.Set_Empty_Interval_User_Context (Interval);
+      Submit (Interval, []);
+      Trace_Presence (Interval, 1);
+      C2.Clear_Interval_User_Context (Interval);
+      Trace_Presence (Interval, 0);
+      C2.Set_Empty_Interval_User_Context (Interval);
+      Trace_Presence (Interval, 1);
+      C2.Clear_Interval_User_Context (Interval);
+      C2.Append_Interval_User_Context_Byte (Interval, 16#80#);
+      Submit (Interval, [16#80#]);
+   end Send_User_Context;
+
    procedure Send_Empty (Object : in out C2.Job) is
       Absent : constant C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (1, 2);
       Empty  : C2.RX_Job_Interval_Config := Absent;
@@ -2403,6 +2609,7 @@ begin
                Send_Custom_Waveforms (Object);
                Send_Waveform_Buffers (Object);
                Send_Waveform_Streams (Object);
+               Send_User_Context (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");

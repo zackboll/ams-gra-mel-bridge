@@ -412,6 +412,13 @@ package AMS.MEL.RF.C2 is
      (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32);
    procedure Set_Interval_Activity_ID
      (Interval : in out RX_Job_Interval_Config; Value : Byte_Array);
+   -- Copied binary values; absent and explicitly present empty are distinct.
+   procedure Set_Interval_User_Context
+     (Interval : in out RX_Job_Interval_Config; Bytes : Byte_Array);
+   procedure Append_Interval_User_Context_Byte
+     (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_8);
+   procedure Set_Empty_Interval_User_Context (Interval : in out RX_Job_Interval_Config);
+   procedure Clear_Interval_User_Context (Interval : in out RX_Job_Interval_Config);
    procedure Set_Interval_Execution_Type
      (Interval : in out RX_Job_Interval_Config; Value : Execution_Type);
    procedure Append_Stab_Point (Interval : in out RX_Job_Interval_Config; Value : Pointing);
@@ -722,6 +729,8 @@ private
       Stab_Points                                  : Pointing_Vectors.Vector;
       TX_Power_Mode                                : Interfaces.Unsigned_32 := 0;
       Activity                                     : Byte_Vectors.Vector;
+      User_Context                                 : Byte_Vectors.Vector;
+      Has_User_Context                             : Boolean := False;
       Execution                                    : Execution_Type := Normal;
       Has_Product_Stream_Params                    : Boolean := False;
       Product_Stream                               : Product_Stream_Params;

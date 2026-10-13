@@ -9,6 +9,7 @@
 #include <rfmel/c2/JobRequest.h>
 
 #include <atomic>
+#include <any>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -455,7 +456,8 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool stream = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v15>;
+    constexpr bool context = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v16>;
+    constexpr bool stream = context || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v15>;
     constexpr bool samples = stream || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v14>;
     constexpr bool custom = samples || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v13>;
     constexpr bool binary = custom || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
@@ -530,6 +532,14 @@ ams_mel_status_t add_rx_intervals(
     bool enabled = false;
     for (std::size_t i = 0; i < inputs.size; ++i) {
         const auto& input = input_at(i);
+        if constexpr (context) {
+            const auto& source = inputs.data[i];
+            if (source.has_user_context > 1U) return AMS_MEL_INVALID_ARGUMENT;
+            if (source.has_user_context == 1U &&
+                (!span_ok(source.user_context.size, source.user_context.data, sizeof(std::uint8_t)) ||
+                 source.user_context.size > std::vector<std::uint8_t>{}.max_size()))
+                return AMS_MEL_INVALID_ARGUMENT;
+        }
         if constexpr (modulation) {
             const auto& source = inputs.data[i];
             if (source.has_modulations > 1U) return AMS_MEL_INVALID_ARGUMENT;
@@ -1235,6 +1245,33 @@ ams_mel_status_t add_rx_intervals(
                     interval.setEndpoints(connections);
                 }
             }
+            if constexpr (context) {
+                const auto& source = inputs.data[i];
+                if (source.has_user_context == 1U) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    if (i > 0 && failpoint("later-context-prepared")) {
+                        qualification_trace("later-context-prepared: preceding context complete");
+                        throw std::bad_alloc{};
+                    }
+#endif
+                    std::vector<std::uint8_t> bytes;
+                    bytes.reserve(source.user_context.size);
+                    for (std::size_t b = 0; b < source.user_context.size; ++b) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                        if (i > 0 && b == source.user_context.size / 2 && failpoint("later-context-copy")) {
+                            qualification_trace("later-context-copy: partial copy reached");
+                            throw std::bad_alloc{};
+                        }
+#endif
+                        bytes.push_back(source.user_context.data[b]);
+                    }
+                    const std::any payload{std::move(bytes)};
+                    interval.setUserDefinedContextData(payload);
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                    qualification_trace("setUserDefinedContextData");
+#endif
+                }
+            }
             intervals.push_back(std::move(interval));
         }
         return interval_command(job, true, [&](rfmel::JobDetail& detail) { detail.addJobIntervals(intervals); },
@@ -1307,6 +1344,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v14(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v15(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v15 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v16(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v16 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)

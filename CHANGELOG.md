@@ -1,5 +1,24 @@
 # Changelog
 
+## Task 034F17 — copied RF JobInterval user context
+
+Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5
+collections, plus explicit context presence and the frozen u8 span. Exactly
+`ams_mel_rf_job_add_intervals_v16` is added (206 production exports, ABI 0.1).
+Both safe Ada Add names serialize v16; the four public context operations
+own copied bytes and distinguish absent from explicitly empty.
+
+The bridge selects `std::vector<std::uint8_t>` inside upstream `std::any`.
+This is not a universal MEL schema: providers must know the concrete type.
+Each active interval receives independent ordered binary storage before the
+single provider Add. Inactive spans are ignored completely. Activity ID is
+separate. Capability byte limits remain caller/provider obligations; no hidden
+query/cache or automatic ProductRx metadata delivery is introduced. The pinned
+typed getter is unsafe on absent/wrong-type any and is never probed that way.
+No public Python/safe Rust expansion, hardware execution or RF emission.
+See `docs/task-034f17-rf-interval-user-context.md` for evidence and limits.
+
+
 ## Task 034F16 — copied RF WaveformStream descriptors
 
 Bridge tag 7 selects the direct outer `rfmel::Modulation` alternative, not
