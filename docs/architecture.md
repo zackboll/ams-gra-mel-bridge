@@ -1,5 +1,16 @@
 # Architecture decisions
 
+## Task 034F18 — RF ProductRx I8/I16 receive
+
+Explicit requested format travels through the existing completion and must
+equal the provider-assigned format before registration. The same callback state,
+permanent exact-function/DSO retention, queue, drain and parent-first claims
+serve both widths; no parallel receiver/worker is added. Native samples are
+copied component by component into immutable width-specific event storage.
+V2 submit/view are additive; frozen v1 stays I16-only. Safe Ada owns the same
+event handle with checked width-specific borrowed/copy operations. See
+`task-034f18-rf-product-rx-complex-i8.md` for qualification and exclusions.
+
 ## Task 034F17 — copied RF JobInterval user context
 
 Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5

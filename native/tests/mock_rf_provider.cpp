@@ -367,6 +367,7 @@ using DataReadyCallback =
     std::function<void(std::shared_ptr<rfmel::ProductRxMetadata>, rfmel::JobDataPointer,
                        std::size_t)>;
 using ComplexI16 = rfmel::MELComplex<std::int16_t>;
+using ComplexI8 = rfmel::MELComplex<std::int8_t>;
 using CreateResult = mel::ErrorOr<std::shared_ptr<rfmel::ProductRxEndpoint>>;
 
 std::atomic<unsigned> rdma_calls{};
@@ -380,6 +381,7 @@ std::atomic<std::uint64_t> next_endpoint_id{UINT64_C(0x8000000000000011)};
 struct RetainedCallback {
     DataReadyCallback copy;
     DataReadyCallback *reference{};
+    JobDataFormat format{JobDataFormat::ComplexINT16};
 };
 
 std::shared_ptr<rfmel::ProductRxMetadata> rich_metadata()
@@ -433,9 +435,17 @@ public:
             if (page == MAP_FAILED) throw std::bad_alloc{};
             static_assert(owned_samples * sizeof(ComplexI16) <= owned_page_size);
             owned_ = static_cast<ComplexI16 *>(page);
-            for (std::size_t index = 0; index < owned_samples; ++index)
-                new (owned_ + index) ComplexI16{};
-            fill_rich(owned_);
+            if (format_ == JobDataFormat::ComplexINT8) {
+                auto samples = static_cast<ComplexI8 *>(page);
+                const std::int8_t values[6][2] = {{-128, 127}, {127, -128},
+                    {-1, 0}, {0, -1}, {7, -11}, {23, 42}};
+                for (std::size_t index = 0; index < owned_samples; ++index)
+                    new (samples + index) ComplexI8{values[index][0], values[index][1]};
+            } else {
+                for (std::size_t index = 0; index < owned_samples; ++index)
+                    new (owned_ + index) ComplexI16{};
+                fill_rich(owned_);
+            }
         }
     }
     ~MockProductRxEndpoint() override
@@ -531,6 +541,7 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
     record("rf_rx_set_callback");
     if (mode_ == "throw-before") throw std::runtime_error("mock registration exception");
     auto held = std::make_shared<RetainedCallback>();
+    held->format = format_;
     if (mode_ == "reference" || mode_ == "throw-after") held->reference = &callback;
     else if (mode_ == "move") held->copy = std::move(callback);
     else held->copy = callback;
@@ -548,9 +559,13 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         /* The provider thread holds ONLY the retained callback and a raw
          * pointer to endpoint-owned storage: never the endpoint itself. */
         ComplexI16 *const samples = owned_;
-        std::thread{[held, samples, done]() {
+        const auto format = format_;
+        std::thread{[held, samples, done, format]() {
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
-            target(rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
+            if (format == JobDataFormat::ComplexINT8)
+                target(rich_metadata(), rfmel::JobDataPointer{
+                    static_cast<ComplexI8 *>(static_cast<void *>(samples))}, owned_samples);
+            else target(rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
             write_byte(done, 'K');
         }}.detach();
         char byte;
@@ -559,9 +574,15 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         throw std::runtime_error("mock registration exception with an active callback");
     }
     if (mode_ == "sync") {
-        ComplexI16 samples[2] = {ComplexI16{77, -77}, ComplexI16{-1, 1}};
-        invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
-        samples[0] = ComplexI16{0, 0};
+        if (format_ == JobDataFormat::ComplexINT8) {
+            ComplexI8 samples[2] = {ComplexI8{77, -77}, ComplexI8{-1, 1}};
+            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            samples[0] = ComplexI8{0, 0};
+        } else {
+            ComplexI16 samples[2] = {ComplexI16{77, -77}, ComplexI16{-1, 1}};
+            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            samples[0] = ComplexI16{0, 0};
+        }
     }
 }
 
@@ -588,6 +609,7 @@ std::shared_ptr<MockProductRxEndpoint> find_endpoint(std::uint64_t id)
 struct Pending {
     std::promise<CreateResult> promise;
     std::string mode;
+    JobDataFormat format;
 };
 std::mutex pending_mutex;
 std::vector<Pending> *delayed_creates = new std::vector<Pending>;
@@ -609,7 +631,8 @@ mel::RequestFor<rfmel::ProductRxEndpoint> rx_create(const std::string& name,
     creates.fetch_add(1U);
     record("rf_rx_create");
     if (name.rfind("rx:", 0) != 0) forbidden("DataMEL::createProductRxEndpoint");
-    if (format != JobDataFormat::ComplexINT16 || region != nullptr)
+    if ((format != JobDataFormat::ComplexINT16 && format != JobDataFormat::ComplexINT8) ||
+        region != nullptr)
         forbidden("createProductRxEndpoint other than (ComplexINT16, size, nullptr)");
     last_region_size.store(region_size);
     const auto [create, mode] = split_rx(name);
@@ -634,14 +657,18 @@ mel::RequestFor<rfmel::ProductRxEndpoint> rx_create(const std::string& name,
         promise.set_value(CreateResult{std::shared_ptr<rfmel::ProductRxEndpoint>{}});
     } else if (create == "format-mismatch") {
         promise.set_value(CreateResult{make_endpoint(mode, JobDataFormat::DirectINT16)});
+    } else if (create == "width-mismatch") {
+        promise.set_value(CreateResult{make_endpoint(mode,
+            format == JobDataFormat::ComplexINT8 ? JobDataFormat::ComplexINT16 :
+                                                   JobDataFormat::ComplexINT8)});
     } else if (create == "getter-throw") {
-        promise.set_value(CreateResult{make_endpoint("getter-throw", JobDataFormat::ComplexINT16)});
+        promise.set_value(CreateResult{make_endpoint("getter-throw", format)});
     } else if (create == "delayed" || create == "never") {
         std::lock_guard lock{pending_mutex};
         (create == "delayed" ? delayed_creates : never_creates)
-            ->push_back(Pending{std::move(promise), mode});
+            ->push_back(Pending{std::move(promise), mode, format});
     } else {
-        promise.set_value(CreateResult{make_endpoint(mode, JobDataFormat::ComplexINT16)});
+        promise.set_value(CreateResult{make_endpoint(mode, format)});
     }
     return future;
 }
@@ -2377,7 +2404,7 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_rx_release(vo
     unsigned released = 0;
     for (auto& item : *delayed_creates) {
         if (item.mode.empty()) continue;
-        item.promise.set_value(CreateResult{make_endpoint(item.mode, JobDataFormat::ComplexINT16)});
+        item.promise.set_value(CreateResult{make_endpoint(item.mode, item.format)});
         item.mode.clear();
         ++released;
     }
@@ -2397,11 +2424,46 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
     std::uint64_t id, int kind, std::size_t count)
 {
     std::shared_ptr<RetainedCallback> held;
+    JobDataFormat format;
     {
         const auto endpoint = find_endpoint(id);
         if (!endpoint || !(held = endpoint->retained())) return 0;
+        format = endpoint->getAssignedDataFormat();
     }
     auto metadata = rich_metadata();
+    if (format == JobDataFormat::ComplexINT8) {
+        metadata->setJobIntervalID(18U);
+        metadata->setReceiveEvents(std::vector<rfmel::StreamID>{18U, 0U, 18U});
+        ComplexI8 samples[6] = {ComplexI8{-128, 127}, ComplexI8{127, -128},
+            ComplexI8{-1, 0}, ComplexI8{0, -1}, ComplexI8{7, -11}, ComplexI8{23, 42}};
+        ComplexI16 wrong{1, 2};
+        if (kind == 13) {
+            invoke_held(held, metadata,
+                rfmel::JobDataPointer{static_cast<std::int8_t *>(nullptr)}, 0U);
+        } else if (kind == EmitWrongVariant) {
+            invoke_held(held, metadata, rfmel::JobDataPointer{&wrong}, count);
+        } else if (kind == EmitNullPointer || kind == EmitZeroNull) {
+            invoke_held(held, metadata, rfmel::JobDataPointer{static_cast<ComplexI8 *>(nullptr)},
+                        kind == EmitZeroNull ? 0U : (count == 0U ? 1U : count));
+        } else {
+            if (kind == EmitNullMetadata) metadata.reset();
+            else if (kind == EmitUserData) metadata->setUserDefinedData(std::any{42});
+            else if (kind == EmitStabPoints)
+                metadata->addStabPoints(rfmel::PointingType{rfmel::FaceRelativePointing{}});
+            else if (kind == EmitReceiveEvents) metadata->addReceiveEvents(rfmel::ReceiveEvent{});
+            else if (kind == EmitAssociations)
+                metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{9U});
+            else if (kind == EmitEmptyAssociations)
+                metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{});
+            else if (kind == EmitSparse) metadata = std::make_shared<rfmel::ProductRxMetadata>();
+            else if (kind != EmitRich && kind != EmitCount && kind != EmitRichAlternate) return 0;
+            invoke_held(held, metadata, rfmel::JobDataPointer{samples},
+                        kind == EmitCount ? count : 6U);
+        }
+        for (auto& sample : samples) sample = ComplexI8{0, 0};
+        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        return 1;
+    }
     switch (kind) {
     case EmitRich:
     case EmitRichAlternate: {
@@ -2488,10 +2550,11 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_arm_late(
      * the late thread is parked inside read() before the test may drop its
      * pin (and, under the no-library-pin negative control, before the DSO
      * can be unmapped under a thread that has not started yet). */
+    const auto format = held->format;
     std::promise<void> started;
     std::future<void> running = started.get_future();
     try {
-        std::thread{[held, gate_fd, done_fd, page, started = std::move(started)]() mutable {
+        std::thread{[held, gate_fd, done_fd, page, format, started = std::move(started)]() mutable {
             char byte;
             ssize_t result;
             started.set_value();
@@ -2499,7 +2562,9 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_arm_late(
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
             if (!target) { write_byte(done_fd, 'E'); return; }
             try {
-                target(nullptr, rfmel::JobDataPointer{static_cast<ComplexI16 *>(page)}, 1024U);
+                if (format == JobDataFormat::ComplexINT8)
+                    target(nullptr, rfmel::JobDataPointer{static_cast<ComplexI8 *>(page)}, 1024U);
+                else target(nullptr, rfmel::JobDataPointer{static_cast<ComplexI16 *>(page)}, 1024U);
             } catch (...) {
                 write_byte(done_fd, 'X');
                 return;
@@ -2521,14 +2586,19 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit_owned(std:
 {
     std::shared_ptr<RetainedCallback> held;
     ComplexI16 *samples = nullptr;
+    JobDataFormat format;
     {
         auto endpoint = find_endpoint(id);
         if (!endpoint || !(held = endpoint->retained())) return 0;
         samples = endpoint->owned_samples_page();
+        format = endpoint->getAssignedDataFormat();
         endpoint.reset();
     }
     if (samples == nullptr) return 0;
-    invoke_held(held, rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
+    if (format == JobDataFormat::ComplexINT8)
+        invoke_held(held, rich_metadata(), rfmel::JobDataPointer{
+            static_cast<ComplexI8 *>(static_cast<void *>(samples))}, owned_samples);
+    else invoke_held(held, rich_metadata(), rfmel::JobDataPointer{samples}, owned_samples);
     return 1;
 }
 

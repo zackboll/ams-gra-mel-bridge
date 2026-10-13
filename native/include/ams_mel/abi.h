@@ -4262,6 +4262,37 @@ typedef struct ams_mel_rf_product_rx_event_v1 {
     ams_mel_rf_product_rx_metadata_v1 metadata;
 } ams_mel_rf_product_rx_event_v1;
 
+/* Additive receive view. data_format selects exactly one span; the inactive
+ * span and every empty span are {NULL, 0}. Counts are Cartesian pairs, not
+ * bytes. All addresses borrow immutable event-owned storage until event_close.
+ * No native MELComplex layout compatibility is assumed. */
+typedef struct ams_mel_rf_product_rx_event_v2 {
+    uint64_t endpoint_id;
+    ams_mel_rf_job_data_format_t data_format;
+    ams_mel_rf_complex_i8_span_v1 samples_i8;
+    ams_mel_rf_complex_i16_span_v1 samples_i16;
+    ams_mel_rf_product_rx_metadata_v1 metadata;
+} ams_mel_rf_product_rx_event_v2;
+
+/* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
+ * and ComplexINT16 only. Assigned format must equal requested format before
+ * registration. Frozen submit remains ComplexINT16-only. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v2(
+    ams_mel_rf_data *data,
+    const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Works for both supported widths. Frozen event_view returns
+ * AMS_MEL_INVALID_ARGUMENT on I8 without changing *out_view. Both views use
+ * the existing event owner and event_close; no additional owner is created. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v2(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v2 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* getEndpointID() and getAssignedDataFormat(), each read exactly once after
  * the create future succeeded. assigned_data_format is always COMPLEX_INT16. */
 typedef struct ams_mel_rf_product_rx_info_v1 {

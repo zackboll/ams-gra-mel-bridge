@@ -64,12 +64,15 @@ using DataReadyCallback =
     std::function<void(std::shared_ptr<rfmel::ProductRxMetadata>, rfmel::JobDataPointer,
                        std::size_t)>;
 using ComplexI16 = rfmel::MELComplex<std::int16_t>;
+using ComplexI8 = rfmel::MELComplex<std::int8_t>;
 using CreateFuture = mel::RequestFor<rfmel::ProductRxEndpoint>;
 
 struct ams_mel_rf_product_rx_event {
     std::vector<ams_mel_rf_complex_i16_v1> samples;
+    std::vector<ams_mel_rf_complex_i8_v1> samples_i8;
     std::vector<std::uint32_t> stream_ids;
     ams_mel_rf_product_rx_event_v1 view{};
+    ams_mel_rf_product_rx_event_v2 view_v2{};
 };
 
 namespace {
@@ -89,6 +92,7 @@ struct RfRxCallbackState {
     std::size_t drain_waiters{}; /* Close/cleanup blocked in the drain (observation only) */
     ams_mel_rf_product_rx_counters_v1 counters{};
     std::uint64_t endpoint_id{};
+    rfmel::JobDataFormat format{rfmel::JobDataFormat::ComplexINT16};
 };
 
 void saturating_increment(std::uint64_t& value) noexcept
@@ -189,13 +193,28 @@ BuildOutcome build_event(const RfRxCallbackState& state,
                          std::unique_ptr<ams_mel_rf_product_rx_event>& output)
 {
     if (metadata == nullptr) return BuildOutcome::Malformed;
-    ComplexI16 *const *const alternative = std::get_if<ComplexI16 *>(&data);
-    if (alternative == nullptr) return BuildOutcome::Malformed;
-    const ComplexI16 *const source = *alternative;
-    if (count != 0U && source == nullptr) return BuildOutcome::Malformed;
     if (count > state.max_samples_per_event) return BuildOutcome::Malformed;
-    if (count > std::vector<ams_mel_rf_complex_i16_v1>{}.max_size())
-        return BuildOutcome::Malformed;
+    const bool i8 = state.format == rfmel::JobDataFormat::ComplexINT8;
+    const ComplexI8 *source_i8 = nullptr;
+    const ComplexI16 *source = nullptr;
+    if (i8) {
+        const auto alternative = std::get_if<ComplexI8 *>(&data);
+        if (alternative == nullptr) return BuildOutcome::Malformed;
+        source_i8 = *alternative;
+        if ((count != 0U && source_i8 == nullptr) ||
+            count > std::vector<ams_mel_rf_complex_i8_v1>{}.max_size() ||
+            count > SIZE_MAX / sizeof(ams_mel_rf_complex_i8_v1))
+            return BuildOutcome::Malformed;
+    } else {
+        const auto alternative = std::get_if<ComplexI16 *>(&data);
+        if (state.format != rfmel::JobDataFormat::ComplexINT16 || alternative == nullptr)
+            return BuildOutcome::Malformed;
+        source = *alternative;
+        if ((count != 0U && source == nullptr) ||
+            count > std::vector<ams_mel_rf_complex_i16_v1>{}.max_size() ||
+            count > SIZE_MAX / sizeof(ams_mel_rf_complex_i16_v1))
+            return BuildOutcome::Malformed;
+    }
 
     /* Fail closed: unsupported nonempty metadata is never silently dropped. */
     if (metadata->getUserDefinedData().has_value()) return BuildOutcome::Malformed;
@@ -213,10 +232,18 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     auto event = std::make_unique<ams_mel_rf_product_rx_event>();
     /* Element-wise: MELComplex<int16_t> is not trivially copyable, and no
      * layout compatibility with ams_mel_rf_complex_i16_v1 is assumed. */
-    event->samples.resize(count);
-    for (std::size_t index = 0; index < count; ++index) {
-        event->samples[index].real = source[index].real();
-        event->samples[index].imag = source[index].imag();
+    if (i8) {
+        event->samples_i8.resize(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            event->samples_i8[index].real = source_i8[index].real();
+            event->samples_i8[index].imag = source_i8[index].imag();
+        }
+    } else {
+        event->samples.resize(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            event->samples[index].real = source[index].real();
+            event->samples[index].imag = source[index].imag();
+        }
     }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
     if (take_failpoint(FailStreamIds)) throw std::bad_alloc{};
@@ -225,10 +252,12 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     event->stream_ids.assign(ids.begin(), ids.end());
     const auto start = metadata->getFirstReceiveEventStart();
 
-    ams_mel_rf_product_rx_event_v1& view = event->view;
+    ams_mel_rf_product_rx_event_v2& view = event->view_v2;
     view.endpoint_id = state.endpoint_id;
-    view.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16;
-    view.samples = {event->samples.empty() ? nullptr : event->samples.data(),
+    view.data_format = static_cast<ams_mel_rf_job_data_format_t>(state.format);
+    view.samples_i8 = {event->samples_i8.empty() ? nullptr : event->samples_i8.data(),
+                       event->samples_i8.size()};
+    view.samples_i16 = {event->samples.empty() ? nullptr : event->samples.data(),
                     event->samples.size()};
     ams_mel_rf_product_rx_metadata_v1& out = view.metadata;
     out.mel_protocol_version_id = metadata->getMelProtocolVersionID();
@@ -244,6 +273,7 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     out.first_rx_event_start_fs = start.getFractionalFemtoseconds().count();
     out.rx_stream_ids = {event->stream_ids.empty() ? nullptr : event->stream_ids.data(),
                          event->stream_ids.size()};
+    if (!i8) event->view = {view.endpoint_id, view.data_format, view.samples_i16, out};
     output = std::move(event);
     return BuildOutcome::Accepted;
 }
@@ -398,6 +428,7 @@ struct CreateCompletion {
 
     std::size_t queue_capacity{};
     std::size_t max_samples_per_event{};
+    rfmel::JobDataFormat requested_format{rfmel::JobDataFormat::ComplexINT16};
 };
 
 /* Owned by the detached worker. Allocated before the provider call so that a
@@ -526,16 +557,17 @@ void settle(CreateWorkerInput& input, WorkerOutcome& outcome) noexcept
             } catch (...) { outcome.message.clear(); }
             return; /* endpoint destroyed here, on the worker */
         }
-        if (format != rfmel::JobDataFormat::ComplexINT16) {
+        if (format != input.completion->requested_format) {
             outcome.kind = CreateKind::ProviderFailed;
             outcome.message = "provider assigned JobDataFormat " +
                 std::to_string(static_cast<long long>(
                     static_cast<std::underlying_type_t<rfmel::JobDataFormat>>(format))) +
-                " to a ComplexINT16 ProductRxEndpoint request";
+                " does not match requested ProductRxEndpoint format " +
+                std::to_string(static_cast<int>(input.completion->requested_format));
             return;
         }
         outcome.kind = CreateKind::Succeeded;
-        outcome.info = {id, AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16};
+        outcome.info = {id, static_cast<ams_mel_rf_job_data_format_t>(format)};
         outcome.endpoint = std::move(endpoint);
     } catch (...) {
         /* Only bridge-owned string building can throw here. */
@@ -640,18 +672,20 @@ bool to_size(std::uint64_t value, std::size_t& output) noexcept
 
 } // namespace
 
-extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
+static ams_mel_status_t submit_product_rx(
     ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
     ams_mel_rf_product_rx_request **out_request, char *diagnostic,
-    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required, bool allow_i8) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || data == nullptr || !data->state ||
         config == nullptr || out_request == nullptr || *out_request != nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
     std::size_t region_size{};
-    if (config->data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
-        write_diagnostic("only AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 is supported",
+    if (config->data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 &&
+        !(allow_i8 && config->data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8)) {
+        write_diagnostic(allow_i8 ? "only ComplexINT8 and ComplexINT16 are supported" :
+                         "only AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 is supported",
                          diagnostic, diagnostic_capacity, diagnostic_required);
         return AMS_MEL_INVALID_ARGUMENT;
     }
@@ -673,6 +707,7 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
         completion = std::make_shared<CreateCompletion>();
         completion->queue_capacity = config->queue_capacity;
         completion->max_samples_per_event = config->max_samples_per_event;
+        completion->requested_format = static_cast<rfmel::JobDataFormat>(config->data_format);
         input = std::make_shared<CreateWorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_rf_product_rx_request>();
@@ -694,7 +729,7 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
      * the final child of a closed parent. */
     try {
         input->future = parent->data->createProductRxEndpoint(
-            rfmel::JobDataFormat::ComplexINT16, region_size, nullptr);
+            completion->requested_format, region_size, nullptr);
     } catch (...) {
         completion->claim.release_detached();
         return translate_provider_exception("provider createProductRxEndpoint exception",
@@ -725,6 +760,24 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
     }
     *out_request = owner.release();
     return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, false);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v2(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, true);
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_wait(
@@ -800,6 +853,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_claim(
         state->queue_capacity = completion.queue_capacity;
         state->max_samples_per_event = completion.max_samples_per_event;
         state->endpoint_id = completion.info.endpoint_id;
+        state->format = completion.requested_format;
         owner = std::make_unique<ams_mel_rf_product_rx>();
         registration = std::make_unique<PermanentRxRegistration>();
         registration->callback_state = state;
@@ -1045,7 +1099,25 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view(
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
         out_view == nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
+    if (event->view_v2.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
+        write_diagnostic("frozen v1 event view requires ComplexINT16", diagnostic,
+                         diagnostic_capacity, diagnostic_required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
     *out_view = &event->view;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v2(
+    const ams_mel_rf_product_rx_event *event, const ams_mel_rf_product_rx_event_v2 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
+        out_view == nullptr)
+        return AMS_MEL_INVALID_ARGUMENT;
+    *out_view = &event->view_v2;
     return AMS_MEL_OK;
 }
 

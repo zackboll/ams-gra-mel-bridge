@@ -2200,6 +2200,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_mfa_info_close",
     "ams_mel_rf_data_close",
     "ams_mel_rf_data_submit_product_rx",
+    "ams_mel_rf_data_submit_product_rx_v2",
+    "ams_mel_rf_product_rx_event_view_v2",
     "ams_mel_rf_product_rx_request_wait",
     "ams_mel_rf_product_rx_request_claim",
     "ams_mel_rf_product_rx_request_close",
@@ -2598,6 +2600,30 @@ class RfComplexI8V1(ctypes.Structure):
 
 class RfComplexI8SpanV1(ctypes.Structure):
     _fields_ = [("data", ctypes.POINTER(RfComplexI8V1)), ("size", ctypes.c_size_t)]
+
+
+class RfProductRxEventV2(ctypes.Structure):
+    _fields_ = [
+        ("endpoint_id", ctypes.c_uint64),
+        ("data_format", ctypes.c_uint32),
+        ("samples_i8", RfComplexI8SpanV1),
+        ("samples_i16", RfComplexI16SpanV1),
+        ("metadata", RfProductRxMetadataV1),
+    ]
+
+
+ams_mel_rf_data_submit_product_rx_v2 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v2
+ams_mel_rf_data_submit_product_rx_v2.argtypes = [
+    RfDataHandle, ctypes.POINTER(RfProductRxConfigV1),
+    ctypes.POINTER(RfProductRxRequestHandle), *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_data_submit_product_rx_v2.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_view_v2 = _LIBRARY.ams_mel_rf_product_rx_event_view_v2
+ams_mel_rf_product_rx_event_view_v2.argtypes = [
+    RfProductRxEventHandle, ctypes.POINTER(ctypes.POINTER(RfProductRxEventV2)),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_view_v2.restype = ctypes.c_int32
 
 class RfWaveformBufferConfigV1(ctypes.Structure):
     _fields_ = [

@@ -17,6 +17,7 @@ package body AMS_MEL_RF_Product_Rx_Tests is
    use type RX.Counter;
    use type RF.Job_Data_Format;
    use type Interfaces.Integer_16;
+   use type Interfaces.Integer_8;
    use type Interfaces.C.int;
    use type Interfaces.C.unsigned;
    use type Interfaces.C.size_t;
@@ -193,6 +194,30 @@ package body AMS_MEL_RF_Product_Rx_Tests is
             Copied : constant RX.Complex_I16_Array := RX.Copy_Samples (A);
          begin
             Check_Rich (A);
+            declare
+               procedure Unexpected_I8 (Samples : RX.Complex_I8_Array) is
+               begin
+                  raise Program_Error with "I16 exposed I8" & Samples'Length'Image;
+               end Unexpected_I8;
+            begin
+               begin
+                  RX.With_Samples_I8 (A, Unexpected_I8'Access);
+                  raise Program_Error with "I16 wrong-width borrowed accessor accepted";
+               exception
+                  when Constraint_Error =>
+                     null;
+               end;
+               begin
+                  declare
+                     Wrong : constant RX.Complex_I8_Array := RX.Copy_Samples_I8 (A);
+                  begin
+                     raise Program_Error with "I16 wrong-width copy accepted" & Wrong'Length'Image;
+                  end;
+               exception
+                  when Constraint_Error =>
+                     null;
+               end;
+            end;
             if Emit (ID, 12, 0) /= 1 or else Emit (ID, 5, 0) /= 1 then
                raise Program_Error with "mock RF buffer reuse failed";
             end if;
@@ -543,6 +568,104 @@ package body AMS_MEL_RF_Product_Rx_Tests is
          end;
          Ignored := DL_Close (Program);
       end;
+      for Iteration in 1 .. 50 loop
+         declare
+            I8_Parent  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+            I8_Request : RX.Create_Request :=
+              RX.Submit (I8_Parent, RX.Create_Config_Complex_I8 (65_536, 4, 6));
+         begin
+            if RX.Outcome (RX.Wait (I8_Request, 10_000)) /= RX.Created then
+               raise Program_Error with "I8 creation failed";
+            end if;
+            declare
+               I8_Endpoint : RX.Endpoint := RX.Claim (I8_Request);
+               procedure Check_I8 (Samples : RX.Complex_I8_Array) is
+                  Expected : constant RX.Complex_I8_Array :=
+                    [(-128, 127), (127, -128), (-1, 0), (0, -1), (7, -11), (23, 42)];
+               begin
+                  if Samples'Length /= Expected'Length then
+                     raise Program_Error with "I8 sample count mismatch";
+                  end if;
+                  for Index in Expected'Range loop
+                     if Samples (Samples'First + Index - Expected'First).Real
+                       /= Expected (Index).Real
+                       or else Samples (Samples'First + Index - Expected'First).Imag
+                               /= Expected (Index).Imag
+                     then
+                        raise Program_Error with "I8 signed fidelity mismatch";
+                     end if;
+                  end loop;
+               end Check_I8;
+               procedure Unexpected_I16 (Samples : RX.Complex_I16_Array) is
+               begin
+                  raise Program_Error with "I8 widened to I16" & Samples'Length'Image;
+               end Unexpected_I16;
+            begin
+               if RX.Assigned_Data_Format (I8_Endpoint) /= RF.Complex_INT8 then
+                  raise Program_Error with "I8 assigned format mismatch";
+               end if;
+               RF.Close (I8_Parent);
+               RX.Close (I8_Request);
+               if Emit (RX.Endpoint_ID (I8_Endpoint), 0, 0) /= 1 then
+                  raise Program_Error with "I8 emitter failed";
+               end if;
+               declare
+                  Product : RX.Event := RX.Receive (I8_Endpoint);
+                  Copied  : constant RX.Complex_I8_Array := RX.Copy_Samples_I8 (Product);
+               begin
+                  if RX.Data_Format (Product) /= RF.Complex_INT8
+                    or else RX.Sample_Count (Product) /= 6
+                    or else RX.Job_Interval_ID (RX.Metadata (Product)) /= 18
+                    or else RX.Rx_Stream_ID_Count (RX.Metadata (Product)) /= 3
+                  then
+                     raise Program_Error with "I8 metadata mismatch";
+                  end if;
+                  RX.With_Samples_I8 (Product, Check_I8'Access);
+                  begin
+                     declare
+                        Wrong : constant RX.Complex_I16_Array := RX.Copy_Samples (Product);
+                     begin
+                        raise Program_Error
+                          with "I8 wrong-width copy accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  begin
+                     RX.With_Samples (Product, Unexpected_I16'Access);
+                     raise Program_Error with "wrong-width I16 accessor accepted I8";
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  if Emit (RX.Endpoint_ID (I8_Endpoint), 5, 0) /= 1 then
+                     raise Program_Error with "I8 empty emitter failed";
+                  end if;
+                  declare
+                     Empty      : RX.Event := RX.Receive (I8_Endpoint);
+                     Empty_Copy : constant RX.Complex_I8_Array := RX.Copy_Samples_I8 (Empty);
+                  begin
+                     if Empty_Copy'Length /= 0 then
+                        raise Program_Error with "I8 empty copy mismatch";
+                     end if;
+                     begin
+                        RX.With_Samples (Empty, Unexpected_I16'Access);
+                        raise Program_Error with "empty I8 wrong-width accessor accepted";
+                     exception
+                        when Constraint_Error =>
+                           null;
+                     end;
+                     RX.Close (Empty);
+                  end;
+                  RX.Close (I8_Endpoint);
+                  RX.With_Samples_I8 (Product, Check_I8'Access);
+                  RX.Close (Product);
+                  Check_I8 (Copied);
+               end;
+            end;
+         end;
+      end loop;
       Ignored := DL_Close (Library);
    end Run;
 end AMS_MEL_RF_Product_Rx_Tests;

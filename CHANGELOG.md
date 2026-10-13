@@ -1,5 +1,14 @@
 # Changelog
 
+## Task 034F18 — RF ProductRx ComplexINT8 receive
+
+Add submit-v2 and event-view-v2 (208 exports, AMS_MEL_0.1), supporting exact
+signed I8/I16 copies in the existing receive lifecycle. Preserve frozen I16
+submit/view; reject I8 through v1 view with INVALID_ARGUMENT and untouched
+output. Safe Ada adds I8 config/borrow/copy operations and width guards without
+changing I16 defaults. Private raw bindings and compiled layout checks match.
+See `docs/task-034f18-rf-product-rx-complex-i8.md` for evidence and limitations.
+
 ## Task 034F17 — copied RF JobInterval user context
 
 Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5

@@ -241,13 +241,17 @@ static ams_mel_rf_product_rx_config_v1 config_of(size_t capacity, size_t max_sam
     return config;
 }
 
+static int selected_i8;
+
 static ams_mel_rf_product_rx_request *submit(ams_mel_rf_data *data, size_t capacity,
                                              size_t max_samples)
 {
     ams_mel_rf_product_rx_request *request = NULL;
-    const ams_mel_rf_product_rx_config_v1 config = config_of(capacity, max_samples);
+    ams_mel_rf_product_rx_config_v1 config = config_of(capacity, max_samples);
     char diagnostic[128];
-    CHECK(ams_mel_rf_data_submit_product_rx(data, &config, &request, diagnostic,
+    if (selected_i8) config.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8;
+    CHECK((selected_i8 ? ams_mel_rf_data_submit_product_rx_v2 :
+           ams_mel_rf_data_submit_product_rx)(data, &config, &request, diagnostic,
                                             sizeof diagnostic, NULL) == AMS_MEL_OK);
     CHECK(request != NULL && diagnostic[0] == '\0');
     return request;
@@ -269,7 +273,8 @@ static ams_mel_rf_product_rx *claim(ams_mel_rf_product_rx_request *request,
     CHECK(ams_mel_rf_product_rx_request_claim(request, &endpoint, info, diagnostic,
                                               sizeof diagnostic, NULL) == AMS_MEL_OK);
     CHECK(endpoint != NULL && diagnostic[0] == '\0');
-    CHECK(info->assigned_data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16);
+    CHECK(info->assigned_data_format == (selected_i8 ?
+          AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 : AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16));
     return endpoint;
 }
 
@@ -806,7 +811,12 @@ static void test_parent_first(void)
     CHECK(p.shutdown_calls() == 0U && occurrences("rf_data_destroyed") == 0U);
     CHECK(p.emit(info.endpoint_id, EMIT_RICH, 0U) == 1);
     event = receive_ok(endpoint);
-    expect_rich(view_of(event), info.endpoint_id);
+    if (selected_i8) {
+        const ams_mel_rf_product_rx_event_v2 *view = NULL;
+        CHECK(ams_mel_rf_product_rx_event_view_v2(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(view->endpoint_id == info.endpoint_id && view->samples_i8.size == 6U);
+        CHECK(view->samples_i8.data[0].real == -128 && view->samples_i8.data[0].imag == 127);
+    } else expect_rich(view_of(event), info.endpoint_id);
     close_endpoint(&endpoint);
     /* The final child ran the deferred shutdown, exactly once. */
     CHECK(p.shutdown_calls() == 1U && occurrences("rf_shutdown") == 1U);
@@ -837,7 +847,12 @@ static void test_pending_parent_first(void)
     CHECK(p.shutdown_calls() == 0U);
     CHECK(p.emit(info.endpoint_id, EMIT_RICH, 0U) == 1);
     event = receive_ok(endpoint);
-    expect_rich(view_of(event), info.endpoint_id);
+    if (selected_i8) {
+        const ams_mel_rf_product_rx_event_v2 *view = NULL;
+        CHECK(ams_mel_rf_product_rx_event_view_v2(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(view->endpoint_id == info.endpoint_id && view->samples_i8.size == 6U);
+        CHECK(view->samples_i8.data[0].real == -128 && view->samples_i8.data[0].imag == 127);
+    } else expect_rich(view_of(event), info.endpoint_id);
     close_event(&event);
     close_endpoint(&endpoint);
     CHECK(p.shutdown_calls() == 1U && occurrences("rf_data_destroyed") == 1U);
@@ -1279,7 +1294,13 @@ static int run_late(const char *scenario, int pre_emit)
     /* Event A is unchanged after endpoint Close, DataMEL destruction, and a
      * later callback. */
     if (event != NULL) {
-        expect_rich(view_of(event), info.endpoint_id);
+        if (selected_i8) {
+            const ams_mel_rf_product_rx_event_v2 *view = NULL;
+            CHECK(ams_mel_rf_product_rx_event_view_v2(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(view->endpoint_id == info.endpoint_id && view->samples_i8.size == 6U);
+            CHECK(view->samples_i8.data[0].real == -128 && view->samples_i8.data[0].imag == 127);
+            CHECK(view->samples_i8.data[5].real == 23 && view->samples_i8.data[5].imag == 42);
+        } else expect_rich(view_of(event), info.endpoint_id);
         close_event(&event);
     }
     return LATE_PASS;
@@ -1607,6 +1628,173 @@ static void test_worker_launch_failure(void)
     CHECK(provider_mapped());
 }
 
+static void test_i8_creation(void)
+{
+    const char *scenarios[] = {"rx:format-mismatch", "rx:getter-throw", "rx:future-throw",
+        "rx:invalid-future", "rx:sync-throw", "rx:error-unknown-code", "rx:null-endpoint",
+        "rx:width-mismatch"};
+    size_t index;
+    for (index = 0; index < sizeof scenarios / sizeof scenarios[0]; ++index) {
+        ams_mel_rf_data *data = open_rx(scenarios[index]);
+        pin p = take_pin();
+        ams_mel_rf_product_rx_config_v1 config = config_of(1U, 6U);
+        ams_mel_rf_product_rx_request *request = NULL;
+        ams_mel_rf_product_rx_request_result_v1 result;
+        ams_mel_status_t status;
+        config.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8;
+        status = ams_mel_rf_data_submit_product_rx_v2(data, &config, &request, NULL, 0, NULL);
+        if (index == 3U) CHECK(status == AMS_MEL_PROVIDER_FAILED && request == NULL);
+        else if (index == 4U) CHECK(status == AMS_MEL_PROVIDER_EXCEPTION && request == NULL);
+        else {
+            CHECK(status == AMS_MEL_OK);
+            status = ams_mel_rf_product_rx_request_wait(request, 10000U, &result, NULL, 0, NULL);
+            CHECK(status == ((index == 1U || index == 2U) ?
+                  AMS_MEL_PROVIDER_EXCEPTION : AMS_MEL_PROVIDER_FAILED));
+            CHECK(ams_mel_rf_product_rx_request_wait(request, 0U, &result, NULL, 0, NULL) == status);
+            CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        }
+        CHECK(p.registrations() == 0U);
+        close_data(&data);
+        drop_pin(&p);
+    }
+    {
+        ams_mel_rf_data *data = open_rx("rx:ok:sync");
+        pin p = take_pin();
+        ams_mel_rf_product_rx_info_v1 info;
+        ams_mel_rf_product_rx *endpoint;
+        ams_mel_rf_product_rx_event *event;
+        const ams_mel_rf_product_rx_event_v2 *view = NULL;
+        selected_i8 = 1;
+        endpoint = open_endpoint(data, 1U, 6U, &info);
+        event = receive_ok(endpoint);
+        CHECK(ams_mel_rf_product_rx_event_view_v2(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(view->samples_i8.size == 2U);
+        CHECK(view->samples_i8.data[0].real == 77 && view->samples_i8.data[0].imag == -77);
+        CHECK(view->samples_i8.data[1].real == -1 && view->samples_i8.data[1].imag == 1);
+        close_event(&event);
+        close_endpoint(&endpoint);
+        close_data(&data);
+        drop_pin(&p);
+        selected_i8 = 0;
+    }
+}
+
+static void test_i8(void)
+{
+    unsigned iteration;
+    for (iteration = 0; iteration < 50U; ++iteration) {
+        ams_mel_rf_data *data = open_rx("rx:ok:reference");
+        pin p = take_pin();
+        ams_mel_rf_product_rx_config_v1 config = config_of(1U, 6U);
+        const unsigned creates_before = p.creates();
+        ams_mel_rf_product_rx_request *request = NULL;
+        ams_mel_rf_product_rx *endpoint = NULL;
+        ams_mel_rf_product_rx *i16;
+        ams_mel_rf_product_rx_info_v1 info, info16;
+        ams_mel_rf_product_rx_event *event = NULL, *event16 = NULL;
+        const ams_mel_rf_product_rx_event_v2 *view = NULL, *view16 = NULL;
+        const ams_mel_rf_product_rx_event_v1 *old = NULL;
+        const int8_t values[6][2] = {{-128, 127}, {127, -128}, {-1, 0},
+                                    {0, -1}, {7, -11}, {23, 42}};
+        unsigned format;
+        config.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8;
+        CHECK(ams_mel_rf_data_submit_product_rx(data, &config, &request, NULL, 0, NULL)
+              == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(p.creates() == creates_before);
+        for (format = 0; format < 16U; ++format) {
+            if (format == 2U || format == 3U) continue;
+            config.data_format = format;
+            CHECK(ams_mel_rf_data_submit_product_rx_v2(data, &config, &request, NULL, 0, NULL)
+                  == AMS_MEL_INVALID_ARGUMENT);
+        }
+        config.data_format = UINT32_MAX;
+        CHECK(ams_mel_rf_data_submit_product_rx_v2(data, &config, &request, NULL, 0, NULL)
+              == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(p.creates() == creates_before);
+        config.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8;
+        CHECK(ams_mel_rf_data_submit_product_rx_v2(data, &config, &request, NULL, 0, NULL)
+              == AMS_MEL_OK);
+        wait_ok(request);
+        CHECK(ams_mel_rf_product_rx_request_claim(request, &endpoint, &info, NULL, 0, NULL)
+              == AMS_MEL_OK);
+        CHECK(info.assigned_data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8);
+        CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        config.data_format = AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16;
+        CHECK(ams_mel_rf_data_submit_product_rx_v2(data, &config, &request, NULL, 0, NULL)
+              == AMS_MEL_OK);
+        wait_ok(request);
+        i16 = claim(request, &info16);
+        CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(p.emit(info.endpoint_id, EMIT_RICH, 0) == 1);
+        CHECK(p.emit(info16.endpoint_id, EMIT_RICH, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_RICH, 0) == 1);
+        CHECK(ams_mel_rf_product_rx_receive(endpoint, 0, &event, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_event_view_v2(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(view->data_format == 2U && view->samples_i8.size == 6U);
+        CHECK(view->samples_i16.data == NULL && view->samples_i16.size == 0U);
+        CHECK(view->metadata.job_interval_id == 18U);
+        CHECK(view->metadata.rx_stream_ids.size == 3U);
+        CHECK(view->metadata.rx_stream_ids.data[0] == 18U &&
+              view->metadata.rx_stream_ids.data[1] == 0U &&
+              view->metadata.rx_stream_ids.data[2] == 18U);
+        CHECK(ams_mel_rf_product_rx_receive(i16, 0, &event16, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_event_view(event16, &old, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_event_view_v2(event16, &view16, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(view16->samples_i8.data == NULL && view16->samples_i8.size == 0U);
+        CHECK(view16->samples_i16.data == old->samples.data &&
+              view16->samples_i16.size == old->samples.size);
+        CHECK(memcmp(&view16->metadata, &old->metadata, sizeof old->metadata) == 0);
+        {
+            const ams_mel_rf_product_rx_event_v1 *sentinel = old;
+            CHECK(ams_mel_rf_product_rx_event_view(event, &sentinel, NULL, 0, NULL)
+                  == AMS_MEL_INVALID_ARGUMENT);
+            CHECK(sentinel == old);
+        }
+        CHECK(p.emit(info.endpoint_id, EMIT_WRONG_VARIANT, 1) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_WRONG_VARIANT, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_NULL_POINTER, 1) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_COUNT, SIZE_MAX) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_NULL_METADATA, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_USER_DATA, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_STAB_POINTS, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_RECEIVE_EVENTS, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, EMIT_ASSOCIATIONS, 0) == 1);
+        CHECK(p.emit(info.endpoint_id, 13, 0) == 1);
+        ams_mel_test_rf_rx_failpoint(1U);
+        CHECK(p.emit(info.endpoint_id, EMIT_RICH, 0) == 1);
+        expect_counters(endpoint, 13U, 1U, 1U, 10U, 1U, 0U);
+        CHECK(p.emit(info.endpoint_id, EMIT_ZERO_NULL, 0) == 1);
+        {
+            ams_mel_rf_product_rx_event *empty = NULL;
+            const ams_mel_rf_product_rx_event_v2 *empty_view = NULL;
+            CHECK(ams_mel_rf_product_rx_receive(endpoint, 0, &empty, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_rf_product_rx_event_view_v2(empty, &empty_view, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(empty_view->samples_i8.data == NULL && empty_view->samples_i8.size == 0U);
+            CHECK(ams_mel_rf_product_rx_event_close(&empty, NULL, 0, NULL) == AMS_MEL_OK);
+        }
+        CHECK(p.emit(info.endpoint_id, EMIT_COUNT, 1) == 1);
+        {
+            ams_mel_rf_product_rx_event *one = NULL;
+            const ams_mel_rf_product_rx_event_v2 *one_view = NULL;
+            CHECK(ams_mel_rf_product_rx_receive(endpoint, 0, &one, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(ams_mel_rf_product_rx_event_view_v2(one, &one_view, NULL, 0, NULL) == AMS_MEL_OK);
+            CHECK(one_view->samples_i8.size == 1U && one_view->samples_i8.data[0].real == -128);
+            CHECK(ams_mel_rf_product_rx_event_close(&one, NULL, 0, NULL) == AMS_MEL_OK);
+        }
+        close_endpoint(&endpoint);
+        close_endpoint(&i16);
+        close_data(&data);
+        for (format = 0; format < 6U; ++format) {
+            CHECK(view->samples_i8.data[format].real == values[format][0]);
+            CHECK(view->samples_i8.data[format].imag == values[format][1]);
+        }
+        CHECK(ams_mel_rf_product_rx_event_close(&event, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_event_close(&event16, NULL, 0, NULL) == AMS_MEL_OK);
+        check_no_forbidden(&p);
+        drop_pin(&p);
+    }
+}
+
 /* ---------------------------------------------------------- dispatcher */
 int main(int argc, char **argv)
 {
@@ -1616,8 +1804,14 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     name = argv[1];
+    if (strncmp(name, "i8-", 3U) == 0) {
+        selected_i8 = 1;
+        name += 3;
+    }
     setup_log();
-    if (strcmp(name, "receive") == 0) test_receive();
+    if (strcmp(name, "creation") == 0 && selected_i8) test_i8_creation();
+    else if (strcmp(name, "i8") == 0) test_i8();
+    else if (strcmp(name, "receive") == 0) test_receive();
     else if (strcmp(name, "fail-closed") == 0) test_fail_closed();
     else if (strcmp(name, "malformed") == 0) test_malformed();
     else if (strcmp(name, "queue-full") == 0) test_queue_full();

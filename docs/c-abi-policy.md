@@ -1,5 +1,17 @@
 # Experimental C ABI policy
 
+## Task 034F18 — additive ProductRx receive formats
+
+Exactly submit_product_rx_v2 and product_rx_event_view_v2 are added: 208
+production exports, AMS_MEL_0.1. Frozen submit accepts only I16; its event view
+returns INVALID_ARGUMENT on I8 and leaves the output pointer untouched.
+V2 uses frozen config/sample spans/metadata/owners. data_format selects one
+active span; inactive and empty spans are NULL/0. Counts are Cartesian pairs.
+Views borrow event-owned immutable copies until existing event_close.
+Requested and assigned format must agree before callback registration. Exact
+variant discrimination precedes sample reads. No C++ layout or callback/DSO
+quiescence claim is added. See `task-034f18-rf-product-rx-complex-i8.md`.
+
 ## Task 034F17 — copied RF JobInterval user context
 
 Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5
