@@ -53,6 +53,30 @@ package body AMS.MEL.RF.C2.Testing is
       function Zero_job_interval_config_span_v13 is new Zero (C.RF_job_interval_config_span_v13);
       Value_job_interval_config_span_v13           : constant C.RF_job_interval_config_span_v13 :=
         Zero_job_interval_config_span_v13;
+      function Zero_RF_Complex_I8_V1 is new Zero (C.RF_Complex_I8_V1);
+      Value_RF_Complex_I8_V1                       : constant C.RF_Complex_I8_V1 :=
+        Zero_RF_Complex_I8_V1;
+      function Zero_RF_Complex_I8_Span_V1 is new Zero (C.RF_Complex_I8_Span_V1);
+      Value_RF_Complex_I8_Span_V1                  : constant C.RF_Complex_I8_Span_V1 :=
+        Zero_RF_Complex_I8_Span_V1;
+      function Zero_RF_Complex_I16_Span_V1 is new Zero (C.RF_Complex_I16_Span_V1);
+      Value_RF_Complex_I16_Span_V1                 : constant C.RF_Complex_I16_Span_V1 :=
+        Zero_RF_Complex_I16_Span_V1;
+      function Zero_RF_Waveform_Buffer_Config_V1 is new Zero (C.RF_Waveform_Buffer_Config_V1);
+      Value_RF_Waveform_Buffer_Config_V1           : constant C.RF_Waveform_Buffer_Config_V1 :=
+        Zero_RF_Waveform_Buffer_Config_V1;
+      function Zero_RF_Modulation_Config_V4 is new Zero (C.RF_Modulation_Config_V4);
+      Value_RF_Modulation_Config_V4                : constant C.RF_Modulation_Config_V4 :=
+        Zero_RF_Modulation_Config_V4;
+      function Zero_RF_Modulation_Config_Span_V4 is new Zero (C.RF_Modulation_Config_Span_V4);
+      Value_RF_Modulation_Config_Span_V4           : constant C.RF_Modulation_Config_Span_V4 :=
+        Zero_RF_Modulation_Config_Span_V4;
+      function Zero_RF_Job_Interval_Config_V14 is new Zero (C.RF_Job_Interval_Config_V14);
+      Value_RF_Job_Interval_Config_V14             : constant C.RF_Job_Interval_Config_V14 :=
+        Zero_RF_Job_Interval_Config_V14;
+      function Zero_RF_Job_Interval_Config_Span_V14 is new Zero (C.RF_Job_Interval_Config_Span_V14);
+      Value_RF_Job_Interval_Config_Span_V14        : constant C.RF_Job_Interval_Config_Span_V14 :=
+        Zero_RF_Job_Interval_Config_Span_V14;
       function Zero_Modulation is new Zero (C.RF_Modulation_Config_V1);
       function Zero_Event is new Zero (C.RF_TX_Event_Config_V3);
       function Zero_Interval is new Zero (C.RF_Job_Interval_Config_V11);
@@ -71,6 +95,45 @@ package body AMS.MEL.RF.C2.Testing is
       --  The actual compiled C layout probe qualifies these LP64 measurements.
       --  Do not count this conditional check as narrower-target runtime evidence.
       if C.Size_T'Size = 64 then
+         if C.RF_Complex_I8_V1'Object_Size /= 16
+           or else C.RF_Complex_I8_V1'Alignment /= 1
+           or else Value_RF_Complex_I8_V1.Real'Position /= 0
+           or else Value_RF_Complex_I8_V1.Imag'Position /= 1
+           or else C.RF_Complex_I8_Span_V1'Object_Size /= 128
+           or else C.RF_Complex_I8_Span_V1'Alignment /= 8
+           or else Value_RF_Complex_I8_Span_V1.Data'Position /= 0
+           or else Value_RF_Complex_I8_Span_V1.Size'Position /= 8
+           or else C.RF_Complex_I16_Span_V1'Object_Size /= 128
+           or else C.RF_Complex_I16_Span_V1'Alignment /= 8
+           or else Value_RF_Complex_I16_Span_V1.Data'Position /= 0
+           or else Value_RF_Complex_I16_Span_V1.Size'Position /= 8
+           or else C.RF_Waveform_Buffer_Config_V1'Object_Size /= 320
+           or else C.RF_Waveform_Buffer_Config_V1'Alignment /= 8
+           or else Value_RF_Waveform_Buffer_Config_V1.Data_Format'Position /= 0
+           or else Value_RF_Waveform_Buffer_Config_V1.Samples_I8'Position /= 8
+           or else Value_RF_Waveform_Buffer_Config_V1.Samples_I16'Position /= 24
+           or else C.RF_Modulation_Config_V4'Object_Size /= 1152
+           or else C.RF_Modulation_Config_V4'Alignment /= 8
+           or else Value_RF_Modulation_Config_V4.Modulation'Position /= 0
+           or else Value_RF_Modulation_Config_V4.Waveform_Buffer'Position /= 104
+           or else C.RF_Modulation_Config_Span_V4'Object_Size /= 128
+           or else C.RF_Modulation_Config_Span_V4'Alignment /= 8
+           or else Value_RF_Modulation_Config_Span_V4.Data'Position /= 0
+           or else Value_RF_Modulation_Config_Span_V4.Size'Position /= 8
+           or else C.RF_Job_Interval_Config_V14'Object_Size /= 2304
+           or else C.RF_Job_Interval_Config_V14'Alignment /= 8
+           or else Value_RF_Job_Interval_Config_V14.Interval'Position /= 0
+           or else Value_RF_Job_Interval_Config_V14.Has_Transmit_Events'Position /= 240
+           or else Value_RF_Job_Interval_Config_V14.Transmit_Events'Position /= 248
+           or else Value_RF_Job_Interval_Config_V14.Has_Modulations'Position /= 264
+           or else Value_RF_Job_Interval_Config_V14.Modulations'Position /= 272
+           or else C.RF_Job_Interval_Config_Span_V14'Object_Size /= 128
+           or else C.RF_Job_Interval_Config_Span_V14'Alignment /= 8
+           or else Value_RF_Job_Interval_Config_Span_V14.Data'Position /= 0
+           or else Value_RF_Job_Interval_Config_Span_V14.Size'Position /= 8
+         then
+            raise Program_Error with "WaveformBuffer C/Ada layout mismatch";
+         end if;
          if C.RF_waveform_profile_params_v1'Object_Size /= 640
            or else C.RF_waveform_profile_params_v1'Alignment /= 8
            or else Value_waveform_profile_params_v1.chip_duration_femtoseconds'Position /= 0

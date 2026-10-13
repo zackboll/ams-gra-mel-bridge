@@ -171,6 +171,27 @@ package AMS.MEL.RF.C2 is
    type RX_Receive_Event_Config is private;
    type TX_Transmit_Event_Config is private;
    type Modulation_Config is private;
+   type Waveform_Sample_I8 is record
+      Real, Imag : Interfaces.Integer_8;
+   end record;
+   type Waveform_Sample_I16 is record
+      Real, Imag : Interfaces.Integer_16;
+   end record;
+   type Waveform_Sample_I8_Array is array (Positive range <>) of Waveform_Sample_I8;
+   type Waveform_Sample_I16_Array is array (Positive range <>) of Waveform_Sample_I16;
+   --  Owned caller values. Each Add copies into fresh native storage; native
+   --  copies of one submitted buffer share that storage. No timing/execution
+   --  guarantee is implied, including for empty Cartesian buffers.
+   function Waveform_Buffer_I8 (Samples : Waveform_Sample_I8_Array) return Modulation_Config;
+   function Waveform_Buffer_I16 (Samples : Waveform_Sample_I16_Array) return Modulation_Config;
+   procedure Append_Waveform_Sample_I8
+     (Config : in out Modulation_Config; Sample : Waveform_Sample_I8);
+   procedure Append_Waveform_Sample_I16
+     (Config : in out Modulation_Config; Sample : Waveform_Sample_I16);
+   procedure Replace_Waveform_Samples_I8
+     (Config : in out Modulation_Config; Samples : Waveform_Sample_I8_Array);
+   procedure Replace_Waveform_Samples_I16
+     (Config : in out Modulation_Config; Samples : Waveform_Sample_I16_Array);
    type Modulation_Table is private;
    --  Owned configuration values only, not executable waveform validation.
    --  Degrees stay degrees; false update flags retain their numeric values.
@@ -565,8 +586,13 @@ private
    type Waveform_Pattern_List is record
       Values : Waveform_Pattern_Vectors.Vector;
    end record;
+   package Waveform_I8_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Sample_I8);
+   package Waveform_I16_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Sample_I16);
    type Modulation_Config is record
-      Kind             : Natural range 0 .. 5 := 0;
+      Kind             : Natural range 0 .. 6 := 0;
+      Sample_Width     : Natural range 8 .. 16 := 8;
+      Samples_I8       : Waveform_I8_Vectors.Vector;
+      Samples_I16      : Waveform_I16_Vectors.Vector;
       Duration         : Interfaces.Integer_64 := 0;
       Phases           : Phase_Chip_Vectors.Vector;
       Extent           : Long_Float := 0.0;

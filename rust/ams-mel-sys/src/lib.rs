@@ -4409,6 +4409,62 @@ pub struct AmsMelRfModulationConfigV3 {
     pub modulation: AmsMelRfModulationConfigV2,
     pub custom_waveform: AmsMelRfCustomWaveformConfigV1,
 }
+pub const AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER: u32 = 6;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfComplexI8V1 {
+    pub real: i8,
+    pub imag: i8,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfComplexI8SpanV1 {
+    pub data: *const AmsMelRfComplexI8V1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformBufferConfigV1 {
+    pub data_format: AmsMelRfJobDataFormat,
+    pub samples_i8: AmsMelRfComplexI8SpanV1,
+    pub samples_i16: AmsMelRfComplexI16SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigV4 {
+    pub modulation: AmsMelRfModulationConfigV3,
+    pub waveform_buffer: AmsMelRfWaveformBufferConfigV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigSpanV4 {
+    pub data: *const AmsMelRfModulationConfigV4,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV14 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV4,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV14 {
+    pub data: *const AmsMelRfJobIntervalConfigV14,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v14(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV14,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelRfModulationConfigSpanV3 {

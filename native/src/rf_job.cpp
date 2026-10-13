@@ -93,6 +93,10 @@ bool failpoint(const char *name) noexcept
 #endif
 }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+using SampleWeak = std::variant<
+    std::weak_ptr<std::vector<rfmel::MELComplex<int8_t>>>,
+    std::weak_ptr<std::vector<rfmel::MELComplex<int16_t>>>>;
+std::vector<SampleWeak> sample_preparation_owners;
 void qualification_trace(const char *text) noexcept
 {
     if (const char *path = std::getenv("AMS_MEL_TEST_RF_TX_TRACE")) {
@@ -437,10 +441,16 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool custom = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v13>;
+    constexpr bool samples = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v14>;
+    constexpr bool custom = samples || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v13>;
     constexpr bool binary = custom || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
     constexpr bool modulation = binary || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
-    const auto binary_at = [](const auto& supplied) -> const auto& {
+    const auto custom_envelope_at = [](const auto& supplied) -> const auto& {
+        if constexpr (samples) return supplied.modulation;
+        else return supplied;
+    };
+    const auto binary_at = [&](const auto& envelope) -> const auto& {
+        const auto& supplied = custom_envelope_at(envelope);
         if constexpr (custom) return supplied.modulation;
         else return supplied;
     };
@@ -449,8 +459,8 @@ ams_mel_status_t add_rx_intervals(
         if constexpr (binary) return supplied.modulation;
         else return supplied;
     };
-    const auto custom_at = [](const auto& supplied) -> const auto& {
-        return supplied.custom_waveform;
+    const auto custom_at = [&](const auto& supplied) -> const auto& {
+        return custom_envelope_at(supplied).custom_waveform;
     };
     constexpr bool tx_controls = modulation || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v10>;
     constexpr bool tx = tx_controls || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v9>;
@@ -508,9 +518,26 @@ ams_mel_status_t add_rx_intervals(
                 if (!span_ok(table.size, table.data, sizeof(*table.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t m = 0; m < table.size; ++m) {
                     const auto& value = modulation_at(table.data[m]);
-                    constexpr auto last_kind = custom ? AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM :
+                    constexpr auto last_kind = samples ? AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER :
+                        custom ? AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM :
                         binary ? AMS_MEL_RF_MODULATION_CPFSK_PULSE : AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY;
                     if (value.kind > last_kind) return AMS_MEL_INVALID_ARGUMENT;
+                    if constexpr (samples) {
+                        if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER) {
+                            const auto& buffer = table.data[m].waveform_buffer;
+                            if (buffer.data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8) {
+                                const auto span = buffer.samples_i8;
+                                if (!span_ok(span.size, span.data, sizeof(*span.data)) ||
+                                    span.size > std::vector<rfmel::MELComplex<int8_t>>{}.max_size())
+                                    return AMS_MEL_INVALID_ARGUMENT;
+                            } else if (buffer.data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
+                                const auto span = buffer.samples_i16;
+                                if (!span_ok(span.size, span.data, sizeof(*span.data)) ||
+                                    span.size > std::vector<rfmel::MELComplex<int16_t>>{}.max_size())
+                                    return AMS_MEL_INVALID_ARGUMENT;
+                            } else return AMS_MEL_INVALID_ARGUMENT;
+                        }
+                    }
                     if (value.kind == AMS_MEL_RF_MODULATION_PHASE_CODE &&
                         !span_ok(value.phase_chips_rad.size, value.phase_chips_rad.data,
                                  sizeof(*value.phase_chips_rad.data))) return AMS_MEL_INVALID_ARGUMENT;
@@ -924,6 +951,40 @@ ams_mel_status_t add_rx_intervals(
                         }
 #endif
                         const auto& value = modulation_at(supplied.data[m]);
+                        if constexpr (samples) {
+                            if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER) {
+                                const auto& source = supplied.data[m].waveform_buffer;
+                                const auto copy_samples = [&](const auto span, auto component) {
+                                    using Component = decltype(component);
+                                    using Vector = std::vector<rfmel::MELComplex<Component>>;
+                                    auto owner = std::make_shared<Vector>();
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                    if (failpoint("later-sample-vector"))
+                                        sample_preparation_owners.emplace_back(std::weak_ptr<Vector>{owner});
+#endif
+                                    owner->reserve(span.size);
+                                    for (std::size_t s = 0; s < span.size; ++s) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                                        if (m > 0 && s == span.size / 2 && failpoint("later-sample-vector")) {
+                                            qualification_trace("later-sample-vector: preparation reached");
+                                            throw std::bad_alloc{};
+                                        }
+#endif
+                                        owner->emplace_back(span.data[s].real, span.data[s].imag);
+                                    }
+                                    return owner;
+                                };
+                                rfmel::JobTransmitVector storage;
+                                if (source.data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8)
+                                    storage.emplace<rfmel::ComplexI8VecPtr>(copy_samples(source.samples_i8, int8_t{}));
+                                else
+                                    storage.emplace<rfmel::ComplexI16VecPtr>(copy_samples(source.samples_i16, int16_t{}));
+                                rfmel::WaveformBuffer buffer{rfmel::DataSampleFormat::ComplexCartesian, storage};
+                                table.emplace_back(std::in_place_type<rfmel::CommonModulations>,
+                                    std::in_place_type<rfmel::WaveformBuffer>, buffer);
+                                continue;
+                            }
+                        }
                         if constexpr (binary) {
                             if (value.kind == AMS_MEL_RF_MODULATION_ON_OFF_KEYING ||
                                 value.kind == AMS_MEL_RF_MODULATION_CPFSK_PULSE) {
@@ -1190,6 +1251,23 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v13(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v13 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v14(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v14 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+/* Sequential test-only weak observers. No strong owner or production root. */
+extern "C" __attribute__((visibility("default"))) std::size_t ams_mel_test_sample_preparation(
+    unsigned operation) noexcept
+{
+    if (operation == 0) { sample_preparation_owners.clear(); return 0; }
+    if (operation == 1) return sample_preparation_owners.size();
+    std::size_t expired = 0;
+    for (const auto& observer : sample_preparation_owners)
+        if (std::visit([](const auto& weak) { return weak.expired(); }, observer)) ++expired;
+    return expired;
+}
+#endif
 extern "C" ams_mel_status_t ams_mel_rf_job_flush(
     ams_mel_rf_job *job, char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 {

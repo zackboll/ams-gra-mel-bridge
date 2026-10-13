@@ -2174,6 +2174,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_intervals_v11",
     "ams_mel_rf_job_add_intervals_v12",
     "ams_mel_rf_job_add_intervals_v13",
+    "ams_mel_rf_job_add_intervals_v14",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2587,3 +2588,40 @@ class RfJobIntervalConfigSpanV13(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v13 = _LIBRARY.ams_mel_rf_job_add_intervals_v13
 ams_mel_rf_job_add_intervals_v13.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV13, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v13.restype = ctypes.c_int32
+
+AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER = 6
+
+class RfComplexI8V1(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_int8), ("imag", ctypes.c_int8)]
+
+class RfComplexI8SpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfComplexI8V1)), ("size", ctypes.c_size_t)]
+
+class RfWaveformBufferConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("data_format", ctypes.c_uint32),
+        ("samples_i8", RfComplexI8SpanV1),
+        ("samples_i16", RfComplexI16SpanV1),
+    ]
+
+class RfModulationConfigV4(ctypes.Structure):
+    _fields_ = [("modulation", RfModulationConfigV3), ("waveform_buffer", RfWaveformBufferConfigV1)]
+
+class RfModulationConfigSpanV4(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfModulationConfigV4)), ("size", ctypes.c_size_t)]
+
+class RfJobIntervalConfigV14(ctypes.Structure):
+    _fields_ = [
+        ("interval", RfJobIntervalConfigV8),
+        ("has_transmit_events", ctypes.c_uint32),
+        ("transmit_events", RfTxEventConfigSpanV3),
+        ("has_modulations", ctypes.c_uint32),
+        ("modulations", RfModulationConfigSpanV4),
+    ]
+
+class RfJobIntervalConfigSpanV14(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV14)), ("size", ctypes.c_size_t)]
+
+ams_mel_rf_job_add_intervals_v14 = _LIBRARY.ams_mel_rf_job_add_intervals_v14
+ams_mel_rf_job_add_intervals_v14.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV14, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v14.restype = ctypes.c_int32

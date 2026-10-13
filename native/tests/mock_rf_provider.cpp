@@ -1024,6 +1024,9 @@ std::atomic<unsigned> job_cancel_calls{};
 std::atomic<unsigned> job_add_calls{}, job_flush_calls{}, job_remaining_calls{};
 std::mutex interval_mutex;
 std::vector<rfmel::JobInterval> latest_intervals;
+std::vector<rfmel::WaveformBuffer> f15_retained;
+std::weak_ptr<std::vector<rfmel::MELComplex<int8_t>>> f15_weak_i8;
+std::weak_ptr<std::vector<rfmel::MELComplex<int16_t>>> f15_weak_i16;
 
 std::mutex finalize_gate_mutex;
 std::vector<std::shared_ptr<std::promise<rfmel::JobStatus>>> finalize_pending;
@@ -2965,6 +2968,76 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f13_double(unsi
     auto cpfsk = std::get<rfmel::CpfskPulse>(std::get<rfmel::CommonModulations>(
         latest_intervals.at(i).getModulations().at(m)));
     return cpfsk.getFrequencyOffset();
+}
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f15_owner(
+    unsigned operation, unsigned i, unsigned m, unsigned s, int value)
+{
+    std::lock_guard lock{interval_mutex};
+    if (operation == 0) {
+        const auto& buffer = std::get<rfmel::WaveformBuffer>(std::get<rfmel::CommonModulations>(
+            latest_intervals.at(i).getModulations().at(m)));
+        f15_retained.push_back(buffer);
+        std::visit([](const auto& owner) {
+            using Pointer = std::decay_t<decltype(owner)>;
+            if constexpr (std::is_same_v<Pointer, rfmel::ComplexI8VecPtr>) f15_weak_i8 = owner;
+            else f15_weak_i16 = owner;
+        }, buffer.getTxSamples());
+        return 1;
+    }
+    if (operation == 1) {
+        std::visit([&](const auto& owner) {
+            using Component = decltype(owner->at(s).real());
+            owner->at(s).real(static_cast<Component>(value));
+        }, f15_retained.at(m).getTxSamples());
+        return 1;
+    }
+    if (operation == 2) return std::visit([&](const auto& owner) -> int64_t {
+        return owner->at(s).real();
+    }, f15_retained.at(m).getTxSamples());
+    if (operation == 3) { latest_intervals.clear(); return 1; }
+    if (operation == 4) { f15_retained.clear(); return 1; }
+    if (operation == 5) return f15_weak_i8.expired();
+    if (operation == 6) return f15_weak_i16.expired();
+    throw std::out_of_range{"F15 ownership operation"};
+}
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f15_value(
+    unsigned i, unsigned m, unsigned s, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& interval = latest_intervals.at(i);
+    if (field == 8) return static_cast<int64_t>(interval.getSequence().getTxEvents().at(m).getModIndex().size());
+    if (field == 9) return interval.getSequence().getTxEvents().at(m).getModIndex().at(s);
+    if (field == 10) return interval.getSequence().getTxEvents().at(m).getEventID();
+    if (field == 11) return std::holds_alternative<rfmel::CustomWaveform>(
+        std::get<rfmel::CommonModulations>(interval.getModulations().at(m)));
+    if (field == 12) return std::get<rfmel::PhaseCode>(
+        std::get<rfmel::CommonModulations>(interval.getModulations().at(m))).getChipDuration().count();
+    if (field == 13) {
+        const auto& tx = interval.getSequence().getTxEvents().at(m);
+        return tx.getPhaseOffset() == -0.75 && tx.getPolarization().size() == 1 &&
+            tx.getPolarization().at(0).at(0) == 1 && tx.getPolarization().at(0).at(1) == -2 &&
+            tx.getPolarization().at(0).at(2) == 3 && tx.getPolarization().at(0).at(3) == -4;
+    }
+    if (field == 14) {
+        const auto& rx = interval.getSequence().getRxEvents().at(m);
+        return rx.getPhaseOffset() == 3.25 && rx.getPolarization().size() == 1 &&
+            rx.getPolarization().at(0).at(0) == 1 && rx.getPolarization().at(0).at(1) == -2 &&
+            rx.getPolarization().at(0).at(2) == 3 && rx.getPolarization().at(0).at(3) == -4;
+    }
+    const auto& outer = latest_intervals.at(i).getModulations().at(m);
+    if (field == 0) return std::holds_alternative<rfmel::CommonModulations>(outer);
+    const auto& inner = std::get<rfmel::CommonModulations>(outer);
+    if (field == 1) return std::holds_alternative<rfmel::WaveformBuffer>(inner);
+    const auto& buffer = std::get<rfmel::WaveformBuffer>(inner);
+    if (field == 2) return static_cast<int64_t>(buffer.getFormat());
+    if (field == 3) return std::holds_alternative<rfmel::ComplexI8VecPtr>(buffer.getTxSamples()) ? 8 : 16;
+    return std::visit([&](const auto& owner) -> int64_t {
+        if (field == 4) return !!owner;
+        if (field == 5) return static_cast<int64_t>(owner->size());
+        if (field == 6) return owner->at(s).real();
+        if (field == 7) return owner->at(s).imag();
+        throw std::out_of_range{"F15 observer field"};
+    }, buffer.getTxSamples());
 }
 extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f14_value(
     unsigned i, unsigned m, unsigned p, unsigned s, unsigned field)

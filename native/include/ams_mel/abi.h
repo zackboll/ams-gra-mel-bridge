@@ -4106,6 +4106,54 @@ typedef struct ams_mel_rf_complex_i16_span_v1 {
     size_t size;
 } ams_mel_rf_complex_i16_span_v1;
 
+/* Borrowed Cartesian sample pairs; no native MELComplex layout claim. */
+#define AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER UINT32_C(6)
+typedef struct ams_mel_rf_complex_i8_v1 {
+    int8_t real;
+    int8_t imag;
+} ams_mel_rf_complex_i8_v1;
+typedef struct ams_mel_rf_complex_i8_span_v1 {
+    const ams_mel_rf_complex_i8_v1 *data;
+    size_t size;
+} ams_mel_rf_complex_i8_span_v1;
+
+/* The selector accepts only COMPLEX_INT8/COMPLEX_INT16 and selects width,
+ * not DataSampleFormat. Native format is always ComplexCartesian. Counts
+ * are sample pairs, not bytes. Only the selected span is read. Empty active
+ * spans produce non-null empty native vectors of the selected width.
+ * Caller storage need only remain stable through the synchronous Add call.
+ * Each definition in each Add receives fresh element-wise copied storage;
+ * native copies of that definition share it, and may mutate it. Executable
+ * sample/timing relationships remain application/provider responsibility. */
+typedef struct ams_mel_rf_waveform_buffer_config_v1 {
+    ams_mel_rf_job_data_format_t data_format;
+    ams_mel_rf_complex_i8_span_v1 samples_i8;
+    ams_mel_rf_complex_i16_span_v1 samples_i16;
+} ams_mel_rf_waveform_buffer_config_v1;
+typedef struct ams_mel_rf_modulation_config_v4 {
+    ams_mel_rf_modulation_config_v3 modulation;
+    ams_mel_rf_waveform_buffer_config_v1 waveform_buffer;
+} ams_mel_rf_modulation_config_v4;
+typedef struct ams_mel_rf_modulation_config_span_v4 {
+    const ams_mel_rf_modulation_config_v4 *data;
+    size_t size;
+} ams_mel_rf_modulation_config_span_v4;
+typedef struct ams_mel_rf_job_interval_config_v14 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v4 modulations;
+} ams_mel_rf_job_interval_config_v14;
+typedef struct ams_mel_rf_job_interval_config_span_v14 {
+    const ams_mel_rf_job_interval_config_v14 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v14;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v14(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v14 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* The fixed representable ProductRxMetadata subset, copied verbatim.
  * phase_coherence_with_prior is exactly 0 or 1. first_rx_event_start_s is
  * UTCTime::getIntegralSeconds().count() and first_rx_event_start_fs is

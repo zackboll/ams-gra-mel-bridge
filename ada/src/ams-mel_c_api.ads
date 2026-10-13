@@ -3513,4 +3513,56 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints";
+   RF_Modulation_Waveform_Buffer             : constant Interfaces.Unsigned_32 := 6;
+   type RF_Complex_I8_V1 is record
+      Real : Interfaces.Integer_8;
+      Imag : Interfaces.Integer_8;
+   end record
+   with Convention => C;
+   type RF_Complex_I8_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Complex_I16_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Waveform_Buffer_Config_V1 is record
+      Data_Format : Interfaces.Unsigned_32;
+      Samples_I8  : RF_Complex_I8_Span_V1;
+      Samples_I16 : RF_Complex_I16_Span_V1;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_V4 is record
+      Modulation      : RF_Modulation_Config_V3;
+      Waveform_Buffer : RF_Waveform_Buffer_Config_V1;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_Span_V4 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V14 is record
+      Interval            : RF_Job_Interval_Config_V8;
+      Has_Transmit_Events : Interfaces.Unsigned_32;
+      Transmit_Events     : RF_TX_Event_Config_Span_V3;
+      Has_Modulations     : Interfaces.Unsigned_32;
+      Modulations         : RF_Modulation_Config_Span_V4;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V14 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_Intervals_V14
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V14;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v14";
 end AMS.MEL_C_API;
