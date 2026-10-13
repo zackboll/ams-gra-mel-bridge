@@ -16,6 +16,8 @@ procedure AMS_MEL_Squall_RF_Job is
    use type C2.Cancel_Error;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Integer_64;
+   use type Interfaces.Integer_8;
+   use type Interfaces.Integer_16;
    procedure Verify (Object : C2.Job; ID : Interfaces.Unsigned_32) is
       Start     : constant Interfaces.Integer_64 :=
         C2.Actual_Start_Seconds (Object);
@@ -244,6 +246,13 @@ begin
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Append_Modulation
                                    (Table, C2.CPFSK_Pulse ([True, False, True], 1_000_000, 250_000, -125.0), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Set_Modulations (Interval, Table);
+                                 C2.Append_Modulation
+                                   (Table, C2.Waveform_Buffer_I8 ([(1, -2), (-3, 4)]), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation
+                                   (Table, C2.Waveform_Buffer_I16 ([(123, -456), (-789, 321)]), Index);
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Set_Modulations (Interval, Table);
                                  declare

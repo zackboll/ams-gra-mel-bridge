@@ -1,5 +1,32 @@
 # Implementation coverage
 
+## Task 034F15 — copy-owned RF WaveformBuffer samples
+
+Adds bridge tag 6 and Cartesian signed I8/I16 sample pairs through modulation
+v4 and interval v14, with the sole new production export
+`ams_mel_rf_job_add_intervals_v14` (204 exports, unchanged ABI 0.1).
+Frozen v8 intervals and TX-v3 references remain; v11/v12/v13 tag limits remain
+0–2/0–4/0–5. Only active payloads and the selected sample width are read.
+JobDataFormat selects I8 or I16; native DataSampleFormat is always
+ComplexCartesian, including zero imaginary components.
+
+C arrays are borrowed only through synchronous Add. Safe Ada owns signed
+sample values and final-sized private C backing. Each definition in each Add
+gets a fresh element-wise copied native shared vector; no caller address is
+retained, cached or reinterpreted. Copies of the SAME native WaveformBuffer
+share mutable sample storage; separate definitions and Adds do not. Retained
+native owners may outlive the public Job, subject to existing code-residency
+rules. Weak observers do not keep the sample-vector object alive.
+
+Active empty buffers contain non-null empty vectors of the selected width,
+not the native default null I8 pointer. This submits supplied sample values;
+it does not generate samples, calculate timing, create endpoints, transmit
+RF, or guarantee executable sample/duration relationships. Those relationships
+remain application/provider responsibilities. No Real, Polar, float, VITA,
+zero-copy, RDMA, cached waveform, or public Python/safe Rust API is added.
+See `docs/task-034f15-rf-waveform-buffer-samples.md` for measured evidence.
+
+
 ## Task 034F14 — copied RF CustomWaveform values
 
 Adds bridge tag 5, owned profile tables and ordered event-pattern/step vectors

@@ -17,6 +17,8 @@ procedure AMS_MEL_RF_TX_Events_Focused is
    package Status renames AMS.MEL.RF.C2.Interval_Status;
    use type C2.Request_Outcome;
    use type Interfaces.Integer_32;
+   use type Interfaces.Integer_8;
+   use type Interfaces.Integer_16;
    use type Interfaces.C.int;
    use type Interfaces.C.unsigned;
    use type System.Address;
@@ -660,6 +662,244 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   procedure Send_Waveform_Buffers (Object : in out C2.Job) is
+      type Getter is
+        access function (I, M, S, F : Interfaces.C.unsigned) return Interfaces.Integer_64
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Getter);
+      function Observe
+        (M, S, F : Interfaces.C.unsigned; I : Interfaces.C.unsigned := 0)
+         return Interfaces.Integer_64
+      is
+         Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+         Symbol  : Interfaces.C.Strings.chars_ptr :=
+           Interfaces.C.Strings.New_String ("mock_rf_f15_value");
+         Handle  : constant System.Address := DL_Open (Name, 2);
+         Address : constant System.Address := DL_Sym (Handle, Symbol);
+         Result  : Interfaces.Integer_64;
+      begin
+         if Handle = System.Null_Address or else Address = System.Null_Address then
+            raise Program_Error;
+         end if;
+         Result := Convert (Address) (I, M, S, F);
+         Interfaces.C.Strings.Free (Name);
+         Interfaces.C.Strings.Free (Symbol);
+         if DL_Close (Handle) /= 0 then
+            raise Program_Error;
+         end if;
+         return Result;
+      end Observe;
+      function Owner_Operation
+        (Operation, M, S : Interfaces.C.unsigned; Value : Interfaces.C.int)
+         return Interfaces.Integer_64
+      is
+         type Operation_Access is
+           access function
+             (Operation, I, M, S : Interfaces.C.unsigned; Value : Interfaces.C.int)
+              return Interfaces.Integer_64
+         with Convention => C;
+         function To_Operation is new Ada.Unchecked_Conversion (System.Address, Operation_Access);
+         Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+         Symbol  : Interfaces.C.Strings.chars_ptr :=
+           Interfaces.C.Strings.New_String ("mock_rf_f15_owner");
+         Handle  : constant System.Address := DL_Open (Name, 2);
+         Address : constant System.Address := DL_Sym (Handle, Symbol);
+         Result  : Interfaces.Integer_64;
+      begin
+         if Handle = System.Null_Address or else Address = System.Null_Address then
+            raise Program_Error;
+         end if;
+         Result := To_Operation (Address) (Operation, 0, M, S, Value);
+         Interfaces.C.Strings.Free (Name);
+         Interfaces.C.Strings.Free (Symbol);
+         if DL_Close (Handle) /= 0 then
+            raise Program_Error;
+         end if;
+         return Result;
+      end Owner_Operation;
+      procedure Require (Condition : Boolean) is
+      begin
+         if not Condition then
+            raise Program_Error with "WaveformBuffer observation mismatch";
+         end if;
+      end Require;
+      Config   : C2.Modulation_Config := C2.Tone;
+      Config16 : C2.Modulation_Config := C2.Waveform_Buffer_I16 ([(32767, -32768), (123, -456)]);
+      Table    : C2.Modulation_Table;
+      Index    : C2.Modulation_Index;
+      Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (37, 20);
+      List     : C2.RX_Job_Interval_List;
+   begin
+      declare
+         Source : C2.Waveform_Sample_I8_Array := [(-128, 127), (-7, 3)];
+      begin
+         Config := C2.Waveform_Buffer_I8 (Source);
+         Source (1) := (9, 8);
+         Require (Source (1).Real = 9);
+      end;
+      C2.Append_Waveform_Sample_I8 (Config, (0, -9));
+      begin
+         C2.Append_Waveform_Sample_I16 (Config, (7, 8));
+         raise Program_Error with "wrong sample width accepted";
+      exception
+         when Constraint_Error =>
+            null;
+      end;
+      C2.Append_Modulation (Table, Config, Index);
+      C2.Append_Modulation (Table, Config16, Index);
+      C2.Append_Modulation (Table, C2.Waveform_Buffer_I8 ([]), Index);
+      declare
+         Profiles : C2.Waveform_Profile_Table;
+         Patterns : C2.Waveform_Pattern_List;
+         RX       : C2.RX_Receive_Event_Config :=
+           C2.Create_RX_Receive_Event (91, "sample RX", -9, 11, 12.5, 2.0);
+         TX       : C2.TX_Transmit_Event_Config :=
+           C2.Create_TX_Transmit_Event (92, "sample TX", -7, 11, 100.25, -12.5, 3, -3);
+      begin
+         C2.Append_Modulation (Table, C2.Custom_Waveform (Profiles, Patterns), Index);
+         C2.Append_Modulation (Table, C2.Phase_Code (-37, [-0.25, 1.5]), Index);
+         C2.Append_Polarization (RX, 1.0, -2.0, 3.0, -4.0);
+         C2.Set_Phase_Offset_Radians (RX, 3.25);
+         C2.Append_RX_Event (Interval, RX);
+         C2.Append_Polarization (TX, 1.0, -2.0, 3.0, -4.0);
+         C2.Set_Phase_Offset_Radians (TX, -0.75);
+         C2.Append_Modulation_Reference (TX, 2);
+         C2.Append_Modulation_Reference (TX, 0);
+         C2.Append_Modulation_Reference (TX, C2.No_Modulation);
+         C2.Append_Modulation_Reference (TX, 4);
+         C2.Append_Modulation_Reference (TX, 0);
+         C2.Append_Modulation_Reference (TX, 3);
+         C2.Append_Modulation_Reference (TX, 1);
+         C2.Append_TX_Event (Interval, TX);
+      end;
+      C2.Set_Modulations (Interval, Table);
+      C2.Append_Job_Interval (List, Interval);
+      declare
+         Second       : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (39, 30);
+         Second_Table : C2.Modulation_Table;
+         TX           : C2.TX_Transmit_Event_Config :=
+           C2.Create_TX_Transmit_Event (93, "second sample TX", 2, 19, 200.5, -9.5, 2, 1);
+      begin
+         C2.Append_Modulation (Second_Table, Config16, Index);
+         C2.Append_Modulation (Second_Table, C2.Waveform_Buffer_I8 ([(-11, 17)]), Index);
+         C2.Set_Modulations (Second, Second_Table);
+         C2.Append_Modulation_Reference (TX, 1);
+         C2.Append_Modulation_Reference (TX, 0);
+         C2.Append_Modulation_Reference (TX, 1);
+         C2.Append_TX_Event (Second, TX);
+         C2.Append_Job_Interval (List, Second);
+      end;
+      C2.Replace_Waveform_Samples_I8 (Config, [(9, 8)]);
+      C2.Replace_Waveform_Samples_I16 (Config16, []);
+      C2.Add_Job_Intervals (Object, List);
+      Require (Observe (0, 0, 8) = 7);
+      declare
+         type Ref_Array is array (Natural range <>) of Interfaces.Integer_64;
+         Refs : constant Ref_Array := [2, 0, -1, 4, 0, 3, 1];
+      begin
+         for N in Refs'Range loop
+            Require (Observe (0, Interfaces.C.unsigned (N), 9) = Refs (N));
+         end loop;
+      end;
+      Require (Observe (0, 0, 10) = 92);
+      Require (Observe (3, 0, 11) = 1 and then Observe (4, 0, 12) = -37);
+      Require (Observe (0, 0, 13) = 1 and then Observe (0, 0, 14) = 1);
+      Require (Observe (0, 0, 3, 1) = 16 and then Observe (0, 0, 5, 1) = 2);
+      Require (Observe (0, 0, 6, 1) = 32767 and then Observe (0, 0, 7, 1) = -32768);
+      Require (Observe (0, 1, 6, 1) = 123 and then Observe (0, 1, 7, 1) = -456);
+      Require (Observe (1, 0, 3, 1) = 8 and then Observe (1, 0, 5, 1) = 1);
+      Require (Observe (1, 0, 6, 1) = -11 and then Observe (1, 0, 7, 1) = 17);
+      Require (Observe (0, 0, 10, 1) = 93 and then Observe (0, 0, 8, 1) = 3);
+      Require
+        (Observe (0, 0, 9, 1) = 1
+         and then Observe (0, 1, 9, 1) = 0
+         and then Observe (0, 2, 9, 1) = 1);
+      for M in Interfaces.C.unsigned range 0 .. 2 loop
+         Require (Observe (M, 0, 0) = 1 and then Observe (M, 0, 1) = 1);
+         Require (Observe (M, 0, 2) = 1 and then Observe (M, 0, 4) = 1);
+      end loop;
+      Require (Observe (0, 0, 3) = 8 and then Observe (0, 0, 5) = 3);
+      Require (Observe (0, 0, 6) = -128 and then Observe (0, 0, 7) = 127);
+      Require (Observe (0, 1, 6) = -7 and then Observe (0, 1, 7) = 3);
+      Require (Observe (0, 2, 6) = 0 and then Observe (0, 2, 7) = -9);
+      Require (Observe (1, 0, 3) = 16 and then Observe (1, 0, 5) = 2);
+      Require (Observe (1, 0, 6) = 32767 and then Observe (1, 0, 7) = -32768);
+      Require (Observe (1, 1, 6) = 123 and then Observe (1, 1, 7) = -456);
+      Require (Observe (2, 0, 3) = 8 and then Observe (2, 0, 5) = 0);
+      Require (Owner_Operation (0, 0, 0, 0) = 1);
+      Require (Owner_Operation (0, 1, 0, 0) = 1);
+      Require (Owner_Operation (1, 0, 0, -31) = 1);
+      Require (Observe (0, 0, 6) = -31);
+      C2.Add_RX_Job_Intervals (Object, List);
+      Require (Observe (0, 0, 6) = -128);
+      Require (Owner_Operation (2, 0, 0, 0) = -31);
+      Require (Owner_Operation (3, 0, 0, 0) = 1);
+      Require (Owner_Operation (5, 0, 0, 0) = 0);
+      Require (Owner_Operation (6, 0, 0, 0) = 0);
+      Require (Owner_Operation (4, 0, 0, 0) = 1);
+      Require (Owner_Operation (5, 0, 0, 0) = 1);
+      Require (Owner_Operation (6, 0, 0, 0) = 1);
+      declare
+         Changed_Table    : C2.Modulation_Table;
+         Changed_List     : C2.RX_Job_Interval_List;
+         Empty_Table      : C2.Modulation_Table;
+         Empty_List       : C2.RX_Job_Interval_List;
+         Changed_Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (38, 20);
+         Wrong_Kind       : C2.Modulation_Config := C2.Tone;
+      begin
+         begin
+            C2.Replace_Waveform_Samples_I8 (Wrong_Kind, [(1, 2)]);
+            raise Program_Error with "wrong kind accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         begin
+            C2.Replace_Waveform_Samples_I16 (Config, [(1, 2)]);
+            raise Program_Error with "wrong width replacement accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         C2.Append_Waveform_Sample_I16 (Config16, (-32768, 32767));
+         C2.Append_Modulation (Changed_Table, Config, Index);
+         C2.Append_Modulation (Changed_Table, Config16, Index);
+         C2.Set_Modulations (Changed_Interval, Changed_Table);
+         C2.Append_Job_Interval (Changed_List, Changed_Interval);
+         C2.Add_Job_Intervals (Object, Changed_List);
+         Require
+           (Observe (0, 0, 5) = 1 and then Observe (0, 0, 6) = 9 and then Observe (0, 0, 7) = 8);
+         Require
+           (Observe (1, 0, 5) = 1
+            and then Observe (1, 0, 6) = -32768
+            and then Observe (1, 0, 7) = 32767);
+         C2.Replace_Waveform_Samples_I8 (Config, [(1, -2), (-3, 4), (1, -2), (0, 0)]);
+         C2.Replace_Waveform_Samples_I16 (Config16, [(7, -8), (-9, 0)]);
+         Changed_Table := Empty_Table;
+         C2.Append_Modulation (Changed_Table, Config, Index);
+         C2.Append_Modulation (Changed_Table, Config16, Index);
+         C2.Set_Modulations (Changed_Interval, Changed_Table);
+         Changed_List := Empty_List;
+         C2.Append_Job_Interval (Changed_List, Changed_Interval);
+         C2.Add_Job_Intervals (Object, Changed_List);
+         Require
+           (Observe (0, 0, 5) = 4 and then Observe (0, 2, 6) = 1 and then Observe (0, 2, 7) = -2);
+         Require (Observe (1, 1, 6) = -9 and then Observe (1, 1, 7) = 0);
+         C2.Replace_Waveform_Samples_I8 (Config, []);
+         C2.Replace_Waveform_Samples_I16 (Config16, []);
+         Changed_Table := Empty_Table;
+         C2.Append_Modulation (Changed_Table, Config, Index);
+         C2.Append_Modulation (Changed_Table, Config16, Index);
+         C2.Set_Modulations (Changed_Interval, Changed_Table);
+         Changed_List := Empty_List;
+         C2.Append_Job_Interval (Changed_List, Changed_Interval);
+         C2.Add_Job_Intervals (Object, Changed_List);
+         Require
+           (Observe (0, 0, 5) = 0 and then Observe (0, 0, 4) = 1 and then Observe (0, 0, 3) = 8);
+         Require
+           (Observe (1, 0, 5) = 0 and then Observe (1, 0, 4) = 1 and then Observe (1, 0, 3) = 16);
+      end;
+   end Send_Waveform_Buffers;
    procedure Send_Custom_Waveforms (Object : in out C2.Job) is
       type Observation_Access is
         access function (I, M, P, S, F : Interfaces.C.unsigned) return Interfaces.Integer_64
@@ -2031,6 +2271,7 @@ begin
                Send_Modulations (Object);
                Send_Binary_Modulations (Object);
                Send_Custom_Waveforms (Object);
+               Send_Waveform_Buffers (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");
