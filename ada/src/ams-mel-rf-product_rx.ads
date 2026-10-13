@@ -18,6 +18,14 @@ package AMS.MEL.RF.Product_Rx is
       Queue_Capacity        : Positive;
       Max_Samples_Per_Event : Positive) return Config;
    function Submit (Parent : Data_MEL; Value : Config) return Create_Request;
+   function Create_Config_Direct_I8
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config;
+   function Create_Config_Direct_I16
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config;
    function Is_Open (Request : Create_Request) return Boolean;
    procedure Close (Request : in out Create_Request);
    type Create_Outcome is (Created, Failed);
@@ -80,6 +88,8 @@ package AMS.MEL.RF.Product_Rx is
    end record
    with Convention => C;
    type Complex_I8_Array is array (Natural range <>) of Complex_I8 with Convention => C;
+   type Direct_I8_Array is array (Natural range <>) of Interfaces.Integer_8 with Convention => C;
+   type Direct_I16_Array is array (Natural range <>) of Interfaces.Integer_16 with Convention => C;
 
    type Product_Metadata is private;
    function MEL_Protocol_Version_ID (Value : Product_Metadata) return Interfaces.Unsigned_32;
@@ -116,6 +126,15 @@ package AMS.MEL.RF.Product_Rx is
    procedure With_Samples_I8
      (Value : Event; Process : not null access procedure (Samples : Complex_I8_Array));
    function Copy_Samples_I8 (Value : Event) return Complex_I8_Array;
+   --  Scalar samples, never I/Q pairs. Wrong-format access raises
+   --  Constraint_Error before sample access, including empty events.
+   --  Borrowing requires an open event externally serialized with Close.
+   procedure With_Direct_Samples_I8
+     (Value : Event; Process : not null access procedure (Samples : Direct_I8_Array));
+   function Copy_Direct_Samples_I8 (Value : Event) return Direct_I8_Array;
+   procedure With_Direct_Samples_I16
+     (Value : Event; Process : not null access procedure (Samples : Direct_I16_Array));
+   function Copy_Direct_Samples_I16 (Value : Event) return Direct_I16_Array;
    procedure Close (Value : in out Event);
 private
    use type Interfaces.Unsigned_32;

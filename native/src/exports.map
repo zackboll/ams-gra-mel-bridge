@@ -197,6 +197,8 @@ AMS_MEL_0.1 {
         ams_mel_rf_data_submit_product_rx;
     ams_mel_rf_data_submit_product_rx_v2;
     ams_mel_rf_product_rx_event_view_v2;
+        ams_mel_rf_data_submit_product_rx_v3;
+        ams_mel_rf_product_rx_event_view_v3;
         ams_mel_rf_product_rx_request_wait;
         ams_mel_rf_product_rx_request_claim;
         ams_mel_rf_product_rx_request_close;

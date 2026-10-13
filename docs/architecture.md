@@ -1,5 +1,22 @@
 # Architecture decisions
 
+## Task 034F19 — Direct scalar ProductRx receive
+
+Additive submit/view-v3 support exactly DirectINT8/DirectINT16 and the two
+existing Complex formats (210 production exports, AMS_MEL_0.1). Direct spans
+contain signed scalar elements, not I/Q pairs or bytes; no conversion or
+normalization occurs. The exact requested/assigned format and native pointer
+alternative are enforced. Immutable event-owned copies survive provider buffer
+overwrite and endpoint/parent Close. V3 has exactly one active typed span;
+inactive spans are NULL/0. Frozen v1 remains ComplexINT16-only, v2 remains
+Complex-only, and old views reject Direct without modifying the output. Safe
+Ada adds width-specific Direct configuration/borrow/copy operations with
+wrong-format rejection even on empty events. The existing worker, queue,
+callback drain and permanent exact-function/DSO retention are reused. Raw
+Ada/Rust sys/private ctypes mirror v3; no public Python/safe Rust expansion.
+See `docs/task-034f19-rf-product-rx-direct-samples.md` for measured validation,
+32-bit/provider limitations and explicit exclusions.
+
 ## Task 034F18 — RF ProductRx I8/I16 receive
 
 Explicit requested format travels through the existing completion and must

@@ -63,6 +63,62 @@ package body AMS_MEL_RF_Product_Rx_Tests is
    type Failpoint_Access is access procedure (Which : Interfaces.C.unsigned) with Convention => C;
    function To_Failpoint is new Ada.Unchecked_Conversion (System.Address, Failpoint_Access);
 
+   procedure Check_Wrong_Formats (Value : RX.Event) is
+      procedure Reject_Complex_INT16 (Samples : RX.Complex_I16_Array) is
+      begin
+         raise Program_Error with "wrong format touched samples" & Samples'Length'Image;
+      end Reject_Complex_INT16;
+      procedure Reject_Complex_INT8 (Samples : RX.Complex_I8_Array) is
+      begin
+         raise Program_Error with "wrong format touched samples" & Samples'Length'Image;
+      end Reject_Complex_INT8;
+      procedure Reject_Direct_INT8 (Samples : RX.Direct_I8_Array) is
+      begin
+         raise Program_Error with "wrong format touched samples" & Samples'Length'Image;
+      end Reject_Direct_INT8;
+      procedure Reject_Direct_INT16 (Samples : RX.Direct_I16_Array) is
+      begin
+         raise Program_Error with "wrong format touched samples" & Samples'Length'Image;
+      end Reject_Direct_INT16;
+   begin
+      if RX.Data_Format (Value) /= RF.Complex_INT16 then
+         begin
+            RX.With_Samples (Value, Reject_Complex_INT16'Access);
+            raise Program_Error with "wrong format accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end if;
+      if RX.Data_Format (Value) /= RF.Complex_INT8 then
+         begin
+            RX.With_Samples_I8 (Value, Reject_Complex_INT8'Access);
+            raise Program_Error with "wrong format accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end if;
+      if RX.Data_Format (Value) /= RF.Direct_INT8 then
+         begin
+            RX.With_Direct_Samples_I8 (Value, Reject_Direct_INT8'Access);
+            raise Program_Error with "wrong format accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end if;
+      if RX.Data_Format (Value) /= RF.Direct_INT16 then
+         begin
+            RX.With_Direct_Samples_I16 (Value, Reject_Direct_INT16'Access);
+            raise Program_Error with "wrong format accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end if;
+   end Check_Wrong_Formats;
+
    procedure Check_Rich (Value : RX.Event) is
       Info          : constant RX.Product_Metadata := RX.Metadata (Value);
       Alias_Address : constant System.Address := RX.Testing.Native_Sample_Address (Value);
@@ -106,6 +162,7 @@ package body AMS_MEL_RF_Product_Rx_Tests is
       then
          raise Program_Error with "RF event metadata mismatch";
       end if;
+      Check_Wrong_Formats (Value);
       RX.With_Samples (Value, Check_Samples'Access);
       declare
          Copy : constant RX.Complex_I16_Array := RX.Copy_Samples (Value);
@@ -570,6 +627,235 @@ package body AMS_MEL_RF_Product_Rx_Tests is
       end;
       for Iteration in 1 .. 50 loop
          declare
+            Direct_Parent  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+            Direct_Request : RX.Create_Request :=
+              RX.Submit (Direct_Parent, RX.Create_Config_Direct_I8 (65_536, 4, 8));
+            Expected       : constant RX.Direct_I8_Array := [-128, 127, -1, 0, 7, -11, 23, 42];
+            procedure Check_Direct (Samples : RX.Direct_I8_Array) is
+            begin
+               if Samples'Length /= Expected'Length then
+                  raise Program_Error with "Direct sample count mismatch";
+               end if;
+               for I in Expected'Range loop
+                  if Samples (Samples'First + I - Expected'First) /= Expected (I) then
+                     raise Program_Error with "Direct signed scalar fidelity mismatch";
+                  end if;
+               end loop;
+            end Check_Direct;
+         begin
+            if RX.Outcome (RX.Wait (Direct_Request, 10_000)) /= RX.Created then
+               raise Program_Error with "Direct creation failed";
+            end if;
+            declare
+               Direct_Endpoint : RX.Endpoint := RX.Claim (Direct_Request);
+            begin
+               if RX.Assigned_Data_Format (Direct_Endpoint) /= RF.Direct_INT8 then
+                  raise Program_Error with "Direct assigned format mismatch";
+               end if;
+               RX.Close (Direct_Request);
+               RF.Close (Direct_Parent);
+               if Emit (RX.Endpoint_ID (Direct_Endpoint), 0, 0) /= 1 then
+                  raise Program_Error with "Direct emitter failed";
+               end if;
+               declare
+                  Product : RX.Event := RX.Receive (Direct_Endpoint);
+                  Copied  : constant RX.Direct_I8_Array := RX.Copy_Direct_Samples_I8 (Product);
+               begin
+                  if RX.Data_Format (Product) /= RF.Direct_INT8
+                    or else RX.Sample_Count (Product) /= 8
+                    or else RX.Job_Interval_ID (RX.Metadata (Product)) /= 19
+                    or else RX.Rx_Stream_ID_Count (RX.Metadata (Product)) /= 3
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 1) /= 19
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 2) /= 0
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 3) /= 42
+                  then
+                     raise Program_Error with "Direct metadata mismatch";
+                  end if;
+                  Check_Wrong_Formats (Product);
+                  RX.With_Direct_Samples_I8 (Product, Check_Direct'Access);
+                  begin
+                     declare
+                        Wrong : constant RX.Complex_I16_Array := RX.Copy_Samples (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  begin
+                     declare
+                        Wrong : constant RX.Complex_I8_Array := RX.Copy_Samples_I8 (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  begin
+                     declare
+                        Wrong : constant RX.Direct_I16_Array :=
+                          RX.Copy_Direct_Samples_I16 (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  if Emit (RX.Endpoint_ID (Direct_Endpoint), 5, 0) /= 1 then
+                     raise Program_Error with "Direct empty emitter failed";
+                  end if;
+                  declare
+                     Empty      : RX.Event := RX.Receive (Direct_Endpoint);
+                     Empty_Copy : constant RX.Direct_I8_Array := RX.Copy_Direct_Samples_I8 (Empty);
+                  begin
+                     if Empty_Copy'Length /= 0 then
+                        raise Program_Error with "Direct empty count mismatch";
+                     end if;
+                     begin
+                        declare
+                           Wrong : constant RX.Complex_I16_Array := RX.Copy_Samples (Empty);
+                        begin
+                           raise Program_Error
+                             with "empty Direct converted to complex" & Wrong'Length'Image;
+                        end;
+                     exception
+                        when Constraint_Error =>
+                           null;
+                     end;
+                     Check_Wrong_Formats (Empty);
+                     RX.Close (Empty);
+                  end;
+                  RX.Close (Direct_Endpoint);
+                  RX.With_Direct_Samples_I8 (Product, Check_Direct'Access);
+                  RX.Close (Product);
+                  Check_Direct (Copied);
+               end;
+            end;
+         end;
+      end loop;
+      for Iteration in 1 .. 50 loop
+         declare
+            Direct_Parent  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+            Direct_Request : RX.Create_Request :=
+              RX.Submit (Direct_Parent, RX.Create_Config_Direct_I16 (65_536, 4, 8));
+            Expected       : constant RX.Direct_I16_Array :=
+              [-32768, 32767, -1, 0, 12345, -23456, 17, -19];
+            procedure Check_Direct (Samples : RX.Direct_I16_Array) is
+            begin
+               if Samples'Length /= Expected'Length then
+                  raise Program_Error with "Direct sample count mismatch";
+               end if;
+               for I in Expected'Range loop
+                  if Samples (Samples'First + I - Expected'First) /= Expected (I) then
+                     raise Program_Error with "Direct signed scalar fidelity mismatch";
+                  end if;
+               end loop;
+            end Check_Direct;
+         begin
+            if RX.Outcome (RX.Wait (Direct_Request, 10_000)) /= RX.Created then
+               raise Program_Error with "Direct creation failed";
+            end if;
+            declare
+               Direct_Endpoint : RX.Endpoint := RX.Claim (Direct_Request);
+            begin
+               if RX.Assigned_Data_Format (Direct_Endpoint) /= RF.Direct_INT16 then
+                  raise Program_Error with "Direct assigned format mismatch";
+               end if;
+               RX.Close (Direct_Request);
+               RF.Close (Direct_Parent);
+               if Emit (RX.Endpoint_ID (Direct_Endpoint), 0, 0) /= 1 then
+                  raise Program_Error with "Direct emitter failed";
+               end if;
+               declare
+                  Product : RX.Event := RX.Receive (Direct_Endpoint);
+                  Copied  : constant RX.Direct_I16_Array := RX.Copy_Direct_Samples_I16 (Product);
+               begin
+                  if RX.Data_Format (Product) /= RF.Direct_INT16
+                    or else RX.Sample_Count (Product) /= 8
+                    or else RX.Job_Interval_ID (RX.Metadata (Product)) /= 20
+                    or else RX.Rx_Stream_ID_Count (RX.Metadata (Product)) /= 3
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 1) /= 20
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 2) /= 0
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 3) /= 42
+                  then
+                     raise Program_Error with "Direct metadata mismatch";
+                  end if;
+                  Check_Wrong_Formats (Product);
+                  RX.With_Direct_Samples_I16 (Product, Check_Direct'Access);
+                  begin
+                     declare
+                        Wrong : constant RX.Complex_I16_Array := RX.Copy_Samples (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  begin
+                     declare
+                        Wrong : constant RX.Complex_I8_Array := RX.Copy_Samples_I8 (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  begin
+                     declare
+                        Wrong : constant RX.Direct_I8_Array := RX.Copy_Direct_Samples_I8 (Product);
+                     begin
+                        raise Program_Error
+                          with "wrong-format accessor accepted" & Wrong'Length'Image;
+                     end;
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  if Emit (RX.Endpoint_ID (Direct_Endpoint), 5, 0) /= 1 then
+                     raise Program_Error with "Direct empty emitter failed";
+                  end if;
+                  declare
+                     Empty      : RX.Event := RX.Receive (Direct_Endpoint);
+                     Empty_Copy : constant RX.Direct_I16_Array :=
+                       RX.Copy_Direct_Samples_I16 (Empty);
+                  begin
+                     if Empty_Copy'Length /= 0 then
+                        raise Program_Error with "Direct empty count mismatch";
+                     end if;
+                     begin
+                        declare
+                           Wrong : constant RX.Complex_I16_Array := RX.Copy_Samples (Empty);
+                        begin
+                           raise Program_Error
+                             with "empty Direct converted to complex" & Wrong'Length'Image;
+                        end;
+                     exception
+                        when Constraint_Error =>
+                           null;
+                     end;
+                     Check_Wrong_Formats (Empty);
+                     RX.Close (Empty);
+                  end;
+                  RX.Close (Direct_Endpoint);
+                  RX.With_Direct_Samples_I16 (Product, Check_Direct'Access);
+                  RX.Close (Product);
+                  Check_Direct (Copied);
+               end;
+            end;
+         end;
+      end loop;
+      for Iteration in 1 .. 50 loop
+         declare
             I8_Parent  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
             I8_Request : RX.Create_Request :=
               RX.Submit (I8_Parent, RX.Create_Config_Complex_I8 (65_536, 4, 6));
@@ -656,6 +942,7 @@ package body AMS_MEL_RF_Product_Rx_Tests is
                         when Constraint_Error =>
                            null;
                      end;
+                     Check_Wrong_Formats (Empty);
                      RX.Close (Empty);
                   end;
                   RX.Close (I8_Endpoint);

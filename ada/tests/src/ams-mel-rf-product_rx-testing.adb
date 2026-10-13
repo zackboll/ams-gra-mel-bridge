@@ -18,10 +18,36 @@ package body AMS.MEL.RF.Product_Rx.Testing is
             First_Rx_Event_Start_FS    => 0,
             Rx_Stream_IDs              => (System.Null_Address, 0)));
       Pair : constant Complex_I8 := (0, 0);
+      V3   : constant AMS.MEL_C_API.RF_Product_Rx_Event_V3 :=
+        (Endpoint_ID         => 0,
+         Data_Format         => 0,
+         Direct_Samples_I8   => (System.Null_Address, 0),
+         Direct_Samples_I16  => (System.Null_Address, 0),
+         Complex_Samples_I8  => (System.Null_Address, 0),
+         Complex_Samples_I16 => (System.Null_Address, 0),
+         Metadata            => Raw.Metadata);
    begin
       --  Values measured by the compiled C11 product_rx_v2_layout_probe.
       --  This runtime qualification is for the current 64-bit platform.
       if System.Address'Size = 64 then
+         if V3'Size /= 144 * 8
+           or else AMS.MEL_C_API.RF_Product_Rx_Event_V3'Alignment /= 8
+           or else V3.Endpoint_ID'Position /= 0
+           or else V3.Data_Format'Position /= 8
+           or else V3.Direct_Samples_I8'Position /= 16
+           or else V3.Direct_Samples_I16'Position /= 32
+           or else V3.Complex_Samples_I8'Position /= 48
+           or else V3.Complex_Samples_I16'Position /= 64
+           or else V3.Metadata'Position /= 80
+           or else V3.Direct_Samples_I8'Size /= 128
+           or else V3.Direct_Samples_I16'Size /= 128
+           or else V3.Direct_Samples_I8.Data'Position /= 0
+           or else V3.Direct_Samples_I8.Size'Position /= 8
+           or else V3.Direct_Samples_I16.Data'Position /= 0
+           or else V3.Direct_Samples_I16.Size'Position /= 8
+         then
+            raise Program_Error with "RF event v3 differs from measured C11 layout";
+         end if;
          if Raw'Size /= 112 * 8
            or else Raw'Alignment /= 8
            or else Raw.Endpoint_ID'Position /= 0

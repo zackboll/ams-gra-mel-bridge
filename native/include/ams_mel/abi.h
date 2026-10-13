@@ -4274,6 +4274,44 @@ typedef struct ams_mel_rf_product_rx_event_v2 {
     ams_mel_rf_product_rx_metadata_v1 metadata;
 } ams_mel_rf_product_rx_event_v2;
 
+/* Direct spans count signed scalar samples, not bytes or Cartesian pairs. */
+typedef struct ams_mel_rf_direct_i8_span_v1 {
+    const int8_t *data;
+    size_t size;
+} ams_mel_rf_direct_i8_span_v1;
+
+typedef struct ams_mel_rf_direct_i16_span_v1 {
+    const int16_t *data;
+    size_t size;
+} ams_mel_rf_direct_i16_span_v1;
+
+/* data_format selects exactly one span. All inactive spans are NULL/0.
+ * Empty events retain their format and have four NULL/0 spans. The immutable
+ * record and payload borrow event-owned storage until event_close. */
+typedef struct ams_mel_rf_product_rx_event_v3 {
+    uint64_t endpoint_id;
+    ams_mel_rf_job_data_format_t data_format;
+    ams_mel_rf_direct_i8_span_v1 direct_samples_i8;
+    ams_mel_rf_direct_i16_span_v1 direct_samples_i16;
+    ams_mel_rf_complex_i8_span_v1 complex_samples_i8;
+    ams_mel_rf_complex_i16_span_v1 complex_samples_i16;
+    ams_mel_rf_product_rx_metadata_v1 metadata;
+} ams_mel_rf_product_rx_event_v3;
+
+/* Accepts exactly DirectINT8/DirectINT16/ComplexINT8/ComplexINT16 (0..3),
+ * validating the exact provider-assigned format before registration. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v3(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v3(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v3 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
  * and ComplexINT16 only. Assigned format must equal requested format before
  * registration. Frozen submit remains ComplexINT16-only. */

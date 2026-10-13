@@ -68,11 +68,14 @@ using ComplexI8 = rfmel::MELComplex<std::int8_t>;
 using CreateFuture = mel::RequestFor<rfmel::ProductRxEndpoint>;
 
 struct ams_mel_rf_product_rx_event {
+    std::vector<std::int8_t> direct_i8;
+    std::vector<std::int16_t> direct_i16;
     std::vector<ams_mel_rf_complex_i16_v1> samples;
     std::vector<ams_mel_rf_complex_i8_v1> samples_i8;
     std::vector<std::uint32_t> stream_ids;
     ams_mel_rf_product_rx_event_v1 view{};
     ams_mel_rf_product_rx_event_v2 view_v2{};
+    ams_mel_rf_product_rx_event_v3 view_v3{};
 };
 
 namespace {
@@ -175,6 +178,18 @@ bool test_hold() noexcept
 
 enum class BuildOutcome { Accepted, Malformed, AllocationFailure };
 
+template<class Native, class Owned>
+bool select_source(const rfmel::JobDataPointer& data, std::size_t count,
+                   const Native *&source)
+{
+    const auto alternative = std::get_if<Native *>(&data);
+    if (alternative == nullptr) return false;
+    source = *alternative;
+    return (count == 0U || source != nullptr) &&
+           count <= std::vector<Owned>{}.max_size() &&
+           count <= SIZE_MAX / sizeof(Owned);
+}
+
 static_assert(std::is_same_v<rfmel::StreamID, std::uint32_t>);
 static_assert(std::is_same_v<rfmel::EndpointID, std::uint64_t>);
 static_assert(std::is_same_v<rfmel::VirtualApertureDefinitionID, std::uint32_t>);
@@ -194,26 +209,28 @@ BuildOutcome build_event(const RfRxCallbackState& state,
 {
     if (metadata == nullptr) return BuildOutcome::Malformed;
     if (count > state.max_samples_per_event) return BuildOutcome::Malformed;
-    const bool i8 = state.format == rfmel::JobDataFormat::ComplexINT8;
+    const std::int8_t *direct_i8 = nullptr;
+    const std::int16_t *direct_i16 = nullptr;
     const ComplexI8 *source_i8 = nullptr;
     const ComplexI16 *source = nullptr;
-    if (i8) {
-        const auto alternative = std::get_if<ComplexI8 *>(&data);
-        if (alternative == nullptr) return BuildOutcome::Malformed;
-        source_i8 = *alternative;
-        if ((count != 0U && source_i8 == nullptr) ||
-            count > std::vector<ams_mel_rf_complex_i8_v1>{}.max_size() ||
-            count > SIZE_MAX / sizeof(ams_mel_rf_complex_i8_v1))
+    switch (state.format) {
+    case rfmel::JobDataFormat::DirectINT8:
+        if (!select_source<std::int8_t, std::int8_t>(data, count, direct_i8))
             return BuildOutcome::Malformed;
-    } else {
-        const auto alternative = std::get_if<ComplexI16 *>(&data);
-        if (state.format != rfmel::JobDataFormat::ComplexINT16 || alternative == nullptr)
+        break;
+    case rfmel::JobDataFormat::DirectINT16:
+        if (!select_source<std::int16_t, std::int16_t>(data, count, direct_i16))
             return BuildOutcome::Malformed;
-        source = *alternative;
-        if ((count != 0U && source == nullptr) ||
-            count > std::vector<ams_mel_rf_complex_i16_v1>{}.max_size() ||
-            count > SIZE_MAX / sizeof(ams_mel_rf_complex_i16_v1))
+        break;
+    case rfmel::JobDataFormat::ComplexINT8:
+        if (!select_source<ComplexI8, ams_mel_rf_complex_i8_v1>(data, count, source_i8))
             return BuildOutcome::Malformed;
+        break;
+    case rfmel::JobDataFormat::ComplexINT16:
+        if (!select_source<ComplexI16, ams_mel_rf_complex_i16_v1>(data, count, source))
+            return BuildOutcome::Malformed;
+        break;
+    default: return BuildOutcome::Malformed;
     }
 
     /* Fail closed: unsupported nonempty metadata is never silently dropped. */
@@ -232,18 +249,32 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     auto event = std::make_unique<ams_mel_rf_product_rx_event>();
     /* Element-wise: MELComplex<int16_t> is not trivially copyable, and no
      * layout compatibility with ams_mel_rf_complex_i16_v1 is assumed. */
-    if (i8) {
+    switch (state.format) {
+    case rfmel::JobDataFormat::DirectINT8:
+        event->direct_i8.resize(count);
+        for (std::size_t index = 0; index < count; ++index)
+            event->direct_i8[index] = direct_i8[index];
+        break;
+    case rfmel::JobDataFormat::DirectINT16:
+        event->direct_i16.resize(count);
+        for (std::size_t index = 0; index < count; ++index)
+            event->direct_i16[index] = direct_i16[index];
+        break;
+    case rfmel::JobDataFormat::ComplexINT8:
         event->samples_i8.resize(count);
         for (std::size_t index = 0; index < count; ++index) {
             event->samples_i8[index].real = source_i8[index].real();
             event->samples_i8[index].imag = source_i8[index].imag();
         }
-    } else {
+        break;
+    case rfmel::JobDataFormat::ComplexINT16:
         event->samples.resize(count);
         for (std::size_t index = 0; index < count; ++index) {
             event->samples[index].real = source[index].real();
             event->samples[index].imag = source[index].imag();
         }
+        break;
+    default: return BuildOutcome::Malformed;
     }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
     if (take_failpoint(FailStreamIds)) throw std::bad_alloc{};
@@ -252,12 +283,16 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     event->stream_ids.assign(ids.begin(), ids.end());
     const auto start = metadata->getFirstReceiveEventStart();
 
-    ams_mel_rf_product_rx_event_v2& view = event->view_v2;
+    ams_mel_rf_product_rx_event_v3& view = event->view_v3;
     view.endpoint_id = state.endpoint_id;
     view.data_format = static_cast<ams_mel_rf_job_data_format_t>(state.format);
-    view.samples_i8 = {event->samples_i8.empty() ? nullptr : event->samples_i8.data(),
+    view.direct_samples_i8 = {event->direct_i8.empty() ? nullptr : event->direct_i8.data(),
+                              event->direct_i8.size()};
+    view.direct_samples_i16 = {event->direct_i16.empty() ? nullptr : event->direct_i16.data(),
+                               event->direct_i16.size()};
+    view.complex_samples_i8 = {event->samples_i8.empty() ? nullptr : event->samples_i8.data(),
                        event->samples_i8.size()};
-    view.samples_i16 = {event->samples.empty() ? nullptr : event->samples.data(),
+    view.complex_samples_i16 = {event->samples.empty() ? nullptr : event->samples.data(),
                     event->samples.size()};
     ams_mel_rf_product_rx_metadata_v1& out = view.metadata;
     out.mel_protocol_version_id = metadata->getMelProtocolVersionID();
@@ -273,7 +308,12 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     out.first_rx_event_start_fs = start.getFractionalFemtoseconds().count();
     out.rx_stream_ids = {event->stream_ids.empty() ? nullptr : event->stream_ids.data(),
                          event->stream_ids.size()};
-    if (!i8) event->view = {view.endpoint_id, view.data_format, view.samples_i16, out};
+    if (state.format == rfmel::JobDataFormat::ComplexINT8 ||
+        state.format == rfmel::JobDataFormat::ComplexINT16)
+        event->view_v2 = {view.endpoint_id, view.data_format,
+                          view.complex_samples_i8, view.complex_samples_i16, out};
+    if (state.format == rfmel::JobDataFormat::ComplexINT16)
+        event->view = {view.endpoint_id, view.data_format, view.complex_samples_i16, out};
     output = std::move(event);
     return BuildOutcome::Accepted;
 }
@@ -675,17 +715,16 @@ bool to_size(std::uint64_t value, std::size_t& output) noexcept
 static ams_mel_status_t submit_product_rx(
     ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
     ams_mel_rf_product_rx_request **out_request, char *diagnostic,
-    std::size_t diagnostic_capacity, std::size_t *diagnostic_required, bool allow_i8) noexcept
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required, unsigned version) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || data == nullptr || !data->state ||
         config == nullptr || out_request == nullptr || *out_request != nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
     std::size_t region_size{};
-    if (config->data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 &&
-        !(allow_i8 && config->data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8)) {
-        write_diagnostic(allow_i8 ? "only ComplexINT8 and ComplexINT16 are supported" :
-                         "only AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16 is supported",
+    const auto minimum = version == 1U ? 3U : (version == 2U ? 2U : 0U);
+    if (config->data_format < minimum || config->data_format > 3U) {
+        write_diagnostic("unsupported ProductRx format for submit version",
                          diagnostic, diagnostic_capacity, diagnostic_required);
         return AMS_MEL_INVALID_ARGUMENT;
     }
@@ -768,7 +807,7 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx(
     std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
 {
     return submit_product_rx(data, config, out_request, diagnostic,
-                             diagnostic_capacity, diagnostic_required, false);
+                             diagnostic_capacity, diagnostic_required, 1U);
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v2(
@@ -777,7 +816,16 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v2(
     std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
 {
     return submit_product_rx(data, config, out_request, diagnostic,
-                             diagnostic_capacity, diagnostic_required, true);
+                             diagnostic_capacity, diagnostic_required, 2U);
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v3(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, 3U);
 }
 
 extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_wait(
@@ -1099,7 +1147,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view(
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
         out_view == nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
-    if (event->view_v2.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
+    if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
         write_diagnostic("frozen v1 event view requires ComplexINT16", diagnostic,
                          diagnostic_capacity, diagnostic_required);
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1117,7 +1165,23 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v2(
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
         out_view == nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
+    if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 &&
+        event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16)
+        return AMS_MEL_INVALID_ARGUMENT;
     *out_view = &event->view_v2;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v3(
+    const ams_mel_rf_product_rx_event *event, const ams_mel_rf_product_rx_event_v3 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
+        out_view == nullptr)
+        return AMS_MEL_INVALID_ARGUMENT;
+    *out_view = &event->view_v3;
     return AMS_MEL_OK;
 }
 

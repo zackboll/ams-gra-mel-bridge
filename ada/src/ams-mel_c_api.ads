@@ -3538,6 +3538,41 @@ private package AMS.MEL_C_API is
       Metadata    : RF_Product_Rx_Metadata_V1;
    end record
    with Convention => C;
+   type RF_Direct_I8_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Direct_I16_Span_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Product_Rx_Event_V3 is record
+      Endpoint_ID         : Interfaces.Unsigned_64;
+      Data_Format         : Interfaces.Unsigned_32;
+      Direct_Samples_I8   : RF_Direct_I8_Span_V1;
+      Direct_Samples_I16  : RF_Direct_I16_Span_V1;
+      Complex_Samples_I8  : RF_Complex_I8_Span_V1;
+      Complex_Samples_I16 : RF_Complex_I16_Span_V1;
+      Metadata            : RF_Product_Rx_Metadata_V1;
+   end record
+   with Convention => C;
+   function RF_Data_Submit_Product_Rx_V3
+     (Handle              : RF_Data_Handle;
+      Config              : access constant RF_Product_Rx_Config_V1;
+      Output              : access RF_Product_Rx_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_submit_product_rx_v3";
+   function RF_Product_Rx_Event_View_V3
+     (Handle              : RF_Product_Rx_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_view_v3";
    function RF_Data_Submit_Product_Rx_V2
      (Handle              : RF_Data_Handle;
       Config              : access constant RF_Product_Rx_Config_V1;

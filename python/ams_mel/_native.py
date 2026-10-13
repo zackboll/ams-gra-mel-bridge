@@ -2202,6 +2202,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_submit_product_rx",
     "ams_mel_rf_data_submit_product_rx_v2",
     "ams_mel_rf_product_rx_event_view_v2",
+    "ams_mel_rf_data_submit_product_rx_v3",
+    "ams_mel_rf_product_rx_event_view_v3",
     "ams_mel_rf_product_rx_request_wait",
     "ams_mel_rf_product_rx_request_claim",
     "ams_mel_rf_product_rx_request_close",
@@ -2612,6 +2614,26 @@ class RfProductRxEventV2(ctypes.Structure):
     ]
 
 
+class RfDirectI8SpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(ctypes.c_int8)), ("size", ctypes.c_size_t)]
+
+
+class RfDirectI16SpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(ctypes.c_int16)), ("size", ctypes.c_size_t)]
+
+
+class RfProductRxEventV3(ctypes.Structure):
+    _fields_ = [
+        ("endpoint_id", ctypes.c_uint64),
+        ("data_format", ctypes.c_uint32),
+        ("direct_samples_i8", RfDirectI8SpanV1),
+        ("direct_samples_i16", RfDirectI16SpanV1),
+        ("complex_samples_i8", RfComplexI8SpanV1),
+        ("complex_samples_i16", RfComplexI16SpanV1),
+        ("metadata", RfProductRxMetadataV1),
+    ]
+
+
 ams_mel_rf_data_submit_product_rx_v2 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v2
 ams_mel_rf_data_submit_product_rx_v2.argtypes = [
     RfDataHandle, ctypes.POINTER(RfProductRxConfigV1),
@@ -2624,6 +2646,16 @@ ams_mel_rf_product_rx_event_view_v2.argtypes = [
     *_CHANNEL_DIAGNOSTIC
 ]
 ams_mel_rf_product_rx_event_view_v2.restype = ctypes.c_int32
+
+ams_mel_rf_data_submit_product_rx_v3 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v3
+ams_mel_rf_data_submit_product_rx_v3.argtypes = ams_mel_rf_data_submit_product_rx_v2.argtypes
+ams_mel_rf_data_submit_product_rx_v3.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_view_v3 = _LIBRARY.ams_mel_rf_product_rx_event_view_v3
+ams_mel_rf_product_rx_event_view_v3.argtypes = [
+    RfProductRxEventHandle, ctypes.POINTER(ctypes.POINTER(RfProductRxEventV3)),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_view_v3.restype = ctypes.c_int32
 
 class RfWaveformBufferConfigV1(ctypes.Structure):
     _fields_ = [
