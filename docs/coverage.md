@@ -1,5 +1,16 @@
 # Implementation coverage
 
+## Task 034F18 — signed Cartesian I8/I16 ProductRx
+
+Native receive and safe Ada support ComplexINT8 in addition to frozen I16.
+Raw Ada/Rust sys/private ctypes mirror the two additive v2 exports (208 total).
+Width-specific immutable copying and wrong-format rejection are qualified by
+C11 and safe Ada fixtures; I8 lifecycle cases reuse deterministic existing
+registration/drain/abandonment machinery. Actual-header tests retain explicit
+checks under NDEBUG. No public Python/safe Rust receive, additional metadata,
+RDMA or transmit support. Final qualification/provider limits are recorded in
+`task-034f18-rf-product-rx-complex-i8.md`.
+
 ## Task 034F17 — copied RF JobInterval user context
 
 Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5

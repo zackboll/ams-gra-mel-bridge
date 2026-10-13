@@ -1,5 +1,16 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+## Task 034F18 — RF ProductRx ComplexINT8 receive
+
+V2 submit accepts signed Cartesian I8 and frozen I16 receive through the same
+asynchronous creation, callback/DSO lifetime and bounded queue machinery.
+V2 event views expose exactly one active typed span; counts are pairs, not bytes.
+Frozen submit remains I16-only; frozen event view rejects I8 without changing
+the output pointer. Safe Ada adds Create_Config_Complex_I8, With_Samples_I8 and
+Copy_Samples_I8 while preserving I16 operations. Exactly two exports are added
+(208, AMS_MEL_0.1). See `docs/task-034f18-rf-product-rx-complex-i8.md` for
+qualification, provider support and scope limits.
+
 ## Task 034F17 — copied RF JobInterval user context
 
 Interval v16 nests frozen v8 with authoritative TX-v3 and modulation-v5

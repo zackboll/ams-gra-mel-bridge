@@ -5,6 +5,78 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 #[test]
+fn product_rx_v2_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfData,
+        *const AmsMelRfProductRxConfigV1,
+        *mut *mut AmsMelRfProductRxRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_submit_product_rx_v2;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfProductRxEvent,
+        *mut *const AmsMelRfProductRxEventV2,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_event_view_v2;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!("ams-mel-product-rx-v2-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/product_rx_v2_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfProductRxEventV2>(),
+        align_of::<AmsMelRfProductRxEventV2>(),
+        offset_of!(AmsMelRfProductRxEventV2, endpoint_id),
+        offset_of!(AmsMelRfProductRxEventV2, data_format),
+        offset_of!(AmsMelRfProductRxEventV2, samples_i8),
+        offset_of!(AmsMelRfProductRxEventV2, samples_i16),
+        offset_of!(AmsMelRfProductRxEventV2, metadata),
+        size_of::<AmsMelRfComplexI8SpanV1>(),
+        align_of::<AmsMelRfComplexI8SpanV1>(),
+        offset_of!(AmsMelRfComplexI8SpanV1, data),
+        offset_of!(AmsMelRfComplexI8SpanV1, size),
+        size_of::<AmsMelRfComplexI16SpanV1>(),
+        align_of::<AmsMelRfComplexI16SpanV1>(),
+        offset_of!(AmsMelRfComplexI16SpanV1, data),
+        offset_of!(AmsMelRfComplexI16SpanV1, size),
+        size_of::<AmsMelRfProductRxMetadataV1>(),
+        align_of::<AmsMelRfProductRxMetadataV1>(),
+        offset_of!(AmsMelRfProductRxMetadataV1, mel_protocol_version_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, va_definition_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, va_instance_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, job_details_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, job_interval_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, lf_type_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, lf_instance_id),
+        offset_of!(AmsMelRfProductRxMetadataV1, phase_coherence_with_prior),
+        offset_of!(AmsMelRfProductRxMetadataV1, first_rx_event_start_s),
+        offset_of!(AmsMelRfProductRxMetadataV1, first_rx_event_start_fs),
+        offset_of!(AmsMelRfProductRxMetadataV1, rx_stream_ids),
+        size_of::<AmsMelRfComplexI8V1>(),
+        align_of::<AmsMelRfComplexI8V1>(),
+        offset_of!(AmsMelRfComplexI8V1, real),
+        offset_of!(AmsMelRfComplexI8V1, imag),
+    ];
+    assert_eq!(actual, expected);
+}
+#[test]
 fn interval_spatial_signature() {
     let _: unsafe extern "C" fn(
         *mut AmsMelRfJob,
@@ -1116,8 +1188,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 206);
-    assert_eq!(exported.len(), 206);
+    assert_eq!(declared.len(), 208);
+    assert_eq!(exported.len(), 208);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",

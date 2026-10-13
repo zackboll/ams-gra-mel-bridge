@@ -13,6 +13,10 @@ package AMS.MEL.RF.Product_Rx is
       Queue_Capacity        : Positive;
       Max_Samples_Per_Event : Positive) return Config;
    type Create_Request is tagged limited private;
+   function Create_Config_Complex_I8
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config;
    function Submit (Parent : Data_MEL; Value : Config) return Create_Request;
    function Is_Open (Request : Create_Request) return Boolean;
    procedure Close (Request : in out Create_Request);
@@ -70,6 +74,13 @@ package AMS.MEL.RF.Product_Rx is
    with Convention => C;
    type Complex_I16_Array is array (Natural range <>) of Complex_I16 with Convention => C;
 
+   type Complex_I8 is record
+      Real : Interfaces.Integer_8;
+      Imag : Interfaces.Integer_8;
+   end record
+   with Convention => C;
+   type Complex_I8_Array is array (Natural range <>) of Complex_I8 with Convention => C;
+
    type Product_Metadata is private;
    function MEL_Protocol_Version_ID (Value : Product_Metadata) return Interfaces.Unsigned_32;
    function VA_Definition_ID (Value : Product_Metadata) return Interfaces.Unsigned_32;
@@ -99,6 +110,12 @@ package AMS.MEL.RF.Product_Rx is
      (Value : Event; Process : not null access procedure (Samples : Complex_I16_Array));
    --  Explicit Ada-owned payload copy, unlike With_Samples.
    function Copy_Samples (Value : Event) return Complex_I16_Array;
+   --  Width-specific access raises Constraint_Error for the wrong format,
+   --  even for an empty event. Borrowing requires external serialization
+   --  with Close, just like With_Samples; copies are independent Ada owners.
+   procedure With_Samples_I8
+     (Value : Event; Process : not null access procedure (Samples : Complex_I8_Array));
+   function Copy_Samples_I8 (Value : Event) return Complex_I8_Array;
    procedure Close (Value : in out Event);
 private
    use type Interfaces.Unsigned_32;
@@ -110,6 +127,7 @@ private
    type Config is record
       Region         : Interfaces.Unsigned_64;
       Queue, Maximum : Positive;
+      Format         : Job_Data_Format := Complex_INT16;
    end record;
    type Create_Request is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.RF_Product_Rx_Request_Handle :=

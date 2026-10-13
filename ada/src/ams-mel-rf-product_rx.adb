@@ -78,11 +78,23 @@ package body AMS.MEL.RF.Product_Rx is
      (Region_Size_Bytes     : Interfaces.Unsigned_64;
       Queue_Capacity        : Positive;
       Max_Samples_Per_Event : Positive) return Config
-   is ((Region => Region_Size_Bytes, Queue => Queue_Capacity, Maximum => Max_Samples_Per_Event));
+   is ((Region  => Region_Size_Bytes,
+        Queue   => Queue_Capacity,
+        Maximum => Max_Samples_Per_Event,
+        Format  => Complex_INT16));
+
+   function Create_Config_Complex_I8
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config
+   is ((Region  => Region_Size_Bytes,
+        Queue   => Queue_Capacity,
+        Maximum => Max_Samples_Per_Event,
+        Format  => Complex_INT8));
 
    function Submit (Parent : Data_MEL; Value : Config) return Create_Request is
       Raw : aliased constant C.RF_Product_Rx_Config_V1 :=
-        (Data_Format           => C.RF_Job_Data_Format_Complex_INT16,
+        (Data_Format           => Interfaces.Unsigned_32 (Value.Format),
          Region_Size_Bytes     => Value.Region,
          Queue_Capacity        => C.Size_T (Value.Queue),
          Max_Samples_Per_Event => C.Size_T (Value.Maximum));
@@ -93,10 +105,17 @@ package body AMS.MEL.RF.Product_Rx is
          raise Provider_Error with "RF DataMEL is closed";
       end if;
       return Result : Create_Request do
-         Check
-           (C.RF_Data_Submit_Product_Rx
-              (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-            D);
+         if Value.Format = Complex_INT8 then
+            Check
+              (C.RF_Data_Submit_Product_Rx_V2
+                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         else
+            Check
+              (C.RF_Data_Submit_Product_Rx
+                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         end if;
       end return;
    end Submit;
 
@@ -201,7 +220,9 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx then
             raise Provider_Error with "null RF ProductRx endpoint after claim";
          end if;
-         if Info.Assigned_Data_Format /= C.RF_Job_Data_Format_Complex_INT16 then
+         if Info.Assigned_Data_Format /= C.RF_Job_Data_Format_Complex_INT16
+           and then Info.Assigned_Data_Format /= C.RF_Job_Data_Format_Complex_INT8
+         then
             raise Provider_Error with "unexpected RF ProductRx format";
          end if;
          Result.ID := Info.Endpoint_ID;
@@ -252,11 +273,14 @@ package body AMS.MEL.RF.Product_Rx is
 
    type View_Access is access all C.RF_Product_Rx_Event_V1;
    function To_View is new Ada.Unchecked_Conversion (System.Address, View_Access);
+   type View_V2_Access is access all C.RF_Product_Rx_Event_V2;
+   function To_View_V2 is new Ada.Unchecked_Conversion (System.Address, View_V2_Access);
 
    function Receive (Object : Endpoint'Class; Timeout_Milliseconds : Natural := 0) return Event is
-      D       : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
-      R       : aliased C.Size_T := 0;
-      Address : aliased System.Address := System.Null_Address;
+      D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R        : aliased C.Size_T := 0;
+      Address  : aliased System.Address := System.Null_Address;
+      Snapshot : C.RF_Product_Rx_Event_V1;
    begin
       return Result : Event do
          Check
@@ -271,15 +295,41 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx_Event then
             raise Provider_Error with "null RF ProductRx event after receive";
          end if;
-         Check
-           (C.RF_Product_Rx_Event_View
-              (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-            D);
-         if Address = System.Null_Address then
-            raise Provider_Error with "null RF ProductRx event view";
+         if Object.Format = Complex_INT8 then
+            Check
+              (C.RF_Product_Rx_Event_View_V2
+                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
+               D);
+            if Address = System.Null_Address then
+               raise Provider_Error with "null RF ProductRx event view";
+            end if;
+            declare
+               Raw : C.RF_Product_Rx_Event_V2 renames To_View_V2 (Address).all;
+            begin
+               if Raw.Data_Format /= C.RF_Job_Data_Format_Complex_INT8
+                 or else Raw.Samples_I16.Size /= 0
+                 or else Raw.Samples_I16.Data /= System.Null_Address
+               then
+                  raise Provider_Error with "invalid native RF I8 event format";
+               end if;
+               Snapshot :=
+                 (Raw.Endpoint_ID,
+                  Raw.Data_Format,
+                  (Raw.Samples_I8.Data, Raw.Samples_I8.Size),
+                  Raw.Metadata);
+            end;
+         else
+            Check
+              (C.RF_Product_Rx_Event_View
+                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
+               D);
+            if Address = System.Null_Address then
+               raise Provider_Error with "null RF ProductRx event view";
+            end if;
+            Snapshot := To_View (Address).all;
          end if;
          declare
-            Raw   : C.RF_Product_Rx_Event_V1 renames To_View (Address).all;
+            Raw   : C.RF_Product_Rx_Event_V1 renames Snapshot;
             Count : constant Natural := Checked_Count (Raw.Samples);
             IDs   : constant Natural :=
               Checked_Count
@@ -288,7 +338,7 @@ package body AMS.MEL.RF.Product_Rx is
             type Raw_IDs is array (Natural range <>) of aliased Interfaces.Unsigned_32
             with Convention => C;
          begin
-            if Raw.Data_Format /= C.RF_Job_Data_Format_Complex_INT16 then
+            if Raw.Data_Format /= Interfaces.Unsigned_32 (Object.Format) then
                raise Provider_Error with "invalid native RF event format";
             end if;
             Result.ID := Raw.Endpoint_ID;
@@ -338,6 +388,9 @@ package body AMS.MEL.RF.Product_Rx is
       if not Is_Open (Value) then
          raise Provider_Error with "RF event is closed";
       end if;
+      if Value.Format /= Complex_INT16 then
+         raise Constraint_Error with "RF event is not ComplexINT16";
+      end if;
       if Value.Count = 0 then
          declare
             Empty : Complex_I16_Array (1 .. 0);
@@ -364,6 +417,42 @@ package body AMS.MEL.RF.Product_Rx is
       With_Samples (Value, Copy'Access);
       return Result;
    end Copy_Samples;
+
+   procedure With_Samples_I8
+     (Value : Event; Process : not null access procedure (Samples : Complex_I8_Array)) is
+   begin
+      if not Is_Open (Value) then
+         raise Provider_Error with "RF event is closed";
+      end if;
+      if Value.Format /= Complex_INT8 then
+         raise Constraint_Error with "RF event is not ComplexINT8";
+      end if;
+      if Value.Count = 0 then
+         declare
+            Empty : Complex_I8_Array (1 .. 0);
+         begin
+            Process (Empty);
+         end;
+      else
+         declare
+            Samples : Complex_I8_Array (0 .. Value.Count - 1)
+            with Import, Address => Value.Sample_Address;
+         begin
+            Process (Samples);
+         end;
+      end if;
+   end With_Samples_I8;
+
+   function Copy_Samples_I8 (Value : Event) return Complex_I8_Array is
+      Result : Complex_I8_Array (1 .. Value.Count);
+      procedure Copy (Samples : Complex_I8_Array) is
+      begin
+         Result := Samples;
+      end Copy;
+   begin
+      With_Samples_I8 (Value, Copy'Access);
+      return Result;
+   end Copy_Samples_I8;
 
    procedure Close (Value : in out Event) is
       D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
@@ -418,4 +507,9 @@ package body AMS.MEL.RF.Product_Rx is
    is (Value.Stream_IDs (Index));
 begin
    Check_Complex_I16_Representation;
+   if Complex_I8'Object_Size /= C.RF_Complex_I8_V1'Object_Size
+     or else Complex_I8'Alignment /= C.RF_Complex_I8_V1'Alignment
+   then
+      raise Program_Error with "Complex_I8 representation does not match the C ABI";
+   end if;
 end AMS.MEL.RF.Product_Rx;

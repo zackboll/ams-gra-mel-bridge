@@ -197,6 +197,13 @@ if(AMS_MEL_BUILD_TESTS)
         ${ams_mel_rf_data_vendor_roots})
     set_target_properties(rf_product_rx_header_compile_probe PROPERTIES CXX_EXTENSIONS OFF)
     ams_mel_warnings(rf_product_rx_header_compile_probe)
+    add_executable(test_rf_product_rx_i8_headers tests/rf_product_rx_i8_contract_probe.cpp)
+    target_compile_features(test_rf_product_rx_i8_headers PRIVATE cxx_std_20)
+    target_include_directories(test_rf_product_rx_i8_headers SYSTEM PRIVATE
+        ${ams_mel_rf_data_vendor_roots})
+    set_target_properties(test_rf_product_rx_i8_headers PROPERTIES CXX_EXTENSIONS OFF)
+    ams_mel_warnings(test_rf_product_rx_i8_headers)
+    add_test(NAME rf-product-rx-i8-headers COMMAND test_rf_product_rx_i8_headers)
     add_custom_target(check_rf_product_rx_header_closure ALL
         COMMAND ${CMAKE_COMMAND} -E env PYTHONDONTWRITEBYTECODE=1
             ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_rf_product_rx_closure.py
@@ -577,7 +584,7 @@ if(AMS_MEL_BUILD_TESTS)
         Threads::Threads)
     add_dependencies(test_rf_product_rx mock_rf_provider)
     ams_mel_warnings(test_rf_product_rx)
-    foreach(case IN ITEMS receive fail-closed malformed queue-full create-failures
+    foreach(case IN ITEMS i8 receive fail-closed malformed queue-full create-failures
             long-diagnostic invalid claim-unique parent-first pending-parent-first unclaimed
             unclaimed-parent-first never-ready sync-callback registration-throw-before
             registration-throw-after registration-throw-active mid-callback-close
@@ -590,6 +597,13 @@ if(AMS_MEL_BUILD_TESTS)
     endforeach()
 
     add_executable(test_common_channel_view tests/test_common_channel_view.c)
+    foreach(case IN ITEMS creation registration-throw-before registration-throw-after
+            registration-throw-active mid-callback-close late-copy late-reference late-move
+            never-ready unclaimed unclaimed-parent-first pending-parent-first
+            worker-launch-failure saturation receive-close)
+        add_test(NAME rf-product-rx-i8-${case} COMMAND test_rf_product_rx i8-${case})
+        set_tests_properties(rf-product-rx-i8-${case} PROPERTIES TIMEOUT 60)
+    endforeach()
     target_compile_features(test_common_channel_view PRIVATE c_std_11)
     set_target_properties(test_common_channel_view PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_common_channel_view PRIVATE
