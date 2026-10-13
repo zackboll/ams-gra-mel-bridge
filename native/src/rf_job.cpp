@@ -35,6 +35,20 @@
 
 namespace mel = ams::iface::mel;
 namespace rfmel = ams::iface::rfmel;
+static_assert(static_cast<uint32_t>(rfmel::DataSampleFormat::Real) == AMS_MEL_RF_STREAM_SAMPLE_REAL);
+static_assert(static_cast<uint32_t>(rfmel::DataSampleFormat::ComplexCartesian) == AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_CARTESIAN);
+static_assert(static_cast<uint32_t>(rfmel::DataSampleFormat::ComplexPolar) == AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_POLAR);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::FixedPointUnsigned) == AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::FixedPointSigned) == AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::VRT_unsignedFloat) == AMS_MEL_RF_STREAM_ITEM_VRT_UNSIGNED_FLOAT);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::VRT_signedFloat) == AMS_MEL_RF_STREAM_ITEM_VRT_SIGNED_FLOAT);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::Float32) == AMS_MEL_RF_STREAM_ITEM_FLOAT32);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::Float64) == AMS_MEL_RF_STREAM_ITEM_FLOAT64);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::Float16) == AMS_MEL_RF_STREAM_ITEM_FLOAT16);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::FixedPointUnsignedNonNormalized) == AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED_NON_NORMALIZED);
+static_assert(static_cast<uint32_t>(rfmel::DataItemFormat::FixedPointSignedNonNormalized) == AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED);
+static_assert(static_cast<uint32_t>(rfmel::BufferRepeatMode::RepeatFromTop) == AMS_MEL_RF_STREAM_REPEAT_FROM_TOP);
+static_assert(static_cast<uint32_t>(rfmel::BufferRepeatMode::ContinueFromPrevious) == AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS);
 using namespace ams_mel::internal;
 namespace {
 using Future = mel::RequestFor<rfmel::JobDetail>;
@@ -441,11 +455,17 @@ ams_mel_status_t add_rx_intervals(
     clear_diagnostic(diagnostic, capacity, required);
     if (!job || !job->state || !job->state->detail || bad_diag(diagnostic, capacity) ||
         !span_ok(inputs.size, inputs.data, sizeof(*inputs.data))) return AMS_MEL_INVALID_ARGUMENT;
-    constexpr bool samples = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v14>;
+    constexpr bool stream = std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v15>;
+    constexpr bool samples = stream || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v14>;
     constexpr bool custom = samples || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v13>;
     constexpr bool binary = custom || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v12>;
     constexpr bool modulation = binary || std::is_same_v<Span, ams_mel_rf_job_interval_config_span_v11>;
-    const auto custom_envelope_at = [](const auto& supplied) -> const auto& {
+    const auto samples_at = [](const auto& supplied) -> const auto& {
+        if constexpr (stream) return supplied.modulation;
+        else return supplied;
+    };
+    const auto custom_envelope_at = [&](const auto& envelope) -> const auto& {
+        const auto& supplied = samples_at(envelope);
         if constexpr (samples) return supplied.modulation;
         else return supplied;
     };
@@ -518,13 +538,23 @@ ams_mel_status_t add_rx_intervals(
                 if (!span_ok(table.size, table.data, sizeof(*table.data))) return AMS_MEL_INVALID_ARGUMENT;
                 for (std::size_t m = 0; m < table.size; ++m) {
                     const auto& value = modulation_at(table.data[m]);
-                    constexpr auto last_kind = samples ? AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER :
+                    constexpr auto last_kind = stream ? AMS_MEL_RF_MODULATION_WAVEFORM_STREAM :
+                        samples ? AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER :
                         custom ? AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM :
                         binary ? AMS_MEL_RF_MODULATION_CPFSK_PULSE : AMS_MEL_RF_MODULATION_LINEAR_FREQUENCY;
                     if (value.kind > last_kind) return AMS_MEL_INVALID_ARGUMENT;
+                    if constexpr (stream) {
+                        if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_STREAM) {
+                            const auto& descriptor = table.data[m].waveform_stream;
+                            if (descriptor.sample_format > AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_POLAR ||
+                                descriptor.item_format > AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED ||
+                                descriptor.repeat_mode > AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS ||
+                                !fits_count(descriptor.num_bytes)) return AMS_MEL_INVALID_ARGUMENT;
+                        }
+                    }
                     if constexpr (samples) {
                         if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER) {
-                            const auto& buffer = table.data[m].waveform_buffer;
+                            const auto& buffer = samples_at(table.data[m]).waveform_buffer;
                             if (buffer.data_format == AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8) {
                                 const auto span = buffer.samples_i8;
                                 if (!span_ok(span.size, span.data, sizeof(*span.data)) ||
@@ -951,9 +981,29 @@ ams_mel_status_t add_rx_intervals(
                         }
 #endif
                         const auto& value = modulation_at(supplied.data[m]);
+                        if constexpr (stream) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+                            if (m > 0 && failpoint("later-stream-definition")) {
+                                qualification_trace("later-stream-definition: preparation reached");
+                                throw std::bad_alloc{};
+                            }
+#endif
+                            if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_STREAM) {
+                                const auto& source = supplied.data[m].waveform_stream;
+                                rfmel::WaveformStream descriptor;
+                                descriptor.setEndpointID(source.endpoint_id);
+                                descriptor.setStartAddress(source.start_address);
+                                descriptor.setNumBytes(static_cast<std::size_t>(source.num_bytes));
+                                descriptor.setSampleFormat(static_cast<rfmel::DataSampleFormat>(source.sample_format));
+                                descriptor.setItemFormat(static_cast<rfmel::DataItemFormat>(source.item_format));
+                                descriptor.setRepeatMode(static_cast<rfmel::BufferRepeatMode>(source.repeat_mode));
+                                table.emplace_back(std::in_place_type<rfmel::WaveformStream>, descriptor);
+                                continue;
+                            }
+                        }
                         if constexpr (samples) {
                             if (value.kind == AMS_MEL_RF_MODULATION_WAVEFORM_BUFFER) {
-                                const auto& source = supplied.data[m].waveform_buffer;
+                                const auto& source = samples_at(supplied.data[m]).waveform_buffer;
                                 const auto copy_samples = [&](const auto span, auto component) {
                                     using Component = decltype(component);
                                     using Vector = std::vector<rfmel::MELComplex<Component>>;
@@ -1253,6 +1303,10 @@ extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v13(
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v14(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v14 inputs,
+    char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
+{ return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
+extern "C" ams_mel_status_t ams_mel_rf_job_add_intervals_v15(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v15 inputs,
     char *diagnostic, std::size_t capacity, std::size_t *required) noexcept
 { return add_rx_intervals(job, inputs, diagnostic, capacity, required); }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)

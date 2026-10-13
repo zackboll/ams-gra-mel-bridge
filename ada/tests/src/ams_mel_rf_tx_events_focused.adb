@@ -662,6 +662,136 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   procedure Send_Waveform_Streams (Object : in out C2.Job) is
+      type Getter is access function (I, M, F : Interfaces.C.unsigned) return Interfaces.Unsigned_64
+      with Convention => C;
+      function Convert is new Ada.Unchecked_Conversion (System.Address, Getter);
+      function Observe
+        (M, F : Interfaces.C.unsigned; I : Interfaces.C.unsigned := 0) return Interfaces.Unsigned_64
+      is
+         Name    : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+         Symbol  : Interfaces.C.Strings.chars_ptr :=
+           Interfaces.C.Strings.New_String ("mock_rf_f16_value");
+         Handle  : constant System.Address := DL_Open (Name, 2);
+         Address : constant System.Address := DL_Sym (Handle, Symbol);
+         Result  : Interfaces.Unsigned_64;
+      begin
+         if Handle = System.Null_Address or else Address = System.Null_Address then
+            raise Program_Error;
+         end if;
+         Result := Convert (Address) (I, M, F);
+         Interfaces.C.Strings.Free (Name);
+         Interfaces.C.Strings.Free (Symbol);
+         if DL_Close (Handle) /= 0 then
+            raise Program_Error;
+         end if;
+         return Result;
+      end Observe;
+      procedure Require (Condition : Boolean) is
+      begin
+         if not Condition then
+            raise Program_Error with "WaveformStream observation mismatch";
+         end if;
+      end Require;
+      Source       : C2.Modulation_Config :=
+        C2.Waveform_Stream
+          (Interfaces.Unsigned_64'Last,
+           16#8000_0000_0000_0001#,
+           123456,
+           C2.Stream_Complex_Polar,
+           C2.Stream_Float64,
+           C2.Stream_Continue_From_Previous);
+      Saved_Source : constant C2.Modulation_Config := Source;
+      Table        : C2.Modulation_Table;
+      Index        : C2.Modulation_Index;
+      Interval     : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (71, 20);
+      List         : C2.RX_Job_Interval_List;
+      TX           : C2.TX_Transmit_Event_Config :=
+        C2.Create_TX_Transmit_Event (81, "stream", 3, 11, 123.25, -7.5, 1, 2);
+      RX           : C2.RX_Receive_Event_Config :=
+        C2.Create_RX_Receive_Event (82, "stream RX", -9, 11, 12.5, 2.0);
+   begin
+      C2.Append_Modulation (Table, Source, Index);
+      C2.Append_Polarization (TX, 1.0, -2.0, 3.0, -4.0);
+      C2.Set_Phase_Offset_Radians (TX, -0.75);
+      C2.Append_Polarization (RX, 1.0, -2.0, 3.0, -4.0);
+      C2.Set_Phase_Offset_Radians (RX, 3.25);
+      C2.Append_RX_Event (Interval, RX);
+      C2.Append_Modulation_Reference (TX, Index);
+      C2.Append_Modulation_Reference (TX, Index);
+      C2.Append_Modulation (Table, C2.Waveform_Stream (0, 0, 0), Index);
+      C2.Append_Modulation_Reference (TX, Index);
+      C2.Append_Modulation (Table, C2.Waveform_Buffer_I8 ([(1, -2)]), Index);
+      C2.Append_Modulation (Table, C2.Phase_Code (-37, [-0.25, 1.5]), Index);
+      declare
+         Profiles      : C2.Waveform_Profile_Table;
+         Patterns      : C2.Waveform_Pattern_List;
+         Profile_Index : C2.Waveform_Profile_Index;
+         Profile       : C2.Waveform_Profile := C2.Create_Waveform_Profile (37);
+      begin
+         C2.Set_Phase_Degrees (Profile, -23.5, True);
+         C2.Append_Profile (Profiles, Profile, Profile_Index);
+         C2.Append_Modulation (Table, C2.Custom_Waveform (Profiles, Patterns), Index);
+      end;
+      C2.Append_TX_Event (Interval, TX);
+      C2.Set_Modulations (Interval, Table);
+      C2.Append_Job_Interval (List, Interval);
+      declare
+         Second_Table : C2.Modulation_Table;
+         Second       : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (72, 30);
+      begin
+         C2.Append_Modulation
+           (Second_Table,
+            C2.Waveform_Stream
+              (19, 23, 1, C2.Stream_Real, C2.Stream_Float16, C2.Stream_Repeat_From_Top),
+            Index);
+         C2.Append_Modulation (Second_Table, Saved_Source, Index);
+         C2.Set_Modulations (Second, Second_Table);
+         C2.Append_TX_Event (Second, TX);
+         C2.Append_Job_Interval (List, Second);
+      end;
+      C2.Replace_Waveform_Stream
+        (Source, 31, 37, 41, C2.Stream_Real, C2.Stream_VRT_Signed_Float, C2.Stream_Repeat_From_Top);
+      declare
+         Wrong : C2.Modulation_Config := C2.Tone;
+      begin
+         begin
+            C2.Replace_Waveform_Stream
+              (Wrong, 0, 0, 0, C2.Stream_Real, C2.Stream_Float32, C2.Stream_Repeat_From_Top);
+            raise Program_Error with "wrong-kind stream mutation accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end;
+      C2.Add_Job_Intervals (Object, List);
+      Require (Observe (0, 0) = 1);
+      Require (Observe (0, 7) = 3);
+      Require (Observe (0, 8) = 0 and Observe (0, 9) = 0 and Observe (0, 10) = 1);
+      Require (Observe (0, 1) = Interfaces.Unsigned_64'Last);
+      Require (Observe (0, 2) = 16#8000_0000_0000_0001#);
+      Require (Observe (0, 3) = 123456);
+      Require (Observe (0, 4) = 2 and Observe (0, 5) = 5 and Observe (0, 6) = 1);
+      Require (Observe (1, 1) = 0 and Observe (1, 2) = 0 and Observe (1, 3) = 0);
+      Require (Observe (0, 1, 1) = 19 and Observe (0, 2, 1) = 23);
+      Require (Observe (0, 3, 1) = 1 and Observe (0, 5, 1) = 6);
+      C2.Add_RX_Job_Intervals (Object, List);
+      Require (Observe (0, 1) = Interfaces.Unsigned_64'Last);
+      declare
+         Changed_Table : C2.Modulation_Table;
+         Changed       : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (73, 40);
+         Changed_List  : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Modulation (Changed_Table, Source, Index);
+         C2.Set_Modulations (Changed, Changed_Table);
+         C2.Append_Job_Interval (Changed_List, Changed);
+         C2.Add_Job_Intervals (Object, Changed_List);
+         Require (Observe (0, 1) = 31 and Observe (0, 2) = 37 and Observe (0, 3) = 41);
+      end;
+      C2.Add_Job_Intervals (Object, List);
+      Require (Observe (0, 1) = Interfaces.Unsigned_64'Last);
+   end Send_Waveform_Streams;
+
    procedure Send_Waveform_Buffers (Object : in out C2.Job) is
       type Getter is
         access function (I, M, S, F : Interfaces.C.unsigned) return Interfaces.Integer_64
@@ -2272,6 +2402,7 @@ begin
                Send_Binary_Modulations (Object);
                Send_Custom_Waveforms (Object);
                Send_Waveform_Buffers (Object);
+               Send_Waveform_Streams (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");

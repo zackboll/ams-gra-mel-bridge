@@ -2175,6 +2175,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_intervals_v12",
     "ams_mel_rf_job_add_intervals_v13",
     "ams_mel_rf_job_add_intervals_v14",
+    "ams_mel_rf_job_add_intervals_v15",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2625,3 +2626,46 @@ class RfJobIntervalConfigSpanV14(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v14 = _LIBRARY.ams_mel_rf_job_add_intervals_v14
 ams_mel_rf_job_add_intervals_v14.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV14, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v14.restype = ctypes.c_int32
+
+class RfWaveformStreamConfigV1(ctypes.Structure):
+    _fields_ = [("endpoint_id", ctypes.c_uint64), ("start_address", ctypes.c_uint64),
+                ("num_bytes", ctypes.c_uint64), ("sample_format", ctypes.c_uint32),
+                ("item_format", ctypes.c_uint32), ("repeat_mode", ctypes.c_uint32)]
+
+class RfModulationConfigV5(ctypes.Structure):
+    _fields_ = [("modulation", RfModulationConfigV4), ("waveform_stream", RfWaveformStreamConfigV1)]
+
+class RfModulationConfigSpanV5(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfModulationConfigV5)), ("size", ctypes.c_size_t)]
+
+class RfJobIntervalConfigV15(ctypes.Structure):
+    _fields_ = [
+        ("interval", RfJobIntervalConfigV8),
+        ("has_transmit_events", ctypes.c_uint32),
+        ("transmit_events", RfTxEventConfigSpanV3),
+        ("has_modulations", ctypes.c_uint32),
+        ("modulations", RfModulationConfigSpanV5),
+    ]
+
+class RfJobIntervalConfigSpanV15(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV15)), ("size", ctypes.c_size_t)]
+
+ams_mel_rf_job_add_intervals_v15 = _LIBRARY.ams_mel_rf_job_add_intervals_v15
+ams_mel_rf_job_add_intervals_v15.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV15, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v15.restype = ctypes.c_int32
+
+AMS_MEL_RF_STREAM_SAMPLE_REAL = 0
+AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_CARTESIAN = 1
+AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_POLAR = 2
+AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED = 0
+AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED = 1
+AMS_MEL_RF_STREAM_ITEM_VRT_UNSIGNED_FLOAT = 2
+AMS_MEL_RF_STREAM_ITEM_VRT_SIGNED_FLOAT = 3
+AMS_MEL_RF_STREAM_ITEM_FLOAT32 = 4
+AMS_MEL_RF_STREAM_ITEM_FLOAT64 = 5
+AMS_MEL_RF_STREAM_ITEM_FLOAT16 = 6
+AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED_NON_NORMALIZED = 7
+AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED = 8
+AMS_MEL_RF_STREAM_REPEAT_FROM_TOP = 0
+AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS = 1
+AMS_MEL_RF_MODULATION_WAVEFORM_STREAM = 7

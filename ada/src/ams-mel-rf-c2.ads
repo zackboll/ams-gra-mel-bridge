@@ -171,6 +171,45 @@ package AMS.MEL.RF.C2 is
    type RX_Receive_Event_Config is private;
    type TX_Transmit_Event_Config is private;
    type Modulation_Config is private;
+   type Stream_Sample_Format is (Stream_Real, Stream_Complex_Cartesian, Stream_Complex_Polar);
+   for Stream_Sample_Format use
+     (Stream_Real => 0, Stream_Complex_Cartesian => 1, Stream_Complex_Polar => 2);
+   type Stream_Item_Format is
+     (Stream_Fixed_Point_Unsigned,
+      Stream_Fixed_Point_Signed,
+      Stream_VRT_Unsigned_Float,
+      Stream_VRT_Signed_Float,
+      Stream_Float32,
+      Stream_Float64,
+      Stream_Float16,
+      Stream_Fixed_Point_Unsigned_Non_Normalized,
+      Stream_Fixed_Point_Signed_Non_Normalized);
+   for Stream_Item_Format use
+     (Stream_Fixed_Point_Unsigned                => 0,
+      Stream_Fixed_Point_Signed                  => 1,
+      Stream_VRT_Unsigned_Float                  => 2,
+      Stream_VRT_Signed_Float                    => 3,
+      Stream_Float32                             => 4,
+      Stream_Float64                             => 5,
+      Stream_Float16                             => 6,
+      Stream_Fixed_Point_Unsigned_Non_Normalized => 7,
+      Stream_Fixed_Point_Signed_Non_Normalized   => 8);
+   type Stream_Repeat_Mode is (Stream_Repeat_From_Top, Stream_Continue_From_Previous);
+   for Stream_Repeat_Mode use (Stream_Repeat_From_Top => 0, Stream_Continue_From_Previous => 1);
+   --  Scalar descriptor only: numeric address, not a pointer. No endpoint or
+   --  backing memory is acquired, checked, owned or transferred by this API.
+   function Waveform_Stream
+     (Endpoint_ID, Start_Address, Num_Bytes : Interfaces.Unsigned_64;
+      Sample_Format                         : Stream_Sample_Format := Stream_Complex_Cartesian;
+      Item_Format                           : Stream_Item_Format := Stream_Fixed_Point_Signed;
+      Repeat_Mode                           : Stream_Repeat_Mode := Stream_Repeat_From_Top)
+      return Modulation_Config;
+   procedure Replace_Waveform_Stream
+     (Config                                : in out Modulation_Config;
+      Endpoint_ID, Start_Address, Num_Bytes : Interfaces.Unsigned_64;
+      Sample_Format                         : Stream_Sample_Format;
+      Item_Format                           : Stream_Item_Format;
+      Repeat_Mode                           : Stream_Repeat_Mode);
    type Waveform_Sample_I8 is record
       Real, Imag : Interfaces.Integer_8;
    end record;
@@ -589,18 +628,26 @@ private
    package Waveform_I8_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Sample_I8);
    package Waveform_I16_Vectors is new Ada.Containers.Vectors (Positive, Waveform_Sample_I16);
    type Modulation_Config is record
-      Kind             : Natural range 0 .. 6 := 0;
-      Sample_Width     : Natural range 8 .. 16 := 8;
-      Samples_I8       : Waveform_I8_Vectors.Vector;
-      Samples_I16      : Waveform_I16_Vectors.Vector;
-      Duration         : Interfaces.Integer_64 := 0;
-      Phases           : Phase_Chip_Vectors.Vector;
-      Extent           : Long_Float := 0.0;
-      Binary_Data      : Modulation_Boolean_Vectors.Vector;
-      Pulse_Duration   : Interfaces.Integer_64 := 0;
-      Frequency_Offset : Long_Float := 0.0;
-      Profiles         : Waveform_Profile_Table;
-      Patterns         : Waveform_Pattern_List;
+      Kind                                                       : Natural range 0 .. 7 := 0;
+      Stream_Endpoint_ID, Stream_Start_Address, Stream_Num_Bytes : Interfaces.Unsigned_64 := 0;
+      Stream_Sample                                              : Stream_Sample_Format :=
+        Stream_Complex_Cartesian;
+      Stream_Item                                                : Stream_Item_Format :=
+        Stream_Fixed_Point_Signed;
+      Stream_Repeat                                              : Stream_Repeat_Mode :=
+        Stream_Repeat_From_Top;
+      Sample_Width                                               : Natural range 8 .. 16 := 8;
+      Samples_I8                                                 : Waveform_I8_Vectors.Vector;
+      Samples_I16                                                : Waveform_I16_Vectors.Vector;
+      Duration                                                   : Interfaces.Integer_64 := 0;
+      Phases                                                     : Phase_Chip_Vectors.Vector;
+      Extent                                                     : Long_Float := 0.0;
+      Binary_Data                                                :
+        Modulation_Boolean_Vectors.Vector;
+      Pulse_Duration                                             : Interfaces.Integer_64 := 0;
+      Frequency_Offset                                           : Long_Float := 0.0;
+      Profiles                                                   : Waveform_Profile_Table;
+      Patterns                                                   : Waveform_Pattern_List;
    end record;
    package Modulation_Vectors is new Ada.Containers.Vectors (Positive, Modulation_Config);
    type Modulation_Table is record

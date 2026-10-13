@@ -1116,8 +1116,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 204);
-    assert_eq!(exported.len(), 204);
+    assert_eq!(declared.len(), 205);
+    assert_eq!(exported.len(), 205);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3731,6 +3731,69 @@ fn waveform_buffer_abi() {
         align_of::<AmsMelRfJobIntervalConfigSpanV14>(),
         offset_of!(AmsMelRfJobIntervalConfigSpanV14, data),
         offset_of!(AmsMelRfJobIntervalConfigSpanV14, size),
+    ];
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn waveform_stream_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfJob,
+        AmsMelRfJobIntervalConfigSpanV15,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_job_add_intervals_v15;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!(
+        "ams-mel-waveform-stream-layout-{}",
+        std::process::id()
+    ));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/waveform_stream_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfWaveformStreamConfigV1>(),
+        align_of::<AmsMelRfWaveformStreamConfigV1>(),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, endpoint_id),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, start_address),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, num_bytes),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, sample_format),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, item_format),
+        offset_of!(AmsMelRfWaveformStreamConfigV1, repeat_mode),
+        size_of::<AmsMelRfModulationConfigV5>(),
+        align_of::<AmsMelRfModulationConfigV5>(),
+        offset_of!(AmsMelRfModulationConfigV5, modulation),
+        offset_of!(AmsMelRfModulationConfigV5, waveform_stream),
+        size_of::<AmsMelRfModulationConfigSpanV5>(),
+        align_of::<AmsMelRfModulationConfigSpanV5>(),
+        offset_of!(AmsMelRfModulationConfigSpanV5, data),
+        offset_of!(AmsMelRfModulationConfigSpanV5, size),
+        size_of::<AmsMelRfJobIntervalConfigV15>(),
+        align_of::<AmsMelRfJobIntervalConfigV15>(),
+        offset_of!(AmsMelRfJobIntervalConfigV15, interval),
+        offset_of!(AmsMelRfJobIntervalConfigV15, has_transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV15, transmit_events),
+        offset_of!(AmsMelRfJobIntervalConfigV15, has_modulations),
+        offset_of!(AmsMelRfJobIntervalConfigV15, modulations),
+        size_of::<AmsMelRfJobIntervalConfigSpanV15>(),
+        align_of::<AmsMelRfJobIntervalConfigSpanV15>(),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV15, data),
+        offset_of!(AmsMelRfJobIntervalConfigSpanV15, size),
     ];
     assert_eq!(actual, expected);
 }

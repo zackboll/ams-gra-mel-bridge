@@ -234,6 +234,9 @@ begin
                                  C2.Append_Modulation (Table, C2.Tone, Index);
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Append_Modulation
+                                   (Table, C2.Waveform_Stream (0, 0, 0), Index);
+                                 C2.Append_Modulation_Reference (TX, Index);
+                                 C2.Append_Modulation
                                    (Table, C2.Phase_Code (1_000_000, [0.0, 0.5, 0.0]), Index);
                                  C2.Append_Modulation_Reference (TX, Index);
                                  C2.Append_Modulation

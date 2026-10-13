@@ -3118,16 +3118,17 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_close";
    --  Task 034E1 private raw live-query ABI. Public values copy out all storage.
-   RF_VA_Status_None                         : constant Interfaces.Unsigned_32 := 0;
-   RF_VA_Status_Operational                  : constant Interfaces.Unsigned_32 := 1;
-   RF_VA_Status_Degraded                     : constant Interfaces.Unsigned_32 := 2;
-   RF_VA_Status_Failed                       : constant Interfaces.Unsigned_32 := 3;
+   RF_VA_Status_None                                  : constant Interfaces.Unsigned_32 := 0;
+   RF_VA_Status_Operational                           : constant Interfaces.Unsigned_32 := 1;
+   RF_VA_Status_Degraded                              : constant Interfaces.Unsigned_32 := 2;
+   RF_VA_Status_Failed                                : constant Interfaces.Unsigned_32 := 3;
    type RF_VA_Instance_List_Handle is new System.Address;
-   Null_RF_VA_Instance_List                  : constant RF_VA_Instance_List_Handle :=
+   Null_RF_VA_Instance_List                           : constant RF_VA_Instance_List_Handle :=
      RF_VA_Instance_List_Handle (System.Null_Address);
    type RF_VA_Instance_Status_Report_Handle is new System.Address;
-   Null_RF_VA_Instance_Status_Report         : constant RF_VA_Instance_Status_Report_Handle :=
-     RF_VA_Instance_Status_Report_Handle (System.Null_Address);
+   Null_RF_VA_Instance_Status_Report                  :
+     constant RF_VA_Instance_Status_Report_Handle :=
+       RF_VA_Instance_Status_Report_Handle (System.Null_Address);
    type RF_VA_Local_Function_Status_V1 is record
       Local_Function_Type_ID : Interfaces.Unsigned_32;
       Statuses               : Span_V1;
@@ -3223,10 +3224,10 @@ private package AMS.MEL_C_API is
      Convention    => C,
      External_Name => "ams_mel_rf_virtual_aperture_dynamic_weights_supported";
    type RF_VA_LF_List_Handle is new System.Address;
-   Null_RF_VA_LF_List                        : constant RF_VA_LF_List_Handle :=
+   Null_RF_VA_LF_List                                 : constant RF_VA_LF_List_Handle :=
      RF_VA_LF_List_Handle (System.Null_Address);
    type RF_VA_LF_Status_Handle is new System.Address;
-   Null_RF_VA_LF_Status                      : constant RF_VA_LF_Status_Handle :=
+   Null_RF_VA_LF_Status                               : constant RF_VA_LF_Status_Handle :=
      RF_VA_LF_Status_Handle (System.Null_Address);
    type RF_VA_Local_Function_Info_V1 is record
       Local_Function_Type_ID : Interfaces.Unsigned_32;
@@ -3346,7 +3347,7 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_instance_status_report_close";
    type RF_VA_Subscription_Handle is new System.Address;
-   Null_RF_VA_Subscription                   : constant RF_VA_Subscription_Handle :=
+   Null_RF_VA_Subscription                            : constant RF_VA_Subscription_Handle :=
      RF_VA_Subscription_Handle (System.Null_Address);
    type RF_VA_Subscription_Statistics_V1 is record
       Callback_Entries, Callbacks_Coalesced, Notifications_Delivered, Callbacks_After_Stop :
@@ -3393,7 +3394,7 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_va_status_subscription_close";
    type RF_Element_Group_Snapshot_Handle is new System.Address;
-   Null_RF_Element_Group_Snapshot            : constant RF_Element_Group_Snapshot_Handle :=
+   Null_RF_Element_Group_Snapshot                     : constant RF_Element_Group_Snapshot_Handle :=
      RF_Element_Group_Snapshot_Handle (System.Null_Address);
    type RF_Element_Group_Snapshot_Options_V1 is record
       Include_Data_Pipes : Interfaces.Unsigned_32;
@@ -3443,7 +3444,7 @@ private package AMS.MEL_C_API is
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_element_group_snapshot_close";
    type RF_VA_Data_Pipe_Connections_Snapshot_Handle is new System.Address;
-   Null_RF_VA_Data_Pipe_Connections_Snapshot :
+   Null_RF_VA_Data_Pipe_Connections_Snapshot          :
      constant RF_VA_Data_Pipe_Connections_Snapshot_Handle :=
        RF_VA_Data_Pipe_Connections_Snapshot_Handle (System.Null_Address);
    type RF_VA_Data_Pipe_Group_V1 is record
@@ -3513,7 +3514,7 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints";
-   RF_Modulation_Waveform_Buffer             : constant Interfaces.Unsigned_32 := 6;
+   RF_Modulation_Waveform_Buffer                      : constant Interfaces.Unsigned_32 := 6;
    type RF_Complex_I8_V1 is record
       Real : Interfaces.Integer_8;
       Imag : Interfaces.Integer_8;
@@ -3565,4 +3566,54 @@ private package AMS.MEL_C_API is
       Capacity   : Size_T;
       Required   : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v14";
+   RF_Modulation_Waveform_Stream                      : constant Interfaces.Unsigned_32 := 7;
+   RF_Stream_Sample_Real                              : constant Interfaces.Unsigned_32 := 0;
+   RF_Stream_Sample_Complex_Cartesian                 : constant Interfaces.Unsigned_32 := 1;
+   RF_Stream_Sample_Complex_Polar                     : constant Interfaces.Unsigned_32 := 2;
+   RF_Stream_Item_Fixed_Point_Unsigned                : constant Interfaces.Unsigned_32 := 0;
+   RF_Stream_Item_Fixed_Point_Signed                  : constant Interfaces.Unsigned_32 := 1;
+   RF_Stream_Item_VRT_Unsigned_Float                  : constant Interfaces.Unsigned_32 := 2;
+   RF_Stream_Item_VRT_Signed_Float                    : constant Interfaces.Unsigned_32 := 3;
+   RF_Stream_Item_Float32                             : constant Interfaces.Unsigned_32 := 4;
+   RF_Stream_Item_Float64                             : constant Interfaces.Unsigned_32 := 5;
+   RF_Stream_Item_Float16                             : constant Interfaces.Unsigned_32 := 6;
+   RF_Stream_Item_Fixed_Point_Unsigned_Non_Normalized : constant Interfaces.Unsigned_32 := 7;
+   RF_Stream_Item_Fixed_Point_Signed_Non_Normalized   : constant Interfaces.Unsigned_32 := 8;
+   RF_Stream_Repeat_From_Top                          : constant Interfaces.Unsigned_32 := 0;
+   RF_Stream_Repeat_Continue_From_Previous            : constant Interfaces.Unsigned_32 := 1;
+   type RF_Waveform_Stream_Config_V1 is record
+      Endpoint_ID, Start_Address, Num_Bytes   : Interfaces.Unsigned_64;
+      Sample_Format, Item_Format, Repeat_Mode : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_V5 is record
+      Modulation      : RF_Modulation_Config_V4;
+      Waveform_Stream : RF_Waveform_Stream_Config_V1;
+   end record
+   with Convention => C;
+   type RF_Modulation_Config_Span_V5 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_V15 is record
+      Interval            : RF_Job_Interval_Config_V8;
+      Has_Transmit_Events : Interfaces.Unsigned_32;
+      Transmit_Events     : RF_TX_Event_Config_Span_V3;
+      Has_Modulations     : Interfaces.Unsigned_32;
+      Modulations         : RF_Modulation_Config_Span_V5;
+   end record
+   with Convention => C;
+   type RF_Job_Interval_Config_Span_V15 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C_Pass_By_Copy;
+   function RF_Job_Add_Intervals_V15
+     (Object     : RF_Job_Handle;
+      Intervals  : RF_Job_Interval_Config_Span_V15;
+      Diagnostic : System.Address;
+      Capacity   : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_job_add_intervals_v15";
 end AMS.MEL_C_API;

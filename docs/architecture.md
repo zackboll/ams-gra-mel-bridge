@@ -1,5 +1,29 @@
 # Architecture decisions
 
+## Task 034F16 — copied RF WaveformStream descriptors
+
+Bridge tag 7 selects the direct outer `rfmel::Modulation` alternative, not
+an inner `CommonModulations` alternative. Modulation v5 nests frozen v4;
+interval v15 uses frozen v8 and the existing TX-v3 references. The sole new
+production export is `ams_mel_rf_job_add_intervals_v15` (205 exports, ABI 0.1).
+V11/V12/V13/V14 remain limited to tags 0–2/0–4/0–5/0–6.
+
+The six scalar values are endpoint ID, opaque numeric uint64 address, uint64
+byte count checked for native size_t representability, sample format (0–2),
+item format (0–8), and repeat mode (0–1). These format domains are distinct
+from JobDataFormat/sample widths. Zero values are structurally accepted,
+not proof of usable memory or hardware support. No address is dereferenced,
+converted to a pointer or used in extent/rate/repeat arithmetic.
+
+Safe Ada owns scalar values and uses guarded atomic replacement; both Add
+operations privately serialize v15 with final-sized backing. Raw Rust and
+private ctypes mirror the ABI; no safe Rust/public Python API is added.
+Endpoint acquisition, registration, memory lifetime and adequate backing for
+ContinueFromPrevious remain application/provider responsibilities. There is
+no WaveformTxEndpoint, upload, transfer, RDMA or RF execution in this slice.
+See `docs/task-034f16-rf-waveform-stream-values.md` for evidence and limits.
+
+
 ## Task 034F15 — copy-owned RF WaveformBuffer samples
 
 Adds bridge tag 6 and Cartesian signed I8/I16 sample pairs through modulation
