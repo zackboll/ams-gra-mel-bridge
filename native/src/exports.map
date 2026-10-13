@@ -1,5 +1,7 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_rf_data_submit_product_rx_v4;
+        ams_mel_rf_product_rx_event_view_v4;
         ams_mel_rf_job_add_intervals_v10;
         ams_mel_rf_job_add_intervals_v11;
         ams_mel_rf_job_add_intervals_v12;

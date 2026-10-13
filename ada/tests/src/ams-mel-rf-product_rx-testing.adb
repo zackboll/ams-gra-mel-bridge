@@ -1,6 +1,6 @@
 package body AMS.MEL.RF.Product_Rx.Testing is
    procedure Check_Representation is
-      Raw  : constant AMS.MEL_C_API.RF_Product_Rx_Event_V2 :=
+      Raw    : constant AMS.MEL_C_API.RF_Product_Rx_Event_V2 :=
         (Endpoint_ID => 0,
          Data_Format => 0,
          Samples_I8  => (System.Null_Address, 0),
@@ -17,8 +17,8 @@ package body AMS.MEL.RF.Product_Rx.Testing is
             First_Rx_Event_Start_S     => 0,
             First_Rx_Event_Start_FS    => 0,
             Rx_Stream_IDs              => (System.Null_Address, 0)));
-      Pair : constant Complex_I8 := (0, 0);
-      V3   : constant AMS.MEL_C_API.RF_Product_Rx_Event_V3 :=
+      Pair   : constant Complex_I8 := (0, 0);
+      V3     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V3 :=
         (Endpoint_ID         => 0,
          Data_Format         => 0,
          Direct_Samples_I8   => (System.Null_Address, 0),
@@ -26,7 +26,26 @@ package body AMS.MEL.RF.Product_Rx.Testing is
          Complex_Samples_I8  => (System.Null_Address, 0),
          Complex_Samples_I16 => (System.Null_Address, 0),
          Metadata            => Raw.Metadata);
+      V4     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V4 := (V3, (System.Null_Address, 0));
+      Packet : constant AMS.MEL_C_API.RF_VITA_Small_Packet_V1 :=
+        (Serialized_Bytes => (System.Null_Address, 0));
    begin
+      if System.Address'Size = 64 then
+         if V4'Size /= 160 * 8
+           or else AMS.MEL_C_API.RF_Product_Rx_Event_V4'Alignment /= 8
+           or else V4.Event'Position /= 0
+           or else V4.VITA_Small_Packets'Position /= 144
+           or else V4.VITA_Small_Packets'Size /= 128
+           or else AMS.MEL_C_API.RF_VITA_Small_Packet_Span_V1'Alignment /= 8
+           or else V4.VITA_Small_Packets.Data'Position /= 0
+           or else V4.VITA_Small_Packets.Size'Position /= 8
+           or else Packet'Size /= 128
+           or else AMS.MEL_C_API.RF_VITA_Small_Packet_V1'Alignment /= 8
+           or else Packet.Serialized_Bytes'Position /= 0
+         then
+            raise Program_Error with "RF VITA event differs from measured C11 layout";
+         end if;
+      end if;
       --  Values measured by the compiled C11 product_rx_v2_layout_probe.
       --  This runtime qualification is for the current 64-bit platform.
       if System.Address'Size = 64 then

@@ -426,6 +426,28 @@ void fill_rich(ComplexI16 *samples) noexcept
         samples[index] = ComplexI16{values[index][0], values[index][1]};
 }
 
+rfmel::DataPacketSmall vita_packet(std::size_t payload_words, unsigned seed)
+{
+    rfmel::DataPacketSmall packet;
+    for (auto& word : packet.words()) word = htonl(0xa5a5a5a5U);
+    std::array<std::uint32_t, 120> payload{};
+    for (std::size_t i = 0; i < payload.size(); ++i)
+        payload[i] = htonl(0x01020304U + static_cast<std::uint32_t>(i) * 0x070b0d11U + seed);
+    auto builder = packet.builder();
+    builder.setStreamId(0x12345600U + seed);
+    builder.setPacketCount(static_cast<std::uint8_t>(seed));
+    builder.setTimestampInt(0x23456700U + seed);
+    builder.setTimestampFracHigh(0x34567800U + seed);
+    builder.setTimestampFracLow(0x45678900U + seed);
+    builder.setInfoClassType(ams::iface::vita::InfoClassCodeType::RxCommBaseSet);
+    builder.setPayload({payload.data(), payload_words});
+    ams::iface::vita::DataTrailerBuilder trailer;
+    trailer.setSampleFrameIndicators(static_cast<std::uint8_t>(seed));
+    builder.setTrailer(trailer);
+    if (builder.finalize() != payload_words + 8U) std::abort();
+    return packet;
+}
+
 class MockProductRxEndpoint final : public rfmel::ProductRxEndpoint {
 public:
     MockProductRxEndpoint(std::uint64_t id, JobDataFormat format, std::string mode)
@@ -437,7 +459,12 @@ public:
             if (page == MAP_FAILED) throw std::bad_alloc{};
             static_assert(owned_samples * sizeof(ComplexI16) <= owned_page_size);
             owned_ = page;
-            if (format_ == JobDataFormat::ComplexINT8) {
+            if (format_ == JobDataFormat::AMSVitaSmall) {
+                static_assert(owned_samples * sizeof(rfmel::DataPacketSmall) <= owned_page_size);
+                auto packets = static_cast<rfmel::DataPacketSmall *>(page);
+                for (std::size_t index = 0; index < owned_samples; ++index)
+                    new (packets + index) rfmel::DataPacketSmall{vita_packet(9U, 10U)};
+            } else if (format_ == JobDataFormat::ComplexINT8) {
                 auto samples = static_cast<ComplexI8 *>(page);
                 const std::int8_t values[6][2] = {{-128, 127}, {127, -128},
                     {-1, 0}, {0, -1}, {7, -11}, {23, 42}};
@@ -573,7 +600,9 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         const auto format = format_;
         std::thread{[held, samples, done, format]() {
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
-            if (format == JobDataFormat::ComplexINT8)
+            if (format == JobDataFormat::AMSVitaSmall)
+                target(rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(samples)}, owned_samples);
+            else if (format == JobDataFormat::ComplexINT8)
                 target(rich_metadata(), rfmel::JobDataPointer{
                     static_cast<ComplexI8 *>(static_cast<void *>(samples))}, owned_samples);
             else if (format == JobDataFormat::DirectINT8)
@@ -589,7 +618,10 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         throw std::runtime_error("mock registration exception with an active callback");
     }
     if (mode_ == "sync") {
-        if (format_ == JobDataFormat::DirectINT8) {
+        if (format_ == JobDataFormat::AMSVitaSmall) {
+            rfmel::DataPacketSmall packets[2] = {vita_packet(0U, 1U), vita_packet(9U, 10U)};
+            invoke(rich_metadata(), rfmel::JobDataPointer{packets}, 2U);
+        } else if (format_ == JobDataFormat::DirectINT8) {
             std::int8_t samples[2] = {77, -1};
             invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
             samples[0] = 0;
@@ -655,7 +687,8 @@ mel::RequestFor<rfmel::ProductRxEndpoint> rx_create(const std::string& name,
     record("rf_rx_create");
     if (name.rfind("rx:", 0) != 0) forbidden("DataMEL::createProductRxEndpoint");
     if ((format != JobDataFormat::ComplexINT16 && format != JobDataFormat::ComplexINT8 &&
-         format != JobDataFormat::DirectINT8 && format != JobDataFormat::DirectINT16) ||
+         format != JobDataFormat::DirectINT8 && format != JobDataFormat::DirectINT16 &&
+         format != JobDataFormat::AMSVitaSmall) ||
         region != nullptr)
         forbidden("createProductRxEndpoint other than (ComplexINT16, size, nullptr)");
     last_region_size.store(region_size);
@@ -2459,6 +2492,43 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         format = endpoint->getAssignedDataFormat();
     }
     auto metadata = rich_metadata();
+    if (format == JobDataFormat::AMSVitaSmall) {
+        rfmel::DataPacketSmall packets[3] = {
+            vita_packet(0U, 1U), vita_packet(9U, 10U), vita_packet(120U, 121U)};
+        metadata->setJobIntervalID(21U);
+        metadata->setReceiveEvents(std::vector<rfmel::StreamID>{21U, 0U, 42U});
+        if (kind == EmitNullMetadata) metadata.reset();
+        else if (kind == EmitUserData) metadata->setUserDefinedData(std::any{42});
+        else if (kind == EmitStabPoints) metadata->addStabPoints(rfmel::PointingType{rfmel::FaceRelativePointing{}});
+        else if (kind == EmitReceiveEvents) metadata->addReceiveEvents(rfmel::ReceiveEvent{});
+        else if (kind == EmitAssociations) metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{9U});
+        const auto n = kind == EmitCount ? count : (kind == EmitZeroNull ? 0U : 3U);
+        if (kind == EmitWrongVariant || kind == 13) {
+            std::int8_t wrong = 1;
+            invoke_held(held, metadata, rfmel::JobDataPointer{&wrong}, kind == 13 ? 0U : n);
+        } else {
+            auto& bad = packets[1];
+            using namespace ams::iface::vita;
+            std::uint32_t word = ntohl(bad.words()[0]);
+            if (kind >= 20 && kind <= 24) {
+                const std::uint32_t masks[] = {masks::PKT_TYPE_MASK, masks::CBIT_MASK,
+                    masks::TSI_MASK, masks::TSF_MASK, masks::DATA_TRAILER_MASK};
+                word &= ~masks[kind - 20];
+            } else if (kind == 25) bad.words()[2] = htonl(0xffffffffU);
+            else if (kind == 26) bad.words()[3] = htonl(0xffffffffU);
+            else if (kind == 27) bad.words()[16] = htonl(0xffffffffU);
+            else if (kind == 28 || kind == 29)
+                word = (word & ~masks::PKT_SIZE_MASK) | (kind == 28 ? 7U : 129U);
+            else if (kind == 30) word |= masks::ND0_MASK;
+            else if (kind == 31) word |= masks::SBIT_MASK;
+            bad.words()[0] = htonl(word);
+            invoke_held(held, metadata, rfmel::JobDataPointer{
+                kind == EmitNullPointer || kind == EmitZeroNull ? nullptr : packets}, n);
+        }
+        for (auto& packet : packets) for (auto& word : packet.words()) word = 0U;
+        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        return 1;
+    }
     if (format == JobDataFormat::DirectINT8 || format == JobDataFormat::DirectINT16) {
         std::int8_t samples_i8[8];
         std::int16_t samples_i16[8];
@@ -2625,7 +2695,9 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_arm_late(
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
             if (!target) { write_byte(done_fd, 'E'); return; }
             try {
-                if (format == JobDataFormat::ComplexINT8)
+                if (format == JobDataFormat::AMSVitaSmall)
+                    target(nullptr, rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(page)}, 1024U);
+                else if (format == JobDataFormat::ComplexINT8)
                     target(nullptr, rfmel::JobDataPointer{static_cast<ComplexI8 *>(page)}, 1024U);
                 else if (format == JobDataFormat::DirectINT8)
                     target(nullptr, rfmel::JobDataPointer{static_cast<std::int8_t *>(page)}, 1024U);
@@ -2662,7 +2734,9 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit_owned(std:
         endpoint.reset();
     }
     if (samples == nullptr) return 0;
-    if (format == JobDataFormat::ComplexINT8)
+    if (format == JobDataFormat::AMSVitaSmall)
+        invoke_held(held, rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(samples)}, owned_samples);
+    else if (format == JobDataFormat::ComplexINT8)
         invoke_held(held, rich_metadata(), rfmel::JobDataPointer{
             static_cast<ComplexI8 *>(static_cast<void *>(samples))}, owned_samples);
     else if (format == JobDataFormat::DirectINT8)

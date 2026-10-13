@@ -197,6 +197,11 @@ if(AMS_MEL_BUILD_TESTS)
         ${ams_mel_rf_data_vendor_roots})
     set_target_properties(rf_product_rx_header_compile_probe PROPERTIES CXX_EXTENSIONS OFF)
     ams_mel_warnings(rf_product_rx_header_compile_probe)
+    add_executable(test_rf_product_rx_v4_layout tests/product_rx_v4_layout_probe.c)
+    target_compile_features(test_rf_product_rx_v4_layout PRIVATE c_std_11)
+    target_link_libraries(test_rf_product_rx_v4_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_rf_product_rx_v4_layout)
+    add_test(NAME rf-product-rx-v4-layout COMMAND test_rf_product_rx_v4_layout)
     add_executable(test_rf_product_rx_i8_headers tests/rf_product_rx_i8_contract_probe.cpp)
     target_compile_features(test_rf_product_rx_i8_headers PRIVATE cxx_std_20)
     target_include_directories(test_rf_product_rx_i8_headers SYSTEM PRIVATE
@@ -581,6 +586,7 @@ if(AMS_MEL_BUILD_TESTS)
     # Task 033D RF ProductRxEndpoint ComplexINT16 receive (C11). One process
     # per case: permanent callback-registration retention and lifetime
     # evidence cannot leak between cases. Negative controls fork.
+    add_test(NAME rf-product-rx-vita COMMAND test_rf_product_rx vita)
     add_executable(test_rf_product_rx tests/test_rf_product_rx.c)
     target_compile_features(test_rf_product_rx PRIVATE c_std_11)
     set_target_properties(test_rf_product_rx PROPERTIES C_EXTENSIONS OFF)
@@ -601,6 +607,14 @@ if(AMS_MEL_BUILD_TESTS)
             worker-shutdown-throw worker-launch-failure)
         add_test(NAME rf-product-rx-${case} COMMAND test_rf_product_rx ${case})
         set_tests_properties(rf-product-rx-${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+
+    foreach(case IN ITEMS sync-callback registration-throw-before registration-throw-after
+            registration-throw-active mid-callback-close late-copy late-reference late-move
+            parent-first never-ready unclaimed unclaimed-parent-first pending-parent-first
+            worker-launch-failure saturation receive-close claim-unique format-mismatch)
+        add_test(NAME rf-product-rx-vita-${case} COMMAND test_rf_product_rx vita-${case})
+        set_tests_properties(rf-product-rx-vita-${case} PROPERTIES TIMEOUT 60)
     endforeach()
 
     foreach(width IN ITEMS 8 16)

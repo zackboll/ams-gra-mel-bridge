@@ -1,5 +1,20 @@
 # Architecture decisions
 
+## Task 034F20 — AMS VITA Small ProductRx receive
+
+Additive submit/view-v4 extend ProductRx to format 4 only, retaining all four
+integer formats and frozen v1/v2/v3 accepted sets. Event-v4 nests frozen v3 and
+adds ordered borrowed packet descriptors. Each native packet owns 512-byte
+capacity, but only its pinned DataPacketView-validated header-derived 32..512
+serialized bytes are copied, unchanged in packet/network order. Callback and
+configuration counts mean packet objects. Events own stable independent bytes;
+malformed callbacks reject atomically. Existing callback drain, permanent exact
+function/DSO retention, queue and request lifecycle are unchanged. Safe Ada adds
+packet borrowing and independent copies; raw bindings mirror the ABI without
+public Python/safe Rust expansion. See
+`docs/task-034f20-rf-product-rx-vita-small.md` for qualification status and limits.
+
+
 ## Task 034F19 — Direct scalar ProductRx receive
 
 Additive submit/view-v3 support exactly DirectINT8/DirectINT16 and the two

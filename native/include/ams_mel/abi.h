@@ -4312,6 +4312,43 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v3(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Task 034F20 additive block. Packet objects have 512-byte native capacity,
+ * but expose only the validated header-derived serialized length (32..512
+ * bytes, a multiple of four), unchanged in packet/network byte order.
+ * Descriptors and bytes borrow the immutable event owner until event_close.
+ * For format 4 max_samples_per_event counts packet objects, not bytes or IQ. */
+typedef struct ams_mel_rf_vita_small_packet_v1 {
+    ams_mel_u8_span_v1 serialized_bytes;
+} ams_mel_rf_vita_small_packet_v1;
+
+typedef struct ams_mel_rf_vita_small_packet_span_v1 {
+    const ams_mel_rf_vita_small_packet_v1 *data;
+    size_t size;
+} ams_mel_rf_vita_small_packet_span_v1;
+
+typedef struct ams_mel_rf_product_rx_event_v4 {
+    ams_mel_rf_product_rx_event_v3 event;
+    ams_mel_rf_vita_small_packet_span_v1 vita_small_packets;
+} ams_mel_rf_product_rx_event_v4;
+
+/* Accepts exactly formats 0..4. The frozen v1/v2/v3 accepted sets remain
+ * unchanged. Assigned format must equal requested before registration. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v4(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Formats 0..3 reproduce v3 with an empty packet span. Format 4 has four
+ * inactive integer spans and an ordered packet span, including empty events.
+ * Older views reject VITA without changing the caller's output pointer. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v4(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v4 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* End Task 034F20 additive block. */
+
 /* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
  * and ComplexINT16 only. Assigned format must equal requested format before
  * registration. Frozen submit remains ComplexINT16-only. */
