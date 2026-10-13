@@ -4154,6 +4154,59 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v14(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Copied scalar descriptor only; no endpoint acquisition or memory ownership.
+ * start_address is an opaque numeric address, never a host pointer. num_bytes
+ * must fit native size_t. No extent/rate/repeat arithmetic is performed. */
+#define AMS_MEL_RF_MODULATION_WAVEFORM_STREAM UINT32_C(7)
+typedef uint32_t ams_mel_rf_stream_sample_format_t;
+#define AMS_MEL_RF_STREAM_SAMPLE_REAL UINT32_C(0)
+#define AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_CARTESIAN UINT32_C(1)
+#define AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_POLAR UINT32_C(2)
+typedef uint32_t ams_mel_rf_stream_item_format_t;
+#define AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED UINT32_C(0)
+#define AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED UINT32_C(1)
+#define AMS_MEL_RF_STREAM_ITEM_VRT_UNSIGNED_FLOAT UINT32_C(2)
+#define AMS_MEL_RF_STREAM_ITEM_VRT_SIGNED_FLOAT UINT32_C(3)
+#define AMS_MEL_RF_STREAM_ITEM_FLOAT32 UINT32_C(4)
+#define AMS_MEL_RF_STREAM_ITEM_FLOAT64 UINT32_C(5)
+#define AMS_MEL_RF_STREAM_ITEM_FLOAT16 UINT32_C(6)
+#define AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED_NON_NORMALIZED UINT32_C(7)
+#define AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED UINT32_C(8)
+typedef uint32_t ams_mel_rf_stream_repeat_mode_t;
+#define AMS_MEL_RF_STREAM_REPEAT_FROM_TOP UINT32_C(0)
+#define AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS UINT32_C(1)
+typedef struct ams_mel_rf_waveform_stream_config_v1 {
+    uint64_t endpoint_id;
+    uint64_t start_address;
+    uint64_t num_bytes;
+    uint32_t sample_format;
+    uint32_t item_format;
+    uint32_t repeat_mode;
+} ams_mel_rf_waveform_stream_config_v1;
+typedef struct ams_mel_rf_modulation_config_v5 {
+    ams_mel_rf_modulation_config_v4 modulation;
+    ams_mel_rf_waveform_stream_config_v1 waveform_stream;
+} ams_mel_rf_modulation_config_v5;
+typedef struct ams_mel_rf_modulation_config_span_v5 {
+    const ams_mel_rf_modulation_config_v5 *data;
+    size_t size;
+} ams_mel_rf_modulation_config_span_v5;
+typedef struct ams_mel_rf_job_interval_config_v15 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v5 modulations;
+} ams_mel_rf_job_interval_config_v15;
+typedef struct ams_mel_rf_job_interval_config_span_v15 {
+    const ams_mel_rf_job_interval_config_v15 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v15;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v15(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v15 intervals,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* The fixed representable ProductRxMetadata subset, copied verbatim.
  * phase_coherence_with_prior is exactly 0 or 1. first_rx_event_start_s is
  * UTCTime::getIntegralSeconds().count() and first_rx_event_start_fs is

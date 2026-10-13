@@ -2969,6 +2969,28 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f13_double(unsi
         latest_intervals.at(i).getModulations().at(m)));
     return cpfsk.getFrequencyOffset();
 }
+extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f16_value(
+    unsigned i, unsigned m, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    if (field >= 7) {
+        const auto& interval = latest_intervals.at(i);
+        if (field == 7) return interval.getSequence().getTxEvents().at(m).getModIndex().size();
+        if (field >= 8) return static_cast<uint64_t>(interval.getSequence().getTxEvents().at(m).getModIndex().at(field - 8));
+    }
+    const auto& outer = latest_intervals.at(i).getModulations().at(m);
+    if (field == 0) return std::holds_alternative<rfmel::WaveformStream>(outer);
+    const auto& value = std::get<rfmel::WaveformStream>(outer);
+    switch (field) {
+    case 1: return value.getEndpointID();
+    case 2: return value.getStartAddress();
+    case 3: return value.getNumBytes();
+    case 4: return static_cast<uint64_t>(value.getSampleFormat());
+    case 5: return static_cast<uint64_t>(value.getItemFormat());
+    case 6: return static_cast<uint64_t>(value.getRepeatMode());
+    default: return 0;
+    }
+}
 extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f15_owner(
     unsigned operation, unsigned i, unsigned m, unsigned s, int value)
 {

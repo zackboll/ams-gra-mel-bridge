@@ -332,6 +332,37 @@ package body AMS.MEL.RF.C2 is
       Interval.TX_Events.Append (Event);
       Interval.Has_TX_Events := True;
    end Append_TX_Event;
+   function Waveform_Stream
+     (Endpoint_ID, Start_Address, Num_Bytes : Interfaces.Unsigned_64;
+      Sample_Format                         : Stream_Sample_Format := Stream_Complex_Cartesian;
+      Item_Format                           : Stream_Item_Format := Stream_Fixed_Point_Signed;
+      Repeat_Mode                           : Stream_Repeat_Mode := Stream_Repeat_From_Top)
+      return Modulation_Config is
+   begin
+      return
+        (Kind                 => 7,
+         Stream_Endpoint_ID   => Endpoint_ID,
+         Stream_Start_Address => Start_Address,
+         Stream_Num_Bytes     => Num_Bytes,
+         Stream_Sample        => Sample_Format,
+         Stream_Item          => Item_Format,
+         Stream_Repeat        => Repeat_Mode,
+         others               => <>);
+   end Waveform_Stream;
+   procedure Replace_Waveform_Stream
+     (Config                                : in out Modulation_Config;
+      Endpoint_ID, Start_Address, Num_Bytes : Interfaces.Unsigned_64;
+      Sample_Format                         : Stream_Sample_Format;
+      Item_Format                           : Stream_Item_Format;
+      Repeat_Mode                           : Stream_Repeat_Mode) is
+   begin
+      if Config.Kind /= 7 then
+         raise Constraint_Error with "not a WaveformStream";
+      end if;
+      Config :=
+        Waveform_Stream
+          (Endpoint_ID, Start_Address, Num_Bytes, Sample_Format, Item_Format, Repeat_Mode);
+   end Replace_Waveform_Stream;
    function Create_Waveform_Profile
      (Chip_Duration_Femtoseconds : Interfaces.Integer_64 := 0) return Waveform_Profile is
    begin
@@ -778,7 +809,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V14
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V15
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -803,7 +834,7 @@ package body AMS.MEL.RF.C2 is
       TX_Count, TX_Group_Count                       : Natural := 0;
       type Native_TX_Events is array (Positive range <>) of aliased C.RF_TX_Event_Config_V3
       with Convention => C;
-      type Native_Modulations is array (Positive range <>) of aliased C.RF_Modulation_Config_V4
+      type Native_Modulations is array (Positive range <>) of aliased C.RF_Modulation_Config_V5
       with Convention => C;
       type Native_Phases is array (Positive range <>) of aliased Interfaces.C.double
       with Convention => C;
@@ -860,6 +891,15 @@ package body AMS.MEL.RF.C2 is
          if Interval.Has_Modulations then
             Modulation_Count := Modulation_Count + Natural (Interval.Modulations.Values.Length);
             for Config of Interval.Modulations.Values loop
+               if Config.Kind = 7 then
+                  declare
+                     Checked : constant C.Size_T := C.Size_T (Config.Stream_Num_Bytes);
+                  begin
+                     if Interfaces.Unsigned_64 (Checked) /= Config.Stream_Num_Bytes then
+                        raise Constraint_Error with "stream byte count exceeds native size_t";
+                     end if;
+                  end;
+               end if;
                Phase_Count := Phase_Count + Natural (Config.Phases.Length);
                Binary_Count := Binary_Count + Natural (Config.Binary_Data.Length);
                if Config.Kind = 6 then
@@ -926,9 +966,9 @@ package body AMS.MEL.RF.C2 is
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
-      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V14'Size);
+      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V15'Size);
       Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V3'Size);
-      Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V4'Size);
+      Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V5'Size);
       Check_Backing_Size (Sample_I8_Count, C.RF_Complex_I8_V1'Size);
       Check_Backing_Size (Sample_I16_Count, C.RF_Complex_I16_V1'Size);
       if Sample_I8_Count = Natural'Last or else Sample_I16_Count = Natural'Last then
@@ -995,7 +1035,7 @@ package body AMS.MEL.RF.C2 is
          Next_Stokes, Next_Byte                      : Positive := 1;
          Strings                                     : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I       : Positive := 1;
-         Span                                        : C.RF_Job_Interval_Config_Span_V14 :=
+         Span                                        : C.RF_Job_Interval_Config_Span_V15 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -1219,7 +1259,16 @@ package body AMS.MEL.RF.C2 is
                      Configs (I).Modulations.Data := Modulations (Next_Modulation)'Address;
                   end if;
                   for Config of Interval.Modulations.Values loop
-                     Modulations (Next_Modulation).Modulation :=
+                     Modulations (Next_Modulation).Waveform_Stream :=
+                       (Config.Stream_Endpoint_ID,
+                        Config.Stream_Start_Address,
+                        Config.Stream_Num_Bytes,
+                        Interfaces.Unsigned_32
+                          (Stream_Sample_Format'Enum_Rep (Config.Stream_Sample)),
+                        Interfaces.Unsigned_32 (Stream_Item_Format'Enum_Rep (Config.Stream_Item)),
+                        Interfaces.Unsigned_32
+                          (Stream_Repeat_Mode'Enum_Rep (Config.Stream_Repeat)));
+                     Modulations (Next_Modulation).Modulation.Modulation :=
                        (((Interfaces.Unsigned_32 (Config.Kind),
                           Config.Duration,
                           (System.Null_Address, C.Size_T (Config.Phases.Length)),
@@ -1229,7 +1278,12 @@ package body AMS.MEL.RF.C2 is
                          Interfaces.C.double (Config.Frequency_Offset)),
                         ((System.Null_Address, 0), (System.Null_Address, 0)));
                      if not Config.Binary_Data.Is_Empty then
-                        Modulations (Next_Modulation).Modulation.Modulation.Binary_Data.Data :=
+                        Modulations (Next_Modulation)
+                          .Modulation
+                          .Modulation
+                          .Modulation
+                          .Binary_Data
+                          .Data :=
                           Binary_Data (Next_Binary)'Address;
                      end if;
                      for Value of Config.Binary_Data loop
@@ -1238,6 +1292,7 @@ package body AMS.MEL.RF.C2 is
                      end loop;
                      if not Config.Phases.Is_Empty then
                         Modulations (Next_Modulation)
+                          .Modulation
                           .Modulation
                           .Modulation
                           .Modulation
@@ -1250,10 +1305,20 @@ package body AMS.MEL.RF.C2 is
                         Next_Phase := Next_Phase + 1;
                      end loop;
                      if Config.Kind = 5 then
-                        Modulations (Next_Modulation).Modulation.Custom_Waveform.Profiles.Size :=
+                        Modulations (Next_Modulation)
+                          .Modulation
+                          .Modulation
+                          .Custom_Waveform
+                          .Profiles
+                          .Size :=
                           C.Size_T (Config.Profiles.Values.Length);
                         if not Config.Profiles.Values.Is_Empty then
-                           Modulations (Next_Modulation).Modulation.Custom_Waveform.Profiles.Data :=
+                           Modulations (Next_Modulation)
+                             .Modulation
+                             .Modulation
+                             .Custom_Waveform
+                             .Profiles
+                             .Data :=
                              Profiles (Next_Profile)'Address;
                         end if;
                         for Profile of Config.Profiles.Values loop
@@ -1273,10 +1338,20 @@ package body AMS.MEL.RF.C2 is
                               Interfaces.C.double (Profile.Amplitude_Factor));
                            Next_Profile := Next_Profile + 1;
                         end loop;
-                        Modulations (Next_Modulation).Modulation.Custom_Waveform.Patterns.Size :=
+                        Modulations (Next_Modulation)
+                          .Modulation
+                          .Modulation
+                          .Custom_Waveform
+                          .Patterns
+                          .Size :=
                           C.Size_T (Config.Patterns.Values.Length);
                         if not Config.Patterns.Values.Is_Empty then
-                           Modulations (Next_Modulation).Modulation.Custom_Waveform.Patterns.Data :=
+                           Modulations (Next_Modulation)
+                             .Modulation
+                             .Modulation
+                             .Custom_Waveform
+                             .Patterns
+                             .Data :=
                              Patterns (Next_Pattern)'Address;
                         end if;
                         for Pattern of Config.Patterns.Values loop
@@ -1292,15 +1367,24 @@ package body AMS.MEL.RF.C2 is
                            Next_Pattern := Next_Pattern + 1;
                         end loop;
                      end if;
-                     Modulations (Next_Modulation).Waveform_Buffer :=
+                     Modulations (Next_Modulation).Modulation.Waveform_Buffer :=
                        (0, (System.Null_Address, 0), (System.Null_Address, 0));
                      if Config.Kind = 6 then
                         if Config.Sample_Width = 8 then
-                           Modulations (Next_Modulation).Waveform_Buffer.Data_Format := 2;
-                           Modulations (Next_Modulation).Waveform_Buffer.Samples_I8.Size :=
+                           Modulations (Next_Modulation).Modulation.Waveform_Buffer.Data_Format :=
+                             2;
+                           Modulations (Next_Modulation)
+                             .Modulation
+                             .Waveform_Buffer
+                             .Samples_I8
+                             .Size :=
                              C.Size_T (Config.Samples_I8.Length);
                            if not Config.Samples_I8.Is_Empty then
-                              Modulations (Next_Modulation).Waveform_Buffer.Samples_I8.Data :=
+                              Modulations (Next_Modulation)
+                                .Modulation
+                                .Waveform_Buffer
+                                .Samples_I8
+                                .Data :=
                                 Samples_I8 (Next_I8)'Address;
                            end if;
                            for Sample of Config.Samples_I8 loop
@@ -1308,11 +1392,20 @@ package body AMS.MEL.RF.C2 is
                               Next_I8 := Next_I8 + 1;
                            end loop;
                         else
-                           Modulations (Next_Modulation).Waveform_Buffer.Data_Format := 3;
-                           Modulations (Next_Modulation).Waveform_Buffer.Samples_I16.Size :=
+                           Modulations (Next_Modulation).Modulation.Waveform_Buffer.Data_Format :=
+                             3;
+                           Modulations (Next_Modulation)
+                             .Modulation
+                             .Waveform_Buffer
+                             .Samples_I16
+                             .Size :=
                              C.Size_T (Config.Samples_I16.Length);
                            if not Config.Samples_I16.Is_Empty then
-                              Modulations (Next_Modulation).Waveform_Buffer.Samples_I16.Data :=
+                              Modulations (Next_Modulation)
+                                .Modulation
+                                .Waveform_Buffer
+                                .Samples_I16
+                                .Data :=
                                 Samples_I16 (Next_I16)'Address;
                            end if;
                            for Sample of Config.Samples_I16 loop
@@ -1401,7 +1494,7 @@ package body AMS.MEL.RF.C2 is
          end if;
          declare
             Code : constant Interfaces.Integer_32 :=
-              C.RF_Job_Add_Intervals_V14 (Object.Handle, Span, D'Address, D'Length, R'Access);
+              C.RF_Job_Add_Intervals_V15 (Object.Handle, Span, D'Address, D'Length, R'Access);
          begin
             if Code = C.Invalid_Argument then
                raise Constraint_Error with "invalid final interval configuration";

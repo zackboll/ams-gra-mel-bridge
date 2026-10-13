@@ -91,10 +91,53 @@ package body AMS.MEL.RF.C2.Testing is
       Event                                        : constant C.RF_TX_Event_Config_V3 := Zero_Event;
       Interval                                     : constant C.RF_Job_Interval_Config_V11 :=
         Zero_Interval;
+      Value_RF_Waveform_Stream_Config_V1           : constant C.RF_Waveform_Stream_Config_V1 :=
+        (0, 0, 0, 0, 0, 0);
+      Value_RF_Modulation_Config_V5                : constant C.RF_Modulation_Config_V5 :=
+        (Value_RF_Modulation_Config_V4, Value_RF_Waveform_Stream_Config_V1);
+      function Zero_RF_Modulation_Config_Span_V5 is new Zero (C.RF_Modulation_Config_Span_V5);
+      Value_RF_Modulation_Config_Span_V5           : constant C.RF_Modulation_Config_Span_V5 :=
+        Zero_RF_Modulation_Config_Span_V5;
+      function Zero_RF_Job_Interval_Config_V15 is new Zero (C.RF_Job_Interval_Config_V15);
+      Value_RF_Job_Interval_Config_V15             : constant C.RF_Job_Interval_Config_V15 :=
+        Zero_RF_Job_Interval_Config_V15;
+      function Zero_RF_Job_Interval_Config_Span_V15 is new Zero (C.RF_Job_Interval_Config_Span_V15);
+      Value_RF_Job_Interval_Config_Span_V15        : constant C.RF_Job_Interval_Config_Span_V15 :=
+        Zero_RF_Job_Interval_Config_Span_V15;
    begin
       --  The actual compiled C layout probe qualifies these LP64 measurements.
       --  Do not count this conditional check as narrower-target runtime evidence.
       if C.Size_T'Size = 64 then
+         if C.RF_Waveform_Stream_Config_V1'Object_Size /= 320
+           or else C.RF_Waveform_Stream_Config_V1'Alignment /= 8
+           or else Value_RF_Waveform_Stream_Config_V1.Endpoint_ID'Position /= 0
+           or else Value_RF_Waveform_Stream_Config_V1.Start_Address'Position /= 8
+           or else Value_RF_Waveform_Stream_Config_V1.Num_Bytes'Position /= 16
+           or else Value_RF_Waveform_Stream_Config_V1.Sample_Format'Position /= 24
+           or else Value_RF_Waveform_Stream_Config_V1.Item_Format'Position /= 28
+           or else Value_RF_Waveform_Stream_Config_V1.Repeat_Mode'Position /= 32
+           or else C.RF_Modulation_Config_V5'Object_Size /= 1472
+           or else C.RF_Modulation_Config_V5'Alignment /= 8
+           or else Value_RF_Modulation_Config_V5.Modulation'Position /= 0
+           or else Value_RF_Modulation_Config_V5.Waveform_Stream'Position /= 144
+           or else C.RF_Modulation_Config_Span_V5'Object_Size /= 128
+           or else C.RF_Modulation_Config_Span_V5'Alignment /= 8
+           or else Value_RF_Modulation_Config_Span_V5.Data'Position /= 0
+           or else Value_RF_Modulation_Config_Span_V5.Size'Position /= 8
+           or else C.RF_Job_Interval_Config_V15'Object_Size /= 2304
+           or else C.RF_Job_Interval_Config_V15'Alignment /= 8
+           or else Value_RF_Job_Interval_Config_V15.Interval'Position /= 0
+           or else Value_RF_Job_Interval_Config_V15.Has_Transmit_Events'Position /= 240
+           or else Value_RF_Job_Interval_Config_V15.Transmit_Events'Position /= 248
+           or else Value_RF_Job_Interval_Config_V15.Has_Modulations'Position /= 264
+           or else Value_RF_Job_Interval_Config_V15.Modulations'Position /= 272
+           or else C.RF_Job_Interval_Config_Span_V15'Object_Size /= 128
+           or else C.RF_Job_Interval_Config_Span_V15'Alignment /= 8
+           or else Value_RF_Job_Interval_Config_Span_V15.Data'Position /= 0
+           or else Value_RF_Job_Interval_Config_Span_V15.Size'Position /= 8
+         then
+            raise Program_Error with "WaveformStream C/Ada layout mismatch";
+         end if;
          if C.RF_Complex_I8_V1'Object_Size /= 16
            or else C.RF_Complex_I8_V1'Alignment /= 1
            or else Value_RF_Complex_I8_V1.Real'Position /= 0

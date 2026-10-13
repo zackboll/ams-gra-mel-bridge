@@ -951,3 +951,20 @@ install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/ams_mel_cConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/ams_mel_cConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ams_mel_c)
+
+if(AMS_MEL_BUILD_TESTS)
+    add_executable(test_waveform_stream_headers tests/waveform_stream_header_probe.cpp)
+    target_compile_features(test_waveform_stream_headers PRIVATE cxx_std_20)
+    target_include_directories(test_waveform_stream_headers SYSTEM PRIVATE ${ams_mel_rf_data_vendor_roots})
+    ams_mel_warnings(test_waveform_stream_headers)
+    add_test(NAME rf-waveform-stream-headers COMMAND test_waveform_stream_headers)
+    add_executable(test_rf_job_waveform_stream tests/test_rf_job_waveform_stream.c)
+    target_compile_features(test_rf_job_waveform_stream PRIVATE c_std_11)
+    set_target_properties(test_rf_job_waveform_stream PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_rf_job_waveform_stream PRIVATE
+        AMS_MEL_TEST_MOCK_RF_PROVIDER="$<TARGET_FILE:mock_rf_provider>")
+    target_link_libraries(test_rf_job_waveform_stream PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_rf_job_waveform_stream mock_rf_provider)
+    ams_mel_warnings(test_rf_job_waveform_stream)
+    add_test(NAME rf-job-waveform-stream COMMAND test_rf_job_waveform_stream)
+endif()

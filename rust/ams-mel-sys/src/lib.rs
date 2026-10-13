@@ -4495,3 +4495,69 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+pub const AMS_MEL_RF_MODULATION_WAVEFORM_STREAM: u32 = 7;
+pub type AmsMelRfStreamSampleFormat = u32;
+pub type AmsMelRfStreamItemFormat = u32;
+pub type AmsMelRfStreamRepeatMode = u32;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformStreamConfigV1 {
+    pub endpoint_id: u64,
+    pub start_address: u64,
+    pub num_bytes: u64,
+    pub sample_format: u32,
+    pub item_format: u32,
+    pub repeat_mode: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigV5 {
+    pub modulation: AmsMelRfModulationConfigV4,
+    pub waveform_stream: AmsMelRfWaveformStreamConfigV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigSpanV5 {
+    pub data: *const AmsMelRfModulationConfigV5,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV15 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV5,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV15 {
+    pub data: *const AmsMelRfJobIntervalConfigV15,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v15(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV15,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}
+
+pub const AMS_MEL_RF_STREAM_SAMPLE_REAL: u32 = 0;
+pub const AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_CARTESIAN: u32 = 1;
+pub const AMS_MEL_RF_STREAM_SAMPLE_COMPLEX_POLAR: u32 = 2;
+pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED: u32 = 0;
+pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED: u32 = 1;
+pub const AMS_MEL_RF_STREAM_ITEM_VRT_UNSIGNED_FLOAT: u32 = 2;
+pub const AMS_MEL_RF_STREAM_ITEM_VRT_SIGNED_FLOAT: u32 = 3;
+pub const AMS_MEL_RF_STREAM_ITEM_FLOAT32: u32 = 4;
+pub const AMS_MEL_RF_STREAM_ITEM_FLOAT64: u32 = 5;
+pub const AMS_MEL_RF_STREAM_ITEM_FLOAT16: u32 = 6;
+pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED_NON_NORMALIZED: u32 = 7;
+pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED: u32 = 8;
+pub const AMS_MEL_RF_STREAM_REPEAT_FROM_TOP: u32 = 0;
+pub const AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS: u32 = 1;
