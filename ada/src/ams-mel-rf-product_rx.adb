@@ -92,6 +92,24 @@ package body AMS.MEL.RF.Product_Rx is
         Maximum => Max_Samples_Per_Event,
         Format  => Complex_INT8));
 
+   function Create_Config_Direct_I8
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config
+   is ((Region  => Region_Size_Bytes,
+        Queue   => Queue_Capacity,
+        Maximum => Max_Samples_Per_Event,
+        Format  => Direct_INT8));
+
+   function Create_Config_Direct_I16
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config
+   is ((Region  => Region_Size_Bytes,
+        Queue   => Queue_Capacity,
+        Maximum => Max_Samples_Per_Event,
+        Format  => Direct_INT16));
+
    function Submit (Parent : Data_MEL; Value : Config) return Create_Request is
       Raw : aliased constant C.RF_Product_Rx_Config_V1 :=
         (Data_Format           => Interfaces.Unsigned_32 (Value.Format),
@@ -105,7 +123,12 @@ package body AMS.MEL.RF.Product_Rx is
          raise Provider_Error with "RF DataMEL is closed";
       end if;
       return Result : Create_Request do
-         if Value.Format = Complex_INT8 then
+         if Value.Format = Direct_INT8 or else Value.Format = Direct_INT16 then
+            Check
+              (C.RF_Data_Submit_Product_Rx_V3
+                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         elsif Value.Format = Complex_INT8 then
             Check
               (C.RF_Data_Submit_Product_Rx_V2
                  (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
@@ -220,9 +243,7 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx then
             raise Provider_Error with "null RF ProductRx endpoint after claim";
          end if;
-         if Info.Assigned_Data_Format /= C.RF_Job_Data_Format_Complex_INT16
-           and then Info.Assigned_Data_Format /= C.RF_Job_Data_Format_Complex_INT8
-         then
+         if Info.Assigned_Data_Format > C.RF_Job_Data_Format_Complex_INT16 then
             raise Provider_Error with "unexpected RF ProductRx format";
          end if;
          Result.ID := Info.Endpoint_ID;
@@ -275,12 +296,17 @@ package body AMS.MEL.RF.Product_Rx is
    function To_View is new Ada.Unchecked_Conversion (System.Address, View_Access);
    type View_V2_Access is access all C.RF_Product_Rx_Event_V2;
    function To_View_V2 is new Ada.Unchecked_Conversion (System.Address, View_V2_Access);
+   type View_V3_Access is access all C.RF_Product_Rx_Event_V3;
+   function To_View_V3 is new Ada.Unchecked_Conversion (System.Address, View_V3_Access);
 
    function Receive (Object : Endpoint'Class; Timeout_Milliseconds : Natural := 0) return Event is
-      D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
-      R        : aliased C.Size_T := 0;
-      Address  : aliased System.Address := System.Null_Address;
-      Snapshot : C.RF_Product_Rx_Event_V1;
+      D              : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      R              : aliased C.Size_T := 0;
+      Address        : aliased System.Address := System.Null_Address;
+      Sample_Span    : C.Span_V1;
+      Event_ID       : Interfaces.Unsigned_64;
+      Event_Format   : Interfaces.Unsigned_32;
+      Event_Metadata : C.RF_Product_Rx_Metadata_V1;
    begin
       return Result : Event do
          Check
@@ -295,7 +321,45 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx_Event then
             raise Provider_Error with "null RF ProductRx event after receive";
          end if;
-         if Object.Format = Complex_INT8 then
+         if Object.Format = Direct_INT8 or else Object.Format = Direct_INT16 then
+            Check
+              (C.RF_Product_Rx_Event_View_V3
+                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
+               D);
+            if Address = System.Null_Address then
+               raise Provider_Error with "null RF ProductRx event view";
+            end if;
+            declare
+               Raw : C.RF_Product_Rx_Event_V3 renames To_View_V3 (Address).all;
+            begin
+               if Raw.Data_Format /= Interfaces.Unsigned_32 (Object.Format)
+                 or else Raw.Complex_Samples_I8.Size /= 0
+                 or else Raw.Complex_Samples_I8.Data /= System.Null_Address
+                 or else Raw.Complex_Samples_I16.Size /= 0
+                 or else Raw.Complex_Samples_I16.Data /= System.Null_Address
+               then
+                  raise Provider_Error with "invalid native RF Direct event format";
+               end if;
+               if Object.Format = Direct_INT8 then
+                  if Raw.Direct_Samples_I16.Size /= 0
+                    or else Raw.Direct_Samples_I16.Data /= System.Null_Address
+                  then
+                     raise Provider_Error with "inactive DirectINT16 span";
+                  end if;
+                  Sample_Span := (Raw.Direct_Samples_I8.Data, Raw.Direct_Samples_I8.Size);
+               else
+                  if Raw.Direct_Samples_I8.Size /= 0
+                    or else Raw.Direct_Samples_I8.Data /= System.Null_Address
+                  then
+                     raise Provider_Error with "inactive DirectINT8 span";
+                  end if;
+                  Sample_Span := (Raw.Direct_Samples_I16.Data, Raw.Direct_Samples_I16.Size);
+               end if;
+               Event_ID := Raw.Endpoint_ID;
+               Event_Format := Raw.Data_Format;
+               Event_Metadata := Raw.Metadata;
+            end;
+         elsif Object.Format = Complex_INT8 then
             Check
               (C.RF_Product_Rx_Event_View_V2
                  (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
@@ -312,11 +376,10 @@ package body AMS.MEL.RF.Product_Rx is
                then
                   raise Provider_Error with "invalid native RF I8 event format";
                end if;
-               Snapshot :=
-                 (Raw.Endpoint_ID,
-                  Raw.Data_Format,
-                  (Raw.Samples_I8.Data, Raw.Samples_I8.Size),
-                  Raw.Metadata);
+               Event_ID := Raw.Endpoint_ID;
+               Event_Format := Raw.Data_Format;
+               Sample_Span := (Raw.Samples_I8.Data, Raw.Samples_I8.Size);
+               Event_Metadata := Raw.Metadata;
             end;
          else
             Check
@@ -326,41 +389,47 @@ package body AMS.MEL.RF.Product_Rx is
             if Address = System.Null_Address then
                raise Provider_Error with "null RF ProductRx event view";
             end if;
-            Snapshot := To_View (Address).all;
+            declare
+               Raw : C.RF_Product_Rx_Event_V1 renames To_View (Address).all;
+            begin
+               Event_ID := Raw.Endpoint_ID;
+               Event_Format := Raw.Data_Format;
+               Sample_Span := Raw.Samples;
+               Event_Metadata := Raw.Metadata;
+            end;
          end if;
          declare
-            Raw   : C.RF_Product_Rx_Event_V1 renames Snapshot;
-            Count : constant Natural := Checked_Count (Raw.Samples);
+            Count : constant Natural := Checked_Count (Sample_Span);
             IDs   : constant Natural :=
               Checked_Count
-                ((Data => Raw.Metadata.Rx_Stream_IDs.Data,
-                  Size => Raw.Metadata.Rx_Stream_IDs.Size));
+                ((Data => Event_Metadata.Rx_Stream_IDs.Data,
+                  Size => Event_Metadata.Rx_Stream_IDs.Size));
             type Raw_IDs is array (Natural range <>) of aliased Interfaces.Unsigned_32
             with Convention => C;
          begin
-            if Raw.Data_Format /= Interfaces.Unsigned_32 (Object.Format) then
+            if Event_Format /= Interfaces.Unsigned_32 (Object.Format) then
                raise Provider_Error with "invalid native RF event format";
             end if;
-            Result.ID := Raw.Endpoint_ID;
-            Result.Format := Job_Data_Format (Raw.Data_Format);
+            Result.ID := Event_ID;
+            Result.Format := Job_Data_Format (Event_Format);
             Result.Count := Count;
-            Result.Sample_Address := Raw.Samples.Data;
+            Result.Sample_Address := Sample_Span.Data;
             Result.Info :=
-              (Protocol     => Raw.Metadata.MEL_Protocol_Version_ID,
-               Definition   => Raw.Metadata.VA_Definition_ID,
-               Instance     => Raw.Metadata.VA_Instance_ID,
-               Details      => Raw.Metadata.Job_Details_ID,
-               Interval     => Raw.Metadata.Job_Interval_ID,
-               LF_Type      => Raw.Metadata.LF_Type_ID,
-               LF_Instance  => Raw.Metadata.LF_Instance_ID,
-               Coherent     => Binary (Raw.Metadata.Phase_Coherence_With_Prior),
-               Seconds      => Raw.Metadata.First_Rx_Event_Start_S,
-               Femtoseconds => Raw.Metadata.First_Rx_Event_Start_FS,
+              (Protocol     => Event_Metadata.MEL_Protocol_Version_ID,
+               Definition   => Event_Metadata.VA_Definition_ID,
+               Instance     => Event_Metadata.VA_Instance_ID,
+               Details      => Event_Metadata.Job_Details_ID,
+               Interval     => Event_Metadata.Job_Interval_ID,
+               LF_Type      => Event_Metadata.LF_Type_ID,
+               LF_Instance  => Event_Metadata.LF_Instance_ID,
+               Coherent     => Binary (Event_Metadata.Phase_Coherence_With_Prior),
+               Seconds      => Event_Metadata.First_Rx_Event_Start_S,
+               Femtoseconds => Event_Metadata.First_Rx_Event_Start_FS,
                Stream_IDs   => ID_Vectors.Empty_Vector);
             if IDs > 0 then
                declare
                   Values : Raw_IDs (0 .. IDs - 1)
-                  with Import, Address => Raw.Metadata.Rx_Stream_IDs.Data;
+                  with Import, Address => Event_Metadata.Rx_Stream_IDs.Data;
                begin
                   for Item of Values loop
                      Result.Info.Stream_IDs.Append (Item);
@@ -453,6 +522,78 @@ package body AMS.MEL.RF.Product_Rx is
       With_Samples_I8 (Value, Copy'Access);
       return Result;
    end Copy_Samples_I8;
+
+   procedure With_Direct_Samples_I8
+     (Value : Event; Process : not null access procedure (Samples : Direct_I8_Array)) is
+   begin
+      if not Is_Open (Value) then
+         raise Provider_Error with "RF event is closed";
+      end if;
+      if Value.Format /= Direct_INT8 then
+         raise Constraint_Error with "RF event is not DirectINT8";
+      end if;
+      if Value.Count = 0 then
+         declare
+            Empty : Direct_I8_Array (1 .. 0);
+         begin
+            Process (Empty);
+         end;
+      else
+         declare
+            Samples : Direct_I8_Array (0 .. Value.Count - 1)
+            with Import, Address => Value.Sample_Address;
+         begin
+            Process (Samples);
+         end;
+      end if;
+   end With_Direct_Samples_I8;
+
+   function Copy_Direct_Samples_I8 (Value : Event) return Direct_I8_Array is
+      Result : Direct_I8_Array (1 .. Value.Count);
+      procedure Copy (Samples : Direct_I8_Array) is
+      begin
+         Result := Samples;
+      end Copy;
+   begin
+      With_Direct_Samples_I8 (Value, Copy'Access);
+      return Result;
+   end Copy_Direct_Samples_I8;
+
+   procedure With_Direct_Samples_I16
+     (Value : Event; Process : not null access procedure (Samples : Direct_I16_Array)) is
+   begin
+      if not Is_Open (Value) then
+         raise Provider_Error with "RF event is closed";
+      end if;
+      if Value.Format /= Direct_INT16 then
+         raise Constraint_Error with "RF event is not DirectINT16";
+      end if;
+      if Value.Count = 0 then
+         declare
+            Empty : Direct_I16_Array (1 .. 0);
+         begin
+            Process (Empty);
+         end;
+      else
+         declare
+            Samples : Direct_I16_Array (0 .. Value.Count - 1)
+            with Import, Address => Value.Sample_Address;
+         begin
+            Process (Samples);
+         end;
+      end if;
+   end With_Direct_Samples_I16;
+
+   function Copy_Direct_Samples_I16 (Value : Event) return Direct_I16_Array is
+      Result : Direct_I16_Array (1 .. Value.Count);
+      procedure Copy (Samples : Direct_I16_Array) is
+      begin
+         Result := Samples;
+      end Copy;
+   begin
+      With_Direct_Samples_I16 (Value, Copy'Access);
+      return Result;
+   end Copy_Direct_Samples_I16;
 
    procedure Close (Value : in out Event) is
       D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
