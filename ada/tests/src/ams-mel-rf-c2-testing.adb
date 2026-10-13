@@ -98,6 +98,12 @@ package body AMS.MEL.RF.C2.Testing is
       function Zero_RF_Modulation_Config_Span_V5 is new Zero (C.RF_Modulation_Config_Span_V5);
       Value_RF_Modulation_Config_Span_V5           : constant C.RF_Modulation_Config_Span_V5 :=
         Zero_RF_Modulation_Config_Span_V5;
+      function Zero_RF_Job_Interval_Config_V16 is new Zero (C.RF_Job_Interval_Config_V16);
+      V16                                          : constant C.RF_Job_Interval_Config_V16 :=
+        Zero_RF_Job_Interval_Config_V16;
+      function Zero_RF_Job_Interval_Config_Span_V16 is new Zero (C.RF_Job_Interval_Config_Span_V16);
+      S16                                          : constant C.RF_Job_Interval_Config_Span_V16 :=
+        Zero_RF_Job_Interval_Config_Span_V16;
       function Zero_RF_Job_Interval_Config_V15 is new Zero (C.RF_Job_Interval_Config_V15);
       Value_RF_Job_Interval_Config_V15             : constant C.RF_Job_Interval_Config_V15 :=
         Zero_RF_Job_Interval_Config_V15;
@@ -124,6 +130,19 @@ package body AMS.MEL.RF.C2.Testing is
            or else C.RF_Modulation_Config_Span_V5'Alignment /= 8
            or else Value_RF_Modulation_Config_Span_V5.Data'Position /= 0
            or else Value_RF_Modulation_Config_Span_V5.Size'Position /= 8
+           or else C.RF_Job_Interval_Config_V16'Object_Size /= 2496
+           or else C.RF_Job_Interval_Config_V16'Alignment /= 8
+           or else V16.Interval'Position /= 0
+           or else V16.Has_Transmit_Events'Position /= 240
+           or else V16.Transmit_Events'Position /= 248
+           or else V16.Has_Modulations'Position /= 264
+           or else V16.Modulations'Position /= 272
+           or else V16.Has_User_Context'Position /= 288
+           or else V16.User_Context'Position /= 296
+           or else C.RF_Job_Interval_Config_Span_V16'Object_Size /= 128
+           or else C.RF_Job_Interval_Config_Span_V16'Alignment /= 8
+           or else S16.Data'Position /= 0
+           or else S16.Size'Position /= 8
            or else C.RF_Job_Interval_Config_V15'Object_Size /= 2304
            or else C.RF_Job_Interval_Config_V15'Alignment /= 8
            or else Value_RF_Job_Interval_Config_V15.Interval'Position /= 0

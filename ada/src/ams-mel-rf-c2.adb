@@ -798,6 +798,33 @@ package body AMS.MEL.RF.C2 is
       Interval.Connections.Values.Clear;
       Interval.Has_Endpoint_Connections := False;
    end Clear_Interval_Endpoint_Connections;
+   procedure Set_Interval_User_Context
+     (Interval : in out RX_Job_Interval_Config; Bytes : Byte_Array)
+   is
+      Prepared : Byte_Vectors.Vector;
+   begin
+      for Value of Bytes loop
+         Prepared.Append (Value);
+      end loop;
+      Byte_Vectors.Move (Interval.User_Context, Prepared);
+      Interval.Has_User_Context := True;
+   end Set_Interval_User_Context;
+   procedure Append_Interval_User_Context_Byte
+     (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_8) is
+   begin
+      Interval.User_Context.Append (Value);
+      Interval.Has_User_Context := True;
+   end Append_Interval_User_Context_Byte;
+   procedure Set_Empty_Interval_User_Context (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.User_Context.Clear;
+      Interval.Has_User_Context := True;
+   end Set_Empty_Interval_User_Context;
+   procedure Clear_Interval_User_Context (Interval : in out RX_Job_Interval_Config) is
+   begin
+      Interval.User_Context.Clear;
+      Interval.Has_User_Context := False;
+   end Clear_Interval_User_Context;
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List) is
       pragma Validity_Checks ("F");
       pragma
@@ -809,7 +836,7 @@ package body AMS.MEL.RF.C2 is
              or else Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix,
            "Pointing requires Long_Float to represent normal C double values");
       function Pointer_Address is new Ada.Unchecked_Conversion (CS.chars_ptr, System.Address);
-      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V15
+      type Native_Intervals is array (Positive range <>) of aliased C.RF_Job_Interval_Config_V16
       with Convention => C;
       type Native_LF_Commands is array (Positive range <>) of aliased C.RF_LF_Command_V1
       with Convention => C;
@@ -867,6 +894,7 @@ package body AMS.MEL.RF.C2 is
       Event_Count, Point_Count, Group_Count          : Natural := 0;
       Threshold_Count                                : Natural := 0;
       Stokes_Count, Byte_Count                       : Natural := 0;
+      Context_Count                                  : Natural := 0;
       D                                              : aliased Fixed_Diagnostic :=
         [others => Interfaces.C.nul];
       R                                              : aliased C.Size_T := 0;
@@ -888,6 +916,9 @@ package body AMS.MEL.RF.C2 is
       end Fits_Native_Int;
    begin
       for Interval of Intervals.Values loop
+         if Interval.Has_User_Context then
+            Context_Count := Context_Count + Natural (Interval.User_Context.Length);
+         end if;
          if Interval.Has_Modulations then
             Modulation_Count := Modulation_Count + Natural (Interval.Modulations.Values.Length);
             for Config of Interval.Modulations.Values loop
@@ -966,7 +997,11 @@ package body AMS.MEL.RF.C2 is
             Group_Count := Group_Count + Natural (Event.Applicable_RX_Element_Groups.Length);
          end loop;
       end loop;
-      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V15'Size);
+      Check_Backing_Size (Count, C.RF_Job_Interval_Config_V16'Size);
+      Check_Backing_Size (Context_Count, Interfaces.Unsigned_8'Size);
+      if Context_Count = Natural'Last then
+         raise Constraint_Error with "context backing cursor exceeds Ada index range";
+      end if;
       Check_Backing_Size (TX_Count, C.RF_TX_Event_Config_V3'Size);
       Check_Backing_Size (Modulation_Count, C.RF_Modulation_Config_V5'Size);
       Check_Backing_Size (Sample_I8_Count, C.RF_Complex_I8_V1'Size);
@@ -1032,10 +1067,12 @@ package body AMS.MEL.RF.C2 is
          Thresholds                                  : Native_Thresholds (1 .. Threshold_Count);
          Next_Threshold                              : Positive := 1;
          Bytes                                       : Native_Bytes (1 .. Byte_Count);
+         Context_Bytes                               : Native_Bytes (1 .. Context_Count);
+         Next_Context                                : Positive := 1;
          Next_Stokes, Next_Byte                      : Positive := 1;
          Strings                                     : Labels (1 .. Event_Count);
          Next_Event, Next_Point, Next_Group, I       : Positive := 1;
-         Span                                        : C.RF_Job_Interval_Config_Span_V15 :=
+         Span                                        : C.RF_Job_Interval_Config_Span_V16 :=
            (System.Null_Address, C.Size_T (Count));
       begin
          for Interval of Intervals.Values loop
@@ -1056,6 +1093,18 @@ package body AMS.MEL.RF.C2 is
                   Bytes (Next_Byte) := Value;
                   Next_Byte := Next_Byte + 1;
                end loop;
+               Configs (I).Has_User_Context := Boolean'Pos (Interval.Has_User_Context);
+               Configs (I).User_Context := (System.Null_Address, 0);
+               if Interval.Has_User_Context then
+                  Configs (I).User_Context.Size := C.Size_T (Interval.User_Context.Length);
+                  if not Interval.User_Context.Is_Empty then
+                     Configs (I).User_Context.Data := Context_Bytes (Next_Context)'Address;
+                  end if;
+                  for Value of Interval.User_Context loop
+                     Context_Bytes (Next_Context) := Value;
+                     Next_Context := Next_Context + 1;
+                  end loop;
+               end if;
                for Value of Interval.Stab_Points loop
                   Points (Next_Point) := Raw_Pointing (Value);
                   Next_Point := Next_Point + 1;
@@ -1489,12 +1538,15 @@ package body AMS.MEL.RF.C2 is
          if Count > 0 then
             Span.Data := Configs (1)'Address;
          end if;
+         if Next_Context /= Context_Count + 1 then
+            raise Program_Error with "context backing cursor mismatch";
+         end if;
          if Next_I8 /= Sample_I8_Count + 1 or else Next_I16 /= Sample_I16_Count + 1 then
             raise Program_Error with "sample backing cursor mismatch";
          end if;
          declare
             Code : constant Interfaces.Integer_32 :=
-              C.RF_Job_Add_Intervals_V15 (Object.Handle, Span, D'Address, D'Length, R'Access);
+              C.RF_Job_Add_Intervals_V16 (Object.Handle, Span, D'Address, D'Length, R'Access);
          begin
             if Code = C.Invalid_Argument then
                raise Constraint_Error with "invalid final interval configuration";

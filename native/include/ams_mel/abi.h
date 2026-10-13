@@ -4207,6 +4207,28 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v15(
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
+/* Copied binary user context. Presence 0 ignores the entire span; 1 copies
+ * even an empty span into std::any holding std::vector<uint8_t>; other flags
+ * reject. No caller storage is retained. This bridge-selected concrete type
+ * is not a universal MEL schema. Provider capability limits remain the
+ * caller/provider's responsibility; Add performs no capability query. */
+typedef struct ams_mel_rf_job_interval_config_v16 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v5 modulations;
+    uint32_t has_user_context;
+    ams_mel_u8_span_v1 user_context;
+} ams_mel_rf_job_interval_config_v16;
+typedef struct ams_mel_rf_job_interval_config_span_v16 {
+    const ams_mel_rf_job_interval_config_v16 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v16;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v16(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v16 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 /* The fixed representable ProductRxMetadata subset, copied verbatim.
  * phase_coherence_with_prior is exactly 0 or 1. first_rx_event_start_s is
  * UTCTime::getIntegralSeconds().count() and first_rx_event_start_fs is

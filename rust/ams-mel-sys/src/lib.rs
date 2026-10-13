@@ -4561,3 +4561,30 @@ pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_UNSIGNED_NON_NORMALIZED: u32 = 7;
 pub const AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED: u32 = 8;
 pub const AMS_MEL_RF_STREAM_REPEAT_FROM_TOP: u32 = 0;
 pub const AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS: u32 = 1;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV16 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV5,
+    pub has_user_context: u32,
+    pub user_context: AmsMelU8SpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV16 {
+    pub data: *const AmsMelRfJobIntervalConfigV16,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v16(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV16,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

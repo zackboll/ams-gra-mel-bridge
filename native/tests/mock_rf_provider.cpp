@@ -2991,6 +2991,65 @@ extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f16_value(
     default: return 0;
     }
 }
+/* Typed observation only for fixtures that definitively supplied Bytes.
+ * Presence/absence is qualified separately by adapter setter traces. */
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f17_value(
+    unsigned i, unsigned operation, unsigned n)
+{
+    if (operation == 10) return job_add_calls.load();
+    std::lock_guard lock{interval_mutex};
+    using Bytes = std::vector<std::uint8_t>;
+    const auto& interval = latest_intervals.at(i);
+    if (operation == 2) return static_cast<int64_t>(interval.getActivityId().size());
+    if (operation == 3) return interval.getActivityId().at(n);
+    if (operation == 5) return interval.getIntervalID();
+    if (operation == 6) return static_cast<int64_t>(interval.getSequence().getRxEvents().size());
+    if (operation == 7) return static_cast<int64_t>(interval.getSequence().getTxEvents().size());
+    if (operation == 20) {
+        const auto& buffer = std::get<rfmel::WaveformBuffer>(std::get<rfmel::CommonModulations>(
+            interval.getModulations().at(n)));
+        const auto& owner = std::get<rfmel::ComplexI8VecPtr>(buffer.getTxSamples());
+        return owner && buffer.getFormat() == rfmel::DataSampleFormat::ComplexCartesian &&
+            owner->size() == 1 && owner->at(0).real() == 1 && owner->at(0).imag() == -2;
+    }
+    if (operation == 21) {
+        const auto& waveform = std::get<rfmel::CustomWaveform>(std::get<rfmel::CommonModulations>(
+            interval.getModulations().at(n)));
+        auto profile = waveform.getWaveformProfiles().at(0);
+        return waveform.getWaveformProfiles().size() == 1 &&
+            profile.getChipDuration().count() == 37 && profile.getPhaseDeg() == -23.5 &&
+            profile.getUpdatePhase();
+    }
+    if (operation == 22) {
+        const auto& phase = std::get<rfmel::PhaseCode>(std::get<rfmel::CommonModulations>(
+            interval.getModulations().at(n)));
+        return phase.getChipDuration().count() == -37;
+    }
+    if (operation == 23 || operation == 24) {
+        const auto& event = operation == 23 ?
+            static_cast<const rfmel::JobEvent&>(interval.getSequence().getRxEvents().at(n)) :
+            static_cast<const rfmel::JobEvent&>(interval.getSequence().getTxEvents().at(n));
+        return event.getPhaseOffset() == (operation == 23 ? 3.25 : -0.75) &&
+            event.getPolarization().size() == 1 && event.getPolarization().at(0).at(0) == 1 &&
+            event.getPolarization().at(0).at(1) == -2 && event.getPolarization().at(0).at(2) == 3 &&
+            event.getPolarization().at(0).at(3) == -4;
+    }
+    const auto& bytes = interval.getUserDefinedContextData<Bytes>()->get();
+    if (operation == 0) return static_cast<int64_t>(bytes.size());
+    if (operation == 1) return bytes.at(n);
+    if (operation == 8) {
+        latest_intervals.at(i).getUserDefinedContextData<Bytes>()->get().at(0) ^= 0xff;
+        return 1;
+    }
+    if (operation == 9) {
+        const auto& other = latest_intervals.at(n).getUserDefinedContextData<Bytes>()->get();
+        return bytes.data() != other.data();
+    }
+    auto copy = interval;
+    auto& copied_bytes = copy.getUserDefinedContextData<Bytes>()->get();
+    if (!copied_bytes.empty()) copied_bytes.at(0) ^= 0xff;
+    return copy.getUserDefinedContextData<Bytes>()->get() != bytes;
+}
 extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f15_owner(
     unsigned operation, unsigned i, unsigned m, unsigned s, int value)
 {

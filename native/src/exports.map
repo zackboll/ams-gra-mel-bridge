@@ -205,6 +205,7 @@ AMS_MEL_0.1 {
         ams_mel_rf_product_rx_event_close;
         ams_mel_rf_job_add_intervals_v14;
         ams_mel_rf_job_add_intervals_v15;
+        ams_mel_rf_job_add_intervals_v16;
     local:
         *;
 };

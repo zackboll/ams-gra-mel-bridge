@@ -2176,6 +2176,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_intervals_v13",
     "ams_mel_rf_job_add_intervals_v14",
     "ams_mel_rf_job_add_intervals_v15",
+    "ams_mel_rf_job_add_intervals_v16",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2669,3 +2670,21 @@ AMS_MEL_RF_STREAM_ITEM_FIXED_POINT_SIGNED_NON_NORMALIZED = 8
 AMS_MEL_RF_STREAM_REPEAT_FROM_TOP = 0
 AMS_MEL_RF_STREAM_CONTINUE_FROM_PREVIOUS = 1
 AMS_MEL_RF_MODULATION_WAVEFORM_STREAM = 7
+
+class RfJobIntervalConfigV16(ctypes.Structure):
+    _fields_ = [
+        ("interval", RfJobIntervalConfigV8),
+        ("has_transmit_events", ctypes.c_uint32),
+        ("transmit_events", RfTxEventConfigSpanV3),
+        ("has_modulations", ctypes.c_uint32),
+        ("modulations", RfModulationConfigSpanV5),
+        ("has_user_context", ctypes.c_uint32),
+        ("user_context", U8SpanV1),
+    ]
+
+class RfJobIntervalConfigSpanV16(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfJobIntervalConfigV16)), ("size", ctypes.c_size_t)]
+
+ams_mel_rf_job_add_intervals_v16 = _LIBRARY.ams_mel_rf_job_add_intervals_v16
+ams_mel_rf_job_add_intervals_v16.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV16, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v16.restype = ctypes.c_int32
