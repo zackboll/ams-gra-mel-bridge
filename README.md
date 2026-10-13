@@ -1,5 +1,25 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+## Task 034F14 — copied RF CustomWaveform values
+
+Adds bridge tag 5, owned profile tables and ordered event-pattern/step vectors
+through interval v13 and exactly `ams_mel_rf_job_add_intervals_v13` (ABI 0.1,
+202 → 203 production exports). Modulation-v3 nests frozen v2/v1; the original
+kind is authoritative. V13 nests frozen v8 and reuses TX-v3. V11 remains
+limited to tags 0–2, v12 to 0–4, and v13 supports exactly 0–5.
+Only active payloads are read. All six flags are exactly 0/1; false flags do
+not erase scalar values. Signed femtoseconds, degrees, Hz and the verbatim
+FrequencySlopeHzSec value retain the IEEE policy without conversion/clamping.
+Steps use nonnegative same-definition profile indices, without an inner -1
+sentinel; signed iteration counts, order, repeats and empty patterns are copied.
+Safe Ada owns profiles/patterns and final-sized synchronous v13 backing; both
+existing Add names remain compatible. Local reference integrity is validated
+at submission, not waveform timing, synthesis, scheduling, IQ or RF execution.
+Application/provider enforce duration matching, quantization and physical
+amplitude obligations. Squall no-op Add acceptance is not waveform fidelity.
+See `docs/task-034f14-rf-custom-waveform-values.md` for measured qualification.
+
+
 ## Task 034F13 — copied RF OOK and CPFSK values
 
 Adds OnOffKeying and CpfskPulse as copied configuration values through interval

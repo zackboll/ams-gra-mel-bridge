@@ -660,6 +660,291 @@ procedure AMS_MEL_RF_TX_Events_Focused is
          end;
       end loop;
    end Send_Distinct;
+   procedure Send_Custom_Waveforms (Object : in out C2.Job) is
+      type Observation_Access is
+        access function (I, M, P, S, F : Interfaces.C.unsigned) return Interfaces.Integer_64
+      with Convention => C;
+      type Scalar_Access is
+        access function (I, M, P, F : Interfaces.C.unsigned) return Interfaces.C.double
+      with Convention => C;
+      function To_Observation is new Ada.Unchecked_Conversion (System.Address, Observation_Access);
+      function To_Scalar is new Ada.Unchecked_Conversion (System.Address, Scalar_Access);
+      Name              : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Path);
+      Library           : constant System.Address := DL_Open (Name, 2);
+      function Symbol (Text : String) return System.Address is
+         S      : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Text);
+         Result : constant System.Address := DL_Sym (Library, S);
+      begin
+         Interfaces.C.Strings.Free (S);
+         if Result = System.Null_Address then
+            raise Program_Error with "CustomWaveform observer missing";
+         end if;
+         return Result;
+      end Symbol;
+      Observe           : constant Observation_Access :=
+        To_Observation (Symbol ("mock_rf_f14_value"));
+      Number            : constant Scalar_Access := To_Scalar (Symbol ("mock_rf_f14_double"));
+      type Binary_Observation_Access is
+        access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
+      with Convention => C;
+      function To_Binary_Observation is new
+        Ada.Unchecked_Conversion (System.Address, Binary_Observation_Access);
+      type Count_Access is access function return Interfaces.C.unsigned with Convention => C;
+      function To_Count is new Ada.Unchecked_Conversion (System.Address, Count_Access);
+      Add_Count         : constant Count_Access := To_Count (Symbol ("mock_rf_job_add_calls"));
+      References        : constant Binary_Observation_Access :=
+        To_Binary_Observation (Symbol ("mock_rf_f13_value"));
+      List, Saved       : C2.RX_Job_Interval_List;
+      Retained_Config   : C2.Modulation_Config;
+      Retained_Profiles : C2.Waveform_Profile_Table;
+      Retained_Patterns : C2.Waveform_Pattern_List;
+      procedure Require (Condition : Boolean) is
+      begin
+         if not Condition then
+            raise Program_Error with "public Ada CustomWaveform fidelity";
+         end if;
+      end Require;
+      procedure Submit_One (Config : C2.Modulation_Config) is
+         Table    : C2.Modulation_Table;
+         Index    : C2.Modulation_Index;
+         Interval : C2.RX_Job_Interval_Config := C2.Create_RX_Job_Interval (91, 0);
+         One      : C2.RX_Job_Interval_List;
+      begin
+         C2.Append_Modulation (Table, Config, Index);
+         C2.Set_Modulations (Interval, Table);
+         C2.Append_Job_Interval (One, Interval);
+         C2.Add_Job_Intervals (Object, One);
+      end Submit_One;
+   begin
+      declare
+         Profiles       : C2.Waveform_Profile_Table;
+         Patterns       : C2.Waveform_Pattern_List;
+         Pattern, Empty : C2.Event_Waveform_Pattern;
+         Index          : C2.Waveform_Profile_Index;
+         Profile        : C2.Waveform_Profile := C2.Create_Waveform_Profile;
+      begin
+         for P in 0 .. 6 loop
+            C2.Set_Chip_Duration_Femtoseconds
+              (Profile,
+               (if P = 0
+                then Interfaces.Integer_64'First
+                elsif P = 1
+                then Interfaces.Integer_64'Last
+                else Interfaces.Integer_64 (-P)));
+            C2.Set_Phase_Degrees (Profile, 90.0 + Long_Float (P), P = 0);
+            C2.Set_Delta_Phase_Degrees (Profile, -180.0 + Long_Float (P), P = 1);
+            C2.Set_Frequency_Offset_Hz (Profile, 11.0 + Long_Float (P), P = 2);
+            C2.Set_Delta_Frequency_Hz (Profile, 23.0 + Long_Float (P), P = 3);
+            C2.Set_Frequency_Slope_Hz_Sec (Profile, 37.0 + Long_Float (P), P = 4);
+            C2.Set_Amplitude_Factor (Profile, -3.0 - Long_Float (P), P = 5);
+            C2.Append_Profile (Profiles, Profile, Index);
+            Require (Index = C2.Waveform_Profile_Index (P));
+         end loop;
+         C2.Append_Step (Pattern, 6, Interfaces.Integer_32'First);
+         C2.Append_Step (Pattern, 0, 0);
+         C2.Append_Step (Pattern, 6, Interfaces.Integer_32'Last);
+         C2.Append_Pattern (Patterns, Pattern);
+         C2.Append_Pattern (Patterns, Empty);
+         C2.Append_Step (Pattern, 1, -7);
+         C2.Append_Pattern (Patterns, Pattern);
+         Retained_Profiles := Profiles;
+         Retained_Patterns := Patterns;
+         Retained_Config := C2.Custom_Waveform (Profiles, Patterns);
+         C2.Set_Phase_Degrees (Profile, 777.0, False);
+         C2.Append_Profile (Profiles, Profile, Index);
+         C2.Append_Step (Pattern, 7, -13);
+         C2.Append_Pattern (Patterns, Pattern);
+         for I in 0 .. 1 loop
+            declare
+               Interval : C2.RX_Job_Interval_Config :=
+                 C2.Create_RX_Job_Interval (Interfaces.Unsigned_32 (90 + I), 0);
+               Table    : C2.Modulation_Table;
+               M        : C2.Modulation_Index;
+               TX       : C2.TX_Transmit_Event_Config :=
+                 C2.Create_TX_Transmit_Event (7, "", 0, 0, 0.0);
+            begin
+               C2.Append_Modulation (Table, Retained_Config, M);
+               C2.Append_Modulation_Reference (TX, M);
+               C2.Append_Modulation (Table, C2.Custom_Waveform (Profiles, Patterns), M);
+               C2.Append_Modulation_Reference (TX, M);
+               C2.Append_Modulation_Reference (TX, 0);
+               C2.Append_Modulation_Reference (TX, C2.No_Modulation);
+               C2.Set_Modulations (Interval, Table);
+               C2.Set_Phase_Offset_Radians (TX, -0.25);
+               C2.Append_TX_Event (Interval, TX);
+               C2.Append_TX_Event (Interval, TX);
+               C2.Append_Job_Interval (List, Interval);
+            end;
+         end loop;
+         Saved := List;
+      end;
+      --  Every source scope has expired before observing native retained copies.
+      C2.Add_RX_Job_Intervals (Object, Saved);
+      for I in Interfaces.C.unsigned range 0 .. 1 loop
+         for M in Interfaces.C.unsigned range 0 .. 1 loop
+            Require (Observe (I, M, 0, 0, 0) = 1 and then Observe (I, M, 0, 0, 1) = 1);
+            Require (Observe (I, M, 0, 0, 2) = 7 + Interfaces.Integer_64 (M));
+            Require (Observe (I, M, 0, 0, 3) = 3 + Interfaces.Integer_64 (M));
+            Require (Observe (I, M, 1, 0, 4) = 0);
+            for P in Interfaces.C.unsigned range 0 .. 6 loop
+               Require
+                 (Observe (I, M, P, 0, 7)
+                  = (if P = 0
+                     then Interfaces.Integer_64'First
+                     elsif P = 1
+                     then Interfaces.Integer_64'Last
+                     else -Interfaces.Integer_64 (P)));
+               for F in Interfaces.C.unsigned range 0 .. 5 loop
+                  Require (Observe (I, M, P, 0, F + 8) = Boolean'Pos (P = F));
+               end loop;
+               Require (Number (I, M, P, 0) = 90.0 + Interfaces.C.double (P));
+               Require (Number (I, M, P, 1) = -180.0 + Interfaces.C.double (P));
+               Require (Number (I, M, P, 2) = 11.0 + Interfaces.C.double (P));
+               Require (Number (I, M, P, 3) = 23.0 + Interfaces.C.double (P));
+               Require (Number (I, M, P, 4) = 37.0 + Interfaces.C.double (P));
+               Require (Number (I, M, P, 5) = -3.0 - Interfaces.C.double (P));
+            end loop;
+            for P in Interfaces.C.unsigned range 0 .. 2 loop
+               if P /= 1 then
+                  Require (Observe (I, M, P, 0, 4) = (if P = 0 then 3 else 4));
+                  Require
+                    (Observe (I, M, P, 0, 5) = Interfaces.Integer_64 (Interfaces.Integer_32'First));
+                  Require (Observe (I, M, P, 0, 6) = 6);
+                  Require (Observe (I, M, P, 1, 5) = 0 and then Observe (I, M, P, 1, 6) = 0);
+                  Require
+                    (Observe (I, M, P, 2, 5) = Interfaces.Integer_64 (Interfaces.Integer_32'Last));
+                  Require (Observe (I, M, P, 2, 6) = 6);
+                  if P = 2 then
+                     Require (Observe (I, M, P, 3, 5) = -7 and then Observe (I, M, P, 3, 6) = 1);
+                  end if;
+               end if;
+            end loop;
+            if M = 1 then
+               Require (Number (I, M, 7, 0) = 777.0 and then Observe (I, M, 3, 4, 6) = 7);
+               Require (Observe (I, M, 3, 4, 5) = -13);
+            end if;
+         end loop;
+         for E in Interfaces.C.unsigned range 0 .. 1 loop
+            Require (References (I, E, 5, 0) = 4);
+            for N in Interfaces.C.unsigned range 0 .. 3 loop
+               Require
+                 (References (I, E, 6, N)
+                  = (case N is
+                       when 0 | 2  => 0,
+                       when 1      => 1,
+                       when others => -1));
+            end loop;
+         end loop;
+      end loop;
+      declare
+         Changed        : C2.Modulation_Config := Retained_Config;
+         Short, Longer  : C2.Waveform_Profile_Table;
+         Empty          : C2.Waveform_Pattern_List;
+         Empty_Profiles : C2.Waveform_Profile_Table;
+         Index          : C2.Waveform_Profile_Index;
+         Before         : Interfaces.C.unsigned;
+      begin
+         C2.Append_Profile (Short, C2.Create_Waveform_Profile (19), Index);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Short);
+         Before := Add_Count.all;
+         begin
+            Submit_One (Changed);
+            raise Program_Error with "stale profile reference accepted";
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+         Require (Add_Count.all = Before);
+         Require (Number (0, 0, 0, 0) = 90.0);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Retained_Profiles);
+         Submit_One (Changed);
+         Require (Observe (0, 0, 0, 0, 2) = 7);
+         Longer := Retained_Profiles;
+         C2.Append_Profile (Longer, C2.Create_Waveform_Profile (29), Index);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Longer);
+         Submit_One (Changed);
+         Require (Observe (0, 0, 0, 0, 2) = 8 and then Observe (0, 0, 7, 0, 7) = 29);
+         C2.Replace_Custom_Waveform_Patterns (Changed, Empty);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Empty_Profiles);
+         Submit_One (Changed);
+         Require (Observe (0, 0, 0, 0, 2) = 0 and then Observe (0, 0, 0, 0, 3) = 0);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Retained_Profiles);
+         C2.Replace_Custom_Waveform_Patterns (Changed, Retained_Patterns);
+         Submit_One (Changed);
+         Require (Observe (0, 0, 0, 0, 3) = 3 and then Observe (0, 0, 2, 3, 6) = 1);
+      end;
+      for Which in 0 .. 1 loop
+         declare
+            Wrong : C2.Modulation_Config := C2.Tone;
+         begin
+            begin
+               if Which = 0 then
+                  C2.Replace_Custom_Waveform_Profiles (Wrong, Retained_Profiles);
+               else
+                  C2.Replace_Custom_Waveform_Patterns (Wrong, Retained_Patterns);
+               end if;
+               raise Program_Error with "wrong-kind custom replacement accepted";
+            exception
+               when Constraint_Error =>
+                  null;
+            end;
+            Submit_One (Wrong);
+            Require (References (0, 0, 2, 0) = 0);
+         end;
+      end loop;
+      C2.Add_Job_Intervals (Object, Saved);
+      Require (Number (1, 1, 7, 0) = 777.0);
+      declare
+         Changed  : C2.Modulation_Config := Retained_Config;
+         Profiles : C2.Waveform_Profile_Table;
+         Pattern  : C2.Event_Waveform_Pattern;
+         Patterns : C2.Waveform_Pattern_List;
+         Index    : C2.Waveform_Profile_Index;
+         Profile  : C2.Waveform_Profile := C2.Create_Waveform_Profile (-37);
+         Before   : Interfaces.C.unsigned;
+      begin
+         C2.Set_Phase_Degrees (Profile, IEEE (16#8000_0000_0000_0000#), False);
+         C2.Set_Delta_Phase_Degrees (Profile, IEEE (16#7FF0_0000_0000_0000#), False);
+         C2.Set_Frequency_Offset_Hz (Profile, IEEE (16#FFF0_0000_0000_0000#), False);
+         C2.Set_Delta_Frequency_Hz (Profile, IEEE (16#7FF8_0000_0000_0001#), False);
+         C2.Set_Frequency_Slope_Hz_Sec (Profile, 19.25, False);
+         C2.Set_Amplitude_Factor (Profile, -7.5, False);
+         C2.Append_Profile (Profiles, Profile, Index);
+         C2.Append_Step (Pattern, Index, -1);
+         C2.Append_Pattern (Patterns, Pattern);
+         C2.Replace_Custom_Waveform_Profiles (Changed, Profiles);
+         C2.Replace_Custom_Waveform_Patterns (Changed, Patterns);
+         Submit_One (Changed);
+         Require (Observe (0, 0, 0, 0, 3) = 1 and then Observe (0, 0, 0, 0, 5) = -1);
+         Require (Bits (Number (0, 0, 0, 0)) = 16#8000_0000_0000_0000#);
+         Require (Bits (Number (0, 0, 0, 1)) = 16#7FF0_0000_0000_0000#);
+         Require (Bits (Number (0, 0, 0, 2)) = 16#FFF0_0000_0000_0000#);
+         Require (Number (0, 0, 0, 3) /= Number (0, 0, 0, 3));
+         Require (Number (0, 0, 0, 4) = 19.25 and then Number (0, 0, 0, 5) = -7.5);
+         for F in Interfaces.C.unsigned range 8 .. 13 loop
+            Require (Observe (0, 0, 0, 0, F) = 0);
+         end loop;
+         C2.Add_Job_Intervals (Object, Saved);
+         Before := Add_Count.all;
+         Ada.Environment_Variables.Set ("AMS_MEL_TEST_RF_JOB_FAILURE", "later-custom-step");
+         begin
+            C2.Add_Job_Intervals (Object, Saved);
+            raise Program_Error with "nested preparation failure not reached";
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+         Ada.Environment_Variables.Clear ("AMS_MEL_TEST_RF_JOB_FAILURE");
+         Require (Add_Count.all = Before and then Number (1, 1, 7, 0) = 777.0);
+         C2.Add_Job_Intervals (Object, Saved);
+         Require (Observe (1, 1, 3, 4, 6) = 7);
+      end;
+      if DL_Close (Library) /= 0 then
+         raise Program_Error;
+      end if;
+      Interfaces.C.Strings.Free (Name);
+   end Send_Custom_Waveforms;
+
    procedure Send_Binary_Modulations (Object : in out C2.Job) is
       type Observation_Access is
         access function (I, M, F, N : Interfaces.C.unsigned) return Interfaces.Integer_64
@@ -1745,6 +2030,7 @@ begin
                Send_Distinct (Object);
                Send_Modulations (Object);
                Send_Binary_Modulations (Object);
+               Send_Custom_Waveforms (Object);
                Send_Empty (Object);
                Ada.Environment_Variables.Set
                  ("AMS_MEL_TEST_RF_JOB_FAILURE", "interval-tx-allocation");

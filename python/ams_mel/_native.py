@@ -2173,6 +2173,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_job_add_intervals_v10",
     "ams_mel_rf_job_add_intervals_v11",
     "ams_mel_rf_job_add_intervals_v12",
+    "ams_mel_rf_job_add_intervals_v13",
 
     "ams_mel_rf_job_flush",
     "ams_mel_rf_job_cancel_remaining_intervals",
@@ -2513,3 +2514,76 @@ class RfJobIntervalConfigSpanV12(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v12 = _LIBRARY.ams_mel_rf_job_add_intervals_v12
 ams_mel_rf_job_add_intervals_v12.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV12, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v12.restype = ctypes.c_int32
+
+AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM = 5
+class RfWaveformProfileParamsV1(ctypes.Structure):
+    _fields_ = [
+        ("chip_duration_femtoseconds", ctypes.c_int64),
+        ("update_phase", ctypes.c_uint32),
+        ("update_delta_phase", ctypes.c_uint32),
+        ("update_frequency_offset", ctypes.c_uint32),
+        ("update_delta_frequency", ctypes.c_uint32),
+        ("update_frequency_slope", ctypes.c_uint32),
+        ("update_amplitude_factor", ctypes.c_uint32),
+        ("phase_deg", ctypes.c_double),
+        ("delta_phase_deg", ctypes.c_double),
+        ("frequency_offset_hz", ctypes.c_double),
+        ("delta_frequency_hz", ctypes.c_double),
+        ("frequency_slope_hz_sec", ctypes.c_double),
+        ("amplitude_factor", ctypes.c_double),
+    ]
+class RfWaveformProfileParamsSpanV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfWaveformProfileParamsV1)),
+        ("size", ctypes.c_size_t),
+    ]
+class RfWaveformProfileIterationsV1(ctypes.Structure):
+    _fields_ = [
+        ("num_chip_iterations", ctypes.c_int32),
+        ("waveform_profile_index", ctypes.c_int32),
+    ]
+class RfWaveformProfileIterationsSpanV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfWaveformProfileIterationsV1)),
+        ("size", ctypes.c_size_t),
+    ]
+class RfEventWaveformProfilePatternV1(ctypes.Structure):
+    _fields_ = [
+        ("steps", RfWaveformProfileIterationsSpanV1),
+    ]
+class RfEventWaveformProfilePatternSpanV1(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfEventWaveformProfilePatternV1)),
+        ("size", ctypes.c_size_t),
+    ]
+class RfCustomWaveformConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("profiles", RfWaveformProfileParamsSpanV1),
+        ("patterns", RfEventWaveformProfilePatternSpanV1),
+    ]
+class RfModulationConfigV3(ctypes.Structure):
+    _fields_ = [
+        ("modulation", RfModulationConfigV2),
+        ("custom_waveform", RfCustomWaveformConfigV1),
+    ]
+class RfModulationConfigSpanV3(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfModulationConfigV3)),
+        ("size", ctypes.c_size_t),
+    ]
+class RfJobIntervalConfigV13(ctypes.Structure):
+    _fields_ = [
+        ("interval", RfJobIntervalConfigV8),
+        ("has_transmit_events", ctypes.c_uint32),
+        ("transmit_events", RfTxEventConfigSpanV3),
+        ("has_modulations", ctypes.c_uint32),
+        ("modulations", RfModulationConfigSpanV3),
+    ]
+class RfJobIntervalConfigSpanV13(ctypes.Structure):
+    _fields_ = [
+        ("data", ctypes.POINTER(RfJobIntervalConfigV13)),
+        ("size", ctypes.c_size_t),
+    ]
+ams_mel_rf_job_add_intervals_v13 = _LIBRARY.ams_mel_rf_job_add_intervals_v13
+ams_mel_rf_job_add_intervals_v13.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV13, *_CHANNEL_DIAGNOSTIC]
+ams_mel_rf_job_add_intervals_v13.restype = ctypes.c_int32

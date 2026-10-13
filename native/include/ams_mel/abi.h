@@ -3316,6 +3316,83 @@ typedef struct ams_mel_rf_job_interval_config_span_v12 {
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v12(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v12 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Bridge tag, not a native variant position. V11 accepts 0..2, v12 0..4,
+ * v13 0..5. The original nested kind is the only discriminator. */
+#define AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM UINT32_C(5)
+typedef struct ams_mel_rf_waveform_profile_params_v1 {
+    int64_t chip_duration_femtoseconds;
+    uint32_t update_phase;
+    uint32_t update_delta_phase;
+    uint32_t update_frequency_offset;
+    uint32_t update_delta_frequency;
+    uint32_t update_frequency_slope;
+    uint32_t update_amplitude_factor;
+    double phase_deg;
+    double delta_phase_deg;
+    double frequency_offset_hz;
+    double delta_frequency_hz;
+    double frequency_slope_hz_sec;
+    double amplitude_factor;
+} ams_mel_rf_waveform_profile_params_v1;
+typedef struct ams_mel_rf_waveform_profile_params_span_v1 {
+    const ams_mel_rf_waveform_profile_params_v1 *data;
+    size_t size;
+} ams_mel_rf_waveform_profile_params_span_v1;
+typedef struct ams_mel_rf_waveform_profile_iterations_v1 {
+    int32_t num_chip_iterations;
+    int32_t waveform_profile_index;
+} ams_mel_rf_waveform_profile_iterations_v1;
+typedef struct ams_mel_rf_waveform_profile_iterations_span_v1 {
+    const ams_mel_rf_waveform_profile_iterations_v1 *data;
+    size_t size;
+} ams_mel_rf_waveform_profile_iterations_span_v1;
+typedef struct ams_mel_rf_event_waveform_profile_pattern_v1 {
+    ams_mel_rf_waveform_profile_iterations_span_v1 steps;
+} ams_mel_rf_event_waveform_profile_pattern_v1;
+typedef struct ams_mel_rf_event_waveform_profile_pattern_span_v1 {
+    const ams_mel_rf_event_waveform_profile_pattern_v1 *data;
+    size_t size;
+} ams_mel_rf_event_waveform_profile_pattern_span_v1;
+typedef struct ams_mel_rf_custom_waveform_config_v1 {
+    ams_mel_rf_waveform_profile_params_span_v1 profiles;
+    ams_mel_rf_event_waveform_profile_pattern_span_v1 patterns;
+} ams_mel_rf_custom_waveform_config_v1;
+/* For kind 5 only custom_waveform is active; for 0..4 it is ignored.
+ * All active flags are exactly 0/1. Every scalar is copied even with a false
+ * update flag. Degrees stay degrees; frequency_slope_hz_sec maps verbatim to
+ * get/setFrequencySlopeHzSec. Signed femtoseconds and IEEE doubles are not
+ * normalized, clamped or filtered. NaN classification, not payload, is retained.
+ * Steps reference this definition's final profile vector, without a sentinel.
+ * Signed iteration counts (including zero/negative) are copied, not expanded.
+ * Both vectors, empty patterns, order and duplicates are copied before Add.
+ * This validates local references, not waveform execution. Application/provider
+ * enforce duration matching, quantization and the pinned amplitude range 0..1;
+ * no timing arithmetic, pattern-to-event assignment or synthesis is performed.
+ * Borrowed spans need remain valid only throughout the synchronous call. */
+typedef struct ams_mel_rf_modulation_config_v3 {
+    ams_mel_rf_modulation_config_v2 modulation;
+    ams_mel_rf_custom_waveform_config_v1 custom_waveform;
+} ams_mel_rf_modulation_config_v3;
+typedef struct ams_mel_rf_modulation_config_span_v3 {
+    const ams_mel_rf_modulation_config_v3 *data;
+    size_t size;
+} ams_mel_rf_modulation_config_span_v3;
+/* One authoritative table and TX-v3 collection over frozen v8. Outer presence
+ * 0 ignores payload, 1 copies including empty, all other encodings reject. */
+typedef struct ams_mel_rf_job_interval_config_v13 {
+    ams_mel_rf_job_interval_config_v8 interval;
+    uint32_t has_transmit_events;
+    ams_mel_rf_tx_event_config_span_v3 transmit_events;
+    uint32_t has_modulations;
+    ams_mel_rf_modulation_config_span_v3 modulations;
+} ams_mel_rf_job_interval_config_v13;
+typedef struct ams_mel_rf_job_interval_config_span_v13 {
+    const ams_mel_rf_job_interval_config_v13 *data;
+    size_t size;
+} ams_mel_rf_job_interval_config_span_v13;
+AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v13(
+    ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v13 intervals,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_rf_job_add_intervals_v9(
     ams_mel_rf_job *job, ams_mel_rf_job_interval_config_span_v9 intervals,
     char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;

@@ -4349,3 +4349,93 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+pub const AMS_MEL_RF_MODULATION_CUSTOM_WAVEFORM: u32 = 5;
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformProfileParamsV1 {
+    pub chip_duration_femtoseconds: i64,
+    pub update_phase: u32,
+    pub update_delta_phase: u32,
+    pub update_frequency_offset: u32,
+    pub update_delta_frequency: u32,
+    pub update_frequency_slope: u32,
+    pub update_amplitude_factor: u32,
+    pub phase_deg: f64,
+    pub delta_phase_deg: f64,
+    pub frequency_offset_hz: f64,
+    pub delta_frequency_hz: f64,
+    pub frequency_slope_hz_sec: f64,
+    pub amplitude_factor: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformProfileParamsSpanV1 {
+    pub data: *const AmsMelRfWaveformProfileParamsV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformProfileIterationsV1 {
+    pub num_chip_iterations: i32,
+    pub waveform_profile_index: i32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfWaveformProfileIterationsSpanV1 {
+    pub data: *const AmsMelRfWaveformProfileIterationsV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfEventWaveformProfilePatternV1 {
+    pub steps: AmsMelRfWaveformProfileIterationsSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfEventWaveformProfilePatternSpanV1 {
+    pub data: *const AmsMelRfEventWaveformProfilePatternV1,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfCustomWaveformConfigV1 {
+    pub profiles: AmsMelRfWaveformProfileParamsSpanV1,
+    pub patterns: AmsMelRfEventWaveformProfilePatternSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigV3 {
+    pub modulation: AmsMelRfModulationConfigV2,
+    pub custom_waveform: AmsMelRfCustomWaveformConfigV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfModulationConfigSpanV3 {
+    pub data: *const AmsMelRfModulationConfigV3,
+    pub size: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigV13 {
+    pub interval: AmsMelRfJobIntervalConfigV8,
+    pub has_transmit_events: u32,
+    pub transmit_events: AmsMelRfTxEventConfigSpanV3,
+    pub has_modulations: u32,
+    pub modulations: AmsMelRfModulationConfigSpanV3,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfJobIntervalConfigSpanV13 {
+    pub data: *const AmsMelRfJobIntervalConfigV13,
+    pub size: usize,
+}
+extern "C" {
+    pub fn ams_mel_rf_job_add_intervals_v13(
+        job: *mut AmsMelRfJob,
+        intervals: AmsMelRfJobIntervalConfigSpanV13,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

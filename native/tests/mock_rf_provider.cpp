@@ -2966,6 +2966,50 @@ extern "C" __attribute__((visibility("default"))) double mock_rf_f13_double(unsi
         latest_intervals.at(i).getModulations().at(m)));
     return cpfsk.getFrequencyOffset();
 }
+extern "C" __attribute__((visibility("default"))) int64_t mock_rf_f14_value(
+    unsigned i, unsigned m, unsigned p, unsigned s, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    const auto& outer = latest_intervals.at(i).getModulations().at(m);
+    if (field == 0) return std::holds_alternative<rfmel::CommonModulations>(outer);
+    const auto& inner = std::get<rfmel::CommonModulations>(outer);
+    if (field == 1) return std::holds_alternative<rfmel::CustomWaveform>(inner);
+    const auto& waveform = std::get<rfmel::CustomWaveform>(inner);
+    if (field == 2) return static_cast<int64_t>(waveform.getWaveformProfiles().size());
+    if (field == 3) return static_cast<int64_t>(waveform.getEventWaveformProfilePattern().size());
+    if (field == 4) return static_cast<int64_t>(waveform.getEventWaveformProfilePattern().at(p).getWaveformProfilePattern().size());
+    if (field == 5 || field == 6) {
+        const auto& step = waveform.getEventWaveformProfilePattern().at(p).getWaveformProfilePattern().at(s);
+        return field == 5 ? step.getNumChipIterations() : step.getWaveformProfileIndex();
+    }
+    auto profile = waveform.getWaveformProfiles().at(p);
+    switch (field) {
+        case 7: return profile.getChipDuration().count();
+        case 8: return profile.getUpdatePhase();
+        case 9: return profile.getUpdateDeltaPhase();
+        case 10: return profile.getUpdateFrequencyOffset();
+        case 11: return profile.getUpdateDeltaFrequency();
+        case 12: return profile.getUpdateFrequencySlope();
+        case 13: return profile.getUpdateAmplitudeFactor();
+        default: throw std::out_of_range{"F14 observer field"};
+    }
+}
+extern "C" __attribute__((visibility("default"))) double mock_rf_f14_double(
+    unsigned i, unsigned m, unsigned p, unsigned field)
+{
+    std::lock_guard lock{interval_mutex};
+    auto profile = std::get<rfmel::CustomWaveform>(std::get<rfmel::CommonModulations>(
+        latest_intervals.at(i).getModulations().at(m))).getWaveformProfiles().at(p);
+    switch (field) {
+        case 0: return profile.getPhaseDeg();
+        case 1: return profile.getDeltaPhaseDeg();
+        case 2: return profile.getFrequencyOffsetHz();
+        case 3: return profile.getDeltaFrequencyHz();
+        case 4: return profile.getFrequencySlopeHzSec();
+        case 5: return profile.getAmplitudeFactor();
+        default: throw std::out_of_range{"F14 observer field"};
+    }
+}
 
 extern "C" __attribute__((visibility("default"))) uint64_t mock_rf_f10_value(
     unsigned i, unsigned e, unsigned field, unsigned g)
