@@ -1,4 +1,128 @@
+with System.Storage_Elements;
+with Interfaces;
+with Interfaces.C;
+
 package body AMS.MEL.RF.Product_Rx.Testing is
+   procedure Check_Stabilization_Boundaries is
+      package C renames AMS.MEL_C_API;
+      use type Interfaces.Integer_64;
+      use type Interfaces.C.double;
+      use System.Storage_Elements;
+      Raw    : aliased C.RF_Pointing_V1 :=
+        (Kind                        => 3,
+         ECEF                        => ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0, -1)),
+         LLA                         => (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, (0, -1)),
+         Platform_Relative           => (0.0, 0.0),
+         Face_Relative               => (18.5, -9.75),
+         Baseline_Relative_Conic_Rad => 0.0);
+      Target : Stabilization_Vectors.Vector;
+      procedure Reject (Span : C.RF_Pointing_Span_V1) is
+      begin
+         Copy_Stabilization (Span, Target);
+         raise Program_Error with "invalid stabilization boundary accepted";
+      exception
+         when Provider_Error =>
+            null;
+      end Reject;
+   begin
+      --  Inactive invalid UTC must not be inspected for relative pointings.
+      Copy_Stabilization ((Raw'Address, 1), Target);
+      Reject ((Raw'Address, 0));
+      Reject ((System.Null_Address, 1));
+      Reject ((Raw'Address, C.Size_T'Last));
+      Reject ((To_Address (To_Integer (Raw'Address) + 1), 1));
+      Reject ((To_Address (Integer_Address'Last - C.RF_Pointing_V1'Alignment + 1), 1));
+      Raw.Kind := 5;
+      Reject ((Raw'Address, 1));
+      Raw.Kind := 0;
+      Reject ((Raw'Address, 1));
+      Raw.ECEF.Time_Of_Validity.Fractional_Femtoseconds := 1_000_000_000_000_000;
+      Reject ((Raw'Address, 1));
+      Raw.ECEF.Time_Of_Validity.Fractional_Femtoseconds := 0;
+      Copy_Stabilization ((Raw'Address, 1), Target);
+      declare
+         M : Product_Metadata;
+      begin
+         M.Stabilization := Target;
+         declare
+            Point : constant AMS.MEL.RF.C2.Pointing := Stabilization_Point_At (M, 3);
+         begin
+            raise Program_Error with AMS.MEL.RF.C2.Kind (Point)'Image;
+         end;
+      exception
+         when Constraint_Error =>
+            null;
+      end;
+      declare
+         package P renames AMS.MEL.RF.C2;
+         Value : constant P.Pointing := P.Create_Face_Relative_Pointing (1.0, 2.0);
+      begin
+         for Field in 1 .. 6 loop
+            begin
+               case Field is
+                  when 1      =>
+                     declare
+                        X : constant P.ECEF_Coordinates := P.ECEF_Position (Value);
+                     begin
+                        raise Program_Error with X.X'Image;
+                     end;
+
+                  when 2      =>
+                     declare
+                        X : constant P.ECEF_Coordinates := P.ECEF_Velocity (Value);
+                     begin
+                        raise Program_Error with X.X'Image;
+                     end;
+
+                  when 3      =>
+                     declare
+                        X : constant P.LLA_Coordinates := P.LLA_Position (Value);
+                     begin
+                        raise Program_Error with X.Altitude_M'Image;
+                     end;
+
+                  when 4      =>
+                     declare
+                        X : constant P.NED_Velocity := P.LLA_Velocity (Value);
+                     begin
+                        raise Program_Error with X.North_MPS'Image;
+                     end;
+
+                  when 5      =>
+                     declare
+                        X : constant Long_Float := P.Conic_Rad (Value);
+                     begin
+                        raise Program_Error with X'Image;
+                     end;
+
+                  when others =>
+                     declare
+                        X : constant P.UTC_Time := P.Time_Of_Validity (Value);
+                     begin
+                        raise Program_Error with P.Seconds (X)'Image;
+                     end;
+               end case;
+            exception
+               when Constraint_Error =>
+                  null;
+            end;
+         end loop;
+         for Field in 1 .. 2 loop
+            begin
+               declare
+                  V : constant P.Pointing := P.Create_Baseline_Relative_Pointing (1.0);
+                  X : constant Long_Float :=
+                    (if Field = 1 then P.Azimuth_Rad (V) else P.Elevation_Rad (V));
+               begin
+                  raise Program_Error with X'Image;
+               end;
+            exception
+               when Constraint_Error =>
+                  null;
+            end;
+         end loop;
+      end;
+   end Check_Stabilization_Boundaries;
    procedure Check_Representation is
       Raw          : constant AMS.MEL_C_API.RF_Product_Rx_Event_V2 :=
         (Endpoint_ID => 0,
@@ -45,7 +169,19 @@ package body AMS.MEL.RF.Product_Rx.Testing is
       Associations : constant AMS.MEL_C_API.RF_Receive_Event_Associations_V1 :=
         (0, (System.Null_Address, 0));
       V8           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V8 := (V7, Associations);
+      V9           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V9 :=
+        (V8, (System.Null_Address, 0));
    begin
+      if System.Address'Size = 64 then
+         if V9'Size /= 248 * 8
+           or else V9'Alignment /= 8
+           or else V9.Event'Position /= 0
+           or else V9.Stabilization_Points'Position /= 232
+           or else AMS.MEL_C_API.RF_Pointing_V1'Object_Size /= 176 * 8
+         then
+            raise Program_Error with "private Ada v9 differs from C11 layout";
+         end if;
+      end if;
       if System.Address'Size = 64 then
          if V8'Size /= 232 * 8
            or else AMS.MEL_C_API.RF_Product_Rx_Event_V8'Alignment /= 8

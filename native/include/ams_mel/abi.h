@@ -4483,6 +4483,35 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v8(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* End Task 034F24 additive block. */
 
+/* Task 034F25: executed-collection stabilization metadata, not Job commands.
+ * Reuses the F2 pointing model and units. Order and duplicates are preserved.
+ * Empty is NULL/0; nonempty points are immutable Event-owned values, borrowed
+ * until Event Close. Only active payloads have meaning. Active UTC fractions
+ * must be canonical [0, 10^15); unrepresentable metadata rejects atomically.
+ * IEEE classification, infinities and signed zero survive; no NaN payload claim. */
+typedef struct ams_mel_rf_product_rx_event_v9 {
+    ams_mel_rf_product_rx_event_v8 event;
+    ams_mel_rf_pointing_span_v1 stabilization_points;
+} ams_mel_rf_product_rx_event_v9;
+
+/* Opt-in stabilization AND v8 association profile; formats 0..7 only.
+ * Submit-v1..v8 continue rejecting nonempty stabilization vectors. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v9(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Also accepts historical events with empty stabilization vectors. Views
+ * v1..v8 reject nonempty stabilization without output writes; v1..v7 retain
+ * association restrictions. Allocation/provider/payload-copy free. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v9(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v9 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* End Task 034F25 additive block. */
+
 /* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
  * and ComplexINT16 only. Assigned format must equal requested format before
  * registration. Frozen submit remains ComplexINT16-only. */

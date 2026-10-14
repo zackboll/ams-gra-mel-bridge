@@ -3699,6 +3699,26 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_view_v8";
+   type RF_Product_Rx_Event_V9 is record
+      Event                : RF_Product_Rx_Event_V8;
+      Stabilization_Points : RF_Pointing_Span_V1;
+   end record
+   with Convention => C;
+   function RF_Data_Submit_Product_Rx_V9
+     (Handle              : RF_Data_Handle;
+      Config              : access constant RF_Product_Rx_Config_V1;
+      Output              : access RF_Product_Rx_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_data_submit_product_rx_v9";
+   function RF_Product_Rx_Event_View_V9
+     (Handle              : RF_Product_Rx_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_rf_product_rx_event_view_v9";
    function RF_Data_Submit_Product_Rx_V3
      (Handle              : RF_Data_Handle;
       Config              : access constant RF_Product_Rx_Config_V1;

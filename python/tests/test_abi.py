@@ -93,6 +93,27 @@ class AbiTests(unittest.TestCase):
         expected.extend([ctypes.sizeof(ctypes.c_uint32), ctypes.alignment(ctypes.c_uint32)])
         self.assertEqual(actual, expected)
 
+    def test_private_product_rx_v9_abi(self) -> None:
+        self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v9.argtypes,
+                         _native.ams_mel_rf_data_submit_product_rx.argtypes)
+        self.assertEqual(_native.ams_mel_rf_product_rx_event_view_v9.argtypes,
+                         [_native.RfProductRxEventHandle,
+                          ctypes.POINTER(ctypes.POINTER(_native.RfProductRxEventV9)),
+                          *_native._CHANNEL_DIAGNOSTIC])
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/product_rx_v9_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.RfProductRxEventV9, 'event', 'stabilization_points')
+        expected.extend(self._layout(_native.RfPointingSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfPointingV1, 'kind', 'ecef', 'lla',
+                                    'platform_relative', 'face_relative', 'baseline_relative_conic_rad'))
+        self.assertEqual(actual, expected)
+
     def test_private_product_rx_v4_abi(self) -> None:
         self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v4.argtypes,
                          _native.ams_mel_rf_data_submit_product_rx.argtypes)
@@ -814,6 +835,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_data_submit_product_rx_v2",
                 "ams_mel_rf_product_rx_event_view_v2",
                 "ams_mel_rf_data_submit_product_rx_v6",
+                "ams_mel_rf_data_submit_product_rx_v9",
+                "ams_mel_rf_product_rx_event_view_v9",
                 "ams_mel_rf_data_submit_product_rx_v8",
                 "ams_mel_rf_product_rx_event_view_v8",
                 "ams_mel_rf_data_submit_product_rx_v7",
@@ -835,8 +858,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 220)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 220)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 222)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 222)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -844,7 +867,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 220)
+        self.assertEqual(len(exported), 222)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

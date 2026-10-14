@@ -2604,6 +2604,13 @@ pub struct AmsMelRfProductRxEventV8 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductRxEventV9 {
+    pub event: AmsMelRfProductRxEventV8,
+    pub stabilization_points: AmsMelRfPointingSpanV1,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AmsMelRfProductRxInfoV1 {
     pub endpoint_id: u64,
@@ -3828,6 +3835,21 @@ extern "C" {
     pub fn ams_mel_rf_product_rx_event_view_v8(
         event: *const AmsMelRfProductRxEvent,
         out_view: *mut *const AmsMelRfProductRxEventV8,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_submit_product_rx_v9(
+        data: *mut AmsMelRfData,
+        config: *const AmsMelRfProductRxConfigV1,
+        out_request: *mut *mut AmsMelRfProductRxRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_event_view_v9(
+        event: *const AmsMelRfProductRxEvent,
+        out_view: *mut *const AmsMelRfProductRxEventV9,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

@@ -89,6 +89,8 @@ struct ams_mel_rf_product_rx_event {
     ams_mel_rf_product_rx_event_v7 view_v7{};
     std::vector<std::uint32_t> association_ids;
     ams_mel_rf_product_rx_event_v8 view_v8{};
+    std::vector<ams_mel_rf_pointing_v1> stabilization_points;
+    ams_mel_rf_product_rx_event_v9 view_v9{};
     ams_mel_rf_product_rx_event_v4 view_v4{};
 };
 
@@ -97,6 +99,8 @@ namespace {
 enum class RxLifecycle { Receiving, Closed };
 
 struct RfRxCallbackState {
+    explicit RfRxCallbackState(bool stabilization) : stabilization_enabled{stabilization} {}
+    const bool stabilization_enabled;
     std::mutex mutex;
     std::condition_variable ready;   /* Receive wake-ups */
     std::condition_variable drained; /* in_flight reached zero */
@@ -142,13 +146,15 @@ void retain_registration_forever(PermanentRxRegistration *registration) noexcept
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 /* Test-only seams; none is reachable from a production build. */
 enum : unsigned { FailEvent = 1U, FailStreamIds = 2U, FailWorkerLaunch = 3U,
-                  FailLaterPacket = 4U, FailLaterAssociation = 5U };
+                  FailLaterPacket = 4U, FailLaterAssociation = 5U, FailLaterPoint = 6U };
 enum : unsigned {
     ControlNone = 0U, ControlNoLibraryPin = 1U, ControlNoExactLvalue = 2U,
     ControlOldCloseOrder = 3U
 };
 std::atomic<unsigned> test_failpoint{};
 std::atomic<unsigned> test_negative_control{};
+std::atomic<unsigned> test_view_corruption{};
+std::atomic<std::uint64_t> test_events_closed{};
 std::atomic<int> test_hold_notify{-1};
 std::atomic<int> test_hold_release{-1};
 
@@ -266,6 +272,79 @@ static_assert(sizeof(std::chrono::seconds::rep) == sizeof(std::int64_t) &&
 /* Validates and copies one callback product. Every value read from the
  * provider is copied into event-owned storage before this returns; no
  * provider pointer or reference survives. */
+
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::ProductRxMetadata&>()
+    .getStabPoints()), std::vector<rfmel::PointingType>>);
+static_assert(std::is_same_v<rfmel::PointingType, std::variant<rfmel::ECEFPointing,
+    rfmel::LLAPointing, rfmel::PlatformRelativePointing, rfmel::FaceRelativePointing,
+    rfmel::BaselineRelativePointing>>);
+
+/* Reverse F2 mapping. Only the active alternative is inspected. No coordinate
+ * conversion, normalization, physical-range or finite-only policy is imposed. */
+bool copy_pointing(const rfmel::PointingType& point, ams_mel_rf_pointing_v1& out)
+{
+    const auto copy_time = [](const auto& time, ams_mel_rf_utc_time_v1& target) {
+        const auto seconds = time.getIntegralSeconds().count();
+        const auto fraction = time.getFractionalFemtoseconds().count();
+        static_assert(std::is_same_v<std::remove_cv_t<decltype(seconds)>, std::int64_t>);
+        static_assert(std::is_same_v<std::remove_cv_t<decltype(fraction)>, std::int64_t>);
+        if (fraction < 0 || fraction >= 1'000'000'000'000'000LL) return false;
+        target.seconds = seconds;
+        target.fractional_femtoseconds = fraction;
+        return true;
+    };
+    out = {};
+    switch (point.index()) {
+    case 0: {
+        const auto& value = std::get<0>(point);
+        const auto& position = value.getLocation();
+        const auto& velocity = value.getVelocity();
+        if (position.size() != 3U || velocity.size() != 3U) return false;
+        out.kind = AMS_MEL_RF_POINTING_ECEF;
+        out.ecef.location_m.x = position[0];
+        out.ecef.location_m.y = position[1];
+        out.ecef.location_m.z = position[2];
+        out.ecef.velocity_mps.x = velocity[0];
+        out.ecef.velocity_mps.y = velocity[1];
+        out.ecef.velocity_mps.z = velocity[2];
+        return copy_time(value.getTimeOfValidity(), out.ecef.time_of_validity);
+    }
+    case 1: {
+        const auto& value = std::get<1>(point);
+        const auto& position = value.getLocation();
+        const auto& velocity = value.getVelocity();
+        if (velocity.size() != 3U) return false;
+        out.kind = AMS_MEL_RF_POINTING_LLA;
+        out.lla.latitude_rad = position.getLatitude();
+        out.lla.longitude_rad = position.getLongitude();
+        out.lla.altitude_m = position.getAltitude();
+        out.lla.velocity_north_mps = velocity[0];
+        out.lla.velocity_east_mps = velocity[1];
+        out.lla.velocity_down_mps = velocity[2];
+        return copy_time(value.getTimeOfValidity(), out.lla.time_of_validity);
+    }
+    case 2: {
+        const auto& location = std::get<2>(point).getLocation();
+        out.kind = AMS_MEL_RF_POINTING_PLATFORM_RELATIVE;
+        out.platform_relative.azimuth_rad = location.az;
+        out.platform_relative.elevation_rad = location.el;
+        return true;
+    }
+    case 3: {
+        const auto& location = std::get<3>(point).getLocation();
+        out.kind = AMS_MEL_RF_POINTING_FACE_RELATIVE;
+        out.face_relative.azimuth_rad = location.az;
+        out.face_relative.elevation_rad = location.el;
+        return true;
+    }
+    case 4:
+        out.kind = AMS_MEL_RF_POINTING_BASELINE_RELATIVE;
+        out.baseline_relative_conic_rad = std::get<4>(point).getLocation();
+        return true;
+    default: return false;
+    }
+}
+
 BuildOutcome build_event(const RfRxCallbackState& state,
                          const rfmel::ProductRxMetadata *metadata,
                          const rfmel::JobDataPointer& data, std::size_t count,
@@ -319,7 +398,12 @@ BuildOutcome build_event(const RfRxCallbackState& state,
 
     /* Fail closed: unsupported nonempty metadata is never silently dropped. */
     if (metadata->getUserDefinedData().has_value()) return BuildOutcome::Malformed;
-    if (!metadata->getStabPoints().empty()) return BuildOutcome::Malformed;
+    const auto stabilization = metadata->getStabPoints();
+    if (!state.stabilization_enabled && !stabilization.empty()) return BuildOutcome::Malformed;
+    if (stabilization.size() > std::vector<ams_mel_rf_pointing_v1>{}.max_size() ||
+        stabilization.size() > std::numeric_limits<std::size_t>::max() / sizeof(ams_mel_rf_pointing_v1) ||
+        stabilization.size() > std::numeric_limits<std::size_t>::max() / sizeof(rfmel::PointingType))
+        return BuildOutcome::Malformed;
     if (!metadata->getReceiveEvents().empty()) return BuildOutcome::Malformed;
     const auto associations = metadata->getReceiveEventAssociations();
     const bool vita = state.format >= rfmel::JobDataFormat::AMSVitaSmall;
@@ -439,6 +523,19 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     event->view_v8 = {event->view_v7, {associations.has_value() ? 1U : 0U,
         {event->association_ids.empty() ? nullptr : event->association_ids.data(),
          event->association_ids.size()}}};
+    event->stabilization_points.reserve(stabilization.size());
+    for (const auto& point : stabilization) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+        if (!event->stabilization_points.empty() && take_failpoint(FailLaterPoint))
+            throw std::bad_alloc{};
+#endif
+        ams_mel_rf_pointing_v1 copied{};
+        if (!copy_pointing(point, copied)) return BuildOutcome::Malformed;
+        event->stabilization_points.push_back(copied);
+    }
+    event->view_v9 = {event->view_v8,
+        {event->stabilization_points.empty() ? nullptr : event->stabilization_points.data(),
+         event->stabilization_points.size()}};
     output = std::move(event);
     return BuildOutcome::Accepted;
 }
@@ -573,6 +670,8 @@ bool logical_close_and_drain(RfRxCallbackState& state,
 enum class CreateKind { Pending, Succeeded, ProviderFailed, ProviderException, InternalError };
 
 struct CreateCompletion {
+    explicit CreateCompletion(bool stabilization) : stabilization_enabled{stabilization} {}
+    const bool stabilization_enabled;
     std::mutex mutex;
     std::condition_variable changed;
     CreateKind kind{CreateKind::Pending};
@@ -870,11 +969,11 @@ static ams_mel_status_t submit_product_rx(
     std::unique_ptr<ams_mel_rf_product_rx_request> owner;
     std::unique_ptr<std::thread> worker;
     try {
-        completion = std::make_shared<CreateCompletion>();
+        completion = std::make_shared<CreateCompletion>(version == 9U);
         completion->queue_capacity = config->queue_capacity;
         completion->max_samples_per_event = config->max_samples_per_event;
         completion->requested_format = static_cast<rfmel::JobDataFormat>(config->data_format);
-        completion->associations_enabled = version == 8U;
+        completion->associations_enabled = version >= 8U;
         input = std::make_shared<CreateWorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_rf_product_rx_request>();
@@ -1001,6 +1100,15 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v8(
                              diagnostic_capacity, diagnostic_required, 8U);
 }
 
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v9(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, 9U);
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_wait(
     const ams_mel_rf_product_rx_request *request, std::uint32_t timeout_ms,
     ams_mel_rf_product_rx_request_result_v1 *out_result, char *diagnostic,
@@ -1070,7 +1178,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_claim(
                              diagnostic_capacity, diagnostic_required);
             return AMS_MEL_PROVIDER_FAILED;
         }
-        state = std::make_shared<RfRxCallbackState>();
+        state = std::make_shared<RfRxCallbackState>(completion.stabilization_enabled);
         state->queue_capacity = completion.queue_capacity;
         state->max_samples_per_event = completion.max_samples_per_event;
         state->endpoint_id = completion.info.endpoint_id;
@@ -1319,7 +1427,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr || !event->association_ids.empty())
+        out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
         write_diagnostic("frozen v1 event view requires ComplexINT16", diagnostic,
@@ -1337,7 +1445,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v2(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr || !event->association_ids.empty())
+        out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 &&
         event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16)
@@ -1353,7 +1461,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v3(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr || !event->association_ids.empty())
+        out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1367,7 +1475,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v4(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1381,7 +1489,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v5(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1395,7 +1503,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v6(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1409,7 +1517,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v7(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty() || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     *out_view = &event->view_v7;
     return AMS_MEL_OK;
@@ -1421,9 +1529,43 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v8(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->stabilization_points.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     *out_view = &event->view_v8;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v9(
+    const ams_mel_rf_product_rx_event *event, const ams_mel_rf_product_rx_event_v9 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+        return AMS_MEL_INVALID_ARGUMENT;
+    *out_view = &event->view_v9;
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    /* Invalid raw-boundary fixtures affect only the copied C view, never STL
+     * storage or a provider object. Consumed once before Ada imports metadata. */
+    const auto corruption = test_view_corruption.exchange(0U);
+    if (corruption != 0U) {
+        auto& span = const_cast<ams_mel_rf_product_rx_event *>(event)->view_v9.stabilization_points;
+        if (corruption == 1U) span = {nullptr, 1U};
+        else if (corruption == 2U) span.size = std::numeric_limits<std::size_t>::max();
+        else if (corruption == 3U) span.data = reinterpret_cast<const ams_mel_rf_pointing_v1 *>(
+            reinterpret_cast<std::uintptr_t>(span.data) + 1U);
+        else if (corruption == 4U) span = {reinterpret_cast<const ams_mel_rf_pointing_v1 *>(
+            std::numeric_limits<std::uintptr_t>::max() - alignof(ams_mel_rf_pointing_v1) + 1U), 1U};
+        else if (corruption == 5U) span.size = 0U;
+        else if (!event->stabilization_points.empty()) {
+            auto& point = const_cast<ams_mel_rf_product_rx_event *>(event)->stabilization_points[0];
+            if (corruption == 6U) point.kind = UINT32_MAX;
+            else if (corruption == 7U) point.ecef.time_of_validity.fractional_femtoseconds = -1;
+            else if (corruption == 8U && event->stabilization_points.size() > 1U)
+                const_cast<ams_mel_rf_product_rx_event *>(event)->stabilization_points[1].kind = UINT32_MAX;
+        }
+    }
+#endif
     return AMS_MEL_OK;
 }
 
@@ -1434,6 +1576,9 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_close(
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    if (*event != nullptr) test_events_closed.fetch_add(1U);
+#endif
     delete std::exchange(*event, nullptr);
     return AMS_MEL_OK;
 }
@@ -1445,6 +1590,11 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_close(
  * the callback state (which a permanent registration retains anyway), never
  * of the provider endpoint or DataMEL. */
 struct ams_mel_test_rf_rx_observer { std::shared_ptr<RfRxCallbackState> state; };
+
+extern "C" __attribute__((visibility("default"))) void ams_mel_test_rf_rx_corrupt_view(unsigned kind) noexcept
+{ test_view_corruption.store(kind); }
+extern "C" __attribute__((visibility("default"))) std::uint64_t ams_mel_test_rf_rx_events_closed() noexcept
+{ return test_events_closed.load(); }
 
 extern "C" __attribute__((visibility("default"))) int ams_mel_test_rf_rx_observer_from(
     const ams_mel_rf_product_rx *endpoint, ams_mel_test_rf_rx_observer **output) noexcept

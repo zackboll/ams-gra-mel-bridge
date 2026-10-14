@@ -2203,6 +2203,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_submit_product_rx_v2",
     "ams_mel_rf_product_rx_event_view_v2",
     "ams_mel_rf_data_submit_product_rx_v6",
+    "ams_mel_rf_data_submit_product_rx_v9",
+    "ams_mel_rf_product_rx_event_view_v9",
     "ams_mel_rf_data_submit_product_rx_v8",
     "ams_mel_rf_product_rx_event_view_v8",
     "ams_mel_rf_data_submit_product_rx_v7",
@@ -2711,6 +2713,10 @@ class RfProductRxEventV8(ctypes.Structure):
     _fields_ = [("event", RfProductRxEventV7),
                 ("receive_event_associations", RfReceiveEventAssociationsV1)]
 
+class RfProductRxEventV9(ctypes.Structure):
+    _fields_ = [("event", RfProductRxEventV8),
+                ("stabilization_points", RfPointingSpanV1)]
+
 
 
 ams_mel_rf_data_submit_product_rx_v3 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v3
@@ -2771,6 +2777,15 @@ ams_mel_rf_product_rx_event_view_v8.argtypes = [
     *_CHANNEL_DIAGNOSTIC
 ]
 ams_mel_rf_product_rx_event_view_v8.restype = ctypes.c_int32
+ams_mel_rf_data_submit_product_rx_v9 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v9
+ams_mel_rf_data_submit_product_rx_v9.argtypes = ams_mel_rf_data_submit_product_rx_v2.argtypes
+ams_mel_rf_data_submit_product_rx_v9.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_view_v9 = _LIBRARY.ams_mel_rf_product_rx_event_view_v9
+ams_mel_rf_product_rx_event_view_v9.argtypes = [
+    RfProductRxEventHandle, ctypes.POINTER(ctypes.POINTER(RfProductRxEventV9)),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_view_v9.restype = ctypes.c_int32
 
 class RfWaveformBufferConfigV1(ctypes.Structure):
     _fields_ = [

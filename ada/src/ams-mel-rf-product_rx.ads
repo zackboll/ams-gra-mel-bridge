@@ -2,6 +2,7 @@ private with Ada.Containers.Vectors;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
+with AMS.MEL.RF.C2;
 with Interfaces;
 private with System;
 
@@ -184,6 +185,10 @@ package AMS.MEL.RF.Product_Rx is
    function Receive_Event_Association_Count (Value : Product_Metadata) return Natural;
    function Receive_Event_Association_ID_At
      (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32;
+   --  Ada-owned executed-collection metadata, independent of native Event lifetime.
+   function Stabilization_Point_Count (Value : Product_Metadata) return Natural;
+   function Stabilization_Point_At
+     (Value : Product_Metadata; Index : Positive) return AMS.MEL.RF.C2.Pointing;
 private
    use type Interfaces.Unsigned_32;
    pragma
@@ -191,6 +196,10 @@ private
        (Complex_I16'Size /= AMS.MEL_C_API.RF_Complex_I16_V1'Size,
         "Complex_I16 size does not match the C ABI");
    package ID_Vectors is new Ada.Containers.Vectors (Positive, Interfaces.Unsigned_32);
+   package Stabilization_Vectors is new
+     Ada.Containers.Vectors (Positive, AMS.MEL.RF.C2.Pointing, AMS.MEL.RF.C2."=");
+   procedure Copy_Stabilization
+     (Span : AMS.MEL_C_API.RF_Pointing_Span_V1; Target : in out Stabilization_Vectors.Vector);
    type Config is record
       Region         : Interfaces.Unsigned_64;
       Queue, Maximum : Positive;
@@ -223,6 +232,8 @@ private
       Stream_IDs                                                              : ID_Vectors.Vector;
       Associations_Present                                                    : Boolean := False;
       Association_IDs                                                         : ID_Vectors.Vector;
+      Stabilization                                                           :
+        Stabilization_Vectors.Vector;
    end record;
    type Event is new Ada.Finalization.Limited_Controlled with record
       Handle         : aliased AMS.MEL_C_API.RF_Product_Rx_Event_Handle :=
