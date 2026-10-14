@@ -164,3 +164,98 @@ vendor modifications, public Python/safe Rust receive APIs and unrelated
 lifecycle refactoring. Mock IDs do not establish semantic referent validity.
 Publication stops at an OPEN, NON-DRAFT, UNMERGED PR with auto-merge disabled;
 local qualification is not independent approval.
+
+## PR #99 inherited IR stream lifetime correction
+
+Reviewed feature: `fef815b035329deb5a415f67b8f2c537374571c1`.
+Push workflow 38508809524 / Clang Release job 115672342002 checked out that
+exact SHA (git log in retained full job log). Serial 431/431 passed; parallel-4
+until-fail:50 failed `ir_stream_contract`, at the child-2 late-callback check.
+Complete log SHA-256:
+`d799f4eed6999ef2d01aab8ecba01cd1ec823e19a0e6fcdc2879ec3e74927e80`.
+Evidence is retained under the task evidence directory's `ir-correction`.
+The starting-main and feature test file hashes are both
+`eb7dc538c46f12416595ecba1157c115283636f007d721e2e45d89bbac9d7247`;
+that identity alone was not treated as evidence of safety.
+
+### Established counterexample, not the initial hypothesis
+
+Test-only diagnostics preserve synchronization order and print failed line,
+marker state, last navigation status, destruction/executor counters and lifetime
+log before cleanup releases any barriers. Producer status is read only after
+its thread has joined (otherwise printed as unavailable), avoiding a diagnostic
+race. Failed lifetime logs are retained. A narrowly isolated child-2 invocation
+supplements, and never replaces, the full default lifetime contract suite.
+
+The early-navigation-completion hypothesis was disproved in reproduced failures:
+the zero-timeout observation returns TIMEOUT (numeric status 9), while the
+external join marker is present and the callback release remains held. Once
+released, the callback returns, two wrappers are destroyed before the channel,
+and registered buffers and channel destruction counters are correct.
+
+Affinity-constrained two-CPU/eight-process pre-correction runs reproduce the
+**final log snapshot** failure in seven lanes, including lane 4 iteration 1010
+and lane 6 iteration 518. At the failed snapshot, logs contain the expected
+release/drain/channel teardown and `completion_graph_released_3`, but no
+`control_destroyed`, `manager_destroyed`, or `library_unloaded` yet. Native
+navigation `complete()` publishes terminal state under its mutex, then resets
+its local stream reference, then notifies; a zero/bounded wait may acquire the
+mutex and observe terminal state before that local reference is dropped.
+Request Close is not a worker join. Session Close may therefore return while
+that last independent graph reference is still unwinding. This is permitted
+ownership, not demonstrated premature destruction or lost cleanup.
+Unconstrained isolated 2000 attempts and 80,000 multi-process attempts did not
+reproduce; constrained counterexamples, not those passes, establish the cause.
+The additional pre-correction serial diagnostic repetition was stopped once
+the counterexample was obtained and is not reported as qualification.
+
+### Narrow test correction
+
+Production sources, provider implementation, ProductRx associations and ABI are
+unchanged. The test now observes the actual `library_unloaded` lifetime condition
+with a five-second CLOCK_MONOTONIC deadline before taking the final ordered
+snapshot for child 2. Short sleeps only pace condition re-observation; there is
+no blind scheduling delay, retries of failed assertions, or assumption that
+terminal navigation state is a worker join. The existing zero-timeout assertion,
+held callback, external join, exact buffer-wrapper counts, release executor
+checks and wrapper/channel/control/manager/unload order remain active. A missed
+unload still fails with diagnostics rather than passing or retrying.
+
+Resource-failed full campaigns are also retained: host `/tmp` reached 100%
+capacity despite task TMPDIR because inherited fixtures hard-code `/tmp`.
+Several unrelated lifetime-marker assertions then failed. Only task-owned
+campaign processes were stopped; no host files or earlier evidence were removed.
+Complete replacement campaigns run in a private user/mount namespace binding
+hard-coded `/tmp` to task-owned disk storage. No inherited tests are excluded.
+
+The corrected full Clang Release IR stream suite passed 100 consecutive runs,
+including deterministic positive and destructive negative controls. The same
+two-CPU/eight-process isolated child-2 setup passed 16,000 executions (2,000 per
+lane) with no failure. Final-source full qualification is recorded below when
+completed. No Squall rerun is
+needed for this test-only change; the original pinned final-source evidence is
+retained without additional provider claims.
+
+### Measured corrective final-source qualification
+
+GCC Debug/Release and Clang 19 Debug/Release each pass **431/431** serial native
+checks and every test exactly **50 times**, parallelism four: **21,550** repeat
+executions per configuration, **87,924** serial-plus-repeat executions total.
+Final-source focused Clang Release IR stream passes **100 consecutive** full
+executions (final-focused100.log), retaining all deterministic positive and
+negative lifetime controls. All F24 association optional/cardinality/failure
+atomicity and four-width campaigns remain active and unchanged.
+
+Python **144**, Rust **97 unit/integration plus four separate doctests**, Cargo
+check/Clippy -D warnings/rustfmt, Alire library/full Ada, direct-GPR full smoke,
+GNATformat, aggregate make check/build-tree isolation and whitespace/newlines
+pass. Production Release remains **220 AMS_MEL_0.1 exports**, zero hooks;
+vendor SHA-256 **804/804**. Production/provider/ProductRx/header/constants/
+exports are byte-identical to reviewed fef815b. No Squall rerun or new provider
+claim is made for the test-only correction.
+
+Successful replacement qualification is in ir-correction/final-native.log,
+four repeat logs, final-languages.log, final-focused100.log and
+namespace-validation.log (CORRECTIVE_FINAL_COMPLETE). Earlier resource-failed
+and reproduction logs remain separately retained, not erased or counted as
+passes. The isolated namespace leaves host /tmp and other worktrees untouched.
