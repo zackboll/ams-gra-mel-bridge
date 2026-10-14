@@ -35,8 +35,20 @@ package body AMS.MEL.RF.Product_Rx.Testing is
       V6     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V6 := (V5, (System.Null_Address, 0));
       Large  : constant AMS.MEL_C_API.RF_VITA_Large_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
+      V7     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V7 := (V6, (System.Null_Address, 0));
+      Extra  : constant AMS.MEL_C_API.RF_VITA_Extra_Large_Packet_V1 :=
+        (Serialized_Bytes => (System.Null_Address, 0));
    begin
       if System.Address'Size = 64 then
+         if V7'Size /= 208 * 8
+           or else AMS.MEL_C_API.RF_Product_Rx_Event_V7'Alignment /= 8
+           or else V7.Event'Position /= 0
+           or else V7.VITA_Extra_Large_Packets'Position /= 192
+           or else Extra'Size /= 128
+           or else Extra.Serialized_Bytes'Position /= 0
+         then
+            raise Program_Error with "private Ada ProductRx v7/C layout mismatch";
+         end if;
          if V6'Size /= 192 * 8
            or else AMS.MEL_C_API.RF_Product_Rx_Event_V6'Alignment /= 8
            or else V6.Event'Position /= 0

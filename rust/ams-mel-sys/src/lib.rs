@@ -2572,6 +2572,26 @@ pub struct AmsMelRfProductRxEventV6 {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfVitaExtraLargePacketV1 {
+    pub serialized_bytes: AmsMelU8SpanV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfVitaExtraLargePacketSpanV1 {
+    pub data: *const AmsMelRfVitaExtraLargePacketV1,
+    pub size: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelRfProductRxEventV7 {
+    pub event: AmsMelRfProductRxEventV6,
+    pub vita_extra_large_packets: AmsMelRfVitaExtraLargePacketSpanV1,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AmsMelRfProductRxInfoV1 {
     pub endpoint_id: u64,
@@ -3766,6 +3786,21 @@ extern "C" {
     pub fn ams_mel_rf_product_rx_event_view_v6(
         event: *const AmsMelRfProductRxEvent,
         out_view: *mut *const AmsMelRfProductRxEventV6,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_data_submit_product_rx_v7(
+        data: *mut AmsMelRfData,
+        config: *const AmsMelRfProductRxConfigV1,
+        out_request: *mut *mut AmsMelRfProductRxRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_rf_product_rx_event_view_v7(
+        event: *const AmsMelRfProductRxEvent,
+        out_view: *mut *const AmsMelRfProductRxEventV7,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

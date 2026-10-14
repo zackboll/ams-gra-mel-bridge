@@ -1,5 +1,23 @@
 # Experimental C ABI policy
 
+## Task 034F23 — AMS VITA ExtraLarge ProductRx receive
+
+Additive submit/view-v7 complete all four pinned VITA storage classes: Small
+512, Medium 1,024, Large 8,192 and ExtraLarge 32,768 bytes. Format 7 selects
+exactly DataPacketExtraLarge*, with 8,192-word capacity and 32,736-byte maximum
+payload. Validated serialized length, not capacity, determines the unchanged
+packet/network-order copy. Genuine 32-, 8,196- and 32,768-byte fixtures qualify
+empty payload, crossing Large capacity and full-capacity fidelity respectively.
+Counts mean packet objects, not bytes or IQ samples. All widths share checked
+selection and failure-atomic copying; event-v7 nests frozen v6 and adds borrowed
+ExtraLarge descriptors. Historical submit/view domains remain frozen. Safe Ada
+adds ExtraLarge config/count/borrow/copy operations; raw bindings mirror v7.
+Existing queue, worker, drain and permanent exact-callback/DSO retention remain
+unchanged. Production inventory: 218 AMS_MEL_0.1 exports. See
+`docs/task-034f23-rf-product-rx-vita-extra-large.md` for measured qualification,
+resource pressure, guarded-memory evidence and provider/runtime limitations.
+
+
 ## Task 034F22 — AMS VITA Large ProductRx receive
 
 Additive submit/view-v6 support formats 0..6; historical submit/view domains
