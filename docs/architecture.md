@@ -1,5 +1,25 @@
 # Architecture decisions
 
+## Task 034F24 — ProductRx VITA receive-event associations
+
+Opt-in submit/view-v8 preserve the pinned `optional<vector<JobEventID>>`:
+packet index maps to an opaque uint32 receive-event ID; order, duplicates and
+all bits survive. Absent, present-empty and present-nonempty remain distinct.
+Present VITA associations must match packet-object count; nonempty associations
+on Direct/Complex reject. Submit-v8 accepts only formats 0..7, **not PDW format
+8**. Historical submit domains and absent/present-empty acceptance are frozen;
+old views reject nonempty associations without output writes. Event-v8 nests
+complete frozen v7 and borrows immutable event-owned IDs until Event Close.
+Safe Ada VITA Submit/Receive opt into v8, validate and copy IDs to privately owned
+metadata vectors with Positive 1-based access. Existing payload copying, queue,
+worker, callback drain and permanent exact-function/DSO retention are unchanged.
+Malformed or allocation-failed products publish nothing. Production inventory:
+220 AMS_MEL_0.1 exports; no public Python or safe Rust receive expansion.
+Full ReceiveEvent objects, stabilization points, std::any, PDW/LF and decoding
+remain excluded. See `docs/task-034f24-rf-product-rx-vita-associations.md` for
+measured qualification and real-provider/32-bit limits.
+
+
 ## Task 034F23 — AMS VITA ExtraLarge ProductRx receive
 
 Additive submit/view-v7 complete all four pinned VITA storage classes: Small

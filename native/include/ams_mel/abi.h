@@ -4451,6 +4451,38 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v7(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* End Task 034F23 additive block. */
 
+/* Task 034F24 additive block. IDs identify observed receive events by packet
+ * index; duplicates and all uint32 values are preserved, not referent-validated.
+ * present is 0 or 1. Absent and present-empty spans are NULL/0. Borrowed
+ * immutable IDs and nested v7 storage live until the existing Event Close. */
+typedef struct ams_mel_rf_receive_event_associations_v1 {
+    uint32_t present;
+    ams_mel_u32_span_v1 event_ids;
+} ams_mel_rf_receive_event_associations_v1;
+
+typedef struct ams_mel_rf_product_rx_event_v8 {
+    ams_mel_rf_product_rx_event_v7 event;
+    ams_mel_rf_receive_event_associations_v1 receive_event_associations;
+} ams_mel_rf_product_rx_event_v8;
+
+/* Opt-in association profile, formats 0..7 ONLY (not PDW format 8).
+ * Present VITA associations must match packet count. Nonempty integer-format
+ * associations reject. Historical submits retain their existing behavior. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v8(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Supports historical events too. Historical views reject nonempty
+ * associations without writing their output pointer. No allocation/provider call. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v8(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v8 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* End Task 034F24 additive block. */
+
 /* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
  * and ComplexINT16 only. Assigned format must equal requested format before
  * registration. Frozen submit remains ComplexINT16-only. */

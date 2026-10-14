@@ -1549,6 +1549,204 @@ package body AMS_MEL_RF_Product_Rx_Tests is
             end;
          end;
       end loop;
+      --  Legacy integer Submit remains unchanged, while v8 metadata preserves
+      --  historically accepted present-empty association state.
+      for Format in RF.Direct_INT8 .. RF.Complex_INT16 loop
+         declare
+            Cfg : constant RX.Config :=
+              (case Format is
+                 when RF.Direct_INT8  => RX.Create_Config_Direct_I8 (65_536, 1, 8),
+                 when RF.Direct_INT16 => RX.Create_Config_Direct_I16 (65_536, 1, 8),
+                 when RF.Complex_INT8 => RX.Create_Config_Complex_I8 (65_536, 1, 8),
+                 when others          => RX.Create_Config (65_536, 1, 8));
+            P   : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok");
+            R   : RX.Create_Request := RX.Submit (P, Cfg);
+         begin
+            if RX.Outcome (RX.Wait (R, 10_000)) /= RX.Created then
+               raise Program_Error with "legacy integer association creation failed";
+            end if;
+            declare
+               E : RX.Endpoint := RX.Claim (R);
+            begin
+               RX.Close (R);
+               if Emit (RX.Endpoint_ID (E), 41, 1) /= 1 then
+                  raise Program_Error with "integer present-empty emission failed";
+               end if;
+               declare
+                  Product : RX.Event := RX.Receive (E);
+                  M       : constant RX.Product_Metadata := RX.Metadata (Product);
+               begin
+                  RX.Close (Product);
+                  if not RX.Receive_Event_Associations_Present (M)
+                    or else RX.Receive_Event_Association_Count (M) /= 0
+                  then
+                     raise Program_Error with "integer present-empty metadata lost";
+                  end if;
+               end;
+               RX.Close (E);
+            end;
+            RF.Close (P);
+         end;
+      end loop;
+      --  F24: actual pinned optional metadata through public safe VITA routing.
+      for Iteration in 1 .. 50 loop
+         for Format in RF.AMS_VITA_Small .. RF.AMS_VITA_Extra_Large loop
+            declare
+               Association_Config : constant RX.Config :=
+                 (case Format is
+                    when RF.AMS_VITA_Small  => RX.Create_Config_AMS_VITA_Small (131_072, 1, 3),
+                    when RF.AMS_VITA_Medium => RX.Create_Config_AMS_VITA_Medium (131_072, 1, 3),
+                    when RF.AMS_VITA_Large  => RX.Create_Config_AMS_VITA_Large (131_072, 1, 3),
+                    when others             =>
+                      RX.Create_Config_AMS_VITA_Extra_Large (131_072, 1, 3));
+               P                  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+               R                  : RX.Create_Request := RX.Submit (P, Association_Config);
+               Name               : Interfaces.C.Strings.chars_ptr :=
+                 Interfaces.C.Strings.New_String ("ams_mel_test_rf_rx_failpoint");
+               Program            : constant System.Address :=
+                 DL_Open (Interfaces.C.Strings.Null_Ptr, 2);
+               Failpoint          : constant Failpoint_Access :=
+                 To_Failpoint (DL_Sym (Program, Name));
+            begin
+               Interfaces.C.Strings.Free (Name);
+               if RX.Outcome (RX.Wait (R, 10_000)) /= RX.Created or else Failpoint = null then
+                  raise Program_Error with "association endpoint creation failed";
+               end if;
+               declare
+                  E  : RX.Endpoint := RX.Claim (R);
+                  ID : constant Interfaces.Unsigned_64 := RX.Endpoint_ID (E);
+               begin
+                  RX.Close (R);
+                  for Scenario in 40 .. 44 loop
+                     declare
+                        N : constant Interfaces.C.size_t :=
+                          (if Scenario <= 41 then 0 elsif Scenario = 42 then 1 else 3);
+                     begin
+                        if Emit (ID, Interfaces.C.int (Scenario), N) /= 1 then
+                           raise Program_Error with "association mock emission failed";
+                        end if;
+                        declare
+                           Product : RX.Event := RX.Receive (E);
+                           M       : constant RX.Product_Metadata := RX.Metadata (Product);
+                        begin
+                           Check_Wrong_Formats (Product);
+                           if RX.Receive_Event_Associations_Present (M) /= (Scenario /= 40)
+                             or else RX.Receive_Event_Association_Count (M) /= Natural (N)
+                           then
+                              raise Program_Error with "association optional state mismatch";
+                           end if;
+                           if N > 0 then
+                              if RX.Receive_Event_Association_ID_At (M, 1)
+                                /= (if Scenario = 42
+                                    then Interfaces.Unsigned_32'Last
+                                    elsif Scenario = 43
+                                    then 17
+                                    else 0)
+                              then
+                                 raise Program_Error with "association ID fidelity mismatch";
+                              end if;
+                              if N = 3
+                                and then (RX.Receive_Event_Association_ID_At (M, 2)
+                                          /= (if Scenario = 43
+                                              then 17
+                                              else Interfaces.Unsigned_32'Last)
+                                          or else RX.Receive_Event_Association_ID_At (M, 3)
+                                                  /= (if Scenario = 43 then 23 else 16#8123_4567#))
+                              then
+                                 raise Program_Error with "association ordering mismatch";
+                              end if;
+                              declare
+                                 Bytes : constant RX.Packet_Byte_Array :=
+                                   (case Format is
+                                      when RF.AMS_VITA_Small  =>
+                                        RX.Copy_VITA_Small_Packet (Product, 1),
+                                      when RF.AMS_VITA_Medium =>
+                                        RX.Copy_VITA_Medium_Packet (Product, 1),
+                                      when RF.AMS_VITA_Large  =>
+                                        RX.Copy_VITA_Large_Packet (Product, 1),
+                                      when others             =>
+                                        RX.Copy_VITA_Extra_Large_Packet (Product, 1));
+                              begin
+                                 if Bytes'Length /= 32 then
+                                    raise Program_Error with "association packet-index mismatch";
+                                 end if;
+                              end;
+                           end if;
+                           begin
+                              declare
+                                 Bad : constant Interfaces.Unsigned_32 :=
+                                   RX.Receive_Event_Association_ID_At (M, Natural (N) + 1);
+                              begin
+                                 raise Program_Error
+                                   with "invalid association index accepted" & Bad'Image;
+                              end;
+                           exception
+                              when Constraint_Error =>
+                                 null;
+                           end;
+                           RX.Close (Product);
+                           if RX.Receive_Event_Association_Count (M) /= Natural (N) then
+                              raise Program_Error with "metadata lost after Event Close";
+                           end if;
+                        end;
+                     end;
+                  end loop;
+                  for Scenario in 45 .. 47 loop
+                     if Emit (ID, Interfaces.C.int (Scenario), (if Scenario = 47 then 0 else 3))
+                       /= 1
+                     then
+                        raise Program_Error with "malformed association emission failed";
+                     end if;
+                     begin
+                        declare
+                           Bad : constant RX.Event := RX.Receive (E);
+                        begin
+                           raise Program_Error
+                             with "malformed associations published" & RX.Is_Open (Bad)'Image;
+                        end;
+                     exception
+                        when RX.Timeout_Error =>
+                           null;
+                     end;
+                  end loop;
+                  Failpoint (5);
+                  Ignored := Emit (ID, 43, 3);
+                  begin
+                     declare
+                        Bad : constant RX.Event := RX.Receive (E);
+                     begin
+                        raise Program_Error
+                          with "allocation failure published" & RX.Is_Open (Bad)'Image;
+                     end;
+                  exception
+                     when RX.Timeout_Error =>
+                        null;
+                  end;
+                  if RX.Statistics (E).Allocation_Failures /= 1
+                    or else RX.Statistics (E).Malformed_Or_Unsupported /= 3
+                  then
+                     raise Program_Error with "association failure counters mismatch";
+                  end if;
+                  Ignored := Emit (ID, 43, 3);
+                  declare
+                     Product : RX.Event := RX.Receive (E);
+                     M       : constant RX.Product_Metadata := RX.Metadata (Product);
+                  begin
+                     RF.Close (P);
+                     RX.Close (E);
+                     RX.Close (Product);
+                     if RX.Receive_Event_Association_ID_At (M, 1) /= 17
+                       or else RX.Receive_Event_Association_ID_At (M, 2) /= 17
+                       or else RX.Receive_Event_Association_ID_At (M, 3) /= 23
+                     then
+                        raise Program_Error with "association recovery/lifetime failed";
+                     end if;
+                  end;
+               end;
+               Ignored := DL_Close (Program);
+            end;
+         end loop;
+      end loop;
       Ignored := DL_Close (Library);
    end Run;
 end AMS_MEL_RF_Product_Rx_Tests;

@@ -709,40 +709,43 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         do { result = read(gate, &byte, 1U); } while (result < 0 && errno == EINTR);
         throw std::runtime_error("mock registration exception with an active callback");
     }
-    if (mode_ == "sync") {
+    if (mode_ == "sync" || mode_ == "sync-associations") {
+        auto sync_metadata = rich_metadata();
+        if (mode_ == "sync-associations")
+            sync_metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{17U, 17U});
         if (format_ == JobDataFormat::AMSVitaExtraLarge) {
             auto packets = std::make_unique<rfmel::DataPacketExtraLarge[]>(2U);
             packets[0] = vita_packet<rfmel::DataPacketExtraLarge>(0U, 1U);
             packets[1] = vita_packet<rfmel::DataPacketExtraLarge>(2041U, 2U);
-            invoke(rich_metadata(), rfmel::JobDataPointer{packets.get()}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{packets.get()}, 2U);
         } else if (format_ == JobDataFormat::AMSVitaLarge) {
             auto packets = std::make_unique<rfmel::DataPacketLarge[]>(2U);
             packets[0] = vita_packet<rfmel::DataPacketLarge>(0U, 1U);
             packets[1] = vita_packet<rfmel::DataPacketLarge>(249U, 2U);
-            invoke(rich_metadata(), rfmel::JobDataPointer{packets.get()}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{packets.get()}, 2U);
         } else if (format_ == JobDataFormat::AMSVitaMedium) {
             rfmel::DataPacketMedium packets[2] = {
                 vita_packet<rfmel::DataPacketMedium>(0U, 1U),
                 vita_packet<rfmel::DataPacketMedium>(121U, 122U)};
-            invoke(rich_metadata(), rfmel::JobDataPointer{packets}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{packets}, 2U);
         } else if (format_ == JobDataFormat::AMSVitaSmall) {
             rfmel::DataPacketSmall packets[2] = {vita_packet(0U, 1U), vita_packet(9U, 10U)};
-            invoke(rich_metadata(), rfmel::JobDataPointer{packets}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{packets}, 2U);
         } else if (format_ == JobDataFormat::DirectINT8) {
             std::int8_t samples[2] = {77, -1};
-            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{samples}, 2U);
             samples[0] = 0;
         } else if (format_ == JobDataFormat::DirectINT16) {
             std::int16_t samples[2] = {77, -1};
-            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{samples}, 2U);
             samples[0] = 0;
         } else if (format_ == JobDataFormat::ComplexINT8) {
             ComplexI8 samples[2] = {ComplexI8{77, -77}, ComplexI8{-1, 1}};
-            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{samples}, 2U);
             samples[0] = ComplexI8{0, 0};
         } else {
             ComplexI16 samples[2] = {ComplexI16{77, -77}, ComplexI16{-1, 1}};
-            invoke(rich_metadata(), rfmel::JobDataPointer{samples}, 2U);
+            invoke(sync_metadata, rfmel::JobDataPointer{samples}, 2U);
             samples[0] = ComplexI16{0, 0};
         }
     }
@@ -2598,7 +2601,26 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (!endpoint || !(held = endpoint->retained())) return 0;
         format = endpoint->getAssignedDataFormat();
     }
+    /* F24 scenarios use the pinned optional setter. Numeric fidelity only:
+     * no full ReceiveEvent referents are invented. Reuse unchanged packet builders. */
+    std::optional<std::vector<rfmel::JobEventID>> association_fixture;
+    bool association_scenario = kind >= 40 && kind <= 47;
+    if (association_scenario) {
+        const int scenario = kind;
+        if (scenario == 41) association_fixture = std::vector<rfmel::JobEventID>{};
+        else if (scenario == 42) association_fixture = std::vector<rfmel::JobEventID>{UINT32_MAX};
+        else if (scenario == 43) association_fixture = std::vector<rfmel::JobEventID>{17U, 17U, 23U};
+        else if (scenario == 44) association_fixture = std::vector<rfmel::JobEventID>{0U, UINT32_MAX, 0x81234567U};
+        else if (scenario == 45) association_fixture = std::vector<rfmel::JobEventID>{17U, 23U};
+        else if (scenario == 46) association_fixture = std::vector<rfmel::JobEventID>{17U, 17U, 23U, 42U};
+        else if (scenario == 47) association_fixture = std::vector<rfmel::JobEventID>{0U};
+        kind = EmitCount;
+    }
     auto metadata = rich_metadata();
+    if (association_scenario || kind == EmitEmptyAssociations)
+        metadata->setReceiveEventAssociations(association_scenario ? association_fixture :
+            std::optional<std::vector<rfmel::JobEventID>>{std::vector<rfmel::JobEventID>{}});
+
     if (format == JobDataFormat::AMSVitaExtraLarge) {
         auto storage = std::make_unique<rfmel::DataPacketExtraLarge[]>(3U);
         auto *packets = storage.get();
@@ -2645,7 +2667,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
                     reinterpret_cast<char *>(packets) + 1) : packets}, n);
         }
         for (std::size_t i = 0; i < 3U; ++i) for (auto& word : packets[i].words()) word = 0U;
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     if (format == JobDataFormat::AMSVitaLarge) {
@@ -2690,7 +2715,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
                     reinterpret_cast<char *>(packets) + 1) : packets}, n);
         }
         for (std::size_t i = 0; i < 3U; ++i) for (auto& word : packets[i].words()) word = 0U;
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     if (format == JobDataFormat::AMSVitaMedium) {
@@ -2729,7 +2757,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
                     reinterpret_cast<char *>(packets) + 1) : packets}, n);
         }
         for (auto& packet : packets) for (auto& word : packet.words()) word = 0U;
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     if (format == JobDataFormat::AMSVitaSmall) {
@@ -2766,7 +2797,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
                 kind == EmitNullPointer || kind == EmitZeroNull ? nullptr : packets}, n);
         }
         for (auto& packet : packets) for (auto& word : packet.words()) word = 0U;
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     if (format == JobDataFormat::DirectINT8 || format == JobDataFormat::DirectINT16) {
@@ -2801,7 +2835,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         }
         std::fill(std::begin(samples_i8), std::end(samples_i8), 0);
         std::fill(std::begin(samples_i16), std::end(samples_i16), 0);
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     if (format == JobDataFormat::ComplexINT8) {
@@ -2834,7 +2871,10 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
                         kind == EmitCount ? count : 6U);
         }
         for (auto& sample : samples) sample = ComplexI8{0, 0};
-        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        if (metadata) {
+            metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+        }
         return 1;
     }
     switch (kind) {
