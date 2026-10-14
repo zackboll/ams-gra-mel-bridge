@@ -1,0 +1,20 @@
+with "docs_internal.gpr";
+
+--  Documentation owns specifications only, independently of the production
+--  library project. Private units are imported for semantic resolution only.
+project Docs_API is
+   for Languages use ("Ada");
+   for Source_Dirs use ("ada/src");
+   for Excluded_Source_Files use
+     ("ams-mel_c_api.ads", "ams-mel-ir-capability_conversion.ads");
+   for Source_List_File use "obj/docs/public-sources.txt";
+   for Object_Dir use "obj/docs";
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+
+   package Documentation is
+      for Excluded_Project_Files use ("docs_internal.gpr");
+   end Documentation;
+end Docs_API;

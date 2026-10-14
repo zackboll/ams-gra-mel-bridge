@@ -1,0 +1,12 @@
+--  These units are required for private-with name resolution, never published.
+project Docs_Internal is
+   for Languages use ("Ada");
+   for Source_Dirs use ("ada/src");
+   for Source_Files use
+     ("ams-mel_c_api.ads", "ams-mel-ir-capability_conversion.ads");
+   for Object_Dir use "obj/docs-internal";
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Docs_Internal;

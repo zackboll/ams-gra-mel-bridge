@@ -37,6 +37,10 @@ alire.lock
 .env.*
 !.env.example
 
+# Documentation-only tool installations and generated output
+.doc-tools/
+_site/
+
 # Rust is a later phase
 target/
 
