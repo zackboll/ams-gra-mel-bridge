@@ -125,7 +125,12 @@ package body AMS.MEL.RF.Product_Rx is
          raise Provider_Error with "RF DataMEL is closed";
       end if;
       return Result : Create_Request do
-         if Value.Format = AMS_VITA_Medium then
+         if Value.Format = AMS_VITA_Large then
+            Check
+              (C.RF_Data_Submit_Product_Rx_V6
+                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+               D);
+         elsif Value.Format = AMS_VITA_Medium then
             Check
               (C.RF_Data_Submit_Product_Rx_V5
                  (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
@@ -255,7 +260,7 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx then
             raise Provider_Error with "null RF ProductRx endpoint after claim";
          end if;
-         if Info.Assigned_Data_Format > Interfaces.Unsigned_32 (AMS_VITA_Medium) then
+         if Info.Assigned_Data_Format > Interfaces.Unsigned_32 (AMS_VITA_Large) then
             raise Provider_Error with "unexpected RF ProductRx format";
          end if;
          Result.ID := Info.Endpoint_ID;
@@ -316,6 +321,9 @@ package body AMS.MEL.RF.Product_Rx is
    type View_V5_Access is access all C.RF_Product_Rx_Event_V5;
    function To_View_V5 is new Ada.Unchecked_Conversion (System.Address, View_V5_Access);
 
+   type View_V6_Access is access all C.RF_Product_Rx_Event_V6;
+   function To_View_V6 is new Ada.Unchecked_Conversion (System.Address, View_V6_Access);
+
    function Receive (Object : Endpoint'Class; Timeout_Milliseconds : Natural := 0) return Event is
       D              : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       R              : aliased C.Size_T := 0;
@@ -338,7 +346,62 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx_Event then
             raise Provider_Error with "null RF ProductRx event after receive";
          end if;
-         if Object.Format = AMS_VITA_Medium then
+         if Object.Format = AMS_VITA_Large then
+            Check
+              (C.RF_Product_Rx_Event_View_V6
+                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
+               D);
+            if Address = System.Null_Address then
+               raise Provider_Error with "null RF ProductRx event view";
+            end if;
+            declare
+               Raw : C.RF_Product_Rx_Event_V6 renames To_View_V6 (Address).all;
+            begin
+               if Raw.Event.VITA_Medium_Packets.Data /= System.Null_Address
+                 or else Raw.Event.VITA_Medium_Packets.Size /= 0
+                 or else Raw.Event.Event.VITA_Small_Packets.Data /= System.Null_Address
+                 or else Raw.Event.Event.VITA_Small_Packets.Size /= 0
+                 or else Raw.Event.Event.Event.Data_Format
+                         /= Interfaces.Unsigned_32 (AMS_VITA_Large)
+                 or else Raw.Event.Event.Event.Direct_Samples_I8.Size /= 0
+                 or else Raw.Event.Event.Event.Direct_Samples_I8.Data /= System.Null_Address
+                 or else Raw.Event.Event.Event.Direct_Samples_I16.Size /= 0
+                 or else Raw.Event.Event.Event.Direct_Samples_I16.Data /= System.Null_Address
+                 or else Raw.Event.Event.Event.Complex_Samples_I8.Size /= 0
+                 or else Raw.Event.Event.Event.Complex_Samples_I8.Data /= System.Null_Address
+                 or else Raw.Event.Event.Event.Complex_Samples_I16.Size /= 0
+                 or else Raw.Event.Event.Event.Complex_Samples_I16.Data /= System.Null_Address
+                 or else (Raw.VITA_Large_Packets.Size = 0
+                          and then Raw.VITA_Large_Packets.Data /= System.Null_Address)
+                 or else (Raw.VITA_Large_Packets.Size > 0
+                          and then Raw.VITA_Large_Packets.Data = System.Null_Address)
+                 or else Raw.VITA_Large_Packets.Size
+                         > C.Size_T'Last
+                           / (C.RF_VITA_Large_Packet_V1'Object_Size / System.Storage_Unit)
+                 or else Interfaces.Unsigned_64 (Raw.VITA_Large_Packets.Size)
+                         > Interfaces.Unsigned_64 (System.Storage_Elements.Storage_Offset'Last)
+                           / (C.RF_VITA_Large_Packet_V1'Object_Size / System.Storage_Unit)
+                 or else (Raw.VITA_Large_Packets.Size > 0
+                          and then System.Storage_Elements.To_Integer (Raw.VITA_Large_Packets.Data)
+                                   mod C.RF_VITA_Large_Packet_V1'Alignment
+                                   /= 0)
+                 or else (Raw.VITA_Large_Packets.Size > 0
+                          and then System.Storage_Elements.To_Integer (Raw.VITA_Large_Packets.Data)
+                                   > System.Storage_Elements.Integer_Address'Last
+                                     - System.Storage_Elements.Integer_Address
+                                         (Raw.VITA_Large_Packets.Size)
+                                       * (C.RF_VITA_Large_Packet_V1'Object_Size
+                                          / System.Storage_Unit))
+               then
+                  raise Provider_Error with "invalid native VITA Large event";
+               end if;
+               Sample_Span := (Raw.VITA_Large_Packets.Data, Raw.VITA_Large_Packets.Size);
+               Result.Packet_Address := Raw.VITA_Large_Packets.Data;
+               Event_ID := Raw.Event.Event.Event.Endpoint_ID;
+               Event_Format := Raw.Event.Event.Event.Data_Format;
+               Event_Metadata := Raw.Event.Event.Event.Metadata;
+            end;
+         elsif Object.Format = AMS_VITA_Medium then
             Check
               (C.RF_Product_Rx_Event_View_V5
                  (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
@@ -514,7 +577,10 @@ package body AMS.MEL.RF.Product_Rx is
             Result.ID := Event_ID;
             Result.Format := Job_Data_Format (Event_Format);
             Result.Count := Count;
-            if Object.Format /= AMS_VITA_Small and then Object.Format /= AMS_VITA_Medium then
+            if Object.Format /= AMS_VITA_Small
+              and then Object.Format /= AMS_VITA_Medium
+              and then Object.Format /= AMS_VITA_Large
+            then
                Result.Sample_Address := Sample_Span.Data;
             end if;
             Result.Info :=
@@ -863,6 +929,79 @@ package body AMS.MEL.RF.Product_Rx is
       With_VITA_Medium_Packet (Value, Index, Copy'Access);
       return Buffer (1 .. Length);
    end Copy_VITA_Medium_Packet;
+
+   function Create_Config_AMS_VITA_Large
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config
+   is ((Region  => Region_Size_Bytes,
+        Queue   => Queue_Capacity,
+        Maximum => Max_Samples_Per_Event,
+        Format  => AMS_VITA_Large));
+
+   function VITA_Large_Packet_Count (Value : Event) return Natural is
+   begin
+      if not Is_Open (Value) then
+         raise Provider_Error with "RF event is closed";
+      end if;
+      if Value.Format /= AMS_VITA_Large then
+         raise Constraint_Error with "RF event is not AMSVitaLarge";
+      end if;
+      return Value.Count;
+   end VITA_Large_Packet_Count;
+
+   procedure With_VITA_Large_Packet
+     (Value   : Event;
+      Index   : Positive;
+      Process : not null access procedure (Bytes : Packet_Byte_Array))
+   is
+      Count : constant Natural := VITA_Large_Packet_Count (Value);
+      type Descriptors is array (Natural range <>) of C.RF_VITA_Large_Packet_V1
+      with Convention => C;
+   begin
+      if Index > Count then
+         raise Constraint_Error with "VITA packet index out of range";
+      end if;
+      if Value.Packet_Address = System.Null_Address then
+         raise Provider_Error with "null VITA packet descriptor span";
+      end if;
+      declare
+         Packets : Descriptors (1 .. Count)
+         with Import, Address => Value.Packet_Address;
+         Span    : C.U8_Span_V1 renames Packets (Index).Serialized_Bytes;
+      begin
+         if Span.Data = System.Null_Address
+           or else Span.Size < 32
+           or else Span.Size > 8192
+           or else Span.Size mod 4 /= 0
+           or else Interfaces.Unsigned_64 (Span.Size) > Interfaces.Unsigned_64 (Natural'Last)
+           or else System.Storage_Elements.To_Integer (Span.Data)
+                   > System.Storage_Elements.Integer_Address'Last
+                     - System.Storage_Elements.Integer_Address (Span.Size)
+         then
+            raise Provider_Error with "invalid serialized VITA packet span";
+         end if;
+         declare
+            Bytes : Packet_Byte_Array (1 .. Natural (Span.Size))
+            with Import, Address => Span.Data;
+         begin
+            Process (Bytes);
+         end;
+      end;
+   end With_VITA_Large_Packet;
+
+   function Copy_VITA_Large_Packet (Value : Event; Index : Positive) return Packet_Byte_Array is
+      Buffer : Packet_Byte_Array (1 .. 8192);
+      Length : Natural := 0;
+      procedure Copy (Bytes : Packet_Byte_Array) is
+      begin
+         Length := Bytes'Length;
+         Buffer (1 .. Length) := Bytes;
+      end Copy;
+   begin
+      With_VITA_Large_Packet (Value, Index, Copy'Access);
+      return Buffer (1 .. Length);
+   end Copy_VITA_Large_Packet;
 
    function MEL_Protocol_Version_ID (Value : Product_Metadata) return Interfaces.Unsigned_32
    is (Value.Protocol);

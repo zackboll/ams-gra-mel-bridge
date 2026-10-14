@@ -47,6 +47,8 @@
 #include <string>
 #include <string_view>
 #include <sys/mman.h>
+#include <sys/wait.h>
+#include <csignal>
 #include <thread>
 #include <unistd.h>
 #include <variant>
@@ -418,6 +420,23 @@ std::shared_ptr<rfmel::ProductRxMetadata> rich_metadata()
 constexpr std::size_t owned_page_size = 4096U;
 constexpr std::size_t owned_samples = 6U;
 
+/* Process-isolated memory-permission observation. The child performs only
+ * one volatile load and _exit; it never enters provider or bridge locks. */
+void require_inaccessible(const void *address)
+{
+    const pid_t child = fork();
+    if (child < 0) std::abort();
+    if (child == 0) {
+        const auto value = *static_cast<const volatile unsigned char *>(address);
+        _exit(value == 0U ? 0 : 1);
+    }
+    int status = 0;
+    pid_t result;
+    do { result = waitpid(child, &status, 0); } while (result < 0 && errno == EINTR);
+    if (result != child || !WIFSIGNALED(status) || WTERMSIG(status) != SIGSEGV)
+        std::abort();
+}
+
 void fill_rich(ComplexI16 *samples) noexcept
 {
     const std::int16_t values[owned_samples][2] = {{10, 20}, {30, 40}, {-5, 6},
@@ -455,12 +474,35 @@ public:
         : id_{id}, format_{format}, mode_{std::move(mode)}
     {
         if (mode_ == "owned" || mode_ == "throw-active") {
-            void *const page = mmap(nullptr, owned_page_size, PROT_READ | PROT_WRITE,
+            std::size_t mapping_size = owned_page_size;
+            owned_extent_ = owned_page_size;
+            if (format_ == JobDataFormat::AMSVitaLarge) {
+                const long native_page = sysconf(_SC_PAGESIZE);
+                if (native_page <= 0) throw std::bad_alloc{};
+                const auto page_size = static_cast<std::size_t>(native_page);
+                constexpr std::size_t bytes = 3U * sizeof(rfmel::DataPacketLarge);
+                if (page_size > SIZE_MAX - bytes) throw std::bad_alloc{};
+                owned_extent_ = ((bytes + page_size - 1U) / page_size) * page_size;
+                if (owned_extent_ > SIZE_MAX - page_size) throw std::bad_alloc{};
+                mapping_size = owned_extent_ + page_size;
+            }
+            void *const page = mmap(nullptr, mapping_size, PROT_READ | PROT_WRITE,
                                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
             if (page == MAP_FAILED) throw std::bad_alloc{};
             static_assert(owned_samples * sizeof(ComplexI16) <= owned_page_size);
             owned_ = page;
-            if (format_ == JobDataFormat::AMSVitaMedium) {
+            if (format_ == JobDataFormat::AMSVitaLarge) {
+                const auto guard_size = mapping_size - owned_extent_;
+                if (mprotect(static_cast<char *>(page) + owned_extent_, guard_size, PROT_NONE) != 0)
+                    std::abort();
+                require_inaccessible(static_cast<char *>(page) + owned_extent_);
+                if (reinterpret_cast<std::uintptr_t>(page) % alignof(rfmel::DataPacketLarge) != 0U)
+                    std::abort();
+                auto packets = static_cast<rfmel::DataPacketLarge *>(page);
+                for (std::size_t index = 0; index < 3U; ++index)
+                    new (packets + index) rfmel::DataPacketLarge{vita_packet<rfmel::DataPacketLarge>(249U, 2U)};
+                record("rf_rx_large_guarded_24576_bytes");
+            } else if (format_ == JobDataFormat::AMSVitaMedium) {
                 constexpr std::size_t medium_count = 3U;
                 static_assert(medium_count * sizeof(rfmel::DataPacketMedium) <= owned_page_size);
                 if (reinterpret_cast<std::uintptr_t>(page) % alignof(rfmel::DataPacketMedium) != 0U)
@@ -501,7 +543,14 @@ public:
         endpoints_destroyed.fetch_add(1U);
         if (owned_ != nullptr) {
             /* Stale reads of endpoint-owned storage now fault. */
-            if (mprotect(owned_, owned_page_size, PROT_NONE) != 0) std::abort();
+            if (mprotect(owned_, owned_extent_, PROT_NONE) != 0) std::abort();
+            if (format_ == JobDataFormat::AMSVitaLarge) {
+                const auto page_size = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+                for (std::size_t offset = 0; offset < owned_extent_; offset += page_size)
+                    require_inaccessible(static_cast<char *>(owned_) + offset);
+                require_inaccessible(static_cast<char *>(owned_) + owned_extent_);
+                record("rf_rx_large_all_writable_pages_revoked_guard_preserved");
+            }
             record("rf_rx_endpoint_buffer_revoked");
         }
         record("rf_rx_endpoint_destroyed");
@@ -551,6 +600,7 @@ private:
     JobDataFormat format_;
     std::string mode_;
     void *owned_{};
+    std::size_t owned_extent_{};
     mutable std::mutex mutex_;
     std::shared_ptr<RetainedCallback> retained_;
 };
@@ -610,7 +660,9 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         const auto format = format_;
         std::thread{[held, samples, done, format]() {
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
-            if (format == JobDataFormat::AMSVitaMedium)
+            if (format == JobDataFormat::AMSVitaLarge)
+                target(rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketLarge *>(samples)}, 3U);
+            else if (format == JobDataFormat::AMSVitaMedium)
                 target(rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketMedium *>(samples)}, 3U);
             else if (format == JobDataFormat::AMSVitaSmall)
                 target(rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(samples)}, owned_samples);
@@ -630,7 +682,12 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         throw std::runtime_error("mock registration exception with an active callback");
     }
     if (mode_ == "sync") {
-        if (format_ == JobDataFormat::AMSVitaMedium) {
+        if (format_ == JobDataFormat::AMSVitaLarge) {
+            auto packets = std::make_unique<rfmel::DataPacketLarge[]>(2U);
+            packets[0] = vita_packet<rfmel::DataPacketLarge>(0U, 1U);
+            packets[1] = vita_packet<rfmel::DataPacketLarge>(249U, 2U);
+            invoke(rich_metadata(), rfmel::JobDataPointer{packets.get()}, 2U);
+        } else if (format_ == JobDataFormat::AMSVitaMedium) {
             rfmel::DataPacketMedium packets[2] = {
                 vita_packet<rfmel::DataPacketMedium>(0U, 1U),
                 vita_packet<rfmel::DataPacketMedium>(121U, 122U)};
@@ -705,7 +762,7 @@ mel::RequestFor<rfmel::ProductRxEndpoint> rx_create(const std::string& name,
     if (name.rfind("rx:", 0) != 0) forbidden("DataMEL::createProductRxEndpoint");
     if ((format != JobDataFormat::ComplexINT16 && format != JobDataFormat::ComplexINT8 &&
          format != JobDataFormat::DirectINT8 && format != JobDataFormat::DirectINT16 &&
-         format != JobDataFormat::AMSVitaSmall && format != JobDataFormat::AMSVitaMedium) ||
+         format != JobDataFormat::AMSVitaSmall && format != JobDataFormat::AMSVitaMedium && format != JobDataFormat::AMSVitaLarge) ||
         region != nullptr)
         forbidden("createProductRxEndpoint other than (ComplexINT16, size, nullptr)");
     last_region_size.store(region_size);
@@ -2509,6 +2566,51 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         format = endpoint->getAssignedDataFormat();
     }
     auto metadata = rich_metadata();
+    if (format == JobDataFormat::AMSVitaLarge) {
+        auto storage = std::make_unique<rfmel::DataPacketLarge[]>(3U);
+        auto *packets = storage.get();
+        packets[0] = vita_packet<rfmel::DataPacketLarge>(0U, 1U);
+        packets[1] = vita_packet<rfmel::DataPacketLarge>(249U, 2U);
+        packets[2] = vita_packet<rfmel::DataPacketLarge>(2040U, 3U);
+        metadata->setJobIntervalID(23U);
+        metadata->setReceiveEvents(std::vector<rfmel::StreamID>{23U, 0U, 42U});
+        if (kind == EmitNullMetadata) metadata.reset();
+        else if (kind == EmitUserData) metadata->setUserDefinedData(std::any{42});
+        else if (kind == EmitStabPoints) metadata->addStabPoints(rfmel::PointingType{rfmel::FaceRelativePointing{}});
+        else if (kind == EmitReceiveEvents) metadata->addReceiveEvents(rfmel::ReceiveEvent{});
+        else if (kind == EmitAssociations) metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{9U});
+        const auto n = kind == EmitCount ? count : (kind == EmitZeroNull ? 0U : 3U);
+        if (kind == EmitWrongVariant || kind == 13 || kind == 33 || kind == 34) {
+            rfmel::DataPacketSmall wrong = vita_packet(0U, 1U);
+            if (kind == 33 || kind == 34) {
+                rfmel::DataPacketMedium wrong_medium = vita_packet<rfmel::DataPacketMedium>(0U, 1U);
+                invoke_held(held, metadata, rfmel::JobDataPointer{&wrong_medium}, kind == 34 ? 0U : n);
+            } else invoke_held(held, metadata, rfmel::JobDataPointer{&wrong}, kind == 13 ? 0U : n);
+        } else {
+            auto& bad = packets[1];
+            using namespace ams::iface::vita;
+            std::uint32_t word = ntohl(bad.words()[0]);
+            if (kind >= 20 && kind <= 24) {
+                const std::uint32_t masks[] = {masks::PKT_TYPE_MASK, masks::CBIT_MASK,
+                    masks::TSI_MASK, masks::TSF_MASK, masks::DATA_TRAILER_MASK};
+                word &= ~masks[kind - 20];
+            } else if (kind == 25) bad.words()[2] = htonl(0xffffffffU);
+            else if (kind == 26) bad.words()[3] = htonl(0xffffffffU);
+            else if (kind == 27) bad.words()[256] = htonl(0xffffffffU);
+            else if (kind == 28 || kind == 29)
+                word = (word & ~masks::PKT_SIZE_MASK) | (kind == 28 ? 7U : 2049U);
+            else if (kind == 30) word |= masks::ND0_MASK;
+            else if (kind == 31) word |= masks::SBIT_MASK;
+            bad.words()[0] = htonl(word);
+            invoke_held(held, metadata, rfmel::JobDataPointer{
+                kind == EmitNullPointer || kind == EmitZeroNull ? nullptr :
+                kind == 32 ? reinterpret_cast<rfmel::DataPacketLarge *>(
+                    reinterpret_cast<char *>(packets) + 1) : packets}, n);
+        }
+        for (std::size_t i = 0; i < 3U; ++i) for (auto& word : packets[i].words()) word = 0U;
+        if (metadata) metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
+        return 1;
+    }
     if (format == JobDataFormat::AMSVitaMedium) {
         rfmel::DataPacketMedium packets[3] = {
             vita_packet<rfmel::DataPacketMedium>(0U, 1U), vita_packet<rfmel::DataPacketMedium>(121U, 122U), vita_packet<rfmel::DataPacketMedium>(248U, 249U)};
@@ -2751,7 +2853,9 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_arm_late(
             DataReadyCallback& target = held->reference ? *held->reference : held->copy;
             if (!target) { write_byte(done_fd, 'E'); return; }
             try {
-                if (format == JobDataFormat::AMSVitaMedium)
+                if (format == JobDataFormat::AMSVitaLarge)
+                    target(nullptr, rfmel::JobDataPointer{static_cast<rfmel::DataPacketLarge *>(page)}, 1024U);
+                else if (format == JobDataFormat::AMSVitaMedium)
                     target(nullptr, rfmel::JobDataPointer{static_cast<rfmel::DataPacketMedium *>(page)}, 1024U);
                 else if (format == JobDataFormat::AMSVitaSmall)
                     target(nullptr, rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(page)}, 1024U);
@@ -2792,7 +2896,9 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit_owned(std:
         endpoint.reset();
     }
     if (samples == nullptr) return 0;
-    if (format == JobDataFormat::AMSVitaMedium)
+    if (format == JobDataFormat::AMSVitaLarge)
+        invoke_held(held, rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketLarge *>(samples)}, 3U);
+    else if (format == JobDataFormat::AMSVitaMedium)
         invoke_held(held, rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketMedium *>(samples)}, 3U);
     else if (format == JobDataFormat::AMSVitaSmall)
         invoke_held(held, rich_metadata(), rfmel::JobDataPointer{static_cast<rfmel::DataPacketSmall *>(samples)}, owned_samples);

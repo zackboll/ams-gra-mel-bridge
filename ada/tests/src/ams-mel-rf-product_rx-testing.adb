@@ -32,7 +32,26 @@ package body AMS.MEL.RF.Product_Rx.Testing is
       V5     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V5 := (V4, (System.Null_Address, 0));
       Medium : constant AMS.MEL_C_API.RF_VITA_Medium_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
+      V6     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V6 := (V5, (System.Null_Address, 0));
+      Large  : constant AMS.MEL_C_API.RF_VITA_Large_Packet_V1 :=
+        (Serialized_Bytes => (System.Null_Address, 0));
    begin
+      if System.Address'Size = 64 then
+         if V6'Size /= 192 * 8
+           or else AMS.MEL_C_API.RF_Product_Rx_Event_V6'Alignment /= 8
+           or else V6.Event'Position /= 0
+           or else V6.VITA_Large_Packets'Position /= 176
+           or else V6.VITA_Large_Packets'Size /= 128
+           or else AMS.MEL_C_API.RF_VITA_Large_Packet_Span_V1'Alignment /= 8
+           or else V6.VITA_Large_Packets.Data'Position /= 0
+           or else V6.VITA_Large_Packets.Size'Position /= 8
+           or else Large'Size /= 128
+           or else AMS.MEL_C_API.RF_VITA_Large_Packet_V1'Alignment /= 8
+           or else Large.Serialized_Bytes'Position /= 0
+         then
+            raise Program_Error with "RF Large event differs from measured C11 layout";
+         end if;
+      end if;
       if System.Address'Size = 64 then
          if V5'Size /= 176 * 8
            or else AMS.MEL_C_API.RF_Product_Rx_Event_V5'Alignment /= 8

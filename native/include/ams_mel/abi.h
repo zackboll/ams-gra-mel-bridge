@@ -4383,6 +4383,40 @@ AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v5(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* End Task 034F21 additive block. */
 
+/* Task 034F22 additive block. Large storage capacity is 8192 bytes;
+ * serialized length is validated independently (32..8192, multiple of four).
+ * Format 6 counts packet objects. Bytes remain in packet/network order and
+ * descriptors borrow immutable event-owned storage until event_close. */
+typedef struct ams_mel_rf_vita_large_packet_v1 {
+    ams_mel_u8_span_v1 serialized_bytes;
+} ams_mel_rf_vita_large_packet_v1;
+
+typedef struct ams_mel_rf_vita_large_packet_span_v1 {
+    const ams_mel_rf_vita_large_packet_v1 *data;
+    size_t size;
+} ams_mel_rf_vita_large_packet_span_v1;
+
+typedef struct ams_mel_rf_product_rx_event_v6 {
+    ams_mel_rf_product_rx_event_v5 event;
+    ams_mel_rf_vita_large_packet_span_v1 vita_large_packets;
+} ams_mel_rf_product_rx_event_v6;
+
+/* Accepts exactly formats 0..6; all historical accepted domains are frozen. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_data_submit_product_rx_v6(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Formats 0..5 reproduce v5 with an empty Large span. Format 6 has only
+ * the Large span active. Earlier views reject Large without output writes. */
+AMS_MEL_API ams_mel_status_t ams_mel_rf_product_rx_event_view_v6(
+    const ams_mel_rf_product_rx_event *event,
+    const ams_mel_rf_product_rx_event_v6 **out_view,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* End Task 034F22 additive block. */
+
 /* Same creation/ownership contract as frozen submit, but accepts ComplexINT8
  * and ComplexINT16 only. Assigned format must equal requested format before
  * registration. Frozen submit remains ComplexINT16-only. */

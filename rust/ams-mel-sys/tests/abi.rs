@@ -56,6 +56,57 @@ fn product_rx_v5_abi() {
     assert_eq!(actual, expected);
 }
 #[test]
+fn product_rx_v6_abi() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelRfData,
+        *const AmsMelRfProductRxConfigV1,
+        *mut *mut AmsMelRfProductRxRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_data_submit_product_rx_v6;
+    let _: unsafe extern "C" fn(
+        *const AmsMelRfProductRxEvent,
+        *mut *const AmsMelRfProductRxEventV6,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_rf_product_rx_event_view_v6;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!("ams-mel-product-rx-v6-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/product_rx_v6_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let expected = vec![
+        size_of::<AmsMelRfVitaLargePacketV1>(),
+        align_of::<AmsMelRfVitaLargePacketV1>(),
+        offset_of!(AmsMelRfVitaLargePacketV1, serialized_bytes),
+        size_of::<AmsMelRfVitaLargePacketSpanV1>(),
+        align_of::<AmsMelRfVitaLargePacketSpanV1>(),
+        offset_of!(AmsMelRfVitaLargePacketSpanV1, data),
+        offset_of!(AmsMelRfVitaLargePacketSpanV1, size),
+        size_of::<AmsMelRfProductRxEventV6>(),
+        align_of::<AmsMelRfProductRxEventV6>(),
+        offset_of!(AmsMelRfProductRxEventV6, event),
+        offset_of!(AmsMelRfProductRxEventV6, vita_large_packets),
+    ];
+    assert_eq!(actual, expected);
+}
+#[test]
 fn product_rx_v4_abi() {
     let _: unsafe extern "C" fn(
         *mut AmsMelRfData,
@@ -1364,8 +1415,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 214);
-    assert_eq!(exported.len(), 214);
+    assert_eq!(declared.len(), 216);
+    assert_eq!(exported.len(), 216);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
