@@ -130,6 +130,43 @@ qualification is unavailable and is not claimed.
 
 ## Exclusions and review gate
 
+### PR #97 navigation CI correction
+
+Reviewed feature `ab4510f1b3e2a8dd64c6e6243f54f17faefb442e` passed its push
+workflow 38495126771, but PR workflow 38495130796 / Clang Release job
+115629065341 failed the allocation post-send navigation test during parallel
+repetition: `navigation_completed` was not yet observed. The exact failed log
+is retained in the task evidence's `navigation-correction` directory, SHA-256
+`f7778f1a0ead6ed7be271be1d83308faf354eeb00b1f6d5a99c01452748b83f7`.
+Its runner checked out synthetic merge
+`7cbe07712721d1ff74ed5225949a1f5fecd96bb5`.
+
+The navigation test was byte-identical to starting main. Its blind 100 ms sleep
+was not a completion condition: the mock asynchronously waits 40 ms before
+recording completion, but scheduler delay is unbounded by either interval.
+Both post-send failpoints retain the armed future/provider graph permanently,
+return INTERNAL_ERROR and publish no request. No independent evidence of a
+production lifecycle defect was found; production and provider code are unchanged.
+
+The narrowly scoped C test helper now observes the completion log marker with
+a five-second CLOCK_MONOTONIC deadline and short sleeps, reobserving on EINTR.
+Timeout prints the latest log and retains its file. Allocation and worker-launch
+still assert sent/completed markers, no channel destruction or DSO unload,
+no published request and the original failure status.
+
+Correction qualification: 100 consecutive independent Clang Release navigation
+executions; GCC/Clang Debug/Release each 407/407; hosted-equivalent
+`ctest --test-dir build/native --output-on-failure` passes 407/407, and the exact
+`--parallel 4 --repeat until-fail:50 --output-on-failure` campaign passes all
+407 tests exactly 50 times (20,350 successful executions). No retry of a failed
+corrected test or weakened repeat requirement was used. Full language/aggregate
+campaign exits zero: Python 142; Rust 95 plus four separate doctests;
+Alire library/full Ada, direct-GPR, formatting and build isolation pass.
+Production exports remain 216 AMS_MEL_0.1; frozen header and vendor 804/804
+audits pass. All RF Large guarded-page, copying and lifetime regressions remain
+active. The original task's pinned Squall evidence is unchanged; this test-only
+correction does not make additional real-provider claims.
+
 AMSVitaExtraLarge, IQ/payload decoding, host-byte-order conversion, packet
 generation/transmission APIs, metadata-schema expansion, PDW/LF receive,
 RDMA/external registration, WaveformTxEndpoint/CachedWaveform, Weights/DSP/RF
