@@ -1,6 +1,8 @@
 AMS_MEL_0.1 {
     global:
         ams_mel_rf_data_submit_product_rx_v8;
+    ams_mel_rf_data_submit_product_rx_v9;
+    ams_mel_rf_product_rx_event_view_v9;
         ams_mel_rf_product_rx_event_view_v8;
         ams_mel_rf_data_submit_product_rx_v6;
         ams_mel_rf_data_submit_product_rx_v7;

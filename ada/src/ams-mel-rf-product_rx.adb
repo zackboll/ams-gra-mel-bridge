@@ -6,6 +6,7 @@ package body AMS.MEL.RF.Product_Rx is
    package C renames AMS.MEL_C_API;
    package US renames Ada.Strings.Unbounded;
    use type Interfaces.Integer_32;
+   use type Interfaces.Integer_64;
    use type Interfaces.Unsigned_64;
    use type Interfaces.C.char;
    use type C.Size_T;
@@ -138,27 +139,10 @@ package body AMS.MEL.RF.Product_Rx is
          raise Provider_Error with "RF DataMEL is closed";
       end if;
       return Result : Create_Request do
-         if Value.Format in AMS_VITA_Small .. AMS_VITA_Extra_Large then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V8
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         elsif Value.Format = Direct_INT8 or else Value.Format = Direct_INT16 then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V3
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         elsif Value.Format = Complex_INT8 then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V2
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         else
-            Check
-              (C.RF_Data_Submit_Product_Rx
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         end if;
+         Check
+           (C.RF_Data_Submit_Product_Rx_V9
+              (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
+            D);
       end return;
    end Submit;
 
@@ -312,10 +296,6 @@ package body AMS.MEL.RF.Product_Rx is
          Counter (Raw.Callbacks_After_Close));
    end Statistics;
 
-   type View_Access is access all C.RF_Product_Rx_Event_V1;
-   function To_View is new Ada.Unchecked_Conversion (System.Address, View_Access);
-   type View_V2_Access is access all C.RF_Product_Rx_Event_V2;
-   function To_View_V2 is new Ada.Unchecked_Conversion (System.Address, View_V2_Access);
    type View_V3_Access is access all C.RF_Product_Rx_Event_V3;
    function To_View_V3 is new Ada.Unchecked_Conversion (System.Address, View_V3_Access);
    type View_V4_Access is access all C.RF_Product_Rx_Event_V4;
@@ -330,8 +310,96 @@ package body AMS.MEL.RF.Product_Rx is
    type View_V7_Access is access all C.RF_Product_Rx_Event_V7;
    function To_View_V7 is new Ada.Unchecked_Conversion (System.Address, View_V7_Access);
 
-   type View_V8_Access is access all C.RF_Product_Rx_Event_V8;
-   function To_View_V8 is new Ada.Unchecked_Conversion (System.Address, View_V8_Access);
+   type View_V9_Access is access all C.RF_Product_Rx_Event_V9;
+   function To_View_V9 is new Ada.Unchecked_Conversion (System.Address, View_V9_Access);
+
+   procedure Copy_Stabilization
+     (Span : C.RF_Pointing_Span_V1; Target : in out Stabilization_Vectors.Vector)
+   is
+      pragma Validity_Checks ("F");
+      package P renames AMS.MEL.RF.C2;
+      use System.Storage_Elements;
+      N     : constant Natural := Checked_Count ((Span.Data, Span.Size));
+      Bytes : constant Integer_Address := C.RF_Pointing_V1'Object_Size / System.Storage_Unit;
+      type Points is array (Natural range <>) of aliased C.RF_Pointing_V1 with Convention => C;
+      function Time (Raw : C.RF_UTC_Time_V1) return P.UTC_Time is
+      begin
+         if Raw.Fractional_Femtoseconds < 0
+           or else Raw.Fractional_Femtoseconds >= 1_000_000_000_000_000
+         then
+            raise Provider_Error with "noncanonical stabilization UTC";
+         end if;
+         return P.Create_UTC_Time (Raw.Seconds, Raw.Fractional_Femtoseconds);
+      end Time;
+   begin
+      if (N = 0 and then Span.Data /= System.Null_Address)
+        or else Interfaces.Unsigned_64 (Span.Size)
+                > Interfaces.Unsigned_64 (Integer_Address'Last) / Interfaces.Unsigned_64 (Bytes)
+        or else (N > 0
+                 and then (To_Integer (Span.Data) mod C.RF_Pointing_V1'Alignment /= 0
+                           or else To_Integer (Span.Data)
+                                   > Integer_Address'Last - Integer_Address (Span.Size) * Bytes))
+      then
+         raise Provider_Error with "invalid stabilization span extent";
+      end if;
+      if N = 0 then
+         return;
+      end if;
+      declare
+         Values : Points (0 .. N - 1)
+         with Import, Address => Span.Data;
+      begin
+         for Index in Values'Range loop
+            declare
+               Raw : C.RF_Pointing_V1 renames Values (Index);
+            begin
+               case Raw.Kind is
+                  when 0      =>
+                     Target.Append
+                       (P.Create_ECEF_Pointing
+                          (Long_Float (Raw.ECEF.Location_M.X),
+                           Long_Float (Raw.ECEF.Location_M.Y),
+                           Long_Float (Raw.ECEF.Location_M.Z),
+                           Long_Float (Raw.ECEF.Velocity_MPS.X),
+                           Long_Float (Raw.ECEF.Velocity_MPS.Y),
+                           Long_Float (Raw.ECEF.Velocity_MPS.Z),
+                           Time (Raw.ECEF.Time_Of_Validity)));
+
+                  when 1      =>
+                     Target.Append
+                       (P.Create_LLA_Pointing
+                          (Long_Float (Raw.LLA.Latitude_Rad),
+                           Long_Float (Raw.LLA.Longitude_Rad),
+                           Long_Float (Raw.LLA.Altitude_M),
+                           Long_Float (Raw.LLA.Velocity_North_MPS),
+                           Long_Float (Raw.LLA.Velocity_East_MPS),
+                           Long_Float (Raw.LLA.Velocity_Down_MPS),
+                           Time (Raw.LLA.Time_Of_Validity)));
+
+                  when 2      =>
+                     Target.Append
+                       (P.Create_Platform_Relative_Pointing
+                          (Long_Float (Raw.Platform_Relative.Azimuth_Rad),
+                           Long_Float (Raw.Platform_Relative.Elevation_Rad)));
+
+                  when 3      =>
+                     Target.Append
+                       (P.Create_Face_Relative_Pointing
+                          (Long_Float (Raw.Face_Relative.Azimuth_Rad),
+                           Long_Float (Raw.Face_Relative.Elevation_Rad)));
+
+                  when 4      =>
+                     Target.Append
+                       (P.Create_Baseline_Relative_Pointing
+                          (Long_Float (Raw.Baseline_Relative_Conic_Rad)));
+
+                  when others =>
+                     raise Provider_Error with "invalid stabilization pointing kind";
+               end case;
+            end;
+         end loop;
+      end;
+   end Copy_Stabilization;
 
    function Receive (Object : Endpoint'Class; Timeout_Milliseconds : Natural := 0) return Event is
       D              : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
@@ -341,6 +409,7 @@ package body AMS.MEL.RF.Product_Rx is
       Event_ID       : Interfaces.Unsigned_64;
       Event_Format   : Interfaces.Unsigned_32;
       Event_Metadata : C.RF_Product_Rx_Metadata_V1;
+      Stabilization  : C.RF_Pointing_Span_V1;
       Associations   : C.RF_Receive_Event_Associations_V1 :=
         (Present => 0, Event_IDs => (Data => System.Null_Address, Size => 0));
    begin
@@ -357,19 +426,19 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx_Event then
             raise Provider_Error with "null RF ProductRx event after receive";
          end if;
-         --  Obtain optional presence for legacy integer events too. Their
-         --  payload views and submission routing remain unchanged.
+         --  One v9 view, with offset-zero nested width-specific validation.
          declare
          begin
             Check
-              (C.RF_Product_Rx_Event_View_V8
+              (C.RF_Product_Rx_Event_View_V9
                  (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
                D);
             if Address = System.Null_Address then
-               raise Provider_Error with "null RF ProductRx v8 view";
+               raise Provider_Error with "null RF ProductRx v9 view";
             end if;
             declare
-               Raw : C.RF_Product_Rx_Event_V8 renames To_View_V8 (Address).all;
+               New_View : C.RF_Product_Rx_Event_V9 renames To_View_V9 (Address).all;
+               Raw      : C.RF_Product_Rx_Event_V8 renames New_View.Event;
             begin
                --  A newer profile must not hide an inactive wider span from
                --  the frozen width-specific validation below.
@@ -379,7 +448,7 @@ package body AMS.MEL.RF.Product_Rx is
                  or else (Object.Format < AMS_VITA_Large
                           and then (Raw.Event.Event.VITA_Large_Packets.Data /= System.Null_Address
                                     or else Raw.Event.Event.VITA_Large_Packets.Size /= 0))
-                 or else (Object.Format = AMS_VITA_Small
+                 or else (Object.Format <= AMS_VITA_Small
                           and then (Raw.Event.Event.Event.VITA_Medium_Packets.Data
                                     /= System.Null_Address
                                     or else Raw.Event.Event.Event.VITA_Medium_Packets.Size /= 0))
@@ -387,6 +456,14 @@ package body AMS.MEL.RF.Product_Rx is
                   raise Provider_Error with "inactive native VITA v8 span";
                end if;
                Associations := Raw.Receive_Event_Associations;
+               Stabilization := New_View.Stabilization_Points;
+               if Object.Format < AMS_VITA_Small
+                 and then (Raw.Event.Event.Event.Event.VITA_Small_Packets.Data
+                           /= System.Null_Address
+                           or else Raw.Event.Event.Event.Event.VITA_Small_Packets.Size /= 0)
+               then
+                  raise Provider_Error with "inactive native VITA Small span";
+               end if;
             end;
          end;
          if Object.Format = AMS_VITA_Extra_Large then
@@ -572,80 +649,44 @@ package body AMS.MEL.RF.Product_Rx is
                Event_Format := Raw.Event.Data_Format;
                Event_Metadata := Raw.Event.Metadata;
             end;
-         elsif Object.Format = Direct_INT8 or else Object.Format = Direct_INT16 then
-            Check
-              (C.RF_Product_Rx_Event_View_V3
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
-            if Address = System.Null_Address then
-               raise Provider_Error with "null RF ProductRx event view";
-            end if;
+         else
             declare
                Raw : C.RF_Product_Rx_Event_V3 renames To_View_V3 (Address).all;
             begin
                if Raw.Data_Format /= Interfaces.Unsigned_32 (Object.Format)
-                 or else Raw.Complex_Samples_I8.Size /= 0
-                 or else Raw.Complex_Samples_I8.Data /= System.Null_Address
-                 or else Raw.Complex_Samples_I16.Size /= 0
-                 or else Raw.Complex_Samples_I16.Data /= System.Null_Address
+                 or else (Object.Format /= Direct_INT8
+                          and then (Raw.Direct_Samples_I8.Size /= 0
+                                    or else Raw.Direct_Samples_I8.Data /= System.Null_Address))
+                 or else (Object.Format /= Direct_INT16
+                          and then (Raw.Direct_Samples_I16.Size /= 0
+                                    or else Raw.Direct_Samples_I16.Data /= System.Null_Address))
+                 or else (Object.Format /= Complex_INT8
+                          and then (Raw.Complex_Samples_I8.Size /= 0
+                                    or else Raw.Complex_Samples_I8.Data /= System.Null_Address))
+                 or else (Object.Format /= Complex_INT16
+                          and then (Raw.Complex_Samples_I16.Size /= 0
+                                    or else Raw.Complex_Samples_I16.Data /= System.Null_Address))
                then
-                  raise Provider_Error with "invalid native RF Direct event format";
+                  raise Provider_Error with "invalid native RF integer event";
                end if;
-               if Object.Format = Direct_INT8 then
-                  if Raw.Direct_Samples_I16.Size /= 0
-                    or else Raw.Direct_Samples_I16.Data /= System.Null_Address
-                  then
-                     raise Provider_Error with "inactive DirectINT16 span";
-                  end if;
-                  Sample_Span := (Raw.Direct_Samples_I8.Data, Raw.Direct_Samples_I8.Size);
-               else
-                  if Raw.Direct_Samples_I8.Size /= 0
-                    or else Raw.Direct_Samples_I8.Data /= System.Null_Address
-                  then
-                     raise Provider_Error with "inactive DirectINT8 span";
-                  end if;
-                  Sample_Span := (Raw.Direct_Samples_I16.Data, Raw.Direct_Samples_I16.Size);
-               end if;
+               case Object.Format is
+                  when Direct_INT8   =>
+                     Sample_Span := (Raw.Direct_Samples_I8.Data, Raw.Direct_Samples_I8.Size);
+
+                  when Direct_INT16  =>
+                     Sample_Span := (Raw.Direct_Samples_I16.Data, Raw.Direct_Samples_I16.Size);
+
+                  when Complex_INT8  =>
+                     Sample_Span := (Raw.Complex_Samples_I8.Data, Raw.Complex_Samples_I8.Size);
+
+                  when Complex_INT16 =>
+                     Sample_Span := (Raw.Complex_Samples_I16.Data, Raw.Complex_Samples_I16.Size);
+
+                  when others        =>
+                     raise Provider_Error with "unsupported RF event format";
+               end case;
                Event_ID := Raw.Endpoint_ID;
                Event_Format := Raw.Data_Format;
-               Event_Metadata := Raw.Metadata;
-            end;
-         elsif Object.Format = Complex_INT8 then
-            Check
-              (C.RF_Product_Rx_Event_View_V2
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
-            if Address = System.Null_Address then
-               raise Provider_Error with "null RF ProductRx event view";
-            end if;
-            declare
-               Raw : C.RF_Product_Rx_Event_V2 renames To_View_V2 (Address).all;
-            begin
-               if Raw.Data_Format /= C.RF_Job_Data_Format_Complex_INT8
-                 or else Raw.Samples_I16.Size /= 0
-                 or else Raw.Samples_I16.Data /= System.Null_Address
-               then
-                  raise Provider_Error with "invalid native RF I8 event format";
-               end if;
-               Event_ID := Raw.Endpoint_ID;
-               Event_Format := Raw.Data_Format;
-               Sample_Span := (Raw.Samples_I8.Data, Raw.Samples_I8.Size);
-               Event_Metadata := Raw.Metadata;
-            end;
-         else
-            Check
-              (C.RF_Product_Rx_Event_View
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
-            if Address = System.Null_Address then
-               raise Provider_Error with "null RF ProductRx event view";
-            end if;
-            declare
-               Raw : C.RF_Product_Rx_Event_V1 renames To_View (Address).all;
-            begin
-               Event_ID := Raw.Endpoint_ID;
-               Event_Format := Raw.Data_Format;
-               Sample_Span := Raw.Samples;
                Event_Metadata := Raw.Metadata;
             end;
          end if;
@@ -684,7 +725,9 @@ package body AMS.MEL.RF.Product_Rx is
                Femtoseconds         => Event_Metadata.First_Rx_Event_Start_FS,
                Stream_IDs           => ID_Vectors.Empty_Vector,
                Associations_Present => Binary (Associations.Present),
-               Association_IDs      => ID_Vectors.Empty_Vector);
+               Association_IDs      => ID_Vectors.Empty_Vector,
+               Stabilization        => Stabilization_Vectors.Empty_Vector);
+            Copy_Stabilization (Stabilization, Result.Info.Stabilization);
             declare
                N : constant Natural :=
                  Checked_Count ((Associations.Event_IDs.Data, Associations.Event_IDs.Size));
@@ -1226,7 +1269,20 @@ package body AMS.MEL.RF.Product_Rx is
      (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32
    is (Value.Association_IDs.Element (Index));
 
+   function Stabilization_Point_Count (Value : Product_Metadata) return Natural
+   is (Natural (Value.Stabilization.Length));
+   function Stabilization_Point_At
+     (Value : Product_Metadata; Index : Positive) return AMS.MEL.RF.C2.Pointing
+   is (Value.Stabilization.Element (Index));
+
 begin
+   if Long_Float'Machine_Radix /= Interfaces.C.double'Machine_Radix
+     or else Long_Float'Machine_Mantissa < Interfaces.C.double'Machine_Mantissa
+     or else Long_Float'Machine_Emax < Interfaces.C.double'Machine_Emax
+     or else Long_Float'Machine_Emin > Interfaces.C.double'Machine_Emin
+   then
+      raise Program_Error with "stabilization requires lossless normal C double representation";
+   end if;
    Check_Complex_I16_Representation;
    if Complex_I8'Object_Size /= C.RF_Complex_I8_V1'Object_Size
      or else Complex_I8'Alignment /= C.RF_Complex_I8_V1'Alignment

@@ -709,8 +709,10 @@ void MockProductRxEndpoint::setDataReadyCallback(DataReadyCallback& callback)
         do { result = read(gate, &byte, 1U); } while (result < 0 && errno == EINTR);
         throw std::runtime_error("mock registration exception with an active callback");
     }
-    if (mode_ == "sync" || mode_ == "sync-associations") {
+    if (mode_ == "sync" || mode_ == "sync-associations" || mode_ == "sync-stabilization") {
         auto sync_metadata = rich_metadata();
+        if (mode_ == "sync-stabilization")
+            sync_metadata->addStabPoints(rfmel::FaceRelativePointing{AzEl{-12.5, 8.25}});
         if (mode_ == "sync-associations")
             sync_metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{17U, 17U});
         if (format_ == JobDataFormat::AMSVitaExtraLarge) {
@@ -858,7 +860,8 @@ void invoke_held(const std::shared_ptr<RetainedCallback>& held,
     DataReadyCallback& target = held->reference ? *held->reference : held->copy;
     /* Observed only under the destructive no-exact-lvalue negative control. */
     if (!target) { empty_invocations.fetch_add(1U); return; }
-    target(std::move(metadata), data, count);
+    target(metadata, data, count);
+    if (metadata) metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
 }
 
 void write_byte(int fd, char byte) noexcept
@@ -2601,6 +2604,52 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (!endpoint || !(held = endpoint->retained())) return 0;
         format = endpoint->getAssignedDataFormat();
     }
+    /* F25 fixtures initialize every active native component. The vector is
+     * metadata, independent of packet count and of commanded Job pointings. */
+    const int stabilization_scenario = kind >= 50 && kind <= 63 ? kind : -1;
+    std::vector<rfmel::PointingType> stabilization_fixture;
+    if (stabilization_scenario >= 0) {
+        EcefPoint location; EcefVelocity velocity;
+        location[0] = -0.0; location[1] = 123.5; location[2] = -456.25;
+        velocity[0] = 1.25; velocity[1] = -2.5; velocity[2] = 3.75;
+        rfmel::ECEFPointing ecef;
+        ecef.setLocation(location); ecef.setVelocity(velocity);
+        ecef.setTimeOfValidity(ams::util::math::UTCTime{
+            std::chrono::seconds{-17}, ams::util::math::Femtoseconds{999999999999999LL}});
+        NedVelocity ned; ned[0] = -4.5; ned[1] = 5.25; ned[2] = -6.75;
+        rfmel::LLAPointing lla;
+        lla.setLocation(LLAPoint{12.5, -18.25, -37.5}); lla.setVelocity(ned);
+        lla.setTimeOfValidity(ams::util::math::UTCTime{
+            std::chrono::seconds{23}, ams::util::math::Femtoseconds{0}});
+        std::vector<rfmel::PointingType> all{ecef, lla,
+            rfmel::PlatformRelativePointing{AzEl{-12.5, 8.25}},
+            rfmel::FaceRelativePointing{AzEl{18.5, -9.75}},
+            rfmel::BaselineRelativePointing{-15.5}};
+        if (stabilization_scenario >= 51 && stabilization_scenario <= 55)
+            stabilization_fixture.push_back(all[static_cast<std::size_t>(stabilization_scenario - 51)]);
+        else if (stabilization_scenario == 56 || stabilization_scenario >= 59) {
+            stabilization_fixture = all;
+            stabilization_fixture.push_back(all[3]);
+            stabilization_fixture.push_back(all[0]);
+        } else if (stabilization_scenario == 57) {
+            const auto infinity = std::numeric_limits<double>::infinity();
+            const auto nan = std::numeric_limits<double>::quiet_NaN();
+            location[0] = -0.0; location[1] = infinity; location[2] = nan;
+            velocity[0] = -infinity; velocity[1] = 0.0; velocity[2] = -0.0;
+            ecef.setLocation(location); ecef.setVelocity(velocity);
+            lla.setLocation(LLAPoint{nan, infinity, -infinity});
+            ned[0] = -0.0; ned[1] = infinity; ned[2] = nan; lla.setVelocity(ned);
+            stabilization_fixture = {ecef, lla,
+                rfmel::PlatformRelativePointing{AzEl{-0.0, infinity}},
+                rfmel::FaceRelativePointing{AzEl{nan, -infinity}},
+                rfmel::BaselineRelativePointing{nan}};
+        } else if (stabilization_scenario == 58) {
+            /* Duration constructor deliberately does not normalize -1fs. */
+            ecef.setTimeOfValidity(ams::util::math::UTCTime{ams::util::math::Femtoseconds{-1}});
+            stabilization_fixture = {all[3], ecef};
+        }
+        kind = EmitCount;
+    }
     /* F24 scenarios use the pinned optional setter. Numeric fidelity only:
      * no full ReceiveEvent referents are invented. Reuse unchanged packet builders. */
     std::optional<std::vector<rfmel::JobEventID>> association_fixture;
@@ -2617,6 +2666,17 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         kind = EmitCount;
     }
     auto metadata = rich_metadata();
+    if (stabilization_scenario >= 0) {
+        metadata->setStabPoints(stabilization_fixture);
+        if (stabilization_scenario == 59 && format >= JobDataFormat::AMSVitaSmall)
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>(count, 17U));
+        else if (stabilization_scenario == 60)
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{17U, 17U});
+        else if (stabilization_scenario == 61)
+            metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{17U, 17U, 23U, 42U});
+        else if (stabilization_scenario == 62) metadata->addReceiveEvents(rfmel::ReceiveEvent{});
+        else if (stabilization_scenario == 63) metadata->setUserDefinedData(std::any{42});
+    }
     if (association_scenario || kind == EmitEmptyAssociations)
         metadata->setReceiveEventAssociations(association_scenario ? association_fixture :
             std::optional<std::vector<rfmel::JobEventID>>{std::vector<rfmel::JobEventID>{}});
@@ -2670,6 +2730,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }
@@ -2718,6 +2779,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }
@@ -2760,6 +2822,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }
@@ -2800,6 +2863,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }
@@ -2838,6 +2902,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }
@@ -2874,6 +2939,7 @@ extern "C" __attribute__((visibility("default"))) int mock_rf_rx_emit(
         if (metadata) {
             metadata->setReceiveEvents(std::vector<rfmel::StreamID>{7U});
             metadata->setReceiveEventAssociations(std::vector<rfmel::JobEventID>{99U});
+            metadata->setStabPoints({rfmel::BaselineRelativePointing{99.0}});
         }
         return 1;
     }

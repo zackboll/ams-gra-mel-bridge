@@ -2,6 +2,7 @@ with Ada.Unchecked_Conversion;
 with Ada.Real_Time;
 with AMS.MEL;
 with AMS.MEL.RF;
+with AMS.MEL.RF.C2;
 with AMS.MEL.RF.Product_Rx;
 with AMS.MEL.RF.Product_Rx.Testing;
 with Interfaces;
@@ -1549,8 +1550,7 @@ package body AMS_MEL_RF_Product_Rx_Tests is
             end;
          end;
       end loop;
-      --  Legacy integer Submit remains unchanged, while v8 metadata preserves
-      --  historically accepted present-empty association state.
+      --  v9 preserves historically accepted present-empty integer associations.
       for Format in RF.Direct_INT8 .. RF.Complex_INT16 loop
          declare
             Cfg : constant RX.Config :=
@@ -1743,6 +1743,267 @@ package body AMS_MEL_RF_Product_Rx_Tests is
                      end if;
                   end;
                end;
+               Ignored := DL_Close (Program);
+            end;
+         end loop;
+      end loop;
+      --  F25 metadata remains owned after every native owner closes.
+      AMS.MEL.RF.Product_Rx.Testing.Check_Stabilization_Boundaries;
+      for Iteration in 1 .. 50 loop
+         for Format in RF.Direct_INT8 .. RF.AMS_VITA_Extra_Large loop
+            declare
+               package PT renames AMS.MEL.RF.C2;
+               use type PT.Pointing_Kind;
+               use type Interfaces.Unsigned_64;
+               Cfg          : constant RX.Config :=
+                 (case Format is
+                    when RF.Direct_INT8     => RX.Create_Config_Direct_I8 (65_536, 1, 8),
+                    when RF.Direct_INT16    => RX.Create_Config_Direct_I16 (65_536, 1, 8),
+                    when RF.Complex_INT8    => RX.Create_Config_Complex_I8 (65_536, 1, 8),
+                    when RF.Complex_INT16   => RX.Create_Config (65_536, 1, 8),
+                    when RF.AMS_VITA_Small  => RX.Create_Config_AMS_VITA_Small (65_536, 1, 8),
+                    when RF.AMS_VITA_Medium => RX.Create_Config_AMS_VITA_Medium (65_536, 1, 8),
+                    when RF.AMS_VITA_Large  => RX.Create_Config_AMS_VITA_Large (65_536, 1, 8),
+                    when others             =>
+                      RX.Create_Config_AMS_VITA_Extra_Large (65_536, 1, 8));
+               Parent       : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+               Request      : RX.Create_Request := RX.Submit (Parent, Cfg);
+               Program      : constant System.Address := DL_Open (Interfaces.C.Strings.Null_Ptr, 1);
+               Corrupt_Name : Interfaces.C.Strings.chars_ptr :=
+                 Interfaces.C.Strings.New_String ("ams_mel_test_rf_rx_corrupt_view");
+               Close_Name   : Interfaces.C.Strings.chars_ptr :=
+                 Interfaces.C.Strings.New_String ("ams_mel_test_rf_rx_events_closed");
+               Fail_Name    : Interfaces.C.Strings.chars_ptr :=
+                 Interfaces.C.Strings.New_String ("ams_mel_test_rf_rx_failpoint");
+               Corrupt      : constant Failpoint_Access :=
+                 To_Failpoint (DL_Sym (Program, Corrupt_Name));
+               Fail         : constant Failpoint_Access :=
+                 To_Failpoint (DL_Sym (Program, Fail_Name));
+               type Closed_Access is access function return Interfaces.Unsigned_64
+               with Convention => C;
+               function To_Closed is new Ada.Unchecked_Conversion (System.Address, Closed_Access);
+               Closed       : constant Closed_Access := To_Closed (DL_Sym (Program, Close_Name));
+               Saved        : RX.Product_Metadata;
+               use type PT.ECEF_Coordinates;
+               use type PT.LLA_Coordinates;
+               use type PT.NED_Velocity;
+               procedure Verify (M : RX.Product_Metadata) is
+                  Expected : constant array (Positive range 1 .. 7) of PT.Pointing_Kind :=
+                    [PT.ECEF,
+                     PT.LLA,
+                     PT.Platform_Relative,
+                     PT.Face_Relative,
+                     PT.Baseline_Relative,
+                     PT.Face_Relative,
+                     PT.ECEF];
+               begin
+                  if RX.Stabilization_Point_Count (M) /= 7 then
+                     raise Program_Error with "stabilization count mismatch";
+                  end if;
+                  for I in Expected'Range loop
+                     declare
+                        Point : constant PT.Pointing := RX.Stabilization_Point_At (M, I);
+                     begin
+                        if PT.Kind (Point) /= Expected (I) then
+                           raise Program_Error with "stabilization variant order mismatch";
+                        end if;
+                        case PT.Kind (Point) is
+                           when PT.ECEF              =>
+                              if PT.ECEF_Position (Point)
+                                /= PT.ECEF_Coordinates'(0.0, 123.5, -456.25)
+                                or else PT.ECEF_Velocity (Point)
+                                        /= PT.ECEF_Coordinates'(1.25, -2.5, 3.75)
+                                or else PT.Seconds (PT.Time_Of_Validity (Point)) /= -17
+                                or else PT.Fractional_Femtoseconds (PT.Time_Of_Validity (Point))
+                                        /= 999_999_999_999_999
+                              then
+                                 raise Program_Error with "ECEF stabilization mismatch";
+                              end if;
+
+                           when PT.LLA               =>
+                              if PT.LLA_Position (Point) /= PT.LLA_Coordinates'(12.5, -18.25, -37.5)
+                                or else PT.LLA_Velocity (Point)
+                                        /= PT.NED_Velocity'(-4.5, 5.25, -6.75)
+                                or else PT.Seconds (PT.Time_Of_Validity (Point)) /= 23
+                                or else PT.Fractional_Femtoseconds (PT.Time_Of_Validity (Point))
+                                        /= 0
+                              then
+                                 raise Program_Error with "LLA stabilization mismatch";
+                              end if;
+
+                           when PT.Platform_Relative =>
+                              if PT.Azimuth_Rad (Point) /= -12.5
+                                or else PT.Elevation_Rad (Point) /= 8.25
+                              then
+                                 raise Program_Error with "platform stabilization mismatch";
+                              end if;
+
+                           when PT.Face_Relative     =>
+                              if PT.Azimuth_Rad (Point) /= 18.5
+                                or else PT.Elevation_Rad (Point) /= -9.75
+                              then
+                                 raise Program_Error with "face stabilization mismatch";
+                              end if;
+
+                           when PT.Baseline_Relative =>
+                              if PT.Conic_Rad (Point) /= -15.5 then
+                                 raise Program_Error with "baseline stabilization mismatch";
+                              end if;
+                        end case;
+                     end;
+                  end loop;
+               end Verify;
+               procedure Verify_IEEE (M : RX.Product_Metadata) is
+                  pragma Validity_Checks ("F");
+                  function Bits is new
+                    Ada.Unchecked_Conversion (Long_Float, Interfaces.Unsigned_64);
+                  function Is_NaN (Value : Long_Float) return Boolean
+                  is ((Bits (Value) and 16#7FF0_0000_0000_0000#) = 16#7FF0_0000_0000_0000#
+                      and then (Bits (Value) and 16#000F_FFFF_FFFF_FFFF#) /= 0);
+                  E : constant PT.Pointing := RX.Stabilization_Point_At (M, 1);
+                  L : constant PT.Pointing := RX.Stabilization_Point_At (M, 2);
+                  P : constant PT.Pointing := RX.Stabilization_Point_At (M, 3);
+                  F : constant PT.Pointing := RX.Stabilization_Point_At (M, 4);
+                  B : constant PT.Pointing := RX.Stabilization_Point_At (M, 5);
+               begin
+                  if Bits (PT.ECEF_Position (E).X) /= 16#8000_0000_0000_0000#
+                    or else Bits (PT.ECEF_Position (E).Y) /= 16#7FF0_0000_0000_0000#
+                    or else not Is_NaN (PT.ECEF_Position (E).Z)
+                    or else Bits (PT.ECEF_Velocity (E).X) /= 16#FFF0_0000_0000_0000#
+                    or else Bits (PT.ECEF_Velocity (E).Y) /= 0
+                    or else Bits (PT.ECEF_Velocity (E).Z) /= 16#8000_0000_0000_0000#
+                    or else not Is_NaN (PT.LLA_Position (L).Latitude_Rad)
+                    or else Bits (PT.LLA_Position (L).Longitude_Rad) /= 16#7FF0_0000_0000_0000#
+                    or else Bits (PT.LLA_Position (L).Altitude_M) /= 16#FFF0_0000_0000_0000#
+                    or else Bits (PT.LLA_Velocity (L).North_MPS) /= 16#8000_0000_0000_0000#
+                    or else Bits (PT.LLA_Velocity (L).East_MPS) /= 16#7FF0_0000_0000_0000#
+                    or else not Is_NaN (PT.LLA_Velocity (L).Down_MPS)
+                    or else Bits (PT.Azimuth_Rad (P)) /= 16#8000_0000_0000_0000#
+                    or else Bits (PT.Elevation_Rad (P)) /= 16#7FF0_0000_0000_0000#
+                    or else not Is_NaN (PT.Azimuth_Rad (F))
+                    or else Bits (PT.Elevation_Rad (F)) /= 16#FFF0_0000_0000_0000#
+                    or else not Is_NaN (PT.Conic_Rad (B))
+                  then
+                     raise Program_Error with "Ada IEEE stabilization fidelity";
+                  end if;
+               end Verify_IEEE;
+            begin
+               if RX.Outcome (RX.Wait (Request, 10_000)) /= RX.Created
+                 or else Corrupt = null
+                 or else Fail = null
+                 or else Closed = null
+               then
+                  raise Program_Error with "stabilization setup failed";
+               end if;
+               declare
+                  E  : RX.Endpoint := RX.Claim (Request);
+                  ID : constant Interfaces.Unsigned_64 := RX.Endpoint_ID (E);
+               begin
+                  RX.Close (Request);
+                  for Scenario in 50 .. 59 loop
+                     Ignored :=
+                       Emit (ID, Interfaces.C.int (Scenario), (if Scenario = 59 then 0 else 3));
+                     if Scenario = 58 then
+                        begin
+                           declare
+                              Bad : constant RX.Event := RX.Receive (E);
+                           begin
+                              raise Program_Error
+                                with "noncanonical UTC published" & RX.Is_Open (Bad)'Image;
+                           end;
+                        exception
+                           when RX.Timeout_Error =>
+                              null;
+                        end;
+                     else
+                        declare
+                           Event : RX.Event := RX.Receive (E);
+                           M     : constant RX.Product_Metadata := RX.Metadata (Event);
+                           N     : constant Natural :=
+                             (if Scenario = 50
+                              then 0
+                              elsif Scenario <= 55
+                              then 1
+                              elsif Scenario = 57
+                              then 5
+                              else 7);
+                        begin
+                           if RX.Stabilization_Point_Count (M) /= N then
+                              raise Program_Error with "stabilization size";
+                           end if;
+                           if Scenario in 56 | 59 then
+                              Verify (M);
+                           end if;
+                           if Scenario = 57 then
+                              Verify_IEEE (M);
+                           end if;
+                           RX.Close (Event);
+                        end;
+                     end if;
+                  end loop;
+                  --  Each invalid raw view raises inside the extended return;
+                  --  a monotonic native close observation proves owner finalization.
+                  for Malformed in 1 .. 8 loop
+                     declare
+                        Before : constant Interfaces.Unsigned_64 := Closed.all;
+                     begin
+                        Ignored := Emit (ID, 56, 1);
+                        Corrupt (Interfaces.C.unsigned (Malformed));
+                        begin
+                           declare
+                              Bad : constant RX.Event := RX.Receive (E);
+                           begin
+                              raise Program_Error
+                                with "invalid raw view accepted" & RX.Is_Open (Bad)'Image;
+                           end;
+                        exception
+                           when AMS.MEL.Provider_Error =>
+                              null;
+                        end;
+                        if Closed.all /= Before + 1 then
+                           raise Program_Error with "failed Receive leaked event";
+                        end if;
+                     end;
+                  end loop;
+                  Fail (6);
+                  Ignored := Emit (ID, 56, 1);
+                  begin
+                     declare
+                        Bad : constant RX.Event := RX.Receive (E);
+                     begin
+                        raise Program_Error
+                          with "partial vector published" & RX.Is_Open (Bad)'Image;
+                     end;
+                  exception
+                     when RX.Timeout_Error =>
+                        null;
+                  end;
+                  if RX.Statistics (E).Allocation_Failures /= 1
+                    or else RX.Statistics (E).Malformed_Or_Unsupported /= 1
+                  then
+                     raise Program_Error with "stabilization failure counters";
+                  end if;
+                  Ignored := Emit (ID, 59, 3);
+                  declare
+                     Event : RX.Event := RX.Receive (E);
+                  begin
+                     Saved := RX.Metadata (Event);
+                     RF.Close (Parent);
+                     RX.Close (E);
+                     RX.Close (Event);
+                  end;
+                  Verify (Saved);
+                  if Format >= RF.AMS_VITA_Small
+                    and then (not RX.Receive_Event_Associations_Present (Saved)
+                              or else RX.Receive_Event_Association_Count (Saved) /= 3
+                              or else RX.Receive_Event_Association_ID_At (Saved, 3) /= 17)
+                  then
+                     raise Program_Error with "points and associations lost";
+                  end if;
+               end;
+               Interfaces.C.Strings.Free (Corrupt_Name);
+               Interfaces.C.Strings.Free (Close_Name);
+               Interfaces.C.Strings.Free (Fail_Name);
                Ignored := DL_Close (Program);
             end;
          end loop;

@@ -1,5 +1,25 @@
 # Architecture decisions
 
+## Task 034F25 — ProductRx stabilization-point receive metadata
+
+Additive submit/view-v9 preserve the pinned nonoptional ordered stabilization
+vector using the complete existing F2 five-kind pointing record: ECEF, LLA,
+platform-relative, face-relative and baseline-relative. Executed-collection
+metadata is not a new Job command. v9 retains v8 VITA association semantics and
+accepts formats 0..7 only; submits/views v1..v8 still reject nonempty points,
+with historical view outputs unchanged. Active coordinates, velocities, radians,
+UTC seconds/femtoseconds, repeats and IEEE classification survive without frame
+conversion, clamping or normalization. Noncanonical active UTC fails closed.
+Event-v9 nests frozen v8 at offset zero; empty points use NULL/0. Immutable
+Event-owned storage is published only after complete conversion. Existing queue,
+worker, drain and code retention remain unchanged. Safe Ada uses v9 for all
+formats and copies points to owned metadata, reusing C2.Pointing with read-only
+active-field accessors. Measured production inventory: 222 AMS_MEL_0.1 exports;
+no public Python/safe Rust receive extension. Full ReceiveEvents, their point
+references, std::any, PDW/LF and decoding remain excluded. See
+`docs/task-034f25-rf-product-rx-stabilization-points.md` for qualification and limits.
+
+
 ## Task 034F24 — ProductRx VITA receive-event associations
 
 Opt-in submit/view-v8 preserve the pinned `optional<vector<JobEventID>>`:

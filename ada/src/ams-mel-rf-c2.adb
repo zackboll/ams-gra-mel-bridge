@@ -2010,6 +2010,69 @@ package body AMS.MEL.RF.C2 is
    is (Value.Seconds);
    function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64
    is (Value.Fraction);
+   function Kind (Value : Pointing) return Pointing_Kind
+   is (Value.Kind);
+   procedure Require_Kind (Value : Pointing; Expected : Pointing_Kind) is
+   begin
+      if Value.Kind /= Expected then
+         raise Constraint_Error with "inactive pointing field";
+      end if;
+   end Require_Kind;
+   function ECEF_Position (Value : Pointing) return ECEF_Coordinates is
+      pragma Validity_Checks ("F");
+   begin
+      Require_Kind (Value, ECEF);
+      return (Value.Components (1), Value.Components (2), Value.Components (3));
+   end ECEF_Position;
+   function ECEF_Velocity (Value : Pointing) return ECEF_Coordinates is
+      pragma Validity_Checks ("F");
+   begin
+      Require_Kind (Value, ECEF);
+      return (Value.Components (4), Value.Components (5), Value.Components (6));
+   end ECEF_Velocity;
+   function LLA_Position (Value : Pointing) return LLA_Coordinates is
+      pragma Validity_Checks ("F");
+   begin
+      Require_Kind (Value, LLA);
+      return (Value.Components (1), Value.Components (2), Value.Components (3));
+   end LLA_Position;
+   function LLA_Velocity (Value : Pointing) return NED_Velocity is
+      pragma Validity_Checks ("F");
+   begin
+      Require_Kind (Value, LLA);
+      return (Value.Components (4), Value.Components (5), Value.Components (6));
+   end LLA_Velocity;
+   function Azimuth_Rad (Value : Pointing) return Long_Float is
+      pragma Validity_Checks ("F");
+   begin
+      if Value.Kind not in Platform_Relative | Face_Relative then
+         raise Constraint_Error with "inactive pointing field";
+      end if;
+      return Value.Components (1);
+   end Azimuth_Rad;
+   function Elevation_Rad (Value : Pointing) return Long_Float is
+      pragma Validity_Checks ("F");
+   begin
+      if Value.Kind not in Platform_Relative | Face_Relative then
+         raise Constraint_Error with "inactive pointing field";
+      end if;
+      return Value.Components (2);
+   end Elevation_Rad;
+   function Conic_Rad (Value : Pointing) return Long_Float is
+      pragma Validity_Checks ("F");
+   begin
+      if Value.Kind /= Baseline_Relative then
+         raise Constraint_Error with "inactive pointing field";
+      end if;
+      return Value.Components (1);
+   end Conic_Rad;
+   function Time_Of_Validity (Value : Pointing) return UTC_Time is
+   begin
+      if Value.Kind not in ECEF | LLA then
+         raise Constraint_Error with "relative pointing has no UTC time";
+      end if;
+      return Value.Time;
+   end Time_Of_Validity;
    function Create_ECEF_Pointing
      (Location_X_M, Location_Y_M, Location_Z_M       : Long_Float;
       Velocity_X_MPS, Velocity_Y_MPS, Velocity_Z_MPS : Long_Float;

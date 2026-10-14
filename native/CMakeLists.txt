@@ -52,7 +52,7 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_rx_observer_from;\n        ams_mel_test_rf_rx_observer_from_last_registration;\n        ams_mel_test_rf_rx_observe;\n        ams_mel_test_rf_rx_waiters;\n        ams_mel_test_rf_rx_drain_waiters;\n        ams_mel_test_rf_rx_preset_counters;\n        ams_mel_test_rf_rx_observer_close;\n        ams_mel_test_rf_rx_failpoint;\n        ams_mel_test_rf_rx_negative_control;\n        ams_mel_test_rf_rx_hold_next;\n        ams_mel_test_rf_rx_permanent_registrations;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_rx_observer_from;\n        ams_mel_test_rf_rx_observer_from_last_registration;\n        ams_mel_test_rf_rx_observe;\n        ams_mel_test_rf_rx_waiters;\n        ams_mel_test_rf_rx_drain_waiters;\n        ams_mel_test_rf_rx_preset_counters;\n        ams_mel_test_rf_rx_observer_close;\n        ams_mel_test_rf_rx_failpoint;\n        ams_mel_test_rf_rx_negative_control;\n        ams_mel_test_rf_rx_hold_next;\n        ams_mel_test_rf_rx_permanent_registrations;\n        ams_mel_test_rf_rx_corrupt_view;\n        ams_mel_test_rf_rx_events_closed;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_sample_preparation;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -216,6 +216,14 @@ if(AMS_MEL_BUILD_TESTS)
     target_link_libraries(test_rf_product_rx_v8_layout PRIVATE ams_mel::ams_mel_c)
     ams_mel_warnings(test_rf_product_rx_v8_layout)
     add_test(NAME rf-product-rx-v8-layout COMMAND test_rf_product_rx_v8_layout)
+    add_executable(test_rf_product_rx_v9_layout tests/product_rx_v9_layout_probe.c)
+    target_compile_features(test_rf_product_rx_v9_layout PRIVATE c_std_11)
+    target_link_libraries(test_rf_product_rx_v9_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_rf_product_rx_v9_layout)
+    add_test(NAME rf-product-rx-v9-layout COMMAND test_rf_product_rx_v9_layout)
+    add_test(NAME rf-product-rx-stabilization-close COMMAND test_rf_product_rx stabilization-close)
+    add_test(NAME rf-product-rx-stabilization COMMAND test_rf_product_rx stabilization)
+
     add_test(NAME rf-product-rx-association-close COMMAND test_rf_product_rx association-close)
     add_test(NAME rf-product-rx-associations COMMAND test_rf_product_rx associations)
     add_executable(test_rf_product_rx_v7_layout tests/product_rx_v7_layout_probe.c)

@@ -107,6 +107,25 @@ package AMS.MEL.RF.C2 is
      (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
    function Create_Face_Relative_Pointing (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
    function Create_Baseline_Relative_Pointing (Conic_Rad : Long_Float) return Pointing;
+   --  Read-only active-field inspection. Wrong-kind access raises Constraint_Error.
+   function Kind (Value : Pointing) return Pointing_Kind;
+   type ECEF_Coordinates is record
+      X, Y, Z : Long_Float;
+   end record;
+   type LLA_Coordinates is record
+      Latitude_Rad, Longitude_Rad, Altitude_M : Long_Float;
+   end record;
+   type NED_Velocity is record
+      North_MPS, East_MPS, Down_MPS : Long_Float;
+   end record;
+   function ECEF_Position (Value : Pointing) return ECEF_Coordinates;
+   function ECEF_Velocity (Value : Pointing) return ECEF_Coordinates;
+   function LLA_Position (Value : Pointing) return LLA_Coordinates;
+   function LLA_Velocity (Value : Pointing) return NED_Velocity;
+   function Azimuth_Rad (Value : Pointing) return Long_Float;
+   function Elevation_Rad (Value : Pointing) return Long_Float;
+   function Conic_Rad (Value : Pointing) return Long_Float;
+   function Time_Of_Validity (Value : Pointing) return UTC_Time;
    procedure Append_Expected_Pointing (Group : in out RX_Element_Group_Config; Value : Pointing);
    type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;
    type Unsigned_32_Array is array (Natural range <>) of Interfaces.Unsigned_32;
@@ -550,8 +569,7 @@ private
       Seconds, Fraction : Interfaces.Integer_64 := 0;
    end record;
    type Pointing_Components is array (Positive range 1 .. 6) of Long_Float;
-   type Pointing is record
-      Kind       : Pointing_Kind := Face_Relative;
+   type Pointing (Kind : Pointing_Kind := Face_Relative) is record
       Components : Pointing_Components := [others => 0.0];
       Time       : UTC_Time;
    end record;
