@@ -243,3 +243,22 @@ GNATdoc warnings. No warning/test suppression added.
 
 Disposition at corrective commit: DOC_001_LOCAL_QUALIFIED. Push/PR/hosted state
 will be recorded after the exact corrective head exists. No merge authorized.
+
+### Independent-review submission
+
+- Corrective implementation commit: `52b0c56d433e0ef79f4362c74dff04e138029a78`.
+- PR: https://github.com/zackboll/ams-gra-mel-bridge/pull/101
+- Base: main `42648a92eb0cc84b2980d16db6028992c0494ba1`.
+- Branch: `docs/001-gnatdoc-foundation`; non-draft, OPEN, auto-merge null/disabled.
+- Local corrective head = fetched remote branch = PR head was verified exactly.
+- Initial documentation PR run: `38656319522` (queued at observation), exact
+  head `52b0c56d433e0ef79f4362c74dff04e138029a78`; workflow explicitly checks
+  out PR head rather than its synthetic merge. Bootstrap PR run `38656319485`
+  and push run `38656292274` were queued/running, not reported passed.
+- This journal-only follow-up is a normal descendant commit, not an amendment;
+  its exact SHA and updated run state are available in Git/PR and local evidence.
+- Disposition: DOC_001_HOSTED_CI_PENDING until fresh hosted checks complete.
+- No merge, auto-merge, tag, release or feature-branch Pages deployment performed.
+
+All 29 published package names and detailed kind/member counts are in
+`gnatdoc-initial-inventory.md`. DOC-002–007 remain unstarted/out of scope here.
