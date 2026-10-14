@@ -125,3 +125,121 @@ gates are incomplete. Do not label this checkpoint a completed/review-qualified
 phase. No PR merged, auto-merge enabled, release tagged, Pages deployment or
 feature-branch site publication performed. Later phase branches must stack on
 the exact completed/tested predecessor head, with explicit dependencies.
+
+## DOC-001-R1 recovery and qualification (2026-10-14)
+
+Preserved checkpoint `1101865846ba9cf276712df3d36a6d507dd09df9` without amend
+or rewrite. Reused `docs/001-gnatdoc-foundation` and its isolated worktree.
+Fetch reconfirmed original main `42648a92eb0cc84b2980d16db6028992c0494ba1`;
+no concurrent campaign writer or active task-owned native build at recovery.
+Unrelated OpenCV processes were observed and left alone. Complete checkpoint
+Git diff and recovery environment/process inventory retained under local `r1`.
+
+### Native recovery
+
+The previous `make check` had finished, with native isolation and 434/434 tests
+passing; it ultimately failed only for missing final newlines in seven new
+documentation files. Those newlines are repaired, not production code.
+
+The original native failure passed tests 1–226, then lost `test_rf_product_rx`
+between tests 226 and 227. The remaining 208 were executable lookup/Not Run
+failures, not demonstrated contract assertion failures. Current stale tree was
+reproduced before any rebuild: all 434 were Not Run, with its cache still ON
+but test executables absent. Original temporary CTest logs had already been
+removed by subsequent reconfiguration; preserve original full command logs and
+state this evidence limitation rather than claiming they were recovered.
+
+The reset mechanism is independently reproduced using copies of the production
+configure/selector scripts in a tiny evidence-only project: system PATH uses
+`/usr/bin/c++`, while the existing Alire environment uses GNAT Native's `c++`.
+The path mismatch triggers `rm -rf` of the selected test tree and deletes a
+sentinel executable. A provider-only build then need not recreate every native
+test executable. The original mid-CTest disappearance establishes build-tree
+interference; the exact deleting process was not traced in the original run.
+No production defect or assertion failure is inferred.
+
+A clean external native configuration/build/enumeration/CTest control passed
+434/434; canonical `make test-native` then passed 434/434 under a stable system
+environment. All subsequent native operations run in one sequential driver;
+no documentation generator invokes native builds or production Alire actions.
+Caches, compiler identities, test enumeration, executable timestamps, process
+inventory, reproduced failure logs and separate control/canonical logs retained.
+
+### Foundation implementation and measurements
+
+- Public packages: 29; private library units excluded: 2.
+- Source-visible declarations: 1,238 (874 subprogram profiles: 706 functions,
+  168 procedures); native sections: 1,237; verified renderer omission: 1.
+- Exact omission `AMS.MEL.IR.Health_Status.Metadata.Status` independently
+  reproduced with GNATdoc 26.0.0. Version/scope/path/target/signature must match
+  the exception inventory exactly. No fake section or native anchor added.
+- Raw warnings unchanged: 3,924. Source classification: 3,851 public, 73
+  private-part, 0 private-unit, 0 tool diagnostics, 0 mapping failures.
+  Original all-warning baseline remains byte-identical to checkpoint.
+- Complete coverage: 4,295 elements, 38 documented, 4,257 undocumented,
+  0.8847%. All gaps retained for future phases, not suppressed.
+- Members: 587 enum literals; 343 record components; 4 discriminants;
+  1,388 parameters; 706 return values, all currently undocumented by the
+  strict attached-and-rendered test.
+- Nine native long-enum signatures are abbreviated by GNATdoc. Preserve
+  native text; validate prefix/suffix and the complete separately rendered
+  literal lists. Source identities retain full declarations.
+- Early uncommitted coverage was 42/4,295; four falsely credited package-opening
+  blocks were disqualified before qualification. This explicit initial-baseline
+  correction is retained in failed/passing evidence, not hidden by regeneration.
+- Source/member profile validation, literal-aware token checks, observed-anchor
+  manifest, warning classifier, exact alias exception, conservative coverage
+  ratchet, local HTML/resource/navigation validator and mutation tests added.
+- Fresh isolated Alire settings/tool installation and documentation-only crate
+  reproduced the workflow generation successfully, without native actions.
+- Pages API reports `build_type: workflow`; no settings change needed at this
+  observation. No deployment has occurred from this branch.
+
+### Validation status (append final results below)
+
+Original and R1 failed logs are retained. Documentation unit/mutation suite now
+has 67 passing tests. The source checker protects 1,162 pre-existing non-doc
+files against original main; Ada tokens and every production non-Ada byte are
+unchanged. Original warning-baseline bytes are unchanged. Source/Ada formatting
+was not modified. Dedicated production checks are being run sequentially; do
+not treat the running driver as a completed result.
+
+DOC-002 through DOC-007 remain outside this corrective task. No API prose or
+upstream semantic ledger entries added. After independent DOC-001 review, next
+phase is DOC-002 foundation/status research against pinned Common MEL.
+
+R1 final documentation refinement: literal-preserving complete coverage identities
+now include defaults, aspects and renaming targets; observed native anchors are
+unchanged. The original all-warning baseline remains intact, while warning
+reports also retain full source-profile tokens. Initial identity refinement
+evidence is retained separately; counts did not change. Documentation suite
+now has 69 tests. Initial inventory is published in `gnatdoc-initial-inventory.md`.
+
+### Final local qualification completed
+
+All required local gates passed, each with recorded exit 0. Sequential native
+commands and timestamps are retained in local `r1/final-commands.txt`:
+
+| Command / gate | Result |
+| --- | --- |
+| Qualified tool versions and documentation GPR semantic compilation | PASS |
+| Two fresh generations using independently installed documentation tools | PASS, byte-identical |
+| Documentation unit and mutation suite | PASS, 69 tests |
+| Full raw-warning comparator/classification | PASS, 0 added / 0 removed; 3,924 reconciled |
+| Coverage/source/native/alias validation | PASS, 38/4,295; 1,238 / 1,237 / 1 |
+| Local HTML/assets/navigation/fragment validation | PASS, 31 HTML pages, 1,307 links |
+| `make test-ada` | PASS, exit 0 |
+| `make test-native` | PASS, 434/434, exit 0 |
+| `make check` | PASS, exit 0, includes isolation/native/format/Ada/newlines/whitespace |
+| `make check-ada-format` | PASS, exit 0 |
+| Literal-aware production-source integrity | PASS, 1,162 protected pre-existing files |
+| Git whitespace/final-newline checks | PASS |
+
+The final documentation refinements were requalified with fresh generation,
+byte comparison and all 69 tests (`r1/final-doc-v3*`). No production or Ada
+source bytes changed. Some GPR formatting checks emit inherited no-C-sources
+warnings for the external native import; exit status is 0, and these are not
+GNATdoc warnings. No warning/test suppression added.
+
+Disposition at corrective commit: DOC_001_LOCAL_QUALIFIED. Push/PR/hosted state
+will be recorded after the exact corrective head exists. No merge authorized.

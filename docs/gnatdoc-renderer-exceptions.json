@@ -1,0 +1,15 @@
+{
+  "renderer": "GNATdoc 26.0.0 (20260415)",
+  "exceptions": [
+    {
+      "package": "AMS.MEL.IR.Health_Status.Metadata",
+      "identity": "AMS.MEL.IR.Health_Status.Metadata.Status",
+      "declaration": "package Status renames AMS.MEL.Status;",
+      "normalized_signature": "package AMS.MEL.IR.Health_Status.Metadata.Status renames AMS.MEL.Status;",
+      "target": "AMS.MEL.Status",
+      "source": "ada/src/ams-mel-ir-health_status-metadata.ads",
+      "reason": "GNATdoc 26.0.0 emits a PackageRenamingDecl diagnostic but no native section. Verified with an isolated package-renaming reproduction.",
+      "treatment": "Source-visible, not native-rendered, not documented. Supplementary source-backed alias presentation deferred to DOC-007."
+    }
+  ]
+}

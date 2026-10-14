@@ -1,5 +1,5 @@
 #!/bin/sh
-# Initial pristine baseline capture only; not a complete site/publication gate.
+# Qualified foundation generation. Never invokes a production/native build.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
@@ -26,4 +26,8 @@ if grep -Ei '(^|[[:space:]])(error:|fatal:|ignore file due to)' obj/docs/gnatdoc
 fi
 python3 scripts/compare_gnatdoc_warnings.py --fail-on-removed \
     docs/gnatdoc-warning-baseline.txt obj/docs/gnatdoc.log
-echo 'Baseline capture only: rendering/coverage qualification is still pending.'
+python3 scripts/classify_gnatdoc_warnings.py obj/docs/gnatdoc.log \
+    --report obj/docs/warnings.json
+cp docs/index.html _site/index.html
+python3 scripts/check_doc_coverage.py _site --report obj/docs/coverage.json
+python3 scripts/validate_docs.py _site
