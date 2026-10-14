@@ -1,5 +1,20 @@
 # Changelog
 
+## Task 034F22 — AMS VITA Large ProductRx receive
+
+Additive submit/view-v6 support formats 0..6; historical submit/view domains
+remain frozen. Event-v6 nests complete v5 and adds ordered Large descriptors.
+Large has 8,192-byte / 2,048-word native capacity and 8,160-byte maximum payload,
+but copies only validated header-derived 32..8,192 serialized bytes, unchanged
+in packet/network order. The genuine 1,028-byte / 257-word fixture crosses
+Medium capacity. Counts mean packet objects, not payload bytes or IQ samples.
+Small/Medium/Large share checked selection and failure-atomic owned copying.
+Safe Ada adds Large configuration and borrow/copy accessors. Existing worker,
+queue, drain and permanent exact-function/DSO retention are unchanged. Target:
+216 AMS_MEL_0.1 production exports. See
+`docs/task-034f22-rf-product-rx-vita-large.md` for measured qualification and limits.
+
+
 ## Task 034F21 — AMS VITA Medium ProductRx receive
 
 Additive submit/view-v5 support format 5 while freezing all earlier domains.

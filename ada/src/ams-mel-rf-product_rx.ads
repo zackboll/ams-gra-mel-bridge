@@ -35,6 +35,10 @@ package AMS.MEL.RF.Product_Rx is
      (Region_Size_Bytes     : Interfaces.Unsigned_64;
       Queue_Capacity        : Positive;
       Max_Samples_Per_Event : Positive) return Config;
+   function Create_Config_AMS_VITA_Large
+     (Region_Size_Bytes     : Interfaces.Unsigned_64;
+      Queue_Capacity        : Positive;
+      Max_Samples_Per_Event : Positive) return Config;
    procedure Close (Request : in out Create_Request);
    type Create_Outcome is (Created, Failed);
    type Create_Error_Code is
@@ -160,6 +164,12 @@ package AMS.MEL.RF.Product_Rx is
       Index   : Positive;
       Process : not null access procedure (Bytes : Packet_Byte_Array));
    function Copy_VITA_Medium_Packet (Value : Event; Index : Positive) return Packet_Byte_Array;
+   function VITA_Large_Packet_Count (Value : Event) return Natural;
+   procedure With_VITA_Large_Packet
+     (Value   : Event;
+      Index   : Positive;
+      Process : not null access procedure (Bytes : Packet_Byte_Array));
+   function Copy_VITA_Large_Packet (Value : Event; Index : Positive) return Packet_Byte_Array;
 private
    use type Interfaces.Unsigned_32;
    pragma

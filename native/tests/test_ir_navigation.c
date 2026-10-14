@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +109,38 @@ static int read_log(const char *path, char *buffer, size_t capacity)
     CHECK(fclose(file) == 0);
     buffer[size] = '\0';
     return EXIT_SUCCESS;
+}
+
+/* A provider completion thread may be scheduled well after its timed wait.
+ * Observe the marker, not an assumed elapsed delay. Keep the file and print
+ * its latest contents if the bounded wait fails. */
+static int wait_for_log_marker(const char *path, const char *marker,
+                               char *buffer, size_t capacity)
+{
+    struct timespec deadline;
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &deadline) == 0);
+    deadline.tv_sec += 5;
+    for (;;) {
+        struct timespec now;
+        struct timespec remaining = {0, 5000000L};
+        CHECK(read_log(path, buffer, capacity) == EXIT_SUCCESS);
+        if (strstr(buffer, marker) != NULL) return EXIT_SUCCESS;
+        CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+        if (now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
+            fprintf(stderr, "Timed out waiting for %s; retained log %s:\n%s\n",
+                    marker, path, buffer);
+            return EXIT_FAILURE;
+        }
+        if (nanosleep(&remaining, NULL) != 0) {
+            if (errno != EINTR) {
+                fprintf(stderr, "Sleep failed waiting for %s; retained log %s:\n%s\n",
+                        marker, path, buffer);
+                return EXIT_FAILURE;
+            }
+            /* Reobserve the marker and deadline after an interruption. */
+        }
+    }
 }
 
 static int check_order(const char *text, const char *first, const char *second)
@@ -327,11 +360,7 @@ static int test_post_send_failure(const char *failpoint)
     CHECK(request == NULL);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 100000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(wait_for_log_marker(path, "navigation_completed", log, sizeof log) == EXIT_SUCCESS);
     CHECK(strstr(log, "navigation_sent") != NULL);
     CHECK(strstr(log, "navigation_completed") != NULL);
     CHECK(strstr(log, "channel_destroyed") == NULL);

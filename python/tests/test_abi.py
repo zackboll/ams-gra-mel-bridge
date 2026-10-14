@@ -32,6 +32,26 @@ class AbiTests(unittest.TestCase):
         expected.extend(self._layout(_native.RfProductRxEventV5, 'event', 'vita_medium_packets'))
         self.assertEqual(actual, expected)
 
+    def test_private_product_rx_v6_abi(self) -> None:
+        self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v6.argtypes,
+                         _native.ams_mel_rf_data_submit_product_rx.argtypes)
+        self.assertEqual(_native.ams_mel_rf_product_rx_event_view_v6.argtypes,
+                         [_native.RfProductRxEventHandle,
+                          ctypes.POINTER(ctypes.POINTER(_native.RfProductRxEventV6)),
+                          *_native._CHANNEL_DIAGNOSTIC])
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/product_rx_v6_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.RfVitaLargePacketV1, 'serialized_bytes')
+        expected.extend(self._layout(_native.RfVitaLargePacketSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.RfProductRxEventV6, 'event', 'vita_large_packets'))
+        self.assertEqual(actual, expected)
+
     def test_private_product_rx_v4_abi(self) -> None:
         self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v4.argtypes,
                          _native.ams_mel_rf_data_submit_product_rx.argtypes)
@@ -752,6 +772,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_data_submit_product_rx",
                 "ams_mel_rf_data_submit_product_rx_v2",
                 "ams_mel_rf_product_rx_event_view_v2",
+                "ams_mel_rf_data_submit_product_rx_v6",
+                "ams_mel_rf_product_rx_event_view_v6",
                 "ams_mel_rf_data_submit_product_rx_v5",
                 "ams_mel_rf_product_rx_event_view_v5",
                 "ams_mel_rf_data_submit_product_rx_v4",
@@ -768,8 +790,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 214)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 214)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 216)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 216)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -777,7 +799,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 214)
+        self.assertEqual(len(exported), 216)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
