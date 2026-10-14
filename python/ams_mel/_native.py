@@ -2202,6 +2202,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_rf_data_submit_product_rx",
     "ams_mel_rf_data_submit_product_rx_v2",
     "ams_mel_rf_product_rx_event_view_v2",
+    "ams_mel_rf_data_submit_product_rx_v4",
+    "ams_mel_rf_product_rx_event_view_v4",
     "ams_mel_rf_data_submit_product_rx_v3",
     "ams_mel_rf_product_rx_event_view_v3",
     "ams_mel_rf_product_rx_request_wait",
@@ -2647,6 +2649,18 @@ ams_mel_rf_product_rx_event_view_v2.argtypes = [
 ]
 ams_mel_rf_product_rx_event_view_v2.restype = ctypes.c_int32
 
+class RfVitaSmallPacketV1(ctypes.Structure):
+    _fields_ = [("serialized_bytes", U8SpanV1)]
+
+
+class RfVitaSmallPacketSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(RfVitaSmallPacketV1)), ("size", ctypes.c_size_t)]
+
+
+class RfProductRxEventV4(ctypes.Structure):
+    _fields_ = [("event", RfProductRxEventV3), ("vita_small_packets", RfVitaSmallPacketSpanV1)]
+
+
 ams_mel_rf_data_submit_product_rx_v3 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v3
 ams_mel_rf_data_submit_product_rx_v3.argtypes = ams_mel_rf_data_submit_product_rx_v2.argtypes
 ams_mel_rf_data_submit_product_rx_v3.restype = ctypes.c_int32
@@ -2656,6 +2670,16 @@ ams_mel_rf_product_rx_event_view_v3.argtypes = [
     *_CHANNEL_DIAGNOSTIC
 ]
 ams_mel_rf_product_rx_event_view_v3.restype = ctypes.c_int32
+
+ams_mel_rf_data_submit_product_rx_v4 = _LIBRARY.ams_mel_rf_data_submit_product_rx_v4
+ams_mel_rf_data_submit_product_rx_v4.argtypes = ams_mel_rf_data_submit_product_rx_v2.argtypes
+ams_mel_rf_data_submit_product_rx_v4.restype = ctypes.c_int32
+ams_mel_rf_product_rx_event_view_v4 = _LIBRARY.ams_mel_rf_product_rx_event_view_v4
+ams_mel_rf_product_rx_event_view_v4.argtypes = [
+    RfProductRxEventHandle, ctypes.POINTER(ctypes.POINTER(RfProductRxEventV4)),
+    *_CHANNEL_DIAGNOSTIC
+]
+ams_mel_rf_product_rx_event_view_v4.restype = ctypes.c_int32
 
 class RfWaveformBufferConfigV1(ctypes.Structure):
     _fields_ = [
