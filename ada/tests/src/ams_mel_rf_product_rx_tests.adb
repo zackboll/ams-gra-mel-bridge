@@ -176,6 +176,18 @@ package body AMS_MEL_RF_Product_Rx_Tests is
                null;
          end;
       end if;
+      if RX.Data_Format (Value) /= RF.AMS_VITA_Extra_Large then
+         begin
+            declare
+               Wrong : constant RX.Packet_Byte_Array := RX.Copy_VITA_Extra_Large_Packet (Value, 1);
+            begin
+               raise Program_Error with "wrong Large access accepted" & Wrong'Length'Image;
+            end;
+         exception
+            when Constraint_Error =>
+               null;
+         end;
+      end if;
    end Check_Wrong_Formats;
 
    procedure Check_Rich (Value : RX.Event) is
@@ -1394,6 +1406,145 @@ package body AMS_MEL_RF_Product_Rx_Tests is
                   Check_Packet (Short_Copy, 0, 1);
                   Check_Packet (Middle_Copy, 249, 2);
                   Check_Packet (Full_Copy, 2_040, 3);
+               end;
+            end;
+         end;
+      end loop;
+      for Iteration in 1 .. 50 loop
+         declare
+            VITA_Parent  : RF.Data_MEL := RF.Open (Provider_Path, "rx:ok:reference");
+            VITA_Request : RX.Create_Request :=
+              RX.Submit (VITA_Parent, RX.Create_Config_AMS_VITA_Extra_Large (131_072, 2, 3));
+            procedure Check_Packet (Bytes : RX.Packet_Byte_Array; Payload_Words, Seed : Natural) is
+               Words    : constant Natural := Payload_Words + 8;
+               type Word_Array is array (Natural range <>) of Interfaces.Unsigned_32;
+               Expected : Word_Array (0 .. Words - 1);
+            begin
+               if Bytes'Length /= Words * 4 then
+                  raise Program_Error with "VITA serialized length mismatch";
+               end if;
+               Expected (0) :=
+                 16#1CE0_0000#
+                 + Interfaces.Unsigned_32 (Seed mod 16) * 65_536
+                 + Interfaces.Unsigned_32 (Words);
+               Expected (1) := 16#1234_5600# + Interfaces.Unsigned_32 (Seed);
+               Expected (2) := 16#00AA_AAAA#;
+               Expected (3) := 16#0500_0D05#;
+               Expected (4) := 16#2345_6700# + Interfaces.Unsigned_32 (Seed);
+               Expected (5) := 16#3456_7800# + Interfaces.Unsigned_32 (Seed);
+               Expected (6) := 16#4567_8900# + Interfaces.Unsigned_32 (Seed);
+               for I in 1 .. Payload_Words loop
+                  Expected (6 + I) :=
+                    16#0102_0304#
+                    + Interfaces.Unsigned_32 (I - 1) * 16#070B_0D11#
+                    + Interfaces.Unsigned_32 (Seed);
+               end loop;
+               Expected (Words - 1) := 16#00C0_0000# + Interfaces.Unsigned_32 (Seed mod 4) * 1_024;
+               for I in Expected'Range loop
+                  for J in 0 .. 3 loop
+                     if Bytes (Bytes'First + I * 4 + J)
+                       /= Interfaces.Unsigned_8
+                            (Interfaces.Shift_Right (Expected (I), 24 - J * 8) and 255)
+                     then
+                        raise Program_Error with "VITA packet byte fidelity mismatch";
+                     end if;
+                  end loop;
+               end loop;
+            end Check_Packet;
+         begin
+            if RX.Outcome (RX.Wait (VITA_Request, 10_000)) /= RX.Created then
+               raise Program_Error with "VITA create failed";
+            end if;
+            declare
+               VITA_Endpoint : RX.Endpoint := RX.Claim (VITA_Request);
+            begin
+               RX.Close (VITA_Request);
+               if Emit (RX.Endpoint_ID (VITA_Endpoint), 4, 1) /= 1 then
+                  raise Program_Error with "Large one-packet emitter failed";
+               end if;
+               declare
+                  Single : RX.Event := RX.Receive (VITA_Endpoint);
+               begin
+                  if RX.Sample_Count (Single) /= 1
+                    or else RX.VITA_Extra_Large_Packet_Count (Single) /= 1
+                  then
+                     raise Program_Error with "Large one-packet count mismatch";
+                  end if;
+                  Check_Packet (RX.Copy_VITA_Extra_Large_Packet (Single, 1), 0, 1);
+                  Check_Wrong_Formats (Single);
+                  RX.Close (Single);
+               end;
+               if RX.Assigned_Data_Format (VITA_Endpoint) /= RF.AMS_VITA_Extra_Large
+                 or else Emit (RX.Endpoint_ID (VITA_Endpoint), 0, 0) /= 1
+               then
+                  raise Program_Error with "VITA assigned format/emitter mismatch";
+               end if;
+               declare
+                  Product     : RX.Event := RX.Receive (VITA_Endpoint);
+                  Short_Copy  : constant RX.Packet_Byte_Array :=
+                    RX.Copy_VITA_Extra_Large_Packet (Product, 1);
+                  Middle_Copy : constant RX.Packet_Byte_Array :=
+                    RX.Copy_VITA_Extra_Large_Packet (Product, 2);
+                  Full_Copy   : constant RX.Packet_Byte_Array :=
+                    RX.Copy_VITA_Extra_Large_Packet (Product, 3);
+                  procedure Check_Short (Bytes : RX.Packet_Byte_Array) is
+                  begin
+                     Check_Packet (Bytes, 0, 1);
+                  end Check_Short;
+               begin
+                  if RX.Sample_Count (Product) /= 3
+                    or else RX.VITA_Extra_Large_Packet_Count (Product) /= 3
+                    or else RX.Job_Interval_ID (RX.Metadata (Product)) /= 23
+                    or else RX.Rx_Stream_ID_At (RX.Metadata (Product), 1) /= 23
+                  then
+                     raise Program_Error with "VITA count/metadata mismatch";
+                  end if;
+                  Check_Wrong_Formats (Product);
+                  declare
+                     Zero : constant Natural := RX.VITA_Extra_Large_Packet_Count (Product) - 3;
+                  begin
+                     RX.With_VITA_Extra_Large_Packet (Product, Zero, Check_Short'Access);
+                     raise Program_Error with "zero VITA index accepted";
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  RX.With_VITA_Extra_Large_Packet (Product, 1, Check_Short'Access);
+                  begin
+                     RX.With_VITA_Extra_Large_Packet (Product, 4, Check_Short'Access);
+                     raise Program_Error with "out of range VITA index accepted";
+                  exception
+                     when Constraint_Error =>
+                        null;
+                  end;
+                  if Emit (RX.Endpoint_ID (VITA_Endpoint), 5, 0) /= 1 then
+                     raise Program_Error with "VITA empty emitter failed";
+                  end if;
+                  declare
+                     Empty : RX.Event := RX.Receive (VITA_Endpoint);
+                  begin
+                     if RX.VITA_Extra_Large_Packet_Count (Empty) /= 0 then
+                        raise Program_Error with "VITA empty count mismatch";
+                     end if;
+                     Check_Wrong_Formats (Empty);
+                     begin
+                        RX.With_VITA_Extra_Large_Packet (Empty, 1, Check_Short'Access);
+                        raise Program_Error with "empty VITA index accepted";
+                     exception
+                        when Constraint_Error =>
+                           null;
+                     end;
+                     RX.Close (Empty);
+                  end;
+                  RF.Close (VITA_Parent);
+                  RX.Close (VITA_Endpoint);
+                  RX.With_VITA_Extra_Large_Packet (Product, 1, Check_Short'Access);
+                  Check_Packet (RX.Copy_VITA_Extra_Large_Packet (Product, 2), 2_041, 2);
+                  Check_Packet (RX.Copy_VITA_Extra_Large_Packet (Product, 3), 8_184, 3);
+                  RX.Close (Product);
+                  Check_Packet (Short_Copy, 0, 1);
+                  Check_Packet (Middle_Copy, 2_041, 2);
+                  Check_Packet (Full_Copy, 8_184, 3);
                end;
             end;
          end;

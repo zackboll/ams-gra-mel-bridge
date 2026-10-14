@@ -82,6 +82,8 @@ struct ams_mel_rf_product_rx_event {
     ams_mel_rf_product_rx_event_v5 view_v5{};
     std::vector<ams_mel_rf_vita_large_packet_v1> large_packets;
     ams_mel_rf_product_rx_event_v6 view_v6{};
+    std::vector<ams_mel_rf_vita_extra_large_packet_v1> extra_large_packets;
+    ams_mel_rf_product_rx_event_v7 view_v7{};
     ams_mel_rf_product_rx_event_v4 view_v4{};
 };
 
@@ -230,7 +232,7 @@ BuildOutcome copy_packets(const Native *source, std::size_t count,
             return BuildOutcome::Malformed;
         const std::size_t bytes = words * 4U;
         const auto storage = source[index].bytes();
-        if (bytes < 32U || bytes > storage.size() || bytes > Native::byte_capacity)
+        if (bytes < 32U || bytes % 4U != 0U || bytes > storage.size() || bytes > Native::byte_capacity)
             return BuildOutcome::Malformed;
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
         if (index > 0U && take_failpoint(FailLaterPacket)) throw std::bad_alloc{};
@@ -272,6 +274,7 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     const rfmel::DataPacketSmall *packet_source = nullptr;
     const rfmel::DataPacketMedium *medium_source = nullptr;
     const rfmel::DataPacketLarge *large_source = nullptr;
+    const rfmel::DataPacketExtraLarge *extra_large_source = nullptr;
     switch (state.format) {
     case rfmel::JobDataFormat::DirectINT8:
         if (!select_source<std::int8_t, std::int8_t>(data, count, direct_i8))
@@ -300,6 +303,10 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     case rfmel::JobDataFormat::AMSVitaLarge:
         if (!select_packet_source<rfmel::DataPacketLarge, ams_mel_rf_vita_large_packet_v1>(
                 data, count, large_source)) return BuildOutcome::Malformed;
+        break;
+    case rfmel::JobDataFormat::AMSVitaExtraLarge:
+        if (!select_packet_source<rfmel::DataPacketExtraLarge, ams_mel_rf_vita_extra_large_packet_v1>(
+                data, count, extra_large_source)) return BuildOutcome::Malformed;
         break;
     default: return BuildOutcome::Malformed;
     }
@@ -357,6 +364,10 @@ BuildOutcome build_event(const RfRxCallbackState& state,
         if (copy_packets(large_source, count, event->packet_bytes, event->large_packets)
             != BuildOutcome::Accepted) return BuildOutcome::Malformed;
         break;
+    case rfmel::JobDataFormat::AMSVitaExtraLarge:
+        if (copy_packets(extra_large_source, count, event->packet_bytes, event->extra_large_packets)
+            != BuildOutcome::Accepted) return BuildOutcome::Malformed;
+        break;
     default: return BuildOutcome::Malformed;
     }
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -405,6 +416,9 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     event->view_v6 = {event->view_v5,
         {event->large_packets.empty() ? nullptr : event->large_packets.data(),
          event->large_packets.size()}};
+    event->view_v7 = {event->view_v6,
+        {event->extra_large_packets.empty() ? nullptr : event->extra_large_packets.data(),
+         event->extra_large_packets.size()}};
     output = std::move(event);
     return BuildOutcome::Accepted;
 }
@@ -947,6 +961,15 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v6(
                              diagnostic_capacity, diagnostic_required, 6U);
 }
 
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v7(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, 7U);
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_wait(
     const ams_mel_rf_product_rx_request *request, std::uint32_t timeout_ms,
     ams_mel_rf_product_rx_request_result_v1 *out_result, char *diagnostic,
@@ -1342,7 +1365,21 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v6(
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
         return AMS_MEL_INVALID_ARGUMENT;
+    if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE)
+        return AMS_MEL_INVALID_ARGUMENT;
     *out_view = &event->view_v6;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v7(
+    const ams_mel_rf_product_rx_event *event, const ams_mel_rf_product_rx_event_v7 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+        return AMS_MEL_INVALID_ARGUMENT;
+    *out_view = &event->view_v7;
     return AMS_MEL_OK;
 }
 

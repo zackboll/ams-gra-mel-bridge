@@ -211,6 +211,11 @@ if(AMS_MEL_BUILD_TESTS)
     target_compile_features(test_rf_product_rx_v6_layout PRIVATE c_std_11)
     target_link_libraries(test_rf_product_rx_v6_layout PRIVATE ams_mel::ams_mel_c)
     ams_mel_warnings(test_rf_product_rx_v6_layout)
+    add_executable(test_rf_product_rx_v7_layout tests/product_rx_v7_layout_probe.c)
+    target_compile_features(test_rf_product_rx_v7_layout PRIVATE c_std_11)
+    target_link_libraries(test_rf_product_rx_v7_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_rf_product_rx_v7_layout)
+    add_test(NAME rf-product-rx-v7-layout COMMAND test_rf_product_rx_v7_layout)
     add_test(NAME rf-product-rx-v6-layout COMMAND test_rf_product_rx_v6_layout)
     add_executable(test_rf_product_rx_i8_headers tests/rf_product_rx_i8_contract_probe.cpp)
     target_compile_features(test_rf_product_rx_i8_headers PRIVATE cxx_std_20)
@@ -641,6 +646,15 @@ if(AMS_MEL_BUILD_TESTS)
         add_test(NAME rf-product-rx-large-${case} COMMAND test_rf_product_rx large-${case})
         set_tests_properties(rf-product-rx-large-${case} PROPERTIES TIMEOUT 60)
     endforeach()
+    foreach(case IN ITEMS sync-callback registration-throw-before registration-throw-after
+            registration-throw-active mid-callback-close late-copy late-reference late-move
+            parent-first never-ready unclaimed unclaimed-parent-first pending-parent-first
+            worker-launch-failure saturation receive-close claim-unique format-mismatch)
+        add_test(NAME rf-product-rx-extra-large-${case} COMMAND test_rf_product_rx extra-large-${case})
+        set_tests_properties(rf-product-rx-extra-large-${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_test(NAME rf-product-rx-extra-large-pages COMMAND test_rf_product_rx extra-large-pages)
+    add_test(NAME rf-product-rx-extra-large COMMAND test_rf_product_rx extra-large)
     add_test(NAME rf-product-rx-large COMMAND test_rf_product_rx large)
 
 
