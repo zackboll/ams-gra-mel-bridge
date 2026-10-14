@@ -2890,6 +2890,32 @@ static int test_destructor_close_gap_mutation(void)
 extern int ams_mel_test_lost_cleanup_inspect(void);
 extern int ams_mel_test_lost_cleanup_rescue(void);
 
+/* Navigation terminal publication does not join its worker. Observe the final
+ * graph/DSO destruction condition before taking the ordered lifetime snapshot.
+ * This is a bounded condition wait, not an arbitrary scheduling delay. */
+static int wait_for_lifetime_unload(const char *path)
+{
+    struct timespec deadline, now;
+    const struct timespec pause = {0, 1000000};
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) return 0;
+    deadline.tv_sec += 5;
+    do {
+        char contents[8192];
+        FILE *file = fopen(path, "rb");
+        if (file) {
+            const size_t count = fread(contents, 1, sizeof contents - 1U, file);
+            const int failed = ferror(file);
+            contents[count] = '\0';
+            if (fclose(file) != 0 || failed) return 0;
+            if (strstr(contents, "library_unloaded\n")) return 1;
+        }
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+        if (now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) return 0;
+        (void)nanosleep(&pause, NULL);
+    } while (1);
+}
+
 /* 0 Close; 1 snapshot post-release; 2 Navigation; 3 snapshot B-active;
    4 snapshot skipped final cleanup, observed then rescued. */
 static int test_late_callback_close(int child)
@@ -2913,42 +2939,45 @@ static int test_late_callback_close(int child)
     char decision[PATH_MAX], resume[PATH_MAX], entered[PATH_MAX], release[PATH_MAX];
     char lifetime[] = "/tmp/ams-mel-late-order-XXXXXX";
     char log[8192];
-    unsigned long destroyed_before, channel_before;
+    unsigned long destroyed_before = 0, channel_before = 0;
+    ams_mel_status_t observed_navigation = AMS_MEL_INTERNAL_ERROR;
+    int failed_line = 0;
+#define LATE_FAIL() do { failed_line = __LINE__; goto cleanup; } while (0)
     int fd = mkstemp(base), log_fd = -1;
     decision[0] = resume[0] = entered[0] = release[0] = '\0';
-    if (fd < 0 || close(fd) != 0 || unlink(base) != 0) goto cleanup;
+    if (fd < 0 || close(fd) != 0 || unlink(base) != 0) LATE_FAIL();
     const char *stage = child ? "snapshot-completion" : "close-decision";
     if (snprintf(decision, sizeof decision, "%s.%s.reached", base, stage) <= 0 ||
         snprintf(joining, sizeof joining, "%s.reached", base) <= 0 ||
         snprintf(waiter, sizeof waiter, "%s.waiter.reached", base) <= 0 ||
         snprintf(resume, sizeof resume, "%s.%s.release", base, stage) <= 0 ||
         snprintf(entered, sizeof entered, "%s.entered", base) <= 0 ||
-        snprintf(release, sizeof release, "%s.release", base) <= 0) goto cleanup;
+        snprintf(release, sizeof release, "%s.release", base) <= 0) LATE_FAIL();
     log_fd = mkstemp(lifetime);
     if (log_fd < 0 || close(log_fd) != 0 ||
         setenv("AMS_MEL_TEST_LIFETIME_LOG", lifetime, 1) != 0 ||
         setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||
         setenv("AMS_MEL_TEST_EXTERNAL_JOIN", base, 1) != 0 ||
         setenv("AMS_MEL_TEST_PROVIDER_RELEASE_BARRIER", base, 1) != 0)
-        goto cleanup;
+        LATE_FAIL();
     log_fd = -1;
     mock_executor_race_void("ams_mel_mock_executor_race_reset");
     if (child == 3 && setenv("AMS_MEL_TEST_RELEASE_EXECUTOR_BARRIER", base, 1) != 0)
-        goto cleanup;
+        LATE_FAIL();
     if (child == 4 && setenv("AMS_MEL_TEST_SKIP_FINAL_SNAPSHOT_CLEANUP", "skip", 1) != 0)
-        goto cleanup;
+        LATE_FAIL();
     if (child == 2) {
         int nav_fd = mkstemp(nav_base);
         if (nav_fd < 0 || close(nav_fd) != 0 || unlink(nav_base) != 0 ||
             snprintf(nav_release, sizeof nav_release, "%s.release", nav_base) <= 0 ||
             snprintf(nav_complete, sizeof nav_complete, "%s.complete", nav_base) <= 0 ||
             setenv("AMS_MEL_TEST_IMAGE_NAVIGATION_HOLD_BARRIER", nav_base, 1) != 0)
-            goto cleanup;
+            LATE_FAIL();
     }
     config.buffer_count = 2;
     if (open_stream("late-callback-close", &session, &stream, &config) != EXIT_SUCCESS ||
         ams_mel_ir_stream_start(stream, NULL, 0, NULL) != AMS_MEL_OK ||
-        ams_mel_mock_pool_produce_once() != 1) goto cleanup;
+        ams_mel_mock_pool_produce_once() != 1) LATE_FAIL();
     destroyed_before = mock_registered_buffers_destroyed();
     channel_before = mock_image_channels_destroyed();
     if (child == 2) {
@@ -2959,73 +2988,73 @@ static int test_late_callback_close(int child)
             ams_mel_ir_stream_close(&stream, NULL, 0, NULL) != AMS_MEL_OK || stream != NULL ||
             mock_image_channels_destroyed() != channel_before ||
             thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
-            goto cleanup;
+            LATE_FAIL();
         callback_started = 1;
         if (!wait_for_marker(entered) || !create_marker(nav_release) ||
             !create_marker(nav_complete) || !wait_for_marker(joining) ||
-            ams_mel_ir_navigation_request_wait(request, 0, &navigation_result,
-                NULL, 0, NULL) != AMS_MEL_TIMEOUT) goto cleanup;
+            (observed_navigation = ams_mel_ir_navigation_request_wait(request, 0, &navigation_result,
+                NULL, 0, NULL)) != AMS_MEL_TIMEOUT) LATE_FAIL();
         goto verify_join;
     }
     if (child) {
         if (ams_mel_ir_stream_receive_snapshot(stream, 2000, &snapshot, NULL, 0, NULL) != AMS_MEL_OK ||
             ams_mel_ir_stream_close(&stream, NULL, 0, NULL) != AMS_MEL_OK || stream != NULL ||
-            mock_image_channels_destroyed() != channel_before) goto cleanup;
+            mock_image_channels_destroyed() != channel_before) LATE_FAIL();
     }
     {
         char arm[PATH_MAX];
         if (snprintf(arm, sizeof arm, "%s.%s.arm", base, stage) <= 0 ||
-            !create_marker(arm)) goto cleanup;
+            !create_marker(arm)) LATE_FAIL();
     }
     closer.stream = stream; stream = NULL;
     if (child == 3) {
         if (thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
-            goto cleanup;
+            LATE_FAIL();
         callback_started = 1;
-        if (!wait_for_marker(entered)) goto cleanup;
+        if (!wait_for_marker(entered)) LATE_FAIL();
     }
     if (child) {
         snapshot_closer.snapshot = snapshot; snapshot = NULL;
         if (thrd_create(&close_thread, handoff_close_thread, &snapshot_closer) != thrd_success)
-            goto cleanup;
+            LATE_FAIL();
     } else if (thrd_create(&close_thread, stream_close_thread, &closer) != thrd_success)
-        goto cleanup;
+        LATE_FAIL();
     close_started = 1;
     if (child == 3) {
         /* B already owns the executor. S cannot reach its own completion
            barrier until admission succeeds; this is the earlier safe join. */
         if (!wait_for_marker(waiter) || access(decision, F_OK) == 0 ||
             mock_pool_releases() != 0UL || mock_executor_race_max_active() != 1UL)
-            goto cleanup;
+            LATE_FAIL();
         goto verify_join;
     }
     if (!wait_for_marker(decision) || ams_mel_mock_pool_available() != 2UL)
-        goto cleanup;
+        LATE_FAIL();
     if (thrd_create(&callback_thread, pool_produce_thread, &producer) != thrd_success)
-        goto cleanup;
+        LATE_FAIL();
     callback_started = 1;
-    if (!wait_for_marker(entered)) goto cleanup;
+    if (!wait_for_marker(entered)) LATE_FAIL();
     if (child == 4) {
         /* Complete B healthily before S skips the final cleanup call. */
         if (!create_marker(release) || thrd_join(callback_thread, NULL) != thrd_success)
-            goto cleanup;
+            LATE_FAIL();
         callback_started = 0;
         if (producer.status != 1 || !create_marker(resume) ||
-            thrd_join(close_thread, NULL) != thrd_success) goto cleanup;
+            thrd_join(close_thread, NULL) != thrd_success) LATE_FAIL();
         close_started = 0;
         if (snapshot_closer.status != AMS_MEL_OK || snapshot_closer.snapshot != NULL ||
-            ams_mel_test_lost_cleanup_inspect() != 1) goto cleanup;
+            ams_mel_test_lost_cleanup_inspect() != 1) LATE_FAIL();
         goto verify_join;
     }
-    if (!create_marker(resume)) goto cleanup;
-    if (!wait_for_marker(joining)) goto cleanup;
+    if (!create_marker(resume)) LATE_FAIL();
+    if (!wait_for_marker(joining)) LATE_FAIL();
     /* The callback has entered the provider release; the public Close thread
        must retain the graph until that finite work finishes. */
 verify_join:
     {
         FILE *file = fopen(lifetime, "rb");
         size_t count;
-        if (!file) goto cleanup;
+        if (!file) LATE_FAIL();
         count = fread(log, 1, sizeof log - 1U, file);
         log[count] = '\0';
         if (fclose(file) != 0 || strstr(log, "release_extra_bridge_owner") ||
@@ -3034,43 +3063,44 @@ verify_join:
             strstr(log, "control_destroyed") || strstr(log, "manager_destroyed") ||
             strstr(log, "channel_detached") || strstr(log, "library_unloaded") ||
             mock_registered_buffers_destroyed() != destroyed_before ||
-            mock_image_channels_destroyed() != channel_before) goto cleanup;
+            mock_image_channels_destroyed() != channel_before) LATE_FAIL();
     }
     if (child == 4) {
         if (unsetenv("AMS_MEL_TEST_SKIP_FINAL_SNAPSHOT_CLEANUP") != 0 ||
-            ams_mel_test_lost_cleanup_rescue() != 1) goto cleanup;
+            ams_mel_test_lost_cleanup_rescue() != 1) LATE_FAIL();
         goto verify_cleaned;
     }
-    if (!create_marker(release)) goto cleanup;
-    if (thrd_join(callback_thread, NULL) != thrd_success) goto cleanup;
+    if (!create_marker(release)) LATE_FAIL();
+    if (thrd_join(callback_thread, NULL) != thrd_success) LATE_FAIL();
     callback_started = 0;
     if (child == 3) {
         if (!wait_for_marker(decision) || mock_pool_releases() != 2UL ||
-            !create_marker(resume)) goto cleanup;
+            !create_marker(resume)) LATE_FAIL();
     }
     if (child == 2) {
         if (ams_mel_ir_navigation_request_wait(request, 10000, &navigation_result,
                 NULL, 0, NULL) != AMS_MEL_OK ||
             ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) != AMS_MEL_OK)
-            goto cleanup;
+            LATE_FAIL();
         snapshot_closer.status = AMS_MEL_OK;
-    } else if (thrd_join(close_thread, NULL) != thrd_success) goto cleanup;
+    } else if (thrd_join(close_thread, NULL) != thrd_success) LATE_FAIL();
     close_started = 0;
 verify_cleaned:
     if (producer.status != 1 ||
         mock_executor_race_max_active() != 1UL ||
         (child ? snapshot_closer.status : closer.status) != AMS_MEL_OK ||
         closer.stream != NULL || mock_image_channels_destroyed() != channel_before + 1UL)
-        goto cleanup;
-    if (ams_mel_session_close(&session, NULL, 0, NULL) != AMS_MEL_OK) goto cleanup;
+        LATE_FAIL();
+    if (ams_mel_session_close(&session, NULL, 0, NULL) != AMS_MEL_OK) LATE_FAIL();
+    if (child == 2 && !wait_for_lifetime_unload(lifetime)) LATE_FAIL();
     {
         FILE *file = fopen(lifetime, "rb");
         size_t count;
         char *wrapper, *second_wrapper, *channel, *control, *manager, *unloaded;
-        if (!file) goto cleanup;
+        if (!file) LATE_FAIL();
         count = fread(log, 1, sizeof log - 1U, file);
         log[count] = '\0';
-        if (fclose(file) != 0) goto cleanup;
+        if (fclose(file) != 0) LATE_FAIL();
         wrapper = strstr(log, "requeue_wrapper_destroyed");
         second_wrapper = wrapper ? strstr(wrapper + strlen("requeue_wrapper_destroyed"),
                                           "requeue_wrapper_destroyed") : NULL;
@@ -3078,13 +3108,35 @@ verify_cleaned:
         control = strstr(log, "control_destroyed");
         manager = strstr(log, "manager_destroyed");
         unloaded = strstr(log, "library_unloaded");
+        if (!wrapper || !second_wrapper || !channel || !control || !manager || !unloaded)
+            fprintf(stderr, "late final markers: wrapper=%d second=%d channel=%d "
+                "control=%d manager=%d unload=%d\n", wrapper != NULL, second_wrapper != NULL,
+                channel != NULL, control != NULL, manager != NULL, unloaded != NULL);
         if (!wrapper || !second_wrapper || !channel || !control || !manager || !unloaded ||
             strstr(second_wrapper + strlen("requeue_wrapper_destroyed"), "requeue_wrapper_destroyed") ||
             !(second_wrapper < channel && channel < control && control < manager && manager < unloaded))
-            goto cleanup;
+            LATE_FAIL();
     }
     result = EXIT_SUCCESS;
 cleanup:
+    if (result != EXIT_SUCCESS) {
+        FILE *failure_log = fopen(lifetime, "rb");
+        size_t bytes = failure_log ? fread(log, 1, sizeof log - 1U, failure_log) : 0;
+        log[bytes] = '\0';
+        if (failure_log) (void)fclose(failure_log);
+        fprintf(stderr, "late-callback child=%d failed_line=%d nav_status=%d "
+            "entered=%d release=%d nav_release=%d nav_complete=%d joining=%d "
+            "buffers=%lu/%lu channels=%lu/%lu max_active=%lu producer=%d\nlifetime %s:\n%s\n",
+            child, failed_line, (int)observed_navigation,
+            entered[0] && access(entered, F_OK) == 0,
+            release[0] && access(release, F_OK) == 0,
+            nav_release[0] && access(nav_release, F_OK) == 0,
+            nav_complete[0] && access(nav_complete, F_OK) == 0,
+            joining[0] && access(joining, F_OK) == 0,
+            mock_registered_buffers_destroyed(), destroyed_before,
+            mock_image_channels_destroyed(), channel_before,
+            mock_executor_race_max_active(), callback_started ? -1 : producer.status, lifetime, log);
+    }
     if (nav_release[0]) (void)create_marker(nav_release);
     if (nav_complete[0]) (void)create_marker(nav_complete);
     if (resume[0]) (void)create_marker(resume);
@@ -3117,8 +3169,10 @@ cleanup:
     if (resume[0]) (void)unlink(resume);
     if (entered[0]) (void)unlink(entered);
     if (release[0]) (void)unlink(release);
-    (void)unlink(base); (void)unlink(lifetime);
+    (void)unlink(base);
+    if (result == EXIT_SUCCESS) (void)unlink(lifetime);
     return result;
+#undef LATE_FAIL
 }
 
 /* Repeated successful reuse reaches the real execution bound (one active
@@ -3609,6 +3663,8 @@ static int test_release_slot_admission_control(void)
 
 int main(void)
 {
+    if (getenv("AMS_MEL_TEST_F24_LATE_NAV_ONLY"))
+        return test_late_callback_close(2);
     static const char *malformed[] = {"null-buffer", "null-image", "image-before",
         "image-after", "invalid-dimensions", "overflow-dimensions",
         "unsupported-bpp", "unsupported-bands", "unsupported-format"};

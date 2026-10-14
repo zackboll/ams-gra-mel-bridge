@@ -180,6 +180,10 @@ package AMS.MEL.RF.Product_Rx is
       Index   : Positive;
       Process : not null access procedure (Bytes : Packet_Byte_Array));
    function Copy_VITA_Extra_Large_Packet (Value : Event; Index : Positive) return Packet_Byte_Array;
+   function Receive_Event_Associations_Present (Value : Product_Metadata) return Boolean;
+   function Receive_Event_Association_Count (Value : Product_Metadata) return Natural;
+   function Receive_Event_Association_ID_At
+     (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32;
 private
    use type Interfaces.Unsigned_32;
    pragma
@@ -217,6 +221,8 @@ private
       Seconds, Femtoseconds                                                   :
         Interfaces.Integer_64 := 0;
       Stream_IDs                                                              : ID_Vectors.Vector;
+      Associations_Present                                                    : Boolean := False;
+      Association_IDs                                                         : ID_Vectors.Vector;
    end record;
    type Event is new Ada.Finalization.Limited_Controlled with record
       Handle         : aliased AMS.MEL_C_API.RF_Product_Rx_Event_Handle :=

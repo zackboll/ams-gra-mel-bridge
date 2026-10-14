@@ -66,6 +66,9 @@ using DataReadyCallback =
 using ComplexI16 = rfmel::MELComplex<std::int16_t>;
 using ComplexI8 = rfmel::MELComplex<std::int8_t>;
 using CreateFuture = mel::RequestFor<rfmel::ProductRxEndpoint>;
+static_assert(std::is_same_v<rfmel::JobEventID, std::uint32_t>);
+static_assert(std::is_same_v<decltype(std::declval<const rfmel::ProductRxMetadata&>()
+    .getReceiveEventAssociations()), std::optional<std::vector<rfmel::JobEventID>>>);
 
 struct ams_mel_rf_product_rx_event {
     std::vector<std::int8_t> direct_i8;
@@ -84,6 +87,8 @@ struct ams_mel_rf_product_rx_event {
     ams_mel_rf_product_rx_event_v6 view_v6{};
     std::vector<ams_mel_rf_vita_extra_large_packet_v1> extra_large_packets;
     ams_mel_rf_product_rx_event_v7 view_v7{};
+    std::vector<std::uint32_t> association_ids;
+    ams_mel_rf_product_rx_event_v8 view_v8{};
     ams_mel_rf_product_rx_event_v4 view_v4{};
 };
 
@@ -105,6 +110,7 @@ struct RfRxCallbackState {
     ams_mel_rf_product_rx_counters_v1 counters{};
     std::uint64_t endpoint_id{};
     rfmel::JobDataFormat format{rfmel::JobDataFormat::ComplexINT16};
+    bool associations_enabled{};
 };
 
 void saturating_increment(std::uint64_t& value) noexcept
@@ -136,7 +142,7 @@ void retain_registration_forever(PermanentRxRegistration *registration) noexcept
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 /* Test-only seams; none is reachable from a production build. */
 enum : unsigned { FailEvent = 1U, FailStreamIds = 2U, FailWorkerLaunch = 3U,
-                  FailLaterPacket = 4U };
+                  FailLaterPacket = 4U, FailLaterAssociation = 5U };
 enum : unsigned {
     ControlNone = 0U, ControlNoLibraryPin = 1U, ControlNoExactLvalue = 2U,
     ControlOldCloseOrder = 3U
@@ -315,10 +321,12 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     if (metadata->getUserDefinedData().has_value()) return BuildOutcome::Malformed;
     if (!metadata->getStabPoints().empty()) return BuildOutcome::Malformed;
     if (!metadata->getReceiveEvents().empty()) return BuildOutcome::Malformed;
-    {
-        const auto associations = metadata->getReceiveEventAssociations();
-        if (associations.has_value() && !associations->empty())
-            return BuildOutcome::Malformed;
+    const auto associations = metadata->getReceiveEventAssociations();
+    const bool vita = state.format >= rfmel::JobDataFormat::AMSVitaSmall;
+    if (associations.has_value()) {
+        if (!state.associations_enabled || !vita) {
+            if (!associations->empty()) return BuildOutcome::Malformed;
+        } else if (associations->size() != count) return BuildOutcome::Malformed;
     }
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
@@ -419,6 +427,18 @@ BuildOutcome build_event(const RfRxCallbackState& state,
     event->view_v7 = {event->view_v6,
         {event->extra_large_packets.empty() ? nullptr : event->extra_large_packets.data(),
          event->extra_large_packets.size()}};
+    if (associations.has_value()) {
+        for (const auto id : *associations) {
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+            if (!event->association_ids.empty() && take_failpoint(FailLaterAssociation))
+                throw std::bad_alloc{};
+#endif
+            event->association_ids.push_back(id);
+        }
+    }
+    event->view_v8 = {event->view_v7, {associations.has_value() ? 1U : 0U,
+        {event->association_ids.empty() ? nullptr : event->association_ids.data(),
+         event->association_ids.size()}}};
     output = std::move(event);
     return BuildOutcome::Accepted;
 }
@@ -574,6 +594,7 @@ struct CreateCompletion {
     std::size_t queue_capacity{};
     std::size_t max_samples_per_event{};
     rfmel::JobDataFormat requested_format{rfmel::JobDataFormat::ComplexINT16};
+    bool associations_enabled{};
 };
 
 /* Owned by the detached worker. Allocated before the provider call so that a
@@ -828,7 +849,7 @@ static ams_mel_status_t submit_product_rx(
         return AMS_MEL_INVALID_ARGUMENT;
     std::size_t region_size{};
     const auto minimum = version == 1U ? 3U : (version == 2U ? 2U : 0U);
-    const auto maximum = version >= 4U ? version : 3U;
+    const auto maximum = version >= 7U ? 7U : version >= 4U ? version : 3U;
     if (config->data_format < minimum || config->data_format > maximum) {
         write_diagnostic("unsupported ProductRx format for submit version",
                          diagnostic, diagnostic_capacity, diagnostic_required);
@@ -853,6 +874,7 @@ static ams_mel_status_t submit_product_rx(
         completion->queue_capacity = config->queue_capacity;
         completion->max_samples_per_event = config->max_samples_per_event;
         completion->requested_format = static_cast<rfmel::JobDataFormat>(config->data_format);
+        completion->associations_enabled = version == 8U;
         input = std::make_shared<CreateWorkerInput>();
         input->completion = completion;
         owner = std::make_unique<ams_mel_rf_product_rx_request>();
@@ -970,6 +992,15 @@ extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v7(
                              diagnostic_capacity, diagnostic_required, 7U);
 }
 
+extern "C" ams_mel_status_t ams_mel_rf_data_submit_product_rx_v8(
+    ams_mel_rf_data *data, const ams_mel_rf_product_rx_config_v1 *config,
+    ams_mel_rf_product_rx_request **out_request, char *diagnostic,
+    std::size_t diagnostic_capacity, std::size_t *diagnostic_required) noexcept
+{
+    return submit_product_rx(data, config, out_request, diagnostic,
+                             diagnostic_capacity, diagnostic_required, 8U);
+}
+
 extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_wait(
     const ams_mel_rf_product_rx_request *request, std::uint32_t timeout_ms,
     ams_mel_rf_product_rx_request_result_v1 *out_result, char *diagnostic,
@@ -1044,6 +1075,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_request_claim(
         state->max_samples_per_event = completion.max_samples_per_event;
         state->endpoint_id = completion.info.endpoint_id;
         state->format = completion.requested_format;
+        state->associations_enabled = completion.associations_enabled;
         owner = std::make_unique<ams_mel_rf_product_rx>();
         registration = std::make_unique<PermanentRxRegistration>();
         registration->callback_state = state;
@@ -1287,7 +1319,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr)
+        out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16) {
         write_diagnostic("frozen v1 event view requires ComplexINT16", diagnostic,
@@ -1305,7 +1337,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v2(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr)
+        out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT8 &&
         event->view_v3.data_format != AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16)
@@ -1321,7 +1353,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v3(
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
     if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr ||
-        out_view == nullptr)
+        out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_COMPLEX_INT16)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1335,7 +1367,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v4(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_SMALL)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1349,7 +1381,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v5(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_MEDIUM)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1363,7 +1395,7 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v6(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     if (event->view_v3.data_format > AMS_MEL_RF_JOB_DATA_FORMAT_AMS_VITA_LARGE)
         return AMS_MEL_INVALID_ARGUMENT;
@@ -1377,9 +1409,21 @@ extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v7(
     std::size_t *diagnostic_required) noexcept
 {
     clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
-    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr || !event->association_ids.empty())
         return AMS_MEL_INVALID_ARGUMENT;
     *out_view = &event->view_v7;
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_rf_product_rx_event_view_v8(
+    const ams_mel_rf_product_rx_event *event, const ams_mel_rf_product_rx_event_v8 **out_view,
+    char *diagnostic, std::size_t diagnostic_capacity,
+    std::size_t *diagnostic_required) noexcept
+{
+    clear_diagnostic(diagnostic, diagnostic_capacity, diagnostic_required);
+    if (bad_diagnostic(diagnostic, diagnostic_capacity) || event == nullptr || out_view == nullptr)
+        return AMS_MEL_INVALID_ARGUMENT;
+    *out_view = &event->view_v8;
     return AMS_MEL_OK;
 }
 

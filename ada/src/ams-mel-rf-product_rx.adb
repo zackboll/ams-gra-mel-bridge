@@ -41,6 +41,19 @@ package body AMS.MEL.RF.Product_Rx is
       return Natural (Span.Size);
    end Checked_Count;
 
+   procedure Check_Association_Extent (Span : C.U32_Span_V1) is
+      use System.Storage_Elements;
+   begin
+      if Interfaces.Unsigned_64 (Span.Size) > Interfaces.Unsigned_64 (Integer_Address'Last) / 4
+        or else (Span.Size > 0
+                 and then (To_Integer (Span.Data) mod Interfaces.Unsigned_32'Alignment /= 0
+                           or else To_Integer (Span.Data)
+                                   > Integer_Address'Last - Integer_Address (Span.Size) * 4))
+      then
+         raise Provider_Error with "invalid RF association descriptor extent";
+      end if;
+   end Check_Association_Extent;
+
    function Binary (Value : Interfaces.Unsigned_32) return Boolean is
    begin
       if Value > 1 then
@@ -125,24 +138,9 @@ package body AMS.MEL.RF.Product_Rx is
          raise Provider_Error with "RF DataMEL is closed";
       end if;
       return Result : Create_Request do
-         if Value.Format = AMS_VITA_Extra_Large then
+         if Value.Format in AMS_VITA_Small .. AMS_VITA_Extra_Large then
             Check
-              (C.RF_Data_Submit_Product_Rx_V7
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         elsif Value.Format = AMS_VITA_Large then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V6
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         elsif Value.Format = AMS_VITA_Medium then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V5
-                 (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
-               D);
-         elsif Value.Format = AMS_VITA_Small then
-            Check
-              (C.RF_Data_Submit_Product_Rx_V4
+              (C.RF_Data_Submit_Product_Rx_V8
                  (Parent.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access),
                D);
          elsif Value.Format = Direct_INT8 or else Value.Format = Direct_INT16 then
@@ -332,6 +330,9 @@ package body AMS.MEL.RF.Product_Rx is
    type View_V7_Access is access all C.RF_Product_Rx_Event_V7;
    function To_View_V7 is new Ada.Unchecked_Conversion (System.Address, View_V7_Access);
 
+   type View_V8_Access is access all C.RF_Product_Rx_Event_V8;
+   function To_View_V8 is new Ada.Unchecked_Conversion (System.Address, View_V8_Access);
+
    function Receive (Object : Endpoint'Class; Timeout_Milliseconds : Natural := 0) return Event is
       D              : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       R              : aliased C.Size_T := 0;
@@ -340,6 +341,8 @@ package body AMS.MEL.RF.Product_Rx is
       Event_ID       : Interfaces.Unsigned_64;
       Event_Format   : Interfaces.Unsigned_32;
       Event_Metadata : C.RF_Product_Rx_Metadata_V1;
+      Associations   : C.RF_Receive_Event_Associations_V1 :=
+        (Present => 0, Event_IDs => (Data => System.Null_Address, Size => 0));
    begin
       return Result : Event do
          Check
@@ -354,11 +357,39 @@ package body AMS.MEL.RF.Product_Rx is
          if Result.Handle = C.Null_RF_Product_Rx_Event then
             raise Provider_Error with "null RF ProductRx event after receive";
          end if;
-         if Object.Format = AMS_VITA_Extra_Large then
+         --  Obtain optional presence for legacy integer events too. Their
+         --  payload views and submission routing remain unchanged.
+         declare
+         begin
             Check
-              (C.RF_Product_Rx_Event_View_V7
+              (C.RF_Product_Rx_Event_View_V8
                  (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
                D);
+            if Address = System.Null_Address then
+               raise Provider_Error with "null RF ProductRx v8 view";
+            end if;
+            declare
+               Raw : C.RF_Product_Rx_Event_V8 renames To_View_V8 (Address).all;
+            begin
+               --  A newer profile must not hide an inactive wider span from
+               --  the frozen width-specific validation below.
+               if (Object.Format /= AMS_VITA_Extra_Large
+                   and then (Raw.Event.VITA_Extra_Large_Packets.Data /= System.Null_Address
+                             or else Raw.Event.VITA_Extra_Large_Packets.Size /= 0))
+                 or else (Object.Format < AMS_VITA_Large
+                          and then (Raw.Event.Event.VITA_Large_Packets.Data /= System.Null_Address
+                                    or else Raw.Event.Event.VITA_Large_Packets.Size /= 0))
+                 or else (Object.Format = AMS_VITA_Small
+                          and then (Raw.Event.Event.Event.VITA_Medium_Packets.Data
+                                    /= System.Null_Address
+                                    or else Raw.Event.Event.Event.VITA_Medium_Packets.Size /= 0))
+               then
+                  raise Provider_Error with "inactive native VITA v8 span";
+               end if;
+               Associations := Raw.Receive_Event_Associations;
+            end;
+         end;
+         if Object.Format = AMS_VITA_Extra_Large then
             if Address = System.Null_Address then
                raise Provider_Error with "null RF ProductRx event view";
             end if;
@@ -415,10 +446,6 @@ package body AMS.MEL.RF.Product_Rx is
                Event_Metadata := Raw.Event.Event.Event.Event.Metadata;
             end;
          elsif Object.Format = AMS_VITA_Large then
-            Check
-              (C.RF_Product_Rx_Event_View_V6
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
             if Address = System.Null_Address then
                raise Provider_Error with "null RF ProductRx event view";
             end if;
@@ -470,10 +497,6 @@ package body AMS.MEL.RF.Product_Rx is
                Event_Metadata := Raw.Event.Event.Event.Metadata;
             end;
          elsif Object.Format = AMS_VITA_Medium then
-            Check
-              (C.RF_Product_Rx_Event_View_V5
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
             if Address = System.Null_Address then
                raise Provider_Error with "null RF ProductRx event view";
             end if;
@@ -513,10 +536,6 @@ package body AMS.MEL.RF.Product_Rx is
                Event_Metadata := Raw.Event.Event.Metadata;
             end;
          elsif Object.Format = AMS_VITA_Small then
-            Check
-              (C.RF_Product_Rx_Event_View_V4
-                 (Result.Handle, Address'Access, D'Address, D'Length, R'Access),
-               D);
             if Address = System.Null_Address then
                raise Provider_Error with "null RF ProductRx event view";
             end if;
@@ -653,17 +672,44 @@ package body AMS.MEL.RF.Product_Rx is
                Result.Sample_Address := Sample_Span.Data;
             end if;
             Result.Info :=
-              (Protocol     => Event_Metadata.MEL_Protocol_Version_ID,
-               Definition   => Event_Metadata.VA_Definition_ID,
-               Instance     => Event_Metadata.VA_Instance_ID,
-               Details      => Event_Metadata.Job_Details_ID,
-               Interval     => Event_Metadata.Job_Interval_ID,
-               LF_Type      => Event_Metadata.LF_Type_ID,
-               LF_Instance  => Event_Metadata.LF_Instance_ID,
-               Coherent     => Binary (Event_Metadata.Phase_Coherence_With_Prior),
-               Seconds      => Event_Metadata.First_Rx_Event_Start_S,
-               Femtoseconds => Event_Metadata.First_Rx_Event_Start_FS,
-               Stream_IDs   => ID_Vectors.Empty_Vector);
+              (Protocol             => Event_Metadata.MEL_Protocol_Version_ID,
+               Definition           => Event_Metadata.VA_Definition_ID,
+               Instance             => Event_Metadata.VA_Instance_ID,
+               Details              => Event_Metadata.Job_Details_ID,
+               Interval             => Event_Metadata.Job_Interval_ID,
+               LF_Type              => Event_Metadata.LF_Type_ID,
+               LF_Instance          => Event_Metadata.LF_Instance_ID,
+               Coherent             => Binary (Event_Metadata.Phase_Coherence_With_Prior),
+               Seconds              => Event_Metadata.First_Rx_Event_Start_S,
+               Femtoseconds         => Event_Metadata.First_Rx_Event_Start_FS,
+               Stream_IDs           => ID_Vectors.Empty_Vector,
+               Associations_Present => Binary (Associations.Present),
+               Association_IDs      => ID_Vectors.Empty_Vector);
+            declare
+               N : constant Natural :=
+                 Checked_Count ((Associations.Event_IDs.Data, Associations.Event_IDs.Size));
+            begin
+               Check_Association_Extent (Associations.Event_IDs);
+               if (N = 0 and then Associations.Event_IDs.Data /= System.Null_Address)
+                 or else (not Result.Info.Associations_Present and then N /= 0)
+                 or else (Result.Info.Associations_Present
+                          and then Object.Format in AMS_VITA_Small .. AMS_VITA_Extra_Large
+                          and then N /= Count)
+                 or else (Object.Format < AMS_VITA_Small and then N /= 0)
+               then
+                  raise Provider_Error with "invalid RF receive-event associations";
+               end if;
+               if N > 0 then
+                  declare
+                     Values : Raw_IDs (0 .. N - 1)
+                     with Import, Address => Associations.Event_IDs.Data;
+                  begin
+                     for Item of Values loop
+                        Result.Info.Association_IDs.Append (Item);
+                     end loop;
+                  end;
+               end if;
+            end;
             if IDs > 0 then
                declare
                   Values : Raw_IDs (0 .. IDs - 1)
@@ -1172,6 +1218,14 @@ package body AMS.MEL.RF.Product_Rx is
    function Rx_Stream_ID_At
      (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32
    is (Value.Stream_IDs (Index));
+   function Receive_Event_Associations_Present (Value : Product_Metadata) return Boolean
+   is (Value.Associations_Present);
+   function Receive_Event_Association_Count (Value : Product_Metadata) return Natural
+   is (Natural (Value.Association_IDs.Length));
+   function Receive_Event_Association_ID_At
+     (Value : Product_Metadata; Index : Positive) return Interfaces.Unsigned_32
+   is (Value.Association_IDs.Element (Index));
+
 begin
    Check_Complex_I16_Representation;
    if Complex_I8'Object_Size /= C.RF_Complex_I8_V1'Object_Size

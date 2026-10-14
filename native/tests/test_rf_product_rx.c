@@ -2711,6 +2711,210 @@ static void test_extra_large_pages(void)
 }
 
 /* ---------------------------------------------------------- dispatcher */
+
+typedef ams_mel_status_t (*rx_submit_fn)(ams_mel_rf_data *,
+    const ams_mel_rf_product_rx_config_v1 *, ams_mel_rf_product_rx_request **,
+    char *, size_t, size_t *);
+static const rx_submit_fn association_submits[] = {
+    ams_mel_rf_data_submit_product_rx, ams_mel_rf_data_submit_product_rx_v2,
+    ams_mel_rf_data_submit_product_rx_v3, ams_mel_rf_data_submit_product_rx_v4,
+    ams_mel_rf_data_submit_product_rx_v5, ams_mel_rf_data_submit_product_rx_v6,
+    ams_mel_rf_data_submit_product_rx_v7, ams_mel_rf_data_submit_product_rx_v8};
+
+static void association_old_views(ams_mel_rf_product_rx_event *event, unsigned format,
+                                  int nonempty)
+{
+#define OLD_VIEW(V, FN, ALLOWED) do { \
+    const ams_mel_rf_product_rx_event_v##V *sentinel = \
+        (const ams_mel_rf_product_rx_event_v##V *)(uintptr_t)1U; \
+    const ams_mel_status_t status = FN(event, &sentinel, NULL, 0, NULL); \
+    if (nonempty || !(ALLOWED)) { \
+        CHECK(status == AMS_MEL_INVALID_ARGUMENT); \
+        CHECK(sentinel == (const ams_mel_rf_product_rx_event_v##V *)(uintptr_t)1U); \
+    } else CHECK(status == AMS_MEL_OK && sentinel != NULL); \
+} while (0)
+    OLD_VIEW(1, ams_mel_rf_product_rx_event_view, format == 3U);
+    OLD_VIEW(2, ams_mel_rf_product_rx_event_view_v2, format == 2U || format == 3U);
+    OLD_VIEW(3, ams_mel_rf_product_rx_event_view_v3, format <= 3U);
+    OLD_VIEW(4, ams_mel_rf_product_rx_event_view_v4, format <= 4U);
+    OLD_VIEW(5, ams_mel_rf_product_rx_event_view_v5, format <= 5U);
+    OLD_VIEW(6, ams_mel_rf_product_rx_event_view_v6, format <= 6U);
+    OLD_VIEW(7, ams_mel_rf_product_rx_event_view_v7, format <= 7U);
+#undef OLD_VIEW
+}
+
+static void *association_emit_thread(void *raw)
+{
+    emit_args *args = (emit_args *)raw;
+    CHECK(args->p->emit(args->id, 43, 3U) == 1);
+    return NULL;
+}
+
+static void test_association_close(void)
+{
+    unsigned format;
+    for (format = 4U; format <= 7U; ++format) {
+        ams_mel_rf_data *data = open_rx("rx:ok:reference");
+        pin p = take_pin();
+        ams_mel_rf_product_rx_config_v1 config = config_of(1U, 3U);
+        ams_mel_rf_product_rx_request *request = NULL;
+        ams_mel_rf_product_rx *endpoint = NULL;
+        ams_mel_rf_product_rx_info_v1 info;
+        ams_mel_test_rf_rx_observer *observer = NULL;
+        int entered[2], release[2], done[2];
+        pthread_t emitter, closer;
+        emit_args args;
+        close_args closing;
+        char byte;
+        config.data_format = format;
+        CHECK(ams_mel_rf_data_submit_product_rx_v8(data, &config, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        wait_ok(request);
+        CHECK(ams_mel_rf_product_rx_request_claim(request, &endpoint, &info, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_test_rf_rx_observer_from(endpoint, &observer) == 1);
+        CHECK(pipe(entered) == 0 && pipe(release) == 0 && pipe(done) == 0);
+        ams_mel_test_rf_rx_hold_next(entered[1], release[0]);
+        args.p = &p; args.id = info.endpoint_id;
+        CHECK(pthread_create(&emitter, NULL, association_emit_thread, &args) == 0);
+        CHECK(read(entered[0], &byte, 1U) == 1);
+        close_data(&data);
+        closing.endpoint = endpoint; closing.done_fd = done[1];
+        closing.status = AMS_MEL_INTERNAL_ERROR; endpoint = NULL;
+        CHECK(pthread_create(&closer, NULL, close_thread, &closing) == 0);
+        CHECK(eventually(one_drain_waiter, observer));
+        CHECK(write(release[1], "r", 1U) == 1);
+        CHECK(pthread_join(emitter, NULL) == 0 && pthread_join(closer, NULL) == 0);
+        CHECK(closing.status == AMS_MEL_OK && closing.endpoint == NULL);
+        CHECK(read(done[0], &byte, 1U) == 1);
+        {
+            size_t in_flight, queue; uint64_t received, after; int closed;
+            CHECK(ams_mel_test_rf_rx_observe(observer, &in_flight, &received, &after, &queue, &closed) == 1);
+            CHECK(in_flight == 0U && queue == 0U && closed == 1 && received == 1U && after == 1U);
+        }
+        CHECK(close(entered[0]) == 0 && close(entered[1]) == 0);
+        CHECK(close(release[0]) == 0 && close(release[1]) == 0);
+        CHECK(close(done[0]) == 0 && close(done[1]) == 0);
+        ams_mel_test_rf_rx_observer_close(&observer);
+        drop_pin(&p);
+        /* Profile initialized before a synchronous association-bearing callback. */
+        data = open_rx("rx:ok:sync-associations");
+        CHECK(ams_mel_rf_data_submit_product_rx_v8(data, &config, &request, NULL, 0, NULL) == AMS_MEL_OK);
+        wait_ok(request);
+        CHECK(ams_mel_rf_product_rx_request_claim(request, &endpoint, &info, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+        {
+            ams_mel_rf_product_rx_event *event = receive_ok(endpoint);
+            const ams_mel_rf_product_rx_event_v8 *view = NULL;
+            CHECK(ams_mel_rf_product_rx_event_view_v8(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+            close_data(&data); close_endpoint(&endpoint);
+            CHECK(view->receive_event_associations.present == 1U && view->receive_event_associations.event_ids.size == 2U);
+            CHECK(view->receive_event_associations.event_ids.data[0] == 17U && view->receive_event_associations.event_ids.data[1] == 17U);
+            close_event(&event);
+        }
+    }
+}
+
+static void test_associations(void)
+{
+    unsigned iteration, version, format, scenario;
+    for (iteration = 0; iteration < 50U; ++iteration) {
+        ams_mel_rf_data *data = open_rx("rx:ok:reference");
+        pin p = take_pin();
+        for (version = 1U; version <= 8U; ++version) {
+            for (format = 0U; format <= 14U; ++format) {
+                const unsigned minimum = version == 1U ? 3U : version == 2U ? 2U : 0U;
+                const unsigned maximum = version < 4U ? 3U : version < 8U ? version : 7U;
+                const unsigned raw_format = format == 14U ? UINT32_MAX : format;
+                const int accepted = raw_format >= minimum && raw_format <= maximum;
+                ams_mel_rf_product_rx_config_v1 config = config_of(1U, 8U);
+                ams_mel_rf_product_rx_request *request = NULL;
+                ams_mel_rf_product_rx *endpoint = NULL;
+                ams_mel_rf_product_rx_info_v1 info;
+                unsigned creates = p.creates();
+                config.data_format = raw_format;
+                CHECK(association_submits[version - 1U](data, &config, &request, NULL, 0, NULL)
+                      == (accepted ? AMS_MEL_OK : AMS_MEL_INVALID_ARGUMENT));
+                if (!accepted) { CHECK(request == NULL && p.creates() == creates); continue; }
+                wait_ok(request);
+                CHECK(ams_mel_rf_product_rx_request_claim(request, &endpoint, &info, NULL, 0, NULL) == AMS_MEL_OK);
+                CHECK(info.assigned_data_format == format);
+                CHECK(ams_mel_rf_product_rx_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
+                for (scenario = 40U; scenario <= 47U; ++scenario) {
+                    const size_t count = scenario == 42U ? 1U : scenario == 47U ? 0U : 3U;
+                    const int present = scenario != 40U;
+                    const int nonempty = scenario >= 42U;
+                    const int valid = !nonempty ? (version < 8U || format < 4U || !present) :
+                        version == 8U && format >= 4U && scenario <= 44U;
+                    ams_mel_rf_product_rx_counters_v1 before = counters_of(endpoint);
+                    ams_mel_rf_product_rx_event *event = NULL;
+                    const ams_mel_rf_product_rx_event_v8 *view = NULL;
+                    CHECK(p.emit(info.endpoint_id, (int)scenario, count) == 1);
+                    if (!valid) {
+                        CHECK(ams_mel_rf_product_rx_receive(endpoint, 0U, &event, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+                        CHECK(event == NULL);
+                        CHECK(counters_of(endpoint).malformed_or_unsupported == before.malformed_or_unsupported + 1U);
+                        continue;
+                    }
+                    event = receive_ok(endpoint);
+                    CHECK(ams_mel_rf_product_rx_event_view_v8(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+                    CHECK(view->event.event.event.event.event.data_format == format);
+                    CHECK(view->receive_event_associations.present == (unsigned)present);
+                    CHECK(view->receive_event_associations.event_ids.size == (nonempty ? count : 0U));
+                    if (!nonempty) {
+                        const ams_mel_rf_product_rx_event_v7 *old = NULL;
+                        CHECK(view->receive_event_associations.event_ids.data == NULL);
+                        CHECK(ams_mel_rf_product_rx_event_view_v7(event, &old, NULL, 0, NULL) == AMS_MEL_OK);
+                        CHECK(memcmp(&view->event, old, sizeof *old) == 0);
+                    } else {
+                        const uint32_t *ids = view->receive_event_associations.event_ids.data;
+                        CHECK(ids != NULL);
+                        CHECK(ids[0] == (scenario == 42U ? UINT32_MAX : scenario == 43U ? 17U : 0U));
+                        if (count == 3U) {
+                            CHECK(ids[1] == (scenario == 43U ? 17U : UINT32_MAX));
+                            CHECK(ids[2] == (scenario == 43U ? 23U : UINT32_C(0x81234567)));
+                        }
+                    }
+                    association_old_views(event, format, nonempty);
+                    close_event(&event);
+                }
+                /* Present-empty zero-packet callback, including legacy domains. */
+                CHECK(p.emit(info.endpoint_id, 41, 0U) == 1);
+                {
+                    ams_mel_rf_product_rx_event *event = receive_ok(endpoint);
+                    const ams_mel_rf_product_rx_event_v8 *view = NULL;
+                    CHECK(ams_mel_rf_product_rx_event_view_v8(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+                    CHECK(view->receive_event_associations.present == 1U);
+                    CHECK(view->receive_event_associations.event_ids.data == NULL && view->receive_event_associations.event_ids.size == 0U);
+                    association_old_views(event, format, 0);
+                    close_event(&event);
+                }
+                if (version == 8U && format >= 4U) {
+                    ams_mel_rf_product_rx_event *event = NULL;
+                    const ams_mel_rf_product_rx_event_v8 *view = NULL;
+                    ams_mel_rf_product_rx_counters_v1 before = counters_of(endpoint);
+                    ams_mel_test_rf_rx_failpoint(5U);
+                    CHECK(p.emit(info.endpoint_id, 43, 3U) == 1);
+                    CHECK(ams_mel_rf_product_rx_receive(endpoint, 0U, &event, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+                    CHECK(event == NULL && counters_of(endpoint).allocation_failures == before.allocation_failures + 1U);
+                    CHECK(p.emit(info.endpoint_id, 43, 3U) == 1);
+                    CHECK(p.emit(info.endpoint_id, 44, 3U) == 1); /* DROP-INCOMING */
+                    CHECK(counters_of(endpoint).products_dropped_queue_full == before.products_dropped_queue_full + 1U);
+                    event = receive_ok(endpoint);
+                    CHECK(ams_mel_rf_product_rx_event_view_v8(event, &view, NULL, 0, NULL) == AMS_MEL_OK);
+                    close_endpoint(&endpoint);
+                    CHECK(view->receive_event_associations.event_ids.data[0] == 17U);
+                    CHECK(view->receive_event_associations.event_ids.data[1] == 17U);
+                    CHECK(view->receive_event_associations.event_ids.data[2] == 23U);
+                    close_event(&event);
+                } else close_endpoint(&endpoint);
+            }
+        }
+        close_data(&data);
+        check_no_forbidden(&p);
+        drop_pin(&p);
+    }
+}
+
 int main(int argc, char **argv)
 {
     const char *name;
@@ -2736,6 +2940,8 @@ int main(int argc, char **argv)
     else if (strcmp(name, "extra-large") == 0) test_extra_large();
     else if (strcmp(name, "large") == 0) test_large();
     else if (strcmp(name, "medium") == 0) test_medium();
+    else if (strcmp(name, "association-close") == 0) test_association_close();
+    else if (strcmp(name, "associations") == 0) test_associations();
     else if (strcmp(name, "vita") == 0) test_vita();
     else if (strcmp(name, "creation") == 0 && selected_i8) test_i8_creation();
     else if (strcmp(name, "direct-creation") == 0) test_direct_creation();

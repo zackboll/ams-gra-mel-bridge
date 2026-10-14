@@ -1,6 +1,6 @@
 package body AMS.MEL.RF.Product_Rx.Testing is
    procedure Check_Representation is
-      Raw    : constant AMS.MEL_C_API.RF_Product_Rx_Event_V2 :=
+      Raw          : constant AMS.MEL_C_API.RF_Product_Rx_Event_V2 :=
         (Endpoint_ID => 0,
          Data_Format => 0,
          Samples_I8  => (System.Null_Address, 0),
@@ -17,8 +17,8 @@ package body AMS.MEL.RF.Product_Rx.Testing is
             First_Rx_Event_Start_S     => 0,
             First_Rx_Event_Start_FS    => 0,
             Rx_Stream_IDs              => (System.Null_Address, 0)));
-      Pair   : constant Complex_I8 := (0, 0);
-      V3     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V3 :=
+      Pair         : constant Complex_I8 := (0, 0);
+      V3           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V3 :=
         (Endpoint_ID         => 0,
          Data_Format         => 0,
          Direct_Samples_I8   => (System.Null_Address, 0),
@@ -26,19 +26,43 @@ package body AMS.MEL.RF.Product_Rx.Testing is
          Complex_Samples_I8  => (System.Null_Address, 0),
          Complex_Samples_I16 => (System.Null_Address, 0),
          Metadata            => Raw.Metadata);
-      V4     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V4 := (V3, (System.Null_Address, 0));
-      Packet : constant AMS.MEL_C_API.RF_VITA_Small_Packet_V1 :=
+      V4           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V4 :=
+        (V3, (System.Null_Address, 0));
+      Packet       : constant AMS.MEL_C_API.RF_VITA_Small_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
-      V5     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V5 := (V4, (System.Null_Address, 0));
-      Medium : constant AMS.MEL_C_API.RF_VITA_Medium_Packet_V1 :=
+      V5           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V5 :=
+        (V4, (System.Null_Address, 0));
+      Medium       : constant AMS.MEL_C_API.RF_VITA_Medium_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
-      V6     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V6 := (V5, (System.Null_Address, 0));
-      Large  : constant AMS.MEL_C_API.RF_VITA_Large_Packet_V1 :=
+      V6           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V6 :=
+        (V5, (System.Null_Address, 0));
+      Large        : constant AMS.MEL_C_API.RF_VITA_Large_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
-      V7     : constant AMS.MEL_C_API.RF_Product_Rx_Event_V7 := (V6, (System.Null_Address, 0));
-      Extra  : constant AMS.MEL_C_API.RF_VITA_Extra_Large_Packet_V1 :=
+      V7           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V7 :=
+        (V6, (System.Null_Address, 0));
+      Extra        : constant AMS.MEL_C_API.RF_VITA_Extra_Large_Packet_V1 :=
         (Serialized_Bytes => (System.Null_Address, 0));
+      Associations : constant AMS.MEL_C_API.RF_Receive_Event_Associations_V1 :=
+        (0, (System.Null_Address, 0));
+      V8           : constant AMS.MEL_C_API.RF_Product_Rx_Event_V8 := (V7, Associations);
    begin
+      if System.Address'Size = 64 then
+         if V8'Size /= 232 * 8
+           or else AMS.MEL_C_API.RF_Product_Rx_Event_V8'Alignment /= 8
+           or else V8.Event'Position /= 0
+           or else V8.Receive_Event_Associations'Position /= 208
+           or else Associations'Size /= 24 * 8
+           or else AMS.MEL_C_API.RF_Receive_Event_Associations_V1'Alignment /= 8
+           or else Associations.Present'Position /= 0
+           or else Associations.Present'Size /= 32
+           or else Associations.Event_IDs'Position /= 8
+           or else Associations.Event_IDs.Data'Position /= 0
+           or else Associations.Event_IDs.Size'Position /= 8
+           or else AMS.MEL_C_API.U32_Span_V1'Alignment /= 8
+         then
+            raise Program_Error with "private Ada v8 differs from measured C11 layout";
+         end if;
+      end if;
       if System.Address'Size = 64 then
          if V7'Size /= 208 * 8
            or else AMS.MEL_C_API.RF_Product_Rx_Event_V7'Alignment /= 8
