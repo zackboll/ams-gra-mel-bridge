@@ -1,5 +1,20 @@
 # Architecture decisions
 
+## Task 034F21 — AMS VITA Medium ProductRx receive
+
+Additive submit/view-v5 support format 5 while freezing all earlier domains.
+Event-v5 nests complete v4 and adds ordered Medium packet descriptors. Small
+512-byte and Medium 1,024-byte capacities are distinct from serialized length;
+Medium exposes only validated 32..1,024 bytes, including the genuine 516-byte
+boundary-crossing fixture, unchanged in packet/network order. Counts are packet
+objects. Shared checked Small/Medium copying owns immutable bytes, rejects
+malformed callbacks atomically and preserves the existing worker, queue, drain
+and permanent exact-callback/DSO retention. Safe Ada adds Medium config,
+borrow/copy operations; private raw bindings mirror v5 without public Python
+or safe Rust expansion. Target inventory: 214 AMS_MEL_0.1 exports. See
+`docs/task-034f21-rf-product-rx-vita-medium.md` for actual qualification status,
+provider limits and exclusions.
+
 ## Task 034F20 — AMS VITA Small ProductRx receive
 
 Additive submit/view-v4 extend ProductRx to format 4 only, retaining all four
