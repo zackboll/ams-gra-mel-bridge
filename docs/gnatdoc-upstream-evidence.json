@@ -1,0 +1,1077 @@
+{
+  "campaign": "AMS-MEL-DOC-002",
+  "status": "LOCAL_QUALIFICATION_COMPLETE_PR_REVIEW_PENDING",
+  "bridge_base": "85b5437e39de1387f3f1678d6f09a9f85e16cfac",
+  "entries": [
+    {
+      "package": "AMS",
+      "declarations": [
+        "package description"
+      ],
+      "upstream": [],
+      "implementation": [
+        "ada/src/ams.ads: package AMS and pragma Pure"
+      ],
+      "confirmed_semantics": [
+        "Pure root namespace with no declared runtime operations"
+      ],
+      "discrepancy": null,
+      "confidence": "SOURCE_SIGNATURE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL",
+      "declarations": [
+        "package description",
+        "Version",
+        "Version.Major",
+        "Version.Minor",
+        "ABI_Version"
+      ],
+      "upstream": [],
+      "implementation": [
+        "ada/src/ams-mel.adb:60-73: ABI_Version status and representability checks",
+        "native/src/abi.cpp:11-20: ams_mel_get_abi_version writes bridge constants"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_smoke.adb:220-225: repeatable ABI 0.1 query"
+      ],
+      "confirmed_semantics": [
+        "Bridge ABI version is independent of provider versions",
+        "Query does not initialize or load a provider",
+        "Failed or unrepresentable result raises Program_Error"
+      ],
+      "discrepancy": null,
+      "confidence": "BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL",
+      "declarations": [
+        "Provider_Version_Number",
+        "Provider_Version",
+        "API_Version",
+        "Library_Version",
+        "Vendor",
+        "Description",
+        "Query_Provider_Version"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/CommonMEL.h",
+          "declaration": "CMN_MEL_API_VERSION and VersionInfo",
+          "lines": [
+            27,
+            96
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Control.h",
+          "declaration": "Control::getVersionInfo() const",
+          "lines": [
+            43,
+            45
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel.adb:75-85: snapshot accessors",
+        "ada/src/ams-mel.adb:146-194: two-call query and Ada-owned string conversion",
+        "ada/src/ams-mel.ads: private Provider_Version default initialization",
+        "native/src/provider.cpp: publish_provider_version and ams_mel_session_get_provider_version",
+        "native/src/internal/provider_common.hpp:29-42: validated complete UTF-8 publication contract"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_smoke.adb:131-149: full numeric and UTF-8 text fidelity",
+        "native/tests/test_provider.c: version exception, invalid UTF-8 and embedded-NUL cases"
+      ],
+      "confirmed_semantics": [
+        "Full uint32 API/library values without bridge decoding",
+        "Default snapshot contains zero numbers and empty text",
+        "Queried strings are validated UTF-8 without embedded NUL and copied into Ada ownership",
+        "Accessors return independent Ada strings",
+        "Closed-session query raises Provider_Error",
+        "Zero required text size raises Program_Error"
+      ],
+      "discrepancy": "Upstream does not specify text encoding; UTF-8 validation is a bridge policy. Two provider calls do not establish an atomic provider snapshot.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL",
+      "declarations": [
+        "Session",
+        "Open",
+        "Open_With_Options",
+        "Is_Open",
+        "Close",
+        "Provider_Error"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Control.h",
+          "declaration": "Control destructor, init and complete public method set; getControl factory",
+          "lines": [
+            26,
+            70
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel.adb:87-145: NUL rejection, unlimited Open delegation, native open and local handle test",
+        "ada/src/ams-mel.adb:196-216: explicit closure and non-raising finalization fallback",
+        "native/src/provider.cpp:205-332: open_session_impl and open entry points",
+        "native/src/provider.cpp:361-386: consuming native close",
+        "native/src/internal.hpp:71-82: shared SessionState and destruction order"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_smoke.adb:131-235: closure, finalization, embedded-NUL and missing-library cases",
+        "native/tests/test_provider.c:250-316: factory, initialization, lifetime and exception cases"
+      ],
+      "confirmed_semantics": [
+        "Default owner is closed and limited",
+        "Input strings are copied without transcoding and embedded NUL is rejected before provider loading",
+        "Open uses unlimited admission",
+        "Factories must return non-null objects and initialization must return Success",
+        "Is_Open tests handle presence only",
+        "Close is idempotent and consumes public ownership, not child/request ownership",
+        "No separate IR Control shutdown method is called",
+        "No cancellation, global completion wait or callback-quiescence guarantee",
+        "Provider C++ ABI compatibility remains necessary"
+      ],
+      "discrepancy": "UTF-8 is the input convention, but this open path does not validate UTF-8. Session closure must not be described using the distinct RF shutdown lifecycle.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL",
+      "declarations": [
+        "Async_Request_Limit",
+        "Session_Options",
+        "Session_Options.Max_Async_Requests",
+        "Resource_Exhausted"
+      ],
+      "upstream": [],
+      "implementation": [
+        "ada/src/ams-mel.adb:14-21: Check_Submission maps admission refusal separately",
+        "native/src/internal.hpp:17-69: CompletionAdmission, permit lifetime and acquisition",
+        "native/src/provider.cpp: open_session_impl copies admission bound",
+        "native/src/common_channel_requests.cpp: submit_impl admission before provider submission"
+      ],
+      "tests": [
+        "native/tests/test_completion_scalability.c",
+        "native/tests/test_completion_cross_family.c"
+      ],
+      "confirmed_semantics": [
+        "Zero is unlimited",
+        "One copied bound applies to participating Session-backed submissions",
+        "Refusal occurs before provider send and is distinct from command rejection",
+        "No queue or automatic retry",
+        "Wait, timeout and public request closure are not cancellation or direct permit release"
+      ],
+      "discrepancy": "Admission is bridge-defined, not a guarantee from the upstream provider interface.",
+      "confidence": "BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "package description",
+        "BIT_Type",
+        "Active_BIT",
+        "Completed_BIT_Item",
+        "Completed_BIT",
+        "BIT_Type_List",
+        "Active_BIT_List",
+        "Completed_BIT_Item_List",
+        "Completed_BIT_List",
+        "UCI_ID_Vectors",
+        "BIT_ID overloads",
+        "Accepted_Interface",
+        "Expected_Duration_NS",
+        "BIT_Item_Name_Count",
+        "BIT_Item_Name_At",
+        "Subsystem_Component_Count",
+        "Subsystem_Component_At",
+        "Estimated_Completion_Time_NS",
+        "Estimated_Percent_Complete",
+        "BIT_Item_Name",
+        "Result overloads",
+        "Fail_Reason overloads",
+        "Time_Tag_NS",
+        "BIT_Item_Count",
+        "BIT_Item_At",
+        "Append BIT list overloads",
+        "Create_BIT_Type",
+        "Append_BIT_Item_Name",
+        "Create_Active_BIT",
+        "Create_Completed_BIT_Item",
+        "Create_Completed_BIT"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/BIT_Configuration.h",
+          "declaration": "BIT_Type fields and collection semantics",
+          "lines": [
+            37,
+            142
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/ActiveBIT.h",
+          "declaration": "ActiveBIT representation and progress interpretation",
+          "lines": [
+            13,
+            61
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/CompletedBIT.h",
+          "declaration": "BIT_Result, CompletedBIT_Item and CompletedBIT",
+          "lines": [
+            12,
+            167
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.adb:2-17,42-79,120-161: ordered copies, constructors and indexed getters",
+        "native/src/ir_c2.cpp:351-369: checked enum mapping and exact scalar/text/list copy",
+        "native/tests/mock_provider.cpp:350-385: rich BIT fixtures, including negative times and progress 1.25"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_c2_metadata_tests.adb: configuration numeric mapping and progress 1.25 checks",
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb:75-92: nested BIT snapshot fidelity"
+      ],
+      "confirmed_semantics": [
+        "Ada copies constructors, nested collections and text; one-based vector access raises Constraint_Error beyond length",
+        "Default lists are empty; append retains order and duplicates",
+        "Create_BIT_Type treats nonempty Names as one initial name, not a parsed list; empty input creates no names",
+        "Append_BIT_Item_Name permits an empty name",
+        "Progress uses 1.0 as 100 percent and allows above 1.0, without Ada clamping",
+        "Active estimated completion and completed end-time are signed nanosecond counts described upstream as UTC; no epoch established",
+        "BIT item result and overall BIT summary are independently stored; failure text consistency is not checked"
+      ],
+      "discrepancy": "Upstream optional scalar comments have no optional presence representation; Ada exposes the stored default zero count directly.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "BIT_Control_Interface and all literals"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/BIT_Configuration.h",
+          "declaration": "BIT_ControlInterface",
+          "lines": [
+            12,
+            35
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.ads: representation values 0,1,2,3 unchanged",
+        "native/src/ir_c2.cpp:357-358: range validation then numeric-preserving conversion"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_c2_metadata_tests.adb:62-73: command value one and initiated value three preserved"
+      ],
+      "confirmed_semantics": [
+        "Value one describes manual BIT via BIT command without requiring overall subsystem state change",
+        "Values two and three retain upstream numeric identities; names and adjacent comments disagree"
+      ],
+      "discrepancy": "Value two named SubsystemStateCommand has self-initiated prose; value three named SubsystemInitiated has state-command/INITIATED_BIT prose. No runtime meaning for the contradictory choices is inferred.",
+      "confidence": "UPSTREAM_AMBIGUOUS"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "Fault_Severity and literals",
+        "Fault_State and literals",
+        "Fault_Data",
+        "Fault_Ambiguity_Group",
+        "Fault",
+        "Fault_Data_List",
+        "Fault_Ambiguity_Group_List",
+        "Fault_List",
+        "Append fault list overloads",
+        "Key(Fault_Data)",
+        "Data_Value",
+        "Format",
+        "Units",
+        "Diagnostic_Test_Count",
+        "Diagnostic_Test_At",
+        "Component_Count fault/group overloads",
+        "Component_At fault/group overloads",
+        "Fault_ID",
+        "Severity(Fault)",
+        "State(Fault)",
+        "Detection_Time_NS",
+        "Fault_Code",
+        "Fault_Description",
+        "Fault_Data_Count",
+        "Fault_Data_At",
+        "Ambiguity_Group_Count",
+        "Ambiguity_Group_At",
+        "Create_Fault_Data",
+        "Create_Ambiguity_Group",
+        "Create_Fault"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Fault.h",
+          "declaration": "FaultSeverity and FaultState",
+          "lines": [
+            13,
+            55
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Fault.h",
+          "declaration": "FaultData and FaultAmbiguityGroup",
+          "lines": [
+            57,
+            180
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Fault.h",
+          "declaration": "Fault fields and significance of component/group references",
+          "lines": [
+            321,
+            347
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.adb:18-29,80-119,162-180: ordered list copies, indexed getters and fault constructors",
+        "native/src/ir_c2.cpp: copy_bit_status fault validation and copy",
+        "native/src/ir_health.cpp: copy_bit fault validation and copy"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb:75-92: fault ambiguity groups retained",
+        "native/tests/test_ir_health.c: nested BIT/fault snapshot checks"
+      ],
+      "confirmed_semantics": [
+        "Severity measures impact; state independently reports set/cleared/unknown status",
+        "Nominal has no current mission impact and may prompt maintenance; caution retains performance characteristics without component-state impact; warning indicates degraded but usable capability; failed indicates faulted component and potentially unusable capability",
+        "Detection time is not report transmission time; upstream calls its nanosecond count UTC but establishes no epoch",
+        "Fault description can differ from fault-ID label",
+        "FaultData preserves key/value/format/units text without parsing or unit conversion",
+        "Top-level components are individually related to fault; ambiguity groups contain unresolved candidates",
+        "No positional test/component pairing is implied within ambiguity group",
+        "Constructors and getters copy nested values; ordered vectors preserve duplicates and use one-based access"
+      ],
+      "discrepancy": "Upstream reporting conventions are not validated or acted upon by Ada constructors; severity construction does not mutate component state.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "MFA_State and literals",
+        "State_Transition_Status and literals",
+        "Component_State and literals",
+        "Temperature_State and literals",
+        "BIT_Status",
+        "Create_BIT_Status",
+        "Active_BIT_Count",
+        "Active_BIT_At",
+        "Completed_BIT_Count",
+        "Completed_BIT_At",
+        "Fault_Count",
+        "Fault_At"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/MFA_Component.h",
+          "declaration": "MFA_State, StateTransitionStatus, ComponentState, TemperatureState",
+          "lines": [
+            96,
+            194
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/BIT_Status.h",
+          "declaration": "BIT_Status active/completed/fault collections"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.ads: unchanged state enums and default BIT_Status vectors",
+        "ada/src/ams-mel-status.adb:182-197: BIT_Status constructor copies vectors and getters return indexed copies",
+        "native/src/ir_health.cpp: MFA state/component/temperature enum validation and snapshot copy"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: rich MFA and BIT snapshot checks",
+        "native/tests/test_ir_health.c: rich status enum, component and nested BIT view checks"
+      ],
+      "confirmed_semantics": [
+        "Overall MFA state differs from component capability state and transition-in-progress status",
+        "Not every provider supports every overall state",
+        "Enums report data and constructors do not perform transitions or thermal protection",
+        "Faulted component supports no capability; degraded component supports at least one",
+        "Temperature enum thresholds are not computed by Ada",
+        "BIT_Status independently copies active, completed and fault collections, preserving order/duplicates; one-based checked access returns owned values"
+      ],
+      "discrepancy": "Pinned MFA_State introductory prose claims OperateTxOnly is excluded, but actual enum contains it. Ada preserves the actual identifier without promising provider support. No external state-machine or IDD review is claimed.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "Name_Value_Pair",
+        "Create_Name_Value_Pair",
+        "Name",
+        "Pair_Value",
+        "Name_Value_Pair_List",
+        "Append(Name_Value_Pair_List)",
+        "Discrete_Status",
+        "MFA_Status_Detailed",
+        "Pair_Count",
+        "Pair_At"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/NameValuePair.h",
+          "declaration": "NameValuePair: otherwise unstructured textual attributes"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/DiscreteStatus.h",
+          "declaration": "DiscreteStatus: subsystem unique data"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/MFA_StatusDetailed.h",
+          "declaration": "MFA_StatusDetailed: provider-documented MFA resource/hardware metrics"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.adb:34-37,277-286: copied pair constructor, append, count and indexed read",
+        "native/src/ir_health.cpp:copy_pairs: validates text and copies ordered pairs"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: discrete and detailed pair snapshots",
+        "native/tests/test_ir_health.c: pair text fidelity"
+      ],
+      "confirmed_semantics": [
+        "Copied strings without constructor parsing or validation",
+        "Append retains order and duplicates, not keyed replacement",
+        "Discrete and detailed types are subtypes of the same Ada pair-list type",
+        "Detailed metric naming and value syntax require provider documentation",
+        "Count includes duplicates and indexed access is one-based with Constraint_Error beyond length"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "Euler and all fields",
+        "Foreign_Key and constructor/accessors",
+        "Installation_Details and constructor/accessors",
+        "MFA_Component and constructor/accessors",
+        "MFA_Component_List and Append",
+        "About and constructor/accessors",
+        "MFA_Status and constructor/accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Directional.h",
+          "declaration": "Euler host frame, yaw/pitch/roll sequence, radians; ComponentLocation meter axes",
+          "lines": [
+            144,
+            287
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/UCI_ID.h",
+          "declaration": "ForeignKey external-system identifier",
+          "lines": [
+            67,
+            112
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/MFA_Component.h",
+          "declaration": "About identification strings",
+          "lines": [
+            12,
+            94
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/MFA_Component.h",
+          "declaration": "TemperatureStatus Celsius, installation geometry, component and MFA status",
+          "lines": [
+            196,
+            477
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.adb:198-276: constructors and getters copy geometry, text and component vectors",
+        "native/src/ir_health.cpp:copy_mfa validates and copies complete MFA status, component temperature and geometry"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: rich MFA_Status Celsius, orientation and boresight checks",
+        "native/tests/test_ir_health.c: exact rich MFA status snapshot"
+      ],
+      "confirmed_semantics": [
+        "Euler angles are radians in host navigational-center frame with upstream yaw/pitch/roll sequence; Ada neither normalizes nor transforms",
+        "ComponentLocation uses forward/right/down meters",
+        "Logical component installation key is distinct from physical installation details",
+        "Temperature reading is Celsius, independent of reported thermal state",
+        "About contains identification/version text, not numeric provider versions",
+        "Constructors copy all inputs without state-machine or geometry consistency enforcement",
+        "Component collection retains order and duplicates; count and one-based checked access reflect stored values"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.Status",
+      "declarations": [
+        "Security_Event_Kind and literals",
+        "Security_Outcome and literals",
+        "Security_Severity and literals",
+        "Security_Artifact and constructor/getters",
+        "Security_Artifact_List and Append",
+        "Security_Event and constructor/getters",
+        "Security_Audit_Record and constructor/getters"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/MFA_SecurityAuditRecord.h",
+          "declaration": "OutcomeEnum, SeverityEnum, SecurityEventType variant and eventTimestamp"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecurityArtifact.h",
+          "declaration": "Component and associated-item IDs"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecurityAuthenticationType.h",
+          "declaration": "Categories 0..7 and subsystem/service/MDF references"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecurityIntegrityType.h",
+          "declaration": "Categories 0..6 and MDF reference"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecurityFileManagementType.h",
+          "declaration": "Categories 0..4 and MDF reference"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecurityKeyManagementType.h",
+          "declaration": "Categories 0..6; no subtype IDs"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecuritySystemType.h",
+          "declaration": "Categories 0..4; no subtype IDs"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/SecuritySanitizationType.h",
+          "declaration": "Categories 0..3; no subtype IDs"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/securityauditrecord/BaseSecurityEventType.h",
+          "declaration": "Details string; generic account-access comment not applied to all subtypes"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-status.adb:287-336: all security constructors/getters copy without category/kind consistency checks",
+        "native/src/ir_health.cpp:207-224: variant visit validates each category and copies only applicable subtype identifiers, preserving signed timestamp count"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: security audit variant and copied metadata checks",
+        "native/tests/test_ir_health.c: security audit nested view and categories"
+      ],
+      "confirmed_semantics": [
+        "Each kind has its own sequential category vocabulary, zero unset",
+        "Authentication carries subsystem/service/MDF; integrity/file management carry MDF; other native variants have no subtype identifiers",
+        "Ada constructor stores all supplied fields even if incompatible with kind/category",
+        "Audit timestamp is nanoseconds with neither UTC scale nor epoch stated by pinned declaration",
+        "Artifact pairs preserve component and associated-item identities",
+        "Audit reporting subsystem differs from authentication-specific context",
+        "Outcome and severity are independent and neither executes a security operation",
+        "Owned copies, ordered duplicate-preserving artifacts and one-based checked access"
+      ],
+      "discrepancy": "Generic base Details and category comments mention account access but concrete subtypes are broader; documentation follows the concrete declarations. No clock epoch is inferred.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR",
+      "declarations": [
+        "package description",
+        "Byte",
+        "UUID",
+        "Pixel_Array",
+        "UCI_ID and constructor/getters/equality",
+        "Component_Location and constructor/getters",
+        "Image_Config and constructor",
+        "Image_Stream lifecycle and Receive",
+        "Image_Type and literals",
+        "Image_Flip and literals",
+        "Frame and all fields/discriminant",
+        "Timeout_Error",
+        "Stream_Stopped",
+        "Counter",
+        "Stream_Counters and fields",
+        "Counters",
+        "Channel_View"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/UCI_ID.h",
+          "declaration": "UUID array, descriptive label and equality comparing both"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Directional.h",
+          "declaration": "ComponentLocation forward/right/down meters"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/CommonIR_MEL.h",
+          "declaration": "ImageType, ImageFlip, ImageFlag and host buffer enum"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/FrameHeader.h",
+          "declaration": "Image times, dimensions, radians FOV, dither sign, offsets and band index"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Config.h",
+          "declaration": "Channel/platform/location and listener configuration"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Buffer.h",
+          "declaration": "Host memory buffer and release interface"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/image/ImageChannel.h",
+          "declaration": "Provider image channel interface"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir.ads: private owned identifier/location/config records and limited controlled owners",
+        "ada/src/ams-mel-ir.adb:48-99: NUL rejection and owned constructor/accessors",
+        "ada/src/ams-mel-ir.adb:105-162: open/start validation and local handle test",
+        "ada/src/ams-mel-ir.adb:190-258: two-call copied legacy Receive and strict type/format profile",
+        "ada/src/ams-mel-ir.adb:260-320: counters/lifecycle/finalization",
+        "native/src/ir_stream.cpp:888-1035: callback count, validation, registered host buffer bounds and queue-full drops",
+        "native/src/ir_stream.cpp:ams_mel_ir_stream_receive: legacy metadata/pixel copy and flags bitset",
+        "native/src/internal/ir_channel.hpp: weak typed-family view ownership",
+        "docs/corrective-provider-buffer-release-handoff.md: lifetime obligations and uncertain retention",
+        "docs/task-030b-provider-buffer-zero-copy.md: owned receive still copies, distinct lease path"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_tests.adb: stream ownership, frame fidelity and timeout/stopped behavior",
+        "native/tests/test_ir_stream.c: lifecycle, counters, malformed data and queue behavior",
+        "ada/tests/src/ams_mel_ir_image_lease_tests.adb: separate borrowed frame lease contract"
+      ],
+      "confirmed_semantics": [
+        "UUID is sixteen binary octets; equality includes label as in pinned upstream",
+        "Constructors copy text and reject NUL; open validates UTF-8",
+        "Legacy stream consumes host Mono8 single-band data without decoding or transforms",
+        "Legacy frames own copied pixels and selected metadata, not all Image child features",
+        "Receive requires single consumer because discovery/copy must refer to the same queued frame",
+        "Queued frames precede stopped/provider-failure reporting; zero timeout polls",
+        "Frame image time is integration start for stare and first-line time for scanning/TDI; integration duration nanoseconds and FOV radians",
+        "Dither positive sign moves former row/column coordinate to original minus dither",
+        "Frames_Received counts callbacks before validation, not successful reads; queue-full and malformed rejections have separate counts",
+        "Weak common Channel view never keeps typed resource/provider alive",
+        "Close/Stop do not promise cancellation of every operation; native retention protects provider code/storage"
+      ],
+      "discrepancy": "Native common frame handling accepts reserved image type two, but legacy Ada Receive rejects any kind above one. Legacy docs therefore expose only staring/scanning and do not claim complete native/full-header coverage.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.RF",
+      "declarations": [
+        "package description",
+        "Data_MEL",
+        "Open",
+        "Is_Open",
+        "Close",
+        "Query_Provider_Version",
+        "Quantize_Duration"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/factory/RFCreateFunctions.h",
+          "declaration": "createDataMEL and fnDataMEL"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/data/DataMEL.h",
+          "declaration": "DataMEL inherits RFMEL and declares getRFMFAInfo"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/RFMFAInfo.h",
+          "declaration": "schedulerResolution and quantizeDuration",
+          "lines": [
+            68,
+            83
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/CommonMEL.h",
+          "declaration": "VersionInfo",
+          "lines": [
+            29,
+            96
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-libraries-ams-math",
+          "commit": "00be45190f0e47d268cece8b8c2f8fb58b5418d2",
+          "path": "include/math/units/UTCTime.h",
+          "declaration": "Femtoseconds signed int64 chrono duration",
+          "lines": [
+            7,
+            12
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+          "commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "path": "interfaces/squall-rf-mel-impl/src/SquallC2MEL.cc",
+          "declaration": "SquallRFMFAInfo::quantizeDuration",
+          "lines": [
+            259,
+            261
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/rfmeltypes/RFMEL.h",
+          "declaration": "RFMEL base getVersionInfo and shutdown",
+          "lines": [
+            10,
+            25
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf.adb:51-181: string checks, limited ownership, closure/finalization, exact quantization and owned version copy",
+        "native/src/rf_data.cpp:148-214: deferred child shutdown and retention on failure",
+        "native/src/rf_data.cpp:227-315: load exact RF factory and publish owner without IR initialization",
+        "native/src/rf_data.cpp:ams_mel_rf_data_quantize_duration and ams_mel_rf_data_close",
+        "native/src/internal/rf_product_rx.hpp: child claims and permanent callback code retention"
+      ],
+      "tests": [
+        "native/tests/test_rf_data.c: load/factory/version/close and quantize/quantize-failure cases",
+        "ada/tests/src/ams_mel_rf_tests.adb:280-329: exact live quantization and closed/failure behavior",
+        "ada/tests/src/ams_mel_rf_product_rx_tests.adb: parent-first child lifetime"
+      ],
+      "confirmed_semantics": [
+        "RF acquisition is independent of IR Session and uses provider-defined configuration text",
+        "Ada rejects embedded NUL before loading; neither native RF open nor Ada open validates UTF-8",
+        "Default owner closed; Is_Open tests only local handle presence",
+        "Public closure consumes owner, defers shutdown for child claims and retains unsafe shutdown graph; callback code can remain process-retained",
+        "Version numbers are provider API/library versions, not bridge ABI; text is validated UTF-8 and copied via two provider queries",
+        "Quantization passes signed int64 femtoseconds to provider and returns unchanged signed result; no bridge rounding or arithmetic"
+      ],
+      "discrepancy": "Pinned scheduler prose mentions truncate/closest without defining universal rounding. Dedicated mock truncates signed division by ten; pinned Squall returns input unchanged. Neither is generalized to other providers. Open UTF-8 convention is not validated; version text validation is separate.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.RF",
+      "declarations": [
+        "Physical_Data",
+        "Snapshot_Physical_Data",
+        "all Physical_Data scalar/text accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/PhysicalData.h",
+          "declaration": "dimensions, lattice and installation details",
+          "lines": [
+            22,
+            89
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/RFMFAInfo.h",
+          "declaration": "getPhysicalData",
+          "lines": [
+            138,
+            141
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Directional.h",
+          "declaration": "Euler yaw/pitch/roll host frame, radians and ComponentLocation meter offsets",
+          "lines": [
+            144,
+            287
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/UCI_ID.h",
+          "declaration": "ForeignKey location-key naming system",
+          "lines": [
+            67,
+            112
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf.adb:Snapshot_Physical_Data and Physical_Data accessors: checked native text copy then snapshot close",
+        "native/src/rf_data.cpp:ams_mel_rf_data_get_physical_data and owned physical snapshot: all double fields copied without normalization"
+      ],
+      "tests": [
+        "native/tests/test_rf_physical.c: scalar/text fidelity, changing snapshots, IEEE values and failure cases",
+        "ada/tests/src/ams_mel_rf_tests.adb:192-278: owned physical values and text after close"
+      ],
+      "confirmed_semantics": [
+        "Antenna height short axis and width long axis are meters",
+        "Lattice angle describes relative element grid orientation in radians for mainbeam shape calculation",
+        "Location forward/right/down meters from host navigational center; orientation/boresight radians in host frame",
+        "Location key describes logical mounting location and system name identifies external key management system",
+        "Snapshot owns all data/text independently and survives provider closure; no coordinate conversion, normalization or physical-range validation"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.RF",
+      "declarations": [
+        "Job_Data_Format",
+        "all fourteen format constants",
+        "Supported_Data_Format_Count",
+        "Supported_Data_Format_At"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/rfmeltypes/JobDataFormat.h",
+          "declaration": "JobDataFormat identifiers, packet storage capacities and JobDataPointer alternatives",
+          "lines": [
+            21,
+            117
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/rfmeltypes/MELComplex.h",
+          "declaration": "signed real/imaginary components"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf.ads: modular 32-bit constants 0..13",
+        "ada/src/ams-mel-rf.adb:Snapshot_MFA_Info and supported-format accessors",
+        "native/src/rf_data.cpp:raw_format retains unknown enum bits",
+        "native/src/rf_product_rx.cpp: frozen submit/view format domains and v9 accepts only 0..7"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_rf_tests.adb:15-65: LF_Type3 capability reporting without receive support",
+        "native/tests/test_rf_data.c: unknown format preservation",
+        "native/tests/test_rf_product_rx.c: direct/complex/VITA format cases",
+        "docs/task-034f18-rf-product-rx-complex-i8.md",
+        "docs/task-034f19-rf-product-rx-direct-samples.md",
+        "docs/task-034f20-rf-product-rx-vita-small.md",
+        "docs/task-034f21-rf-product-rx-vita-medium.md",
+        "docs/task-034f22-rf-product-rx-vita-large.md",
+        "docs/task-034f23-rf-product-rx-vita-extra-large.md",
+        "docs/task-034f24-rf-product-rx-vita-associations.md",
+        "docs/task-034f25-rf-product-rx-stabilization-points.md"
+      ],
+      "confirmed_semantics": [
+        "Direct signed 8/16-bit samples and complex signed 8/16-bit real/imaginary pairs",
+        "Four VITA capacities 512/1024/8192/32768 bytes are storage, not serialized length or all payload",
+        "PDW/LF constants are identifiers only; no pinned data-pointer alternatives and current ProductRx rejects formats 8..13",
+        "Provider supported formats and unknown IDs are preserved independently of implemented consumer APIs"
+      ],
+      "discrepancy": "ComplexINT16 comment says signed 8 bit but actual template/variant uses int16_t pairs. Data-pointer variant only defines eight alternatives despite fourteen enum values. Actual signatures and variant mapping govern authored descriptions.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.RF",
+      "declarations": [
+        "Frequency_Range and fields",
+        "Face_Info",
+        "MFA_Info",
+        "Snapshot_MFA_Info",
+        "all face and MFA accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/RFMFAInfo.h",
+          "declaration": "AGC, capability flags, lead/switch timing, context, formats and face IDs",
+          "lines": [
+            29,
+            159
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/rfmeltypes/RFMELTypes.h",
+          "declaration": "FaceID uint32, Frequency double and FrequencyRange lower/upper bounds",
+          "lines": [
+            44,
+            105
+          ]
+        }
+      ],
+      "implementation": [
+        "native/src/rf_data.cpp:copy_ranges preserves all doubles, ordered vectors and bounds",
+        "native/src/rf_data.cpp:ams_mel_rf_data_get_mfa_info: separate reported count, ordered set IDs/formats and exact femtosecond fields",
+        "ada/src/ams-mel-rf.adb:Snapshot_MFA_Info checked span/boolean conversion and all vector getters"
+      ],
+      "tests": [
+        "native/tests/test_rf_data.c: rich noncontiguous face IDs and distinct reported count, signed timings and IEEE/reversed ranges",
+        "ada/tests/src/ams_mel_rf_tests.adb:15-76: reported count versus two actual faces, signed times and reversed sampling ranges"
+      ],
+      "confirmed_semantics": [
+        "All FS timing values are signed femtoseconds, frequency bounds hertz without normalization",
+        "AGC processing follows AGC data collection; min/max request lead define scheduling window and detail lead is relative to actual job/interval start",
+        "Switching gaps follow ordered TX-RX, RX-TX, TX-TX and RX-RX events",
+        "Requires association reports requirement without performing it; support flags report provider capability, not active RF or hardware qualification",
+        "Face IDs iterate provider set in ascending order, not necessarily contiguous; reported count differs from copied length",
+        "Vectors use Positive one-based indexing and raise Constraint_Error beyond length; vector/range order retained",
+        "Scheduler resolution is reported quantum, not an automatic validation; context maximum is byte constraint, not allocated/registered storage",
+        "Open-additions flag has no further generic feature inventory in pinned source",
+        "Owned snapshots outlive provider and multiple queries are not promised atomic"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.RF",
+      "declarations": [
+        "Tx_Power_Mode",
+        "Tx_Power_Mode_List",
+        "Snapshot_Tx_Power_Modes",
+        "Snapshot_Tx_Power_Mode",
+        "all mode accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/TxPowerModeData.h",
+          "declaration": "hardware constraints, provider IDs/levels, linear/compressed, ranges, duty, pulse and attenuation"
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/mfa/RFMFAInfo.h",
+          "declaration": "collection and direct mode characteristic overloads",
+          "lines": [
+            143,
+            154
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "path": "include/rfmel/rfmeltypes/RFMELTypes.h",
+          "declaration": "TxPowerModeID and TxPowerLevel uint32; DutyFactor double"
+        }
+      ],
+      "implementation": [
+        "native/src/rf_data.cpp: TX mode snapshot copies exact scalars/ranges and invokes selected overload once without Supports_Transmit gate",
+        "ada/src/ams-mel-rf.adb: Tx_Snapshot, direct exactly-one-entry check, owned vector copies and mode getters"
+      ],
+      "tests": [
+        "native/tests/test_rf_tx_power.c: direct/collection behavior, mismatched returned IDs, ordered nested ranges, exceptional and IEEE cases",
+        "ada/tests/src/ams_mel_rf_tests.adb:Test_Tx: exact values, empty lists, mismatch and post-close copies",
+        "docs/task-034c3-rf-tx-power-modes.md"
+      ],
+      "confirmed_semantics": [
+        "Mode IDs assigned by provider and distinct from power levels; zero level reserved default",
+        "Returned direct ID remains authoritative even when it differs from requested ID; no invented not-found convention",
+        "True linear versus False compressed; range hertz, duty dimensionless, pulse signed nanoseconds",
+        "No attenuation unit is specified; maximum can change with runtime calibration and step is commandable minimum increment",
+        "Upstream hardware damage warning requires respecting mode characteristics, explicitly valid frequency ranges",
+        "Snapshot query/read neither validates future Jobs against limits nor enforces physical/attenuation policies",
+        "Collection order/duplicates preserved, default empty, one-based checked reads, no clamping or sorting"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    }
+  ]
+}
