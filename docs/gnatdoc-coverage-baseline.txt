@@ -1,19 +1,4 @@
 AMS.MEL.IR.Health_Status.Metadata: AMS.MEL.IR.Health_Status.Metadata.Status: package: package AMS.MEL.IR.Health_Status.Metadata.Status renames AMS.MEL.Status;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Admin_MEL: type: type Admin_MEL is limited private;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Close: procedure: procedure Close ( Object : in out Admin_MEL ) ;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Close: procedure: procedure Close ( Object : in out Admin_MEL ) ;: parameter 0:Object
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Command_State: function: function Command_State ( Object : Admin_MEL ; State : AMS . MEL . Status . MFA_State ) return Boolean ;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Command_State: function: function Command_State ( Object : Admin_MEL ; State : AMS . MEL . Status . MFA_State ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Command_State: function: function Command_State ( Object : Admin_MEL ; State : AMS . MEL . Status . MFA_State ) return Boolean ;: parameter 1:State
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Command_State: function: function Command_State ( Object : Admin_MEL ; State : AMS . MEL . Status . MFA_State ) return Boolean ;: return 0:
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Is_Open: function: function Is_Open ( Object : Admin_MEL ) return Boolean ;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Is_Open: function: function Is_Open ( Object : Admin_MEL ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Is_Open: function: function Is_Open ( Object : Admin_MEL ) return Boolean ;: return 0:
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Open: function: function Open ( Library_Path : String ; Configuration : String ) return Admin_MEL ;: description
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Open: function: function Open ( Library_Path : String ; Configuration : String ) return Admin_MEL ;: parameter 0:Library_Path
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Open: function: function Open ( Library_Path : String ; Configuration : String ) return Admin_MEL ;: parameter 1:Configuration
-AMS.MEL.RF.Admin: AMS.MEL.RF.Admin.Open: function: function Open ( Library_Path : String ; Configuration : String ) return Admin_MEL ;: return 0:
-AMS.MEL.RF.Admin: package: description
 AMS.MEL.RF.C2.Data_Pipes: AMS.MEL.RF.C2.Data_Pipes.Associate_Endpoint: function: function Associate_Endpoint ( Object : in out Virtual_Aperture ' Class ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) return Boolean ;: parameter 0:Object
 AMS.MEL.RF.C2.Data_Pipes: AMS.MEL.RF.C2.Data_Pipes.Associate_Endpoint: function: function Associate_Endpoint ( Object : in out Virtual_Aperture ' Class ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) return Boolean ;: parameter 1:Element_Group_Label
 AMS.MEL.RF.C2.Data_Pipes: AMS.MEL.RF.C2.Data_Pipes.Associate_Endpoint: function: function Associate_Endpoint ( Object : in out Virtual_Aperture ' Class ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) return Boolean ;: parameter 2:Data_Pipe_Label

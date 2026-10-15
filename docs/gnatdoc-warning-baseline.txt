@@ -40,21 +40,6 @@ ams-mel-ir.ads: AMS.MEL.IR.Finalize: procedure Finalize (Object : in out Image_S
 ams-mel-ir.ads: AMS.MEL.IR.Finalize: procedure Finalize (Object : in out Image_Stream);: warning: parameter `Object` is not documented
 ams-mel-ir.ads: AMS.MEL.IR.Finalize: procedure Finalize (Object : in out Channel_View);: warning: entity `Finalize` is not documented
 ams-mel-ir.ads: AMS.MEL.IR.Finalize: procedure Finalize (Object : in out Channel_View);: warning: parameter `Object` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin: package AMS.MEL.RF.Admin is: warning: entity `AMS.MEL.RF.Admin` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Admin_MEL: type Admin_MEL is limited private;: warning: entity `Admin_MEL` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Open: function Open (Library_Path : String; Configuration : String) return Admin_MEL;: warning: entity `Open` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Open: function Open (Library_Path : String; Configuration : String) return Admin_MEL;: warning: parameter `Library_Path` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Open: function Open (Library_Path : String; Configuration : String) return Admin_MEL;: warning: parameter `Configuration` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Open: function Open (Library_Path : String; Configuration : String) return Admin_MEL;: warning: return value is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Is_Open: function Is_Open (Object : Admin_MEL) return Boolean;: warning: entity `Is_Open` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Is_Open: function Is_Open (Object : Admin_MEL) return Boolean;: warning: parameter `Object` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Is_Open: function Is_Open (Object : Admin_MEL) return Boolean;: warning: return value is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Command_State: function Command_State (Object : Admin_MEL; State : AMS.MEL.Status.MFA_State) return Boolean;: warning: entity `Command_State` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Command_State: function Command_State (Object : Admin_MEL; State : AMS.MEL.Status.MFA_State) return Boolean;: warning: parameter `Object` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Command_State: function Command_State (Object : Admin_MEL; State : AMS.MEL.Status.MFA_State) return Boolean;: warning: parameter `State` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Command_State: function Command_State (Object : Admin_MEL; State : AMS.MEL.Status.MFA_State) return Boolean;: warning: return value is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Close: procedure Close (Object : in out Admin_MEL);: warning: entity `Close` is not documented
-ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Close: procedure Close (Object : in out Admin_MEL);: warning: parameter `Object` is not documented
 ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Finalize: procedure Finalize (Object : in out Admin_MEL);: warning: entity `Finalize` is not documented
 ams-mel-rf-admin.ads: AMS.MEL.RF.Admin.Finalize: procedure Finalize (Object : in out Admin_MEL);: warning: parameter `Object` is not documented
 ams-mel-rf-c2-data_pipes.ads: AMS.MEL.RF.C2.Data_Pipes.Snapshot: function Snapshot (Object : Virtual_Aperture'Class) return Connection_Snapshot;: warning: parameter `Object` is not documented
