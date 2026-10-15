@@ -1,7 +1,7 @@
 {
-  "campaign": "AMS-MEL-DOC-002",
+  "campaign": "AMS-MEL-DOC-003",
   "status": "LOCAL_QUALIFICATION_COMPLETE_PR_REVIEW_PENDING",
-  "bridge_base": "85b5437e39de1387f3f1678d6f09a9f85e16cfac",
+  "bridge_base": "e7a652c7a62e66d58c275f6ab1f09bb6e2021622",
   "entries": [
     {
       "package": "AMS",
@@ -1072,6 +1072,782 @@
       ],
       "discrepancy": null,
       "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Image",
+      "declarations": [
+        "package description",
+        "Full_Image_Type and Image_Flag including all literals",
+        "Directional, Quaternion, Nav_Error, Uncertainty and all components",
+        "Contributing_Sensor",
+        "Orientation_Kind and Orientation discriminant/variants",
+        "Sensor_Inertial_State and Sensor_Nav_State",
+        "Coordinate_System and all literals",
+        "Full_Frame",
+        "Capabilities, As_Channel, Receive returning Full_Frame",
+        "all Full_Frame metadata and pixel accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/FrameHeader.h",
+          "declaration": "all header fields and row-major raster",
+          "lines": [
+            1,
+            311
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/CommonIR_MEL.h",
+          "declaration": "ImageType, ImageFlag, ContributingSensor",
+          "lines": [
+            1,
+            487
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/SensorInertialState.h",
+          "declaration": "ECEF position/velocity and quaternion frame directions",
+          "lines": [
+            1,
+            91
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/SensorNavState.h",
+          "declaration": "coordinate identifiers and independent orientation variants",
+          "lines": [
+            1,
+            252
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/IR_Directional.h",
+          "declaration": "directional and quaternion component order",
+          "lines": [
+            1,
+            214
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/NavError.h",
+          "declaration": "vector/Euler/quaternion error values",
+          "lines": [
+            1,
+            71
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Uncertainty.h",
+          "declaration": "raw sensor/platform uint32 uncertainties",
+          "lines": [
+            1,
+            48
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-image.adb: To_Lease_Metadata, Receive, private Close and Full_Frame accessors",
+        "native/src/ir_stream.cpp: copy_full_header, image callback validation and receive_snapshot"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_image_tests.adb: rich complete metadata, mixed variants, duplicate flag order and owned copy after closure",
+        "native/tests/test_ir_stream.c: full header, malformed frame/span, retained buffer and lifecycle tests"
+      ],
+      "confirmed_semantics": [
+        "Owned Receive copies payload and closes temporary native snapshot before return; private close ignores status",
+        "Current Mono8 single-band subset only; no decoding, frame conversion, normalization or covariance estimation",
+        "All actual copied sequence lengths and duplicate order retained; indexed access is one-based",
+        "Image time and integration nanoseconds; FOV radians; ECEF inertial position meters and velocity meters/second"
+      ],
+      "discrepancy": "FrameHeader numBands prose describes a spectral-band indicator despite the field name. SensorNavState does not define universal component/derivative units. NavError defines no confidence interpretation; uncertainty values have no authoritative bit definitions. Owned Receive cleanup does not report release status as explicit lease Close does.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Image",
+      "declarations": [
+        "Frame_Lease",
+        "Acquire_Frame",
+        "Is_Open(Frame)",
+        "Close(Frame)",
+        "Pixel_Count(Frame)",
+        "With_Pixels",
+        "Copy_Pixels",
+        "all lease metadata accessors"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Buffer.h",
+          "declaration": "release allows provider buffer reuse; getImageAddress host span",
+          "lines": [
+            1,
+            117
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/ImageListener.h",
+          "declaration": "image callback buffer ownership",
+          "lines": [
+            1,
+            51
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+          "commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "path": "interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc",
+          "declaration": "RequeueBuffer::release and udpCallback memcpy",
+          "lines": [
+            1,
+            474
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-image.adb: Acquire_Frame, Borrow_Pixels, With_Pixels, Copy_Pixels, explicit Close and Finalize",
+        "native/src/ir_stream.cpp: QueuedFrame retention, release_retained_buffer, snapshot_close, deferred cleanup",
+        "docs/corrective-provider-buffer-release-handoff.md: final executor/retention and failed-discard protocol",
+        "docs/task-030a-zero-copy-ada-frame-lease.md: historical snapshot-owned path superseded by 030B",
+        "docs/task-030b-provider-buffer-zero-copy.md: delayed release and zero-copy evidence"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_image_lease_tests.adb: address identity, exception survival, explicit copy, parent closure and release failures",
+        "native/tests/test_ir_stream.c: retained buffer release, failure retention, cleanup handoff and mutation schedules"
+      ],
+      "confirmed_semantics": [
+        "Borrowed path performs no bulk image-payload copy from provider registered host buffer into Ada; Squall UDP copy is upstream, not end-to-end sensor zero-copy",
+        "With_Pixels aliases provider bytes for synchronous callback extent only; callback exceptions preserve lease",
+        "Close consumes snapshot and invalidates payload even on failure; failed release is not retried; metadata fields remain copied",
+        "Provider graph/code/storage lifetime can exceed public stream/Session lifetime; uncertainty deliberately retains resources, not successful release",
+        "One receive/acquire consumer; independent acquired leases can be processed separately, not arbitrary shared-owner lifecycle concurrency"
+      ],
+      "discrepancy": "Earlier 030A snapshot-owned lifetime statements are superseded. Close can execute cleanup or wait for finite native work, so no blanket nonblocking/at-once/quiescence promise is made.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Image",
+      "declarations": [
+        "Position_Solution_State and all literals",
+        "North_East_Down",
+        "Attitude_Rate",
+        "Position_Velocity_Covariance and all 18 components",
+        "Navigation_Report",
+        "Navigation_Response",
+        "Navigation_Outcome and Navigation_Error_Code literals",
+        "Navigation_Result and all accessors",
+        "Navigation_Request, Submit_Navigation_Report, Is_Open, Wait, Close"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/NavigationReport.h",
+          "declaration": "position solution, NED, attitude rate, complete covariance and report units",
+          "lines": [
+            1,
+            487
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Error.h",
+          "declaration": "nine error reasons",
+          "lines": [
+            1,
+            78
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/image/ImageChannel.h",
+          "declaration": "send(NavigationReport)",
+          "lines": [
+            1,
+            142
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/image/NavigationReportResp.h",
+          "declaration": "timestamp, commandID and reqId",
+          "lines": [
+            1,
+            65
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+          "commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "path": "interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc",
+          "declaration": "send(NavigationReport) reports input time, zero IDs and synchronous metadata",
+          "lines": [
+            1,
+            474
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-image.adb: Raw_Report/Raw_Covariance, Submit_Navigation_Report, Wait and result accessors",
+        "native/src/ir_navigation.cpp: convert_report, map_error, worker once-only get, terminal cache and diagnostic recovery",
+        "native/src/ir_stream.cpp: claim_navigation_submission, finish_image_request, cleanup lock/outcome handoff",
+        "docs/corrective-image-navigation-close-race.md: corrected synchronization superseding Task 027B",
+        "docs/task-027b-validation.md: original slice and pinned provider behavior",
+        "ada/src/ams-mel.adb: Check_Submission maps admission limit separately"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_image_navigation_tests.adb: full 18-term report, Attached submit, cached Wait, timeout then success, parent-first Close",
+        "native/tests/test_ir_navigation.c: fidelity, enum/errors and corrected Close race/mutations"
+      ],
+      "confirmed_semantics": [
+        "Navigation submission sends a supplied solution, does not compute it; Attached and Running allowed",
+        "Latitude/longitude/wander radians; altitude meters; speed meters/second, acceleration meters/second squared",
+        "All 18 covariance identities preserved distinctly; no estimated/completed covariance matrix",
+        "Timeout does not cancel; Close releases public request only; future can retain graph indefinitely",
+        "Outcome preconditions are declared; simple result accessor bodies add no check; Wait returns owned complete rejection text",
+        "Success handle acquisition is not future completion; terminal provider/native failures differ from explicit Rejected"
+      ],
+      "discrepancy": "Magnetic heading, altitudeMSL explicit unit, covariance explicit units, attitude-rate units and timestamp epochs are unspecified in pinned declarations. Squall ignores most submitted kinematics and is not generic fidelity authority; rich mock tests provide bridge fidelity.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Image.Metadata",
+      "declarations": [
+        "all four Metadata_Kind literals",
+        "Bad_Pixel_Reason, Bad_Pixel, Bad_Pixel_List and accessors",
+        "Azimuth_Elevation, Line_Of_Sight_Report, Line_Of_Sight_Euler and all fields",
+        "Navigation_Response subtype",
+        "Metadata_Stream, Metadata_Event, Open, Receive, Counters, Close, Kind and all payload accessors",
+        "Metadata_Counters and fields"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/BadPixel.h",
+          "declaration": "row/column/reason",
+          "lines": [
+            1,
+            59
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/BadPixelList.h",
+          "declaration": "byte size and reported count versus vector",
+          "lines": [
+            1,
+            69
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/LineOfSightReport.h",
+          "declaration": "sensor-relative pointing, validity and image rotation",
+          "lines": [
+            1,
+            105
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/LineOfSightEuler.h",
+          "declaration": "radians and radians/second",
+          "lines": [
+            1,
+            62
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/CommonIR_MEL.h",
+          "declaration": "Unknown only BadPixelReason",
+          "lines": [
+            1,
+            487
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/image/ImageChannel.h",
+          "declaration": "four required metadata registrations and optional excluded families",
+          "lines": [
+            1,
+            142
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/image/NavigationReportResp.h",
+          "declaration": "response fields",
+          "lines": [
+            1,
+            65
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-libraries-ams-math",
+          "commit": "00be45190f0e47d268cece8b8c2f8fb58b5418d2",
+          "path": "include/math/geometry/RangeAzEl.h",
+          "declaration": "AzEl angle radians",
+          "lines": [
+            1,
+            104
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+          "commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "path": "interfaces/squall-ir-mel-impl/src/SquallImageChannel.cc",
+          "declaration": "synchronous registration events and navigation callback",
+          "lines": [
+            1,
+            474
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-image-metadata.adb: complete copy and temporary native event cleanup; explicit wrong-kind Provider_Error",
+        "native/src/ir_image.cpp: four callback copy routines, counters, single bounded queue, registration failure and Close",
+        "native/src/ir_stream.cpp: claim_image_metadata once-only lifecycle and stream-stopped notification",
+        "docs/task-025-validation.md and docs/task-026-validation.md: image metadata slices",
+        "docs/task-027b-validation.md: canonical response subtype"
+      ],
+      "tests": [
+        "native/tests/test_ir_image_metadata.c: four kinds, reporting/copy lengths, overflow, failure and owned lifetime",
+        "ada/tests/src/ams_mel_ir_image_metadata_tests.adb: copied rich events and close lifetime"
+      ],
+      "confirmed_semantics": [
+        "Owned events survive all public owners; no borrowed provider pointer",
+        "All actual bad-pixel entries copied regardless reported count; original coordinates retained",
+        "Shared queue ordered by successful enqueue, drop incoming; counters saturate and received counts callback entries",
+        "Once-only registration on Attached/Running, no unregister; Close deactivates consumption without closing image stream",
+        "Wrong-kind accessors explicitly raise Provider_Error, unlike health precondition/discriminant behavior",
+        "Optional quaternion/distortion and other callbacks are absent"
+      ],
+      "discrepancy": "Validity bit positions, bad-pixel origin, pointing-rate time denominator and timestamp epoch are not established; no bit decoding or assumed rad/second is invented for LineOfSightReport. LineOfSightEuler explicitly supplies rad/second.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Health_Status",
+      "declarations": [
+        "package, Health_Config, Create_Config",
+        "Health_Channel, Open, Is_Open, Enable, Capabilities, As_Channel, Close"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/HealthStatusChannel.h",
+          "declaration": "typed channel and required metadata registrations",
+          "lines": [
+            1,
+            99
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/Channel.h",
+          "declaration": "inherited common services",
+          "lines": [
+            1,
+            78
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-health_status.adb: configuration, typed lifecycle, owned capability copy and finalization",
+        "native/src/ir_health.cpp: attach type/capability validation, explicit enable, cleanup and common request child count",
+        "native/src/ir_channel.cpp: weak typed-channel view conversion",
+        "docs/task-020-validation.md: complete health/status slice",
+        "docs/task-032a3-common-access-health.md: inherited services and weak view lifetime"
+      ],
+      "tests": [
+        "native/tests/test_ir_health.c: attachment, enable, metadata and cleanup failures",
+        "native/tests/test_common_channel_health.c: inherited request parent/child lifetime",
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: typed lifecycle and owned health snapshots"
+      ],
+      "confirmed_semantics": [
+        "Open attaches, Enable explicit; capability and registration allowed Attached/Enabled",
+        "Weak common view does not keep typed owner alive",
+        "Session child pins native provider state after public Session Close",
+        "Close deactivates metadata, pending common requests defer cleanup; detach failure retains owner for retry or orphaned graph for safety",
+        "All wrapper operational failures raise Provider_Error; Is_Open only tests local handle"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Health_Status.Metadata",
+      "declarations": [
+        "Status package renaming (unrendered exception)",
+        "Failure_Level and all literals",
+        "CSCI_Mode and all literals",
+        "Subsystem_Dependency, Version, Subsystem_CSCI, Subsystem_Status and every component/accessor",
+        "all six Metadata_Kind literals",
+        "Metadata_Event and Event_Kind discriminant, Kind and all six payload accessors",
+        "Metadata_Stream, Open, Is_Open, Receive, Counters, Close",
+        "Metadata_Counters and fields"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/HealthStatusChannel.h",
+          "declaration": "six required callback families; optional NUC absent",
+          "lines": [
+            1,
+            99
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/SubsystemStatusResp.h",
+          "declaration": "reported counts and dependency/CSCI vectors",
+          "lines": [
+            1,
+            119
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/SubsystemDepInfo.h",
+          "declaration": "ID/criticality/failure",
+          "lines": [
+            1,
+            58
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/SubsystemCSCIInfo.h",
+          "declaration": "name/mode/version/criticality/failure/BIT change counter/connection",
+          "lines": [
+            1,
+            98
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/Version.h",
+          "declaration": "four unsigned components",
+          "lines": [
+            1,
+            70
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/CommonIR_MEL.h",
+          "declaration": "Failure and CSCIMode exact enumerators",
+          "lines": [
+            1,
+            487
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-sensors-squall",
+          "commit": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "path": "interfaces/squall-ir-mel-impl/src/SquallHealthStatusChannel.cc",
+          "declaration": "registerSingleCallback, health poll loop and destructor thread join",
+          "lines": [
+            1,
+            204
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-health_status-metadata.ads: alias, outcome-kind Pre aspects and private discriminated representation",
+        "ada/src/ams-mel-ir-health_status-metadata.adb: canonical Status conversion, owned nested data, direct variant accessors",
+        "native/src/ir_health.cpp: six validated deep-copy routines, callback failure state, bounded queue and teardown",
+        "ada/src/ams-mel-status.ads and docs/doc-002-source-research.md: authoritative shared BIT/fault/security semantics",
+        "docs/task-020-validation.md: complete health/status implementation"
+      ],
+      "tests": [
+        "native/tests/test_ir_health.c: all six kinds, malformed enums/text, mismatched reported counts, all security variants and lifetime",
+        "ada/tests/src/ams_mel_ir_health_status_tests.adb: owned rich canonical Status snapshots, reported 99/88 versus actual two/two"
+      ],
+      "confirmed_semantics": [
+        "Critical means no heartbeat upstream, Available no failure, NotPresent not installed; other thresholds and VSA expansion unspecified",
+        "BIT_Report is a BIT_Status-change counter, not BIT payload",
+        "Raw criticality, sequence and version components preserved without scale/encoding inference",
+        "Reported counts remain distinct from actual copied sequence lengths; indexed access one-based with Constraint_Error beyond length",
+        "Event preconditions require matching kind; with checks enabled Assertion_Error, direct wrong variant is also subject to Ada discriminant checks, not invented Provider_Error",
+        "Callback exceptions fail metadata stream; malformed conversion increments malformed counter; queued events drain before empty failed/closed status",
+        "Alias remains real source element with no GNATdoc section; canonical reference in package prose does not mark alias documented",
+        "Pinned Squall stores one callback per type, copies registered closures under a mutex for polling and joins its polling thread in destruction; no stronger generic immediate-unregister guarantee follows."
+      ],
+      "discrepancy": "No criticality scale, failure thresholds, VSA expansion, version source encoding or timestamp epochs inferred. Renderer omission remains 142/143.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Instrumentation",
+      "declarations": [
+        "package and conditional support",
+        "Instrumentation_Config, Create_Config",
+        "Instrumentation_Channel and all lifecycle/common-view operations",
+        "Priority and both literals",
+        "Instrumentation_Level_Command and fields",
+        "Instrumentation_Report and all four fields",
+        "Instrumentation_Outcome and all error literals",
+        "Instrumentation_Result and accessors",
+        "Instrumentation_Request, Submit, Is_Open, Wait, Close"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationChannel.h",
+          "declaration": "RequiredIfInstrumentation send and callback, inherited services",
+          "lines": [
+            1,
+            53
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationLevelCmd.h",
+          "declaration": "data recording level and command identifier",
+          "lines": [
+            1,
+            50
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationReport.h",
+          "declaration": "four report fields",
+          "lines": [
+            1,
+            73
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/CommonIR_MEL.h",
+          "declaration": "Priority Normal=0, Debug=1",
+          "lines": [
+            1,
+            487
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/Error.h",
+          "declaration": "explicit error codes",
+          "lines": [
+            1,
+            78
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-instrumentation.adb: configuration/lifecycle, Submit, result conversion, full rejection text cache retry and nonraising finalization",
+        "native/src/ir_instrumentation.cpp: Enabled-only send, worker once-only get, child accounting and cleanup",
+        "docs/task-028-instrumentation-validation.md: conditional subset and lifecycle",
+        "native/src/ir_channel.cpp: common weak view"
+      ],
+      "tests": [
+        "native/tests/test_ir_instrumentation.c: all outcome/error/failure paths, exact report fields, delayed/repeated Wait, synchronous callback and lifetime",
+        "native/tests/test_common_channel_instrumentation_track.c: inherited common services",
+        "ada/tests/src/ams_mel_ir_instrumentation_tests.adb: safe command/result fidelity, rejection text, timeout/cache and parent closure"
+      ],
+      "confirmed_semantics": [
+        "Exactly Normal=0 and Debug=1, no sentinel or extra levels",
+        "Open attaches; Submit requires Enabled; weak common view does not own typed channel",
+        "Report is same owned record for future and callback; no variable instrumentation payload exposed",
+        "Timeout is not cancellation; terminal Wait cached; public request Close does not stop work",
+        "Provider exceptions and invalid results are failures distinct from explicit rejection",
+        "Final request may trigger deferred cleanup; uncertainty retains graph/code"
+      ],
+      "discrepancy": "Report Size has no documented unit or payload relation in pinned header; timestamp epoch unspecified. Pinned Squall tree has no instrumentation channel implementation, so none is used as authority for provider instrumentation behavior.",
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Instrumentation.Metadata",
+      "declarations": [
+        "Metadata_Channel, Open, Is_Open, Receive, Counters, Close",
+        "Metadata_Counters and all fields"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationChannel.h",
+          "declaration": "report callback without unregister operation",
+          "lines": [
+            1,
+            53
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationReport.h",
+          "declaration": "copied report fields",
+          "lines": [
+            1,
+            73
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-instrumentation-metadata.adb: local ownership, copied report and temporary event close",
+        "native/src/ir_instrumentation.cpp: MetadataState, CallbackGuard, metadata_callback, once-only registration and cleanup",
+        "docs/task-028-instrumentation-validation.md: callback lifetime and failure coverage"
+      ],
+      "tests": [
+        "native/tests/test_ir_instrumentation.c: overflow, null/invalid payload, allocation failure, registration-time/send-time callback and Close before destruction",
+        "ada/tests/src/ams_mel_ir_instrumentation_tests.adb: owned report metadata and lifecycle"
+      ],
+      "confirmed_semantics": [
+        "Callback validates/copies into bounded native drop-incoming queue, never calls Ada",
+        "Receive copies owned values and releases native event; values survive public closure",
+        "Once-only registration Attached/Enabled; no unregister, public consumption Close is not callback quiescence",
+        "Counters saturate: received entries, full drops, malformed conversions; callback exceptions instead fail state",
+        "Actual channel destruction then bridge callback drain is cleanup boundary, potentially deferred behind requests"
+      ],
+      "discrepancy": null,
+      "confidence": "UPSTREAM_AND_BRIDGE_CONFIRMED"
+    },
+    {
+      "package": "AMS.MEL.IR.Image",
+      "declarations": [
+        "Sensor_Nav_State, Nav_Error, Uncertainty, Navigation_Report and Attitude_Rate units/encoding"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/SensorNavState.h",
+          "declaration": "coordinate identifiers and independent orientation variants",
+          "lines": [
+            1,
+            252
+          ]
+        }
+      ],
+      "implementation": [
+        "Safe Ada specifications preserve the representation and explicitly state source ambiguity; conversion implementations copy the corresponding values without interpretation."
+      ],
+      "confirmed_semantics": [
+        "Bound public representation and implemented copy/lifetime behavior are documented; missing external semantics are not fabricated."
+      ],
+      "discrepancy": "No authoritative universal component units, NavError statistical interpretation, uncertainty bit definitions, magnetic heading/rate/covariance units or timestamp epoch are established by the pinned declarations.",
+      "confidence": "UPSTREAM_AMBIGUOUS"
+    },
+    {
+      "package": "AMS.MEL.IR.Image.Metadata",
+      "declarations": [
+        "Line_Of_Sight_Report validity bits and pointing-rate units, Bad_Pixel coordinate origin"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/irmel-types/LineOfSightReport.h",
+          "declaration": "sensor-relative pointing, validity and image rotation",
+          "lines": [
+            1,
+            105
+          ]
+        }
+      ],
+      "implementation": [
+        "Safe Ada specifications preserve the representation and explicitly state source ambiguity; conversion implementations copy the corresponding values without interpretation."
+      ],
+      "confirmed_semantics": [
+        "Bound public representation and implemented copy/lifetime behavior are documented; missing external semantics are not fabricated."
+      ],
+      "discrepancy": "Validity field identifies affected values but not bit positions; pointing-rate time denominator and bad-pixel coordinate origin are unspecified.",
+      "confidence": "UPSTREAM_AMBIGUOUS"
+    },
+    {
+      "package": "AMS.MEL.IR.Health_Status.Metadata",
+      "declarations": [
+        "Criticality, Failure_Level thresholds, CSCI_Mode.VSA and Version.Source"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/health-status/SubsystemCSCIInfo.h",
+          "declaration": "name/mode/version/criticality/failure/BIT change counter/connection",
+          "lines": [
+            1,
+            98
+          ]
+        }
+      ],
+      "implementation": [
+        "Safe Ada specifications preserve the representation and explicitly state source ambiguity; conversion implementations copy the corresponding values without interpretation."
+      ],
+      "confirmed_semantics": [
+        "Bound public representation and implemented copy/lifetime behavior are documented; missing external semantics are not fabricated."
+      ],
+      "discrepancy": "No numeric criticality scale, additional failure thresholds, VSA expansion or version source encoding is defined.",
+      "confidence": "UPSTREAM_AMBIGUOUS"
+    },
+    {
+      "package": "AMS.MEL.IR.Instrumentation",
+      "declarations": [
+        "Instrumentation_Report.Size and Timestamp_NS"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "commit": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "path": "include/irmel/library/instrumentation/InstrumentationReport.h",
+          "declaration": "four report fields",
+          "lines": [
+            1,
+            73
+          ]
+        }
+      ],
+      "implementation": [
+        "Safe Ada specifications preserve the representation and explicitly state source ambiguity; conversion implementations copy the corresponding values without interpretation."
+      ],
+      "confirmed_semantics": [
+        "Bound public representation and implemented copy/lifetime behavior are documented; missing external semantics are not fabricated."
+      ],
+      "discrepancy": "Size unit/payload relation and timestamp clock/epoch are unspecified.",
+      "confidence": "UPSTREAM_AMBIGUOUS"
     }
   ]
 }
