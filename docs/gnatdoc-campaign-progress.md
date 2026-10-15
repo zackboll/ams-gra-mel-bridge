@@ -1,5 +1,21 @@
 # GNATdoc campaign progress
 
+## DOC-003 preflight checkpoint
+
+Verified fetched main `e7a652c7a62e66d58c275f6ab1f09bb6e2021622` includes
+merged PR #102 and reviewed DOC-002 head. Created isolated worktree
+`/home/zboll/git/ams-mel-doc-003` on
+`docs/003-ir-image-health-instrumentation`, without changing the clean original
+checkout or existing worktrees. External evidence is retained in
+`/home/zboll/git/ams-mel-doc-003-evidence`.
+
+Qualified untouched baseline reproduced: 934/4,295 elements, 3,036 warnings
+(2,963 public, 73 private-part), 1,238 source / 1,237 native declarations and
+one exact renderer exception. All 75 documentation tests passed. Post-merge
+documentation run 38673364878 passed; Bootstrap 38673364892 was still running
+at first inspection. Research and implementation are in progress; no final
+qualification or submission is claimed. See the separate DOC-003 reports.
+
 ## Reconciled starting identity
 
 - Repository: `https://github.com/zackboll/ams-gra-mel-bridge`.
@@ -549,3 +565,86 @@ not blockers concealed by invented contracts.
 The original main ancestry is verified; main remained at the original base at
 resumption. Local qualification is complete. Publication/hosted workflow status
 must be checked against the eventual submitted head and is not inferred here.
+
+## DOC-003A — full-frame checkpoint
+
+Completed full-frame data model and owned-copy path documentation. Image is
+160/351; repository 1,093/4,295. Removed 159 measured gaps and 130 public warnings;
+no new identities. Private warnings (73), all other packages, native inventory,
+anchors and renderer exception are unchanged. Format/check, strict generation
+twice, byte determinism, HTML links, 75 documentation tests and base-relative
+literal-aware integrity passed. Lease/navigation and the other five packages,
+full native/Ada qualification and PR submission remain pending.
+
+## DOC-003B through DOC-003H — documentation qualification
+
+All renderable target elements are documented: Image 351/351, Image Metadata
+77/77, Health 25/25, Health Metadata 142/143, Instrumentation 76/76 and its Metadata
+22/22. Total 693/694, with the exact existing source-visible, unrendered Status
+renaming still outstanding. Repository coverage is 1,625/4,295 (37.8347%), 2,670
+gaps; warnings 2,399 = 2,326 public + 73 unchanged private-part.
+
+B lease checkpoint measured Image 260/351 and repository 1,193; C navigation
+completed Image and measured 1,284; D completed image metadata at 1,360; E health
+at 1,385; F health metadata at 1,527; G completed instrumentation at 1,625.
+Every checkpoint passed format/check, strict generation twice, byte determinism,
+HTML links and all 75 documentation tests. Independent final identity audit
+proves 691 gaps and 637 public warnings removed, zero additions; other 23 packages,
+all private warning identities, native sections/signatures/anchors and renderer
+exception are unchanged. Temporary authoring/attachment failures were diagnosed
+and retained externally; no tool or contract was weakened.
+
+Grouped source research covers all declaration families against the exact pinned
+IR/Common/Math headers, safe Ada/native implementations, tests and corrective
+history. Original upstream remotes/revisions and 101 vendored header bytes were
+verified; pinned Squall sources were extracted by exact commit. Unsupported
+semantic inference (units, epochs, bit meanings, numeric scales) is explicitly
+avoided. Documentation highlights retained provider-buffer ownership, bounded
+queues, failure-safe retention, preconditions versus body checks, timeout versus
+cancellation and weak common views. DOC-007 site enhancements remain untouched.
+
+Final formatted-source docs gates passed twice, 75 documentation tests, six
+integrity tests, HTML links, baseline-delta and literal-aware integrity against
+both task base and DOC-001 boundary. Full native/Ada/check validation is running
+sequentially under a stable environment; only native has completed so far,
+434/434 tests passing. No final commit or PR exists yet.
+
+DOC-002 post-merge Bootstrap run 38673364892 has now completed **failure**, not
+success: the clang Release repeated native gate failed rf-job-interval-status
+(test 55). Full failed-job logs are preserved externally. The post-merge docs
+run 38673364878 passed on the exact base. The inherited hosted stress failure
+is not hidden or treated as a documentation change; final feature-branch CI
+will be reported separately.
+
+## Final local qualification — complete
+
+All required gates passed on the final formatted six specifications. A final
+parameter-description review was followed by fresh formatting, two strict
+byte-identical documentation generations and a second complete sequential native
+qualification. Exit files/logs were inspected after command completion; the
+recorded six source SHA-256 hashes still match the final submitted sources.
+
+| Gate | Actual result |
+| --- | --- |
+| make format-ada and final make check-ada-format | PASS |
+| Strict qualified GNATdoc and stable-identity ratchets | PASS |
+| Renderable target coverage | 693/694; exactly one unchanged alias omission |
+| Native declarations/signatures/anchors | 1,238 source / 1,237 native, unchanged |
+| Fresh site regeneration twice, every output byte | PASS, identical |
+| HTML structure and local links | PASS, 31 pages / 1,307 links |
+| Documentation unit/mutation suite | PASS, 75 tests |
+| Dedicated tracked-inventory/source-integrity suite | PASS, six tests |
+| Literal-aware source integrity at task base | PASS, 1,178 protected files |
+| Original DOC-001 integrity boundary | PASS, 1,162 protected files |
+| make test-native | PASS, 434/434 |
+| make test-ada | PASS, full safe Ada contracts and focused repeats |
+| Canonical make check, sequential | PASS, build isolation, native suite, format, Ada and text checks |
+| Final make check-ada-format after make check | PASS |
+| Baseline-delta, Git whitespace and final newlines | PASS |
+
+Native gates never overlapped against mutable CMake trees. No local inherited
+stress failure occurred in these final sequences. No tests/contracts were changed
+or weakened. Real-provider/hardware execution is not claimed. Only twelve task-
+authorized files changed; prior ledger entries and DOC-001/DOC-002 history remain
+unchanged. Main was refetched and remained at the exact base. Local qualification
+is complete; hosted feature-branch results and independent review are separate.
