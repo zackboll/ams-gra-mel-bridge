@@ -262,3 +262,50 @@ will be recorded after the exact corrective head exists. No merge authorized.
 
 All 29 published package names and detailed kind/member counts are in
 `gnatdoc-initial-inventory.md`. DOC-002–007 remain unstarted/out of scope here.
+
+## DOC-001-R2 — tracked production additions
+
+Fetched and verified reviewed PR head
+`077cc18892b6c4fcccaa7ccc132e9a7993809a3a` against the local and remote branch;
+GitHub confirmed OPEN, non-draft PR #101 with auto-merge disabled. Current main
+remained `42648a92eb0cc84b2980d16db6028992c0494ba1`, also confirmed by GitHub.
+Existing branch, commits, worktree and earlier evidence were preserved.
+
+The checker now compares complete NUL-delimited tracked inventories and rejects
+all additions outside `docs/` and the explicit DOC-001 file authorization set.
+The set lists the existing documentation projects, tooling/tests and workflow,
+plus the new integrity test; no broad scripts/workflow allowance was added.
+Existing production-byte and Ada-token/inventory checks are retained.
+
+Negative-first fixtures were committed in temporary repositories with clean
+staged/unstaged diffs and status. Before the correction, nine non-Ada additions
+escaped detection; four Ada additions were rejected by the older Ada inventory
+check rather than the requested complete inventory diagnostic. After correction,
+all 13 cases reject: native C++, Rust, Python, Ada specs/bodies in both source
+directories, integration, unexpected workflow, executable unrelated script,
+unrelated top-level text/GPR, and a newline-containing native filename.
+Documentation additions and existing byte/token/removal regressions pass.
+
+Actual local qualification on 2026-10-14 (all final gates exit 0):
+
+| Gate | Result |
+| --- | --- |
+| Source-integrity fixture suite | PASS, 6 tests with 13 rejection subcases |
+| Documentation unit/mutation suite | PASS, 75 tests; repeated on final sources |
+| Qualified GNATdoc generation and semantic compilation | PASS, two fresh generations |
+| Deterministic regeneration | PASS, recursive byte comparison |
+| Warning/coverage ratchets and baseline delta | PASS, unchanged; 3,924 warnings, 38/4,295 coverage |
+| `make check`, sequential | PASS, native 434/434, isolation, formatting and Ada contracts |
+| `make check-ada-format`, after `make check` | PASS |
+| Production/vendor integrity | PASS, 1,162 protected files; no production-path changes against base |
+| Production workflow integrity | PASS, `.github/workflows/ci.yml` unchanged against base |
+| Git whitespace and final-newline checks | PASS |
+
+An initial final-newline check caught the new test's missing newline; it was
+corrected before final qualification. No production, vendor, Ada source, CI,
+warning/coverage baseline or renderer-exception changes. Local logs and negative-
+first evidence are retained at `/tmp/ams-mel-doc-r2-evidence/`; prior campaign
+evidence remains untouched. The corrective SHA is discoverable in this file's
+Git history. Hosted qualification must use that new head, not earlier passing CI;
+publication/head equality and fresh run status are recorded in the PR follow-up.
+DOC-002–007 remain outside scope. No merge or auto-merge authorized.

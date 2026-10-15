@@ -87,6 +87,22 @@ instance interfaces are represented by their explicit declaration; generated
 members of Ada.Containers are not first-party source declarations. Unsupported
 or mismatched native constructs fail rather than creating guessed signatures.
 
+## DOC-001 source-integrity boundary
+
+The integrity checker compares the complete Git index inventory with the pinned,
+verified foundation base, using NUL-delimited paths. New tracked paths are denied
+unless they are under `docs/` or in the explicit DOC-001 authorization set:
+the two documentation GPR projects, named documentation tooling/tests under
+`scripts/`, and `.github/workflows/documentation.yml`. Neither arbitrary scripts
+nor additional workflows or top-level files are authorized. Production additions
+under `native/`, `ada/src/`, `ada/tests/src/`, `rust/`, `python/` and `integration/`
+are rejected regardless of file extension. Existing production byte comparisons
+and literal-preserving Ada token/inventory comparisons remain active.
+
+`scripts/test_doc_source_integrity.py` uses temporary Git repositories and commits
+each fixture before checking it. Both staged and unstaged `git diff --exit-code`
+are clean, demonstrating why a worktree-diff check cannot enforce this boundary.
+
 ## Publication
 
 PRs (including stacked PRs) generate review artifacts and diagnostics without
