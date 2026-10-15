@@ -1,0 +1,92 @@
+name: Ada API Documentation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Record checkout
+        run: git rev-parse HEAD
+      - name: Install Alire 2.1.1
+        run: |
+          curl --fail --location --output /tmp/alire.zip https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
+          unzip /tmp/alire.zip -d /tmp/alire
+          sudo install -m 0755 /tmp/alire/bin/alr /usr/local/bin/alr
+      - name: Install isolated documentation tools
+        run: |
+          mkdir -p .doc-tools/settings
+          alr -n -s "$PWD/.doc-tools/settings" --force toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
+          alr -n -s "$PWD/.doc-tools/settings" install --prefix="$PWD/.doc-tools/gnatdoc-26.0.0" gnatdoc_bin=26.0.0
+          alr -s "$PWD/.doc-tools/settings" toolchain
+      - name: Generate, validate and test documentation
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          export GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0"
+          alr -n -s "$PWD/.doc-tools/settings" -C docs/toolchain exec -- sh ../../scripts/generate_docs_baseline.sh
+          python3 -m unittest discover -s scripts -p 'test_*doc*.py' -v
+          python3 scripts/check_doc_source_integrity.py
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            python3 scripts/check_doc_baseline_delta.py "$BASE_SHA"
+          fi
+      - name: Qualify fresh deterministic regeneration
+        run: |
+          cp -a _site /tmp/documentation-first
+          export GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0"
+          alr -n -s "$PWD/.doc-tools/settings" -C docs/toolchain exec -- sh ../../scripts/generate_docs_baseline.sh
+          diff -r /tmp/documentation-first _site
+          git diff --exit-code -- ada native rust python Makefile
+          git diff --check
+          python3 scripts/check_final_newlines.py
+      - name: Upload site for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: ada-api-${{ github.event.pull_request.head.sha || github.sha }}
+          path: _site/
+          if-no-files-found: error
+      - name: Upload diagnostics and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnatdoc-diagnostics-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            obj/docs/*.log
+            obj/docs/*.json
+            docs/gnatdoc-renderer-exceptions.json
+      - name: Upload main-only Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy validated main site
+        id: deployment
+        uses: actions/deploy-pages@v4

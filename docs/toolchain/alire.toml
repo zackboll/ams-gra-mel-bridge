@@ -1,0 +1,12 @@
+name = "ams_mel_documentation_tools"
+version = "0.1.0-dev"
+description = "Isolated documentation-only tool environment; not a production crate"
+licenses = "Apache-2.0"
+
+[configuration]
+disabled = true
+
+[[depends-on]]
+gnat_native = "=16.1.0"
+gprbuild = "=26.0.1"
+gnatdoc_bin = "=26.0.0"
