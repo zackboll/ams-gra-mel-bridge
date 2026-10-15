@@ -1848,6 +1848,452 @@
       ],
       "discrepancy": "Size unit/payload relation and timestamp clock/epoch are unspecified.",
       "confidence": "UPSTREAM_AMBIGUOUS"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004A",
+      "package": "AMS.MEL.IR.Channel",
+      "declarations": [
+        "package description",
+        "Command_ID",
+        "Comms_Channel_ID",
+        "Comms_Request_ID",
+        "Comms_Test_Report and components",
+        "Channel_Type and all literals",
+        "Pixel_Format and all literals",
+        "Sensor_Type and all literals",
+        "Metadata_Capability and all literals",
+        "Band_Type and all literals",
+        "Coordinate_System_Type and all literals",
+        "Band_Info and components",
+        "Sensor_Type_Vectors",
+        "Channel_Type_Vectors",
+        "Metadata_Vectors",
+        "Band_Info_Vectors",
+        "Image_Band and components",
+        "Image_Band_Vectors",
+        "Coordinate_Vectors",
+        "Channel_Capability",
+        "Create_Capability and all parameters/return",
+        "all Channel_Capability scalar/count/index/membership accessor overloads and their parameters/returns"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/irmel-types/Channel.h",
+            "include/irmel/library/irmel-types/ChannelCapability.h",
+            "include/irmel/library/irmel-types/ChannelType.h",
+            "include/irmel/library/irmel-types/ChannelMetadataCapabilityType.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h",
+            "include/irmel/library/irmel-types/BandInfo.h",
+            "include/irmel/library/irmel-types/SensorNavState.h",
+            "include/irmel/library/irmel-types/ChannelCommsTestReq.h",
+            "include/irmel/library/irmel-types/ChannelCommsTestRep.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-channel.ads: capability declarations, complete enum members and accessor profiles",
+        "ada/src/ams-mel-ir-channel.adb: Create_Capability, scalar getters, vector lengths/indexing and Contains",
+        "ada/src/ams-mel-ir-capability_conversion.adb: To_Channel_Capability owned vector/string conversion",
+        "native/src/ir_channel.cpp: copy_capability set/map/vector iteration and enum-domain checks"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_channel_tests.adb: Check_Rich, Test_Capability_Snapshot",
+        "native/tests/test_public_common_channel.c: same_capability, capability_fidelity, snapshot cases"
+      ],
+      "history": [
+        "docs/task-032b1-public-common-channel-abi.md",
+        "docs/task-032b2-safe-ada-common-channel.md"
+      ],
+      "confirmed_semantics": [
+        "Capabilities are owned reports, not proof of a corresponding bridge implementation",
+        "Metadata advertisement is associated with registration support but does not register callbacks",
+        "Provider vectors retain order/duplicates; metadata sets and image-band maps preserve native iteration order",
+        "Image-band keys are distinct from one-based Ada vector positions; provider uint8 keys widen without loss",
+        "Local Create_Capability copies supplied values without deduplication, sorting, wavelength normalization or upstream key-range enforcement",
+        "Wavelengths are vacuum meters; row pitch is bytes; bit depth describes image dynamic range",
+        "ODC and NUC reports do not implement correction algorithms",
+        "Index access beyond vector length raises Constraint_Error; generated Ada.Containers members are not first-party declarations"
+      ],
+      "discrepancy": "Pinned bufferSize/imageSize getter comments establish no stronger units or dimensional relationship. Reserved enums remain representable categories, not supported services. Source-only provider-specific sensor values beyond MAXEXCLUSIVE are not represented by the safe snapshot. No IDD or real-provider execution is claimed.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_TEST_SOURCE_INSPECTED"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004B",
+      "package": "AMS.MEL.IR.Channel",
+      "declarations": [
+        "View and all common request/result declarations, overloads, parameters, returns and enum literals"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/irmel-types/Channel.h",
+            "include/irmel/library/irmel-types/ChannelCommsTestReq.h",
+            "include/irmel/library/irmel-types/ChannelCommsTestRep.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-channel.adb",
+        "native/src/common_channel_requests.cpp: submit_common, Return/Comms wait and close",
+        "native/src/internal/common_channel_requests.hpp: CommonChannelAccess, CommonRequestClaim",
+        "native/src/ir_c2.cpp: claim_c2_submission",
+        "native/src/ir_track.cpp: common access adapter"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_channel_tests.adb: five-family lifecycle, weak views, delayed/cache/rejection and parent-first cases",
+        "native/tests/test_public_common_channel.c: lifecycle, pending, weak, legacy comparison"
+      ],
+      "confirmed_semantics": [
+        "Weak handle presence is distinct from target existence and lifecycle admission",
+        "Attached/Enabled common admission for C2/Health/Instrumentation/Track; Attached/Running for Image",
+        "Session permits and family claims precede unlocked provider send; admitted workers retain independent resources",
+        "Close is not cancellation or direct pending admission release; repeated terminal waits use cache",
+        "Explicit rejection, bridge/provider exceptions, Success outcome and Return::Fail payload are distinct",
+        "Declared outcome preconditions have no independent body checks"
+      ],
+      "discrepancy": "No physical completion or guaranteed correlation with independently registered metadata is established. Existing 004A prose normalization corrected without changing its semantic claims.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_TEST_SOURCE_INSPECTED"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004C",
+      "correction": "Earlier NUL-preservation claim is incorrect: native ir_c2.cpp valid_utf8 rejects zero bytes; valid_view and valid_span enforce NUL-free UTF-8 before copy. Ada comments corrected and requalified.",
+      "package": "AMS.MEL.IR.C2",
+      "declarations": [
+        "All public declarations, enum literals, record components, overload parameters and returns"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/c2/C2Channel.h",
+            "include/irmel/library/c2/ModeCmd.h",
+            "include/irmel/library/c2/BIT_Command.h",
+            "include/irmel/library/c2/ConfigSetCommand.h",
+            "include/irmel/library/irmel-types/ScanParam.h",
+            "include/irmel/library/irmel-types/ScanType.h",
+            "include/irmel/library/irmel-types/Channel.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-c2.adb",
+        "native/src/ir_c2.cpp",
+        "native/src/common_channel_requests.cpp"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_c2_tests.adb",
+        "ada/tests/src/ams_mel_ir_c2_common_tests.adb",
+        "native/tests/test_ir_c2.c",
+        "native/tests/test_c2_submission.c",
+        "native/tests/test_public_common_channel.c"
+      ],
+      "confirmed_semantics": [
+        "Mode/BIT/config typed sends require Enabled; shared C2 state remains distinct from the Status Ada type. Scan controls remain unsigned scalars. Validation checks representation domains, not physical feasibility. Config/fault strings copy full UTF-8 spans including NUL. Config nanoseconds establish no epoch. BIT-specific functions populate only one list; nonempty preconditions and assertion-disabled body behavior are documented. Native claim precedes unlocked send; callers still serialize Ada owner operations. Deferred cleanup retains pending provider work. Source: C2 spec/body, native ir_c2.cpp, pinned C2Channel/ModeCmd/BIT_Command/ConfigSetCommand/ScanParam/ScanType/CommonIR_MEL/CommonMEL headers, C2 Ada/native tests and corrective unlocked-submission report. A tool-wrapper timeout interrupted dedicated integrity tests after deterministic generation; the dedicated suite was rerun successfully before credit. Next: 004D compatibility."
+      ],
+      "discrepancy": "Scan elevation flag prose refers to center.Az inconsistently; no epoch inferred for config time, no physical completion or extra service implied.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_TEST_SOURCE_INSPECTED"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004D",
+      "package": "AMS.MEL.IR.C2.Common",
+      "declarations": [
+        "All public declarations, enum literals, record components, overload parameters and returns"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/c2/C2Channel.h",
+            "include/irmel/library/c2/ModeCmd.h",
+            "include/irmel/library/c2/BIT_Command.h",
+            "include/irmel/library/c2/ConfigSetCommand.h",
+            "include/irmel/library/irmel-types/ScanParam.h",
+            "include/irmel/library/irmel-types/ScanType.h",
+            "include/irmel/library/irmel-types/Channel.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-c2-common.adb",
+        "native/src/ir_c2.cpp",
+        "native/src/common_channel_requests.cpp"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_c2_tests.adb",
+        "ada/tests/src/ams_mel_ir_c2_common_tests.adb",
+        "native/tests/test_ir_c2.c",
+        "native/tests/test_c2_submission.c",
+        "native/tests/test_public_common_channel.c"
+      ],
+      "confirmed_semantics": [
+        "Legacy direct typed-C2 wrappers share native request engines/accounting and common payload types, not canonical Ada request owners. Legacy diagnostic helper substitutes fixed text for an empty diagnostic and starts with a larger buffer; cached retry preserves long diagnostics. Preconditions lack independent body checks. Source: C2.Common body, native ir_c2.cpp and common_channel_requests.cpp, pinned Channel.h and comms declarations, legacy Ada tests and public-common native comparison cases. Next: 004E metadata. Final production qualification and publication pending."
+      ],
+      "discrepancy": "Scan elevation flag prose refers to center.Az inconsistently; no epoch inferred for config time, no physical completion or extra service implied.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_TEST_SOURCE_INSPECTED"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004E",
+      "package": "AMS.MEL.IR.C2.Metadata",
+      "declarations": [
+        "All stream/event declarations and overload profiles",
+        "All 47 Cannot_Comply literals and exact representations",
+        "Command_State, BIT_Control_Interface, BIT_Result, Fault_Severity, Fault_State literals",
+        "All owned BIT/fault snapshots, nested collection and scalar accessors",
+        "Metadata_Counters and each component"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/irmel-types/CommandStatus.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h",
+            "include/irmel/library/c2/C2Channel.h",
+            "include/irmel/library/irmel-types/ChannelCommsTestRep.h"
+          ]
+        },
+        {
+          "revision": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "paths": [
+            "include/mel/library/BIT_Configuration.h",
+            "include/mel/library/BIT_Status.h",
+            "include/mel/library/ActiveBIT.h",
+            "include/mel/library/CompletedBIT.h",
+            "include/mel/library/Fault.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-c2-metadata.adb: Copy_Event, Receive, expression accessors, registration/closure",
+        "native/src/ir_c2.cpp: metadata_callback, copy_command_status/copy_bit_configuration/copy_bit_status, metadata_open/register_comms_test/receive/close and cleanup"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_c2_metadata_tests.adb",
+        "native/tests/test_ir_c2.c",
+        "docs/task-018-validation.md"
+      ],
+      "confirmed_semantics": [
+        "Research: public spec/body; native ir_c2.cpp registration/copy/queue/cleanup;\npinned CommandStatus/CommonIR_MEL/Channel/C2Channel and Common MEL\nBIT_Configuration/ActiveBIT/CompletedBIT/Fault; Ada C2 metadata tests, native\nC2 metadata/callback tests and task-018 corrective validation. Command metadata\nis independent of future Wait. Base registration is one-shot, ordered BIT\nconfiguration/command status/BIT status, with no capability gate. Comms is a\nseparate one-shot attempt valid Attached/Enabled and not automatically opened.\nFailure cannot undo upstream registrations; callbacks retain inactive/failed\nstate. Close is not unregister or quiescence. All kinds share bounded incoming-\ndrop FIFO by successful enqueue. Malformed values are nonterminal drops; callback\nexceptions fail the queue. Queued events drain before stopped/failed reporting.\nAccessor preconditions have no independent body checks. Counters saturate.\nEvery Cannot_Comply value retains numeric mapping; vague source categories add\nno invented policy. BIT-interface values two/three retain the DOC-002 name/prose\nambiguity. Active completion 1.0 means 100%, with values above one permitted.\nActive/completed BIT timestamps are labeled UTC upstream without a more specific\nepoch; fault detection chrono alone establishes no epoch. Next: 004F Track.\nFinal production qualification and publication remain pending.\n"
+      ],
+      "discrepancy": "BIT interface numeric values two/three have contradictory source names and descriptions; retained unresolved. Some CannotComply categories lack explanatory prose. No extra epoch inferred.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_TEST_SOURCE_INSPECTED"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004F",
+      "package": "AMS.MEL.IR.Track",
+      "declarations": [
+        "All public lifecycle/config profiles",
+        "IRST_Track_State/Mode and literals",
+        "North_East_Down and components",
+        "IRST_Track_Report and all fields"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/track/TrackChannel.h",
+            "include/irmel/library/track/IRSTTrackReport.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h"
+          ]
+        },
+        {
+          "revision": "b1015728f904c799fa0c07489fce48e78f67845f",
+          "paths": [
+            "interfaces/squall-ir-mel-impl/src/SquallIRLoaders.cc: SquallControl::attachChannel default returns nullptr"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-track.adb",
+        "native/src/ir_track.cpp: cleanup, common_from_track, copy_track_report"
+      ],
+      "tests": [
+        "native/tests/test_ir_track_foundation.c",
+        "native/tests/test_ir_track_metadata.c",
+        "ada/tests/src/ams_mel_ir_track_tests.adb",
+        "docs/task-029b1-track-foundation-validation.md",
+        "docs/task-029b2-track-report-validation.md",
+        "docs/task-029b3-track-squall-validation.md"
+      ],
+      "confirmed_semantics": [
+        "\n## 004F \u2014 Track foundation qualified\n\nTrack 55/55, with 55 gap and 49 public-warning removals, zero additions.\nRepository 2,467/4,295 documented, 1,828 gaps; warnings 1,582 raw = 1,509 public\n+ 73 unchanged private. Other package identities, anchors/profiles and renderer\nexception unchanged. Format/check, two strict byte-identical generations, HTML\nlinks, all 75 documentation and six integrity tests, literal-aware integrity and\ntext checks pass. Evidence: `r1/004f-*` under the external evidence directory.\n\nPinned IRSTTrackReport establishes meters for range/error, radians for spatial\nextent, nanosecond age since first detection and quality zero-to-one (not\nenforced). NED components, intensity/SNR and clutter lack stronger source units\nor scales. The filtered NED field's adjacent comment also says latest measurement;\nno algorithm is invented. Track owner retention and deferred physical cleanup\ninclude common requests, updates and system responses; provider destruction\nthen callback drain is the quiescence boundary, not disable return alone.\n\nSources: Track spec/body; native ir_track.cpp lifecycle/copy/common adapter; pinned\nTrackChannel/IRSTTrackReport/CommonIR_MEL and Common Directional; native/Ada Track\nfoundation/report tests; tasks 029B1/B2/B3. Exact pinned SquallIRLoaders.cc was\nextracted outside Git: attachChannel has Image/C2/Health cases only, then null.\nThus positive Track behavior remains mock-only; Squall qualification is expected\nnegative. Next: 004G Track metadata. Production final gates and publication pending.\n"
+      ],
+      "discrepancy": "Filtered NED adjacent prose duplicates measured wording; NED/intensity/SNR/clutter units and scales not inferred. Pinned Squall has no positive Track attach path.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_POSITIVE_SQUALL_EXPECTED_NEGATIVE"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004G",
+      "package": "AMS.MEL.IR.Track.Metadata",
+      "declarations": [
+        "All four inbound families and complete record/enum members",
+        "All message count/index/copy accessors and profiles",
+        "Metadata_Event discriminant/variants",
+        "Metadata_Channel Open/Receive_Event/Receive/Counters/Close"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/track/TrackChannel.h",
+            "include/irmel/library/irmel-types/RequestSystemTrackData.h",
+            "include/irmel/library/irmel-types/CandidateObject.h",
+            "include/irmel/library/irmel-types/CandidateObjectHeader.h",
+            "include/irmel/library/irmel-types/CandidateObjectMessage.h",
+            "include/irmel/library/irmel-types/CandidateObjectPreProc.h",
+            "include/irmel/library/irmel-types/CandidateObjectPreProcMessage.h",
+            "include/irmel/library/irmel-types/HotRegion.h",
+            "include/irmel/library/irmel-types/SensorInertialState.h",
+            "include/irmel/library/irmel-types/IR_Directional.h",
+            "include/irmel/library/irmel-types/Uncertainty.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-track-metadata.adb",
+        "native/src/ir_track.cpp: metadata_callback_impl, copy candidate/header/PreProc, metadata_open and cleanup"
+      ],
+      "tests": [
+        "ada/tests/src/ams_mel_ir_track_metadata_tests.adb",
+        "native/tests/test_ir_track_metadata.c",
+        "native/tests/test_ir_track_request_system_data.c",
+        "docs/task-029e-request-system-track-data-validation.md",
+        "docs/task-029f-candidate-object-message-validation.md",
+        "docs/task-029g-candidate-object-preproc-message-validation.md"
+      ],
+      "confirmed_semantics": [
+        "\n## 004G \u2014 Track metadata qualified\n\nAll 153/153 elements documented. Removed 153 gap and 152 public warning\nidentities, zero additions. Repository 2,620/4,295; 1,675 gaps. Warnings 1,430\nraw = 1,357 public + 73 unchanged private. Other package coverage and private\nwarning identities, native anchors/profiles and renderer exception unchanged.\nFormat/check, two strict byte-identical generations, HTML/links, all 75 docs\ntests and six integrity tests, literal integrity, text checks pass. Evidence:\n`/home/zboll/git/ams-mel-doc-004-evidence/r1/004g-*`.\n\nAll four families are inbound callbacks. Report registration is conditionally\nrequired; candidate registration is gated by advertisement and must succeed\nwhen advertised; system-data-request and PreProc callbacks tolerate optional\nNotSupported. Registration order and one-shot partial-failure retention are\nverified in native ir_track.cpp; callbacks run outside the Track lifecycle lock.\nQueue order means successful enqueue, not timestamp order. Report-only Receive\nconsumes a wrong-kind event and raises rather than skipping/requeueing it. Native\nevents are disposed on Ada conversion failure. Counters saturate; malformed\nevents drop nonterminally while callback exceptions fail the stream.\n\nCandidate message capacity 900 has a meaningful declared prefix; PreProc vector\nlength is independent of header count. Binary32 CFAR is average false alarms\nper pixel. Header stack index and hot-region pixel bounds are explicitly zero-\nbased upstream; candidate subpixel origin and edge inclusivity are not inferred.\nNavigation quaternions/position/velocity retain their defined frames and units;\nuncertainty/validity bits, SIR/SNR scales and sigma units are not invented. Signed\n3x3 background samples, vector order/duplicates and per-entry navigation survive.\nSources: Track metadata spec/body, native copy/queue/registration, pinned\nTrackChannel and all candidate/header/PreProc/hot-region/inertial/request headers;\nnative/Ada Track metadata tests; tasks 029E/F/G. Mock positive only; pinned Squall\nnegative attach boundary unchanged. Next: 004H optional outbound System_Data.\nFinal production qualification and publication pending.\n"
+      ],
+      "discrepancy": "Callback annotations differ from candidate class annotations; optional callbacks are not upgraded to required by enum names. Bit meanings and unspecified scales/epochs are not inferred.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_POSITIVE_SQUALL_EXPECTED_NEGATIVE"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004H",
+      "package": "AMS.MEL.IR.Track.System_Data",
+      "declarations": [
+        "All payload fields, command/reason/error enums and literal mappings",
+        "All response request/result/accessor overload profiles"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/irmel-types/SystemTrackDataResponse.h",
+            "include/irmel/library/track/TrackChannel.h",
+            "include/irmel/library/irmel-types/CommandStatus.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h"
+          ]
+        },
+        {
+          "revision": "00be45190f0e47d268cece8b8c2f8fb58b5418d2",
+          "paths": [
+            "include/math/geometry/RangeAzEl.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-track-system_data.adb",
+        "native/src/ir_track.cpp: build_response, response submission, complete, finish_request and cleanup"
+      ],
+      "tests": [
+        "native/tests/test_ir_track_system_response.c",
+        "ada/tests/src/ams_mel_ir_track_system_data_tests.adb",
+        "docs/task-029d-system-track-data-response-validation.md"
+      ],
+      "confirmed_semantics": [
+        "\n## 004H \u2014 System_Data qualified\n\nSystem_Data 124/124; removed 124 gaps and 120 public warnings, zero additions.\nRepository 2,744/4,295 documented, 1,551 gaps. Warnings 1,310 raw = 1,237 public\n+ 73 unchanged private. Native profiles/anchors, renderer exception and other\npackage coverage unchanged. Format/check, two strict byte-identical sites, HTML\nlinks, 75 documentation tests, six integrity tests, literal integrity and text\nchecks pass. Evidence: external `r1/004h-*`.\n\nOptional outbound response is distinct from inbound request metadata. Enabled-\nonly send copies every field, including values marked invalid, without zeroing\nor normalization. Time is signed nanoseconds with no epoch; ranges/errors are\nmeters, rates/errors meters/second and AzEl/errors radians. Future Success can\ncarry CommandStatus whose command state is Rejected; only ErrorOr gives a rejected\nfuture outcome. Preconditions lack independent body checks. Explicit Ada request\nClose ignores native close status and is not cancellation. Shared Track request\naccounting defers disable/detach until all update/response/common work finishes;\nfailed deferred cleanup can replace a terminal outcome with provider failure\nand safely retain the graph. Sources: System_Data spec/body, native ir_track.cpp\nbuild_response/submission/complete/cleanup, pinned SystemTrackDataResponse,\nTrackChannel, CommandStatus/CommonIR_MEL and Math RangeAzEl; task 029D, native\ntest_ir_track_system_response.c and Ada system-data tests. Positive mock only.\nNext: C2 NUL correction requalification, then 004I updates. Final gates pending.\n\n### Semantic correction discovered during cross-family review\n\nEarlier 004C notes/commentary incorrectly described embedded NUL as preserved\nin configuration/fault text. Native ir_c2.cpp valid_utf8 explicitly rejects\nlead byte zero; valid_view and string-span validation use it before copying.\nThe actual contract is length-delimited UTF-8 without embedded NUL. Two Ada\ncomments are corrected and strict requalification is running. Earlier historical\nobservations are retained but superseded by this explicit correction. No tokens,\nvalidation rules or production behavior change.\n"
+      ],
+      "discrepancy": "Validity flags do not enforce field consistency; no system-time epoch inferred. Future success and reported command rejection differ.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_POSITIVE_SQUALL_EXPECTED_NEGATIVE"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004I",
+      "package": "AMS.MEL.IR.Track.Updates",
+      "declarations": [
+        "All Track_Status/Directional/Track_Covariance/Track_Data_Update declarations and individual members",
+        "All command/reason/error enum literals and representations",
+        "All update request/result profiles and preconditions"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/track/TrackDataUpdate.h",
+            "include/irmel/library/track/TrackStatus.h",
+            "include/irmel/library/track/TrackChannel.h",
+            "include/irmel/library/irmel-types/CommandStatus.h",
+            "include/irmel/library/irmel-types/CommonIR_MEL.h"
+          ]
+        },
+        {
+          "revision": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "paths": [
+            "include/mel/library/Directional.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-ir-track-updates.adb",
+        "native/src/ir_track.cpp: build_update, submission, complete, finish_request, cleanup"
+      ],
+      "tests": [
+        "native/tests/test_ir_track_update.c",
+        "native/tests/test_ir_track_system_response.c",
+        "ada/tests/src/ams_mel_ir_track_update_tests.adb",
+        "docs/task-029c-track-data-update-validation.md"
+      ],
+      "confirmed_semantics": [
+        "\n## 004I \u2014 Track updates qualified; 004J reconciliation started\n\nTrack.Updates 153/153, removing 153 gaps and 149 public warnings, zero additions.\nAll eight targets now total 1,274/1,274; repository 2,897/4,295 (67.4505%),\n1,398 gaps. Warnings measured as 1,161 raw = 1,088 public + 73 private.\nOther packages/private identities and native profiles/anchors/renderer exception\nunchanged. Format/check, two strict byte-identical generations, HTML links, all\n75 documentation tests, six integrity tests, token integrity and text gates\npass. Exact evidence: external `r1/004i-*`.\n\nUpdates use the track-update condition, not the basic Track condition. All 21\nTrack covariance fields are documented individually, distinct from eighteen\nImage navigation terms; no packed-matrix transform or estimator is implied.\nPinned times are double epoch seconds, not nanoseconds and without a more\nspecific epoch. Maneuver probability source range is zero-to-one and update\nquality zero-to-fifteen; setters/bridge do not enforce these. ECEF frame is\nestablished but stronger component units are not supplied by the pinned fields.\nAll identifiers and labels copy before return; labels must be UTF-8 without NUL.\nFuture success carrying a Rejected command state differs from ErrorOr rejection.\nTimeout/observer closure are not cancellation. Pending update/response/common\nclaims share Track lifetime and final cleanup; failed deferred detach can replace\na result with provider failure and permanently retain unsafe-to-release resources.\nSources: Updates spec/body, native ir_track.cpp build_update/complete/accounting/\ncleanup; pinned TrackDataUpdate/TrackStatus/TrackChannel/CommandStatus and\nCommon Directional; task 029C, native update/system-response mixed lifetime tests\nand Ada update tests. Positive behavior is mock-only.\n\nC2 embedded-NUL correction requalification passed with zero identity deltas,\ntwo identical sites, 75+6 tests and all documentation/text/integrity gates\n(`r1/004c-nul-correction-*`). During independent 004J review, C2 Close prose was\nalso narrowed: detach failure retains a retryable handle, but disable failure\nafter successful detach can consume it while raising. Final qualification will\nuse this corrected final source. No production tests have yet been credited.\n"
+      ],
+      "discrepancy": "No more specific epoch, component units, covariance packing or transformation is established. Source score ranges are reports, not enforced input constraints.",
+      "confidence": "BRIDGE_AND_PINNED_SOURCE_CONFIRMED_MOCK_POSITIVE_SQUALL_EXPECTED_NEGATIVE"
+    },
+    {
+      "campaign": "AMS-MEL-DOC-004",
+      "checkpoint": "004J",
+      "package": "AMS.MEL.IR.C2",
+      "declarations": [
+        "Submit_BIT_Clear_Faults",
+        "Submit_Config_Set",
+        "Close(Control_Channel)"
+      ],
+      "upstream": [
+        {
+          "revision": "8d9224519f12b44e0b28815755c56a32a28d24a0",
+          "paths": [
+            "include/irmel/library/c2/ConfigSetCommand.h",
+            "include/irmel/library/c2/BIT_Command.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "native/src/ir_c2.cpp: valid_utf8 rejects lead byte zero; valid_view/valid_span validate before copy",
+        "native/src/ir_c2.cpp: ams_mel_ir_c2_close consumes owner after successful detach even if disable failed",
+        "ada/src/ams-mel-ir-c2.ads: corrected final NUL/Close comments"
+      ],
+      "tests": [
+        "native/tests/test_ir_c2.c",
+        "ada/tests/src/ams_mel_ir_c2_tests.adb"
+      ],
+      "confirmed_semantics": [
+        "C2 config/fault text is copied as length-delimited UTF-8 without embedded NUL; earlier 004C observation is explicitly superseded",
+        "Synchronous detach failure retains the owner for retry; disable failure after successful detach can raise after consuming the owner",
+        "Final qualified generation includes both corrected comment families without any identity delta"
+      ],
+      "discrepancy": "Earlier NUL-preservation inference was wrong and is retained only as historical observation with explicit correction.",
+      "confidence": "BRIDGE_SOURCE_CONFIRMED_CORRECTION"
     }
   ]
 }
