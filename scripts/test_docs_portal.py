@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from build_docs_portal import ROOT, PortalError, build, group, manifest, package_map
-from validate_docs import SiteError, validate
+from validate_docs import Page, SiteError, validate
 
 
 class PortalTests(unittest.TestCase):
@@ -35,6 +35,11 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(len(set(packages.values())), 29)
         self.assertEqual(validate(self.site)["html_pages"], 37)
         self.assertEqual(len(before), 39)
+        for name in ("index.html", "guides/api-map.html"):
+            text = (self.site / name).read_text()
+            self.assertEqual(len(Page(text).package_entries), 29)
+            for category in ("Shared/Core", "IR", "RF"):
+                self.assertIn(f"<h3>{category}</h3>", text)
         for entry in manifest(self.root)["guides"]:
             self.assertIn(entry["path"], before)
 
@@ -110,6 +115,8 @@ class PortalTests(unittest.TestCase):
         path = self.site / "assets/portal.css"
         original = path.read_text()
         for mutation in ('@import "https://example.org/x";',
+                         '@im\\70ort "https://example.org/x";',
+                         'body { background: u/**/rl(https://example.org/x); }',
                          'body { background: url(https://example.org/x); }'):
             path.write_text(original + mutation)
             with self.assertRaises(SiteError):
@@ -147,6 +154,23 @@ class PortalTests(unittest.TestCase):
         original = path.read_text()
         for text in (original.replace('href="guides/architecture.html"', 'href="index.html"'),
                      original + '<a href="guides/architecture.html">Duplicate</a>'):
+            path.write_text(text)
+            with self.assertRaises(SiteError):
+                validate(self.site)
+
+    def test_native_frame_integrity(self):
+        path = self.site / "api/index.html"
+        path.write_text(path.read_text().replace('name=document-content', 'name=wrong-frame'))
+        with self.assertRaises(SiteError):
+            validate(self.site)
+
+    def test_duplicate_and_removed_package_entries(self):
+        path = self.site / "index.html"
+        original = path.read_text()
+        entry = Page(original).package_entries[0]
+        marker = 'data-package-entry="' + entry[0] + '"'
+        for text in (original.replace(marker, 'data-removed="entry"', 1),
+                     original + f'<a {marker} href="{entry[1]}">Duplicate</a>'):
             path.write_text(text)
             with self.assertRaises(SiteError):
                 validate(self.site)

@@ -70,8 +70,10 @@ def validate(site):
             raise SiteError("unresolved placeholder")
         if re.search(r"/(?:home|tmp|Users)/|file:/{2}|[A-Z]:\\", text):
             raise SiteError(f"machine-local path: {relative}")
-        if path.suffix == ".css" and re.search(r"@import|url\s*\(", text, re.I):
-            raise SiteError("unapproved CSS resource")
+        if path.suffix == ".css":
+            css = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            if "\\" in css or re.search(r"@import|url\s*\(|expression\s*\(|-moz-binding|behavior\s*:", css, re.I):
+                raise SiteError("unapproved CSS resource or escape")
         if path.suffix == ".html":
             page = Page(text)
             if page.issues or len(page.ids) != len(set(page.ids)):
@@ -131,12 +133,17 @@ def validate(site):
     # deterministic resolution of its authored package name.
     from build_docs_portal import render
     for name in ("index.html", *(e["path"] for e in data["guides"])):
-        authored = Page(render(regular(ROOT / "docs" / name), name, data, packages_verified))
+        expected_text = render(regular(ROOT / "docs" / name), name, data, packages_verified)
+        authored = Page(expected_text)
         def api_links(page):
             return collections.Counter(link for link in page.links
                                        if re.fullmatch(r"(?:\.\./)?api/[a-f0-9]{64}\.html", link))
         if api_links(pages[site / name]) != api_links(authored):
             raise SiteError("portal package links differ from verified authored references")
+        if (site / name).read_text() != expected_text:
+            raise SiteError("portal output differs from deterministic authored page")
+    if (site / data["stylesheet"]).read_text() != regular(ROOT / "docs" / data["stylesheet"]):
+        raise SiteError("portal stylesheet differs from authorized source")
     return {"html_pages": len(pages), "links": sum(len(p.links) for p in pages.values())}
 
 
