@@ -21,6 +21,8 @@ static unsigned (*start_boundary)(void);
 static unsigned (*shutdowns)(void);
 static unsigned (*resolve_finalize)(void);
 static unsigned (*wait_shutdown)(unsigned);
+static size_t (*last_c2_owner)(void);
+static unsigned (*owner_count)(size_t,unsigned);
 static unsigned (*fidelity)(void);
 static unsigned (*fidelity_v2)(void);
 static unsigned (*add_calls)(void);
@@ -104,10 +106,13 @@ int main(void)
     *(void **)(&shutdowns)=dlsym(provider,"mock_rf_job_shutdown_count");
     *(void **)(&resolve_finalize)=dlsym(provider,"mock_rf_job_resolve_finalize");
     *(void **)(&wait_shutdown)=dlsym(provider,"mock_rf_job_wait_shutdown_after");
+    *(void **)(&last_c2_owner)=dlsym(provider,"mock_rf_c2_last_owner");
+    *(void **)(&owner_count)=dlsym(provider,"mock_rf_c2_owner_count");
     *(void **)(&fidelity)=dlsym(provider,"mock_rf_job_interval_fidelity");
     *(void **)(&fidelity_v2)=dlsym(provider,"mock_rf_job_interval_fidelity_v2");
     *(void **)(&add_calls)=dlsym(provider,"mock_rf_job_add_calls");
     CHECK(emit && registrations && mode && start_boundary && shutdowns && resolve_finalize && wait_shutdown);
+    CHECK(last_c2_owner && owner_count);
     /* No registration yet: old unload behavior is unchanged. Reload controls
      * after this unload before keeping function pointers for registered cases. */
     CHECK(dlclose(provider)==0);
@@ -120,9 +125,12 @@ int main(void)
     *(void **)(&shutdowns)=dlsym(provider,"mock_rf_job_shutdown_count");
     *(void **)(&resolve_finalize)=dlsym(provider,"mock_rf_job_resolve_finalize");
     *(void **)(&wait_shutdown)=dlsym(provider,"mock_rf_job_wait_shutdown_after");
+    *(void **)(&last_c2_owner)=dlsym(provider,"mock_rf_c2_last_owner");
+    *(void **)(&owner_count)=dlsym(provider,"mock_rf_c2_owner_count");
     *(void **)(&fidelity)=dlsym(provider,"mock_rf_job_interval_fidelity");
     *(void **)(&fidelity_v2)=dlsym(provider,"mock_rf_job_interval_fidelity_v2");
     *(void **)(&add_calls)=dlsym(provider,"mock_rf_job_add_calls");
+    CHECK(last_c2_owner && owner_count);
     for (unsigned run=0;run<50;++run) {
         ams_mel_rf_job *job=NULL;
         ams_mel_rf_job_interval_status *stream=NULL,*second=NULL;
@@ -375,14 +383,25 @@ int main(void)
         ams_mel_rf_job_interval_status_event *event=NULL;
         const ams_mel_rf_job_interval_status_options_v1 options={1,3,37};
         create_job("c2:finalize-shutdown-throw",&job);
-        unsigned before=shutdowns();
+        /* create_job is serialized: identify this C2, not an earlier Finalize
+         * worker that can still legitimately advance the global counter. */
+        const size_t owner=last_c2_owner();
+        unsigned before=owner_count(owner,0);
+        CHECK(owner && before==0 && owner_count(owner,1)==0);
+        /* An unrelated C2 shutdown must not satisfy this owner's assertion. */
+        ams_mel_rf_c2 *unrelated=NULL;
+        CHECK(ams_mel_rf_c2_open(AMS_MEL_TEST_MOCK_RF_PROVIDER,"c2:ok",&unrelated,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(ams_mel_rf_c2_close(&unrelated,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(owner_count(owner,0)==0 && owner_count(owner,1)==0);
         CHECK(ams_mel_rf_job_interval_status_open(job,&options,&stream,NULL,0,NULL)==AMS_MEL_OK);
         CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_PROVIDER_EXCEPTION);
-        CHECK(shutdowns()==before+1);
+        CHECK(!job && owner_count(owner,0)==before+1);
         CHECK(ams_mel_rf_job_interval_status_receive(stream,0,&event,NULL,0,NULL)==AMS_MEL_STREAM_STOPPED);
         CHECK(emit(2,7,0,0)==1);
         CHECK(ams_mel_rf_job_interval_status_close(&stream,NULL,0,NULL)==AMS_MEL_OK);
-        CHECK(shutdowns()==before+1); /* uncertain graph retained, no retry */
+        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(owner_count(owner,0)==before+1); /* uncertain graph retained, no retry */
+        CHECK(owner_count(owner,1)==0 && !has_lifetime("library_unloaded\n"));
     }
     CHECK(!has_lifetime("rf_forbidden_call\n"));
     CHECK(unlink(lifetime_path)==0);

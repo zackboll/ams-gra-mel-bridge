@@ -1235,6 +1235,9 @@ std::mutex job_cleanup_mutex;
 std::condition_variable job_cleanup_changed;
 unsigned job_cleanup_shutdowns{};
 unsigned job_cleanup_destructions{};
+/* Test-only identity survives object destruction without retaining the graph. */
+struct C2OwnerObservation { unsigned shutdowns{}, destructions{}; };
+std::vector<C2OwnerObservation> c2_owner_observations;
 
 bool f1_case(const char *value)
 {
@@ -2179,12 +2182,18 @@ private:
 
 class MockC2MEL final : public rfmel::C2MEL {
 public:
-    explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)} {}
+    explicit MockC2MEL(std::string configuration) : configuration_{std::move(configuration)}
+    {
+        std::lock_guard lock{job_cleanup_mutex};
+        c2_owner_observations.emplace_back();
+        owner_ = c2_owner_observations.size();
+    }
     ~MockC2MEL() override
     {
         record("rf_c2_destroyed");
         std::lock_guard lock{job_cleanup_mutex};
         ++job_cleanup_destructions;
+        ++c2_owner_observations[owner_ - 1].destructions;
         job_cleanup_changed.notify_all();
     }
     mel::RequestFor<rfmel::VirtualAperture> requestVirtualAperture(
@@ -2260,6 +2269,7 @@ public:
         {
             std::lock_guard lock{job_cleanup_mutex};
             ++job_cleanup_shutdowns;
+            ++c2_owner_observations[owner_ - 1].shutdowns;
         }
         job_cleanup_changed.notify_all();
         if (configuration_ == "c2:shutdown-throw" || configuration_ == "c2:va-shutdown-throw" ||
@@ -2270,6 +2280,7 @@ public:
     }
 private:
     std::string configuration_;
+    std::size_t owner_{};
 };
 
 } // namespace
@@ -2511,6 +2522,19 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_shutdown_
 {
     std::lock_guard lock{job_cleanup_mutex};
     return job_cleanup_shutdowns;
+}
+extern "C" __attribute__((visibility("default"))) std::size_t mock_rf_c2_last_owner(void)
+{
+    std::lock_guard lock{job_cleanup_mutex};
+    return c2_owner_observations.size();
+}
+extern "C" __attribute__((visibility("default"))) unsigned mock_rf_c2_owner_count(
+    std::size_t owner, unsigned destruction)
+{
+    std::lock_guard lock{job_cleanup_mutex};
+    if (!owner || owner > c2_owner_observations.size()) return std::numeric_limits<unsigned>::max();
+    const auto& value = c2_owner_observations[owner - 1];
+    return destruction ? value.destructions : value.shutdowns;
 }
 extern "C" __attribute__((visibility("default"))) unsigned mock_rf_job_wait_shutdown_after(unsigned baseline)
 {
