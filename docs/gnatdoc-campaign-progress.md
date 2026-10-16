@@ -1136,3 +1136,21 @@ make test-ada, make check and make check-ada-format all exit zero. Before/after
 ProductRx SHA-256 remains `dfa6d851e81e7619d824ca5c87e1c9e473dfd0f5f58b4dbc63a0f47ec823d578`.
 Final exact seven-file/token/profile/warning audit passes. Publication and hosted
 checks are separate observations; no merge or DOC-006B work.
+
+## DOC-006B — seven RF C2 child packages
+
+Starting main `36ad420380ca0d717242681be7b60e7ae1ccfe35` (PR #108).
+B1/B2/B3 documentation checkpoints each passed: exactly 119/134/109 original
+gaps and 97/122/76 public warnings removed, with all 73 private identities
+unchanged. Coverage is 4,294/4,295; the sole remaining gap is the inherited
+Health metadata package-renaming renderer exception. No tooling, exception,
+workflow, tests, executable tokens or native ABI changed. Final-source production
+qualification and publication status are recorded in `doc-006b-coverage.md`.
+No DOC-007 work is included.
+
+DOC-006B final-source local qualification completed: sequential native 434/434,
+full Ada, aggregate check and final format check all exit zero; two complete
+sites byte-identical (32 files, 31 HTML pages, 1,307 links); 75 documentation
+and six integrity tests pass. All seven frozen hashes unchanged after production;
+804 vendor checksums and twelve exact pinned upstream header matches confirmed.
+Hosted results remain separate publication evidence, not inferred from local runs.

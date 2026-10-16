@@ -2693,6 +2693,230 @@
         "Sequential test-native 434/434, test-ada, check, check-ada-format exit zero",
         "Tested source SHA-256 dfa6d851e81e7619d824ca5c87e1c9e473dfd0f5f58b4dbc63a0f47ec823d578 unchanged"
       ]
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Interval_Status",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/c2/JobDetail.h",
+            "include/rfmel/c2/JobIntervalStatus.h",
+            "include/rfmel/rfmeltypes/RFMELTypes.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-interval_status.adb",
+        "native/src/rf_job_interval_status.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_job_interval_status.c",
+        "ada/tests/src/ams_mel_rf_interval_status.adb"
+      ],
+      "confirmed_semantics": [
+        "By-value observer; no retained Job graph; permanent callable/state/DSO, no unregister or quiescence promise",
+        "Bounded DROP-INCOMING queue, saturating counters, exact enum/time/binary copy; known failures are data"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Virtual_Aperture_Notifications",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/virtualaperture/BaseVirtualAperture.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-virtual_aperture_notifications.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_va_notifications.c",
+        "ada/tests/src/ams_mel_rf_va_notifications.adb"
+      ],
+      "confirmed_semantics": [
+        "Signal-only callback ignores reference; coalescing, stop priority, no queried status snapshot",
+        "One exposed registration attempt; exact cached removal outcome; permanent shell retains no VA/C2"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Virtual_Aperture_Queries",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/virtualaperture/BaseVirtualAperture.h",
+            "include/rfmel/virtualaperture/VirtualApertureStatusReport.h",
+            "include/rfmel/c2/VirtualAperture.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-virtual_aperture_queries.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_va_queries.c",
+        "ada/tests/src/ams_mel_rf_va_queries.adb"
+      ],
+      "confirmed_semantics": [
+        "Fresh required queries; False and failure statuses can be successful data",
+        "Returned report ID authoritative; map/vector order and owned copied lifetimes preserved"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Local_Functions",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/c2/VirtualAperture.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-local_functions.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_local_functions.c",
+        "ada/tests/src/ams_mel_rf_local_functions.adb"
+      ],
+      "confirmed_semantics": [
+        "Conditional LF support; independent fresh catalog/status calls",
+        "Zero counts, empty vectors, type-ID order; no membership consistency or execution claim"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Transmit_Power",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/c2/VirtualAperture.h",
+            "include/rfmel/rfmeltypes/RFMELTypes.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-transmit_power.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_transmit_power.c",
+        "ada/tests/src/ams_mel_rf_transmit_power.adb"
+      ],
+      "confirmed_semantics": [
+        "Four independent RequiredIfTransmit calls; exact units/IDs and IEEE semantic forwarding",
+        "No formula/capability gate/caching/physical TX claim; existing VA claim outlives public C2"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Element_Groups",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/c2/ElementGroupDescriptor.h",
+            "include/rfmel/jobs/DataPipe.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-element_groups.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_element_groups.c",
+        "ada/tests/src/ams_mel_rf_element_groups.adb"
+      ],
+      "confirmed_semantics": [
+        "Unsigned UTF-8 lookup order distinct from labels; non-atomic multi-getter snapshot",
+        "Optional nested query distinguishes unqueried from included-empty; numeric values not repaired"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+    },
+    {
+      "campaign": "DOC-006B",
+      "package": "AMS.MEL.RF.C2.Data_Pipes",
+      "bridge_base": "36ad420380ca0d717242681be7b60e7ae1ccfe35",
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/c2/ElementGroupConnections.h",
+            "include/rfmel/jobs/DataPipe.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2-data_pipes.adb",
+        "native/src/rf_virtual_aperture.cpp",
+        "native/include/ams_mel/abi.h"
+      ],
+      "tests": [
+        "native/tests/test_rf_data_pipes.c",
+        "ada/tests/src/ams_mel_rf_data_pipes.adb"
+      ],
+      "confirmed_semantics": [
+        "VA-level connections distinct from optional descriptor pipes; independent owned snapshots",
+        "Fresh exact-key association once, provider set semantics and Boolean data; no routing/RDMA/persistence claim"
+      ],
+      "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
+      "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
+      "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
     }
   ]
 }
