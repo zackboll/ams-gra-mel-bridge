@@ -105,7 +105,7 @@ semantic correctness.
 ```text
 09bae963e39aa8a5b3bce36e3ce27a6f6d9f012e6f3c905d5be2e6ca0c2f4ad9  ada/src/ams-mel-rf-c2-interval_status.ads
 0287d6c2332220a609ce87b64c716954f55261587e47e5d227cff29ee3c3408a  ada/src/ams-mel-rf-c2-virtual_aperture_notifications.ads
-8ca7a8e5df7f5405e1e9d0cd7ed55a0a4e1e26d343cdd73e4b48fd188b7d7a95  ada/src/ams-mel-rf-c2-virtual_aperture_queries.ads
+fffd0d8f6db47e6f8746d3dedc2770b08ce6fa2b358f1107ccb7c636646c3a12  ada/src/ams-mel-rf-c2-virtual_aperture_queries.ads
 45fa3ce1f740186db786ffb8d87bbbca0dc7a4d393715431b13d39c225b44333  ada/src/ams-mel-rf-c2-local_functions.ads
 a4b008408e62fca841a9c045b7ae85636d161bb25215ce16c4447d4ba1f551e6  ada/src/ams-mel-rf-c2-transmit_power.ads
 6ae6054f4e8b2e2f70fd6951028f1d1e7f842d741681e0caf99921c29b056d7a  ada/src/ams-mel-rf-c2-element_groups.ads
@@ -493,3 +493,27 @@ AMS.MEL.RF.C2.Element_Groups: AMS.MEL.RF.C2.Element_Groups.Snapshot_Element_Grou
 AMS.MEL.RF.C2.Element_Groups: AMS.MEL.RF.C2.Element_Groups.Snapshot_Element_Groups: function: function Snapshot_Element_Groups ( Object : Virtual_Aperture ' Class ; Include_Data_Pipes : Boolean := False ) return Element_Group_List ;: return 0:
 AMS.MEL.RF.C2.Element_Groups: package: description
 ```
+
+## DOC-006B-R1 — Query_ID correction
+
+Reviewed head: `445fd2ef4839ed5d3b723e846029028bd5c6c191`. Query_ID returns
+a VirtualApertureDefinitionID; it does not read or decode a status enum. Only
+its three-line description changed; parameter/return documentation is retained.
+The hash above is the corrective specification hash; original r1 evidence and
+its tested hashes remain preserved externally. Corrective evidence is under
+`/home/zboll/git/ams-mel-doc-006b-evidence/r2-query-id`. Corrective qualification
+completed on the new source: every recorded exit is zero. Strict double-generation
+is byte-identical (32 files, 31 HTML pages, 1,307 local links); the corrected
+text renders on Query_ID. All 75 documentation tests and six dedicated integrity
+tests pass. Coverage remains 4,294/4,295 with all 362 original removals intact;
+warnings remain 73/0/73 with all private identities unchanged. Profiles, anchors,
+the Health exception, executable tokens, protected bytes and other API comments
+are unchanged. The full 804-file vendor checksum audit passes again.
+
+Sequential corrective-source production qualification: make test-native 434/434,
+make test-ada, make check and make check-ada-format all exit zero. Post-regression
+hash comparison and both full-campaign/corrective integrity audits pass. The
+corrected specification hash remains
+`fffd0d8f6db47e6f8746d3dedc2770b08ce6fa2b358f1107ccb7c636646c3a12`.
+Earlier head CI is not used to qualify this correction; new-head hosted status
+is recorded separately in corrective publication evidence.

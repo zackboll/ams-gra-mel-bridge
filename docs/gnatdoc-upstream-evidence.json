@@ -2789,7 +2789,14 @@
       "provider_limitations": "Pinned Squall source and historical execution are not new hardware/provider qualification; see doc-006b-source-research.md.",
       "discrepancy": "No invented unregister/quiescence, TX physical-validity or persistent association semantics.",
       "confidence": "CURRENT_BRIDGE_AND_PINNED_DECLARATION_SOURCE_BACKED",
-      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged"
+      "documentation_qualification": "B1/B2/B3 exact identity checkpoints passed; final documentation generation, 75 documentation tests, six integrity tests, deterministic 32-file site and unchanged 73 private warning identities; sequential final-source test-native 434/434, test-ada, make check and check-ada-format all exit zero; frozen source hashes unchanged",
+      "doc_006b_r1_correction": {
+        "contract": "Query_ID returns VirtualApertureDefinitionID via getID; no status enum is read or decoded",
+        "specification_sha256": "fffd0d8f6db47e6f8746d3dedc2770b08ce6fa2b358f1107ccb7c636646c3a12",
+        "qualification": "New-source strict deterministic double-generation; 75 documentation tests; six integrity tests; sequential test-native 434/434, test-ada, check, check-ada-format all exit zero; post-production source hashes unchanged",
+        "evidence": "/home/zboll/git/ams-mel-doc-006b-evidence/r2-query-id",
+        "hosted_ci": "New head checked separately at publication; prior-head results not reused"
+      }
     },
     {
       "campaign": "DOC-006B",

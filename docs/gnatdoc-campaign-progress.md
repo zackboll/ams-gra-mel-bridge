@@ -1154,3 +1154,15 @@ sites byte-identical (32 files, 31 HTML pages, 1,307 links); 75 documentation
 and six integrity tests pass. All seven frozen hashes unchanged after production;
 804 vendor checksums and twelve exact pinned upstream header matches confirmed.
 Hosted results remain separate publication evidence, not inferred from local runs.
+
+### DOC-006B-R1 — Query_ID semantic correction
+
+Corrected only Query_ID's three-line description: getID returns a VA definition
+ID without status decoding. Parameter/return prose retained. New corrective-source
+qualification passes: strict deterministic double-generation, 75 documentation
+tests, six integrity tests, sequential native 434/434, Ada, aggregate check and
+final format check (all exits zero). Coverage 4,294/4,295 and warnings 73/0/73
+are identity-unchanged. Corrected specification SHA-256:
+`fffd0d8f6db47e6f8746d3dedc2770b08ce6fa2b358f1107ccb7c636646c3a12`.
+All other tested specification hashes remain unchanged; prior evidence preserved.
+New-head hosted checks are separate evidence, not inherited CI results.

@@ -138,3 +138,12 @@ attachment matching; parameter/enum/field tag names retain exact Ada spelling.
 Inherited comments remain byte-preserved. Attachment fixes use blank separators,
 not renderer exceptions or tooling changes. Numerical coverage alone is not an
 independent proof of semantic correctness.
+
+## DOC-006B-R1 source correction
+
+BaseVirtualAperture.h:30 declares getID returning VirtualApertureDefinitionID.
+The native get_id implementation at rf_virtual_aperture.cpp:395–403 forwards
+that value without status decoding. Ada Query_ID at lines 78–84 checks the
+call result and returns the unsigned 32-bit ID, without calling Decode. The
+previous description incorrectly generalized status-query behavior to this ID
+query. Its three-line description is corrected; all other API prose is retained.

@@ -21,9 +21,9 @@ package AMS.MEL.RF.C2.Virtual_Aperture_Queries is
 
    for Status_Kind use (None => 0, Operational => 1, Degraded => 2, Failed => 3);
    function Query_ID (Object : Virtual_Aperture'Class) return Interfaces.Unsigned_32;
-   --  Invoke required BaseVirtualAperture.getID afresh; no cached Claim value or request ID
-   --  substitution. Closed owners, native failures and unknown status enums raise
-   --  Provider Error; reported Failed or Degraded states are successful data.
+   --  Invoke required BaseVirtualAperture.getID afresh; no cached Claim value or
+   --  request ID substitution. A closed owner or native/provider failure raises
+   --  Provider Error; no status enum is read or decoded.
    --  @param Object Live claimed VA; externally serialize with all same-VA calls, including
    --  Close.
    --  @return Provider-returned VA definition ID, not a VA instance index.
