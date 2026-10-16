@@ -141,3 +141,20 @@ The intended URL is `https://zackboll.github.io/ams-gra-mel-bridge/`.
 If Pages is not configured, the owner must select **Settings → Pages → Build
 and deployment → Source: GitHub Actions**. A workflow file alone is not evidence
 of a successful deployment. Feature branches are never deployed.
+
+## POL-001 reviewed native-test transition
+
+The fixed DOC-001 foundation remains
+`42648a92eb0cc84b2980d16db6028992c0494ba1`; historical evidence above is not
+rewritten. One exact, all-or-nothing content transition authorizes the two
+reviewed PR #111 native-test files, and no other source change. Both working
+tree and Git index must contain the same complete original or approved pair.
+Mixed/partial states and unknown bytes fail, as do the existing unauthorized
+inventory, production-byte and executable-Ada changes. Approval constants live
+in the checker, not an editable manifest. Future test edits require new review.
+
+See [POL-001 source transition](pol-001-native-test-source-transition.md) for
+the four exact SHA-256 identities, committed negative fixtures, qualification,
+branch-executed CI limitations and required order: policy PR first, then a
+separately authorized synchronization/requalification of PR #111. Neither PR is
+merged or auto-merged by this task; PR #111 remains unchanged.
