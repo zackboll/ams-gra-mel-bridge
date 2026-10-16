@@ -79,15 +79,20 @@ because providers may retain references to the callback. Never manually unload i
 Boolean rejection is not an exception.</li>
 <li>{{package:AMS.MEL.RF.C2.Interval_Status}}: optional bounded JobInterval
 status observer and copied event/log values, not automatic proof of execution.</li>
-<li>{{package:AMS.MEL.RF.C2.Virtual_Aperture_Notifications}}: queued VA status
-notifications, distinct from the current provider queries in
-{{package:AMS.MEL.RF.C2.Virtual_Aperture_Queries}}. Cached notification history
-must not be presented as a live query.</li>
+<li>{{package:AMS.MEL.RF.C2.Virtual_Aperture_Notifications}}: observes a pending
+change signal, not a queue of provider status values or a recorded status-transition
+history. The signal contains no status snapshot, and multiple changes can coalesce.
+{{package:AMS.MEL.RF.C2.Virtual_Aperture_Queries}} performs explicit fresh status
+queries. Register first, query on the application thread, wait for a change signal,
+then query again; the subsequent query need not return a different status.</li>
 <li>{{package:AMS.MEL.RF.C2.Element_Groups}} and
 {{package:AMS.MEL.RF.C2.Data_Pipes}}: copied descriptors, labels, endpoints and
 pipe information; inspecting them does not configure hardware activity.</li>
-<li>{{package:AMS.MEL.RF.C2.Local_Functions}}: conditional descriptor and command
-APIs, separate from unsupported Local Function ProductRx payload delivery.</li>
+<li>{{package:AMS.MEL.RF.C2.Local_Functions}}: conditional Local Function catalog
+and status queries; these neither execute Local Functions nor perform hardware
+register writes. Local Function command configuration for JobIntervals belongs
+to <code>AMS.MEL.RF.C2</code> itself, not this child query package. Both are
+separate from unsupported Local Function ProductRx payload delivery.</li>
 <li>{{package:AMS.MEL.RF.C2.Transmit_Power}}: conditional power calculations;
 a calculated result is not a command to radiate.</li>
 </ul>

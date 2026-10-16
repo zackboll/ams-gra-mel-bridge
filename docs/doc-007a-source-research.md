@@ -49,3 +49,37 @@ is retained in the external evidence directory.
 ## Evidence location
 
 `/home/zboll/git/ams-mel-doc-007a-evidence/r1` (not published as site content).
+
+## DOC-007A-R1 guide-contract correction
+
+Reviewed starting head: `69d6f1947bcfb4f9677dcc24a279f2387b002174` on PR #110.
+The original broad source survey did not prevent four inaccurate guide summaries;
+the following public declarations are the authority for their correction:
+
+- `ada/src/ams-mel-ir-c2-metadata.ads`: `Receive` returns `Metadata_Event`.
+- `ada/src/ams-mel-ir-image-metadata.ads`: `Receive` returns `Metadata_Event`.
+- `ada/src/ams-mel-ir-health_status-metadata.ads`: `Receive` returns `Metadata_Event`.
+- `ada/src/ams-mel-ir-instrumentation-metadata.ads`: `Receive` returns `Instrumentation_Report`.
+- `ada/src/ams-mel-ir-track-metadata.ads`: `Receive_Event` returns the tagged,
+  discriminated `Metadata_Event`; `Receive` is report-only and consumes a
+  non-report event before raising `Provider_Error`.
+- `ada/src/ams-mel-rf-c2-virtual_aperture_notifications.ads`:
+  `Wait_For_Change` consumes a coalesced pending signal, without a provider
+  status snapshot or a guarantee that a later query differs.
+- `ada/src/ams-mel-rf-c2-virtual_aperture_queries.ads`: `Query_ID`,
+  `Query_Status`, `Query_Instance_Status`, `Cached_Waveform_Supported`,
+  `Dynamic_Weights_Supported`, `Snapshot_All_Instances`, `Snapshot_Instances` and
+  `Snapshot_Instance_Status_Report` define the query/copy surface, not RF
+  physical-data configuration.
+- `ada/src/ams-mel-rf-c2-local_functions.ads`: `Snapshot_Local_Functions` and
+  `Snapshot_Local_Function_Status` are conditional catalog/status queries;
+  they neither execute Local Functions nor perform register writes.
+- `ada/src/ams-mel-rf-c2.ads`: `Create_Local_Function_Command`,
+  `Append_Local_Function_Write` and `Append_Interval_Local_Function_Command`
+  build command configuration in the parent C2 package, not the query child.
+
+Only the IR workflow, RF workflow and API map prose and these task-owned reports
+change. Existing package-link placeholders are preserved. The API map's repeated
+LF scope and notification descriptions are aligned with the RF workflow correction.
+Corrective evidence is under
+`/home/zboll/git/ams-mel-doc-007a-evidence/r2-guide-contracts`; r1 is preserved.

@@ -63,8 +63,14 @@ BIT_Configuration and BIT_Status, with explicit ChannelCommsTest admission.
 {{package:AMS.MEL.IR.Image.Metadata}} receives BadPixelList,
 LineOfSightReport, LineOfSightEuler and NavigationReportResp. The current Image
 metadata does not implement LineOfSightQuaternion simply because upstream
-vocabulary names it. Native provider callbacks enqueue; Ada consumers poll
-<code>Receive_Event</code> and receive copied values. Queues are bounded,
+vocabulary names it. Native provider callbacks enqueue; Ada consumers use
+<code>Receive</code> in <code>C2.Metadata</code>, <code>Image.Metadata</code>,
+<code>Health_Status.Metadata</code> and <code>Instrumentation.Metadata</code>
+to obtain copied values. <code>Track.Metadata.Receive_Event</code> returns
+tagged multi-kind events; its separate <code>Receive</code> convenience function
+returns Track reports only. If that convenience function consumes a non-report
+event, it raises <code>Provider_Error</code> rather than skipping or requeuing it.
+Use <code>Receive_Event</code> for mixed Track metadata kinds. Queues are bounded,
 drop incoming events when full, and expose counters; they are not lossless buses.</p>
 <h2>Health, Instrumentation and Track</h2>
 <p>{{package:AMS.MEL.IR.Health_Status}} owns its channel and

@@ -110,3 +110,54 @@ API query confirms `build_type: workflow` and the configured project URL.
 No feature-branch deployment, manual deployment, merge, tag or release is
 performed. Hosted Documentation and Bootstrap runs must be checked on the exact
 submitted head; their final observations and PR state are external evidence.
+
+## DOC-007A-R1 corrective qualification
+
+Starting reviewed head: `69d6f1947bcfb4f9677dcc24a279f2387b002174` on the
+existing PR #110. Only three guide pages and the two task-owned reports change.
+The correction distinguishes IR `Receive` from Track's multi-kind
+`Receive_Event`, VA coalesced change signals from fresh status queries, LF
+catalog/status queries from parent-C2 JobInterval command configuration, and
+VA query/copy capabilities from RF physical-data configuration. Repeated API-map
+notification/LF descriptions are corrected consistently. All existing verified
+package-link placeholders remain unchanged. Declaration evidence is recorded in
+the source-research addendum and the complete external specification capture.
+
+Corrective evidence directory:
+`/home/zboll/git/ams-mel-doc-007a-evidence/r2-guide-contracts`.
+All r1 evidence and previous attempts are preserved.
+
+The same qualified Alire/GNAT/GPRbuild/GNATdoc versions were verified from actual
+executable output. Both fresh complete generations passed semantic specification
+compilation, strict generation and identity ratchets. Their full site trees are
+byte-identical; native `api/` remains byte-identical to r1's pristine main output.
+Coverage is still 4,294/4,295; warnings are 73 raw / zero public / 73 private-part,
+with no added or removed identities. All 1,238 source declarations, 1,237 rendered
+sections, native profiles/anchors and the one exact renderer exception remain
+unchanged. The site remains 39 files / 37 HTML pages / 1,516 links, with all 29
+package destinations unique and verified. No broken links or unresolved
+placeholders were found.
+
+All 88 documentation unit/mutation tests and six separately invoked integrity
+tests passed. The source-integrity checker passed for 1,162 protected files;
+all 804 vendor checksums match. Static security validation passed. Strict HTML5
+parsing of all seven portal pages, language/heading/landmark/skip-link checks
+and light/dark text/link contrast checks passed; no interactive accessibility
+certification is claimed. Builder, manifest, CSS, validator, renderer, tests,
+build files, workflows, security policy, production sources and API baselines
+are unchanged by this correction.
+
+Production gates ran sequentially, each with a complete log and exit-status file:
+
+| Command | Corrective result |
+|---|---|
+| `make test-native` | Exit 0; 434/434 passed |
+| `make test-ada` | Exit 0; complete contract execution passed |
+| `make check` | Exit 0; isolation/native/format/Ada/hygiene gates passed |
+| `make check-ada-format` | Exit 0; existing external-import no-C-sources warnings only |
+
+Final source hashes, the reviewed diff, qualified commit/tree, remote/PR head,
+synthetic merge parents/tree and new-head hosted CI observations are recorded
+externally after commit. The corrective PR remains #110, open and non-draft,
+with no merge or auto-merge authorization. No deployment, tag, release or
+DOC-007B work is performed.

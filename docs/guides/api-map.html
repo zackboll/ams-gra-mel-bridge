@@ -44,9 +44,14 @@ and {{package:AMS.MEL.IR.Instrumentation.Metadata}}.</li>
 <li>Inspect Element Group descriptors: {{package:AMS.MEL.RF.C2.Element_Groups}}.</li>
 <li>Inspect DataPipes: {{package:AMS.MEL.RF.C2.Data_Pipes}}.</li>
 <li>Observe optional JobInterval status: {{package:AMS.MEL.RF.C2.Interval_Status}}.</li>
-<li>Receive VA status notifications: {{package:AMS.MEL.RF.C2.Virtual_Aperture_Notifications}}.</li>
-<li>Query live VA status/physical data separately: {{package:AMS.MEL.RF.C2.Virtual_Aperture_Queries}}.</li>
-<li>Use conditional Local Function descriptor/command APIs: {{package:AMS.MEL.RF.C2.Local_Functions}}.</li>
+<li>Observe coalesced VA change signals, without status snapshots: {{package:AMS.MEL.RF.C2.Virtual_Aperture_Notifications}}.</li>
+<li>Query the VA definition ID, live VA status, VA instance status and required
+capability Booleans; obtain instance lists and copied instance-status reports:
+{{package:AMS.MEL.RF.C2.Virtual_Aperture_Queries}}. These are VA queries, not RF
+physical-data configuration.</li>
+<li>Query conditional Local Function catalogs and status: {{package:AMS.MEL.RF.C2.Local_Functions}}.
+Local Function command configuration for JobIntervals belongs to
+<code>AMS.MEL.RF.C2</code> itself, not this child query package.</li>
 <li>Request conditional transmit-power calculations: {{package:AMS.MEL.RF.C2.Transmit_Power}}.</li>
 </ul>
 <h2>Verified package directory</h2>
