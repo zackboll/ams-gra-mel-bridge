@@ -6,5 +6,72 @@
 <body><a class="skip" href="#main">Skip to content</a>
 <header><p>AMS MEL developer documentation</p>{{navigation}}</header>
 <main id="main"><h1>Getting Started</h1>
-<p>Practical guide to the current bridge interfaces.</p>
+<p>This repository is a consumer-side bridge, not a complete Skill or hardware
+service. The safe Ada packages use private C imports into a C++20 implementation
+of a C11-compatible native facade. Rust and Python clients reuse that same ABI;
+their supported slices differ, so do not infer RF parity from an Ada API.</p>
+<h2>Development workspace</h2>
+<p>Use Linux, Git, Python 3, GNU Make, CMake, a C11/C++20 compiler, Alire and
+GNAT/GPRbuild. The qualified documentation tools are Alire 2.1.1, GNAT Native
+16.1.0, GPRbuild's 26.0.1 distribution (prints 26.0.0), and GNATdoc 26.0.0.
+The tests pin GNATformat 26.0.0. Consult the manifests before selecting tools.</p>
+<pre aria-label="Local crate layout">repository/
+  native/       ams_mel_c: CMake owns native compilation
+  ada/          ams_mel: imports native/ via local development pin
+    tests/      ams_mel_tests: pins ada/ and native/
+  docs/toolchain/   isolated specification-only documentation project</pre>
+<p>Keep this layout intact for local development. <code>ada/alire.toml</code>
+pins <code>../native</code>; <code>ada/tests/alire.toml</code> pins the two
+local crates. A resolved local build is not Alire index publication. The
+development manifests and release archive closure require separate packaging
+qualification; these instructions do not claim registry availability.</p>
+<h2>Build and test from the repository root</h2>
+<pre><code>alr -C ada build
+alr -C ada/tests run
+make test-native
+make test-ada
+make check
+make check-ada-format</code></pre>
+<p>Run these commands sequentially, never as parallel shared build-tree writers.
+The direct Make Ada targets need GPRbuild on PATH. If using Alire to supply
+that environment, remember that <code>alr -C ada exec</code> changes directory:</p>
+<pre><code>alr -C ada exec -- make -C .. test-ada
+alr -C ada exec -- make -C .. check</code></pre>
+<p>Alternatively, inside <code>ada/</code>, use <code>alr build</code> and
+<code>alr -C tests run</code>. Do not run those shorter commands at repository
+root. Native pre-build actions run CMake; GPR imports the resulting library and
+does not compile the C++ implementation again. Ordinary tests use separate mock
+providers and require no Squall, hardware, credentials or containers.</p>
+<h2>Native loading is not provider availability</h2>
+<p>The Ada executable must resolve <code>libams_mel_c.so.0</code>, built under
+<code>native/build/lib</code>. Development GPR projects arrange a runtime search
+path; contract tests select the separate <code>native/build-tests/lib</code>
+facade and test providers. For installed applications, qualify the platform's
+loader search path (for example an application RUNPATH or a deliberate
+<code>LD_LIBRARY_PATH</code>) outside the checkout. Inspect <code>readelf -d</code>
+and <code>ldd</code> output rather than assuming build-time linking proves runtime
+resolution.</p>
+<p>A runtime provider shared library supplies the published MEL factories and
+C++ implementations. {{package:AMS.MEL}} opens IR Sessions;
+{{package:AMS.MEL.RF}} and {{package:AMS.MEL.RF.C2}} open independent RF owners.
+Pass a provider library path and provider-defined configuration to the relevant
+Open operation; there is no universal configuration string. Provider dependencies
+and C++ ABI compatibility still matter behind the C facade. Building the bridge
+does not install a real provider or prove its optional capabilities.</p>
+<h2>Generate and read documentation</h2>
+<p>From repository root, with the qualified GNAT/GPRbuild on PATH and
+<code>GNATDOC_PREFIX</code> naming a qualified GNATdoc installation:</p>
+<pre><code>sh scripts/generate_docs_baseline.sh
+python3 -m unittest discover -s scripts -p 'test_*doc*.py' -v</code></pre>
+<p>Open <code>_site/index.html</code>; the untouched complete GNATdoc reference
+lives under <code>_site/api</code>. The generator compiles specifications
+semantically, without a production build or runtime provider. Capability enums
+describe vocabulary, not a guarantee that all corresponding operations exist.</p>
+<h2>Source basis and next steps</h2>
+<p>Commands and directories come from <code>Makefile</code>,
+<code>ada/README.md</code>, both Ada Alire manifests,
+<code>docs/bootstrap-validation.md</code> and <code>docs/packaging.md</code>.
+The bootstrap report is historical; its old test/export counts are not current
+coverage. Continue with <a href="architecture.html">Architecture</a> and
+<a href="ownership-and-errors.html">Ownership and Errors</a>.</p>
 </main></body></html>
