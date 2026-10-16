@@ -1,5 +1,30 @@
 # GNATdoc campaign progress
 
+## DOC-005 — 005A Admin checkpoint; task incomplete
+
+Fetched PR #104 merge `d4a4e262eb1404c963c509cf1e5d32f0c6712b99`;
+no intervening main commits or equivalent DOC-005 branch/open PR found.
+Created isolated `/home/zboll/git/ams-mel-doc-005` on `docs/005-rf-admin-c2`,
+preserving existing worktrees. External evidence is under
+`/home/zboll/git/ams-mel-doc-005-evidence/r1`.
+
+Pristine qualified reproduction matched DOC-004. Admin now measures 15/15;
+C2 remains 12/771. Repository: 2,912/4,295, 1,383 gaps. Exactly 15 gap and
+15 public-warning identities removed, zero added. Raw/public/private warnings:
+1,146/1,073/73. Other packages, native 1,238/1,237 inventory and the Health
+renderer exception remain unchanged. All 85 RF/Common headers match pinned
+Git blobs and checksum records.
+
+Format/check, strict semantic generation twice, byte-identical sites, HTML
+31 pages/1,307 links, 75 documentation tests, six integrity tests, task-base
+1,178-file production integrity and removal-only baseline validation passed.
+Initial ratchet/attachment failures remain in evidence. No test or policy changed.
+See the new DOC-005 reports for source mapping and exact limitations.
+
+C2 phases and sequential production regression qualification remain outstanding.
+No commit, push or PR; no review-readiness claim. This is a partial checkpoint,
+not completed DOC-005.
+
 ## DOC-003 preflight checkpoint
 
 Verified fetched main `e7a652c7a62e66d58c275f6ab1f09bb6e2021622` includes
@@ -978,3 +1003,31 @@ anchor/renderer manifests, tooling and workflows remain unchanged.
 Local qualification is complete. Commit/publication and hosted exact-head CI
 are separate subsequent observations, not inferred here. Independent review
 remains required; no merge, release, tag or feature-branch Pages deployment.
+
+## DOC-005A — recovered Admin-only scope, final local qualification complete
+
+Preserved the original DOC-005 worktree, seven-file checkpoint and all `r1`
+evidence. Fetched main remains `d4a4e262eb1404c963c509cf1e5d32f0c6712b99`.
+Created `docs/005a-rf-admin` non-destructively; original branch reference preserved.
+RF C2 is unchanged and deferred. The earlier incomplete-task checkpoint above
+is history, not the current Admin-only qualification status.
+
+Admin remains 15/15; repository 2,912/4,295, 1,383 gaps; warnings 1,146 raw /
+1,073 public / 73 private-part. Exactly 15 gap and 15 public-warning identities
+removed; zero additions; full untouched-package and private-warning identities,
+native profiles/anchors and Health renderer exception unchanged.
+
+Fresh toolchain/provenance verification, semantic compilation, two byte-identical
+sites, HTML 31 pages/1,307 links, 75 documentation tests, six integrity tests,
+production/vendor byte inventories and formatting/text checks passed. Sequential
+make test-native (434/434), make test-ada, make check and final
+make check-ada-format all passed. Final Admin SHA-256 matches the tested source:
+`e6693ac514c6d72a015b9b62f9598e7e9d9e6806517c8a00f613ca4a955b0c92`.
+No provider/hardware qualification is claimed. Complete logs/statuses are in
+`/home/zboll/git/ams-mel-doc-005-evidence/r2-admin-publication`.
+
+Both DOC-005 reports preserve the recovery history and explicitly narrow this PR
+to Admin. Source citation clarification records MFA_Component.h as the Common
+state declaration and the upstream prose/declaration inconsistency. Exact removed
+identities are included in the coverage report. Publication and hosted results
+are separate subsequent observations; leave the PR open for independent review.

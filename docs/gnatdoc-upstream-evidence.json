@@ -2294,6 +2294,99 @@
       ],
       "discrepancy": "Earlier NUL-preservation inference was wrong and is retained only as historical observation with explicit correction.",
       "confidence": "BRIDGE_SOURCE_CONFIRMED_CORRECTION"
+    },
+    {
+      "campaign": "DOC-005A",
+      "package": "AMS.MEL.RF.Admin",
+      "declarations": [
+        "package description",
+        "Admin_MEL",
+        "Open and parameters/return",
+        "Is_Open and parameter/return",
+        "Command_State and parameters/return",
+        "Close and parameter"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/admin/AdminMEL.h",
+            "include/rfmel/admin/UCI_Control.h",
+            "include/rfmel/admin/StatusControl.h",
+            "include/rfmel/factory/RFCreateFunctions.h",
+            "include/rfmel/rfmeltypes/RFMEL.h"
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "path": "include/mel/library/CommonMEL.h"
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-admin.adb:16-23,48-116",
+        "ada/src/ams-mel-status.ads: MFA_State representation",
+        "ada/src/ams-mel_c_api.ads:2908-2929",
+        "native/src/rf_admin.cpp:27-68,80-197"
+      ],
+      "tests_read_not_executed": [
+        "native/tests/test_rf_admin.c",
+        "ada/tests/src/ams_mel_rf_admin_tests.adb"
+      ],
+      "executed_qualification": [
+        "qualified semantic compilation",
+        "two byte-identical documentation generations",
+        "15 removed gap identities and 15 removed public warning identities; zero additions",
+        "HTML 31 pages and 1307 local links",
+        "75 documentation tests and six dedicated integrity tests",
+        "literal-aware task-base integrity: 1178 protected files"
+      ],
+      "confirmed_semantics": [
+        "Independent createAdminMEL owner; NUL rejection before temporary C-string allocation",
+        "Fresh UCI/status-control owners; Common MFA states 0 through 14 admitted by bridge",
+        "Boolean rejection distinct from provider failure; acceptance does not establish physical transition",
+        "Close consumes public handle; shutdown exception permanently retains provider/DSO graph; finalization does not raise",
+        "External serialization required"
+      ],
+      "qualification_limits": [
+        "No new production regression, pinned-provider or hardware execution",
+        "C2 phases not researched or documented completely",
+        "DOC-005 incomplete; unpublished"
+      ],
+      "discrepancy": null,
+      "confidence": "SOURCE_CONFIRMED_DOCUMENTATION_CHECKPOINT_ONLY"
+    },
+    {
+      "campaign": "DOC-005A-RECOVERY-FINAL",
+      "package": "AMS.MEL.RF.Admin",
+      "bridge_base": "d4a4e262eb1404c963c509cf1e5d32f0c6712b99",
+      "source_sha256": "e6693ac514c6d72a015b9b62f9598e7e9d9e6806517c8a00f613ca4a955b0c92",
+      "scope": "Admin only; RF C2 unchanged and deferred",
+      "source_citation_correction": "MFA_State is declared in Common include/mel/library/MFA_Component.h:102-142 at f6908437d8fd2f7fb69896f9eb9cfd272d10c439, included by CommonMEL.h. Introductory prose excludes OperateTxOnly but actual enum and bridge static assertions include representation 9. No provider transition model inferred.",
+      "provenance": "All 85 RF/Common headers reverified against pinned Git blobs and checksum manifest; RF pin 762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+      "executed_regressions": [
+        "make test-native: PASS 434/434, includes native/tests/test_rf_admin.c",
+        "make test-ada: PASS full smoke/contracts, includes ada/tests/src/ams_mel_rf_admin_tests.adb",
+        "make check: PASS isolation/native/format/Ada/text gates",
+        "make check-ada-format: PASS after make check"
+      ],
+      "documentation_qualification": [
+        "Admin 15/15; repository 2912/4295; 1383 gaps",
+        "15 removed gaps and 15 removed public warnings; zero additions; untouched identities unchanged",
+        "1146 raw / 1073 public / 73 private warnings",
+        "1238 source / 1237 native sections; anchors/profiles unchanged; one established Health omission",
+        "Two fresh sites byte-identical; 31 HTML pages / 1307 local links",
+        "75 documentation tests and six integrity tests pass",
+        "literal-aware integrity and independent protected-production/vendor byte inventory pass",
+        "Final Admin source hash matches tested source"
+      ],
+      "limitations": [
+        "No new pinned-provider or hardware execution",
+        "RF C2 deferred",
+        "Hosted statuses observed separately in publication handoff"
+      ],
+      "confidence": "SOURCE_REVIEWED_AND_LOCAL_MOCK_REGRESSION_QUALIFIED"
     }
   ]
 }
