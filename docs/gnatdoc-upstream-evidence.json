@@ -2484,6 +2484,138 @@
         "DOC-005C untouched: 299 event/modulation/waveform and 119 interval gaps"
       ],
       "confidence": "SOURCE_REVIEWED_AND_LOCAL_MOCK_REGRESSION_QUALIFIED"
+    },
+    {
+      "campaign": "DOC-005C",
+      "package": "AMS.MEL.RF.C2",
+      "bridge_base": "4d4b07f83831ee524b5c91074ba84dd22070129d",
+      "dependency_reviewed_head": "ce470c267de9c45c7cb4c64b00e98c52bdd16fe5",
+      "source_sha256": "509c94edb5f7d3a95d057a8c2064b77c0379a15115d436d282592ee37ba232aa",
+      "checkpoints": [
+        {
+          "phase": "005C1",
+          "removed_gaps": 133,
+          "RF_C2_documented": 486,
+          "repository_documented": 3386,
+          "removed_public_warnings": 97
+        },
+        {
+          "phase": "005C2",
+          "removed_gaps": 165,
+          "RF_C2_documented": 651,
+          "repository_documented": 3551,
+          "removed_public_warnings": 113
+        },
+        {
+          "phase": "005C3",
+          "removed_gaps": 120,
+          "RF_C2_documented": 771,
+          "repository_documented": 3671,
+          "removed_public_warnings": 83
+        }
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "declarations": [
+            "jobs/JobEvent.h: JobEvent, ReceiveEvent, TransmitEvent",
+            "jobs/JobInterval.h: Sequence, JobInterval",
+            "c2/JobDetail.h",
+            "jobs/Pointing.h",
+            "jobs/PulseDetectionSettings.h",
+            "jobs/LocalFunctionCommand.h",
+            "jobs/ProductStreamParams.h",
+            "jobs/ElementGroupToEndpointConnections.h",
+            "jobs/CommonModulations.h: CommonModulations, WaveformBuffer, CustomWaveform",
+            "jobs/WaveformStream.h",
+            "rfmeltypes/RFMELTypes.h"
+          ]
+        },
+        {
+          "repository": "AMS Math",
+          "commit": "00be45190f0e47d268cece8b8c2f8fb58b5418d2",
+          "declarations": [
+            "math/units/UTCTime.h: Femtoseconds"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2.adb: all documented value builders, presence, v16 serialization and interval commands",
+        "ada/src/ams-mel_c_api.ads: private frozen versioned layouts",
+        "native/src/rf_job.cpp: add_rx_intervals, interval_command, typed variant construction, status admission",
+        "native/src/rf_job_interval_status.cpp: usable registration and logical stop",
+        "native/src/rf_virtual_aperture.cpp: retained parent graph"
+      ],
+      "tests": [
+        "native/tests/test_rf_job.c",
+        "native/tests/test_rf_job_interval_spatial.c",
+        "native/tests/test_rf_job_interval_event_controls.c",
+        "native/tests/test_rf_job_pulse_detection.c",
+        "native/tests/test_rf_job_tx_events.c",
+        "native/tests/test_rf_job_tx_controls.c",
+        "native/tests/test_rf_job_modulations.c",
+        "native/tests/test_rf_job_binary_modulations.c",
+        "native/tests/test_rf_job_custom_waveform.c",
+        "native/tests/test_rf_job_waveform_buffer.c",
+        "native/tests/test_rf_job_waveform_stream.c",
+        "native/tests/test_rf_job_interval_lf_commands.c",
+        "native/tests/test_rf_job_product_stream_params.c",
+        "native/tests/test_rf_job_endpoint_map.c",
+        "native/tests/test_rf_job_user_context.c",
+        "native/tests/test_rf_job_extension.c",
+        "native/tests/test_rf_job_interval_status.c",
+        "ada/tests/src/ams_mel_rf_interval_spatial.adb",
+        "ada/tests/src/ams_mel_rf_tx_events_focused.adb",
+        "ada/tests/src/ams_mel_rf_pulse_detection_focused.adb"
+      ],
+      "confirmed_semantics": [
+        "Copied configuration, not physical detection/modulation/beam steering/RF execution",
+        "Exact signed femtoseconds; pinned continuation zero aliases ordinary relative zero",
+        "Two ordered Stokes values maximum; size_t checks do not establish membership",
+        "Explicit inner/outer variant selection; signed -1 sentinel and same-interval final table references",
+        "OOK length/repeat equality and one distinct TX owner per OOK entry",
+        "Custom definition-local indices, degrees unchanged, false update flags retain values",
+        "Fresh native buffer vectors per definition/Add; native copies share their allocation",
+        "Numeric-only stream/product addresses; no memory ownership, registration, mapping or transfer",
+        "Ordered LF writes; endpoint-map last composite key wins with unordered native iteration",
+        "Copied vector<uint8_t> in std::any; provider concrete-type compatibility required",
+        "Current safe Ada v16, frozen historical layouts not interchangeable",
+        "Add/Flush before Finalize/full Cancel attempt; CancelRemaining/Extend through Finalize until full Cancel attempt",
+        "Full-batch preparation before one provider Add; no automatic retry, mutation may precede exception"
+      ],
+      "discrepancies": [
+        "Pinned continuation is zero, not INT64_MAX",
+        "Pinned applicable-group getter returns dataPaths; no claim it validates/set applicable labels",
+        "Pinned any getter unsafe on absent/mismatched values; no speculative calls",
+        "CPFSK and profile-step introductory comments differ from actual variant/field declarations",
+        "Inherited leading Extend prose rendered on CancelRemaining; in-scope trailing attachments corrected"
+      ],
+      "documentation_qualification": [
+        "418 exact gap removals, 0 additions; RF C2 771/771, repository 3671/4295, 624 gaps",
+        "293 public warning removals; 599 raw/526 public/73 private, private identities preserved",
+        "1238 source declarations/1237 native sections; unchanged profiles, anchors and Health exception",
+        "Checkpoint semantic generation, 75 documentation tests and six integrity tests pass",
+        "57 vendored RF headers checked against immutable Git blobs; all 804 vendor checksums verified",
+        "Two fresh complete sites, 32 byte-identical files; HTML 31 pages/1307 links",
+        "Final combined 75 documentation tests and six integrity tests PASS",
+        "Selected-base protected inventory 1178 files and original-foundation integrity PASS",
+        "Exact authorized seven-file diff; previous DOC-005B lifecycle/VA/Job blocks preserved"
+      ],
+      "qualification_limits": [
+        "No new real-provider/hardware execution; historical Squall no-op Add not fidelity or emission evidence",
+        "No new 32-bit runtime evidence or NaN payload-bit guarantee",
+        "Provider capabilities, memory validity, execution/scheduling and concrete context support remain provider obligations",
+        "Commit/remote/PR equality and hosted feature checks recorded separately; independent review remains required"
+      ],
+      "confidence": "SOURCE_REVIEWED_AND_LOCAL_MOCK_REGRESSION_QUALIFIED",
+      "production_qualification": [
+        "Sequential make test-native PASS 434/434",
+        "make test-ada PASS full safe Ada contracts and focused suites",
+        "make check PASS isolation/native/Ada/format/text",
+        "Final make check-ada-format PASS",
+        "Frozen tested specification SHA-256 unchanged after production gates"
+      ]
     }
   ]
 }

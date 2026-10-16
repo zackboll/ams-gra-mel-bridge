@@ -581,23 +581,106 @@ package AMS.MEL.RF.C2 is
    --  INT64_MAX is not the pinned continuation sentinel. No quantization or
    --  remapping is performed. Matching this value does not prove scheduling.
    Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 := 0;
+   --  Pinned RF MEL 762ce84 continuation count is zero, not INT64 MAX:
+   --  numeric limits<Femtoseconds>::max() is unspecialized, unlike Femtoseconds::max().
+   --  Zero also encodes an ordinary relative start; the scalar interface cannot
+   --  distinguish intentions or guarantee continuation scheduling. No remapping.
+
    type Pulse_Threshold_Reference is (DBQ, DB_Above_Noise, DB_Below_Saturation);
+   --  Reference for copied pulse thresholds, not a detector implementation.
+   --  @enum DBQ Representation 0: detection threshold in dbq.
+   --  @enum DB_Above_Noise Representation 1: threshold above thermal noise in dB.
+   --  @enum DB_Below_Saturation Representation 2: threshold below receiver saturation in dB.
+
    for Pulse_Threshold_Reference use (DBQ => 0, DB_Above_Noise => 1, DB_Below_Saturation => 2);
    type Pulse_Time_Tag_Threshold is (At_50_Percent, At_90_Percent);
+   --  Amplitude reference for the provider pulse time tag; no timing accuracy is promised.
+   --  @enum At_50_Percent Representation 0: 50-percent amplitude time tag.
+   --  @enum At_90_Percent Representation 1: 90-percent amplitude time tag.
+
    for Pulse_Time_Tag_Threshold use (At_50_Percent => 0, At_90_Percent => 1);
    type Pulse_Detection_Settings is private;
+   --  Independent copyable settings and ordered threshold pairs owned by Ada.
+   --  Default initialization is DBQ, leading/trailing M/N 0/0, minimum width
+   --  zero femtoseconds, 50-percent time tag and no thresholds. Set on RX only;
+   --  no detection algorithm, capability or pulse performance is established.
+
    function Create_Pulse_Detection_Settings
      (Reference                                    : Pulse_Threshold_Reference;
       Leading_M, Leading_N, Trailing_M, Trailing_N : Interfaces.Unsigned_8;
       Min_Pulse_Width_Femtoseconds                 : Interfaces.Integer_64;
       Time_Tag_Threshold                           : Pulse_Time_Tag_Threshold)
       return Pulse_Detection_Settings;
+   --  Copy pulse settings with an initially empty threshold list. All uint8 M/N combinations and signed widths are accepted; no M/N relation or physical timing validation is imposed.
+   --  @param Reference Threshold reference selector.
+   --  @param Leading_M Leading-edge M, 0 through 255.
+   --  @param Leading_N Leading-edge N, 0 through 255, independently of M.
+   --  @param Trailing_M Trailing-edge M, 0 through 255.
+   --  @param Trailing_N Trailing-edge N, 0 through 255, independently of M.
+   --  @param Min_Pulse_Width_Femtoseconds Exact signed 64-bit minimum-width count in femtoseconds, including negative values.
+   --  @param Time_Tag_Threshold Provider amplitude reference for the time tag.
+   --  @return Owned settings without thresholds; no provider call.
+
    procedure Append_Pulse_Detection_Threshold
      (Settings : in out Pulse_Detection_Settings; Leading_Edge_DB, Trailing_Edge_DB : Long_Float);
+   --  Append one copied leading/trailing pair; preserve order and duplicates. Long Float values convert to native double on Add without finite checks or normalization; signed zero, infinities and NaN classification are retained, not NaN payload bits.
+   --  @param Settings Owned configuration to extend.
+   --  @param Leading_Edge_DB Leading-edge threshold in dB relative to the selected reference.
+   --  @param Trailing_Edge_DB Trailing-edge threshold in dB relative to the selected reference.
+
    type RX_Receive_Event_Config is private;
+   --  Copyable Ada-owned RX event values, independent of subsequent edits to copies.
+   --  Defaults are zero scalar fields, empty label/groups/polarization, Normal
+   --  execution, Inhibit Event termination and False correction/delay/channelization.
+   --  Stabilization index is always present and initially zero, not optional.
+   --  Hold and termination counts default to zero. Add validates the whole batch
+   --  before provider Add: UTF-8 labels without NUL, collection structure, enum
+   --  domains and size t representability, not group membership or physical ranges.
+   --  Floating values become native double without normalization or finite checks;
+   --  IEEE signed zero, infinity and NaN classification survive, not NaN payload bits.
+   --  Configuration is not execution, beam steering or cancellation. Provider
+   --  capabilities and interpretation remain provider-defined.
+   --  RX adds sample frequency, AGC counts and maximum extension; pulse settings
+   --  are absent until Set, leaving upstream default settings when omitted.
+
    type TX_Transmit_Event_Config is private;
+   --  Copyable Ada-owned TX event values, independent of subsequent edits to copies.
+   --  Defaults are zero scalar fields, empty label/groups/polarization, Normal
+   --  execution, Inhibit Event termination and False correction/delay/channelization.
+   --  Stabilization index is always present and initially zero, not optional.
+   --  Hold and termination counts default to zero. Add validates the whole batch
+   --  before provider Add: UTF-8 labels without NUL, collection structure, enum
+   --  domains and size t representability, not group membership or physical ranges.
+   --  Floating values become native double without normalization or finite checks;
+   --  IEEE signed zero, infinity and NaN classification survive, not NaN payload bits.
+   --  Configuration is not execution, beam steering or cancellation. Provider
+   --  capabilities and interpretation remain provider-defined.
+   --  TX adds attenuation in dB and rise/fall durations, all initially zero.
+   --  Modulation references are absent by default, retaining upstream {-1}.
+   --  TX attenuation is neither TX Power Level nor an interval TX Power Mode ID;
+   --  no RX sample frequency, AGC or pulse-detection configuration is exposed.
+
    type Modulation_Config is private;
+   --  Ada-owned copyable tagged configuration, defaulting to Tone. Bridge kinds
+   --  0/1/2/3/4/5/6/7 select Tone, PhaseCode, LinearFrequencyModulation,
+   --  OnOffKeying, CpfskPulse, CustomWaveform, WaveformBuffer and WaveformStream.
+   --  These tags are not C++ variant positions: the first seven select an inner
+   --  CommonModulations alternative inside Modulation; Stream selects the outer
+   --  WaveformStream alternative directly. Cached/extension alternatives are not exposed.
+   --  Only the active payload is serialized/validated. Scalars and arrays are copied;
+   --  native buffer copies share their fresh sample allocation, not caller storage.
+   --  Native double conversion preserves signed zero, infinities and NaN classification,
+   --  not NaN payload bits. No normalization, waveform synthesis, frequency-domain
+   --  conversion or provider capability guarantee follows from construction.
+   --  All active definitions, including unused ones, validate before provider Add.
+   --  Presence belongs independently to interval tables and TX reference collections.
+
    type Stream_Sample_Format is (Stream_Real, Stream_Complex_Cartesian, Stream_Complex_Polar);
+   --  Mapped waveform-stream sample shape, not JobDataFormat or buffer sample width.
+   --  @enum Stream_Real Representation 0: real samples.
+   --  @enum Stream_Complex_Cartesian Representation 1: Cartesian complex samples.
+   --  @enum Stream_Complex_Polar Representation 2: polar complex samples.
+
    for Stream_Sample_Format use
      (Stream_Real => 0, Stream_Complex_Cartesian => 1, Stream_Complex_Polar => 2);
    type Stream_Item_Format is
@@ -610,6 +693,17 @@ package AMS.MEL.RF.C2 is
       Stream_Float16,
       Stream_Fixed_Point_Unsigned_Non_Normalized,
       Stream_Fixed_Point_Signed_Non_Normalized);
+   --  Mapped stream numeric item descriptor only; selecting a format does not convert data or prove provider support.
+   --  @enum Stream_Fixed_Point_Unsigned Representation 0: unsigned fixed point.
+   --  @enum Stream_Fixed_Point_Signed Representation 1: signed fixed point.
+   --  @enum Stream_VRT_Unsigned_Float Representation 2: VRT unsigned float.
+   --  @enum Stream_VRT_Signed_Float Representation 3: VRT signed float.
+   --  @enum Stream_Float32 Representation 4: 32-bit float.
+   --  @enum Stream_Float64 Representation 5: 64-bit float.
+   --  @enum Stream_Float16 Representation 6: 16-bit float.
+   --  @enum Stream_Fixed_Point_Unsigned_Non_Normalized Representation 7: unsigned non-normalized fixed point.
+   --  @enum Stream_Fixed_Point_Signed_Non_Normalized Representation 8: signed non-normalized fixed point.
+
    for Stream_Item_Format use
      (Stream_Fixed_Point_Unsigned                => 0,
       Stream_Fixed_Point_Signed                  => 1,
@@ -621,6 +715,10 @@ package AMS.MEL.RF.C2 is
       Stream_Fixed_Point_Unsigned_Non_Normalized => 7,
       Stream_Fixed_Point_Signed_Non_Normalized   => 8);
    type Stream_Repeat_Mode is (Stream_Repeat_From_Top, Stream_Continue_From_Previous);
+   --  Copied provider read-location policy; no bridge address arithmetic or backing validation.
+   --  @enum Stream_Repeat_From_Top Representation 0: restart from top each iteration; upstream requires at least Num Bytes backing.
+   --  @enum Stream_Continue_From_Previous Representation 1: advance each iteration; upstream requires Num Bytes times repeat-count backing.
+
    for Stream_Repeat_Mode use (Stream_Repeat_From_Top => 0, Stream_Continue_From_Previous => 1);
    --  Scalar descriptor only: numeric address, not a pointer. No endpoint or
    --  backing memory is acquired, checked, owned or transferred by this API.
@@ -630,104 +728,321 @@ package AMS.MEL.RF.C2 is
       Item_Format                           : Stream_Item_Format := Stream_Fixed_Point_Signed;
       Repeat_Mode                           : Stream_Repeat_Mode := Stream_Repeat_From_Top)
       return Modulation_Config;
+   --  Select kind 7, the outer native WaveformStream alternative, and copy six scalar descriptors. No endpoint acquisition, allocation, registration, mapping, dereference or transfer of backing memory occurs. Application/provider own memory extent, lifetime and capability obligations; zero values are structurally valid, not proof of an executable stream.
+   --  @param Endpoint_ID Full unsigned 64-bit endpoint identity; no existence query.
+   --  @param Start_Address Full unsigned 64-bit numeric descriptor, not an Ada access value or bridge-owned pointer.
+   --  @param Num_Bytes Unsigned 64-bit bytes per iteration; must fit native size t at Add (checked Ada conversion/round trip). Zero is accepted.
+   --  @param Sample_Format Sample shape, default ComplexCartesian in the constructor.
+   --  @param Item_Format Numeric item descriptor, default FixedPointSigned in the constructor.
+   --  @param Repeat_Mode Provider repeat policy, default RepeatFromTop in the constructor.
+   --  @return Owned stream descriptor without any backing-storage owner.
+
    procedure Replace_Waveform_Stream
      (Config                                : in out Modulation_Config;
       Endpoint_ID, Start_Address, Num_Bytes : Interfaces.Unsigned_64;
       Sample_Format                         : Stream_Sample_Format;
       Item_Format                           : Stream_Item_Format;
       Repeat_Mode                           : Stream_Repeat_Mode);
+   --  Replace all six descriptors through a new stream value; wrong kind raises Constraint Error without changing Config. Same numeric-only ownership and Add-time size t validation as the constructor; no data is transferred.
+   --  @param Config Owned WaveformStream (kind 7) required.
+   --  @param Endpoint_ID Full unsigned 64-bit endpoint identity; no existence query.
+   --  @param Start_Address Full unsigned 64-bit numeric descriptor, not an Ada access value or bridge-owned pointer.
+   --  @param Num_Bytes Unsigned 64-bit bytes per iteration; must fit native size t at Add (checked Ada conversion/round trip). Zero is accepted.
+   --  @param Sample_Format Sample shape, default ComplexCartesian in the constructor.
+   --  @param Item_Format Numeric item descriptor, default FixedPointSigned in the constructor.
+   --  @param Repeat_Mode Provider repeat policy, default RepeatFromTop in the constructor.
+
    type Waveform_Sample_I8 is record
       Real, Imag : Interfaces.Integer_8;
    end record;
+   --  One Cartesian complex pair with signed 8-bit components; no scaling or clipping.
+   --  @field Real Real (I) component, full signed 8-bit integer domain.
+   --  @field Imag Imaginary (Q) component, full signed 8-bit integer domain.
+
    type Waveform_Sample_I16 is record
       Real, Imag : Interfaces.Integer_16;
    end record;
+   --  One Cartesian complex pair with signed 16-bit components; no scaling or clipping.
+   --  @field Real Real (I) component, full signed 16-bit integer domain.
+   --  @field Imag Imaginary (Q) component, full signed 16-bit integer domain.
+
    type Waveform_Sample_I8_Array is array (Positive range <>) of Waveform_Sample_I8;
+   --  Ordered signed 8-bit Cartesian pairs with Positive indices and arbitrary lower bound.
+   --  Null arrays are accepted; counts mean complex pairs, not bytes or individual components.
+
    type Waveform_Sample_I16_Array is array (Positive range <>) of Waveform_Sample_I16;
+   --  Ordered signed 16-bit Cartesian pairs with Positive indices and arbitrary lower bound.
+   --  Null arrays are accepted; counts mean complex pairs, not bytes or individual components.
+
    --  Owned caller values. Each Add copies into fresh native storage; native
    --  copies of one submitted buffer share that storage. No timing/execution
    --  guarantee is implied, including for empty Cartesian buffers.
    function Waveform_Buffer_I8 (Samples : Waveform_Sample_I8_Array) return Modulation_Config;
+   --  Select kind 6 with signed 8-bit sample storage and fixed ComplexCartesian format. Copy pairs in caller index order. Each active definition per Add receives a fresh nonnull native shared vector, even when empty; native copies share that allocation, not Ada caller storage. Native vector max size and span arithmetic limit accepted sizes. No DMA, zero-copy lifetime, transfer or physical emission is promised.
+   --  @param Samples Copied ordered complex pairs, including empty.
+   --  @return Owned 8-bit WaveformBuffer configuration.
+
    function Waveform_Buffer_I16 (Samples : Waveform_Sample_I16_Array) return Modulation_Config;
+   --  Select kind 6 with signed 16-bit sample storage and fixed ComplexCartesian format. Copy pairs in caller index order. Each active definition per Add receives a fresh nonnull native shared vector, even when empty; native copies share that allocation, not Ada caller storage. Native vector max size and span arithmetic limit accepted sizes. No DMA, zero-copy lifetime, transfer or physical emission is promised.
+   --  @param Samples Copied ordered complex pairs, including empty.
+   --  @return Owned 16-bit WaveformBuffer configuration.
+
    procedure Append_Waveform_Sample_I8
      (Config : in out Modulation_Config; Sample : Waveform_Sample_I8);
+   --  Append one copied pair. Wrong kind or width raises Constraint Error before mutation; no normalization or hardware transfer.
+   --  @param Config Owned kind-6 buffer with 8-bit components required.
+   --  @param Sample Signed Cartesian pair to append in order.
+
    procedure Append_Waveform_Sample_I16
      (Config : in out Modulation_Config; Sample : Waveform_Sample_I16);
+   --  Append one copied pair. Wrong kind or width raises Constraint Error before mutation; no normalization or hardware transfer.
+   --  @param Config Owned kind-6 buffer with 16-bit components required.
+   --  @param Sample Signed Cartesian pair to append in order.
+
    procedure Replace_Waveform_Samples_I8
      (Config : in out Modulation_Config; Samples : Waveform_Sample_I8_Array);
+   --  Prepare a copied vector before assigning, preserving kind and 8-bit width. Wrong kind/width raises Constraint Error before mutation; temporary-allocation failure leaves the old vector unchanged. Empty replacement is valid. Add performs native vector bounds validation.
+   --  @param Config Owned 8-bit WaveformBuffer required.
+   --  @param Samples Complete replacement in caller index order; independently copied.
+
    procedure Replace_Waveform_Samples_I16
      (Config : in out Modulation_Config; Samples : Waveform_Sample_I16_Array);
+   --  Prepare a copied vector before assigning, preserving kind and 16-bit width. Wrong kind/width raises Constraint Error before mutation; temporary-allocation failure leaves the old vector unchanged. Empty replacement is valid. Add performs native vector bounds validation.
+   --  @param Config Owned 16-bit WaveformBuffer required.
+   --  @param Samples Complete replacement in caller index order; independently copied.
+
    type Modulation_Table is private;
+   --  Ordered owned definitions, initially empty; copies retain independent Ada values.
+   --  References are zero-based and resolve only in the same interval active table.
+   --  No prior Add, another interval or provider registry supplies missing entries.
+
    --  Owned configuration values only, not executable waveform validation.
    --  Degrees stay degrees; false update flags retain their numeric values.
    subtype Waveform_Profile_Index is Interfaces.Integer_32 range 0 .. Interfaces.Integer_32'Last;
+   --  Nonnegative signed 32-bit profile index, 0 through Integer 32 Last.
+   --  Must fit native int and refer to a profile in the same CustomWaveform at Add;
+   --  there is no -1 sentinel for an inner waveform step.
+
    type Waveform_Profile is private;
+   --  Owned profile values: zero femtoseconds, six zero double scalars and six False update flags by default.
+   --  Phase/delta phase remain degrees, offsets/deltas Hz, slope the pinned HzSec
+   --  quantity. False update flags retain their numeric fields. Signed zero and
+   --  nonfinite classification survive native-double conversion, not NaN payload bits.
+   --  No normalization, amplitude clamping, timing synthesis or update execution.
+
    type Waveform_Profile_Table is private;
+   --  Ordered owned profile values, initially empty; append copies without deduplication.
+
    type Event_Waveform_Pattern is private;
+   --  Owned ordered profile-index/iteration steps, initially empty; copies are independent.
+   --  No chip duration is stored in a step: duration belongs to the selected profile.
+
    type Waveform_Pattern_List is private;
+   --  Owned ordered event patterns, initially empty; repeated and empty patterns survive.
+   --  The provider interprets pattern cycling; the bridge does not assign patterns to events.
+
    function Create_Waveform_Profile
      (Chip_Duration_Femtoseconds : Interfaces.Integer_64 := 0) return Waveform_Profile;
+   --  Construct the duration with all six scalar values zero and update flags False.
+   --  @param Chip_Duration_Femtoseconds Exact signed 64-bit femtoseconds, default zero; not quantized.
+   --  @return Owned waveform profile.
+
    procedure Set_Chip_Duration_Femtoseconds
      (Profile : in out Waveform_Profile; Value : Interfaces.Integer_64);
+   --  Replace the profile duration without quantization, arithmetic or positivity validation.
+   --  @param Profile Owned profile.
+   --  @param Value Exact signed 64-bit femtoseconds.
+
    procedure Set_Phase_Degrees
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Phase in degrees.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Set_Delta_Phase_Degrees
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Temporary phase addition in degrees.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Set_Frequency_Offset_Hz
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Offset from center frequency in Hz.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Set_Delta_Frequency_Hz
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Temporary frequency addition in Hz.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Set_Frequency_Slope_Hz_Sec
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Frequency slope in the pinned HzSec quantity, forwarded verbatim.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Set_Amplitude_Factor
      (Profile : in out Waveform_Profile; Value : Long_Float; Update : Boolean);
+   --  Replace the numeric value and its independent update flag; False does not erase Value. No wrapping, normalization, clamping or finite validation; copied native double retains signed zero and nonfinite classification.
+   --  @param Profile Owned waveform profile.
+   --  @param Value Amplitude-reduction factor, pinned intended range 0 through 1, not enforced by the bridge.
+   --  @param Update Provider request to apply this field when the profile is applied, not bridge execution.
+
    procedure Append_Profile
      (Table   : in out Waveform_Profile_Table;
       Profile : Waveform_Profile;
       Index   : out Waveform_Profile_Index);
+   --  Append an independent copied profile in order without merging identical values. Conversion of a full table length beyond the index domain raises Constraint Error before append.
+   --  @param Table Owned profile table.
+   --  @param Profile Complete value and update flags to copy.
+   --  @param Index Returned zero-based position; not an Ada Positive index.
+
    procedure Append_Step
      (Pattern             : in out Event_Waveform_Pattern;
       Profile_Index       : Waveform_Profile_Index;
       Num_Chip_Iterations : Interfaces.Integer_32 := 1);
+   --  Append one copied step. Add validates the index against this CustomWaveform final profile table even for zero/negative iteration counts; both integers must fit native int. No timing multiplication or repeat interpretation is performed.
+   --  @param Pattern Owned ordered step list.
+   --  @param Profile_Index Nonnegative zero-based index in the same definition.
+   --  @param Num_Chip_Iterations Signed 32-bit iterations, default one; zero and negative values are copied.
+
    procedure Append_Pattern
      (Patterns : in out Waveform_Pattern_List; Pattern : Event_Waveform_Pattern);
+   --  Append a complete independent pattern copy in order, retaining empty patterns and duplicates.
+   --  @param Patterns Owned list.
+   --  @param Pattern Ordered step values to copy.
+
    function Custom_Waveform
      (Profiles : Waveform_Profile_Table; Patterns : Waveform_Pattern_List) return Modulation_Config;
+   --  Select kind 5 and copy both tables. Empty profiles are accepted only without actual steps. Add checks every local step reference and native integer domain before provider mutation; it does not sum chip timings, require equal event/pattern counts or generate samples.
+   --  @param Profiles Ordered profile definitions.
+   --  @param Patterns Ordered event patterns, including empty ones.
+   --  @return Owned CustomWaveform configuration.
+
    procedure Replace_Custom_Waveform_Profiles
      (Config : in out Modulation_Config; Profiles : Waveform_Profile_Table);
+   --  Copy the replacement before assignment; preserve the other collection. Wrong kind raises Constraint Error before mutation. Reference validity is deferred to Add against the final combined definition; no intermediate provider mutation occurs.
+   --  @param Config Owned CustomWaveform (kind 5) required.
+   --  @param Profiles Complete replacement values, independently copied in order, including empty.
+
    procedure Replace_Custom_Waveform_Patterns
      (Config : in out Modulation_Config; Patterns : Waveform_Pattern_List);
+   --  Copy the replacement before assignment; preserve the other collection. Wrong kind raises Constraint Error before mutation. Reference validity is deferred to Add against the final combined definition; no intermediate provider mutation occurs.
+   --  @param Config Owned CustomWaveform (kind 5) required.
+   --  @param Patterns Complete replacement values, independently copied in order, including empty.
+
    type Phase_Chip_Array is array (Positive range <>) of Long_Float;
+   --  Ordered phase radians in ascending caller index order, with arbitrary Positive lower bound.
+   --  Null arrays are accepted; copied native doubles are not wrapped or normalized.
+
    subtype Modulation_Index is
      Interfaces.Integer_32 range Interfaces."-" (1) .. Interfaces.Integer_32'Last;
-   No_Modulation                       : constant Modulation_Index := Interfaces."-" (1);
+   --  Signed 32-bit reference domain -1 through Integer 32 Last.
+   --  Minus one is no modulation; nonnegative values must fit native int and
+   --  index the same interval active table at Add, not an Ada container position.
+
+   No_Modulation : constant Modulation_Index := Interfaces."-" (1);
+   --  Exact signed sentinel -1, not an explicit Tone definition or a missing table lookup.
+
    function Tone return Modulation_Config;
+   --  Select bridge kind 0 and the empty native Tone alternative; no payload or synthesis.
+   --  @return Owned Tone configuration, distinct from the -1 reference sentinel.
+
    type Modulation_Boolean_Array is array (Positive range <>) of Boolean;
+   --  Ordered logical values in ascending Positive index order, including null arrays.
+   --  Each Boolean is serialized separately as 0/1, then copied to native vector<bool>; not packed wire bits.
+
    function On_Off_Keying (Pulse_Enabled : Modulation_Boolean_Array) return Modulation_Config;
+   --  Select kind 3 and copy ordered enables. At Add the list length must equal the interval sequence repeat count, even for an unused definition. One OOK entry cannot be referenced by two distinct TX events in that interval; repeated references from one event are allowed. No execution is performed.
+   --  @param Pulse_Enabled Ordered pulse enables, including empty only with repeat count zero at Add.
+   --  @return Owned OOK configuration.
+
    function CPFSK_Pulse
      (Chip_Data                                               : Modulation_Boolean_Array;
       Pulse_Duration_Femtoseconds, Chip_Duration_Femtoseconds : Interfaces.Integer_64;
       Frequency_Offset_Hz                                     : Long_Float)
       return Modulation_Config;
+   --  Select kind 4, the CpfskPulse CommonModulations alternative despite upstream introductory CustomWaveform wording. Copy ordered chips without an invented chip-count/timing relationship or modulation algorithm.
+   --  @param Chip_Data Copied logical chips, including empty.
+   --  @param Pulse_Duration_Femtoseconds Exact signed 64-bit pulse duration in femtoseconds.
+   --  @param Chip_Duration_Femtoseconds Exact signed 64-bit chip duration in femtoseconds.
+   --  @param Frequency_Offset_Hz Copied native-double offset in Hz, without finite validation.
+   --  @return Owned CPFSK configuration.
+
    procedure Append_OOK_Pulse_Enable (Config : in out Modulation_Config; Enabled : Boolean);
+   --  Append a copied value in order. Wrong-kind mutation raises Constraint Error before changing Config. Final collection relationships are checked at Add, not here.
+   --  @param Config Owned OnOffKeying configuration required.
+   --  @param Enabled One logical pulse enable.
+
    procedure Replace_OOK_Pulse_Enables
      (Config : in out Modulation_Config; Pulse_Enabled : Modulation_Boolean_Array);
+   --  Copy the entire replacement in caller index order before assigning; empty clears the active vector without changing the kind or other fields. Wrong kind raises Constraint Error before mutation. Allocation failure while preparing the temporary leaves the original vector unchanged.
+   --  @param Config Owned OnOffKeying configuration required.
+   --  @param Pulse_Enabled Replacement owned values, copied independently, including a null array.
+
    procedure Append_CPFSK_Chip (Config : in out Modulation_Config; Chip : Boolean);
+   --  Append a copied value in order. Wrong-kind mutation raises Constraint Error before changing Config. Final collection relationships are checked at Add, not here.
+   --  @param Config Owned CpfskPulse configuration required.
+   --  @param Chip One logical chip.
+
    procedure Replace_CPFSK_Chips
      (Config : in out Modulation_Config; Chip_Data : Modulation_Boolean_Array);
+   --  Copy the entire replacement in caller index order before assigning; empty clears the active vector without changing the kind or other fields. Wrong kind raises Constraint Error before mutation. Allocation failure while preparing the temporary leaves the original vector unchanged.
+   --  @param Config Owned CpfskPulse configuration required.
+   --  @param Chip_Data Replacement owned values, copied independently, including a null array.
+
    function Phase_Code
      (Chip_Duration_Femtoseconds : Interfaces.Integer_64; Phases_Rad : Phase_Chip_Array)
       return Modulation_Config;
+   --  Select kind 1 with copied ordered phases, including empty. No duration/chip-count relationship is enforced; native doubles retain IEEE classification and signed zero, not NaN payload bits.
+   --  @param Chip_Duration_Femtoseconds Exact signed 64-bit chip duration in femtoseconds, without quantization.
+   --  @param Phases_Rad Copied phase radians in caller index order.
+   --  @return Owned PhaseCode configuration.
+
    function Linear_Frequency_Modulation (Frequency_Extent_Hz : Long_Float) return Modulation_Config;
+   --  Select kind 2. Pinned semantics describe start/end frequencies at center minus/plus half the extent; the bridge neither computes them nor synthesizes samples.
+   --  @param Frequency_Extent_Hz Signed/nonfinite native-double extent in Hz; no finite/range check.
+   --  @return Owned linear-frequency configuration.
+
    procedure Append_Phase_Chip (Config : in out Modulation_Config; Phase_Rad : Long_Float);
+   --  Append a copied value in order. Wrong-kind mutation raises Constraint Error before changing Config. Final collection relationships are checked at Add, not here.
+   --  @param Config Owned PhaseCode configuration required.
+   --  @param Phase_Rad Phase radians; signed zero and nonfinite classification retained on native conversion.
+
    procedure Replace_Phase_Chips (Config : in out Modulation_Config; Phases_Rad : Phase_Chip_Array);
+   --  Copy the entire replacement in caller index order before assigning; empty clears the active vector without changing the kind or other fields. Wrong kind raises Constraint Error before mutation. Allocation failure while preparing the temporary leaves the original vector unchanged.
+   --  @param Config Owned PhaseCode configuration required.
+   --  @param Phases_Rad Replacement owned values, copied independently, including a null array.
+
    --  Returned index is zero-based, independent of Ada container indexing.
    procedure Append_Modulation
      (Table : in out Modulation_Table; Config : Modulation_Config; Index : out Modulation_Index);
+   --  Append a copied definition without deduplication; return its zero-based position. Index conversion beyond the signed domain raises Constraint Error before append. Native-int, active variant and same-interval reference validation occur at Add.
+   --  @param Table Owned ordered definition table.
+   --  @param Config Definition to copy; future edits do not affect the entry.
+   --  @param Index Returned zero-based index, independent of Ada vector indexing.
+
    procedure Append_Modulation_Reference
      (Event : in out TX_Transmit_Event_Config; Index : Modulation_Index);
+   --  Append an ordered signed reference and mark the TX collection present. Duplicates survive; Add resolves nonnegative indices only against the same interval final active table and checks native int. Minus one requests no modulation.
+   --  @param Event Owned TX configuration.
+   --  @param Index Reference in -1 through signed 32-bit maximum.
+
    procedure Clear_Modulation_References (Event : in out TX_Transmit_Event_Config);
+   --  Clear the stored list and mark it absent, retaining native default {-1} during subsequent event construction; distinct from explicit empty.
+   --  @param Event Owned TX configuration.
+
    procedure Set_Empty_Modulation_References (Event : in out TX_Transmit_Event_Config);
+   --  Clear the stored list and mark it present-empty, so native setModIndex receives an empty vector rather than default {-1}.
+   --  @param Event Owned TX configuration.
+
    function Create_TX_Transmit_Event
      (Event_ID                                  : Interfaces.Unsigned_32;
       Element_Group_Label                       : String;
@@ -737,60 +1052,189 @@ package AMS.MEL.RF.C2 is
       Rise_Duration_Femtoseconds                : Interfaces.Integer_64 := 0;
       Fall_Duration_Femtoseconds                : Interfaces.Integer_64 := 0)
       return TX_Transmit_Event_Config;
+   --  Construct copied TX values without provider execution. Embedded NUL in the label raises Constraint Error; Add also checks UTF-8. Signed timings pass exactly without quantization, nonnegative or relationship checks; physical/provider constraints remain separate.
+   --  @param Event_ID Exact unsigned 32-bit event identity; no uniqueness check.
+   --  @param Element_Group_Label Copied provider lookup label, not a group index.
+   --  @param Start_Femtoseconds Signed 64-bit start relative to the sequence iteration, in femtoseconds.
+   --  @param Duration_Femtoseconds Signed 64-bit duration in femtoseconds.
+   --  @param Center_Frequency_Hz Center frequency in Hz; copied as native double on Add.
+   --  @param TX_Attenuation_DB Attenuation in dB, default zero; no power-mode capability query or step validation.
+   --  @param Rise_Duration_Femtoseconds Signed leading-edge duration in femtoseconds, default zero.
+   --  @param Fall_Duration_Femtoseconds Signed trailing-edge duration in femtoseconds, default zero.
+   --  @return Independent TX configuration with the documented common defaults.
+
    procedure Set_Event_Stabilization_Point_Index
      (Event : in out TX_Transmit_Event_Config; Index : Interfaces.Unsigned_64);
+   --  Replace the TX stabilization-point index. Zero-based provider vector index, always present. Add checks size t representability but not point membership or physical steering.
+   --  @param Event Owned TX configuration to modify.
+   --  @param Index Unsigned 64-bit provider index; default is zero.
+
    procedure Append_Applicable_TX_Element_Group
      (Event : in out TX_Transmit_Event_Config; Element_Group_Index : Interfaces.Unsigned_64);
+   --  Append a copied TX group index, retaining order and duplicates. Empty is allowed. Add checks size t representability, not the Job group count or connectivity; these are provider indices, not labels or Ada positions.
+   --  @param Event Owned TX configuration to extend.
+   --  @param Element_Group_Index Unsigned 64-bit provider group index.
+
    procedure Set_TX_Attenuation_DB (Event : in out TX_Transmit_Event_Config; Value : Long_Float);
+   --  Replace the TX attenuation value without clamping, quantization or capability queries. This is attenuation, not TX Power Level or TX Power Mode ID; native double preserves IEEE classification and signed zero, not NaN payload bits.
+   --  @param Event Owned TX configuration.
+   --  @param Value Attenuation in dB; nonfinite values are not rejected by the bridge.
+
    procedure Set_TX_Edge_Durations
      (Event                                : in out TX_Transmit_Event_Config;
       Rise_Femtoseconds, Fall_Femtoseconds : Interfaces.Integer_64);
+   --  Replace copied TX edge durations without quantization or checking their sum against event duration. Pinned upstream describes zero as no attempted shaping and leaves support/shape to the MFA; the bridge does not implement shaping.
+   --  @param Event Owned TX configuration.
+   --  @param Rise_Femtoseconds Exact signed 64-bit leading-edge femtoseconds.
+   --  @param Fall_Femtoseconds Exact signed 64-bit trailing-edge femtoseconds.
+
    procedure Set_Pulse_Detection_Settings
      (Event : in out RX_Receive_Event_Config; Settings : Pulse_Detection_Settings);
+   --  Copy settings and mark RX pulse configuration present. Later edits to Settings do not change Event. Native Add constructs the active settings before provider mutation; support and detector behavior remain provider-defined.
+   --  @param Event Owned RX configuration, not TX.
+   --  @param Settings Complete owned value to copy, including ordered thresholds.
+
    procedure Clear_Pulse_Detection_Settings (Event : in out RX_Receive_Event_Config);
+   --  Mark RX pulse settings absent; retained inactive Ada values are not submitted. Native construction leaves upstream default pulse settings rather than clearing a running detector.
+   --  @param Event Owned RX configuration.
+
    type Execution_Type is (Normal, Conditional);
+   --  Copied event/interval execution selector; the bridge implements no conditional trigger.
+   --  @enum Normal Representation 0: normal execution request.
+   --  @enum Conditional Representation 1: provider conditional-execution request.
+
    for Execution_Type use (Normal => 0, Conditional => 1);
    type Event_Termination_Type is (Inhibit_Event, Cancel_Event);
+   --  Provider policy when a conditional event overlaps; not a bridge Cancel Job command.
+   --  @enum Inhibit_Event Representation 0: upstream requests continued execution with outputs suppressed while the conditional event executes.
+   --  @enum Cancel_Event Representation 1: upstream requests termination, or no execution if the conditional event precedes this event.
+
    for Event_Termination_Type use (Inhibit_Event => 0, Cancel_Event => 1);
    --  Ordered copied Stokes values, no normalization or finite checks. A third
    --  append raises Constraint_Error. Provider semantic validation remains final.
    procedure Append_Polarization
      (Event : in out RX_Receive_Event_Config; S0, S1, S2, S3 : Long_Float);
+   --  RX event configuration only: Append one ordered copied four-double Stokes value in the array-face frame. Empty means default polarization; one/two values request single/dual polarization. A third append raises Constraint Error before mutation. No normalization, finite validation or physical beam steering is performed.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param S0 First Stokes component, native double on Add.
+   --  @param S1 Second Stokes component.
+   --  @param S2 Third Stokes component.
+   --  @param S3 Fourth Stokes component.
+
    procedure Set_Polarization_Beam_Steer_Correction
      (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   --  RX event configuration only: Replace the copied beam-steering correction request, default False. Does not implement or confirm physical correction.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Enabled Requested provider flag.
+
    procedure Set_Phase_Offset_Radians (Event : in out RX_Receive_Event_Config; Value : Long_Float);
+   --  RX event configuration only: Replace the phase offset without wrapping or normalization. Native double conversion preserves signed zero and nonfinite classification, not NaN payload bits.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Value Initial phase offset in radians, default zero.
+
    procedure Set_Event_Execution_Type
      (Event : in out RX_Receive_Event_Config; Value : Execution_Type);
+   --  RX event configuration only: Replace the execution selector, default Normal; no conditional trigger is installed.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Value Provider execution request.
+
    procedure Set_Event_Termination_Type
      (Event : in out RX_Receive_Event_Config; Value : Event_Termination_Type);
+   --  RX event configuration only: Replace the conditional-overlap policy, default Inhibit Event; does not cancel a Job or execute an event.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Value Provider termination policy.
+
    procedure Set_Allow_Delay_Start (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   --  RX event configuration only: Replace the delay-start permission, default False. Pinned semantics allow delay around a conditional event only as sequence time and MFA support permit; no bridge scheduling guarantee.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Enabled Requested delay permission.
+
    procedure Set_Iteration_Hold_Count
      (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64);
+   --  RX event configuration only: Replace the count of initial iterations to hold before event execution, default zero. Add checks provider size t, not its relationship to repeat count; no iterations are executed here.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Count Unsigned 64-bit iteration count.
+
    procedure Set_Iteration_Termination_Count
      (Event : in out RX_Receive_Event_Config; Count : Interfaces.Unsigned_64);
+   --  RX event configuration only: Replace the number of final sequence iterations in which the event is no longer executed, default zero. Add checks size t, not its relationship to repeat count.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Count Unsigned 64-bit iteration count.
+
    procedure Set_Channelization_Enabled (Event : in out RX_Receive_Event_Config; Enabled : Boolean);
+   --  RX event configuration only: Replace the channelization request, default False. No RX processing or TX channelizer is implemented or qualified by copying this flag.
+   --  @param Event Owned RX value; copies remain independent.
+   --  @param Enabled Requested provider channelization flag.
+
    procedure Append_Polarization
      (Event : in out TX_Transmit_Event_Config; S0, S1, S2, S3 : Long_Float);
+   --  TX event configuration only: Append one ordered copied four-double Stokes value in the array-face frame. Empty means default polarization; one/two values request single/dual polarization. A third append raises Constraint Error before mutation. No normalization, finite validation or physical beam steering is performed.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param S0 First Stokes component, native double on Add.
+   --  @param S1 Second Stokes component.
+   --  @param S2 Third Stokes component.
+   --  @param S3 Fourth Stokes component.
+
    procedure Set_Polarization_Beam_Steer_Correction
      (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
+   --  TX event configuration only: Replace the copied beam-steering correction request, default False. Does not implement or confirm physical correction.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Enabled Requested provider flag.
+
    procedure Set_Phase_Offset_Radians (Event : in out TX_Transmit_Event_Config; Value : Long_Float);
+   --  TX event configuration only: Replace the phase offset without wrapping or normalization. Native double conversion preserves signed zero and nonfinite classification, not NaN payload bits.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Value Initial phase offset in radians, default zero.
+
    procedure Set_Event_Execution_Type
      (Event : in out TX_Transmit_Event_Config; Value : Execution_Type);
+   --  TX event configuration only: Replace the execution selector, default Normal; no conditional trigger is installed.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Value Provider execution request.
+
    procedure Set_Event_Termination_Type
      (Event : in out TX_Transmit_Event_Config; Value : Event_Termination_Type);
+   --  TX event configuration only: Replace the conditional-overlap policy, default Inhibit Event; does not cancel a Job or execute an event.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Value Provider termination policy.
+
    procedure Set_Allow_Delay_Start (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
+   --  TX event configuration only: Replace the delay-start permission, default False. Pinned semantics allow delay around a conditional event only as sequence time and MFA support permit; no bridge scheduling guarantee.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Enabled Requested delay permission.
+
    procedure Set_Iteration_Hold_Count
      (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64);
+   --  TX event configuration only: Replace the count of initial iterations to hold before event execution, default zero. Add checks provider size t, not its relationship to repeat count; no iterations are executed here.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Count Unsigned 64-bit iteration count.
+
    procedure Set_Iteration_Termination_Count
      (Event : in out TX_Transmit_Event_Config; Count : Interfaces.Unsigned_64);
+   --  TX event configuration only: Replace the number of final sequence iterations in which the event is no longer executed, default zero. Add checks size t, not its relationship to repeat count.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Count Unsigned 64-bit iteration count.
+
    procedure Set_Channelization_Enabled
      (Event : in out TX_Transmit_Event_Config; Enabled : Boolean);
+   --  TX event configuration only: Replace the channelization request, default False. No RX processing or TX channelizer is implemented or qualified by copying this flag.
+   --  @param Event Owned TX value; copies remain independent.
+   --  @param Enabled Requested provider channelization flag.
+
    --  Portable provider indices, not labels. No local count/range relationship
    --  is inferred. Applicable group order and duplicates are preserved.
    procedure Set_Stab_Point_Index
      (Event : in out RX_Receive_Event_Config; Index : Interfaces.Unsigned_64);
+   --  Replace the RX stabilization-point index. Zero-based provider vector index, not an Ada Positive position; always present. Add checks size t representability, not the interval point count or pointing capability.
+   --  @param Event Owned RX configuration to modify.
+   --  @param Index Unsigned 64-bit provider index; default is zero.
+
    procedure Append_Applicable_RX_Element_Group
      (Event : in out RX_Receive_Event_Config; Element_Group_Index : Interfaces.Unsigned_64);
+   --  Append a copied RX group index, retaining order and duplicates. Empty is allowed. Add checks size t representability, not the Job group count or connectivity; these are provider indices, not labels or Ada positions.
+   --  @param Event Owned RX configuration to extend.
+   --  @param Element_Group_Index Unsigned 64-bit provider group index.
+
    function Create_RX_Receive_Event
      (Event_ID                    : Interfaces.Unsigned_32;
       Element_Group_Label         : String;
@@ -801,57 +1245,188 @@ package AMS.MEL.RF.C2 is
       AGC_Processing_Iterations   : Interfaces.Unsigned_64 := 0;
       Ignored_Post_AGC_Iterations : Interfaces.Unsigned_64 := 0;
       Max_Extension_Femtoseconds  : Interfaces.Integer_64 := 0) return RX_Receive_Event_Config;
+   --  Construct copied RX values without provider execution. Embedded NUL in the label raises Constraint Error; Add also checks UTF-8. Signed timings pass exactly without quantization, nonnegative or relationship checks; physical/provider constraints remain separate.
+   --  @param Event_ID Exact unsigned 32-bit event identity; no uniqueness check.
+   --  @param Element_Group_Label Copied provider lookup label, not a group index.
+   --  @param Start_Femtoseconds Signed 64-bit start relative to the sequence iteration, in femtoseconds.
+   --  @param Duration_Femtoseconds Signed 64-bit duration in femtoseconds.
+   --  @param Center_Frequency_Hz Center frequency in Hz; copied as native double on Add.
+   --  @param Sample_Frequency_Hz RX sample frequency in Hz, without finite/range validation.
+   --  @param AGC_Processing_Iterations AGC iteration count, default zero; must fit provider size t at Add.
+   --  @param Ignored_Post_AGC_Iterations Ignored post-AGC count, default zero; must fit provider size t.
+   --  @param Max_Extension_Femtoseconds Signed maximum local-function extension in femtoseconds, default zero (upstream disallows extension); not enforced by a bridge detector.
+   --  @return Independent RX configuration with the documented common defaults.
+
    type Local_Function_Command is private;
+   --  Owned local-function type/instance and ordered address/value writes.
+   --  Defaults are type zero, instance zero and no writes. No function owner,
+   --  hardware-register access, capability query or support confirmation is created.
+
    function Create_Local_Function_Command
      (Local_Function_Type_ID : Interfaces.Unsigned_32; Instance : Interfaces.Unsigned_64)
       return Local_Function_Command;
+   --  Copy identifiers and start with an empty write list. Pinned upstream intends commands for functions associated with the selected VA at interval start; bridge submission does not establish function support or register effects.
+   --  @param Local_Function_Type_ID Full unsigned 32-bit type/command identity, no capability lookup.
+   --  @param Instance Unsigned 64-bit function instance identity, checked against native size t at Add.
+   --  @return Owned command configuration.
+
    procedure Append_Local_Function_Write
      (Command : in out Local_Function_Command; Address, Value : Interfaces.Unsigned_64);
+   --  Append an ordered copied address/value pair, retaining duplicates without merging, masking, endian conversion or hardware access.
+   --  @param Command Owned command configuration.
+   --  @param Address Full unsigned 64-bit offset in local-function address space, not a process pointer.
+   --  @param Value Full unsigned 64-bit scalar write value.
+
    type RX_Job_Interval_Config is private;
+   --  Copyable Ada-owned interval configuration, now supporting both ordered RX and TX
+   --  events despite the historical RX name. No resource allocation or scheduling.
+   --  Default collections are empty, status Never, execution Normal, power mode zero;
+   --  TX events, modulations, endpoint connections, product parameters and user context
+   --  each have independent absent/present-empty/present-nonempty configuration states.
+   --  Absence skips the corresponding native setter; native defaults can equal an
+   --  explicit empty value, so provider-observable distinction is not guaranteed.
+   --  Set/append operations own copies; no manual Close or provider pointer escapes.
+   --  Upstream sequence nonoverlap, switching time, event-end/sequence duration,
+   --  quantization and hardware constraints remain application/provider obligations;
+   --  the bridge does not implement a scheduler or infer these relationships.
+
    --  Owned value configuration only. Numeric addresses are not access values;
    --  application/provider remain responsible for endpoint matching, registered
    --  writable storage and its execution lifetime. No memory-safety guarantee.
    type Product_Stream_Params is private;
+   --  Owned ordered RX group indices and endpoint descriptors, initially empty.
+   --  Both vectors retain duplicates; groups-only/endpoints-only/empty are structurally
+   --  accepted. Pinned endpoint IDs/order must match the relevant JobRequest endpoint
+   --  vector; the bridge neither queries nor checks that relationship.
+   --  Numeric addresses are not process pointers or owned registered memory.
+   --  Application/provider remain responsible for valid writable storage, capacity
+   --  and execution lifetime; this configuration does not guarantee memory safety.
+
    --  Exact copied labels; last composite-key occurrence wins at submission.
    --  No endpoint creation, DataPipe association or applicable-label setup.
    type Endpoint_Connections is private;
+   --  Owned insertion-ordered label/label/endpoint triples, initially empty.
+   --  At Add these become a nested unordered map: exact element-group label to
+   --  data-pipe label to endpoint ID. Last occurrence of a composite label key wins;
+   --  native unordered iteration is not insertion order. No group/pipe membership,
+   --  connectivity, endpoint creation or provider association capability is validated.
+
    function Create_Endpoint_Connections return Endpoint_Connections;
+   --  Construct an empty owned association value; setting it on an interval expresses present-empty, distinct from Clear.
+   --  @return Empty copied-configuration collection.
+
    procedure Append_Endpoint_Connection
      (Connections                          : in out Endpoint_Connections;
       Element_Group_Label, Data_Pipe_Label : String;
       Endpoint_ID                          : Interfaces.Unsigned_64);
+   --  Append copied exact labels and identity in order. Embedded NUL raises Constraint Error before append; native Add also validates UTF-8 and span structure. Empty labels, case and whitespace survive; empty pipe differs from literal default. Duplicate composite keys use last occurrence at native map construction.
+   --  @param Connections Owned association values.
+   --  @param Element_Group_Label Provider lookup label, not a numeric group index.
+   --  @param Data_Pipe_Label Exact pipe lookup label, not a created DataPipe owner.
+   --  @param Endpoint_ID Full unsigned 64-bit endpoint identity, no existence or connectivity query.
+
    procedure Set_Interval_Endpoint_Connections
      (Interval : in out RX_Job_Interval_Config; Connections : Endpoint_Connections);
+   --  Copy complete connections and mark presence. Empty calls native setEndpoints with an empty map; source edits cannot affect the copied interval. This configures values, not physical routing or applicable-group labels.
+   --  @param Interval Owned interval configuration.
+   --  @param Connections Owned triples to copy; duplicate handling occurs at Add.
+
    procedure Clear_Interval_Endpoint_Connections (Interval : in out RX_Job_Interval_Config);
+   --  Clear stored triples and restore absence; skip native setEndpoints on future construction, not a live disconnection operation.
+   --  @param Interval Owned interval configuration.
+
    function Create_Product_Stream_Params return Product_Stream_Params;
+   --  Create empty RX-group and endpoint vectors without provider or memory operations.
+   --  @return Owned empty parameter value; interval presence is set separately.
+
    procedure Append_Product_Stream_RX_Group
      (Params : in out Product_Stream_Params; Index : Interfaces.Unsigned_64);
+   --  Append a copied index in order, retaining duplicates. Add checks size t representability, not membership in JobRequest groups or endpoint matching.
+   --  @param Params Owned stream parameters.
+   --  @param Index Unsigned 64-bit provider RX-group index, not a label or Ada position.
+
    procedure Append_Product_Stream_Endpoint
      (Params                                : in out Product_Stream_Params;
       Endpoint_ID, Start_Address, Max_Bytes : Interfaces.Unsigned_64);
+   --  Append an ordered descriptor copy, retaining duplicates. No dereference, mapping, registration, address-plus-size arithmetic or transfer; all three full unsigned 64-bit domains, including zero, are accepted.
+   --  @param Params Owned stream parameters.
+   --  @param Endpoint_ID Provider endpoint identity, not an owned endpoint.
+   --  @param Start_Address Numeric starting virtual-address descriptor, not an Ada access value.
+   --  @param Max_Bytes Unsigned 64-bit maximum destination bytes; unlike waveform-stream Num Bytes, not narrowed to size t.
+
    procedure Set_Interval_Product_Stream_Params
      (Interval : in out RX_Job_Interval_Config; Params : Product_Stream_Params);
+   --  Copy the complete value and mark it present; an empty value explicitly calls the native setter with empty vectors. Later source edits do not affect Interval. No hardware destination is validated.
+   --  @param Interval Owned interval configuration.
+   --  @param Params Independent parameter value to copy.
+
    procedure Clear_Interval_Product_Stream_Params (Interval : in out RX_Job_Interval_Config);
+   --  Mark product parameters absent; inactive retained Ada payload is not submitted and native construction retains upstream defaults. This does not clear live hardware memory.
+   --  @param Interval Owned interval configuration.
+
    procedure Append_Interval_Local_Function_Command
      (Interval : in out RX_Job_Interval_Config; Command : Local_Function_Command);
+   --  Append an independent command copy in order, including duplicate commands/writes. Full-batch construction precedes provider Add; no register write or execution is confirmed.
+   --  @param Interval Owned interval configuration.
+   --  @param Command Complete command value to copy.
+
    procedure Set_Interval_TX_Power_Mode_ID
      (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_32);
+   --  Replace the copied mode identifier, default zero; no presence flag, capability query or mode/JobRequest relationship check. Distinct from TX Power Level and TX attenuation in dB; not a power-setting guarantee.
+   --  @param Interval Owned interval configuration.
+   --  @param Value Exact unsigned 32-bit provider mode identity.
+
    procedure Set_Interval_Activity_ID
      (Interval : in out RX_Job_Interval_Config; Value : Byte_Array);
+   --  Replace activity bytes in caller order; arbitrary binary bytes, including NUL/high-bit and empty. No optional presence flag, UUID/UCI interpretation or context schema. This clears then appends, not the temporary-vector replacement guarantee of user context.
+   --  @param Interval Owned interval configuration.
+   --  @param Value Copied activity identity bytes, independent of user context.
+
    -- Copied binary values; absent and explicitly present empty are distinct.
    procedure Set_Interval_User_Context
      (Interval : in out RX_Job_Interval_Config; Bytes : Byte_Array);
+   --  Prepare a copied arbitrary binary byte vector then move it into Interval and mark present, including empty. Temporary preparation failure leaves old context unchanged. Native Add stores exactly vector<uint8 t> in std::any, not a universal RF MEL context schema; provider must understand that concrete type. No text decoding or provider interpretation is guaranteed.
+   --  @param Interval Owned interval; context independent of Activity ID.
+   --  @param Bytes Replacement bytes in caller index order, including NUL/high-bit bytes and null arrays.
+
    procedure Append_Interval_User_Context_Byte
      (Interval : in out RX_Job_Interval_Config; Value : Interfaces.Unsigned_8);
+   --  Append one arbitrary binary byte and mark context present after successful insertion. From absence starts a new list; from present-empty extends it. Native concrete std::any type is vector<uint8 t>; provider compatibility remains required.
+   --  @param Interval Owned context configuration.
+   --  @param Value Full unsigned byte, 0 through 255, copied without decoding.
+
    procedure Set_Empty_Interval_User_Context (Interval : in out RX_Job_Interval_Config);
+   --  Clear bytes and mark present-empty; native Add calls the context setter with an empty owned vector<uint8 t> in std::any. Distinct from absence, not proof the provider interprets this type.
+   --  @param Interval Owned interval configuration.
+
    procedure Clear_Interval_User_Context (Interval : in out RX_Job_Interval_Config);
+   --  Clear bytes and mark absent, skipping the context setter. No typed upstream getter is called on absent or mismatched std::any data; the pinned getter is unsafe for those cases.
+   --  @param Interval Owned interval configuration.
+
    procedure Set_Interval_Execution_Type
      (Interval : in out RX_Job_Interval_Config; Value : Execution_Type);
+   --  Replace the copied interval execution selector, default Normal; independent of event selectors. Does not install conditional triggers or validate event/interval relationships.
+   --  @param Interval Owned configuration.
+   --  @param Value Provider execution request.
+
    procedure Append_Stab_Point (Interval : in out RX_Job_Interval_Config; Value : Pointing);
+   --  Append a complete copied pointing value in order, preserving its active kind and exact units. Add validates active UTC fractions, not event-index membership or physical pointing; no coordinate conversion or beam steering.
+   --  @param Interval Owned interval configuration.
+   --  @param Value Pointing value to copy; later source changes do not affect the interval.
+
    type Interval_Status_Enable is (Never, Always, On_Exception);
+   --  Provider reporting policy, not callback registration or proof of delivery.
+   --  @enum Never Representation 0: do not request interval status; default, no bridge registration required for Add.
+   --  @enum Always Representation 1: request status always; Add requires usable bridge registration.
+   --  @enum On_Exception Representation 2: request exception status; Add requires usable bridge registration.
+
    for Interval_Status_Enable use (Never => 0, Always => 1, On_Exception => 2);
    procedure Set_Interval_Status_Enable
      (Interval : in out RX_Job_Interval_Config; Mode : Interval_Status_Enable);
+   --  Replace the reporting policy. Always/OnException require successful usable bridge status registration before Add; neither setting nor successful Add guarantees callback delivery. Never needs no registration.
+   --  @param Interval Owned interval configuration.
+   --  @param Mode Provider reporting policy, default Never.
+
    function Create_RX_Job_Interval
      (Interval_ID                        : Interfaces.Unsigned_32;
       Sequence_Duration_Femtoseconds     : Interfaces.Integer_64;
@@ -866,29 +1441,93 @@ package AMS.MEL.RF.C2 is
       Iterations_Per_Signal              : Interfaces.Unsigned_64 := 0;
       Max_Data_Rate_BPS                  : Long_Float := 0.0;
       Max_Sample_Rate_Hz                 : Long_Float := 0.0) return RX_Job_Interval_Config;
+   --  Copy interval scalars with empty RX events, points, commands and activity; optional collections absent, Normal execution, power mode zero and status Never. All signed timings, including negative values, pass without quantization or relationship checks. Counts must fit provider size t at Add; no infinite-repeat meaning is assigned to zero. Native doubles retain signed zero and nonfinite classification without range validation, not NaN payload bits.
+   --  @param Interval_ID Exact unsigned 32-bit interval identity; no uniqueness validation.
+   --  @param Sequence_Duration_Femtoseconds Signed 64-bit sequence duration in femtoseconds.
+   --  @param Job_Details_ID Unsigned 32-bit JobDetail identity, default zero; no equality check with the receiving Job.
+   --  @param Interval_Start_Femtoseconds Signed femtoseconds relative to Job start; default pinned continuation zero, ambiguous with ordinary zero start.
+   --  @param Interval_Starting_Gap_Femtoseconds Signed femtoseconds before the initial sequence, default zero.
+   --  @param Sequence_Repeat_Count Unsigned 64-bit sequence repetitions, default one; size t representability checked at Add.
+   --  @param Calibration_Duration_Femtoseconds Signed femtoseconds for calibration following sequence iterations, default zero.
+   --  @param Interval_Ending_Gap_Femtoseconds Signed femtoseconds following calibration, default zero.
+   --  @param Phase_Coherence_With_Prior Requested coherence with preceding interval, default False; not a bridge phase guarantee.
+   --  @param Iterations_Per_Signal Unsigned repetition interval for product-availability signaling, default zero; upstream zero suppresses periodic signaling but describes a final-Job signal. No bridge delivery guarantee.
+   --  @param Max_Data_Rate_BPS Per-channel maximum bits per second, native double, default zero.
+   --  @param Max_Sample_Rate_Hz Per-channel maximum sample rate in Hz, native double, default zero.
+   --  @return Owned interval configuration, not a scheduled or executing interval.
+
    procedure Append_RX_Event
      (Interval : in out RX_Job_Interval_Config; Event : RX_Receive_Event_Config);
+   --  Append an independent complete RX event copy in order, retaining duplicates. Subsequent edits to the source event do not affect the interval; no provider submission occurs.
+   --  @param Interval Owned interval configuration.
+   --  @param Event Owned RX configuration to copy.
+
    procedure Append_TX_Event
      (Interval : in out RX_Job_Interval_Config; Event : TX_Transmit_Event_Config);
+   --  Append an independent complete TX event copy in order, retaining duplicates. Subsequent edits to the source event do not affect the interval; no provider submission occurs. Marks TX events present, including their ordered modulation references.
+   --  @param Interval Owned interval configuration.
+   --  @param Event Owned TX configuration to copy.
+
    procedure Set_Modulations (Interval : in out RX_Job_Interval_Config; Table : Modulation_Table);
+   --  Copy the ordered definition table and mark it present, including empty. Later source edits are independent. All active definitions and final same-interval TX references validate at Add; no provider registry or cross-interval lookup.
+   --  @param Interval Owned interval configuration.
+   --  @param Table Final definitions to copy, retaining order and duplicates.
+
    procedure Clear_Modulations (Interval : in out RX_Job_Interval_Config);
+   --  Clear definitions and restore absence independently of TX events/references. Nonnegative references remaining in an active TX list then fail final Add validation; no automatic reference repair.
+   --  @param Interval Owned interval configuration.
+
    procedure Set_Empty_Modulations (Interval : in out RX_Job_Interval_Config);
+   --  Clear definitions and mark the table present-empty, invoking native setModulations with an empty vector. Nonnegative active references cannot resolve; -1 remains permitted.
+   --  @param Interval Owned interval configuration.
+
    --  Set empty expresses presence; Clear restores absence.
    procedure Set_Empty_TX_Events (Interval : in out RX_Job_Interval_Config);
+   --  Clear TX events and mark present-empty so native setTxEvents receives an empty vector. RX events and modulation table remain unchanged.
+   --  @param Interval Owned interval configuration.
+
    procedure Clear_TX_Events (Interval : in out RX_Job_Interval_Config);
+   --  Clear TX events and restore absence, skipping the native TX setter on subsequent construction. RX events and modulation definitions remain unchanged; no provider cancellation occurs.
+   --  @param Interval Owned interval configuration.
+
    type RX_Job_Interval_List is private;
+   --  Owned ordered interval values, initially empty; copies are independent.
+   --  Append retains duplicates; Add submits in list order, not interval-ID sort order.
+
    procedure Append_Job_Interval
      (Intervals : in out RX_Job_Interval_List; Interval : RX_Job_Interval_Config);
+   --  Append a complete independent interval copy in order, retaining duplicate IDs and values; no provider call.
+   --  @param Intervals Owned interval list.
+   --  @param Interval Configuration to copy, including nested values and presence flags.
+
    function Job_Interval_Count (Intervals : RX_Job_Interval_List) return Natural;
+   --  Read only the local list length; no Job/provider query.
+   --  @param Intervals Owned list to inspect.
+   --  @return Number of stored interval values; Natural conversion is checked.
+
    --  Synchronous, externally serialized with same-Job calls and Close.
    --  Add/Flush reject after Finalize or full Cancel has been attempted.
    --  Cancel_Remaining is repeatable, including during/after Finalize, until
    --  full Cancel has been attempted. Failures raise Provider_Error; no retry.
    procedure Add_RX_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List);
+   --  Synchronously serialize current safe values through native contract version 16, including mixed RX/TX. Historical v1-v15 contracts retain frozen layouts/domains: v16 uses the v8 base, TX-v3 and modulation-v5 plus context, not interchangeable array strides. Full-batch structural validation and local copied-value preparation precede one unlocked provider Add, including empty batches. Ordered intervals/events and duplicates survive. Borrowed transient Ada/C backing lasts through the call; native values own copies (native buffer copies share fresh sample vectors). Invalid final configuration raises Constraint Error before provider Add; lifecycle, registration and provider failures raise Provider Error. Add requires an open Job before any Finalize/full Cancel attempt, even if that attempt failed. Enabled reporting requires usable prior registration; no delivery guarantee. Externally serialize all same-Job calls/Close. No automatic retry: provider may mutate before throwing, and normal void return proves neither scheduling nor event execution/RF emission. Snapshot remains unchanged.
+   --  @param Object Open Job with Add admission still available.
+   --  @param Intervals Complete owned ordered batch; not consumed by submission.
+
    procedure Add_Job_Intervals (Object : in out Job; Intervals : RX_Job_Interval_List)
    renames Add_RX_Job_Intervals;
+   --  Public rename of Add RX Job Intervals, not a separate native implementation. Identical version-16 serialization, ownership, validation, registration, lifecycle/error and no-retry contracts apply; this spelling makes mixed RX/TX scope explicit.
+   --  @param Object Open Job, externally serialized with all same-Job calls/Close.
+   --  @param Intervals Ordered copied configurations, including an empty batch.
+
    procedure Flush_Job (Object : in out Job);
+   --  Synchronously call provider flush once per admitted invocation, requesting buffered intervals be sent. Allowed only before any Finalize/full Cancel attempt, even a failed attempt. Does not Finalize or alter copied snapshots. Provider failures raise Provider Error with no retry; mutation may precede a throw. Normal void return does not prove delivery, scheduling or RF execution. No status registration required.
+   --  @param Object Open Job; externally serialize same-Job calls and Close.
+
    procedure Cancel_Remaining_Job_Intervals (Object : in out Job);
+   --  Synchronously request removal of unexecuted intervals; distinct from full Cancel Job and does not consume that full-Cancel attempt. Repeatable before/during/after Finalize until any full Cancel attempt, including False or exception. No status registration required. Each admitted call invokes provider once, with no automatic retry; mutation may precede Provider Error. Normal void return proves neither effective cancellation nor notification; immutable snapshot is unchanged.
+   --  @param Object Open Job; externally serialize same-Job calls and Close.
+
    --  Repeatable, including before/during/after Finalize, until full Cancel
    --  has been attempted (even False or an exception). No status stream is
    --  required. Normal return means only the provider's void method returned
@@ -902,6 +1541,11 @@ package AMS.MEL.RF.C2 is
       Interval_ID                 : Interfaces.Unsigned_32;
       Event_ID                    : Interfaces.Unsigned_32;
       Added_Duration_Femtoseconds : Interfaces.Integer_64);
+   --  Synchronously forward exact IDs and signed femtoseconds once per admitted call. Repeatable before/during/after Finalize until any full Cancel attempt, including False or exception. No lookup, cumulative budget accounting, duration arithmetic, quantization or automatic retry. Provider may mutate before Provider Error; explicit retries require provider-specific knowledge. Normal void return proves neither support, effective extension nor notification. Status registration is optional and snapshot unchanged; external same-Job/Close serialization required.
+   --  @param Object Open Job not blocked by a full Cancel attempt.
+   --  @param Interval_ID Full unsigned 32-bit interval identity, no bridge existence check.
+   --  @param Event_ID Full unsigned 32-bit event identity, no bridge membership check.
+   --  @param Added_Duration_Femtoseconds Exact signed 64-bit added duration; zero, negative and extrema pass unchanged, not an interval-start sentinel.
 
    type Job_Status is
      (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);

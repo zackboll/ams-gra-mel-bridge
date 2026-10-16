@@ -1079,3 +1079,38 @@ and not credited as final qualification. Coverage remains 3,253/4,295, RF C2
 private warning identities, 418 deferred DOC-005C gaps and historical evidence
 remain unchanged. No new Squall/hardware execution. Publication/hosted evidence
 is recorded separately; no merge, tag, release or feature Pages deployment.
+
+## DOC-005C — all three documentation checkpoints qualified
+
+Selected main `4d4b07f83831ee524b5c91074ba84dd22070129d` contains merged
+DOC-005B reviewed head `ce470c267de9c45c7cb4c64b00e98c52bdd16fe5`.
+Isolated worktree `/home/zboll/git/ams-mel-doc-005c`, branch
+`docs/005c-rf-c2-events-waveforms-intervals`; evidence
+`/home/zboll/git/ams-mel-doc-005c-evidence/r1`. Earlier worktrees/evidence intact.
+
+Measured exact removals: 005C1 133, 005C2 165, 005C3 120, total 418.
+RF C2 is 771/771; repository 3,671/4,295, remaining gaps 624. Public warning
+removals 97/113/83 total 293; final raw/public/private 599/526/73, with private
+identities unchanged. No new gaps/identities, unrelated package coverage, native
+profiles/anchors or Health exception changes. Every checkpoint passed strict
+semantic/docs/HTML/link generation, 75 documentation tests, six integrity tests,
+format checks and token/protected-byte integrity. Attachment corrections and
+failed pre-ratchet attempts remain recorded, not credited as passing runs.
+
+Final combined deterministic-site/regression/publication checks are pending at
+this checkpoint record; no incomplete PR publication or hardware claim.
+
+### DOC-005C final exact-source local qualification — PASS
+
+Frozen specification SHA-256
+`509c94edb5f7d3a95d057a8c2064b77c0379a15115d436d282592ee37ba232aa`
+passed two fresh byte-identical complete sites (32 files), HTML 31 pages/1,307
+links, 75 documentation tests, six integrity tests, literal-aware executable-token
+and protected-byte checks, 804 vendor checksums, exact coverage/warning identities,
+then sequential `make test-native` (434/434), `make test-ada`, `make check` and
+`make check-ada-format`. Final hash unchanged; exactly seven authorized files.
+All inherited comment lines and completed DOC-005B lifecycle/VA/Job descriptions
+are preserved. In-scope historical adjacent-comment attachments are explicitly
+reconciled in the coverage report. No new provider/hardware claim or DOC-006.
+Main refetched unchanged; publication/hosted checks are separate exact-head
+observations. Full output/statuses remain in external `r1/final`.
