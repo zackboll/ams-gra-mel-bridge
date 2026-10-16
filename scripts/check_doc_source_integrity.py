@@ -18,6 +18,7 @@ DOCUMENTATION_ADDITIONS = frozenset({
     "scripts/test_compare_gnatdoc_warnings.py", "scripts/test_doc_foundation.py",
     "scripts/test_doc_source_integrity.py", "scripts/test_gnatdoc_inventory.py",
     "scripts/validate_docs.py",
+    "scripts/build_docs_portal.py", "scripts/test_docs_portal.py",
 })
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'

@@ -50,6 +50,7 @@ class SourceIntegrityTests(unittest.TestCase):
             'integration/new.sh': '#!/bin/sh\nexit 0\n',
             '.github/workflows/unexpected.yml': 'name: Unexpected\n',
             'scripts/unrelated.sh': '#!/bin/sh\nexit 0\n',
+            'scripts/unrelated.py': 'added = True\n',
             'unrelated.txt': 'Unrelated top-level file.\n',
             'unrelated.gpr': 'project Unrelated is end Unrelated;\n',
             'native/src/line\nbreak.cpp': 'int added = 1;\n',
@@ -72,6 +73,7 @@ class SourceIntegrityTests(unittest.TestCase):
                      'docs_api.gpr', 'docs_internal.gpr',
                      'scripts/check_doc_source_integrity.py',
                      'scripts/test_doc_source_integrity.py',
+                     'scripts/build_docs_portal.py', 'scripts/test_docs_portal.py',
                      'scripts/generate_docs_baseline.sh',
                      '.github/workflows/documentation.yml'):
             with self.subTest(path=name):

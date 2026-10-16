@@ -28,6 +28,6 @@ python3 scripts/compare_gnatdoc_warnings.py --fail-on-removed \
     docs/gnatdoc-warning-baseline.txt obj/docs/gnatdoc.log
 python3 scripts/classify_gnatdoc_warnings.py obj/docs/gnatdoc.log \
     --report obj/docs/warnings.json
-cp docs/index.html _site/index.html
+python3 scripts/build_docs_portal.py _site
 python3 scripts/check_doc_coverage.py _site --report obj/docs/coverage.json
 python3 scripts/validate_docs.py _site

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "home": "index.html",
+  "stylesheet": "assets/portal.css",
+  "guides": [
+    {"id": "getting-started", "label": "Getting Started", "path": "guides/getting-started.html"},
+    {"id": "architecture", "label": "Architecture", "path": "guides/architecture.html"},
+    {"id": "ir-workflows", "label": "IR Workflows", "path": "guides/ir-workflows.html"},
+    {"id": "rf-workflows", "label": "RF Workflows", "path": "guides/rf-workflows.html"},
+    {"id": "ownership-and-errors", "label": "Ownership and Errors", "path": "guides/ownership-and-errors.html"},
+    {"id": "api-map", "label": "API Map", "path": "guides/api-map.html"}
+  ]
+}
