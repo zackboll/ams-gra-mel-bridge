@@ -361,12 +361,6 @@ AMS.MEL.RF.C2.Virtual_Aperture_Queries: AMS.MEL.RF.C2.Virtual_Aperture_Queries.S
 AMS.MEL.RF.C2.Virtual_Aperture_Queries: AMS.MEL.RF.C2.Virtual_Aperture_Queries.Status_Kind: type: type Status_Kind is (None, Operational, Degraded, Failed);: literal 2:Degraded
 AMS.MEL.RF.C2.Virtual_Aperture_Queries: AMS.MEL.RF.C2.Virtual_Aperture_Queries.Status_Kind: type: type Status_Kind is (None, Operational, Degraded, Failed);: literal 3:Failed
 AMS.MEL.RF.C2.Virtual_Aperture_Queries: package: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Femtoseconds: function: function Actual_Start_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Femtoseconds: function: function Actual_Start_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Femtoseconds: function: function Actual_Start_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Seconds: function: function Actual_Start_Seconds ( Object : Job ) return Interfaces . Integer_64 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Seconds: function: function Actual_Start_Seconds ( Object : Job ) return Interfaces . Integer_64 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Actual_Start_Seconds: function: function Actual_Start_Seconds ( Object : Job ) return Interfaces . Integer_64 ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Add_Job_Intervals: procedure: procedure Add_Job_Intervals ( Object : in out Job ; Intervals : RX_Job_Interval_List ) renames Add_RX_Job_Intervals ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Add_Job_Intervals: procedure: procedure Add_Job_Intervals ( Object : in out Job ; Intervals : RX_Job_Interval_List ) renames Add_RX_Job_Intervals ;: parameter 0:Object
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Add_Job_Intervals: procedure: procedure Add_Job_Intervals ( Object : in out Job ; Intervals : RX_Job_Interval_List ) renames Add_RX_Job_Intervals ;: parameter 1:Intervals
@@ -382,35 +376,11 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Applicable_TX_Element_Group: procedure: proc
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_CPFSK_Chip: procedure: procedure Append_CPFSK_Chip ( Config : in out Modulation_Config ; Chip : Boolean ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_CPFSK_Chip: procedure: procedure Append_CPFSK_Chip ( Config : in out Modulation_Config ; Chip : Boolean ) ;: parameter 0:Config
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_CPFSK_Chip: procedure: procedure Append_CPFSK_Chip ( Config : in out Modulation_Config ; Chip : Boolean ) ;: parameter 1:Chip
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Capability_ID: procedure: procedure Append_Capability_ID ( Config : in out Virtual_Aperture_Config ; Value : AMS . MEL . IR . UCI_ID ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Capability_ID: procedure: procedure Append_Capability_ID ( Config : in out Virtual_Aperture_Config ; Value : AMS . MEL . IR . UCI_ID ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Capability_ID: procedure: procedure Append_Capability_ID ( Config : in out Virtual_Aperture_Config ; Value : AMS . MEL . IR . UCI_ID ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_Connection: procedure: procedure Append_Endpoint_Connection ( Connections : in out Endpoint_Connections ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_Connection: procedure: procedure Append_Endpoint_Connection ( Connections : in out Endpoint_Connections ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) ;: parameter 0:Connections
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_Connection: procedure: procedure Append_Endpoint_Connection ( Connections : in out Endpoint_Connections ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) ;: parameter 1:Element_Group_Label
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_Connection: procedure: procedure Append_Endpoint_Connection ( Connections : in out Endpoint_Connections ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) ;: parameter 2:Data_Pipe_Label
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_Connection: procedure: procedure Append_Endpoint_Connection ( Connections : in out Endpoint_Connections ; Element_Group_Label , Data_Pipe_Label : String ; Endpoint_ID : Interfaces . Unsigned_64 ) ;: parameter 3:Endpoint_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; Data_Pipe_Label : String ; ID : Interfaces . Unsigned_64 ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; Data_Pipe_Label : String ; ID : Interfaces . Unsigned_64 ) ;: parameter 0:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; Data_Pipe_Label : String ; ID : Interfaces . Unsigned_64 ) ;: parameter 1:Data_Pipe_Label
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; Data_Pipe_Label : String ; ID : Interfaces . Unsigned_64 ) ;: parameter 2:ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; ID : Interfaces . Unsigned_64 ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; ID : Interfaces . Unsigned_64 ) ;: parameter 0:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Endpoint_ID: procedure: procedure Append_Endpoint_ID ( Group : in out RX_Element_Group_Config ; ID : Interfaces . Unsigned_64 ) ;: parameter 1:ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out RX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out RX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 0:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out RX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 1:Min_Hz
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out RX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 2:Max_Hz
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out TX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out TX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 0:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out TX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 1:Min_Hz
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Center_Frequency: procedure: procedure Append_Expected_Center_Frequency ( Group : in out TX_Element_Group_Config ; Min_Hz , Max_Hz : Long_Float ) ;: parameter 2:Max_Hz
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Pointing: procedure: procedure Append_Expected_Pointing ( Group : in out RX_Element_Group_Config ; Value : Pointing ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Pointing: procedure: procedure Append_Expected_Pointing ( Group : in out RX_Element_Group_Config ; Value : Pointing ) ;: parameter 0:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Expected_Pointing: procedure: procedure Append_Expected_Pointing ( Group : in out RX_Element_Group_Config ; Value : Pointing ) ;: parameter 1:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Instance_Selection: procedure: procedure Append_Instance_Selection ( Config : in out Job_Config ; ID : Interfaces . Unsigned_32 ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Instance_Selection: procedure: procedure Append_Instance_Selection ( Config : in out Job_Config ; ID : Interfaces . Unsigned_32 ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Instance_Selection: procedure: procedure Append_Instance_Selection ( Config : in out Job_Config ; ID : Interfaces . Unsigned_32 ) ;: parameter 1:ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Interval_Local_Function_Command: procedure: procedure Append_Interval_Local_Function_Command ( Interval : in out RX_Job_Interval_Config ; Command : Local_Function_Command ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Interval_Local_Function_Command: procedure: procedure Append_Interval_Local_Function_Command ( Interval : in out RX_Job_Interval_Config ; Command : Local_Function_Command ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Interval_Local_Function_Command: procedure: procedure Append_Interval_Local_Function_Command ( Interval : in out RX_Job_Interval_Config ; Command : Local_Function_Command ) ;: parameter 1:Command
@@ -420,9 +390,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Interval_User_Context_Byte: procedure: proce
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Job_Interval: procedure: procedure Append_Job_Interval ( Intervals : in out RX_Job_Interval_List ; Interval : RX_Job_Interval_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Job_Interval: procedure: procedure Append_Job_Interval ( Intervals : in out RX_Job_Interval_List ; Interval : RX_Job_Interval_Config ) ;: parameter 0:Intervals
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Job_Interval: procedure: procedure Append_Job_Interval ( Intervals : in out RX_Job_Interval_List ; Interval : RX_Job_Interval_Config ) ;: parameter 1:Interval
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Info: procedure: procedure Append_Local_Function_Info ( Config : in out Virtual_Aperture_Config ; Value : String ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Info: procedure: procedure Append_Local_Function_Info ( Config : in out Virtual_Aperture_Config ; Value : String ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Info: procedure: procedure Append_Local_Function_Info ( Config : in out Virtual_Aperture_Config ; Value : String ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Write: procedure: procedure Append_Local_Function_Write ( Command : in out Local_Function_Command ; Address , Value : Interfaces . Unsigned_64 ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Write: procedure: procedure Append_Local_Function_Write ( Command : in out Local_Function_Command ; Address , Value : Interfaces . Unsigned_64 ) ;: parameter 0:Command
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Local_Function_Write: procedure: procedure Append_Local_Function_Write ( Command : in out Local_Function_Command ; Address , Value : Interfaces . Unsigned_64 ) ;: parameter 1:Address
@@ -471,9 +438,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Pulse_Detection_Threshold: procedure: proced
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Pulse_Detection_Threshold: procedure: procedure Append_Pulse_Detection_Threshold ( Settings : in out Pulse_Detection_Settings ; Leading_Edge_DB , Trailing_Edge_DB : Long_Float ) ;: parameter 0:Settings
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Pulse_Detection_Threshold: procedure: procedure Append_Pulse_Detection_Threshold ( Settings : in out Pulse_Detection_Settings ; Leading_Edge_DB , Trailing_Edge_DB : Long_Float ) ;: parameter 1:Leading_Edge_DB
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Pulse_Detection_Threshold: procedure: procedure Append_Pulse_Detection_Threshold ( Settings : in out Pulse_Detection_Settings ; Leading_Edge_DB , Trailing_Edge_DB : Long_Float ) ;: parameter 2:Trailing_Edge_DB
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Element_Group: procedure: procedure Append_RX_Element_Group ( Config : in out Job_Config ; Group : RX_Element_Group_Config ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Element_Group: procedure: procedure Append_RX_Element_Group ( Config : in out Job_Config ; Group : RX_Element_Group_Config ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Element_Group: procedure: procedure Append_RX_Element_Group ( Config : in out Job_Config ; Group : RX_Element_Group_Config ) ;: parameter 1:Group
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Event: procedure: procedure Append_RX_Event ( Interval : in out RX_Job_Interval_Config ; Event : RX_Receive_Event_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Event: procedure: procedure Append_RX_Event ( Interval : in out RX_Job_Interval_Config ; Event : RX_Receive_Event_Config ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_RX_Event: procedure: procedure Append_RX_Event ( Interval : in out RX_Job_Interval_Config ; Event : RX_Receive_Event_Config ) ;: parameter 1:Event
@@ -484,9 +448,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Step: procedure: procedure Append_Step ( Pat
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Step: procedure: procedure Append_Step ( Pattern : in out Event_Waveform_Pattern ; Profile_Index : Waveform_Profile_Index ; Num_Chip_Iterations : Interfaces . Integer_32 := 1 ) ;: parameter 0:Pattern
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Step: procedure: procedure Append_Step ( Pattern : in out Event_Waveform_Pattern ; Profile_Index : Waveform_Profile_Index ; Num_Chip_Iterations : Interfaces . Integer_32 := 1 ) ;: parameter 1:Profile_Index
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Step: procedure: procedure Append_Step ( Pattern : in out Event_Waveform_Pattern ; Profile_Index : Waveform_Profile_Index ; Num_Chip_Iterations : Interfaces . Integer_32 := 1 ) ;: parameter 2:Num_Chip_Iterations
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Element_Group: procedure: procedure Append_TX_Element_Group ( Config : in out Job_Config ; Group : TX_Element_Group_Config ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Element_Group: procedure: procedure Append_TX_Element_Group ( Config : in out Job_Config ; Group : TX_Element_Group_Config ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Element_Group: procedure: procedure Append_TX_Element_Group ( Config : in out Job_Config ; Group : TX_Element_Group_Config ) ;: parameter 1:Group
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Event: procedure: procedure Append_TX_Event ( Interval : in out RX_Job_Interval_Config ; Event : TX_Transmit_Event_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Event: procedure: procedure Append_TX_Event ( Interval : in out RX_Job_Interval_Config ; Event : TX_Transmit_Event_Config ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_TX_Event: procedure: procedure Append_TX_Event ( Interval : in out RX_Job_Interval_Config ; Event : TX_Transmit_Event_Config ) ;: parameter 1:Event
@@ -496,35 +457,13 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Waveform_Sample_I16: procedure: procedure Ap
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Waveform_Sample_I8: procedure: procedure Append_Waveform_Sample_I8 ( Config : in out Modulation_Config ; Sample : Waveform_Sample_I8 ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Waveform_Sample_I8: procedure: procedure Append_Waveform_Sample_I8 ( Config : in out Modulation_Config ; Sample : Waveform_Sample_I8 ) ;: parameter 0:Config
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Append_Waveform_Sample_I8: procedure: procedure Append_Waveform_Sample_I8 ( Config : in out Modulation_Config ; Sample : Waveform_Sample_I8 ) ;: parameter 1:Sample
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Azimuth_Rad: function: function Azimuth_Rad ( Value : Pointing ) return Long_Float ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Azimuth_Rad: function: function Azimuth_Rad ( Value : Pointing ) return Long_Float ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Azimuth_Rad: function: function Azimuth_Rad ( Value : Pointing ) return Long_Float ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Byte_Array: type: type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.C2_MEL: type: type C2_MEL is tagged limited private;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: parameter 0:Chip_Data
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: parameter 1:Pulse_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: parameter 2:Chip_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: parameter 3:Frequency_Offset_Hz
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.CPFSK_Pulse: function: function CPFSK_Pulse ( Chip_Data : Modulation_Boolean_Array ; Pulse_Duration_Femtoseconds , Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Frequency_Offset_Hz : Long_Float ) return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Error: type: type Cancel_Error is (None);: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Error: type: type Cancel_Error is (None);: literal 0:None
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Job: function: function Cancel_Job ( Object : in out Job ) return Cancel_Result ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Job: function: function Cancel_Job ( Object : in out Job ) return Cancel_Result ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Job: function: function Cancel_Job ( Object : in out Job ) return Cancel_Result ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Remaining_Job_Intervals: procedure: procedure Cancel_Remaining_Job_Intervals ( Object : in out Job ) ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancel_Result: type: type Cancel_Result is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancelled: function: function Cancelled ( Result : Cancel_Result ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancelled: function: function Cancelled ( Result : Cancel_Result ) return Boolean ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Cancelled: function: function Cancelled ( Result : Cancel_Result ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Job_Request ' Class ) return Job ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Job_Request ' Class ) return Job ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Job_Request ' Class ) return Job ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Virtual_Aperture_Request ' Class ) return Virtual_Aperture ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Virtual_Aperture_Request ' Class ) return Virtual_Aperture ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Claim: function: function Claim ( Request : Virtual_Aperture_Request ' Class ) return Virtual_Aperture ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Estimated_Stab_Point: procedure: procedure Clear_Estimated_Stab_Point ( Config : in out Job_Config ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Estimated_Stab_Point: procedure: procedure Clear_Estimated_Stab_Point ( Config : in out Job_Config ) ;: parameter 0:Config
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Interval_Endpoint_Connections: procedure: procedure Clear_Interval_Endpoint_Connections ( Interval : in out RX_Job_Interval_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Interval_Endpoint_Connections: procedure: procedure Clear_Interval_Endpoint_Connections ( Interval : in out RX_Job_Interval_Config ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Interval_Product_Stream_Params: procedure: procedure Clear_Interval_Product_Stream_Params ( Interval : in out RX_Job_Interval_Config ) ;: description
@@ -539,68 +478,13 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Pulse_Detection_Settings: procedure: procedur
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_Pulse_Detection_Settings: procedure: procedure Clear_Pulse_Detection_Settings ( Event : in out RX_Receive_Event_Config ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_TX_Events: procedure: procedure Clear_TX_Events ( Interval : in out RX_Job_Interval_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Clear_TX_Events: procedure: procedure Clear_TX_Events ( Interval : in out RX_Job_Interval_Config ) ;: parameter 0:Interval
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out C2_MEL ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out C2_MEL ) ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out Job ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out Job ) ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out Virtual_Aperture ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Object : in out Virtual_Aperture ) ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Request : in out Job_Request ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Request : in out Job_Request ) ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Request : in out Virtual_Aperture_Request ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Close: procedure: procedure Close ( Request : in out Virtual_Aperture_Request ) ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Conic_Rad: function: function Conic_Rad ( Value : Pointing ) return Long_Float ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Conic_Rad: function: function Conic_Rad ( Value : Pointing ) return Long_Float ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Conic_Rad: function: function Conic_Rad ( Value : Pointing ) return Long_Float ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Continue_From_Previous_Femtoseconds: object: Continue_From_Previous_Femtoseconds : constant Interfaces.Integer_64 : = 0;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Baseline_Relative_Pointing: function: function Create_Baseline_Relative_Pointing ( Conic_Rad : Long_Float ) return Pointing ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Baseline_Relative_Pointing: function: function Create_Baseline_Relative_Pointing ( Conic_Rad : Long_Float ) return Pointing ;: parameter 0:Conic_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Baseline_Relative_Pointing: function: function Create_Baseline_Relative_Pointing ( Conic_Rad : Long_Float ) return Pointing ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 0:Location_X_M
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 1:Location_Y_M
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 2:Location_Z_M
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 3:Velocity_X_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 4:Velocity_Y_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 5:Velocity_Z_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 6:Time_Of_Validity
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_ECEF_Pointing: function: function Create_ECEF_Pointing ( Location_X_M , Location_Y_M , Location_Z_M : Long_Float ; Velocity_X_MPS , Velocity_Y_MPS , Velocity_Z_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Endpoint_Connections: function: function Create_Endpoint_Connections return Endpoint_Connections ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Endpoint_Connections: function: function Create_Endpoint_Connections return Endpoint_Connections ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Face_Relative_Pointing: function: function Create_Face_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Face_Relative_Pointing: function: function Create_Face_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: parameter 0:Azimuth_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Face_Relative_Pointing: function: function Create_Face_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: parameter 1:Elevation_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Face_Relative_Pointing: function: function Create_Face_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 0:Request_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 1:Priority
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 2:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 3:Precedence_Within_Priority
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 4:Interruptable
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : RX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 0:Request_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 1:Priority
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 2:Group
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 3:Precedence_Within_Priority
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: parameter 4:Interruptable
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Job_Config: function: function Create_Job_Config ( Request_ID , Priority : Interfaces . Unsigned_32 ; Group : TX_Element_Group_Config ; Precedence_Within_Priority : Interfaces . Unsigned_32 := 0 ; Interruptable : Boolean := False ) return Job_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 0:Latitude_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 1:Longitude_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 2:Altitude_M
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 3:Velocity_North_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 4:Velocity_East_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 5:Velocity_Down_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: parameter 6:Time_Of_Validity
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_LLA_Pointing: function: function Create_LLA_Pointing ( Latitude_Rad , Longitude_Rad , Altitude_M : Long_Float ; Velocity_North_MPS , Velocity_East_MPS , Velocity_Down_MPS : Long_Float ; Time_Of_Validity : UTC_Time ) return Pointing ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Local_Function_Command: function: function Create_Local_Function_Command ( Local_Function_Type_ID : Interfaces . Unsigned_32 ; Instance : Interfaces . Unsigned_64 ) return Local_Function_Command ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Local_Function_Command: function: function Create_Local_Function_Command ( Local_Function_Type_ID : Interfaces . Unsigned_32 ; Instance : Interfaces . Unsigned_64 ) return Local_Function_Command ;: parameter 0:Local_Function_Type_ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Local_Function_Command: function: function Create_Local_Function_Command ( Local_Function_Type_ID : Interfaces . Unsigned_32 ; Instance : Interfaces . Unsigned_64 ) return Local_Function_Command ;: parameter 1:Instance
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Local_Function_Command: function: function Create_Local_Function_Command ( Local_Function_Type_ID : Interfaces . Unsigned_32 ; Instance : Interfaces . Unsigned_64 ) return Local_Function_Command ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Platform_Relative_Pointing: function: function Create_Platform_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Platform_Relative_Pointing: function: function Create_Platform_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: parameter 0:Azimuth_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Platform_Relative_Pointing: function: function Create_Platform_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: parameter 1:Elevation_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Platform_Relative_Pointing: function: function Create_Platform_Relative_Pointing ( Azimuth_Rad , Elevation_Rad : Long_Float ) return Pointing ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Product_Stream_Params: function: function Create_Product_Stream_Params return Product_Stream_Params ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Product_Stream_Params: function: function Create_Product_Stream_Params return Product_Stream_Params ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Pulse_Detection_Settings: function: function Create_Pulse_Detection_Settings ( Reference : Pulse_Threshold_Reference ; Leading_M , Leading_N , Trailing_M , Trailing_N : Interfaces . Unsigned_8 ; Min_Pulse_Width_Femtoseconds : Interfaces . Integer_64 ; Time_Tag_Threshold : Pulse_Time_Tag_Threshold ) return Pulse_Detection_Settings ;: description
@@ -612,11 +496,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Pulse_Detection_Settings: function: function
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Pulse_Detection_Settings: function: function Create_Pulse_Detection_Settings ( Reference : Pulse_Threshold_Reference ; Leading_M , Leading_N , Trailing_M , Trailing_N : Interfaces . Unsigned_8 ; Min_Pulse_Width_Femtoseconds : Interfaces . Integer_64 ; Time_Tag_Threshold : Pulse_Time_Tag_Threshold ) return Pulse_Detection_Settings ;: parameter 5:Min_Pulse_Width_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Pulse_Detection_Settings: function: function Create_Pulse_Detection_Settings ( Reference : Pulse_Threshold_Reference ; Leading_M , Leading_N , Trailing_M , Trailing_N : Interfaces . Unsigned_8 ; Min_Pulse_Width_Femtoseconds : Interfaces . Integer_64 ; Time_Tag_Threshold : Pulse_Time_Tag_Threshold ) return Pulse_Detection_Settings ;: parameter 6:Time_Tag_Threshold
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Pulse_Detection_Settings: function: function Create_Pulse_Detection_Settings ( Reference : Pulse_Threshold_Reference ; Leading_M , Leading_N , Trailing_M , Trailing_N : Interfaces . Unsigned_8 ; Min_Pulse_Width_Femtoseconds : Interfaces . Integer_64 ; Time_Tag_Threshold : Pulse_Time_Tag_Threshold ) return Pulse_Detection_Settings ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Element_Group: function: function Create_RX_Element_Group ( Label : String ; Desired_Duty_Factor : Long_Float := 1.0 ; Data_Pipe_Label : String := "default" ) return RX_Element_Group_Config ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Element_Group: function: function Create_RX_Element_Group ( Label : String ; Desired_Duty_Factor : Long_Float := 1.0 ; Data_Pipe_Label : String := "default" ) return RX_Element_Group_Config ;: parameter 0:Label
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Element_Group: function: function Create_RX_Element_Group ( Label : String ; Desired_Duty_Factor : Long_Float := 1.0 ; Data_Pipe_Label : String := "default" ) return RX_Element_Group_Config ;: parameter 1:Desired_Duty_Factor
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Element_Group: function: function Create_RX_Element_Group ( Label : String ; Desired_Duty_Factor : Long_Float := 1.0 ; Data_Pipe_Label : String := "default" ) return RX_Element_Group_Config ;: parameter 2:Data_Pipe_Label
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Element_Group: function: function Create_RX_Element_Group ( Label : String ; Desired_Duty_Factor : Long_Float := 1.0 ; Data_Pipe_Label : String := "default" ) return RX_Element_Group_Config ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Job_Interval: function: function Create_RX_Job_Interval ( Interval_ID : Interfaces . Unsigned_32 ; Sequence_Duration_Femtoseconds : Interfaces . Integer_64 ; Job_Details_ID : Interfaces . Unsigned_32 := 0 ; Interval_Start_Femtoseconds : Interfaces . Integer_64 := Continue_From_Previous_Femtoseconds ; Interval_Starting_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Sequence_Repeat_Count : Interfaces . Unsigned_64 := 1 ; Calibration_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Interval_Ending_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Phase_Coherence_With_Prior : Boolean := False ; Iterations_Per_Signal : Interfaces . Unsigned_64 := 0 ; Max_Data_Rate_BPS : Long_Float := 0.0 ; Max_Sample_Rate_Hz : Long_Float := 0.0 ) return RX_Job_Interval_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Job_Interval: function: function Create_RX_Job_Interval ( Interval_ID : Interfaces . Unsigned_32 ; Sequence_Duration_Femtoseconds : Interfaces . Integer_64 ; Job_Details_ID : Interfaces . Unsigned_32 := 0 ; Interval_Start_Femtoseconds : Interfaces . Integer_64 := Continue_From_Previous_Femtoseconds ; Interval_Starting_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Sequence_Repeat_Count : Interfaces . Unsigned_64 := 1 ; Calibration_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Interval_Ending_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Phase_Coherence_With_Prior : Boolean := False ; Iterations_Per_Signal : Interfaces . Unsigned_64 := 0 ; Max_Data_Rate_BPS : Long_Float := 0.0 ; Max_Sample_Rate_Hz : Long_Float := 0.0 ) return RX_Job_Interval_Config ;: parameter 0:Interval_ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Job_Interval: function: function Create_RX_Job_Interval ( Interval_ID : Interfaces . Unsigned_32 ; Sequence_Duration_Femtoseconds : Interfaces . Integer_64 ; Job_Details_ID : Interfaces . Unsigned_32 := 0 ; Interval_Start_Femtoseconds : Interfaces . Integer_64 := Continue_From_Previous_Femtoseconds ; Interval_Starting_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Sequence_Repeat_Count : Interfaces . Unsigned_64 := 1 ; Calibration_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Interval_Ending_Gap_Femtoseconds : Interfaces . Integer_64 := 0 ; Phase_Coherence_With_Prior : Boolean := False ; Iterations_Per_Signal : Interfaces . Unsigned_64 := 0 ; Max_Data_Rate_BPS : Long_Float := 0.0 ; Max_Sample_Rate_Hz : Long_Float := 0.0 ) return RX_Job_Interval_Config ;: parameter 10:Max_Data_Rate_BPS
@@ -642,11 +521,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Receive_Event: function: function Create_
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Receive_Event: function: function Create_RX_Receive_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds : Interfaces . Integer_64 ; Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; Sample_Frequency_Hz : Long_Float ; AGC_Processing_Iterations : Interfaces . Unsigned_64 := 0 ; Ignored_Post_AGC_Iterations : Interfaces . Unsigned_64 := 0 ; Max_Extension_Femtoseconds : Interfaces . Integer_64 := 0 ) return RX_Receive_Event_Config ;: parameter 7:Ignored_Post_AGC_Iterations
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Receive_Event: function: function Create_RX_Receive_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds : Interfaces . Integer_64 ; Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; Sample_Frequency_Hz : Long_Float ; AGC_Processing_Iterations : Interfaces . Unsigned_64 := 0 ; Ignored_Post_AGC_Iterations : Interfaces . Unsigned_64 := 0 ; Max_Extension_Femtoseconds : Interfaces . Integer_64 := 0 ) return RX_Receive_Event_Config ;: parameter 8:Max_Extension_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_RX_Receive_Event: function: function Create_RX_Receive_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds : Interfaces . Integer_64 ; Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; Sample_Frequency_Hz : Long_Float ; AGC_Processing_Iterations : Interfaces . Unsigned_64 := 0 ; Ignored_Post_AGC_Iterations : Interfaces . Unsigned_64 := 0 ; Max_Extension_Femtoseconds : Interfaces . Integer_64 := 0 ) return RX_Receive_Event_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Element_Group: function: function Create_TX_Element_Group ( Label : String ; TX_Power_Level : Interfaces . Unsigned_32 ; Desired_Duty_Factor : Long_Float := 1.0 ) return TX_Element_Group_Config ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Element_Group: function: function Create_TX_Element_Group ( Label : String ; TX_Power_Level : Interfaces . Unsigned_32 ; Desired_Duty_Factor : Long_Float := 1.0 ) return TX_Element_Group_Config ;: parameter 0:Label
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Element_Group: function: function Create_TX_Element_Group ( Label : String ; TX_Power_Level : Interfaces . Unsigned_32 ; Desired_Duty_Factor : Long_Float := 1.0 ) return TX_Element_Group_Config ;: parameter 1:TX_Power_Level
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Element_Group: function: function Create_TX_Element_Group ( Label : String ; TX_Power_Level : Interfaces . Unsigned_32 ; Desired_Duty_Factor : Long_Float := 1.0 ) return TX_Element_Group_Config ;: parameter 2:Desired_Duty_Factor
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Element_Group: function: function Create_TX_Element_Group ( Label : String ; TX_Power_Level : Interfaces . Unsigned_32 ; Desired_Duty_Factor : Long_Float := 1.0 ) return TX_Element_Group_Config ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: parameter 0:Event_ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: parameter 1:Element_Group_Label
@@ -657,15 +531,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: parameter 6:Rise_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: parameter 7:Fall_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_TX_Transmit_Event: function: function Create_TX_Transmit_Event ( Event_ID : Interfaces . Unsigned_32 ; Element_Group_Label : String ; Start_Femtoseconds , Duration_Femtoseconds : Interfaces . Integer_64 ; Center_Frequency_Hz : Long_Float ; TX_Attenuation_DB : Long_Float := 0.0 ; Rise_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ; Fall_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return TX_Transmit_Event_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_UTC_Time: function: function Create_UTC_Time ( Seconds , Fractional_Femtoseconds : Interfaces . Integer_64 ) return UTC_Time ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_UTC_Time: function: function Create_UTC_Time ( Seconds , Fractional_Femtoseconds : Interfaces . Integer_64 ) return UTC_Time ;: parameter 0:Seconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_UTC_Time: function: function Create_UTC_Time ( Seconds , Fractional_Femtoseconds : Interfaces . Integer_64 ) return UTC_Time ;: parameter 1:Fractional_Femtoseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_UTC_Time: function: function Create_UTC_Time ( Seconds , Fractional_Femtoseconds : Interfaces . Integer_64 ) return UTC_Time ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Virtual_Aperture_Config: function: function Create_Virtual_Aperture_Config ( VA_Definition_ID : Interfaces . Unsigned_32 ; Priority : Interfaces . Unsigned_32 ; VA_Definition_File_Info : String ) return Virtual_Aperture_Config ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Virtual_Aperture_Config: function: function Create_Virtual_Aperture_Config ( VA_Definition_ID : Interfaces . Unsigned_32 ; Priority : Interfaces . Unsigned_32 ; VA_Definition_File_Info : String ) return Virtual_Aperture_Config ;: parameter 0:VA_Definition_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Virtual_Aperture_Config: function: function Create_Virtual_Aperture_Config ( VA_Definition_ID : Interfaces . Unsigned_32 ; Priority : Interfaces . Unsigned_32 ; VA_Definition_File_Info : String ) return Virtual_Aperture_Config ;: parameter 1:Priority
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Virtual_Aperture_Config: function: function Create_Virtual_Aperture_Config ( VA_Definition_ID : Interfaces . Unsigned_32 ; Priority : Interfaces . Unsigned_32 ; VA_Definition_File_Info : String ) return Virtual_Aperture_Config ;: parameter 2:VA_Definition_File_Info
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Virtual_Aperture_Config: function: function Create_Virtual_Aperture_Config ( VA_Definition_ID : Interfaces . Unsigned_32 ; Priority : Interfaces . Unsigned_32 ; VA_Definition_File_Info : String ) return Virtual_Aperture_Config ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Waveform_Profile: function: function Create_Waveform_Profile ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return Waveform_Profile ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Waveform_Profile: function: function Create_Waveform_Profile ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return Waveform_Profile ;: parameter 0:Chip_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Create_Waveform_Profile: function: function Create_Waveform_Profile ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 := 0 ) return Waveform_Profile ;: return 0:
@@ -673,42 +538,7 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Custom_Waveform: function: function Custom_Waveform
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Custom_Waveform: function: function Custom_Waveform ( Profiles : Waveform_Profile_Table ; Patterns : Waveform_Pattern_List ) return Modulation_Config ;: parameter 0:Profiles
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Custom_Waveform: function: function Custom_Waveform ( Profiles : Waveform_Profile_Table ; Patterns : Waveform_Pattern_List ) return Modulation_Config ;: parameter 1:Patterns
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Custom_Waveform: function: function Custom_Waveform ( Profiles : Waveform_Profile_Table ; Patterns : Waveform_Pattern_List ) return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Job_Result ) return String ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Job_Result ) return String ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Job_Result ) return String ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Virtual_Aperture_Result ) return String ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Virtual_Aperture_Result ) return String ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Description: function: function Description ( Result : Virtual_Aperture_Result ) return String ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Coordinates: type: type ECEF_Coordinates is record: component 0:X
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Coordinates: type: type ECEF_Coordinates is record: component 1:Y
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Coordinates: type: type ECEF_Coordinates is record: component 2:Z
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Coordinates: type: type ECEF_Coordinates is record: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Position: function: function ECEF_Position ( Value : Pointing ) return ECEF_Coordinates ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Position: function: function ECEF_Position ( Value : Pointing ) return ECEF_Coordinates ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Position: function: function ECEF_Position ( Value : Pointing ) return ECEF_Coordinates ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Velocity: function: function ECEF_Velocity ( Value : Pointing ) return ECEF_Coordinates ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Velocity: function: function ECEF_Velocity ( Value : Pointing ) return ECEF_Coordinates ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.ECEF_Velocity: function: function ECEF_Velocity ( Value : Pointing ) return ECEF_Coordinates ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_At: function: function Element_Group_Label_At ( Object : Virtual_Aperture ; Index : Positive ) return String ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_At: function: function Element_Group_Label_At ( Object : Virtual_Aperture ; Index : Positive ) return String ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_At: function: function Element_Group_Label_At ( Object : Virtual_Aperture ; Index : Positive ) return String ;: parameter 1:Index
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_At: function: function Element_Group_Label_At ( Object : Virtual_Aperture ; Index : Positive ) return String ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_Count: function: function Element_Group_Label_Count ( Object : Virtual_Aperture ) return Natural ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_Count: function: function Element_Group_Label_Count ( Object : Virtual_Aperture ) return Natural ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Element_Group_Label_Count: function: function Element_Group_Label_Count ( Object : Virtual_Aperture ) return Natural ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Elevation_Rad: function: function Elevation_Rad ( Value : Pointing ) return Long_Float ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Elevation_Rad: function: function Elevation_Rad ( Value : Pointing ) return Long_Float ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Elevation_Rad: function: function Elevation_Rad ( Value : Pointing ) return Long_Float ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Endpoint_Connections: type: type Endpoint_Connections is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Cancel_Result ) return Cancel_Error ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Cancel_Result ) return Cancel_Error ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Cancel_Result ) return Cancel_Error ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Job_Result ) return Request_Error_Code ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Job_Result ) return Request_Error_Code ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Job_Result ) return Request_Error_Code ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Virtual_Aperture_Result ) return Request_Error_Code ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Virtual_Aperture_Result ) return Request_Error_Code ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Error_Code: function: function Error_Code ( Result : Virtual_Aperture_Result ) return Request_Error_Code ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Event_Termination_Type: type: type Event_Termination_Type is (Inhibit_Event, Cancel_Event);: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Event_Termination_Type: type: type Event_Termination_Type is (Inhibit_Event, Cancel_Event);: literal 0:Inhibit_Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Event_Termination_Type: type: type Event_Termination_Type is (Inhibit_Event, Cancel_Event);: literal 1:Cancel_Event
@@ -721,107 +551,31 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Extend_Job_Event: procedure: procedure Extend_Job_E
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Extend_Job_Event: procedure: procedure Extend_Job_Event ( Object : in out Job ; Interval_ID : Interfaces . Unsigned_32 ; Event_ID : Interfaces . Unsigned_32 ; Added_Duration_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 1:Interval_ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Extend_Job_Event: procedure: procedure Extend_Job_Event ( Object : in out Job ; Interval_ID : Interfaces . Unsigned_32 ; Event_ID : Interfaces . Unsigned_32 ; Added_Duration_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 2:Event_ID
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Extend_Job_Event: procedure: procedure Extend_Job_Event ( Object : in out Job ; Interval_ID : Interfaces . Unsigned_32 ; Event_ID : Interfaces . Unsigned_32 ; Added_Duration_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 3:Added_Duration_Femtoseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Finalize_Job: procedure: procedure Finalize_Job ( Object : in out Job ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Finalize_Job: procedure: procedure Finalize_Job ( Object : in out Job ) ;: parameter 0:Object
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Flush_Job: procedure: procedure Flush_Job ( Object : in out Job ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Flush_Job: procedure: procedure Flush_Job ( Object : in out Job ) ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Fractional_Femtoseconds: function: function Fractional_Femtoseconds ( Value : UTC_Time ) return Interfaces . Integer_64 ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Fractional_Femtoseconds: function: function Fractional_Femtoseconds ( Value : UTC_Time ) return Interfaces . Integer_64 ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Interval_Status_Enable: type: type Interval_Status_Enable is (Never, Always, On_Exception);: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Interval_Status_Enable: type: type Interval_Status_Enable is (Never, Always, On_Exception);: literal 0:Never
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Interval_Status_Enable: type: type Interval_Status_Enable is (Never, Always, On_Exception);: literal 1:Always
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Interval_Status_Enable: type: type Interval_Status_Enable is (Never, Always, On_Exception);: literal 2:On_Exception
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : C2_MEL ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : C2_MEL ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : C2_MEL ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Job ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Job ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Job ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Virtual_Aperture ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Virtual_Aperture ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Object : Virtual_Aperture ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Job_Request ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Job_Request ) return Boolean ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Job_Request ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Virtual_Aperture_Request ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Virtual_Aperture_Request ) return Boolean ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Open: function: function Is_Open ( Request : Virtual_Aperture_Request ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Single_Group: function: function Is_Single_Group ( Object : Virtual_Aperture ) return Boolean ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Single_Group: function: function Is_Single_Group ( Object : Virtual_Aperture ) return Boolean ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Is_Single_Group: function: function Is_Single_Group ( Object : Virtual_Aperture ) return Boolean ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job: type: type Job is limited private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Config: type: type Job_Config is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Details_ID: function: function Job_Details_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Details_ID: function: function Job_Details_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Details_ID: function: function Job_Details_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Interval_Count: function: function Job_Interval_Count ( Intervals : RX_Job_Interval_List ) return Natural ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Interval_Count: function: function Job_Interval_Count ( Intervals : RX_Job_Interval_List ) return Natural ;: parameter 0:Intervals
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Interval_Count: function: function Job_Interval_Count ( Intervals : RX_Job_Interval_List ) return Natural ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Request: type: type Job_Request is tagged limited private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Request_ID: function: function Job_Request_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Request_ID: function: function Job_Request_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Request_ID: function: function Job_Request_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Result: type: type Job_Result is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 0:None
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 1:In_Progress
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 2:Complete
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 3:Failed_Invalid_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 4:Failed_Interrupted
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Job_Status: type: type Job_Status is (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);: literal 5:Failed_Invalid_State
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Kind: function: function Kind ( Value : Pointing ) return Pointing_Kind ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Kind: function: function Kind ( Value : Pointing ) return Pointing_Kind ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Kind: function: function Kind ( Value : Pointing ) return Pointing_Kind ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Coordinates: type: type LLA_Coordinates is record: component 0:Latitude_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Coordinates: type: type LLA_Coordinates is record: component 1:Longitude_Rad
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Coordinates: type: type LLA_Coordinates is record: component 2:Altitude_M
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Coordinates: type: type LLA_Coordinates is record: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Position: function: function LLA_Position ( Value : Pointing ) return LLA_Coordinates ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Position: function: function LLA_Position ( Value : Pointing ) return LLA_Coordinates ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Position: function: function LLA_Position ( Value : Pointing ) return LLA_Coordinates ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Velocity: function: function LLA_Velocity ( Value : Pointing ) return NED_Velocity ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Velocity: function: function LLA_Velocity ( Value : Pointing ) return NED_Velocity ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.LLA_Velocity: function: function LLA_Velocity ( Value : Pointing ) return NED_Velocity ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Linear_Frequency_Modulation: function: function Linear_Frequency_Modulation ( Frequency_Extent_Hz : Long_Float ) return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Linear_Frequency_Modulation: function: function Linear_Frequency_Modulation ( Frequency_Extent_Hz : Long_Float ) return Modulation_Config ;: parameter 0:Frequency_Extent_Hz
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Linear_Frequency_Modulation: function: function Linear_Frequency_Modulation ( Frequency_Extent_Hz : Long_Float ) return Modulation_Config ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Local_Function_Command: type: type Local_Function_Command is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Lookahead_Femtoseconds: function: function Lookahead_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Lookahead_Femtoseconds: function: function Lookahead_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Lookahead_Femtoseconds: function: function Lookahead_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Modulation_Boolean_Array: type: type Modulation_Boolean_Array is array (Positive range <>) of Boolean;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Modulation_Config: type: type Modulation_Config is private;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Modulation_Index: subtype: subtype Modulation_Index is Interfaces.Integer_32 range Interfaces. (1) .. Interfaces.Integer_32'Last;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.NED_Velocity: type: type NED_Velocity is record: component 0:North_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.NED_Velocity: type: type NED_Velocity is record: component 1:East_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.NED_Velocity: type: type NED_Velocity is record: component 2:Down_MPS
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.NED_Velocity: type: type NED_Velocity is record: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.No_Modulation: object: No_Modulation : constant Modulation_Index : = Interfaces. (1);: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.On_Off_Keying: function: function On_Off_Keying ( Pulse_Enabled : Modulation_Boolean_Array ) return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.On_Off_Keying: function: function On_Off_Keying ( Pulse_Enabled : Modulation_Boolean_Array ) return Modulation_Config ;: parameter 0:Pulse_Enabled
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.On_Off_Keying: function: function On_Off_Keying ( Pulse_Enabled : Modulation_Boolean_Array ) return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Open: function: function Open ( Library_Path : String ; Configuration : String ) return C2_MEL ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Open: function: function Open ( Library_Path : String ; Configuration : String ) return C2_MEL ;: parameter 0:Library_Path
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Open: function: function Open ( Library_Path : String ; Configuration : String ) return C2_MEL ;: parameter 1:Configuration
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Open: function: function Open ( Library_Path : String ; Configuration : String ) return C2_MEL ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Job_Result ) return Request_Outcome ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Job_Result ) return Request_Outcome ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Job_Result ) return Request_Outcome ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Virtual_Aperture_Result ) return Request_Outcome ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Virtual_Aperture_Result ) return Request_Outcome ;: parameter 0:Result
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Outcome: function: function Outcome ( Result : Virtual_Aperture_Result ) return Request_Outcome ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Phase_Chip_Array: type: type Phase_Chip_Array is array (Positive range <>) of Long_Float;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Phase_Code: function: function Phase_Code ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Phases_Rad : Phase_Chip_Array ) return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Phase_Code: function: function Phase_Code ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Phases_Rad : Phase_Chip_Array ) return Modulation_Config ;: parameter 0:Chip_Duration_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Phase_Code: function: function Phase_Code ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Phases_Rad : Phase_Chip_Array ) return Modulation_Config ;: parameter 1:Phases_Rad
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Phase_Code: function: function Phase_Code ( Chip_Duration_Femtoseconds : Interfaces . Integer_64 ; Phases_Rad : Phase_Chip_Array ) return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing: type: type Pointing is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: literal 0:ECEF
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: literal 1:LLA
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: literal 2:Platform_Relative
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: literal 3:Face_Relative
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pointing_Kind: type: type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);: literal 4:Baseline_Relative
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pulse_Detection_Settings: type: type Pulse_Detection_Settings is private;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pulse_Threshold_Reference: type: type Pulse_Threshold_Reference is (DBQ, DB_Above_Noise, DB_Below_Saturation);: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pulse_Threshold_Reference: type: type Pulse_Threshold_Reference is (DBQ, DB_Above_Noise, DB_Below_Saturation);: literal 0:DBQ
@@ -832,13 +586,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pulse_Time_Tag_Threshold: type: type Pulse_Time_Tag
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Pulse_Time_Tag_Threshold: type: type Pulse_Time_Tag_Threshold is (At_50_Percent, At_90_Percent);: literal 1:At_90_Percent
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Job_Interval_List: type: type RX_Job_Interval_List is private;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Receive_Event_Config: type: type RX_Receive_Event_Config is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_At: function: function RX_Stream_ID_At ( Object : Job ; Index : Positive ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_At: function: function RX_Stream_ID_At ( Object : Job ; Index : Positive ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_At: function: function RX_Stream_ID_At ( Object : Job ; Index : Positive ) return Interfaces . Unsigned_32 ;: parameter 1:Index
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_At: function: function RX_Stream_ID_At ( Object : Job ; Index : Positive ) return Interfaces . Unsigned_32 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_Count: function: function RX_Stream_ID_Count ( Object : Job ) return Natural ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_Count: function: function RX_Stream_ID_Count ( Object : Job ) return Natural ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.RX_Stream_ID_Count: function: function RX_Stream_ID_Count ( Object : Job ) return Natural ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_CPFSK_Chips: procedure: procedure Replace_CPFSK_Chips ( Config : in out Modulation_Config ; Chip_Data : Modulation_Boolean_Array ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_CPFSK_Chips: procedure: procedure Replace_CPFSK_Chips ( Config : in out Modulation_Config ; Chip_Data : Modulation_Boolean_Array ) ;: parameter 0:Config
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_CPFSK_Chips: procedure: procedure Replace_CPFSK_Chips ( Config : in out Modulation_Config ; Chip_Data : Modulation_Boolean_Array ) ;: parameter 1:Chip_Data
@@ -867,25 +614,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_Waveform_Stream: procedure: procedure Repla
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_Waveform_Stream: procedure: procedure Replace_Waveform_Stream ( Config : in out Modulation_Config ; Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format ; Item_Format : Stream_Item_Format ; Repeat_Mode : Stream_Repeat_Mode ) ;: parameter 4:Sample_Format
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_Waveform_Stream: procedure: procedure Replace_Waveform_Stream ( Config : in out Modulation_Config ; Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format ; Item_Format : Stream_Item_Format ; Repeat_Mode : Stream_Repeat_Mode ) ;: parameter 5:Item_Format
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Replace_Waveform_Stream: procedure: procedure Replace_Waveform_Stream ( Config : in out Modulation_Config ; Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format ; Item_Format : Stream_Item_Format ; Repeat_Mode : Stream_Repeat_Mode ) ;: parameter 6:Repeat_Mode
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 0:None
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 1:Invalid_ID
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 2:Invalid_State
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 3:Invalid_Parameters
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 4:Insufficient_Permissions
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 5:Insufficient_Resources
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 6:Insufficient_Local_Resources
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 7:Insufficient_Remote_Resources
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Error_Code: type: type Request_Error_Code is (None, Invalid_ID, Invalid_State, Invalid_Parameters, Insufficient_Permissions, Insufficient_Resources, Insufficient_Local_Resources, Insufficient_Remote_Resources, Unsupported);: literal 8:Unsupported
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Outcome: type: type Request_Outcome is (Created, Failed);: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Outcome: type: type Request_Outcome is (Created, Failed);: literal 0:Created
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Request_Outcome: type: type Request_Outcome is (Created, Failed);: literal 1:Failed
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Seconds: function: function Seconds ( Value : UTC_Time ) return Interfaces . Integer_64 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Seconds: function: function Seconds ( Value : UTC_Time ) return Interfaces . Integer_64 ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Seconds: function: function Seconds ( Value : UTC_Time ) return Interfaces . Integer_64 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Activity_ID: procedure: procedure Set_Activity_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Activity_ID: procedure: procedure Set_Activity_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Activity_ID: procedure: procedure Set_Activity_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Allow_Delay_Start: procedure: procedure Set_Allow_Delay_Start ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Allow_Delay_Start: procedure: procedure Set_Allow_Delay_Start ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Allow_Delay_Start: procedure: procedure Set_Allow_Delay_Start ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: parameter 1:Enabled
@@ -896,9 +624,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Amplitude_Factor: procedure: procedure Set_Ampl
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Amplitude_Factor: procedure: procedure Set_Amplitude_Factor ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 0:Profile
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Amplitude_Factor: procedure: procedure Set_Amplitude_Factor ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Amplitude_Factor: procedure: procedure Set_Amplitude_Factor ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 2:Update
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Capability_ID: procedure: procedure Set_Capability_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Capability_ID: procedure: procedure Set_Capability_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Capability_ID: procedure: procedure Set_Capability_ID ( Config : in out Job_Config ; Value : Byte_Array ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Channelization_Enabled: procedure: procedure Set_Channelization_Enabled ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Channelization_Enabled: procedure: procedure Set_Channelization_Enabled ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Channelization_Enabled: procedure: procedure Set_Channelization_Enabled ( Event : in out RX_Receive_Event_Config ; Enabled : Boolean ) ;: parameter 1:Enabled
@@ -915,9 +640,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Delta_Phase_Degrees: procedure: procedure Set_D
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Delta_Phase_Degrees: procedure: procedure Set_Delta_Phase_Degrees ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 0:Profile
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Delta_Phase_Degrees: procedure: procedure Set_Delta_Phase_Degrees ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Delta_Phase_Degrees: procedure: procedure Set_Delta_Phase_Degrees ( Profile : in out Waveform_Profile ; Value : Long_Float ; Update : Boolean ) ;: parameter 2:Update
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Duration_Femtoseconds: procedure: procedure Set_Duration_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Duration_Femtoseconds: procedure: procedure Set_Duration_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Duration_Femtoseconds: procedure: procedure Set_Duration_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_Interval_User_Context: procedure: procedure Set_Empty_Interval_User_Context ( Interval : in out RX_Job_Interval_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_Interval_User_Context: procedure: procedure Set_Empty_Interval_User_Context ( Interval : in out RX_Job_Interval_Config ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_Modulation_References: procedure: procedure Set_Empty_Modulation_References ( Event : in out TX_Transmit_Event_Config ) ;: description
@@ -925,9 +647,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_Modulation_References: procedure: procedu
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_Modulations: procedure: procedure Set_Empty_Modulations ( Interval : in out RX_Job_Interval_Config ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_TX_Events: procedure: procedure Set_Empty_TX_Events ( Interval : in out RX_Job_Interval_Config ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Empty_TX_Events: procedure: procedure Set_Empty_TX_Events ( Interval : in out RX_Job_Interval_Config ) ;: parameter 0:Interval
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Estimated_Stab_Point: procedure: procedure Set_Estimated_Stab_Point ( Config : in out Job_Config ; Value : Pointing ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Estimated_Stab_Point: procedure: procedure Set_Estimated_Stab_Point ( Config : in out Job_Config ; Value : Pointing ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Estimated_Stab_Point: procedure: procedure Set_Estimated_Stab_Point ( Config : in out Job_Config ; Value : Pointing ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Event_Execution_Type: procedure: procedure Set_Event_Execution_Type ( Event : in out RX_Receive_Event_Config ; Value : Execution_Type ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Event_Execution_Type: procedure: procedure Set_Event_Execution_Type ( Event : in out RX_Receive_Event_Config ; Value : Execution_Type ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Event_Execution_Type: procedure: procedure Set_Event_Execution_Type ( Event : in out RX_Receive_Event_Config ; Value : Execution_Type ) ;: parameter 1:Value
@@ -983,15 +702,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Iteration_Termination_Count: procedure: procedu
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Iteration_Termination_Count: procedure: procedure Set_Iteration_Termination_Count ( Event : in out TX_Transmit_Event_Config ; Count : Interfaces . Unsigned_64 ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Iteration_Termination_Count: procedure: procedure Set_Iteration_Termination_Count ( Event : in out TX_Transmit_Event_Config ; Count : Interfaces . Unsigned_64 ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Iteration_Termination_Count: procedure: procedure Set_Iteration_Termination_Count ( Event : in out TX_Transmit_Event_Config ; Count : Interfaces . Unsigned_64 ) ;: parameter 1:Count
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Lookahead_Femtoseconds: procedure: procedure Set_Lookahead_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Lookahead_Femtoseconds: procedure: procedure Set_Lookahead_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Lookahead_Femtoseconds: procedure: procedure Set_Lookahead_Femtoseconds ( Config : in out Job_Config ; Value : Interfaces . Integer_64 ) ;: parameter 1:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Max_Complete_Time: procedure: procedure Set_Max_Complete_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Max_Complete_Time: procedure: procedure Set_Max_Complete_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Max_Complete_Time: procedure: procedure Set_Max_Complete_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: parameter 1:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Min_Start_Time: procedure: procedure Set_Min_Start_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Min_Start_Time: procedure: procedure Set_Min_Start_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Min_Start_Time: procedure: procedure Set_Min_Start_Time ( Config : in out Job_Config ; Value : UTC_Time ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Modulations: procedure: procedure Set_Modulations ( Interval : in out RX_Job_Interval_Config ; Table : Modulation_Table ) ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Modulations: procedure: procedure Set_Modulations ( Interval : in out RX_Job_Interval_Config ; Table : Modulation_Table ) ;: parameter 0:Interval
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_Modulations: procedure: procedure Set_Modulations ( Interval : in out RX_Job_Interval_Config ; Table : Modulation_Table ) ;: parameter 1:Table
@@ -1024,9 +734,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Edge_Durations: procedure: procedure Set_TX_
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Edge_Durations: procedure: procedure Set_TX_Edge_Durations ( Event : in out TX_Transmit_Event_Config ; Rise_Femtoseconds , Fall_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 0:Event
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Edge_Durations: procedure: procedure Set_TX_Edge_Durations ( Event : in out TX_Transmit_Event_Config ; Rise_Femtoseconds , Fall_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 1:Rise_Femtoseconds
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Edge_Durations: procedure: procedure Set_TX_Edge_Durations ( Event : in out TX_Transmit_Event_Config ; Rise_Femtoseconds , Fall_Femtoseconds : Interfaces . Integer_64 ) ;: parameter 2:Fall_Femtoseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Power_Mode_IDs: procedure: procedure Set_TX_Power_Mode_IDs ( Config : in out Job_Config ; Value : Unsigned_32_Array ) ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Power_Mode_IDs: procedure: procedure Set_TX_Power_Mode_IDs ( Config : in out Job_Config ; Value : Unsigned_32_Array ) ;: parameter 0:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Set_TX_Power_Mode_IDs: procedure: procedure Set_TX_Power_Mode_IDs ( Config : in out Job_Config ; Value : Unsigned_32_Array ) ;: parameter 1:Value
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Item_Format: type: type Stream_Item_Format is (Stream_Fixed_Point_Unsigned, Stream_Fixed_Point_Signed, Stream_VRT_Unsigned_Float, Stream_VRT_Signed_Float, Stream_Float32, Stream_Float64, Stream_Float16, Stream_Fixed_Point_Unsigned_Non_Normalized, Stream_Fixed_Point_Signed_Non_Normalized);: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Item_Format: type: type Stream_Item_Format is (Stream_Fixed_Point_Unsigned, Stream_Fixed_Point_Signed, Stream_VRT_Unsigned_Float, Stream_VRT_Signed_Float, Stream_Float32, Stream_Float64, Stream_Float16, Stream_Fixed_Point_Unsigned_Non_Normalized, Stream_Fixed_Point_Signed_Non_Normalized);: literal 0:Stream_Fixed_Point_Unsigned
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Item_Format: type: type Stream_Item_Format is (Stream_Fixed_Point_Unsigned, Stream_Fixed_Point_Signed, Stream_VRT_Unsigned_Float, Stream_VRT_Signed_Float, Stream_Float32, Stream_Float64, Stream_Float16, Stream_Fixed_Point_Unsigned_Non_Normalized, Stream_Fixed_Point_Signed_Non_Normalized);: literal 1:Stream_Fixed_Point_Signed
@@ -1044,56 +751,9 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Sample_Format: type: type Stream_Sample_Form
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Sample_Format: type: type Stream_Sample_Format is (Stream_Real, Stream_Complex_Cartesian, Stream_Complex_Polar);: literal 0:Stream_Real
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Sample_Format: type: type Stream_Sample_Format is (Stream_Real, Stream_Complex_Cartesian, Stream_Complex_Polar);: literal 1:Stream_Complex_Cartesian
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Stream_Sample_Format: type: type Stream_Sample_Format is (Stream_Real, Stream_Complex_Cartesian, Stream_Complex_Polar);: literal 2:Stream_Complex_Polar
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Job: function: function Submit_Job ( VA : Virtual_Aperture ' Class ; Config : Job_Config ) return Job_Request ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Job: function: function Submit_Job ( VA : Virtual_Aperture ' Class ; Config : Job_Config ) return Job_Request ;: parameter 0:VA
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Job: function: function Submit_Job ( VA : Virtual_Aperture ' Class ; Config : Job_Config ) return Job_Request ;: parameter 1:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Job: function: function Submit_Job ( VA : Virtual_Aperture ' Class ; Config : Job_Config ) return Job_Request ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Virtual_Aperture: function: function Submit_Virtual_Aperture ( Parent : C2_MEL ' Class ; Config : Virtual_Aperture_Config ) return Virtual_Aperture_Request ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Virtual_Aperture: function: function Submit_Virtual_Aperture ( Parent : C2_MEL ' Class ; Config : Virtual_Aperture_Config ) return Virtual_Aperture_Request ;: parameter 0:Parent
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Virtual_Aperture: function: function Submit_Virtual_Aperture ( Parent : C2_MEL ' Class ; Config : Virtual_Aperture_Config ) return Virtual_Aperture_Request ;: parameter 1:Config
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Submit_Virtual_Aperture: function: function Submit_Virtual_Aperture ( Parent : C2_MEL ' Class ; Config : Virtual_Aperture_Config ) return Virtual_Aperture_Request ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.TX_Element_Group_Config: type: type TX_Element_Group_Config is private;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.TX_Transmit_Event_Config: type: type TX_Transmit_Event_Config is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Time_Of_Validity: function: function Time_Of_Validity ( Value : Pointing ) return UTC_Time ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Time_Of_Validity: function: function Time_Of_Validity ( Value : Pointing ) return UTC_Time ;: parameter 0:Value
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Time_Of_Validity: function: function Time_Of_Validity ( Value : Pointing ) return UTC_Time ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Timeout_Error: object: Timeout_Error : exception;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Tone: function: function Tone return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Tone: function: function Tone return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Total_Job_Duration_Femtoseconds: function: function Total_Job_Duration_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Total_Job_Duration_Femtoseconds: function: function Total_Job_Duration_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Total_Job_Duration_Femtoseconds: function: function Total_Job_Duration_Femtoseconds ( Object : Job ) return Interfaces . Integer_64 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.UTC_Time: type: type UTC_Time is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Unsigned_32_Array: type: type Unsigned_32_Array is array (Natural range <>) of Interfaces.Unsigned_32;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Definition_ID: function: function VA_Definition_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Definition_ID: function: function VA_Definition_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Definition_ID: function: function VA_Definition_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID: function: function VA_Instance_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID: function: function VA_Instance_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID: function: function VA_Instance_ID ( Object : Job ) return Interfaces . Unsigned_32 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_At: function: function VA_Instance_ID_At ( Object : Virtual_Aperture ; Index : Positive ) return Interfaces . Unsigned_32 ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_At: function: function VA_Instance_ID_At ( Object : Virtual_Aperture ; Index : Positive ) return Interfaces . Unsigned_32 ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_At: function: function VA_Instance_ID_At ( Object : Virtual_Aperture ; Index : Positive ) return Interfaces . Unsigned_32 ;: parameter 1:Index
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_At: function: function VA_Instance_ID_At ( Object : Virtual_Aperture ; Index : Positive ) return Interfaces . Unsigned_32 ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_Count: function: function VA_Instance_ID_Count ( Object : Virtual_Aperture ) return Natural ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_Count: function: function VA_Instance_ID_Count ( Object : Virtual_Aperture ) return Natural ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.VA_Instance_ID_Count: function: function VA_Instance_ID_Count ( Object : Virtual_Aperture ) return Natural ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Virtual_Aperture: type: type Virtual_Aperture is tagged limited private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Virtual_Aperture_Config: type: type Virtual_Aperture_Config is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Virtual_Aperture_Request: type: type Virtual_Aperture_Request is tagged limited private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Virtual_Aperture_Result: type: type Virtual_Aperture_Result is private;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Job_Request ; Timeout_Milliseconds : Natural ) return Job_Result ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Job_Request ; Timeout_Milliseconds : Natural ) return Job_Result ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Job_Request ; Timeout_Milliseconds : Natural ) return Job_Result ;: parameter 1:Timeout_Milliseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Job_Request ; Timeout_Milliseconds : Natural ) return Job_Result ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Virtual_Aperture_Request ; Timeout_Milliseconds : Natural ) return Virtual_Aperture_Result ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Virtual_Aperture_Request ; Timeout_Milliseconds : Natural ) return Virtual_Aperture_Result ;: parameter 0:Request
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Virtual_Aperture_Request ; Timeout_Milliseconds : Natural ) return Virtual_Aperture_Result ;: parameter 1:Timeout_Milliseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait: function: function Wait ( Request : Virtual_Aperture_Request ; Timeout_Milliseconds : Natural ) return Virtual_Aperture_Result ;: return 0:
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait_Job_Status: function: function Wait_Job_Status ( Object : Job ; Timeout_Milliseconds : Natural ) return Job_Status ;: description
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait_Job_Status: function: function Wait_Job_Status ( Object : Job ; Timeout_Milliseconds : Natural ) return Job_Status ;: parameter 0:Object
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait_Job_Status: function: function Wait_Job_Status ( Object : Job ; Timeout_Milliseconds : Natural ) return Job_Status ;: parameter 1:Timeout_Milliseconds
-AMS.MEL.RF.C2: AMS.MEL.RF.C2.Wait_Job_Status: function: function Wait_Job_Status ( Object : Job ; Timeout_Milliseconds : Natural ) return Job_Status ;: return 0:
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Buffer_I16: function: function Waveform_Buffer_I16 ( Samples : Waveform_Sample_I16_Array ) return Modulation_Config ;: description
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Buffer_I16: function: function Waveform_Buffer_I16 ( Samples : Waveform_Sample_I16_Array ) return Modulation_Config ;: parameter 0:Samples
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Buffer_I16: function: function Waveform_Buffer_I16 ( Samples : Waveform_Sample_I16_Array ) return Modulation_Config ;: return 0:
@@ -1119,7 +779,6 @@ AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Stream: function: function Waveform_Stream
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Stream: function: function Waveform_Stream ( Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format := Stream_Complex_Cartesian ; Item_Format : Stream_Item_Format := Stream_Fixed_Point_Signed ; Repeat_Mode : Stream_Repeat_Mode := Stream_Repeat_From_Top ) return Modulation_Config ;: parameter 4:Item_Format
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Stream: function: function Waveform_Stream ( Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format := Stream_Complex_Cartesian ; Item_Format : Stream_Item_Format := Stream_Fixed_Point_Signed ; Repeat_Mode : Stream_Repeat_Mode := Stream_Repeat_From_Top ) return Modulation_Config ;: parameter 5:Repeat_Mode
 AMS.MEL.RF.C2: AMS.MEL.RF.C2.Waveform_Stream: function: function Waveform_Stream ( Endpoint_ID , Start_Address , Num_Bytes : Interfaces . Unsigned_64 ; Sample_Format : Stream_Sample_Format := Stream_Complex_Cartesian ; Item_Format : Stream_Item_Format := Stream_Fixed_Point_Signed ; Repeat_Mode : Stream_Repeat_Mode := Stream_Repeat_From_Top ) return Modulation_Config ;: return 0:
-AMS.MEL.RF.C2: package: description
 AMS.MEL.RF.Product_Rx: AMS.MEL.RF.Product_Rx.Assigned_Data_Format: function: function Assigned_Data_Format ( Object : Endpoint ) return Job_Data_Format ;: description
 AMS.MEL.RF.Product_Rx: AMS.MEL.RF.Product_Rx.Assigned_Data_Format: function: function Assigned_Data_Format ( Object : Endpoint ) return Job_Data_Format ;: parameter 0:Object
 AMS.MEL.RF.Product_Rx: AMS.MEL.RF.Product_Rx.Assigned_Data_Format: function: function Assigned_Data_Format ( Object : Endpoint ) return Job_Data_Format ;: return 0:

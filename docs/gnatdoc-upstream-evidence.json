@@ -2387,6 +2387,103 @@
         "Hosted statuses observed separately in publication handoff"
       ],
       "confidence": "SOURCE_REVIEWED_AND_LOCAL_MOCK_REGRESSION_QUALIFIED"
+    },
+    {
+      "campaign": "DOC-005B",
+      "package": "AMS.MEL.RF.C2",
+      "bridge_base": "8f4f0b50b0bc0b9db0ab46b99f4dcf238c4d6c08",
+      "source_sha256": "22e05187ab1cce06e2ffb9f90eb0dd143bc1ab2751d4525921e6f1789890fbdd",
+      "checkpoints": [
+        {
+          "phase": "005B1",
+          "removed_gaps": 87,
+          "RF_C2_documented": 99,
+          "repository_documented": 2999
+        },
+        {
+          "phase": "005B2",
+          "removed_gaps": 196,
+          "RF_C2_documented": 295,
+          "repository_documented": 3195
+        },
+        {
+          "phase": "005B3",
+          "removed_gaps": 58,
+          "RF_C2_documented": 353,
+          "repository_documented": 3253
+        }
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "declarations": [
+            "factory/RFCreateFunctions.h",
+            "c2/C2MEL.h",
+            "c2/VirtualAperture.h",
+            "c2/ElementGroupCommand.h",
+            "c2/JobRequest.h",
+            "c2/JobDetail.h",
+            "c2/CancelStatus.h",
+            "jobs/Pointing.h"
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "declarations": [
+            "library/CommonMEL.h: RequestFor",
+            "library/Error.h: ErrorCode"
+          ]
+        }
+      ],
+      "implementation": [
+        "ada/src/ams-mel-rf-c2.adb: lifecycle, configuration, Wait/Claim and copied accessors",
+        "native/src/rf_c2.cpp: independent factory, child admission, shutdown retention",
+        "native/src/rf_virtual_aperture.cpp: single future, unique Claim and snapshots",
+        "native/src/rf_job.cpp: v4 builders, request and finalize workers, cached lifecycle",
+        "native/src/internal/rf_c2.hpp",
+        "native/src/internal/rf_va_job_parent.hpp"
+      ],
+      "tests": [
+        "native/tests/test_rf_c2.c",
+        "native/tests/test_rf_va.c",
+        "native/tests/test_rf_job.c",
+        "native/tests/test_rf_job_v2.c",
+        "native/tests/test_rf_job_pointing.c",
+        "native/tests/test_rf_job_tx_groups.c",
+        "ada/tests/src/ams_mel_rf_c2_tests.adb",
+        "ada/tests/src/ams_mel_rf_job_tests.adb",
+        "ada/tests/src/ams_mel_rf_job_v2.adb",
+        "ada/tests/src/ams_mel_rf_job_pointing.adb",
+        "ada/tests/src/ams_mel_rf_job_tx_groups.adb"
+      ],
+      "confirmed_semantics": [
+        "Independent C2 factory; NUL rejection; native VA/Job text UTF-8 validation; no UTF-8 claim for C2 factory configuration",
+        "Counted parent-child retention, shutdown-before-DSO-release and permanent retention on uncertain shutdown",
+        "Timeout is not cancellation; request Close is abandonment; single future consumption and cached terminal data",
+        "Unique Claim with copied immutable snapshots; sorted VA IDs, ordered labels and only Job group-zero stream IDs",
+        "Canonical UTC fractions; exact signed duration/lookahead; five exact pointing alternatives without coordinate conversion",
+        "RX/TX configuration is copied requirements, not scheduling acceptance or physical activity; TX mode mismatch rejects",
+        "Finalize invocation and future completion distinct; repeat cache includes failures and None/In_Progress status data",
+        "Cancel Boolean independent of error, False/None valid; Cancel first prevents a new Finalize",
+        "Close never implicitly finalizes/cancels; pending work retains the provider graph; Ada finalization non-raising"
+      ],
+      "documentation_qualification": [
+        "341 exact removed identities, zero added gaps; repository 3253/4295, RF C2 353/771",
+        "254 warnings removed, zero added; raw/public/private 892/819/73; inherited private identities unchanged",
+        "1238 source/1237 native sections; anchors/profiles and Health exception unchanged",
+        "Two fresh byte-identical sites; 31 HTML pages/1307 links",
+        "75 documentation tests, six dedicated integrity tests, literal-aware and protected-byte audit pass",
+        "All 85 RF/Common headers verified against exact pinned Git blobs; all 804 vendor files unchanged"
+      ],
+      "production_qualification": "PASS: sequential make test-native 434/434, make test-ada, make check, make check-ada-format; final frozen source hash unchanged; complete logs/zero exit statuses in external r1/final",
+      "limitations": [
+        "No new Squall/hardware execution; historical Squall b1015728f904c799fa0c07489fce48e78f67845f evidence is RX-only, not TX emission",
+        "Mock positive TX requirements are not positive real-provider TX scheduling evidence",
+        "DOC-005C untouched: 299 event/modulation/waveform and 119 interval gaps"
+      ],
+      "confidence": "SOURCE_REVIEWED_AND_LOCAL_MOCK_REGRESSION_QUALIFIED"
     }
   ]
 }
