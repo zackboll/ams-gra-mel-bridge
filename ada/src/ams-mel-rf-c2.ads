@@ -6,25 +6,101 @@ with AMS.MEL.IR;
 with Interfaces;
 
 package AMS.MEL.RF.C2 is
+   --  Consumer-side RF command ownership, asynchronous resource requests and
+   --  copied configuration/snapshots over the published RF MEL interfaces.
+   --  Provider reports and successful bridge calls do not establish physical
+   --  aperture activation, scheduling or RF transmission. Externally serialize
+   --  operations and closure on each owner; timeout is never cancellation.
+
    type C2_MEL is tagged limited private;
+   --  Unique limited controlled owner of the independent RF command interface
+   --  and its shared-library reference, not an Admin or DataMEL owner. Default
+   --  initialization is closed. Externally serialize use, Close and finalization
+   --  on each public owner. Explicit Close reports errors; controlled cleanup
+   --  does not raise. Native child claims defer shutdown beyond parent closure.
    function Open (Library_Path : String; Configuration : String) return C2_MEL;
+   --  Load the library and call only createC2MEL. Embedded NUL in either input
+   --  raises a constraint error before temporary C-string allocation. Temporary
+   --  strings are freed on exceptional exits too. Loading, symbol lookup, native
+   --  allocation, null factory result and factory exceptions raise a provider
+   --  error without returning an open owner. Configuration is not interpreted
+   --  by the bridge; this entry point does not validate it as UTF-8.
+   --  @param Library_Path Provider shared-library path for the native loader.
+   --  @param Configuration Provider-defined factory text, passed synchronously.
+   --  @return Independent owner retaining the provider object and library.
    function Is_Open (Object : C2_MEL) return Boolean;
+   --  Inspect the local handle only, not provider health or physical RF state.
+   --  @param Object Command-interface owner to inspect.
+   --  @return True exactly when the public native handle is nonnull.
    procedure Close (Object : in out C2_MEL);
-   Timeout_Error                       : exception;
+   --  Consume the public handle; repeated closure is harmless. With no child
+   --  claims, invoke shutdown once, destroy C2, then drop its library reference.
+   --  Otherwise defer shutdown until the final child releases its claim. New
+   --  child admission stops at closure; existing children remain retained.
+   --  A throwing shutdown raises a provider error on a synchronous cleanup path
+   --  and permanently retains the complete graph without retry. Detached cleanup
+   --  cannot report that error. Finalization uses non-raising cleanup instead.
+   --  @param Object Owner to close; externally serialize its operations.
+   Timeout_Error : exception;
+   --  A bounded request or Job-status wait expired. Zero milliseconds polls.
+   --  Timeout neither cancels work nor consumes a request, result or owner.
    type Virtual_Aperture_Config is private;
+   --  Ada-owned request values: definition ID, priority, file information,
+   --  ordered local-function strings and Common MEL capability IDs. Construction
+   --  allocates no provider aperture and implies no physical activation.
    function Create_Virtual_Aperture_Config
      (VA_Definition_ID        : Interfaces.Unsigned_32;
       Priority                : Interfaces.Unsigned_32;
       VA_Definition_File_Info : String) return Virtual_Aperture_Config;
+   --  Copy definition inputs; start with empty function and capability lists.
+   --  Embedded NUL raises a constraint error; native submission additionally
+   --  validates UTF-8. Empty file information is preserved.
+   --  @param VA_Definition_ID Exact unsigned 32-bit provider definition ID.
+   --  @param Priority Exact unsigned 32-bit request priority.
+   --  @param VA_Definition_File_Info Provider-defined file information, not opened locally.
+   --  @return Independently owned configuration value.
    procedure Append_Local_Function_Info (Config : in out Virtual_Aperture_Config; Value : String);
+   --  Append a copied string in caller order, including empty strings. Embedded
+   --  NUL raises a constraint error; UTF-8 is checked at native submission.
+   --  @param Config Configuration whose local-function list is extended.
+   --  @param Value Provider-defined local-function information.
    procedure Append_Capability_ID
      (Config : in out Virtual_Aperture_Config; Value : AMS.MEL.IR.UCI_ID);
+   --  Append a copied Common MEL ID, preserving all UUID bytes, label and order.
+   --  Embedded NUL in the label raises a constraint error. Submission checks UTF-8.
+   --  @param Config Configuration whose capability list is extended.
+   --  @param Value Capability identity; not a Job byte-vector identity.
    type Virtual_Aperture_Request is tagged limited private;
+   --  Unique controlled asynchronous request owner. A native worker consumes the
+   --  RequestFor future once and caches its outcome. One C2 child claim follows
+   --  pending work, unclaimed success and the claimed aperture. Public parent
+   --  closure does not invalidate that graph; a never-ready future can retain it
+   --  indefinitely. Default initialization is closed; finalization abandons
+   --  without raising, not by cancelling the provider request.
    function Submit_Virtual_Aperture
      (Parent : C2_MEL'Class; Config : Virtual_Aperture_Config) return Virtual_Aperture_Request;
+   --  Validate and copy all request inputs before invoking requestVirtualAperture.
+   --  Native text spans require UTF-8 without NUL. Invalid inputs, a closed parent,
+   --  synchronous provider failure or invalid future raise a provider error and
+   --  publish no request. Post-submission worker/publication failure retains the
+   --  future and provider graph rather than assuming cancellation. Normal return
+   --  means submission only, not successful allocation or physical activation.
+   --  @param Parent Open independent C2 owner; serialize with parent closure.
+   --  @param Config Copied request values; no caller storage is borrowed afterward.
+   --  @return Open request for subsequent bounded Wait and unique Claim.
    function Is_Open (Request : Virtual_Aperture_Request) return Boolean;
+   --  Inspect local request ownership, not readiness or Claim availability.
+   --  @param Request Request owner to inspect.
+   --  @return True exactly when its public native handle is nonnull.
    procedure Close (Request : in out Virtual_Aperture_Request);
+   --  Nonblocking, idempotent abandonment, not cancellation. Pending work keeps
+   --  its claim. An unclaimed successful aperture is destroyed by native cleanup
+   --  before the claim releases; an already claimed aperture remains independent.
+   --  @param Request Owner to consume; do not race Wait, Claim or Close on it.
    type Request_Outcome is (Created, Failed);
+   --  Cached request result category, separate from bridge/provider exceptions.
+   --  @enum Created A nonnull provider resource became available; Claim is separate.
+   --  @enum Failed Provider failure data, not an exception from the bridge call.
    type Request_Error_Code is
      (None,
       Invalid_ID,
@@ -35,6 +111,16 @@ package AMS.MEL.RF.C2 is
       Insufficient_Local_Resources,
       Insufficient_Remote_Resources,
       Unsupported);
+   --  Common MEL request error codes, not native status or cancellation codes.
+   --  @enum None No specific MEL error; also used for bridge-detected null success or unknown code failures.
+   --  @enum Invalid_ID Provider reported an invalid identity.
+   --  @enum Invalid_State Provider reported an invalid state.
+   --  @enum Invalid_Parameters Provider reported invalid parameters.
+   --  @enum Insufficient_Permissions Provider reported insufficient permissions.
+   --  @enum Insufficient_Resources Provider reported insufficient resources.
+   --  @enum Insufficient_Local_Resources Provider reported insufficient local resources.
+   --  @enum Insufficient_Remote_Resources Provider reported insufficient remote resources.
+   --  @enum Unsupported Provider reported an unsupported request.
    for Request_Error_Code use
      (None                          => 0,
       Invalid_ID                    => 1,
@@ -46,128 +132,449 @@ package AMS.MEL.RF.C2 is
       Insufficient_Remote_Resources => 7,
       Unsupported                   => 8);
    type Virtual_Aperture_Result is private;
+   --  Copied immutable terminal outcome, error code and diagnostic. Contains no
+   --  resource owner; closing the request does not invalidate this value.
    function Outcome (Result : Virtual_Aperture_Result) return Request_Outcome;
+   --  Read the cached request category, not a physical aperture status.
+   --  @param Result Copied terminal request result.
+   --  @return Creation or failure category.
    function Error_Code (Result : Virtual_Aperture_Result) return Request_Error_Code;
+   --  Read the mapped MEL code; inspect outcome and description as well.
+   --  @param Result Copied terminal request result.
+   --  @return Stored error code, None on successful creation.
    function Description (Result : Virtual_Aperture_Result) return String;
+   --  Copy the full cached diagnostic. Native malformed provider text is replaced
+   --  by a fixed diagnostic; long failure descriptions are not silently truncated.
+   --  @param Result Copied terminal request result.
+   --  @return Owned diagnostic string, empty on successful creation.
    function Wait
      (Request : Virtual_Aperture_Request; Timeout_Milliseconds : Natural)
       return Virtual_Aperture_Result;
+   --  Wait for cached completion, not aperture activation. Repeated terminal
+   --  waits return the same data without consuming the future again. Timeout
+   --  raises a timeout error and leaves work pending; provider rejection returns
+   --  failure data, whereas future exceptions and native failures raise a provider
+   --  error. A null successful provider pointer is failure data, not Created.
+   --  @param Request Open request; serialize with its Close and Claim.
+   --  @param Timeout_Milliseconds Maximum completion wait in milliseconds; zero polls.
+   --  @return Copied terminal outcome, mapped code and complete diagnostic.
    type Virtual_Aperture is tagged limited private;
+   --  Unique controlled owner obtained by Claim, retaining the provider aperture
+   --  and C2 child claim. Owns copied ID/label snapshots independently in Ada.
+   --  Default initialization is closed; automatic cleanup does not raise.
    function Claim (Request : Virtual_Aperture_Request'Class) return Virtual_Aperture;
+   --  Transfer a successful request's resource exactly once. Pending, failed or
+   --  previously claimed requests raise a provider error. Native getters build
+   --  the complete snapshot before publication; a getter-started failure is cached
+   --  without retrying those getters. Ada copies the snapshot and cleans the new
+   --  owner if copying raises. Claim does not establish physical activation.
+   --  @param Request Open successfully completed request; serialize its operations.
+   --  @return Independent aperture owner with sorted IDs, copied labels and group flag.
    function Is_Open (Object : Virtual_Aperture) return Boolean;
+   --  Inspect local ownership only, not operational state or provider health.
+   --  @param Object Aperture owner to inspect.
+   --  @return True exactly when the public native handle is nonnull.
    function VA_Instance_ID_Count (Object : Virtual_Aperture) return Natural;
+   --  Read the Ada-owned Claim-time snapshot without querying the provider.
+   --  @param Object Owner holding the copied snapshot, also readable after Close.
+   --  @return Number of sorted instance IDs, zero for a default owner.
    function VA_Instance_ID_At
      (Object : Virtual_Aperture; Index : Positive) return Interfaces.Unsigned_32;
+   --  Read an instance ID copied from the provider's sorted set at Claim.
+   --  @param Object Owner holding the immutable copied snapshot.
+   --  @param Index One-based position; a position beyond count raises a constraint error.
+   --  @return Exact unsigned 32-bit instance ID at that position.
    function Element_Group_Label_Count (Object : Virtual_Aperture) return Natural;
+   --  Read the copied Claim-time label count, not a live provider query.
+   --  @param Object Owner holding the snapshot, also readable after Close.
+   --  @return Number of labels in provider vector order.
    function Element_Group_Label_At (Object : Virtual_Aperture; Index : Positive) return String;
+   --  Copy a validated UTF-8 label from Ada-owned storage; empty labels survive.
+   --  @param Object Owner holding the immutable copied labels.
+   --  @param Index One-based position; a position beyond count raises a constraint error.
+   --  @return Label at the selected provider-vector position, not a sorted key.
    function Is_Single_Group (Object : Virtual_Aperture) return Boolean;
+   --  Read the Claim-time provider flag, not a current configuration query.
+   --  @param Object Owner holding the copied snapshot, also readable after Close.
+   --  @return Copied single-group flag; False for a default owner.
    procedure Close (Object : in out Virtual_Aperture);
+   --  Consume the handle idempotently, destroy its provider aperture reference,
+   --  then release its C2 claim. Jobs retain their own provider reference and
+   --  sibling claim. A final-child deferred shutdown exception raises a provider
+   --  error after closure and retains the uncertain C2/library graph permanently.
+   --  No shutdown retry occurs; finalization suppresses cleanup errors. Ada-owned
+   --  snapshots are unchanged. This is resource release, not physical deactivation.
+   --  @param Object Owner to close; serialize with submission and other owner calls.
    type RX_Element_Group_Config is private;
    --  TX JobRequest requirements only; this does not execute a TX interval.
    --  Power is exact provider-defined TxPowerLevel, not a TxPowerModeID.
    type TX_Element_Group_Config is private;
+   --  Ada-owned TX Job requirements: label, duty, power level and frequency
+   --  ranges. This value constructs no event and activates no transmitter.
    function Create_TX_Element_Group
      (Label               : String;
       TX_Power_Level      : Interfaces.Unsigned_32;
       Desired_Duty_Factor : Long_Float := 1.0) return TX_Element_Group_Config;
+   --  Copy TX requirements without calling the provider. Embedded NUL or a
+   --  nonfinite duty outside (0, 1] raises a constraint error. Submission checks
+   --  label UTF-8 and the provider-created command's TX mode independently.
+   --  @param Label Provider element-group label; empty text is allowed.
+   --  @param TX_Power_Level Exact unsigned provider TxPowerLevel, not a power-mode ID.
+   --  @param Desired_Duty_Factor Finite requested fraction, strictly positive and at most one.
+   --  @return Owned TX requirements with an empty frequency list.
    procedure Append_Expected_Center_Frequency
      (Group : in out TX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float);
+   --  Append a copied TX frequency range in caller order. Nonfinite or reversed
+   --  bounds raise a constraint error; no bridge positivity restriction applies.
+   --  @param Group TX requirements to extend, not a running interval.
+   --  @param Min_Hz Finite lower center-frequency bound in hertz.
+   --  @param Max_Hz Finite upper center-frequency bound in hertz, at least the lower bound.
    function Create_RX_Element_Group
      (Label               : String;
       Desired_Duty_Factor : Long_Float := 1.0;
       Data_Pipe_Label     : String := "default") return RX_Element_Group_Config;
+   --  Copy RX requirements, initially without frequencies, endpoints or expected
+   --  pointings. Embedded NUL in either label, or nonfinite duty outside (0, 1],
+   --  raises a constraint error. UTF-8 and command RX mode are checked at native
+   --  submission. Constructing this value neither associates an actual endpoint
+   --  nor starts receive activity.
+   --  @param Label Provider element-group label; empty text is allowed.
+   --  @param Desired_Duty_Factor Finite requested fraction, strictly positive and at most one.
+   --  @param Data_Pipe_Label Default pipe label used by the two-argument endpoint append.
+   --  @return Independently owned RX configuration value.
    procedure Append_Expected_Center_Frequency
      (Group : in out RX_Element_Group_Config; Min_Hz, Max_Hz : Long_Float);
+   --  Append a copied RX frequency range in caller order. Nonfinite or reversed
+   --  bounds raise a constraint error; no Squall-specific frequency rule applies.
+   --  @param Group RX requirements to extend.
+   --  @param Min_Hz Finite lower center-frequency bound in hertz.
+   --  @param Max_Hz Finite upper center-frequency bound in hertz, at least the lower bound.
    procedure Append_Endpoint_ID
      (Group : in out RX_Element_Group_Config; ID : Interfaces.Unsigned_64);
-   --  Explicit pipe collections retain insertion order. Duplicate IDs within
-   --  one collection raise Constraint_Error; empty collections are omitted.
+   --  Append a copied endpoint identity to the configured default pipe.
+   --  Pipe collections retain insertion order. Duplicate IDs within one
+   --  collection raise a constraint error; empty collections are omitted.
+   --  @param Group RX requirements; use the default pipe label saved at construction.
+   --  @param ID Exact unsigned 64-bit endpoint ID to associate at submission.
    procedure Append_Endpoint_ID
      (Group           : in out RX_Element_Group_Config;
       Data_Pipe_Label : String;
       ID              : Interfaces.Unsigned_64);
+   --  Append an endpoint to the named pipe's copied collection. Embedded NUL in
+   --  the label or a duplicate ID within that pipe raises a constraint error.
+   --  Existing pipe collections retain insertion order; IDs become a set during
+   --  submission. The same ID in distinct pipes is not rejected locally. No live
+   --  VA pipe lookup or endpoint allocation is performed here.
+   --  @param Group RX requirements to extend.
+   --  @param Data_Pipe_Label Pipe association label; native submission validates UTF-8.
+   --  @param ID Exact unsigned 64-bit endpoint identity, including zero/high bits.
    type UTC_Time is private;
+   --  Owned UTC integral seconds and canonical fractional femtoseconds. No clock
+   --  query or conversion from another time scale occurs during construction.
    function Create_UTC_Time
      (Seconds, Fractional_Femtoseconds : Interfaces.Integer_64) return UTC_Time;
+   --  Preserve the supplied pair without normalization. A fraction below zero
+   --  or at least one quadrillion raises a constraint error; full signed seconds are valid.
+   --  @param Seconds Exact integral UTC seconds in the upstream representation.
+   --  @param Fractional_Femtoseconds Nonnegative fraction strictly below one quadrillion femtoseconds.
+   --  @return Owned canonical UTC pair.
    function Seconds (Value : UTC_Time) return Interfaces.Integer_64;
+   --  Read the stored integral part without rounding the fractional part.
+   --  @param Value Owned UTC pair.
+   --  @return Exact signed integral seconds.
    function Fractional_Femtoseconds (Value : UTC_Time) return Interfaces.Integer_64;
    --  Exact caller-selected coordinates: meters, meters/second and radians.
    --  No conversion, normalization, physical range or finite-value checks.
+   --  @param Value Owned UTC pair.
+   --  @return Stored nonnegative fraction strictly below one quadrillion femtoseconds.
    type Pointing_Kind is (ECEF, LLA, Platform_Relative, Face_Relative, Baseline_Relative);
+   --  Active alternative of the published five-kind pointing variant.
+   --  @enum ECEF Earth-centered Earth-fixed position and velocity with validity time.
+   --  @enum LLA WGS-84 latitude/longitude/altitude and NED velocity with validity time.
+   --  @enum Platform_Relative Azimuth/elevation relative to the platform, in radians.
+   --  @enum Face_Relative Azimuth/elevation relative to the aperture face, in radians.
+   --  @enum Baseline_Relative Conic angle relative to the aperture baseline, in radians.
    type Pointing is private;
+   --  Owned caller-selected pointing value, not a coordinate transformation or
+   --  capability query. Constructors preserve active coordinates and IEEE value
+   --  classification, including signed zero, infinity and NaN; there is no NaN
+   --  payload-bit promise. No clamping, wrapping, geodesy or finite/range check is
+   --  performed on coordinates. Only ECEF/LLA UTC fractions are constrained.
    function Create_ECEF_Pointing
      (Location_X_M, Location_Y_M, Location_Z_M       : Long_Float;
       Velocity_X_MPS, Velocity_Y_MPS, Velocity_Z_MPS : Long_Float;
       Time_Of_Validity                               : UTC_Time) return Pointing;
+   --  Construct exact ECEF position/velocity requirements without a frame change.
+   --  @param Location_X_M Earth-fixed X position in meters.
+   --  @param Location_Y_M Earth-fixed Y position in meters.
+   --  @param Location_Z_M Earth-fixed Z position in meters.
+   --  @param Velocity_X_MPS Earth-fixed X velocity in meters per second.
+   --  @param Velocity_Y_MPS Earth-fixed Y velocity in meters per second.
+   --  @param Velocity_Z_MPS Earth-fixed Z velocity in meters per second.
+   --  @param Time_Of_Validity Canonical UTC pair copied into the value.
+   --  @return Owned ECEF alternative, not a commanded physical pointing.
    function Create_LLA_Pointing
      (Latitude_Rad, Longitude_Rad, Altitude_M                  : Long_Float;
       Velocity_North_MPS, Velocity_East_MPS, Velocity_Down_MPS : Long_Float;
       Time_Of_Validity                                         : UTC_Time) return Pointing;
+   --  Construct exact WGS-84 position and NED velocity without conversion to ECEF.
+   --  Out-of-conventional-range coordinates are preserved, not normalized.
+   --  @param Latitude_Rad Caller latitude in radians.
+   --  @param Longitude_Rad Caller longitude in radians.
+   --  @param Altitude_M Caller altitude in meters.
+   --  @param Velocity_North_MPS North velocity in meters per second.
+   --  @param Velocity_East_MPS East velocity in meters per second.
+   --  @param Velocity_Down_MPS Down velocity in meters per second.
+   --  @param Time_Of_Validity Canonical UTC pair copied into the value.
+   --  @return Owned LLA alternative, not provider acceptance.
    function Create_Platform_Relative_Pointing
      (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
+   --  Construct platform-relative angles exactly, without transformation.
+   --  @param Azimuth_Rad Caller azimuth in radians; no wrapping or finite check.
+   --  @param Elevation_Rad Caller elevation in radians; no clamping or finite check.
+   --  @return Owned platform-relative alternative, without UTC payload.
    function Create_Face_Relative_Pointing (Azimuth_Rad, Elevation_Rad : Long_Float) return Pointing;
+   --  Construct aperture-face-relative angles exactly, without transformation.
+   --  @param Azimuth_Rad Caller azimuth in radians; no wrapping or finite check.
+   --  @param Elevation_Rad Caller elevation in radians; no clamping or finite check.
+   --  @return Owned face-relative alternative, without UTC payload.
    function Create_Baseline_Relative_Pointing (Conic_Rad : Long_Float) return Pointing;
-   --  Read-only active-field inspection. Wrong-kind access raises Constraint_Error.
+   --  Construct the caller's baseline-relative angle without a frame conversion.
+   --  @param Conic_Rad Caller baseline-relative conic angle in radians; no range check.
+   --  @return Owned baseline-relative alternative, without UTC payload.
    function Kind (Value : Pointing) return Pointing_Kind;
+   --  Read the active variant without inspecting inactive coordinates.
+   --  @param Value Owned pointing value.
+   --  @return Active alternative; no provider support claim is implied.
    type ECEF_Coordinates is record
       X, Y, Z : Long_Float;
    end record;
+   --  Copied Earth-fixed triple: meters for position, meters per second for
+   --  velocity, as selected by the accessor. No frame conversion is performed.
+   --  @field X Exact X component in the accessor's units.
+   --  @field Y Exact Y component in the accessor's units.
+   --  @field Z Exact Z component in the accessor's units.
    type LLA_Coordinates is record
       Latitude_Rad, Longitude_Rad, Altitude_M : Long_Float;
    end record;
+   --  Copied WGS-84 location; no coordinate normalization is performed.
+   --  @field Latitude_Rad Latitude in radians.
+   --  @field Longitude_Rad Longitude in radians.
+   --  @field Altitude_M Altitude in meters.
    type NED_Velocity is record
       North_MPS, East_MPS, Down_MPS : Long_Float;
    end record;
+   --  Copied north/east/down velocity; not converted to an Earth-fixed frame.
+   --  @field North_MPS North component in meters per second.
+   --  @field East_MPS East component in meters per second.
+   --  @field Down_MPS Down component in meters per second.
    function ECEF_Position (Value : Pointing) return ECEF_Coordinates;
+   --  Read active ECEF position; wrong kind raises a constraint error.
+   --  @param Value ECEF pointing whose stored fields are inspected.
+   --  @return Copied X/Y/Z position in meters.
    function ECEF_Velocity (Value : Pointing) return ECEF_Coordinates;
+   --  Read active ECEF velocity; wrong kind raises a constraint error.
+   --  @param Value ECEF pointing whose stored fields are inspected.
+   --  @return Copied X/Y/Z velocity in meters per second.
    function LLA_Position (Value : Pointing) return LLA_Coordinates;
+   --  Read active WGS-84 location; wrong kind raises a constraint error.
+   --  @param Value LLA pointing whose stored fields are inspected.
+   --  @return Copied latitude/longitude radians and altitude meters.
    function LLA_Velocity (Value : Pointing) return NED_Velocity;
+   --  Read active NED velocity; wrong kind raises a constraint error.
+   --  @param Value LLA pointing whose stored fields are inspected.
+   --  @return Copied north/east/down velocity in meters per second.
    function Azimuth_Rad (Value : Pointing) return Long_Float;
+   --  Read relative azimuth; other kinds raise a constraint error.
+   --  @param Value Platform-relative or face-relative pointing.
+   --  @return Stored azimuth in radians, without wrapping.
    function Elevation_Rad (Value : Pointing) return Long_Float;
+   --  Read relative elevation; other kinds raise a constraint error.
+   --  @param Value Platform-relative or face-relative pointing.
+   --  @return Stored elevation in radians, without clamping.
    function Conic_Rad (Value : Pointing) return Long_Float;
+   --  Read baseline-relative conic angle; other kinds raise a constraint error.
+   --  @param Value Baseline-relative pointing.
+   --  @return Stored conic angle in radians, without normalization.
    function Time_Of_Validity (Value : Pointing) return UTC_Time;
+   --  Read absolute-pointing validity time; relative kinds raise a constraint error.
+   --  @param Value ECEF or LLA pointing.
+   --  @return Copied canonical UTC pair.
    procedure Append_Expected_Pointing (Group : in out RX_Element_Group_Config; Value : Pointing);
+   --  Append a copied expected RX pointing, preserving order and duplicates.
+   --  No provider setter runs until submission and no physical steering follows
+   --  from this local operation. TX expected pointings are not exposed here.
+   --  @param Group RX requirements whose pointing sequence is extended.
+   --  @param Value Complete active pointing alternative to copy.
    type Byte_Array is array (Natural range <>) of Interfaces.Unsigned_8;
+   --  Arbitrary identity bytes for Job configuration: length, order, embedded
+   --  zeros and high bits are data. Empty values are allowed; not UTF-8 or a UUID.
    type Unsigned_32_Array is array (Natural range <>) of Interfaces.Unsigned_32;
+   --  Unsigned ID sequence, including empty input. Power-mode submission converts
+   --  it to a set, so duplicates collapse and caller order is not promised there.
    type Job_Config is private;
+   --  Ada-owned JobRequest requirements with copied groups and values, not a
+   --  provider Job or acceptance result. Constructors put one group first;
+   --  appends preserve global RX/TX order and duplicate labels. Initial times,
+   --  duration and lookahead are zero; capability/activity/power-mode IDs are
+   --  each [0], instances empty and estimated pointing absent. Submission leaves
+   --  upstream JIB controls, callbacks and context at pinned defaults. No local
+   --  scheduling comparison or RX/TX activation is performed.
    procedure Set_Estimated_Stab_Point (Config : in out Job_Config; Value : Pointing);
+   --  Copy and mark the optional estimated stabilization point present, replacing
+   --  any earlier value. Does not transform coordinates or invoke a provider.
+   --  @param Config Owned Job requirements to update.
+   --  @param Value Complete active pointing alternative to copy.
    procedure Clear_Estimated_Stab_Point (Config : in out Job_Config);
+   --  Mark estimated pointing absent; submission then omits its setter rather
+   --  than reading or initializing the pinned default ECEF numeric storage.
+   --  @param Config Owned Job requirements whose optional point is cleared.
    function Create_Job_Config
      (Request_ID, Priority       : Interfaces.Unsigned_32;
       Group                      : RX_Element_Group_Config;
       Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
       Interruptable              : Boolean := False) return Job_Config;
+   --  Construct owned requirements with the RX group first and pinned defaults
+   --  for other fields. This does not submit or schedule a Job.
+   --  @param Request_ID Exact unsigned 32-bit request identity.
+   --  @param Priority Exact unsigned 32-bit provider scheduling priority.
+   --  @param Group RX requirements copied as the initial group.
+   --  @param Precedence_Within_Priority Exact precedence among equal priorities.
+   --  @param Interruptable True requests resume after higher-priority interruption; False requests termination.
+   --  @return Independent mutable Job configuration value.
    procedure Append_Instance_Selection (Config : in out Job_Config; ID : Interfaces.Unsigned_32);
+   --  Append an exact instance selection; retain order, duplicates and all bits.
+   --  No provider membership check occurs in this local operation.
+   --  @param Config Owned Job requirements to extend.
+   --  @param ID Unsigned 32-bit VA instance selection value.
    function Create_Job_Config
      (Request_ID, Priority       : Interfaces.Unsigned_32;
       Group                      : TX_Element_Group_Config;
       Precedence_Within_Priority : Interfaces.Unsigned_32 := 0;
       Interruptable              : Boolean := False) return Job_Config;
    --  Append calls define one global order across RX/TX, including duplicates.
+   --  @param Request_ID Exact unsigned 32-bit request identity.
+   --  @param Priority Exact unsigned 32-bit provider scheduling priority.
+   --  @param Group TX requirements copied as the initial group; no TX execution follows.
+   --  @param Precedence_Within_Priority Exact precedence among equal priorities.
+   --  @param Interruptable True requests resume after higher-priority interruption; False requests termination.
+   --  @return Owned Job configuration with the same pinned defaults as the RX constructor.
    procedure Append_TX_Element_Group (Config : in out Job_Config; Group : TX_Element_Group_Config);
+   --  Append a copy in global RX/TX order, retaining duplicate labels and modes.
+   --  Later edits to the source group do not change the stored requirements.
+   --  @param Config Owned Job configuration to extend.
+   --  @param Group TX requirements to copy; no event or interval is created.
    procedure Append_RX_Element_Group (Config : in out Job_Config; Group : RX_Element_Group_Config);
+   --  Append a copy in global RX/TX order, retaining duplicate labels and modes.
+   --  Later edits to the source group do not change the stored requirements.
+   --  @param Config Owned Job configuration to extend.
+   --  @param Group RX requirements, including copied endpoints and pointings.
    procedure Set_Min_Start_Time (Config : in out Job_Config; Value : UTC_Time);
+   --  Replace minimum-start requirements; no comparison with maximum completion
+   --  or the current clock occurs. Provider scheduling semantics remain separate.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Canonical UTC pair copied exactly.
    procedure Set_Max_Complete_Time (Config : in out Job_Config; Value : UTC_Time);
+   --  Replace maximum-completion requirements without a local ordering check.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Canonical UTC pair copied exactly.
    procedure Set_Duration_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64);
+   --  Replace requested duration without quantization, clamping or sign checks.
+   --  Construction does not establish provider acceptance or effective duration.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Exact signed 64-bit femtoseconds, including both extremes and zero.
    procedure Set_Capability_ID (Config : in out Job_Config; Value : Byte_Array);
+   --  Replace capability bytes using temporary storage before assignment, leaving
+   --  the previous field intact if copying fails. No UUID-length rule applies.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Arbitrary copied bytes, including empty input, zeros and high bits.
    procedure Set_Activity_ID (Config : in out Job_Config; Value : Byte_Array);
+   --  Replace activity bytes using temporary storage before assignment, leaving
+   --  the previous field intact if copying fails. Not a string or Common MEL ID.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Arbitrary copied bytes, including empty input, zeros and high bits.
    procedure Set_TX_Power_Mode_IDs (Config : in out Job_Config; Value : Unsigned_32_Array);
+   --  Replace copied IDs, building temporary storage before assignment. Native
+   --  submission serializes them as a set: duplicates collapse; empty is valid.
+   --  Power-mode IDs do not select TX events or guarantee TX activation.
+   --  @param Config Owned Job configuration to update.
+   --  @param Value Unsigned 32-bit IDs, distinct from each TX group's power level.
    procedure Set_Lookahead_Femtoseconds (Config : in out Job_Config; Value : Interfaces.Integer_64);
-   --  Create_Job_Config inserts Group first and retains the historical upstream
-   --  defaults: zero times/duration/lookahead and [0] identity/power-mode IDs.
-   --  Instance selection is a vector; TX power modes are serialized as a set.
+   --  Replace requested lookahead without clamping, quantization or scheduling checks.
+   --  @param Config Owned Job configuration whose lookahead is replaced.
+   --  @param Value Exact signed 64-bit femtoseconds; no sign check or quantization.
    type Job_Request is tagged limited private;
+   --  Unique controlled asynchronous JobDetail request owner. Native work retains
+   --  a strong provider VA and a sibling C2 child claim independently of public
+   --  VA/C2 owners. One worker consumes the RequestFor future and caches terminal
+   --  data. Default initialization is closed; non-raising finalization abandons,
+   --  never cancels. Unresolved work may retain the provider/library indefinitely.
    function Submit_Job (VA : Virtual_Aperture'Class; Config : Job_Config) return Job_Request;
+   --  Copy and validate requirements before provider entry, then create each
+   --  command by label, require its selected RX/TX mode, populate requirements
+   --  and call requestJob once. At least one total group is required; RX-only,
+   --  TX-only and mixed requests are bridge inputs, not provider support claims.
+   --  Labels must be UTF-8 without NUL. Validation/preparation failure publishes
+   --  no request. A mode mismatch or synchronous native/provider failure raises
+   --  a provider error; provider command mutations may precede a later exception,
+   --  so this is not a provider rollback guarantee. Post-send worker/publication
+   --  failure retains the future and graph. No physical RF activity is promised.
+   --  @param VA Open aperture with C2 child admission still open; serialize submission with other owner calls and Close.
+   --  @param Config Owned values copied synchronously, with no retained caller spans.
+   --  @return Open asynchronous request, not a scheduling acceptance result.
    function Is_Open (Request : Job_Request) return Boolean;
+   --  Inspect only local ownership, not readiness or claimability.
+   --  @param Request Job request owner to inspect.
+   --  @return True exactly when its public native handle is nonnull.
    procedure Close (Request : in out Job_Request);
+   --  Nonblocking idempotent abandonment, not cancellation or Job destruction
+   --  when pending. Native cleanup destroys an unclaimed successful JobDetail,
+   --  then its VA reference, then releases the sibling C2 claim. A claimed Job
+   --  remains independent. Serialize request Close, Claim and Wait.
+   --  @param Request Public request owner to consume.
    type Job_Result is private;
+   --  Copied immutable terminal request data, not a Job owner or execution status.
+   --  Result values remain independent of request closure and Claim.
    function Outcome (Result : Job_Result) return Request_Outcome;
+   --  Read request completion category, not Job execution or RF activity.
+   --  @param Result Copied terminal Job request result.
+   --  @return Created for a nonnull JobDetail, otherwise provider failure data.
    function Error_Code (Result : Job_Result) return Request_Error_Code;
+   --  Read the mapped Common MEL code; also inspect category and description.
+   --  @param Result Copied terminal Job request result.
+   --  @return Stored code, None on successful creation.
    function Description (Result : Job_Result) return String;
+   --  Copy the complete cached diagnostic; malformed provider text receives a
+   --  native fallback. Long descriptions are retrieved without silent truncation.
+   --  @param Result Copied terminal Job request result.
+   --  @return Owned diagnostic string, empty on successful creation.
    function Wait (Request : Job_Request; Timeout_Milliseconds : Natural) return Job_Result;
+   --  Await cached Job request completion, not Job execution. Repeated terminal
+   --  waits return the same data. Timeout raises a timeout error without cancelling
+   --  or consuming work. Provider rejection and null successful pointers return
+   --  failure data; future exceptions and native failures raise a provider error.
+   --  @param Request Open request; externally serialize its operations and Close.
+   --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
+   --  @return Copied terminal category, mapped code and complete diagnostic.
    type Job is limited private;
+   --  Unique controlled JobDetail owner with a retained provider VA and sibling
+   --  C2 child claim. Owns an Ada copy of the immutable Claim-time snapshot.
+   --  Default initialization is closed; explicit closure reports cleanup errors,
+   --  while finalization does not raise or implicitly finalize/cancel the Job.
    function Claim (Request : Job_Request'Class) return Job;
+   --  Transfer successful Job ownership exactly once. Pending, failed or already
+   --  claimed requests raise a provider error. Native getters build a complete
+   --  immutable snapshot before publication; getter-started failure is cached,
+   --  so no provider getter is retried. Ada copies all fields and cleans its new
+   --  owner if copying raises. The snapshot includes only getRxStreamIDs(0), not
+   --  all groups. Request and public VA/C2 may close without invalidating the Job.
+   --  @param Request Open successfully completed request; serialize its operations.
+   --  @return Independent Job owner and copied snapshot, not an RF execution guarantee.
    function Is_Open (Object : Job) return Boolean;
+   --  Inspect the local public handle only, not completion, scheduling or RF state.
+   --  @param Object Job owner to inspect.
+   --  @return True exactly when its public native handle is nonnull.
+
    --  Matches RF MEL 762ce84: numeric_limits<Femtoseconds>::max() has
    --  count zero, unlike Femtoseconds::max(). This aliases an ordinary zero
    --  relative start; the scalar provider interface cannot distinguish intent.
@@ -495,8 +902,18 @@ package AMS.MEL.RF.C2 is
       Interval_ID                 : Interfaces.Unsigned_32;
       Event_ID                    : Interfaces.Unsigned_32;
       Added_Duration_Femtoseconds : Interfaces.Integer_64);
+
    type Job_Status is
      (None, In_Progress, Complete, Failed_Invalid_ID, Failed_Interrupted, Failed_Invalid_State);
+   --  Provider status returned by the one Finalize future, not a live RF activity
+   --  stream. Every known value is result data, including failure values. Even
+   --  an unset or in-progress result is cached once that future is consumed.
+   --  @enum None Provider reported no specific Job status.
+   --  @enum In_Progress Provider reported an accepted Job in progress.
+   --  @enum Complete Provider reported completion, not a bridge RF transmission guarantee.
+   --  @enum Failed_Invalid_ID Provider reported failure due to invalid ID.
+   --  @enum Failed_Interrupted Provider reported interruption failure.
+   --  @enum Failed_Invalid_State Provider reported failure due to invalid state.
    for Job_Status use
      (None                 => 0,
       In_Progress          => 1,
@@ -505,24 +922,111 @@ package AMS.MEL.RF.C2 is
       Failed_Interrupted   => 4,
       Failed_Invalid_State => 5);
    type Cancel_Error is (None);
+   --  Pinned cancellation error domain; semantic success is a separate Boolean.
+   --  @enum None Only known error code; does not by itself mean cancellation succeeded.
    for Cancel_Error use (None => 0);
    type Cancel_Result is private;
+   --  Copied cached cancellation Boolean and error. False with None is a valid
+   --  provider rejection; native/provider exceptions are raised, not fabricated
+   --  as another Boolean result. Contains no Job or provider owner.
    function Cancelled (Result : Cancel_Result) return Boolean;
+   --  Read the provider CancelStatus conversion to Boolean independently of error.
+   --  @param Result Copied cancellation result.
+   --  @return True for provider-reported cancellation success; False for semantic failure.
    function Error_Code (Result : Cancel_Result) return Cancel_Error;
+   --  Read the validated cancellation error, not the request error-code domain.
+   --  @param Result Copied cancellation result.
+   --  @return None for the only supported pinned code, also possible with False.
    procedure Finalize_Job (Object : in out Job);
+   --  Synchronously invoke provider finalize once, indicating that Job population
+   --  is finished; hand its future to one native completion worker. Normal return
+   --  means invocation/worker setup succeeded, not future completion or physical
+   --  RF activation. Once invocation is attempted, repeated success returns
+   --  normally and repeated synchronous failure raises the cached provider error
+   --  without resending. An invalid future also raises a provider error. Bridge
+   --  allocation failure before invocation does not consume the provider attempt.
+   --  Cancel attempted first prohibits a new Finalize, even if Cancel returned
+   --  False or raised; an already attempted Finalize remains repeatable from
+   --  cache after Cancel. Future exceptions are reported by status Wait instead.
+   --  Post-invocation worker failure retains future/provider/library state.
+   --  @param Object Open Job; externally serialize all same-Job calls and Close.
    function Wait_Job_Status (Object : Job; Timeout_Milliseconds : Natural) return Job_Status;
+   --  Await the Finalize future's cached completion, not a physical RF state.
+   --  Waiting before a Finalize attempt raises a provider error. Timeout raises
+   --  a timeout error without cancellation or ownership consumption. Synchronous
+   --  Finalize failures, future exceptions, unknown statuses and native failures
+   --  raise a provider error; the six known statuses, including failed statuses,
+   --  return as data. Repeated completion waits return the cached status or error,
+   --  even for an unset or in-progress value; no further provider polling occurs.
+   --  @param Object Open Job retaining the future/provider graph despite parent closure.
+   --  @param Timeout_Milliseconds Maximum completion wait in milliseconds; zero polls.
+   --  @return Known status supplied by the single consumed Finalize future.
    function Cancel_Job (Object : in out Job) return Cancel_Result;
+   --  Synchronously call cancelJob once and cache its Boolean/error separately.
+   --  Repeats return the same result or raise the cached provider error without
+   --  retry. Unknown error codes and provider/native exceptions raise a provider
+   --  error, not False. A normal False/None result is permitted. The provider may
+   --  complete the Finalize future during cancellation; this call is not that
+   --  future wait and does not destroy the Job. A first Cancel attempt prohibits
+   --  starting Finalize afterward regardless of cancellation success. No physical
+   --  RF cessation or universal provider timing guarantee is inferred.
+   --  @param Object Open Job; externally serialize all same-Job operations and Close.
+   --  @return Copied provider-reported cancellation success and validated error code.
    procedure Close (Object : in out Job);
+   --  Idempotently consume the public owner, without implicit Finalize or Cancel.
+   --  With no pending finalize work, release JobDetail, then provider VA, then
+   --  the sibling C2 claim; report synchronous deferred shutdown failure as a
+   --  provider error after closure. With pending work, do not wait: its worker
+   --  retains the graph and DSO until completion, potentially indefinitely. A
+   --  throwing shutdown retains the uncertain C2/library graph without retry;
+   --  detached cleanup cannot report it. Controlled finalization never raises.
+   --  Ada-owned Claim-time snapshots remain unchanged and readable after Close.
+   --  @param Object Job owner to consume; externally serialize with its other calls.
    function Actual_Start_Seconds (Object : Job) return Interfaces.Integer_64;
+   --  Read the Claim-time provider actual-start report, not the current clock or
+   --  proof of RF activity. Snapshot access does not require an open native handle.
+   --  @param Object Job holding an Ada-owned snapshot, also readable after Close.
+   --  @return Exact signed integral UTC seconds from the provider report.
    function Actual_Start_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   --  Read the fractional part of the Claim-time provider actual-start report.
+   --  @param Object Job holding the immutable Ada-owned snapshot.
+   --  @return Fractional femtoseconds supplied by pinned UTCTime, separate from seconds.
    function Total_Job_Duration_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   --  Read the Claim-time duration report without refreshing it after commands.
+   --  This is a provider scheduling report, not measured RF emission time.
+   --  @param Object Job holding the copied snapshot, also readable after Close.
+   --  @return Exact signed duration count in femtoseconds.
    function VA_Instance_ID (Object : Job) return Interfaces.Unsigned_32;
+   --  Read the assigned instance ID reported at Claim, not an array position.
+   --  @param Object Job holding the copied immutable snapshot.
+   --  @return Exact unsigned 32-bit VA instance identity.
    function VA_Definition_ID (Object : Job) return Interfaces.Unsigned_32;
+   --  Read the definition ID reported at Claim, distinct from the instance ID.
+   --  @param Object Job holding the copied immutable snapshot.
+   --  @return Exact unsigned 32-bit VA definition identity.
    function Job_Details_ID (Object : Job) return Interfaces.Unsigned_32;
+   --  Read the JobDetail identity reported at Claim, distinct from request ID.
+   --  @param Object Job holding the copied immutable snapshot.
+   --  @return Exact unsigned 32-bit Job details identity.
    function Job_Request_ID (Object : Job) return Interfaces.Unsigned_32;
+   --  Read the request identity reported by JobDetail at Claim.
+   --  @param Object Job holding the copied immutable snapshot.
+   --  @return Exact unsigned 32-bit provider-reported Job request ID.
    function Lookahead_Femtoseconds (Object : Job) return Interfaces.Integer_64;
+   --  Read the Claim-time next-JIB lookahead report, without running JIB controls
+   --  or refreshing provider state. A report is not a scheduling guarantee.
+   --  @param Object Job holding the copied immutable snapshot.
+   --  @return Exact signed lookahead count in femtoseconds.
    function RX_Stream_ID_Count (Object : Job) return Natural;
+   --  Read the copied getRxStreamIDs(0) count, not the total across all groups.
+   --  @param Object Job holding the immutable snapshot, also readable after Close.
+   --  @return Number of group-zero provider stream IDs, zero for a default owner.
    function RX_Stream_ID_At (Object : Job; Index : Positive) return Interfaces.Unsigned_32;
+   --  Read a copied group-zero stream ID in provider vector order, not sorted.
+   --  This identifies a reported stream, not proof that any samples arrived.
+   --  @param Object Job holding the copied immutable stream list.
+   --  @param Index One-based position; a position beyond count raises a constraint error.
+   --  @return Exact unsigned 32-bit stream ID at that position.
 private
    pragma
      Compile_Time_Error

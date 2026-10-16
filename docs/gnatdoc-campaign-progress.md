@@ -1,5 +1,38 @@
 # GNATdoc campaign progress
 
+## DOC-005B — combined documentation checkpoints qualified
+
+Starting fetched main is DOC-005A merge
+`8f4f0b50b0bc0b9db0ab46b99f4dcf238c4d6c08`, with no intervening commits or
+equivalent active DOC-005B branch/worktree/PR. Isolated worktree:
+`/home/zboll/git/ams-mel-doc-005b`; branch `docs/005b-rf-c2-va-job`;
+external evidence `/home/zboll/git/ams-mel-doc-005b-evidence/r1`.
+All historical evidence and unrelated worktrees/branches remain preserved.
+
+Pristine reproduction: repository 2,912/4,295, RF C2 12/771, 1,383 gaps.
+005B1 removes exactly 87 full gap identities (99/771; 2,999/4,295).
+005B2 removes exactly 196 more (295/771; 3,195/4,295).
+005B3 removes exactly 58 more (353/771; 3,253/4,295).
+Combined: 341 removals, zero additions, 1,042 remaining repository gaps.
+All 418 DOC-005C identities (299 + 119) remain untouched, not begun.
+
+Warnings: 1,146 to 892, exactly 254 genuine removals, zero additions;
+819 public and 73 unchanged private-part. Native 1,238/1,237 inventory,
+profiles/anchors and single Health omission unchanged. All previously documented
+descriptions and unaffected rendered packages remain unchanged. Eighty-five
+RF/Common headers match exact pinned upstream Git blobs; all 804 vendor bytes
+remain protected. Source research distinguishes current v4 configuration from
+historical single-RX reports and mock TX evidence from pinned Squall RX-only
+observations. No new provider/hardware execution is claimed.
+
+Qualified semantic generation twice, byte-identical sites, HTML 31 pages/1,307
+links, 75 documentation tests, six dedicated integrity tests, task-base/original
+literal-aware integrity, removal-only ratchets and formatter checks pass.
+Initial attachment/newline failures are retained without policy or test changes.
+See `docs/doc-005b-coverage.md` and `docs/doc-005b-source-research.md`.
+Full production gates are running sequentially; no publication/readiness claim
+is made at this checkpoint.
+
 ## DOC-005 — 005A Admin checkpoint; task incomplete
 
 Fetched PR #104 merge `d4a4e262eb1404c963c509cf1e5d32f0c6712b99`;
@@ -1031,3 +1064,18 @@ to Admin. Source citation clarification records MFA_Component.h as the Common
 state declaration and the upstream prose/declaration inconsistency. Exact removed
 identities are included in the coverage report. Publication and hosted results
 are separate subsequent observations; leave the PR open for independent review.
+
+## DOC-005B — final exact-source local qualification complete
+
+All final gates passed on frozen specification SHA-256
+`22e05187ab1cce06e2ffb9f90eb0dd143bc1ab2751d4525921e6f1789890fbdd`:
+strict semantic/docs twice, 32 byte-identical site files, HTML 31/1,307, 75
+documentation tests, six integrity tests, exact identity/protected-byte audits,
+then sequential make test-native (434/434), make test-ada, make check and
+make check-ada-format. Final tested source hash unchanged; exactly seven
+authorized files differ. The superseded earlier source-hash mismatch is retained
+and not credited as final qualification. Coverage remains 3,253/4,295, RF C2
+353/771; 341 gaps and 254 public warnings removed, zero additions. All 73
+private warning identities, 418 deferred DOC-005C gaps and historical evidence
+remain unchanged. No new Squall/hardware execution. Publication/hosted evidence
+is recorded separately; no merge, tag, release or feature Pages deployment.
