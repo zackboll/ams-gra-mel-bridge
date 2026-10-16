@@ -1114,3 +1114,25 @@ are preserved. In-scope historical adjacent-comment attachments are explicitly
 reconciled in the coverage report. No new provider/hardware claim or DOC-006.
 Main refetched unchanged; publication/hosted checks are separate exact-head
 observations. Full output/statuses remain in external `r1/final`.
+
+## DOC-006A — ProductRx continuation
+
+Recovered the unchanged qualified DOC-006 r1 baseline; preserved its original branch
+and reused the existing worktree on `docs/006a-rf-product-rx`. ProductRx alone is
+now 263/263: exactly 261 original gap identities removed, no additions. Repository
+is 3932/4295 with 363 gaps (362 deferred RF child elements and the unchanged Health
+renderer exception). Warnings are 368 raw / 295 public / 73 unchanged private-part;
+231 ProductRx public warnings removed. A1–A4 semantic documentation checkpoints,
+75 documentation tests and six integrity tests passed. Final exact-source and
+production qualification are recorded in `doc-006a-coverage.md`, not inferred from
+checkpoint results. Source reconciliation is in `doc-006a-source-research.md`.
+External evidence: `/home/zboll/git/ams-mel-doc-006-evidence/r2-product-rx`.
+The seven other RF child packages are deferred; DOC-006B has not been started.
+
+Final DOC-006A frozen-source qualification PASS: two byte-identical 32-file sites,
+31 HTML pages/1307 links, 75 documentation tests, six integrity tests, 804 vendor
+checksums and eight pinned upstream roots. Sequential make test-native (434/434),
+make test-ada, make check and make check-ada-format all exit zero. Before/after
+ProductRx SHA-256 remains `dfa6d851e81e7619d824ca5c87e1c9e473dfd0f5f58b4dbc63a0f47ec823d578`.
+Final exact seven-file/token/profile/warning audit passes. Publication and hosted
+checks are separate observations; no merge or DOC-006B work.

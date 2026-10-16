@@ -2616,6 +2616,83 @@
         "Final make check-ada-format PASS",
         "Frozen tested specification SHA-256 unchanged after production gates"
       ]
+    },
+    {
+      "campaign": "DOC-006A",
+      "package": "AMS.MEL.RF.Product_Rx",
+      "bridge_base": "c7f81919f125048ca81662d7d9534b4708e0e331",
+      "declarations": [
+        "All 263 public elements; exact 261 original gaps removed"
+      ],
+      "upstream": [
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-rf-mel",
+          "commit": "762ce84c5555dd0f3ea66f36b321fecf8839b89f",
+          "paths": [
+            "include/rfmel/data/DataMEL.h",
+            "include/rfmel/data/ProductRxEndpoint.h",
+            "include/rfmel/rfmeltypes/JobDataFormat.h",
+            "include/rfmel/rfmeltypes/ProductRxMetadata.h"
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-interfaces-common-mel",
+          "commit": "f6908437d8fd2f7fb69896f9eb9cfd272d10c439",
+          "paths": [
+            "include/mel/library/Error.h",
+            "include/mel/library/ErrorOr.h"
+          ]
+        },
+        {
+          "repository": "open-arsenal/ams-gra-hello-world-sk-libraries-ams-vita",
+          "commit": "8e12a4cd7ac8ea8776d40b9d0b22fc4a22adaad8",
+          "paths": [
+            "include/ams/iface/vita/FixedDataPacket.h",
+            "include/ams/iface/vita/DataPacket.h"
+          ]
+        }
+      ],
+      "implementation": [
+        "native/src/rf_product_rx.cpp",
+        "native/src/internal/rf_product_rx.hpp",
+        "native/src/rf_data.cpp",
+        "ada/src/ams-mel-rf-product_rx.adb"
+      ],
+      "tests": [
+        "native/tests/test_rf_product_rx.c",
+        "native/tests/rf_product_rx_header_compile_probe.cpp",
+        "native/tests/rf_product_rx_i8_contract_probe.cpp",
+        "native/tests/rf_product_rx_direct_contract_probe.cpp",
+        "native/tests/product_rx_v9_layout_probe.c",
+        "ada/tests/src/ams_mel_rf_product_rx_tests.adb"
+      ],
+      "confirmed_semantics": [
+        "Current safe Ada submit/view v9 accepts formats 0..7; profiles are not JobDataFormats",
+        "Permanent exact registered callable/state/DSO shell; logical close then admitted-body drain then endpoint destruction",
+        "Copied event payloads and independent Ada metadata; Process-scoped borrows, explicit independent copies",
+        "Validated actual VITA bytes, capacities 512/1024/8192/32768, whole-callback rejection",
+        "Optional association presence/order/duplicates and VITA packet cardinality preserved",
+        "Five executed stabilization variants with active canonical UTC, no coordinate conversion"
+      ],
+      "discrepancies": [
+        "Pinned ComplexINT16 prose says 8-bit but declaration is int16_t",
+        "Historical F24 safe Ada v8 routing superseded by current v9",
+        "First-event timestamp copied verbatim; canonical checks apply separately to active stabilization UTC"
+      ],
+      "qualification_limits": [
+        "No new Squall/hardware run; historical ComplexINT16 positive does not qualify VITA or nonempty metadata",
+        "No PDW/LF receive, arbitrary std::any or full ReceiveEvent mapping",
+        "No provider-wide callback quiescence, DSP, physical provenance or universal VITA conformance"
+      ],
+      "report": "docs/doc-006a-source-research.md",
+      "final_qualification": [
+        "263/263 ProductRx, repository 3932/4295; exactly 261 gap removals",
+        "368 raw/295 public/73 unchanged private warnings; 231 public removals",
+        "Two byte-identical 32-file sites; 31 HTML pages/1307 links",
+        "75 documentation tests, six integrity tests, 804 vendor checksums and eight pinned roots PASS",
+        "Sequential test-native 434/434, test-ada, check, check-ada-format exit zero",
+        "Tested source SHA-256 dfa6d851e81e7619d824ca5c87e1c9e473dfd0f5f58b4dbc63a0f47ec823d578 unchanged"
+      ]
     }
   ]
 }
