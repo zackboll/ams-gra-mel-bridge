@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Map — AMS MEL</title>
+<link rel="stylesheet" href="../assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>API Map</h1>
+<p>Choose the family matching your task, then consult its generated package
+reference for exact types, preconditions and provider conditions. All 29 public
+library packages appear once in the directory below. A type or enum declaration
+does not establish an implemented runtime capability.</p>
+<h2 id="selection">Select by developer task</h2>
+<h3>Shared/Core</h3>
+<ul>
+<li>Establish the package namespace: {{package:AMS}}.</li>
+<li>Load an IR provider, open a Session, inspect ABI/errors: {{package:AMS.MEL}}.</li>
+<li>Interpret common health/status values: {{package:AMS.MEL.Status}}.</li>
+</ul>
+<h3>IR</h3>
+<ul>
+<li>Configure/start an image stream or retain legacy Mono8 Receive: {{package:AMS.MEL.IR}}.</li>
+<li>Use common channel/capability values: {{package:AMS.MEL.IR.Channel}}.</li>
+<li>Receive a full published frame representation or scoped pixel lease: {{package:AMS.MEL.IR.Image}}.</li>
+<li>Poll the implemented Image metadata kinds: {{package:AMS.MEL.IR.Image.Metadata}}.</li>
+<li>Send IR commands: {{package:AMS.MEL.IR.C2}}.</li>
+<li>Use C2 KeepAlive, CommsTest and capability snapshots: {{package:AMS.MEL.IR.C2.Common}}.</li>
+<li>Receive command/BIT metadata: {{package:AMS.MEL.IR.C2.Metadata}}.</li>
+<li>Open Health/Status and consume metadata: {{package:AMS.MEL.IR.Health_Status}}
+and {{package:AMS.MEL.IR.Health_Status.Metadata}}.</li>
+<li>Use conditional Instrumentation command/report support: {{package:AMS.MEL.IR.Instrumentation}}
+and {{package:AMS.MEL.IR.Instrumentation.Metadata}}.</li>
+<li>Open conditional Track channels: {{package:AMS.MEL.IR.Track}}.</li>
+<li>Receive the four implemented Track callbacks: {{package:AMS.MEL.IR.Track.Metadata}}.</li>
+<li>Submit conditional Track updates: {{package:AMS.MEL.IR.Track.Updates}}.</li>
+<li>Send optional SystemTrackDataResponse: {{package:AMS.MEL.IR.Track.System_Data}}.</li>
+</ul>
+<h3>RF</h3>
+<ul>
+<li>Open independent DataMEL and inspect MFA information: {{package:AMS.MEL.RF}}.</li>
+<li>Receive RF integer samples or serialized AMS VITA packets: {{package:AMS.MEL.RF.Product_Rx}}.</li>
+<li>Issue independent administration commands: {{package:AMS.MEL.RF.Admin}}.</li>
+<li>Allocate apertures, request Jobs and control JobIntervals: {{package:AMS.MEL.RF.C2}}.</li>
+<li>Inspect Element Group descriptors: {{package:AMS.MEL.RF.C2.Element_Groups}}.</li>
+<li>Inspect DataPipes: {{package:AMS.MEL.RF.C2.Data_Pipes}}.</li>
+<li>Observe optional JobInterval status: {{package:AMS.MEL.RF.C2.Interval_Status}}.</li>
+<li>Observe coalesced VA change signals, without status snapshots: {{package:AMS.MEL.RF.C2.Virtual_Aperture_Notifications}}.</li>
+<li>Query the VA definition ID, live VA status, VA instance status and required
+capability Booleans; obtain instance lists and copied instance-status reports:
+{{package:AMS.MEL.RF.C2.Virtual_Aperture_Queries}}. These are VA queries, not RF
+physical-data configuration.</li>
+<li>Query conditional Local Function catalogs and status: {{package:AMS.MEL.RF.C2.Local_Functions}}.
+Local Function command configuration for JobIntervals belongs to
+<code>AMS.MEL.RF.C2</code> itself, not this child query package.</li>
+<li>Request conditional transmit-power calculations: {{package:AMS.MEL.RF.C2.Transmit_Power}}.</li>
+</ul>
+<h2>Verified package directory</h2>
+{{package-directory}}
+<h2>Required, conditional and represented-only</h2>
+<p>Core lifecycles and supported required command paths are implemented within
+their documented slices. Conditional families require runtime provider support:
+an interface existing in this reference does not force a provider to supply it.
+Capability enums preserve upstream vocabulary, including types without a
+corresponding bridge operation. Consult <a href="ir-workflows.html">IR Workflows</a>
+and <a href="rf-workflows.html">RF Workflows</a> before interpreting them.</p>
+<p>The alias <code>AMS.MEL.IR.Health_Status.Metadata.Status</code> renames
+<code>AMS.MEL.Status</code>. GNATdoc omits this one source-visible package-renaming
+section; the target is linked above. It is not a thirtieth public library unit,
+a missing implementation, or an additional provider capability. The measured
+documentation result remains 4,294/4,295, not 100% of the complete inventory.</p>
+<p>Package identities are derived from the public library-unit headers in
+<code>ada/src</code>. The portal resolves names against actual native h1 headings
+and reconciles them with <code>docs/gnatdoc-native-anchors.json</code>; authored
+guides never guess opaque page hashes.</p>
+</main></body></html>

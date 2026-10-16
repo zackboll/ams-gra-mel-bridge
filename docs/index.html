@@ -1,19 +1,43 @@
 <!doctype html>
-<html lang="en">
-<meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AMS MEL Ada API — documentation foundation</title>
-<main>
-<h1>AMS MEL Ada API</h1>
-<p><a href="api/index.html">Browse the public Ada API</a></p>
-<p>This initial GNATdoc site includes the public IR, RF and shared packages.
-Documentation gaps remain measured by the source-derived coverage baseline;
-this foundation does not claim complete API documentation.</p>
-<p>GNATdoc 26.0.0 does not render the public package renaming
-<code>AMS.MEL.IR.Health_Status.Metadata.Status</code>, whose target is
-<code>AMS.MEL.Status</code>. This source-visible alias is recorded separately
-as a renderer omission, not counted as a native section or documented element.</p>
-<p>Modern navigation, developer guides and browser qualification are later
-campaign phases, not features of this foundation.</p>
-</main>
-</html>
+<title>AMS MEL developer documentation</title>
+<link rel="stylesheet" href="assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>Build with the Ada MEL interfaces</h1>
+<p>Safe Ada interfaces for IR and RF data and control, backed by one private
+native C ABI and a C++ bridge to pinned, published MEL interfaces. Explicit
+lifetime and ownership boundaries make resource use visible to the application.</p>
+<p>Start with the guides above, then use the package directory below or the
+complete native API reference. All navigation works offline without JavaScript.</p>
+<aside><h2>Bindings, not a complete system</h2>
+<p>This library is not a complete AMS GRA Skill, MFA implementation, OMS,
+production service, or provider-specific implementation such as Squall.
+MEL bindings alone do not establish general AMS GRA compliance. Integration,
+service behavior, security, scheduling and hardware qualification belong to
+the system using the bridge.</p></aside>
+<h2>Choose a public package</h2>
+<p>Shared/Core supplies roots, Session and common status values. IR uses
+Session-backed channels. RF has independent DataMEL, Admin and C2 owners.
+The <a href="guides/api-map.html#selection">package selection guide</a>
+connects developer tasks to these separate families.</p>
+{{package-directory}}
+<h2>Documentation status</h2>
+<p>Public API documentation is complete under the strict source/rendered-identity
+model: <strong>4,294 / 4,295</strong> measured elements are documented, with zero
+public documentation gaps. The one uncredited source-visible alias,
+<code>AMS.MEL.IR.Health_Status.Metadata.Status</code>, renames
+<code>AMS.MEL.Status</code>. GNATdoc 26.0.0 does not render that package-renaming
+section. This is a known renderer limitation, not a missing implemented API or
+a provider capability. Follow {{package:AMS.MEL.Status}} for its target.</p>
+<p>The native inventory remains 1,238 source declarations and 1,237 rendered
+sections, with one exact renderer exception. These numbers measure documentation
+identity, not full upstream feature support.</p>
+<h2>Provider capability and evidence</h2>
+<p>Runtime providers determine optional capabilities. Mock tests establish bridge
+semantics, ownership and conversion behavior, not physical RF behavior. Historical
+Squall results are pinned observations, not promises for other revisions or
+configurations. Successful submission, Job Add or Finalize calls are not
+automatically proof of hardware execution.</p>
+</main></body></html>

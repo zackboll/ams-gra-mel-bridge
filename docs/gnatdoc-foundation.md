@@ -1,8 +1,38 @@
 # GNATdoc foundation
 
-This foundation measures the existing public API. It does not claim complete
-documentation, modern navigation, guides or browser qualification. DOC-002
-through DOC-007 are separate phases.
+The foundation measures the existing public API. DOC-002 through DOC-006B
+completed public documentation under the strict source/rendered-identity model.
+DOC-007A adds an offline developer portal around the unchanged native reference.
+The historical DOC-001 measurements below remain initial measurements, not
+current coverage. Current coverage is **4,294/4,295**, with one exact renderer
+exception and zero public gaps; raw warnings are **73**, all private-part.
+
+## DOC-007A static portal
+
+After native generation, `scripts/build_docs_portal.py` reads
+`docs/site-map.json`. Its schema fixes six guide identities, paths and labels,
+one home page and `assets/portal.css`; arbitrary assets cannot be authorized
+by editing JSON. Authored `{{navigation}}`, `{{package-directory}}` and
+`{{package:AMS.MEL.IR.Image}}` substitutions are literal, non-executable and
+fail closed on unresolved names. Package names come from public Ada library-unit
+headers and actual native h1 headings. Destinations reconcile with the qualified
+anchor manifest (the empty AMS root has no declaration anchor).
+
+The builder never alters `api/`, invokes compilation or accesses the network.
+Generation retains the native GNATdoc index, iframe navigation, package markup
+and stylesheet. The final validator allows only the native inventory plus the
+seven portal HTML files and one local stylesheet: **39 files / 37 HTML pages**.
+It validates Home/guide navigation, the 29-entry package directories, exact
+authored package destinations, local links/fragments, symlinks and static-site
+safety. Only canonical guide parent links to fixed root assets/pages or verified
+native pages are allowed; arbitrary traversal remains rejected.
+
+The narrow source-integrity expansion authorizes only
+`scripts/build_docs_portal.py` and `scripts/test_docs_portal.py`. Production
+bytes, executable Ada tokens, arbitrary new scripts and unexpected workflows
+remain protected. The existing workflow remains unchanged: PR review artifacts
+contain the full site; deployment remains main-only. See
+`docs/doc-007a-source-research.md` and `docs/doc-007a-qualification.md` for evidence.
 
 ## Qualified tools and invocation
 

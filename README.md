@@ -1,5 +1,13 @@
 # RX JobInterval spatial controls (Task 034F4)
 
+## Developer documentation
+
+The static developer portal provides [Getting Started](docs/guides/getting-started.html),
+architecture, IR/RF workflows, ownership contracts and an API package map.
+Generate the complete linked site with the qualified tools described in
+[GNATdoc foundation](docs/gnatdoc-foundation.md), then open `_site/index.html`.
+The generated site includes the unchanged complete native GNATdoc API reference.
+
 ## Task 034F25 — ProductRx stabilization-point receive metadata
 
 Additive submit/view-v9 preserve the pinned nonoptional ordered stabilization
