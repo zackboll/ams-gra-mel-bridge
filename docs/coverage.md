@@ -1,5 +1,17 @@
 # Implementation coverage
 
+## CI-110-R2 — RF interval-status test ownership observation
+
+The final shutdown-exception regression now counts the selected mock C2 owner,
+not global shutdowns from unrelated asynchronous Finalize cleanup. It retains
+exact-once, exception, consumed-Job, stopped-observer and uncertain-graph/no-retry
+checks; no production behavior, C ABI, Ada or vendor change. Controlled background
+completion and duplicate-shutdown negative-control evidence, qualification and
+the historical documentation source-integrity policy conflict are recorded in
+`ci-110-r2-rf-status-shutdown.md`. Its CI-111-R3 addendum records synchronization
+with merged POL-001: the exact approved pair now passes the unchanged-foundation
+gate in APPROVED state; the original failed finding remains preserved.
+
 ## Task 034F25 — ProductRx stabilization-point receive metadata
 
 Additive submit/view-v9 preserve the pinned nonoptional ordered stabilization
