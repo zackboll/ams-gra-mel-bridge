@@ -191,3 +191,17 @@ the four exact SHA-256 identities, committed negative fixtures, qualification,
 branch-executed CI limitations and required order: policy PR first, then a
 separately authorized synchronization/requalification of PR #111. Neither PR is
 merged or auto-merged by this task; PR #111 remains unchanged.
+
+## IR-CI-001 independently reviewed, merged singleton
+
+PR #115 independently reviewed the destructor-close negative-control handshake
+and its exact-content IR singleton, then merged as
+`4c72639579891c563425fd9c6c687ce64f892892`. DOC-007C R4 inherits those four
+files unchanged by normal merge; it does not implement another native correction.
+The foundation above and POL-001's complete original/approved RF pair remain
+unchanged. `PROPOSED_IR_TEST_TRANSITION`, its original/corrected identities,
+fixtures and mechanical `proposed_pending_independent_review` label are retained
+exactly as reviewed; that label is not rewritten to encode GitHub review state.
+See `ir-ci-001-destructor-gap-retirement.md` and the R4 addendum in
+`doc-007c-qualification.md`. Historical POL-001 and native-CI findings remain
+historical evidence, not a claim that the separate correction never occurred.

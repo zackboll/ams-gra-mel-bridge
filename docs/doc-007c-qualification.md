@@ -405,3 +405,184 @@ failure logs and attempt identity are retained regardless of new-head CI.
 The conservative review disposition remains **NATIVE_CI_BLOCKED** until the
 native negative-control synchronization finding receives separate disposition;
 even a green new-head run is not a permanent correction certificate.
+
+## R4 reconciliation with independently reviewed, merged IR-CI-001
+
+### Source identities and normal merge
+
+The clean existing worktree and branch were reused; R1/R2/R3 and IR-CI-001
+external evidence were preserved. New evidence is outside the repository at
+`/home/zboll/git/ams-mel-doc-007c-evidence/r4`.
+
+| Identity | Verified value |
+| --- | --- |
+| Reviewed R3 head / pre-merge branch head | `b7b3d324f5f9ca2f5929d08609be728ee7cddf55` |
+| Reviewed R3 tree | `7a141db70cbf0ef3a46746740a1e8f8ed346dfe3` |
+| Independently reviewed PR #115 head | `45b641e3a6f6389dbb4f2f077dba9722a677edaa` |
+| Actual PR #115 merge / fetched current main | `4c72639579891c563425fd9c6c687ce64f892892` |
+| Reviewed PR #115 / actual main tree | `5cfa05982f8a5aa2e4a682ff43c087bbf69b93d4` |
+| DOC-007C normal merge commit | `0b5de24e24453bdffb9e96446fd36c6c9bf614b9` |
+| Normal merge tree, before R4 record edits | `8592200546e4a82881a9e0df51109179d1f78afd` |
+
+Main had not advanced beyond the supplied merge. Its parents are
+`4b2ccbda6a1ad393b436f0e8f1caac9defb283c2` and the reviewed PR #115 head.
+The normal DOC-007C merge has the R3 head as first parent and that verified main
+as second parent. The reviewed branches changed disjoint paths; the normal
+`ort` merge completed without conflicts or manual resolution. There was no
+cherry-pick, rebase, force push or separate implementation of the correction.
+
+All four PR #115 files are inherited byte-identically from current main:
+`native/tests/test_ir_stream.c`, `scripts/check_doc_source_integrity.py`,
+`scripts/test_doc_source_integrity.py` and
+`docs/ir-ci-001-destructor-gap-retirement.md`. The corrected IR test SHA-256 is
+`fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400`.
+Against old R3, these files change through main inheritance; against reconciled
+current main they have **no PR-specific differences**. Only this report and
+`gnatdoc-foundation.md` receive authored R4 edits; the PR retains its original
+ten documentation-owned changed paths against current main.
+
+The R3 **NATIVE_CI_BLOCKED** finding and original failed run remain above.
+Its separately reviewed resolution is IR-CI-001: the mutation still proves the
+forbidden cleanup claim while the destructor is held, then uses the existing
+snapshot-completion hook to establish release-executor retirement before
+resuming physical cleanup. The healthy ordering, success statuses, consumed
+handle and exact counter/lifetime assertions remain intact. Production cleanup
+guards are unchanged. R4 inherits that disposition rather than treating a new
+green run as a substitute for diagnosis. The external forced BEFORE/AFTER native
+diagnostics were **not repeated** in R4.
+
+### Main post-merge checks
+
+The complete all-events Actions inventory for actual main was reinspected;
+both runs were terminal **success**, not pending checks counted as passing:
+
+- [Bootstrap push 39054111249](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39054111249):
+  all eight jobs succeeded, including all four native compiler/build variants.
+- [Documentation push 39054111265](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39054111265):
+  build and main-only deploy both succeeded.
+
+### Unchanged authority and presentation implementation
+
+The enhancer installer, configuration, validator, presentation tests, workflow,
+assets and reviewed README remain byte-identical to R3. Theme and lexical Ada
+highlighting remain enabled; type linking, enhanced search/navigation, guides
+and JavaScript remain disabled. Installation is fresh, isolated and non-editable
+at `.doc-tools/enhancer-r4`, used consistently for all presentation commands.
+
+| Pin | Unchanged value |
+| --- | --- |
+| Enhancer revision | `c1a691452cf436624809f4043b30087de6688052` |
+| Installed version | `0.1.0.dev0` |
+| Archive SHA-256 | `d4b422b73df60d6ed41ec534b71bd0248b43827ce54ed4c323455e225be17493` |
+| Implementation/assets fingerprint | `384974fefbc2772ef6c79d43b275b549e5c12758535450a60c852c401e56ba1a` |
+| SOURCE_SHA256 | `467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8` |
+| ANCHORS_SHA256 | `06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed` |
+| PRISTINE_SHA256 | `0e6497d6172c918d04ea1c284785f7cfc0fec278e155ab254de0c78e81ac94e2` |
+| DOC-001 source-integrity foundation | `42648a92eb0cc84b2980d16db6028992c0494ba1` |
+
+No pin, baseline, expected count, manifest, renderer exception or implementation
+was updated. POL-001 retains its complete original/approved RF pair. The exact
+independent IR original/corrected singleton, `PROPOSED_IR_TEST_TRANSITION`,
+comments, fixtures and `proposed_pending_independent_review` report label remain
+unchanged from merged main. Independent review/merge is recorded here, not
+encoded by a cosmetic policy rewrite.
+
+### Documentation qualification and complete output equality
+
+Used existing isolated Alire settings and GNATdoc installation with the actual
+workflow command sequence. Qualified versions remain Alire 2.1.1, GNAT 16.1.0,
+GPRbuild distribution 26.0.1 (binary 26.0.0, 2026-04-15), GNATdoc 26.0.0
+(20260415), and Python 3.13.5. Generation and tests reading the same output ran
+sequentially. The first complete pristine site and diagnostics were preserved
+before a second fresh generation. Both complete filename/byte sets are equal.
+
+| Gate | R4 result |
+| --- | --- |
+| `python3 -m unittest discover -s scripts -p 'test_*doc*.py' -v` | 116 passed, **including 34 source-integrity tests** |
+| `python3 scripts/check_doc_source_integrity.py` | Passed; 1,162 protected files, approved RF, proposed IR mechanical state |
+| Baseline-delta against verified current main | Passed; no expansion |
+| Fresh isolated pinned enhancer installation | Passed, exact version/archive/implementation |
+| Build and independent verification of `_site-published` | Passed |
+| Presentation/profile discovery under `docs/tests` | 35 passed |
+| Second enhanced build from separately preserved first pristine | Passed; complete bytes equal |
+| Existing vendor checksum gate | 804/804 matched |
+
+There are **151 distinct tests**, not 185: the 34 integrity tests are already
+included in 116. No redundant separate integrity or mutation campaign is added.
+The existing presentation suite exercises enhanced-API idempotence, dry-run
+source/staging/consumer preservation and security/profile mutations.
+
+Measurements remain **29 public packages**, **1,203 modeled enhancer profiles
+with zero unresolved mismatches**, **1,238 source declarations / 1,237 native
+sections**, coverage **4,294/4,295** with the same one exact Health Status Metadata
+Status renaming exception, and warnings **73 raw / 0 public / 73 private-part**.
+R4 inventory, coverage and warning report bytes also equal preserved R2; coverage
+and warning bytes equal R3. Warning identities are unchanged. Pristine remains
+**39 files / 37 HTML pages / 1,516 local links**; publication remains
+**41 files / 37 HTML pages / 1,546 local links**.
+
+Every relative filename and every complete-file byte was compared across R4's
+two publications, preserved R3 first/second publications, R2's independently
+generated publication and R2's downloaded hosted publication. All **41 files**
+match, including `api/gnatdoc-theme.css` and `api/presentation.json`. External
+inventories record every SHA-256, not merely counts or ZIP container hashes.
+Native filenames, declaration text/signatures/anchors, destinations, native
+stylesheet bytes and authored portal content are preserved.
+
+Because the entire output is identical, the existing Chromium **156.0.8078.4**
+qualification (**223 assertions plus two mobile horizontal-scroll checks**) is
+reused for those exact bytes. **R4 did not rerun the browser campaign.** This is
+not a new browser/accessibility certification or permission for unexplained
+output drift.
+
+### Preserved attempts and remaining limits
+
+The required repository regression sequence completed **sequentially**, all
+exit 0, with no overlapping mutable native build-tree writers:
+
+| Command | R4 result |
+| --- | --- |
+| `make test-native` | 434/434 passed; registration count unchanged |
+| `make test-ada` | Existing contracts and focused repeats passed |
+| `make check` | Build-tree isolation, native, Ada format/contracts and hygiene passed |
+| `make check-ada-format` | Passed; existing source-less C-project GPR warnings only |
+| `alr -n -C ada build` | Passed |
+| `alr -n -C ada/tests run` | Complete existing contract execution passed |
+
+Actual native compilers were absolute `/usr/bin/gcc` and `/usr/bin/g++`, both
+Debian 14.2.0-19; both final CMake caches record those selections. Qualified
+GNAT/GPRbuild remained on PATH for Ada, avoiding IR-CI-001's documented relative
+compiler/runtime-selection failure. CMake was 3.31.6. No extra native repetition
+campaign was run; final-head hosted Bootstrap retains its ordinary suite and
+parallel repeat gate.
+
+After staging the R4 records, source integrity passed against matching index and
+working-tree bytes, baseline-delta against verified current main passed, both
+working/staged whitespace checks and the repository final-newline check passed,
+and the inherited-file, unchanged implementation, ten-path scope and complete
+publication identity checks passed. Independent publication verification also
+passed using the separately preserved pristine input. Final gate logs are saved
+externally; final commit identities are not inserted into this report.
+
+R4 preparation observations are retained externally in
+`preparation-observations.md`: initial optional path lookups found no `docs.yml`,
+top-level vendor directory, R1-local settings or not-yet-written progress file.
+The tracked workflow, actual checksum authority and existing isolated tool setup
+were located before qualification. A progress-only sleep exceeded the foreground
+tool timeout without interrupting the background sequential driver. These were
+diagnostic lookup/progress errors, not failed test executions or unexplained
+failures replaced with green retries. Full command logs and exit statuses are
+preserved. Earlier R1/R2/R3 and IR-CI-001 failed attempts remain untouched.
+
+The tool installation's development local pins are not registry readiness;
+provider-free mock qualification is not real-hardware/arbitrary-provider
+qualification. The exact-content checker still assumes trusted Git/Python and
+no concurrent writers; equality proves content identity, not independent safety.
+No first-party Ada source changed, so no formatting rewrite was necessary.
+
+Final-head hosted results, artifact validation, final commit/tree, remote/PR
+identity equality and synthetic merge identities are recorded in external R4
+handoff evidence after publication, avoiding a self-referential report commit.
+No required queued or running check may count as passed. PR #114 remains the
+existing review vehicle; it must stay open, non-draft, unmerged, with auto-merge
+disabled. No DOC-007D work is included.
