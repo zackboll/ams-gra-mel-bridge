@@ -4,13 +4,16 @@
 
 The original generator and `_site/` remain the pristine qualification authority.
 After all original gates pass, install the reviewed, hash-pinned documentation
-enhancer and build a separate publication tree:
+enhancer and build a separate publication tree, from the repository root:
 
 ```sh
-sh /home/zboll/git/ams-mel-doc-007c/docs/tools/install_enhancer.sh /home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer
-/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python /home/zboll/git/ams-mel-doc-007c/docs/tools/build_enhanced_site.py build
-/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python /home/zboll/git/ams-mel-doc-007c/docs/tools/build_enhanced_site.py verify
-/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python -m unittest discover -s /home/zboll/git/ams-mel-doc-007c/docs/tests -v
+sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+.doc-tools/enhancer/bin/python \
+  docs/tools/build_enhanced_site.py build
+.doc-tools/enhancer/bin/python \
+  docs/tools/build_enhanced_site.py verify
+.doc-tools/enhancer/bin/python \
+  -m unittest discover -s docs/tests -v
 ```
 
 Installation and output directories must be fresh. Do not overlap pristine

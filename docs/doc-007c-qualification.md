@@ -255,3 +255,153 @@ No merge, tag, release or DOC-007D work is authorized by this qualification.
 Hosted checks are reported separately for the exact PR head; unfinished jobs
 are not treated as passing. The final handoff supplies commit/tree/PR identities
 without attempting to embed a commit's own SHA inside itself.
+
+## R3: documentation consistency and hosted GCC Release disposition
+
+Starting reviewed HEAD is `2645c856fc08adb32e8f3cd3bd61d8e563079b6c`, tree
+`f8b6f75bc80c88dc66d81ad8ccd696d256e5cbf3`, on the existing DOC-007C branch.
+Fetched main remains `4b2ccbda6a1ad393b436f0e8f1caac9defb283c2`; the worktree
+was clean and no other writer advanced the feature. PR #114 remains the sole
+review PR. R1/R2 evidence and the exact approved enhancer/archive/package pins
+are preserved. New evidence is outside the repository at
+`/home/zboll/git/ams-mel-doc-007c-evidence/r3`.
+
+### Documentation corrections and qualification
+
+Only the necessary README documentation paragraph changes: native GNATdoc
+declarations, anchors, profiles and package navigation remain authoritative;
+published pages receive reviewed responsive light/dark styling and Ada lexical
+highlighting. Type hyperlinks and enhanced search/navigation remain deferred,
+and original output remains separately qualified. The rest of the consolidated
+README is byte-identical to the reviewed revision.
+
+The DOC-007C setup example now uses repository-relative install/build/verify/test
+commands from the repository root. All four commands were actually executed,
+including a fresh isolated installation at `.doc-tools/enhancer`. Previous local
+installation/output directories were moved into R3 evidence rather than deleted.
+Historical external evidence paths in research reports remain unchanged.
+
+All 105 existing documentation tests, 35 presentation tests and 23 separately
+rerun source-integrity tests pass. Two pristine generations and two independent
+enhanced generations compare byte-for-byte, and both exactly match R2 output
+inventories. The presentation suite also confirms enhanced-API idempotence.
+No browser rerun is necessary: published bytes are unchanged, and R2 browser
+evidence remains applicable to those exact bytes, not to any changed theme.
+
+Sequential `make test-native` (434/434), `make test-ada`, `make check` and
+`make check-ada-format` all return 0 in R3. Diagnostic builds/repetitions finish
+before this regression sequence starts; no mutable native build-tree writers
+overlap. The final 105/35/23 documentation/presentation/policy test rerun and
+independent publication verification also pass after the R3 addendum edits.
+
+Measurements remain 29 public packages, 1,238 source declarations, 1,237 native
+sections, 4,294/4,295 documented elements, one exact renderer exception,
+73 raw / 0 public / 73 private warnings, 39 pristine files / 37 HTML / 1,516
+links and 41 published files / 37 HTML / 1,546 links. All 804 vendor checksums
+match. POL-001 remains APPROVED with 1,162 protected source files. No source,
+anchor/profile, warning/coverage baseline, policy hash, site map, enhancer pin,
+implementation, workflow or presentation test changes are made in R3.
+
+### Original hosted failure: exact assertion
+
+The original failed push run `39046321478`, attempt 1, job `117435657074`, tested
+the reviewed HEAD with GNU C/C++ 13.3.0 on Ubuntu 24.04. Its initial native run
+passed 434/434. Its subsequent unchanged parallel repeat command failed
+`ir_stream_contract` (test 419) at the destructor-close-gap mutation:
+
+```text
+stage=7 mutation=1 release=11 close=11
+```
+
+`AMS_MEL_PROVIDER_FAILED` is 11; `AMS_MEL_OK` is 0. At
+`native/tests/test_ir_stream.c:2819`, the first disjunct,
+`releaser.status != AMS_MEL_OK`, is therefore true. The closer's status is also
+wrong. The combined assertion short-circuits before reading consumed stream or
+counter predicates, so the original log alone cannot establish their values.
+The printed lifetime log is a stage-5 snapshot, not the final stage-7 state.
+
+All native Git blobs, production and tests, are identical between main and PR
+#114. The unmodified isolated acquisition is also byte-identical. In particular:
+
+| File | SHA-256 |
+| --- | --- |
+| `native/src/ir_stream.cpp` | `4011a04b76251e9c6e8237506f95dedee1367d3c7fe4629453098e465baa2566` |
+| `native/tests/test_ir_stream.c` | `6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b` |
+| `native/tests/mock_provider.cpp` | `8c41c152f18eb9e96c1219d7c4073324719b5364d3a8fa458a59f396dda51666` |
+
+### Isolated reproduction and synchronization evidence
+
+Local diagnostic toolchain is GNU C/C++ 14.2.0 (Debian 14.2.0-19), CMake
+3.31.6, not a claim to reproduce hosted GNU 13.3.0 exactly. The isolated Release
+tree uses `-O3 -DNDEBUG`, C++20 privately, all existing warnings-as-errors,
+and `AMS_MEL_BUILD_TESTS=ON`. Full configure/build logs, CMake cache and compile
+commands are retained. The unmodified focused command passed 200 repetitions;
+the hosted-equivalent `ctest --parallel 4 --repeat until-fail:50
+--output-on-failure` suite passed all 434 tests. These passes do not disprove
+the original intermittent failure.
+
+The separate external `instrumented-source` checkout adds diagnostics and one
+opt-in schedule-control barrier only; assertions, cleanup predicates, counters,
+test order and negative-control semantics are not relaxed. Its complete diff is
+saved as `diagnostic-only.patch`, never staged in this documentation worktree.
+With `R3_FORCE_POST_DESTRUCTOR_GAP=1`, it pauses the release executor after
+`operation.reset()` and before reacquiring the callback mutex, until cleanup's
+existing post-drain recheck is observed. The actual bridge and mock paths run.
+That deterministic schedule reproduces the original failure, exit 8:
+
+```text
+R3 post-drain retained=0 obligations=0 executor=1 uncertain=0 failed=0 late_uncertain=1
+R3 stage7 mutation=1 release=11 close=11 stream=(nil) wrappers=1 callbacks=1 destructor_releases=1 baseline=1
+```
+
+The healthy case in the same instrumented run passes with release/close 0,
+consumed stream, wrapper/callback counts 1, and unchanged destructor release
+count. In the forced mutation, all three counter predicates and consumed-stream
+predicate pass; only the statuses fail. No provider release failure or extra
+destructor-driven release is observed in this schedule.
+
+Source-backed sequence:
+
+1. `ir_stream.cpp:1152–1162` deliberately exposes the premature-destruction gap
+   only under the test failpoint: obligation/retained counts drop before wrapper
+   destruction; the executor still belongs to the release thread.
+2. `mock_provider.cpp:945–948` increments wrapper/callback counters within the
+   destructor, before it returns to the bridge. This is not executor completion.
+3. `test_ir_stream.c:2805–2811` sees callback count 1 and releases the paused
+   cleanup claim. There is no happens-before edge requiring executor retirement
+   before cleanup reaches its post-drain recheck.
+4. `ir_stream.cpp:1899–1904` sees `release_executor_owned == true`; its safety
+   recheck intentionally treats this as outstanding work. It publishes failed
+   terminal cleanup. The snapshot closer adopts that failure at 2520–2524,
+   producing the two observed status-11 results.
+
+Classification: **A — synchronization error in the negative-control test**.
+The negative control assumes a success status that its barriers do not order.
+The supported diagnostic schedule explains the exact hosted status signature;
+it is not evidence that an infrastructure timeout caused it, nor proof of an
+ordinary production lifetime defect. Healthy production behavior and all
+negative controls still need independent preservation in a corrective review.
+
+### Separate correction required; no retry as a substitute
+
+No native fix is made or proposed for inclusion in PR #114. A separate,
+explicitly authorized corrective PR should retain direct evidence of the
+forbidden cleanup claim while B's destructor is held, then establish a real
+executor-retirement handshake before releasing physical cleanup. It must keep
+the status/counter/lifetime assertions, healthy tests and post-drain guard, and
+must not merely sleep, accept status 11, remove the mutation or bypass the guard.
+Native source/test changes require independent review and the applicable
+DOC-001/POL-001 policy authorization; this documentation task grants neither.
+
+The instrumented but unforced full-contract run also passes 200 repetitions,
+exit 0. Thus the ordinary local runs did not spontaneously reproduce the
+failure; the explicit diagnostic interleaving does reproduce it. Those are
+different evidence claims and neither is presented as a native fix.
+
+No failed-job rerun was requested. The separately triggered original PR run
+`39046364220` passed all Bootstrap jobs, including GCC Release, but does not
+correct the failed push run or prove the intermittent defect is fixed. Original
+failure logs and attempt identity are retained regardless of new-head CI.
+The conservative review disposition remains **NATIVE_CI_BLOCKED** until the
+native negative-control synchronization finding receives separate disposition;
+even a green new-head run is not a permanent correction certificate.
