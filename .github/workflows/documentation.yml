@@ -55,11 +55,25 @@ jobs:
           git diff --exit-code -- ada native rust python Makefile
           git diff --check
           python3 scripts/check_final_newlines.py
+      - name: Install exact reviewed documentation enhancer distribution
+        run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+      - name: Build and independently verify presentation publication
+        run: |
+          .doc-tools/enhancer/bin/python docs/tools/build_enhanced_site.py build --site _site-published
+          .doc-tools/enhancer/bin/python docs/tools/build_enhanced_site.py verify --site _site-published
+          .doc-tools/enhancer/bin/python -m unittest discover -s docs/tests -p 'test_*.py' -v
+      - name: Qualify independent presentation regeneration
+        run: |
+          .doc-tools/enhancer/bin/python docs/tools/build_enhanced_site.py build --pristine /tmp/documentation-first --site /tmp/documentation-published-second
+          diff -r _site-published /tmp/documentation-published-second
+          python3 scripts/check_doc_source_integrity.py
+          git diff --exit-code -- ada native rust python integration Makefile
+          git diff --check
       - name: Upload site for review
         uses: actions/upload-artifact@v4
         with:
           name: ada-api-${{ github.event.pull_request.head.sha || github.sha }}
-          path: _site/
+          path: _site-published/
           if-no-files-found: error
       - name: Upload diagnostics and coverage
         if: always()
@@ -74,7 +88,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site/
+          path: _site-published/
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

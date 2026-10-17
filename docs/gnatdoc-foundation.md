@@ -1,5 +1,38 @@
 # GNATdoc foundation
 
+## DOC-007C theme and Ada lexical presentation
+
+The original generator and `_site/` remain the pristine qualification authority.
+After all original gates pass, install the reviewed, hash-pinned documentation
+enhancer and build a separate publication tree, from the repository root:
+
+```sh
+sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+.doc-tools/enhancer/bin/python \
+  docs/tools/build_enhanced_site.py build
+.doc-tools/enhancer/bin/python \
+  docs/tools/build_enhanced_site.py verify
+.doc-tools/enhancer/bin/python \
+  -m unittest discover -s docs/tests -v
+```
+
+Installation and output directories must be fresh. Do not overlap pristine
+generation with tests/verification that read that output. The publication site
+is `_site-published/`: **41 files / 37 HTML pages / 1,546 local links**, compared
+with pristine **39 / 37 / 1,516**. Exactly one bundled theme stylesheet and one
+presentation manifest are added; 30 API pages gain theme links and viewport
+metadata. Declaration text, anchors, native CSS and all authored portal pages
+remain unchanged. Light/dark system themes and lexical Ada coloring are enabled;
+type hyperlinks, enhanced navigation/search and guide rendering are disabled.
+
+The project-owned validator compares against independently pinned original,
+source and anchor identities, reconstructs transformations and the manifest,
+and runs the original MEL and shared-tool validators. Output metadata alone
+cannot authorize changes. CI retains pristine gates and publishes only verified
+enhanced output, preserving read-only PR permissions and main-only deployment.
+See `doc-007c-source-research.md` and `doc-007c-qualification.md`, including
+preserved R1 failure findings and the R2 qualification addenda.
+
 The foundation measures the existing public API. DOC-002 through DOC-006B
 completed public documentation under the strict source/rendered-identity model.
 DOC-007A adds an offline developer portal around the unchanged native reference.
@@ -158,3 +191,17 @@ the four exact SHA-256 identities, committed negative fixtures, qualification,
 branch-executed CI limitations and required order: policy PR first, then a
 separately authorized synchronization/requalification of PR #111. Neither PR is
 merged or auto-merged by this task; PR #111 remains unchanged.
+
+## IR-CI-001 independently reviewed, merged singleton
+
+PR #115 independently reviewed the destructor-close negative-control handshake
+and its exact-content IR singleton, then merged as
+`4c72639579891c563425fd9c6c687ce64f892892`. DOC-007C R4 inherits those four
+files unchanged by normal merge; it does not implement another native correction.
+The foundation above and POL-001's complete original/approved RF pair remain
+unchanged. `PROPOSED_IR_TEST_TRANSITION`, its original/corrected identities,
+fixtures and mechanical `proposed_pending_independent_review` label are retained
+exactly as reviewed; that label is not rewritten to encode GitHub review state.
+See `ir-ci-001-destructor-gap-retirement.md` and the R4 addendum in
+`doc-007c-qualification.md`. Historical POL-001 and native-CI findings remain
+historical evidence, not a claim that the separate correction never occurred.
