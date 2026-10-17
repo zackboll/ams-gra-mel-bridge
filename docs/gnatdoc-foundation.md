@@ -1,5 +1,35 @@
 # GNATdoc foundation
 
+## DOC-007C theme and Ada lexical presentation
+
+The original generator and `_site/` remain the pristine qualification authority.
+After all original gates pass, install the reviewed, hash-pinned documentation
+enhancer and build a separate publication tree:
+
+```sh
+sh /home/zboll/git/ams-mel-doc-007c/docs/tools/install_enhancer.sh /home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer
+/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python /home/zboll/git/ams-mel-doc-007c/docs/tools/build_enhanced_site.py build
+/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python /home/zboll/git/ams-mel-doc-007c/docs/tools/build_enhanced_site.py verify
+/home/zboll/git/ams-mel-doc-007c/.doc-tools/enhancer/bin/python -m unittest discover -s /home/zboll/git/ams-mel-doc-007c/docs/tests -v
+```
+
+Installation and output directories must be fresh. Do not overlap pristine
+generation with tests/verification that read that output. The publication site
+is `_site-published/`: **41 files / 37 HTML pages / 1,546 local links**, compared
+with pristine **39 / 37 / 1,516**. Exactly one bundled theme stylesheet and one
+presentation manifest are added; 30 API pages gain theme links and viewport
+metadata. Declaration text, anchors, native CSS and all authored portal pages
+remain unchanged. Light/dark system themes and lexical Ada coloring are enabled;
+type hyperlinks, enhanced navigation/search and guide rendering are disabled.
+
+The project-owned validator compares against independently pinned original,
+source and anchor identities, reconstructs transformations and the manifest,
+and runs the original MEL and shared-tool validators. Output metadata alone
+cannot authorize changes. CI retains pristine gates and publishes only verified
+enhanced output, preserving read-only PR permissions and main-only deployment.
+See `doc-007c-source-research.md` and `doc-007c-qualification.md`, including
+preserved R1 failure findings and the R2 qualification addenda.
+
 The foundation measures the existing public API. DOC-002 through DOC-006B
 completed public documentation under the strict source/rendered-identity model.
 DOC-007A adds an offline developer portal around the unchanged native reference.
