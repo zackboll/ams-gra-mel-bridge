@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from check_doc_source_integrity import BASE, ROOT, REVIEWED_NATIVE_TEST_TRANSITION, check
+from check_doc_source_integrity import (
+    BASE, ROOT, REVIEWED_NATIVE_TEST_TRANSITION, PROPOSED_IR_TEST_TRANSITION, check,
+)
 
 
 class SourceIntegrityTests(unittest.TestCase):
@@ -304,6 +306,156 @@ class ReviewedNativeTransitionTests(unittest.TestCase):
             check(self.root, self.base)
 
 
+class ProposedIRTransitionTests(unittest.TestCase):
+    git = SourceIntegrityTests.git
+    write = SourceIntegrityTests.write
+    commit = SourceIntegrityTests.commit
+    name = 'native/tests/test_ir_stream.c'
+    original_digest = '6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b'
+    corrected_digest = 'fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400'
+
+    def setUp(self):
+        ReviewedNativeTransitionTests.setUp(self)
+        self.assertEqual(PROPOSED_IR_TEST_TRANSITION,
+                         (self.name, self.original_digest, self.corrected_digest))
+        original = subprocess.check_output(
+            ['git', '-C', str(ROOT), 'show', f'{BASE}:{self.name}'])
+        self.assertEqual(hashlib.sha256(original).hexdigest(), self.original_digest)
+        corrected = corrected_ir_test_bytes(original)
+        self.assertEqual(hashlib.sha256(corrected).hexdigest(), self.corrected_digest)
+        self.states = (original, corrected)
+        self.path = self.root / self.name
+        self.path.write_bytes(original)
+        self.commit()
+        self.base = self.git('rev-parse', 'HEAD').decode().strip()
+
+    def stage(self, data):
+        self.path.write_bytes(data)
+        self.git('add', self.name)
+
+    def test_each_ir_state_with_each_complete_rf_state(self):
+        for rf in (self.original, self.approved):
+            ReviewedNativeTransitionTests.install(self, rf)
+            self.git('add', 'native/tests')
+            for data, expected in zip(self.states, ('original', 'proposed_pending_independent_review')):
+                with self.subTest(rf=rf is self.approved, ir=expected):
+                    self.stage(data)
+                    report = check(self.root, self.base)
+                    self.assertEqual(report['proposed_ir_test'], expected)
+                    self.assertEqual(report['reviewed_native_tests'],
+                                     'approved' if rf is self.approved else 'original')
+
+    def test_mixed_rf_pairs_rejected_with_either_ir_state(self):
+        for data in self.states:
+            self.stage(data)
+            for name in self.original:
+                with self.subTest(ir=hashlib.sha256(data).hexdigest(), rf=name):
+                    ReviewedNativeTransitionTests.install(self, self.original)
+                    (self.root / name).write_bytes(self.approved[name])
+                    self.git('add', 'native/tests')
+                    with self.assertRaisesRegex(ValueError, 'mixed reviewed native-test pair'):
+                        check(self.root, self.base)
+
+    def test_one_byte_and_unlisted_content_rejected_in_either_view(self):
+        for data in self.states:
+            for bad in (bytes([data[0] ^ 1]) + data[1:], b'Unlisted IR test\n'):
+                for view in ('working tree', 'index'):
+                    with self.subTest(state=hashlib.sha256(data).hexdigest(), view=view, size=len(bad)):
+                        self.stage(data)
+                        if view == 'index':
+                            self.stage(bad)
+                            self.path.write_bytes(data)
+                        else:
+                            self.path.write_bytes(bad)
+                        with self.assertRaisesRegex(ValueError, f'unlisted IR-test {view} bytes'):
+                            check(self.root, self.base)
+
+    def test_original_corrected_disagreements_both_directions(self):
+        for staged, working in (self.states, self.states[::-1]):
+            self.stage(staged)
+            self.path.write_bytes(working)
+            with self.assertRaisesRegex(ValueError, 'IR-test working tree/index state mismatch'):
+                check(self.root, self.base)
+
+    def test_missing_worktree_and_index_rejected(self):
+        for data in self.states:
+            self.stage(data)
+            self.path.unlink()
+            with self.assertRaisesRegex(ValueError, 'working tree file missing'):
+                check(self.root, self.base)
+            self.path.write_bytes(data)
+            self.git('rm', '--cached', self.name)
+            with self.assertRaisesRegex(ValueError, 'IR-test index file missing'):
+                check(self.root, self.base)
+
+    def test_symlink_and_directory_worktree_rejected(self):
+        target = self.root / 'docs/ir-copy'
+        target.parent.mkdir()
+        for data in self.states:
+            self.stage(data)
+            target.write_bytes(data)
+            self.path.unlink()
+            self.path.symlink_to(target)
+            with self.assertRaisesRegex(ValueError, 'missing or symlink'):
+                check(self.root, self.base)
+            self.path.unlink()
+            self.path.mkdir()
+            with self.assertRaisesRegex(ValueError, 'missing or symlink'):
+                check(self.root, self.base)
+            self.path.rmdir()
+
+    def test_nonregular_and_unmerged_index_rejected(self):
+        for data in self.states:
+            for mode in ('120000', '100755', '160000', 'unmerged'):
+                with self.subTest(state=hashlib.sha256(data).hexdigest(), mode=mode):
+                    self.stage(data)
+                    blob = self.git('rev-parse', f':{self.name}').decode().strip()
+                    if mode == 'unmerged':
+                        self.git('update-index', '--force-remove', self.name)
+                        subprocess.run(['git', '-C', str(self.root), 'update-index', '--index-info'],
+                                       input=f'100644 {blob} 1\t{self.name}\n100644 {blob} 2\t{self.name}\n'.encode(),
+                                       check=True)
+                    else:
+                        oid = self.base if mode == '160000' else blob
+                        self.git('update-index', '--cacheinfo', f'{mode},{oid},{self.name}')
+                    with self.assertRaisesRegex(ValueError, 'regular stage-0 file'):
+                        check(self.root, self.base)
+                    self.git('update-index', '--force-remove', self.name)
+
+    def test_foundation_mismatch_for_corrected_and_unlisted_bytes(self):
+        for data in (self.states[1], b'Wrong foundation\n'):
+            self.stage(data)
+            self.commit()
+            with self.assertRaisesRegex(ValueError, 'IR-test foundation bytes changed'):
+                check(self.root, self.git('rev-parse', 'HEAD').decode().strip())
+
+    def test_ir_path_cannot_be_added_to_unrelated_foundation(self):
+        initial = self.git('rev-list', '--max-parents=0', 'HEAD').decode().strip()
+        with self.assertRaisesRegex(ValueError, 'unauthorized tracked files added'):
+            check(self.root, initial)
+
+    def test_unrelated_native_bytes_still_protected(self):
+        for data in self.states:
+            self.stage(data)
+            for name in ('native/src/existing.cpp', 'native/tests/unrelated.c', 'native/vendor/demo.h'):
+                path = self.root / name
+                original = path.read_bytes()
+                path.write_bytes(original + b'\n')
+                with self.assertRaisesRegex(ValueError, 'production bytes changed'):
+                    check(self.root, self.base)
+                path.write_bytes(original)
+
+    def test_native_additions_still_rejected(self):
+        for data in self.states:
+            self.stage(data)
+            for name in ('native/tests/new.c', 'native/src/new.cpp'):
+                path = self.write(name, 'int unauthorized;\n')
+                self.git('add', name)
+                with self.assertRaisesRegex(ValueError, 'unauthorized tracked files added'):
+                    check(self.root, self.base)
+                self.git('rm', '-f', name)
+
+
 def approved_native_test_bytes(original):
     """Literal PR #111 edits; final SHA-256 checks above cover every byte."""
     result = dict(original)
@@ -384,6 +536,118 @@ def approved_native_test_bytes(original):
             '        CHECK(ams_mel_rf_job_close(&job,NULL,0,NULL)==AMS_MEL_OK);\n'
             '        CHECK(owner_count(owner,0)==before+1); /* uncertain graph retained, no retry */\n'
             '        CHECK(owner_count(owner,1)==0 && !has_lifetime("library_unloaded\\n"));')
+    return result
+
+
+def corrected_ir_test_bytes(original):
+    """Frozen IR-CI-001 edit of immutable foundation bytes, never live sources."""
+    result = original
+    edits = (
+        (
+            (
+                '    char base[] = "/tmp/ams-mel-destructor-gap-XXXXXX";\n'
+                '    char claimed[PATH_MAX] = "", claim_release[PATH_MAX] = "", claim_arm[PATH_MAX] = "";\n'
+                '    char entered[PATH_MAX], unblock[PATH_MAX], waiting[PATH_MAX];\n'
+                '    char lifetime[] = "/tmp/ams-mel-destructor-order-XXXXXX";\n'
+            ),
+            (
+                '    char base[] = "/tmp/ams-mel-destructor-gap-XXXXXX";\n'
+                '    char claimed[PATH_MAX] = "", claim_release[PATH_MAX] = "", claim_arm[PATH_MAX] = "";\n'
+                '    char completed[PATH_MAX] = "", completion_release[PATH_MAX] = "";\n'
+                '    char completion_arm[PATH_MAX] = "";\n'
+                '    char entered[PATH_MAX], unblock[PATH_MAX], waiting[PATH_MAX];\n'
+                '    char lifetime[] = "/tmp/ams-mel-destructor-order-XXXXXX";\n'
+            ),
+        ),
+        (
+            (
+                '            snprintf(claim_release, sizeof claim_release, "%s.before-detach.release", base) <= 0 ||\n'
+                '            snprintf(claim_arm, sizeof claim_arm, "%s.before-detach.arm", base) <= 0 ||\n'
+                '            setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||\n'
+                '            !create_marker(claim_arm)) goto cleanup;\n'
+                '    }\n'
+                '    config.buffer_count = 2;\n'
+            ),
+            (
+                '            snprintf(claim_release, sizeof claim_release, "%s.before-detach.release", base) <= 0 ||\n'
+                '            snprintf(claim_arm, sizeof claim_arm, "%s.before-detach.arm", base) <= 0 ||\n'
+                '            snprintf(completed, sizeof completed, "%s.snapshot-completion.reached", base) <= 0 ||\n'
+                '            snprintf(completion_release, sizeof completion_release, "%s.snapshot-completion.release", base) <= 0 ||\n'
+                '            snprintf(completion_arm, sizeof completion_arm, "%s.snapshot-completion.arm", base) <= 0 ||\n'
+                '            setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||\n'
+                '            !create_marker(claim_arm) || !create_marker(completion_arm)) goto cleanup;\n'
+                '    }\n'
+                '    config.buffer_count = 2;\n'
+            ),
+        ),
+        (
+            (
+                '    if (mutation) {\n'
+                "        /* Direct defect evidence: cleanup already owns the channel while B's\n"
+                '           destructor is held. Keep teardown paused until destructor reentry\n'
+                '           has finished, avoiding intentional invalid provider access. */\n'
+                '        for (unsigned i = 0; i < 15000U &&\n'
+                '             mock_pool_query("ams_mel_mock_destruction_callbacks_returned") == 0UL; ++i) {\n'
+                '            const struct timespec pause = {0, 1000000};\n'
+                '            thrd_sleep(&pause, NULL);\n'
+                '        }\n'
+                '        if (mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||\n'
+                '            !create_marker(claim_release)) goto cleanup;\n'
+                '    }\n'
+                '    stage = 6U;\n'
+            ),
+            (
+                '    if (mutation) {\n'
+                "        /* Direct defect evidence: cleanup already owns the channel while B's\n"
+                '           destructor is held. Snapshot completion follows release-executor\n'
+                '           retirement; the callback counter inside the destructor does not. */\n'
+                '        if (!wait_for_marker(completed)) goto cleanup;\n'
+                '        if (mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||\n'
+                '            !create_marker(claim_release) || !create_marker(completion_release)) goto cleanup;\n'
+                '        /* Open both gates before either join: snapshot close can wait for the\n'
+                '           cleanup owner, which must no longer be paused at before-detach. */\n'
+                '    }\n'
+                '    stage = 6U;\n'
+            ),
+        ),
+        (
+            (
+                '    if (unblock[0]) (void)create_marker(unblock);\n'
+                '    if (claim_release[0]) (void)create_marker(claim_release);\n'
+                '    if (release_started) (void)thrd_join(release_thread, NULL);\n'
+                '    if (close_started) (void)thrd_join(close_thread, NULL);\n'
+            ),
+            (
+                '    if (unblock[0]) (void)create_marker(unblock);\n'
+                '    if (claim_release[0]) (void)create_marker(claim_release);\n'
+                '    if (completion_release[0]) (void)create_marker(completion_release);\n'
+                '    if (release_started) (void)thrd_join(release_thread, NULL);\n'
+                '    if (close_started) (void)thrd_join(close_thread, NULL);\n'
+            ),
+        ),
+        (
+            (
+                '    if (claim_release[0]) (void)unlink(claim_release);\n'
+                '    if (claim_arm[0]) (void)unlink(claim_arm);\n'
+                '    if (entered[0]) (void)unlink(entered);\n'
+                '    if (unblock[0]) (void)unlink(unblock);\n'
+            ),
+            (
+                '    if (claim_release[0]) (void)unlink(claim_release);\n'
+                '    if (claim_arm[0]) (void)unlink(claim_arm);\n'
+                '    if (completed[0]) (void)unlink(completed);\n'
+                '    if (completion_release[0]) (void)unlink(completion_release);\n'
+                '    if (completion_arm[0]) (void)unlink(completion_arm);\n'
+                '    if (entered[0]) (void)unlink(entered);\n'
+                '    if (unblock[0]) (void)unlink(unblock);\n'
+            ),
+        ),
+    )
+    for old, new in edits:
+        old, new = old.encode(), new.encode()
+        if result.count(old) != 1:
+            raise AssertionError("frozen IR fixture context mismatch")
+        result = result.replace(old, new, 1)
     return result
 
 

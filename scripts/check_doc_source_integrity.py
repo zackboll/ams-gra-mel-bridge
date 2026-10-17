@@ -32,6 +32,14 @@ REVIEWED_NATIVE_TEST_TRANSITION = (
      "684e01b689d7cf0464168dda7cca54df2ff0377f65e250a9273d18318c97735e",
      "96f71931cbf3c03937d352997666ad459db9f517d514c7827579bbfa22a62930"),
 )
+# IR-CI-001 PROPOSED exact-content authorization, pending independent review.
+# A singleton independent of POL-001's approved atomic RF pair. Mechanical
+# acceptance of these bytes is not independent approval of this proposal.
+PROPOSED_IR_TEST_TRANSITION = (
+    "native/tests/test_ir_stream.c",
+    "6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b",
+    "fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400",
+)
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'
     r"(?P<char>'[^\n]')|(?P<word>[A-Za-z][A-Za-z0-9_]*|[0-9][A-Za-z0-9_#.]*)|"
@@ -93,6 +101,35 @@ def reviewed_native_test_state(root, git, existing, current, base):
     return states["working tree"][0]
 
 
+def proposed_ir_test_state(root, git, existing, current, base):
+    name, original, corrected = PROPOSED_IR_TEST_TRANSITION
+    if name not in existing:
+        # Minimal fixtures can omit IR; ordinary inventory rules still apply.
+        return None
+    if hashlib.sha256(git("show", f"{base}:{name}")).hexdigest() != original:
+        raise ValueError("proposed IR-test foundation bytes changed")
+    if name not in current:
+        raise ValueError("proposed IR-test index file missing")
+    path = root / name
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("proposed IR-test working tree file missing or symlink")
+    entry = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+    if (len(entry) != 2 or not entry[0].startswith(b"100644 ") or
+            entry[0].split(b"\t", 1)[0].split()[-1] != b"0"):
+        raise ValueError("proposed IR-test index entry is not a regular stage-0 file")
+    states = []
+    for view, content in (("working tree", path.read_bytes()),
+                          ("index", git("show", f":{name}"))):
+        digest = hashlib.sha256(content).hexdigest()
+        if digest not in (original, corrected):
+            raise ValueError(f"unlisted IR-test {view} bytes")
+        states.append("original" if digest == original else
+                      "proposed_pending_independent_review")
+    if states[0] != states[1]:
+        raise ValueError("proposed IR-test working tree/index state mismatch")
+    return states[0]
+
+
 def check(root=ROOT, base=BASE):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(root), *args])
@@ -103,7 +140,9 @@ def check(root=ROOT, base=BASE):
     if unexpected:
         raise ValueError(f"unauthorized tracked files added: {sorted(unexpected)!r}")
     transition = reviewed_native_test_state(root, git, existing, current, base)
+    ir_transition = proposed_ir_test_state(root, git, existing, current, base)
     reviewed_paths = {name for name, _, _ in REVIEWED_NATIVE_TEST_TRANSITION}
+    proposed_ir_paths = {PROPOSED_IR_TEST_TRANSITION[0]}
     original_ada = {name for name in existing if name.startswith(("ada/src/", "ada/tests/src/"))
                     and Path(name).suffix in (".ads", ".adb")}
     current_ada = {path.relative_to(root).as_posix() for directory in ("ada/src", "ada/tests/src")
@@ -119,6 +158,10 @@ def check(root=ROOT, base=BASE):
             # Both views of the complete pair were already checked above.
             checked += 1
             continue
+        if name in proposed_ir_paths:
+            # Both views of this independent singleton were checked above.
+            checked += 1
+            continue
         path = root / name
         old = git("show", f"{base}:{name}")
         if not path.is_file():
@@ -131,7 +174,8 @@ def check(root=ROOT, base=BASE):
             raise ValueError(f"production bytes changed: {name}")
         checked += 1
     return {"base": base, "protected_files": checked,
-            "reviewed_native_tests": transition}
+            "reviewed_native_tests": transition,
+            "proposed_ir_test": ir_transition}
 
 
 if __name__ == "__main__":
