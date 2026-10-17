@@ -1,0 +1,24 @@
+schema_version = 1
+project = "AMS MEL Bridge"
+
+renderer_exceptions = [
+  "AMS.MEL.IR.Health_Status.Metadata.Status"
+]
+
+[gnatdoc]
+version = "26.0.0"
+
+[sources]
+directories = ["ada/src"]
+comment_style = "trailing"
+
+[navigation]
+mode = "none"
+
+[presentation]
+theme = true
+syntax_highlighting = true
+type_links = false
+
+[guides]
+mode = "none"

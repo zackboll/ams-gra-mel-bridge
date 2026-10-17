@@ -40,6 +40,7 @@ alire.lock
 # Documentation-only tool installations and generated output
 .doc-tools/
 _site/
+_site-published/
 
 # Rust is a later phase
 target/
