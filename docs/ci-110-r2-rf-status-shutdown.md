@@ -162,3 +162,82 @@ second invocation caused CTest exit 8 at the new exact-once assertion. See
 injection was removed and the original qualified source hashes restored.
 Another 200 focused repetitions and a full 434/434 suite then passed on the
 restored final source; the final Ada formatting check also passed.
+
+## CI-111-R3 — Synchronization with merged POL-001
+
+POL-001 [PR #112](https://github.com/zackboll/ams-gra-mel-bridge/pull/112)
+merged as main `6065129aba5dee89e70b61e05a9e1c9b2c3061c0`, including reviewed
+policy source `64d379ce3e3783c090af3513118e0d24dde545a2`. DOC-007A PR #110's
+merge `7e0b7c4314978a609fa6075f9816827c2d6233b1` is also an ancestor.
+Fresh fetches and live PR queries verified these identities before synchronization.
+The original corrective commit remains
+`048387edee98322f6df2d7dadb14d94f2c022ef9`; it was neither amended nor squashed.
+
+Normal no-fast-forward merge `8817a96703f4e6b39e499ef1ea81c22005e09e59`
+has parents `048387edee98322f6df2d7dadb14d94f2c022ef9` and
+`6065129aba5dee89e70b61e05a9e1c9b2c3061c0`, and tree
+`e5f8fa7c53bb5307bdcfc6f2b89407bfd33823cd`. There were no conflicts.
+Both complete approved files, their stage-0 blobs and the original native
+two-file diff were independently verified unchanged before and after merging:
+
+- `native/tests/mock_rf_provider.cpp`:
+  `ef8c1dc59987ea2ff16cb00d6a60880ab560b910127105b6dd7698498be9d957`
+- `native/tests/test_rf_job_interval_status.c`:
+  `96f71931cbf3c03937d352997666ad459db9f517d514c7827579bbfa22a62930`
+
+The merged checker now passes with `reviewed_native_tests: approved`, protecting
+1,162 files against unchanged foundation
+`42648a92eb0cc84b2980d16db6028992c0494ba1`. All 23 integrity tests pass,
+including atomic-pair/index disagreement, staged mutation, unrelated production,
+Ada-token, vendor and unauthorized-addition negative controls. No checker,
+approval constant, workflow permission, baseline or renderer policy was edited.
+The original failed documentation finding above remains historical evidence;
+POL-001 resolves that blocker only for these exact reviewed complete-file bytes.
+
+Fresh post-merge qualification, with isolated native build/install directories
+and first-party warnings treated as errors, completed before this report update:
+
+| Compiler | Configuration | Focused repeats | Full suite | Parallel 4, repeats 50 |
+| --- | --- | --- | --- | --- |
+| GCC 14.2.0 (Debian 14.2.0-19) | Debug | 200/200 | 434/434 | 21,700/21,700 |
+| GCC 14.2.0 (Debian 14.2.0-19) | Release | 200/200 | 434/434 | 21,700/21,700 |
+| Clang 19.1.7 (Debian 3+b1) | Debug | 200/200 | 434/434 | 21,700/21,700 |
+| Clang 19.1.7 (Debian 3+b1) | Release | 200/200 | 434/434 | 21,700/21,700 |
+
+Every configure/build/test/install exited zero; completed executions were counted
+per test, not inferred from a partial run. All four built and installed facades
+retain the same 222 versioned `AMS_MEL_0.1` production exports. All 804 vendor
+checksums pass. The exact selected-owner assertions and R1 controlled-background
+and duplicate-shutdown negative evidence remain intact; no instrumentation was
+reintroduced and no contradictory root-cause evidence was found.
+
+The qualified Alire 2.1.1 / GNAT 16.1.0 / GPRbuild 26.0.1 distribution
+(binary 26.0.0, 2026-04-15) / GNATdoc 26.0.0 (20260415) toolchain passed two
+fresh complete generations and semantic specification compilations. Complete
+sites are byte-identical to each other and qualified main. Results remain
+105/105 documentation tests, 4,294/4,295 documented elements, zero public gaps,
+one exact Health metadata package-renaming renderer exception, 73 raw warnings
+(zero public, 73 private-part), 1,238 source declarations / 1,237 rendered native
+sections, unchanged native profiles/anchors, and 39 files / 37 HTML pages /
+1,516 validated local links / 29 unique public package destinations. Static
+security and coverage/warning identity ratchets pass without policy weakening.
+
+R3 evidence: `/home/zboll/git/ams-mel-ci-110-r2-evidence/r2-sync`.
+All R1 evidence remains untouched. Initial post-merge `make test-native`
+(434/434) and `make test-ada` exited zero. After this normal report commit,
+the final frozen HEAD/tree, repeated compiler/documentation qualification,
+sequential production/format/Alire gates and final source hashes are recorded
+externally, avoiding a self-referential commit identity. At report freeze,
+new-head hosted CI is **HOSTED_CI_PENDING**, not a claimed success; exact-head
+Documentation and both eight-job Bootstrap results are recorded in the external
+handoff and PR follow-up after publication. Older-head failures and successes
+are not evidence about the synchronized head.
+
+Limitations remain: local Debian/Clang 19.1.7 is not hosted Ubuntu/Clang 18.1.3;
+mock-only qualification is not arbitrary-provider or C++ ABI certification;
+passing repetitions cannot prove permanent elimination of an intermittent issue.
+The PR still changes only the original two native tests and two task reports,
+with no production functionality, public C ABI, export map, Ada, vendor or
+workflow changes. PR #111 is left open, non-draft, unmerged, with auto-merge
+disabled, for independent review. No new PR, merge, tag, release or DOC-007B work
+is authorized or performed by this synchronization.
