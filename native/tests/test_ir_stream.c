@@ -2732,6 +2732,8 @@ static int test_destructor_close_gap(int mutation)
     unsigned stage = 0U;
     char base[] = "/tmp/ams-mel-destructor-gap-XXXXXX";
     char claimed[PATH_MAX] = "", claim_release[PATH_MAX] = "", claim_arm[PATH_MAX] = "";
+    char completed[PATH_MAX] = "", completion_release[PATH_MAX] = "";
+    char completion_arm[PATH_MAX] = "";
     char entered[PATH_MAX], unblock[PATH_MAX], waiting[PATH_MAX];
     char lifetime[] = "/tmp/ams-mel-destructor-order-XXXXXX";
     char log[8192] = "";
@@ -2757,8 +2759,11 @@ static int test_destructor_close_gap(int mutation)
         if (snprintf(claimed, sizeof claimed, "%s.before-detach.reached", base) <= 0 ||
             snprintf(claim_release, sizeof claim_release, "%s.before-detach.release", base) <= 0 ||
             snprintf(claim_arm, sizeof claim_arm, "%s.before-detach.arm", base) <= 0 ||
+            snprintf(completed, sizeof completed, "%s.snapshot-completion.reached", base) <= 0 ||
+            snprintf(completion_release, sizeof completion_release, "%s.snapshot-completion.release", base) <= 0 ||
+            snprintf(completion_arm, sizeof completion_arm, "%s.snapshot-completion.arm", base) <= 0 ||
             setenv("AMS_MEL_TEST_IMAGE_CLEANUP_BARRIER", base, 1) != 0 ||
-            !create_marker(claim_arm)) goto cleanup;
+            !create_marker(claim_arm) || !create_marker(completion_arm)) goto cleanup;
     }
     config.buffer_count = 2;
     mock_executor_race_void("ams_mel_mock_destruction_reentry_reset");
@@ -2800,15 +2805,13 @@ static int test_destructor_close_gap(int mutation)
     if (!create_marker(unblock)) goto cleanup;
     if (mutation) {
         /* Direct defect evidence: cleanup already owns the channel while B's
-           destructor is held. Keep teardown paused until destructor reentry
-           has finished, avoiding intentional invalid provider access. */
-        for (unsigned i = 0; i < 15000U &&
-             mock_pool_query("ams_mel_mock_destruction_callbacks_returned") == 0UL; ++i) {
-            const struct timespec pause = {0, 1000000};
-            thrd_sleep(&pause, NULL);
-        }
+           destructor is held. Snapshot completion follows release-executor
+           retirement; the callback counter inside the destructor does not. */
+        if (!wait_for_marker(completed)) goto cleanup;
         if (mock_pool_query("ams_mel_mock_destruction_callbacks_returned") != 1UL ||
-            !create_marker(claim_release)) goto cleanup;
+            !create_marker(claim_release) || !create_marker(completion_release)) goto cleanup;
+        /* Open both gates before either join: snapshot close can wait for the
+           cleanup owner, which must no longer be paused at before-detach. */
     }
     stage = 6U;
     if (thrd_join(release_thread, NULL) != thrd_success) goto cleanup;
@@ -2856,6 +2859,7 @@ cleanup:
                 stage, mutation, (int)releaser.status, (int)closer.status, log);
     if (unblock[0]) (void)create_marker(unblock);
     if (claim_release[0]) (void)create_marker(claim_release);
+    if (completion_release[0]) (void)create_marker(completion_release);
     if (release_started) (void)thrd_join(release_thread, NULL);
     if (close_started) (void)thrd_join(close_thread, NULL);
     if (lease) (void)ams_mel_ir_frame_snapshot_close(&lease, NULL, 0, NULL);
@@ -2870,6 +2874,9 @@ cleanup:
     if (claimed[0]) (void)unlink(claimed);
     if (claim_release[0]) (void)unlink(claim_release);
     if (claim_arm[0]) (void)unlink(claim_arm);
+    if (completed[0]) (void)unlink(completed);
+    if (completion_release[0]) (void)unlink(completion_release);
+    if (completion_arm[0]) (void)unlink(completion_arm);
     if (entered[0]) (void)unlink(entered);
     if (unblock[0]) (void)unlink(unblock);
     if (waiting[0]) (void)unlink(waiting);
