@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — AMS MEL</title>
+<link rel="stylesheet" href="../assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>Architecture</h1>
+<p>One consumer-side adapter connects safe language clients to published MEL
+interfaces. It does not use Squall-private gRPC/UDP contracts. CMake owns native
+compilation; the Ada GPR project imports the native library.</p>
+<h2>The language and provider boundary</h2>
+<pre aria-label="Architecture from Ada application to runtime provider">Ada application
+    |
+Safe Ada MEL interfaces
+    |
+Private Ada C imports
+    |
+Stable native C ABI (experimental, explicitly versioned)
+    |
+C++ bridge
+    |
+Published upstream MEL interfaces
+    |
+Runtime provider implementation</pre>
+<p>The C ABI intermediary prevents STL containers, C++ references, templates,
+exceptions and provider object layouts from crossing the language boundary.
+Direct C++ binding would couple clients to those compiler and layout details.
+The private C++20 adapter translates explicit opaque handles, fixed-width
+records, spans, diagnostics and timeouts. This stabilizes the language boundary;
+it does not eliminate provider-side C++ ABI compatibility requirements, promise
+unlimited ABI evolution, or make all owners concurrently usable.</p>
+<h2>Two families, different paths</h2>
+<pre aria-label="Separate IR channel and RF control and data ownership paths">Shared/Core: AMS / AMS.MEL / AMS.MEL.Status
+  |
+  +-- IR Session -- Image_Stream -- Image copies / Frame_Lease
+  |             +-- C2 -- command requests / metadata queue
+  |             +-- Health_Status / Instrumentation / Track channels
+  |
+  +-- RF Data_MEL -- ProductRx request -- Endpoint -- Event
+  +-- RF C2_MEL   -- VA request -- Virtual_Aperture -- Job request -- Job
+  |                              +-- descriptors / observers / queries
+  +-- RF Admin   -- independent administration commands</pre>
+<p>RF DataMEL and C2 are not children of the IR Session or interchangeable data
+and command handles. The <a href="api-map.html">API map</a> identifies all
+29 public packages. Read <a href="ir-workflows.html">IR Workflows</a> and
+<a href="rf-workflows.html">RF Workflows</a> separately.</p>
+<h2>Where ownership and asynchronous work live</h2>
+<p>Native state objects own provider shared resources, library handles, futures,
+registered buffers and child claims. Limited controlled Ada owners hold private
+handles. Values such as channel capabilities, full-frame copies, MFA/VA/Job
+snapshots and metadata events are copied into Ada-owned records and vectors.
+IR frame leases and RF event payloads instead expose explicitly scoped borrows
+or copy operations.</p>
+<p>Native completion workers consume futures once and cache terminal results.
+Provider callbacks enter bounded native queues, not Ada application code.
+Application-side Receive operations copy metadata; explicit With operations
+invoke a synchronous Ada processor over a borrowed payload. Provider callback
+registration may require permanent retention of the exact callable and DSO.
+Logical closure can precede physical teardown. The
+<a href="ownership-and-errors.html">ownership guide</a> explains that distinction.</p>
+<h2>Pinned interfaces and provenance</h2>
+<p>The vendored declaration closure is recorded by
+<code>docs/upstream-provenance.md</code> and
+<code>docs/upstream-files.sha256.md</code>, not fetched at build time.
+IR MEL is pinned at <code>8d9224519f12b44e0b28815755c56a32a28d24a0</code>,
+RF MEL at <code>762ce84c5555dd0f3ea66f36b321fecf8839b89f</code>, and Common MEL
+at <code>f6908437d8fd2f7fb69896f9eb9cfd272d10c439</code>.
+AMS Math is pinned at <code>00be45190f0e47d268cece8b8c2f8fb58b5418d2</code>;
+the provenance records the AMS VITA and Boost 1.83.0 declaration closures too.
+The 804 protected vendor files are interfaces/dependencies, not a bundled
+production provider.</p>
+<h2>Integration scope</h2>
+<p>Squall is an example runtime provider, not this bridge's implementation.
+Historical tests apply only to their recorded revision and configuration. An
+MFA implementation may supply these MEL interfaces to a Skill integration; the
+application must still implement its required service, orchestration and
+system-level contracts. This repository is neither OMS, a complete AMS GRA
+Skill, nor a complete MFA. No general GRA-compliance claim follows from bindings.</p>
+<h2>Source basis</h2>
+<p>See <code>ada/src/ams-mel.ads</code>,
+<code>ada/src/ams-mel_c_api.ads</code>, <code>native/include/ams_mel/abi.h</code>,
+<code>native/src/provider.cpp</code>, <code>native/src/ir_stream.cpp</code>,
+<code>native/src/ir_navigation.cpp</code>, <code>native/src/rf_virtual_aperture.cpp</code>
+and <code>native/src/rf_product_rx.cpp</code>. Architecture and ABI policy are
+recorded in <code>docs/architecture.md</code> and <code>docs/c-abi-policy.md</code>.
+The API entry points are {{package:AMS.MEL}}, {{package:AMS.MEL.IR.Channel}},
+{{package:AMS.MEL.RF}} and {{package:AMS.MEL.RF.C2}}.</p>
+</main></body></html>

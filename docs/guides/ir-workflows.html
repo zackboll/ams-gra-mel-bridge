@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IR Workflows — AMS MEL</title>
+<link rel="stylesheet" href="../assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>IR Workflows</h1>
+<p>IR is Session-backed and channel-oriented. Open a Session with
+{{package:AMS.MEL}}, then configure the particular channel family. Provider
+library and configuration values are deployment inputs, not portable examples.</p>
+<h2>Image stream: attach, start, consume, close</h2>
+<p>{{package:AMS.MEL.IR}} supplies <code>Create_UCI_ID</code>,
+<code>Create_Component_Location</code>, <code>Create_Image_Config</code>,
+<code>Open_Image_Stream</code>, <code>Start</code>, <code>Stop</code> and
+<code>Close</code>. Configuration owns the identities, sensor location and
+positive buffer/queue bounds. Opening attaches but does not start reception.</p>
+<p><strong>Illustrative operation sequence, not standalone executable Ada:</strong>
+the caller supplies valid provider configuration, identities, mounting values,
+and exception handling.</p>
+<pre><code>AMS.MEL.Open
+AMS.MEL.IR.Create_Image_Config
+AMS.MEL.IR.Open_Image_Stream
+AMS.MEL.IR.Start
+AMS.MEL.IR.Image.Receive          -- independent Full_Frame copy
+-- or: AMS.MEL.IR.Image.Acquire_Frame
+--     AMS.MEL.IR.Image.With_Pixels / Copy_Pixels
+--     AMS.MEL.IR.Image.Close     -- close the Frame_Lease
+AMS.MEL.IR.Stop
+AMS.MEL.IR.Close
+AMS.MEL.Close</code></pre>
+<h2>Full representation is not a new format negotiation path</h2>
+<p>The legacy <code>AMS.MEL.IR.Receive</code> returns a source-compatible
+Mono8 frame subset. {{package:AMS.MEL.IR.Image}} provides the complete published
+FrameHeader representation in <code>Full_Frame</code>, preserving nested
+metadata and pixels as an independent Ada copy. Both use the current validated
+Mono8 single-band stream path; a complete header representation is not support
+for every upstream pixel format.</p>
+<p><code>Acquire_Frame</code> returns a limited <code>Frame_Lease</code> with
+small metadata copied into Ada and a retained provider payload. <code>With_Pixels</code>
+borrows only during its processor invocation; <code>Copy_Pixels</code> produces
+independent Ada storage. Do not retain a view beyond the invocation or race
+Close with a borrow. Lease Close invalidates the payload and resets its count;
+copied metadata remains. Buffer-release failure reports an error and conservatively
+retains uncertain storage, not successful release. Only one Receive/Acquire
+consumer may operate on a stream at a time.</p>
+<h2>Capabilities and commands</h2>
+<p>{{package:AMS.MEL.IR.Channel}} defines common identities, pixel vocabulary
+and complete capability snapshots. <code>AMS.MEL.IR.Image.Capabilities</code>
+and <code>AMS.MEL.IR.C2.Common.Capabilities</code> return Ada-owned values.
+An enum member such as an optional metadata kind is not evidence that its
+callback is implemented or that the provider supplies it.</p>
+<p>{{package:AMS.MEL.IR.C2}} owns <code>Control_Channel</code>: configure,
+<code>Open</code>, explicitly <code>Enable</code>, then submit commands such as
+<code>Submit_Mode</code>, <code>Submit_BIT_No_Op</code> or
+<code>Submit_Config_Set</code>. ModeCmd preserves complete ScanParam; supported
+BIT operations are the documented one-choice operations, not arbitrary invented
+payloads. {{package:AMS.MEL.IR.C2.Common}} provides pre-enable KeepAlive,
+asynchronous CommsTest and capability inspection.</p>
+<h2>Bounded metadata delivery</h2>
+<p>{{package:AMS.MEL.IR.C2.Metadata}} receives CommandStatus,
+BIT_Configuration and BIT_Status, with explicit ChannelCommsTest admission.
+{{package:AMS.MEL.IR.Image.Metadata}} receives BadPixelList,
+LineOfSightReport, LineOfSightEuler and NavigationReportResp. The current Image
+metadata does not implement LineOfSightQuaternion simply because upstream
+vocabulary names it. Native provider callbacks enqueue; Ada consumers use
+<code>Receive</code> in <code>C2.Metadata</code>, <code>Image.Metadata</code>,
+<code>Health_Status.Metadata</code> and <code>Instrumentation.Metadata</code>
+to obtain copied values. <code>Track.Metadata.Receive_Event</code> returns
+tagged multi-kind events; its separate <code>Receive</code> convenience function
+returns Track reports only. If that convenience function consumes a non-report
+event, it raises <code>Provider_Error</code> rather than skipping or requeuing it.
+Use <code>Receive_Event</code> for mixed Track metadata kinds. Queues are bounded,
+drop incoming events when full, and expose counters; they are not lossless buses.</p>
+<h2>Health, Instrumentation and Track</h2>
+<p>{{package:AMS.MEL.IR.Health_Status}} owns its channel and
+{{package:AMS.MEL.IR.Health_Status.Metadata}} delivers copied status metadata.
+Its <code>Status</code> alias targets {{package:AMS.MEL.Status}}; the known
+GNATdoc package-renaming omission does not mean status support is missing.</p>
+<p>{{package:AMS.MEL.IR.Instrumentation}} is conditional: configure, Open,
+Enable, Submit, Wait and Close. {{package:AMS.MEL.IR.Instrumentation.Metadata}}
+receives InstrumentationReport. {{package:AMS.MEL.IR.Track}} is likewise
+conditional. {{package:AMS.MEL.IR.Track.Updates}} submits TrackDataUpdate;
+{{package:AMS.MEL.IR.Track.System_Data}} submits SystemTrackDataResponse.
+{{package:AMS.MEL.IR.Track.Metadata}} delivers IRSTTrackReport,
+RequestSystemTrackData, CandidateObjectMessage and CandidateObjectPreProcMessage
+on one FIFO queue. Those inbound callbacks have no corresponding upstream send
+overload. Positive Track behavior is mock-backed; the pinned Squall observation
+is a clean failure to attach a Track channel, not positive Track execution.</p>
+<h2>Navigation requests and lifetime</h2>
+<p><code>AMS.MEL.IR.Image.Submit_Navigation_Report</code> owns the complete
+Navigation_Report, including all 18 covariance terms. Submission is allowed
+while logically Attached or Running and returns a limited
+<code>Navigation_Request</code>. <code>Wait</code> observes a cached terminal
+result. Timeout leaves the request pending; request <code>Close</code> abandons
+the public handle and is not cancellation.</p>
+<p>Pending requests and held leases keep native provider/channel state alive
+independently of the public Image_Stream and Session. Parent-first logical
+closure is supported by retained child claims; it does not authorize new work
+on closed parents or promise immediate physical teardown. Metadata Close stops
+public consumption, not universal callback quiescence. Serialize lifecycle
+operations on the same owner. Read the
+<a href="ownership-and-errors.html">ownership/error contracts</a> before shutdown.</p>
+<h2>Source basis</h2>
+<p>The operation contracts are in <code>ada/src/ams-mel-ir*.ads</code> and
+<code>ada/README.md</code>; native behavior is in <code>native/src/ir_stream.cpp</code>,
+<code>ir_image.cpp</code>, <code>ir_navigation.cpp</code> and the corresponding
+channel implementations. Mock tests under <code>ada/tests/src</code> and
+<code>native/tests</code> establish conversions and ownership. Historical
+<code>docs/task-029*</code> reports distinguish mock-positive Track evidence
+from pinned-provider limitations.</p>
+</main></body></html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ownership and Errors — AMS MEL</title>
+<link rel="stylesheet" href="../assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>Ownership and Errors</h1>
+<p>Ownership is part of the API, not an implementation detail. Use explicit
+Close at a deliberate boundary and retain exception handling around it. Limited
+controlled owners cannot be copied; default owners are closed. Automatic
+finalization attempts non-raising cleanup but cannot prove successful shutdown.</p>
+<h2>Ownership matrix</h2>
+<div class="table-scroll"><table>
+<caption>Lifetime summary; individual package contracts remain authoritative</caption>
+<thead><tr><th scope="col">API family</th><th scope="col">Owner</th><th scope="col">Borrowed data</th><th scope="col">Copy lifetime</th><th scope="col">Close effect</th></tr></thead>
+<tbody>
+<tr><th scope="row">IR Session/channels</th><td>Session, stream or channel</td><td>Private FFI only</td><td>Copied capabilities survive</td><td>Logical closure; child work can defer teardown</td></tr>
+<tr><th scope="row">IR Image copy</th><td>Full_Frame value</td><td>None after Receive</td><td>Independent Ada value</td><td>Closing stream does not invalidate copy</td></tr>
+<tr><th scope="row">IR frame lease</th><td>Frame_Lease</td><td>With_Pixels invocation only</td><td>Copy_Pixels survives lease/parents</td><td>Payload invalid; small copied metadata retained</td></tr>
+<tr><th scope="row">IR requests</th><td>Family-specific limited request</td><td>No application input retained</td><td>Returned result values independent</td><td>Abandons handle, not cancellation</td></tr>
+<tr><th scope="row">Metadata/status queues</th><td>Stream/observer</td><td>Private native event spans during conversion</td><td>Returned Ada metadata independent</td><td>Stops public consumption; not universal callback quiescence</td></tr>
+<tr><th scope="row">RF factories</th><td>Data_MEL, C2_MEL, Admin</td><td>Private FFI only</td><td>MFA snapshots independent</td><td>Shutdown can defer behind children; uncertain graph retained</td></tr>
+<tr><th scope="row">RF requests</th><td>Create_Request, VA/Job request</td><td>Inputs copied at Submit</td><td>Wait result independent</td><td>No cancellation; claimed child independent</td></tr>
+<tr><th scope="row">RF VA/Job</th><td>Unique Claim owner</td><td>Private FFI only</td><td>Copied IDs/labels/JobDetail retained</td><td>Releases native reference/claim, not a universal cancel</td></tr>
+<tr><th scope="row">RF ProductRx</th><td>Endpoint, then Event</td><td>With_* processor invocation only</td><td>Copy_* and copied metadata independent</td><td>Endpoint stops admission; Event Close releases its payload</td></tr>
+</tbody></table></div>
+<h2>Parents, children and snapshots</h2>
+<p>Native child claims retain provider objects, futures and library state.
+Parent-first public closure is supported where documented: IR pending requests
+and frame leases, RF pending requests, apertures, Jobs and endpoints can retain
+the underlying graph. A closed parent cannot accept new operations. A future
+that never completes can retain its graph indefinitely. This safety behavior
+is not permission to unload code or assume timely resource reclamation.</p>
+<p>Independent copied snapshots remain ordinary Ada values. Some controlled
+owners also retain small copied fields after Close: IR lease metadata, RF VA
+IDs/labels, Job details and ProductRx endpoint/event metadata have explicitly
+documented accessors. Payload access and live provider operations still require
+an open owner. Do not infer that every accessor works after Close from the fact
+that one cached field does. Check each precondition and index range.</p>
+<h2>Borrowing and callback boundaries</h2>
+<p>{{package:AMS.MEL.IR.Image}} <code>With_Pixels</code> and
+{{package:AMS.MEL.RF.Product_Rx}} With operations call your processor
+synchronously. A borrow ends on normal return or exception. Never save an
+address, access value, slice or view; never close the owner during that borrow.
+Use the explicit Copy operation when data must escape the processor scope.</p>
+<p>Provider callback threads operate native queues; they do not invoke Ada
+application callbacks. Queues are bounded, with drop counters and family-specific
+admission rules. IR metadata queues use DROP-INCOMING. Monitor counters and do
+not assume notifications form a lossless or complete current-state history.</p>
+<p>Upstream does not universally provide unregister/quiescence contracts. RF
+registration retains the exact callable and provider DSO permanently, including
+a shell after endpoint cleanup; IR callback teardown follows channel/buffer
+lifetime rules. Never unload a provider DSO while an object, deleter, pending
+future, request or unquiesced callback could execute provider code.</p>
+<h2>Timeout, rejection and exceptions</h2>
+<ul>
+<li><code>Timeout_Error</code> means no result within the selected wait. It is
+not cancellation, rejection, or request consumption; zero timeout polls.</li>
+<li>Normal result discriminators encode provider outcomes: RF Created/Failed,
+IR Success/Rejected, Admin Boolean acceptance, or status enums. These are not
+automatically bridge exceptions or proof of hardware execution.</li>
+<li><code>Provider_Error</code> reports native bridge/provider failures according
+to each operation: validation, closed handle, provider exception, malformed
+result, or cleanup failure. Native error categories distinguish provider
+exceptions from bridge/internal failures even where Ada uses one exception.</li>
+</ul>
+<p>Observe the result discriminator before a preconditioned accessor. RF
+<code>Error_Code</code>/<code>Description</code> require Failed; IR
+<code>Rejection_Code</code>/<code>Description</code> require Rejected, while
+successful command accessors require Success. A successfully returned
+CommandStatus can itself report a normal Rejected state; that is distinct from
+an ErrorOr rejection of the bridge operation. A BIT Return Fail is likewise a
+normal returned value, not automatically a provider exception.</p>
+<h2>Wait, Claim, Close and cancellation are different</h2>
+<p>Native completion workers call future get once and cache terminal results.
+Repeated Wait reads that cache. RF resource requests require a separate unique
+Claim; Created alone does not transfer ownership. Claim is not repeatable, and
+family-specific pending/failed/registration-failure behavior must be observed.</p>
+<p>Request Close is nonblocking abandonment, not cancellation of pending work.
+Closing an unclaimed successful request releases its resource through native
+cleanup; an already claimed child remains independent. RF <code>Cancel_Job</code>
+is an explicit separate provider operation with its own result, not an implied
+effect of every Close.</p>
+<h2>Cleanup failures and concurrency</h2>
+<p>Explicit Close may report failure. Some IR detach failures preserve an owner
+for retry; RF final-child shutdown may close the public handle and retain an
+uncertain graph without retry. IR buffer-release failure invalidates the borrow
+and conservatively retains storage. Never generalize one family's retry policy.
+Non-raising finalization suppresses cleanup exceptions and may deliberately
+retain resources rather than permit use-after-free or unsafe unload.</p>
+<p>Externally serialize operations on the same Ada owner, especially Wait,
+Claim, borrow/copy, Close and finalization. Internal worker/queue synchronization
+does not confer general thread safety on a shared owner. IR streams allow one
+receive/acquire consumer; independently acquired leases have separate lifetimes.</p>
+<h2>Source basis</h2>
+<p>See {{package:AMS.MEL}}, {{package:AMS.MEL.IR.C2}},
+{{package:AMS.MEL.RF.C2}}, and the payload packages above. The contracts are in
+<code>ada/src/ams-mel*.ads</code>; non-raising cleanup is implemented in the
+matching bodies. <code>native/src/ir_stream.cpp</code>,
+<code>ir_c2.cpp</code>, <code>rf_c2.cpp</code>,
+<code>rf_virtual_aperture.cpp</code>, <code>rf_job.cpp</code> and
+<code>rf_product_rx.cpp</code> implement retained claims, caches and teardown.
+<code>docs/c-abi-policy.md</code> records the native error/lifetime boundary.</p>
+</main></body></html>
