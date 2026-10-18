@@ -217,3 +217,129 @@ push/PR and Documentation PR conclusions, actual checkout logs, synthetic ordere
 parents/tree and all 42 hosted artifact bytes/audit must be verified. Deployment
 skip on PR is expected. Stop for independent review: no merge, auto-merge, tag,
 release, manual deployment or subsequent documentation phase.
+
+## R2 reconciliation with independently reviewed, merged IR-CI-002
+
+The sections above preserve the R1 campaign and its historical counts; they do
+not replace the failed required Bootstrap push with later successful results.
+R1 source head is `d5f397425c907bf27cecc115919cb48a5c65f940`, tree
+`50333c5e6885eb7d9c062e7f35284dc01b523e4b`. Before reuse, the complete R1
+evidence manifest and every listed file were verified. Manifest SHA-256:
+`4a0162ce29b2e47c306a4e66f765c3956d3b374aad0ab1521b68a7c0194bb5c6`.
+Original handoff, failed run, raw logs, diagnostics, publication, occurrence audit,
+browser harnesses/results and screenshots remain untouched under
+`/home/zboll/git/ams-mel-doc-007e-evidence/r1`.
+
+Fetched main is the actual PR #118 merge
+`592f72aa48202a4f5e4ee0890e66556dc0b739e2`, tree
+`a490dad7710b20663b6913c30f60ff4c64d3344b`, merged on 2026-10-18.
+Its ordered parents are `8be05e9d0284e81a1769b2e1639a4b96b191324c` and
+independently reviewed R2 head `7cea5c1a7354a14055b21e275cbac57368d3d49b`;
+its tree equals that reviewed head's tree. Normal integration merge
+`bdd6379796c035cdb0d455eba171b656d99172ca` has ordered parents R1 head
+`d5f397425c907bf27cecc115919cb48a5c65f940` then actual main
+`592f72aa48202a4f5e4ee0890e66556dc0b739e2`. No cherry-pick, rebase or manual
+recreation of the native correction was used.
+
+### Three distinct findings, not a reconstructed hosted schedule
+
+1. R1 [Bootstrap push 39097077370](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39097077370)
+   failed the immediate zero-poll TIMEOUT assertion in Clang Debug's repeat gate.
+   The unchanged mock could complete after 40 ms. This establishes a concrete
+   timing assumption consistent with failure, not the unrecorded runtime
+   interleaving or actual returned status.
+2. IR-CI-002 R1 introduced held completion, retaining pending, close, result,
+   cache, callback, consumed-handle and lifetime contracts. Its later hosted
+   repetition aborts did not identify their abort sites.
+3. IR-CI-002 R2 corrected a separately demonstrated logging-resource cleanup race:
+   drain earlier completion owners, bind the exact created-owner target after
+   submission, and wait for retirement before final log validation or cleanup.
+   Acquire observation establishes completion of the relevant logging calls and
+   file closes, **not OS-thread exit**. Controlled cleanup reproduction does not
+   identify the original hosted abort sites. See the inherited
+   [IR-CI-002 record](ir-ci-002-instrumentation-completion-handshake.md).
+
+### Exact inherited bytes and authored boundary
+
+All five PR #118 files are inherited directly from actual merged main, including
+complete-file bytes and modes: its qualification record, Instrumentation C test,
+mock, source-integrity checker and literal-fixture tests. Instrumentation test
+SHA-256 is `617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02`;
+mock SHA-256 is `5c816a106bd310443620921979a99ccda6ad830102ac9c65a63766ff4fd95b37`.
+The immutable foundation, complete RF pair, IR-stream singleton, atomic
+Instrumentation pair, literal fixtures and mechanical proposed-policy labels
+are unchanged. No authorization hash is regenerated and no label is rewritten
+to represent approval; the approved correction arrives through actual ancestry.
+
+R2 authors only this file and `docs/gnatdoc-foundation.md`. All other DOC-007E
+implementation files retain R1 bytes and modes. The complete PR still has the
+same eleven documentation-owned paths against integrated main. Its out-of-scope
+inventory is recomputed from that base, not copied from R1's historical 1,337;
+every out-of-scope blob and mode must match. No native implementation/test,
+policy, workflow, dependency, missing-type-link, Navigation_Report or additional
+navigation feature is authored here.
+
+### Integrated qualification method and evidence-reuse conditions
+
+Complete these authored edits before final qualification, freeze the source/index
+tree, and prove the subsequent committed tree is identical. Record final commit,
+qualified tree, workflow/artifact identities and evidence-manifest digest in the
+external R2 handoff and existing PR #117 description to avoid self-reference.
+New evidence lives under `/home/zboll/git/ams-mel-doc-007e-evidence/r2`.
+Pending or failed gates never count as passing; the external handoff supplies
+the actual final disposition.
+
+Use stable recorded absolute compiler, GNAT, GPRbuild, GNATdoc and Alire paths,
+isolated build/output trees and no overlapping mutable-tree writers or readers.
+Fresh non-editable installation uses the unchanged installer and the same
+revision/archive/installed-assets/JavaScript identities recorded above. Discovery
+is exactly `python3 -m unittest discover -s scripts -p 'test_*doc*.py' -v`:
+**133 documentation tests**, including **51 source-integrity tests counted once**.
+Pinned-enhancer discovery is `python -m unittest discover -s docs/tests -p
+'test_*.py' -v`: **100 presentation tests = 66 retained + 34 navigation**,
+or **233 distinct tests** overall. Investigate discrepancies, never omit cases.
+
+Run sequentially, in this order: `make test-native` (require **434/434**),
+`make test-ada`, `make check`, `make check-ada-format`, `alr -n -C ada build`,
+`alr -n -C ada/tests run`; require exit zero from each. Verify working/index
+integrity, baseline delta against actual main, exact scope/modes, **1,162**
+protected files, **804** vendor checksums, whitespace and final newlines. No
+tracked generated HTML, diagnostic instrumentation or evidence is allowed.
+Exact inheritance avoids repeating the separate four-configuration IR-CI-002
+local campaign, not the required final integrated hosted native matrix.
+
+Produce two fresh pristine and two fresh enhanced generations; compare every
+relative filename and complete-file byte. Independently validate using a fresh
+external audit destination outside repository/pristine/publication, retaining
+containment, existing-file and link-alias rejection. Require exact pristine
+restoration, independent local-type occurrences, complete output/manifest
+reconstruction, API byte-idempotence, dry-run source/staging/consumer preservation,
+retained tamper/audit-output tests, and accurate post-return publication hashes.
+
+The reconciliation target is the authenticated **42-file DOC-007E R1** publication,
+not main's 41-file DOC-007D publication: **37 HTML pages, 29 public packages,
+2,965 references, 1,418 local type links, zero external type links**. Require
+complete names/bytes equality, including index, JavaScript, CSS, manifest, API
+pages and portal, plus complete occurrence-audit equality with R1 and its preserved
+DOC-007D audit. Exact equality carries forward the preserved compatibility A/B/C
+results. Reuse R1's bounded Chromium campaign only when that authenticated
+publication also equals both integrated local and downloaded final-head hosted
+output. Explicitly report **browser-evidence reuse**, not a new browser campaign.
+Unexpected differences or unauthenticated evidence block that reuse.
+
+After a normal push to the existing branch, require final-head Bootstrap push,
+Bootstrap pull_request and Documentation pull_request success (expected deploy
+skip allowed). Inspect raw logs for actual checkout/compiler identities and all
+eight native jobs' ordinary **434/434** and unchanged parallel-4/until-fail:50
+repeat results. Preserve any new failure before diagnosis; never retry a test
+failure to obtain green. Authenticate the final run's artifact and independently
+validate all 42 hosted files, full audit and post-return hashes against local/R1.
+Refresh actual main, remote/PR head and synthetic merge; require local = remote
+= PR head, synthetic parents actual current main then final head, and synthetic
+tree = independently computed merge tree = qualified source tree. Main advancement
+requires inspection and appropriate normal integration/requalification.
+
+Only all passing final-head gates and preservation checks permit
+**READY_FOR_INDEPENDENT_REVIEW**. Keep existing PR #117 open, non-draft, unmerged,
+auto-merge disabled. No merge of the PR, force-push, tag, release, manual deployment
+or next documentation phase is part of R2.

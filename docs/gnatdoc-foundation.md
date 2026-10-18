@@ -49,6 +49,38 @@ Use the repository-root installation/build/verify/test commands below. See
 [qualification](doc-007e-qualification.md). DOC-007C/D sections below are historical
 checkpoints, not the current navigation configuration or publication inventory.
 
+### DOC-007E R2 integration and qualification boundary
+
+DOC-007E normally merges actual main's independently reviewed IR-CI-002 R2,
+PR #118 merge `592f72aa48202a4f5e4ee0890e66556dc0b739e2` (reviewed head
+`7cea5c1a7354a14055b21e275cbac57368d3d49b`). All five correction/policy/record
+files retain main's exact bytes and modes; the immutable foundation, RF pair,
+IR-stream identity, Instrumentation pair and mechanical proposed-policy labels
+remain unchanged. R2 authors only the qualification record and this foundation
+document, preserving DOC-007E's eleven-path PR scope and all R1 implementation.
+
+The original DOC-007E timeout-assumption failure, IR-CI-002 R1's unlocated hosted
+aborts and R2's separately demonstrated logging-resource cleanup race are distinct
+historical findings. Completion-owner retirement guarantees the relevant logging
+calls/file closes, not OS-thread exit or identification of original abort sites.
+See [R2 qualification](doc-007e-qualification.md#r2-reconciliation-with-independently-reviewed-merged-ir-ci-002)
+and the unchanged [inherited correction record](ir-ci-002-instrumentation-completion-handshake.md).
+
+Integrated discovery requires 133 documentation tests (51 integrity counted once)
+and 100 presentation tests (66 retained + 34 navigation): 233 distinct cases.
+The six sequential regressions, 434-test native suite, final-head hosted native
+ordinary/repeat matrix and independently validated hosted artifact remain required.
+Two fresh pristine/two enhanced generations must agree completely. Publication
+must equal authenticated **DOC-007E R1's 42 files**, not main's 41-file output;
+the full occurrence audit must also equal R1 and preserved DOC-007D. Only exact
+local/R1/final-hosted filename and complete-byte equality permits carrying forward
+R1's compatibility comparisons and bounded Chromium campaign. This is explicit
+browser-evidence reuse, not a new browser campaign. Final source/workflow/artifact
+identities, actual gate results and disposition are external in
+`/home/zboll/git/ams-mel-doc-007e-evidence/r2/FINAL-HANDOFF.md` and existing
+PR #117's description. Pending/failed gates block readiness. Stop at independent
+review with PR #117 open, non-draft, unmerged and auto-merge disabled.
+
 ## DOC-007D local type hyperlinks
 
 The publication now enables only source-verified **local** type references in
