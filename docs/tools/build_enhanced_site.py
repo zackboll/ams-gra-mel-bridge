@@ -76,6 +76,27 @@ def hashes(mapping):
     return {name: sha(data) for name, data in mapping.items()}
 
 
+def audit_destination(path, root, pristine, published):
+    """Require a fresh external file; never follow an existing output alias.
+
+    Resolve parent aliases before containment checks and use that checked path
+    for exclusive creation. As with input qualification, parent directories must
+    be trusted and not concurrently replaced while validation runs.
+    """
+    try:
+        supplied = Path(path)
+        require(not supplied.exists() and not supplied.is_symlink(),
+                "audit destination must be a fresh external file")
+        destination = supplied.resolve()
+        protected = (Path(tree).resolve() for tree in (root, pristine, published))
+        require(not any(destination.is_relative_to(tree) for tree in protected),
+                "audit destination must be outside repository, pristine and publication trees")
+        require(destination.parent.is_dir(), "audit destination parent must already exist")
+        return destination
+    except (OSError, RuntimeError) as error:
+        raise PresentationError("invalid audit destination: " + str(error)) from error
+
+
 def tool():
     import ada_gnatdoc_enhancer
     package = Path(ada_gnatdoc_enhancer.__file__).parent
@@ -106,6 +127,7 @@ def qualified_original(pristine, root=ROOT):
 
 def validate(published, pristine, root=ROOT, audit_path=None):
     """Neither an output-side manifest nor enhancer self-verification is authority."""
+    destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
     tool()
     raw = qualified_original(pristine, root)
     actual = files(published)
@@ -173,8 +195,15 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
     require(links == 1516 + 30 + len(audit), "presentation link delta differs from theme plus audited type links")
-    if audit_path is not None:
-        Path(audit_path).write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n")
+    if destination is not None:
+        # Recheck freshness at write time; exclusive creation also rejects a
+        # newly introduced file/hardlink/symlink instead of overwriting it.
+        destination = audit_destination(destination, root, pristine, published)
+        try:
+            with destination.open("x", encoding="utf-8") as stream:
+                stream.write(json.dumps(audit, indent=2, sort_keys=True) + "\n")
+        except OSError as error:
+            raise PresentationError("cannot create audit destination: " + str(error)) from error
     return {"files": 41, "html_pages": 37, "links": links, "public_packages": 29,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
@@ -213,7 +242,7 @@ if __name__ == "__main__":
     parser.add_argument("command", choices=("build", "verify"))
     parser.add_argument("--pristine", type=Path, default=ROOT / "_site")
     parser.add_argument("--site", type=Path, default=ROOT / "_site-published")
-    parser.add_argument("--audit", type=Path, help="external per-occurrence audit (verify only)")
+    parser.add_argument("--audit", type=Path, help="fresh file outside repository/pristine/publication; existing parent required (verify only)")
     args = parser.parse_args()
     require(args.audit is None or args.command == "verify", "--audit requires verify")
     result = build(args.pristine, args.site) if args.command == "build" else validate(args.site, args.pristine, audit_path=args.audit)

@@ -5,6 +5,105 @@ Final commit, PR, hosted status and evidence-manifest identities are recorded in
 the external handoff after qualification, avoiding a self-referential commit.
 No pending check counts as passed. Independent review remains required.
 
+## R2 — external audit destination correction
+
+Independent review accepted the type-link generation, dependency selection,
+semantic audit and hosted publication, but found that R1's optional `audit_path`
+could mutate a checked tree after validation. R2 starts from reviewed head
+`dc216a3ebcf77f1235afe49b3b486fa80f7e0c1a`, tree
+`c4ea6e1ded9bfc166c5a319a0b58b60a149a5863`, on the same branch/worktree and
+existing PR #116. Main was still `0e64ea0689f2fae360baba78b6ed6f74aeef08ca`.
+All 2,203 R1 evidence entries were hash-verified; R1 is retained untouched.
+Corrective evidence is `/home/zboll/git/ams-mel-doc-007d-evidence/r2`.
+
+### BEFORE and correction
+
+Using isolated copies of the qualified pristine/publication, R1 validation with
+`audit_path = published / "type-audit.json"` returned success with `files=41`
+but left 42 files; subsequent validation rejected the unexpected file. With
+`audit_path = published / "api/index.html"`, it returned the original hashes
+after replacing the API index with audit JSON; subsequent validation rejected
+the modified page. `before-audit-output-defects.json` records both before/after
+inventories and reports. Original source, R1 evidence and qualified publication
+were not mutation targets.
+
+The consumer now checks audit output before qualification and again immediately
+before writing. The destination must be a **fresh external file**, outside the
+resolved validation repository root, trusted pristine input and publication
+trees, with an existing parent. Parent aliases are resolved for containment;
+existing destinations (including hardlinks, symlinks and dangling symlinks) are
+rejected. Only the checked resolved path is used, with exclusive creation so an
+intervening final-component file/link cannot be overwritten. Invalid destinations
+fail clearly without any checked-tree byte change. Valid output contains all
+1,418 occurrences, leaves checked trees unchanged and returns hashes that still
+equal the complete publication after the call.
+
+As with source qualification, the filesystem and parent directories must be
+trusted and not concurrently replaced. This is not a sandbox against hostile
+concurrent directory replacement or mount/bind aliases; it does not claim such
+protection. No shared enhancer, configuration, linker, semantic helper, authority,
+original validator, workflow, portal/theme or production byte was changed.
+
+### R2 tests, output and rendering wording
+
+Twelve new tests exercise actual consumer validation on qualified temporary
+source/pristine/publication trees: extra publication file, existing HTML
+overwrite, pristine/repository destinations, parent/file/dangling symlink aliases,
+`..` and repository-root aliases, hardlinks, existing external files, missing
+parents and successful fresh external output (including an external parent alias).
+Rejected destinations assert preservation of all three checked trees; successful
+calls assert complete audit and post-return inventory/hash accuracy. No output
+writer is mocked and inputs are not made invalid merely to obtain rejection.
+All existing 54 presentation/profile/semantic tests are retained: **66 tests
+pass**, plus **116 original documentation tests**, including 34 integrity tests
+counted once. BEFORE tests are also executed against the captured reviewed
+consumer: ten of the twelve test methods fail there, while both valid-external
+methods pass. Unittest reports twelve failure entries (including subtests) and
+one error; these entries must not be subtracted from the method count.
+
+The first BEFORE test run was stopped after its expected preservation failures
+spent excessive CPU formatting multi-megabyte unittest dictionary diffs. Its
+partial log and exit 143 are preserved. Assertions still compare exact bytes,
+but now use a bounded failure message; the captured immutable R1 consumer is
+rerun against the same cases. This is a test-diagnostic correction, not reduced
+preservation coverage or a passed retry claim. The temporary BEFORE summary's
+naive subtraction produced an invalid negative pass count; the separate
+`tests-before-immutable-accounting.json` corrects that diagnostic arithmetic
+without altering the original log/summary or the actual 66-test passing result.
+
+The corrected build and validation reproduce **all 41 relative filenames and
+complete-file bytes** of reviewed R1: 37 HTML pages / 2,964 local links / 1,418
+audited local types / zero external types. R2 audit bytes also equal R1. R2 does
+not run a new browser campaign: reuse of R1's Chromium 455 assertions/eight
+screenshots is justified by complete publication byte equality, and those are
+not counted as newly executed assertions.
+
+The DOC-007C comparison is precisely 28 package pages plus manifest, with 1,418
+new links. In eight pages, 35 qualified linked names absorb 113 prior
+`ada-operator` dot spans into whole-name links. Independently removing links and
+restoring those specific spans reproduces **all 40 non-manifest files** exactly;
+native restoration remains byte-exact. `rendering-delta.json` records the actual
+names and counts. R1's wrapper-only shorthand was incomplete, not an additional
+unexplained rendering change. Its successful types-off control and historical
+findings below remain preserved.
+
+R2 ran all six required regression commands sequentially, all exit 0:
+`make test-native` (434/434), `make test-ada` (contracts/existing repeats),
+`make check` (isolation/native/format/Ada/hygiene), `make check-ada-format`,
+`alr -n -C ada build`, and `alr -n -C ada/tests run`. Absolute `/usr/bin/gcc`
+and `/usr/bin/g++` are Debian 14.2.0-19; GNAT/GNARL runtime is 16.1.0,
+GPRbuild distribution 26.0.1, Alire 2.1.1, Python 3.13.5 and CMake 3.31.6.
+Compiler caches/runtime observations and individual command logs/exits are
+external evidence. No mutable build-tree writers or site-generation/readers
+overlapped. No Ada source changed; the required formatting check still passed.
+All 804 vendor hashes and 1,341 R1 tracked paths outside the four corrective
+paths are preserved, including the semantic helper and inherited PR #115 files.
+
+Final R2 scope, commit/remote/PR/synthetic-merge and hosted
+job/checkout/artifact results are recorded in the external final handoff once
+complete; pending results cannot authorize readiness. The R1 sections below
+remain historical qualification, not claims that R1 guarded audit destinations.
+
 ## Isolation and fixed authority
 
 Worktree `/home/zboll/git/ams-mel-doc-007d`, branch
@@ -30,8 +129,12 @@ Two fresh pristine generations have identical relative-file inventories and
 complete bytes: 39 files / 37 HTML pages / 1,516 links. Two fresh enhanced
 generations also match completely: 41 / 37 / 2,964. Exactly the established theme
 CSS and presentation manifest are additional files. Against DOC-007C, 28 package
-pages gain approved type-anchor wrappers and the manifest changes; the native
-index, empty root page, native/shared CSS and all authored portal bytes are equal.
+pages gain 1,418 type-reference links and the manifest changes. In eight pages,
+35 qualified linked names also absorb 113 prior `ada-operator` dot spans into
+whole-name links: this is not a literal anchor-wrapper-only byte delta. Removing
+the links and restoring those specific dot spans reproduces all 40 non-manifest
+DOC-007C files exactly. Native restoration remains byte-exact. The native index,
+empty root page, native/shared CSS and all authored portal bytes are equal.
 The types-off control preserves all 40 non-manifest files; only two zero counters
 are added to its manifest. No unexplained inventory, HTML, CSS or manifest drift.
 

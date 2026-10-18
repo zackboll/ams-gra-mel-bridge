@@ -21,7 +21,10 @@ MEL source declaration index, pinned native anchor ledger and pristine section.
 current/ancestor/fully qualified/import visibility; it does not import the shared
 resolver. Exact wrapper restoration, complete pristine byte equality, unchanged
 original validation/coverage, and separate full output/manifest reconstruction
-remain mandatory. To save the complete audit outside tracked source:
+remain mandatory. Audit output must be a fresh file outside the repository,
+pristine input and publication trees, with an existing parent directory.
+Resolved aliases into those trees and existing files/symlinks are rejected.
+To save the complete audit externally:
 
 ```sh
 .doc-tools/enhancer/bin/python docs/tools/build_enhanced_site.py verify \
