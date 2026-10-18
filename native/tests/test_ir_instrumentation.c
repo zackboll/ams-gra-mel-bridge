@@ -496,12 +496,23 @@ static int test_metadata_registration_failure(void)
     return EXIT_SUCCESS;
 }
 
-/* Per-test external files confer no channel, request or DSO ownership. The
- * producer captures this path before launch. Keep files/environment until the
- * destructor has joined the producer and the library_unloaded event is seen. */
+/* Test-only observers; no production ABI or provider ownership is added. */
+extern int ams_mel_test_completion_boundary(unsigned family, unsigned operation,
+                                            uint64_t target, uint64_t *values);
+extern int ams_mel_test_completion_owner(unsigned family, uint64_t target,
+                                         uint64_t *observed);
+enum { instrumentation_family = 4U, completion_snapshot = 3U };
+
+/* Per-test external files confer no channel, request or DSO ownership. Keep
+ * files/environment through provider unload AND final-owner retirement: its
+ * release/acquire observation follows the relevant probe calls and file closes,
+ * not necessarily operating-system thread exit. Drain earlier owners before
+ * installing this controller's environment. Intentionally retained cases run last. */
 struct lifetime_control {
     char directory[128];
     char log[160];
+    uint64_t owners_created_before;
+    uint64_t owner_target;
 };
 
 static int control_marker(const struct lifetime_control *control, const char *name,
@@ -529,6 +540,14 @@ static int control_event(const struct lifetime_control *control, const char *eve
 static int control_open(struct lifetime_control *control)
 {
     int descriptor;
+    uint64_t values[4], observed;
+    CHECK(ams_mel_test_completion_boundary(instrumentation_family,
+          completion_snapshot, 0, values) == 1);
+    CHECK(ams_mel_test_completion_owner(instrumentation_family, values[2],
+          &observed) == 1);
+    CHECK(observed == values[2]);
+    control->owners_created_before = values[2];
+    control->owner_target = values[2];
     strcpy(control->directory, "/tmp/ams-mel-instr-held-XXXXXX");
     CHECK(mkdtemp(control->directory) != NULL);
     CHECK(snprintf(control->log, sizeof control->log, "%s/log", control->directory) > 0);
@@ -537,6 +556,17 @@ static int control_open(struct lifetime_control *control)
     CHECK(close(descriptor) == 0);
     CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", control->log, 1) == 0);
     CHECK(setenv("AMS_MEL_TEST_INSTRUMENTATION_HOLD", control->directory, 1) == 0);
+    return EXIT_SUCCESS;
+}
+
+static int control_submitted(struct lifetime_control *control)
+{
+    uint64_t values[4];
+    CHECK(ams_mel_test_completion_boundary(instrumentation_family,
+          completion_snapshot, 0, values) == 1);
+    CHECK(control->owners_created_before < UINT64_MAX);
+    CHECK(values[2] == control->owners_created_before + 1U);
+    control->owner_target = values[2];
     return EXIT_SUCCESS;
 }
 
@@ -593,8 +623,14 @@ static int control_release(const struct lifetime_control *control)
 static int control_finish(const struct lifetime_control *control)
 {
     char log[4096], path[192];
+    uint64_t observed;
     const char *completed, *destroyed, *unloaded, *released, *closed;
     CHECK(control_wait(control, "library_unloaded\n", 0) == EXIT_SUCCESS);
+    CHECK(control->owners_created_before < UINT64_MAX);
+    CHECK(control->owner_target == control->owners_created_before + 1U);
+    CHECK(ams_mel_test_completion_owner(instrumentation_family,
+          control->owner_target, &observed) == 1);
+    CHECK(observed == control->owner_target);
     CHECK(read_log(control->log, log, sizeof log) == EXIT_SUCCESS);
     closed = strstr(log, "public_closes_completed\n");
     released = strstr(log, "controller_released\n");
@@ -634,6 +670,7 @@ static int test_parent_first_close(void)
           NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_instrumentation_submit_level(channel, &command, &request,
           NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(control_submitted(&control) == EXIT_SUCCESS);
     CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);
     CHECK(control_held(&control) == EXIT_SUCCESS);
     CHECK(read_log(control.log, log, sizeof log) == EXIT_SUCCESS);
@@ -677,6 +714,7 @@ static int test_request_close_while_pending(void)
     CHECK(open_enabled("instr-lifetime-held", &session, &channel) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_submit_level(channel, &command, &request,
           NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(control_submitted(&control) == EXIT_SUCCESS);
     CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);
     CHECK(control_held(&control) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_request_wait(request, 0, &result,
