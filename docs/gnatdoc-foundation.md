@@ -1,5 +1,47 @@
 # GNATdoc foundation
 
+## DOC-007D local type hyperlinks
+
+The publication now enables only source-verified **local** type references in
+native declaration snippets, retaining the DOC-007C theme, lexical highlighting,
+native documentation authority and authored portal. Production configuration is
+exact: theme/highlighting/type links on; navigation and guides `none`; no external
+destinations, dependencies, host permissions or JavaScript. The historical
+DOC-007C measurements below describe its types-off publication, not this increment.
+
+The selected immutable shared enhancer is
+`478d0bbff0be1b9141b5ad39f07a71f0386d86e9` (PR #5 merge), not later main.
+It masks Ada literals/comments before identifying type positions. With links off,
+all **40 non-manifest files** equal the qualified DOC-007C publication; the
+manifest adds only `linked_local_types: 0` and `linked_external_types: 0` counters.
+
+The consumer independently checks every emitted occurrence against the original
+MEL source declaration index, pinned native anchor ledger and pristine section.
+`docs/tools/local_type_audit.py` accepts only bounded type contexts and ordinary
+current/ancestor/fully qualified/import visibility; it does not import the shared
+resolver. Exact wrapper restoration, complete pristine byte equality, unchanged
+original validation/coverage, and separate full output/manifest reconstruction
+remain mandatory. To save the complete audit outside tracked source:
+
+```sh
+.doc-tools/enhancer/bin/python docs/tools/build_enhanced_site.py verify \
+  --audit /absolute/external/evidence/type-link-occurrence-audit.json
+```
+
+Qualified output is **41 files / 37 HTML pages / 2,964 local links**:
+1,516 original links + 30 theme references + **1,418** independently audited local
+type links; zero external type links. All 1,237 native sections restore exactly;
+coverage remains 4,294/4,295 with the same one renderer omission and no public gaps.
+The native and shared CSS and all authored portal bytes remain unchanged.
+
+This is not complete Ada name resolution. Unknown, ambiguous, private, external,
+package-alias-dependent and unsupported occurrences can remain unlinked. The
+Health/Status `Status` renaming still has no native section and is not fabricated.
+Image's public `Euler_Value` and `Attitude_Rate.Value` components are exercised;
+the similarly typed `Raw_Euler` parameter is body-only, not a public native target.
+See [source research](doc-007d-source-research.md) and
+[qualification](doc-007d-qualification.md) for evidence, failures and limitations.
+
 ## DOC-007C theme and Ada lexical presentation
 
 The original generator and `_site/` remain the pristine qualification authority.

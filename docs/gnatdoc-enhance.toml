@@ -18,7 +18,7 @@ mode = "none"
 [presentation]
 theme = true
 syntax_highlighting = true
-type_links = false
+type_links = true
 
 [guides]
 mode = "none"

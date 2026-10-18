@@ -51,7 +51,8 @@ class PublishedTests(unittest.TestCase):
 
     def test_exact_inventory_and_portal_preservation(self):
         result = presentation.validate(self.site, self.original)
-        self.assertEqual((result["files"], result["html_pages"], result["links"]), (41, 37, 1546))
+        self.assertEqual((result["files"], result["html_pages"], result["links"]), (41, 37, 2964))
+        self.assertEqual(result["linked_local_types"], 1418)
         self.assertEqual(set(presentation.files(self.site)) - set(presentation.files(self.original)), presentation.EXTRAS)
         for name, data in presentation.files(self.original).items():
             if not name.startswith("api/"):
@@ -205,9 +206,16 @@ class PublishedTests(unittest.TestCase):
         shutil.copytree(ROOT / "ada/src", root / "ada/src")
         shutil.copytree(ROOT / "docs", root / "docs")
         path = root / "docs/gnatdoc-enhance.toml"
-        path.write_text(path.read_text().replace("type_links = false", "type_links = true"))
-        with self.assertRaisesRegex(presentation.PresentationError, "configuration"):
-            presentation.validate(self.site, self.original, root)
+        original = path.read_text()
+        for value in (original.replace("type_links = true", "type_links = false"),
+                      original.replace('mode = "none"', 'mode = "html"'),
+                      original + '\n[external_types]\n"Other.T" = "https://example.org/api.html#t"\n',
+                      original + '\n[security]\nallowed_external_hosts = ["example.org"]\n',
+                      original + '\nexternal_dependencies = []\n'):
+            with self.subTest(configuration=value):
+                path.write_text(value)
+                with self.assertRaisesRegex(presentation.PresentationError, "configuration"):
+                    presentation.validate(self.site, self.original, root)
 
     def test_build_rejects_existing_destination(self):
         with self.assertRaisesRegex(presentation.PresentationError, "fresh directory"):
@@ -236,12 +244,14 @@ class PublishedTests(unittest.TestCase):
         shutil.copytree(self.original / "api", api_only / "api")
         source_before = presentation.hashes(presentation.files(ROOT / "ada/src"))
         consumer_before = presentation.hashes(presentation.files(self.original))
+        published_before = presentation.hashes(presentation.files(self.site))
         input_before = presentation.hashes(presentation.files(api_only))
         result = enhance(load(ROOT, "docs/gnatdoc-enhance.toml"), api_only, dry_run=True)
         self.assertEqual(result["declaration_snippets"], 1237)
         self.assertEqual(input_before, presentation.hashes(presentation.files(api_only)))
         self.assertEqual(source_before, presentation.hashes(presentation.files(ROOT / "ada/src")))
         self.assertEqual(consumer_before, presentation.hashes(presentation.files(self.original)))
+        self.assertEqual(published_before, presentation.hashes(presentation.files(self.site)))
 
 
 class ProfileTests(unittest.TestCase):
