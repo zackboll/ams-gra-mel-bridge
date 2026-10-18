@@ -1,5 +1,54 @@
 # GNATdoc foundation
 
+## DOC-007E searchable native package browser
+
+Production now enables `navigation.mode = "packages"`, retaining theme, Ada
+lexical highlighting and source-verified local type links; guides remain `none`.
+The immutable enhancer is `53a321915da2c5a02a54581040673b61f8595b25`
+(PR #9 merge), not moving main. Installation below checks the archive and complete
+installed implementation/assets fingerprint, not merely version `0.1.0.dev0`.
+
+Optional offline case-insensitive substring search covers exactly the native
+sidebar's **29 Compilation Units and eight Tagged Types**, preserving headings,
+labels, order, filenames, fragments and `target="document-content"`. Search
+reports results; Clear restores all 37 labels and input focus. Approved native
+sidebar destinations support active selection, outer `package` bookmarks and,
+for the eight tagged entries, `declaration` bookmarks with Back/Forward history.
+Package selection uses `aria-current="page"`; selected tagged declarations use
+`aria-current="location"`. Re-selecting the same exact destination adds no entry;
+package-only and declaration state remain distinct. Approved links followed
+inside the iframe use the same history. Other native type/declaration links
+remain ordinary navigation, without automatically gaining outer state.
+
+Unknown/duplicate package values fall back to the first native package (`AMS`).
+Invalid, duplicate, unknown or wrong-owner declaration values fall back to the
+selected approved package. Query values cannot manufacture destinations. Native
+outer group fragments remain usable. Without JavaScript, controls remain hidden,
+both complete native groups navigate normally, and direct native page/fragment
+bookmarks, local type hyperlinks and portal links work without enhancement.
+
+This is **not full-text search**, search of all 1,237 sections, complete Ada name
+resolution or general declaration navigation. No operation/category manifest,
+external mappings/dependencies/host permissions, generic qualification or shared
+authored-guide rendering is enabled. The unchanged shared theme includes exactly
+four dormant `.generic-instance-summary` rules; no summary HTML/count is enabled.
+
+Publication is **42 files / 37 HTML pages / 2,965 local href/src references**:
+the DOC-007D 2,964 plus one local index script. Its 1,418 independent local type
+occurrences and zero external links remain unchanged. The original index and all
+native package HTML restore byte-for-byte; native CSS and authored portal bytes
+remain intact. Only exact consumer-owned index controls/script insertions are
+authorized. The original Page checker and global script rejection are unchanged;
+it checks the index after removal of only those exact approved insertions.
+Package/portal pages have no exception. Full reconstruction of output and manifest
+and the R2 fresh-external-audit contract remain required, on a trusted filesystem
+with stable parents (not a hostile-directory sandbox).
+
+Use the repository-root installation/build/verify/test commands below. See
+[source research](doc-007e-source-research.md) and
+[qualification](doc-007e-qualification.md). DOC-007C/D sections below are historical
+checkpoints, not the current navigation configuration or publication inventory.
+
 ## DOC-007D local type hyperlinks
 
 The publication now enables only source-verified **local** type references in

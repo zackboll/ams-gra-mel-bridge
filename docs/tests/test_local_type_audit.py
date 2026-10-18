@@ -82,6 +82,8 @@ class IndependentTests(unittest.TestCase):
         for name, data in self.output.items():
             if name.endswith('.html'):
                 restored, _ = restore_page(Path(name).name, data.decode(), self.authority)
+                if name == 'api/index.html':
+                    restored = presentation.restore_navigation(restored)
                 restored = restored.replace(presentation.METADATA, '', 1)
                 self.assertEqual(restored.encode(), (ROOT / '_site' / name).read_bytes(), name)
 
