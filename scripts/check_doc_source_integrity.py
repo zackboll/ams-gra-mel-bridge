@@ -40,14 +40,15 @@ PROPOSED_IR_TEST_TRANSITION = (
     "6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b",
     "fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400",
 )
-# IR-CI-002: atomic Instrumentation test/mock proposal, NOT independent approval.
+# IR-CI-002 R2: atomic Instrumentation proposal, NOT independent approval.
+# The failed R1 C-test identity is historical evidence, not a third valid state.
 PROPOSED_INSTRUMENTATION_TRANSITION = (
     ("native/tests/mock_provider.cpp",
      "8c41c152f18eb9e96c1219d7c4073324719b5364d3a8fa458a59f396dda51666",
      "5c816a106bd310443620921979a99ccda6ad830102ac9c65a63766ff4fd95b37"),
     ("native/tests/test_ir_instrumentation.c",
      "49deb479383a43f0eba2528b67bc595618dafd7f750de990f6343184b86fa179",
-     "8848888d729a083149cfb6c5e42492143ffa9e71aad06123da934d544850f5f9"),
+     "617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02"),
 )
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'

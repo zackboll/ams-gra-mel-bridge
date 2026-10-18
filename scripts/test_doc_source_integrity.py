@@ -665,7 +665,7 @@ class ProposedInstrumentationTests(unittest.TestCase):
          '5c816a106bd310443620921979a99ccda6ad830102ac9c65a63766ff4fd95b37'),
         ('native/tests/test_ir_instrumentation.c',
          '49deb479383a43f0eba2528b67bc595618dafd7f750de990f6343184b86fa179',
-         '8848888d729a083149cfb6c5e42492143ffa9e71aad06123da934d544850f5f9'),
+         '617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02'),
     )
 
     def setUp(self):
@@ -677,6 +677,10 @@ class ProposedInstrumentationTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
             self.instr_original[name] = data
             (self.root / name).write_bytes(data)
+        self.instr_stale_r1 = stale_r1_instrumentation_bytes(self.instr_original)
+        self.assertEqual(hashlib.sha256(self.instr_stale_r1[
+            'native/tests/test_ir_instrumentation.c']).hexdigest(),
+            '8848888d729a083149cfb6c5e42492143ffa9e71aad06123da934d544850f5f9')
         self.instr_proposed = proposed_instrumentation_bytes(self.instr_original)
         for name, _, digest in self.identities:
             self.assertEqual(hashlib.sha256(self.instr_proposed[name]).hexdigest(), digest)
@@ -693,6 +697,30 @@ class ProposedInstrumentationTests(unittest.TestCase):
     def reject(self, expression):
         with self.assertRaisesRegex(ValueError, expression):
             check(self.root, self.base)
+
+    def test_stale_r1_working_tree_rejected(self):
+        self.install(self.instr_proposed)
+        self.install(self.instr_stale_r1, stage=False)
+        self.reject('unlisted instrumentation working tree bytes')
+
+    def test_stale_r1_index_rejected_with_current_working_tree(self):
+        self.install(self.instr_stale_r1)
+        self.install(self.instr_proposed, stage=False)
+        self.reject('unlisted instrumentation index bytes')
+
+    def test_complete_stale_r1_pair_not_a_third_state(self):
+        self.install(self.instr_stale_r1)
+        self.reject('unlisted instrumentation working tree bytes')
+
+    def test_stale_r1_test_rejected_with_foundation_mock_in_both_views(self):
+        name = 'native/tests/test_ir_instrumentation.c'
+        for view in ('working tree', 'index'):
+            with self.subTest(view=view):
+                self.install(self.instr_original)
+                self.install({name: self.instr_stale_r1[name]})
+                if view == 'index':
+                    self.install(self.instr_original, stage=False)
+                self.reject('unlisted instrumentation ' + view + ' bytes')
 
     def test_eight_crossed_complete_states_and_stable_accounting(self):
         for instr in (self.instr_original, self.instr_proposed):
@@ -861,8 +889,8 @@ class ProposedInstrumentationTests(unittest.TestCase):
         self.assertIn(b'invalid choice', result.stderr)
 
 
-def proposed_instrumentation_bytes(originals):
-    """Frozen literal edits of immutable originals, not candidate-file authority."""
+def stale_r1_instrumentation_bytes(originals):
+    """Preserved failed R1 fixture; literal edits of immutable originals only."""
     edits = {
         'native/tests/mock_provider.cpp': (
             (
@@ -1338,6 +1366,100 @@ def proposed_instrumentation_bytes(originals):
             if result[name].count(old) != 1:
                 raise AssertionError("frozen instrumentation fixture context mismatch")
             result[name] = result[name].replace(old, new, 1)
+    return result
+
+
+def proposed_instrumentation_bytes(originals):
+    """R2 literal reconstruction from the independently reconstructed stale R1.
+
+    Neither fixture reads the proposed worktree. Keep R1 reproducible so its
+    historically qualified but failed cleanup bytes are explicitly denied.
+    """
+    result = stale_r1_instrumentation_bytes(originals)
+    edits = (
+        (
+            '/* Per-test external files confer no channel, request or DSO ownership. The\n'
+            ' * producer captures this path before launch. Keep files/environment until the\n'
+            ' * destructor has joined the producer and the library_unloaded event is seen. */\n',
+            '/* Test-only observers; no production ABI or provider ownership is added. */\n'
+            'extern int ams_mel_test_completion_boundary(unsigned family, unsigned operation,\n'
+            '                                            uint64_t target, uint64_t *values);\n'
+            'extern int ams_mel_test_completion_owner(unsigned family, uint64_t target,\n'
+            '                                         uint64_t *observed);\n'
+            'enum { instrumentation_family = 4U, completion_snapshot = 3U };\n'
+            '\n'
+            '/* Per-test external files confer no channel, request or DSO ownership. Keep\n'
+            ' * files/environment through provider unload AND final-owner retirement: its\n'
+            ' * release/acquire observation follows the relevant probe calls and file closes,\n'
+            ' * not necessarily operating-system thread exit. Drain earlier owners before\n'
+            " * installing this controller's environment. Intentionally retained cases run last. */\n",
+        ),
+        (
+            '    char log[160];\n',
+            '    char log[160];\n'
+            '    uint64_t owners_created_before;\n'
+            '    uint64_t owner_target;\n',
+        ),
+        (
+            'static int control_open(struct lifetime_control *control)\n'
+            '{\n'
+            '    int descriptor;\n',
+            'static int control_open(struct lifetime_control *control)\n'
+            '{\n'
+            '    int descriptor;\n'
+            '    uint64_t values[4], observed;\n'
+            '    CHECK(ams_mel_test_completion_boundary(instrumentation_family,\n'
+            '          completion_snapshot, 0, values) == 1);\n'
+            '    CHECK(ams_mel_test_completion_owner(instrumentation_family, values[2],\n'
+            '          &observed) == 1);\n'
+            '    CHECK(observed == values[2]);\n'
+            '    control->owners_created_before = values[2];\n'
+            '    control->owner_target = values[2];\n',
+        ),
+        (
+            'static int control_wait(const struct lifetime_control *control, const char *event,\n',
+            'static int control_submitted(struct lifetime_control *control)\n'
+            '{\n'
+            '    uint64_t values[4];\n'
+            '    CHECK(ams_mel_test_completion_boundary(instrumentation_family,\n'
+            '          completion_snapshot, 0, values) == 1);\n'
+            '    CHECK(control->owners_created_before < UINT64_MAX);\n'
+            '    CHECK(values[2] == control->owners_created_before + 1U);\n'
+            '    control->owner_target = values[2];\n'
+            '    return EXIT_SUCCESS;\n'
+            '}\n'
+            '\n'
+            'static int control_wait(const struct lifetime_control *control, const char *event,\n',
+        ),
+        (
+            '    char log[4096], path[192];\n'
+            '    const char *completed, *destroyed, *unloaded, *released, *closed;\n'
+            '    CHECK(control_wait(control, "library_unloaded\\n", 0) == EXIT_SUCCESS);\n',
+            '    char log[4096], path[192];\n'
+            '    uint64_t observed;\n'
+            '    const char *completed, *destroyed, *unloaded, *released, *closed;\n'
+            '    CHECK(control_wait(control, "library_unloaded\\n", 0) == EXIT_SUCCESS);\n'
+            '    CHECK(control->owners_created_before < UINT64_MAX);\n'
+            '    CHECK(control->owner_target == control->owners_created_before + 1U);\n'
+            '    CHECK(ams_mel_test_completion_owner(instrumentation_family,\n'
+            '          control->owner_target, &observed) == 1);\n'
+            '    CHECK(observed == control->owner_target);\n',
+        ),
+    )
+    name = 'native/tests/test_ir_instrumentation.c'
+    for old, new in edits:
+        old, new = old.encode(), new.encode()
+        if result[name].count(old) != 1:
+            raise AssertionError('frozen R2 fixture context mismatch')
+        result[name] = result[name].replace(old, new, 1)
+    old = ('          NULL, 0, NULL) == AMS_MEL_OK);\n'
+           '    CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);\n').encode()
+    new = ('          NULL, 0, NULL) == AMS_MEL_OK);\n'
+           '    CHECK(control_submitted(&control) == EXIT_SUCCESS);\n'
+           '    CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);\n').encode()
+    if result[name].count(old) != 2:
+        raise AssertionError('frozen R2 held-submission fixture context mismatch')
+    result[name] = result[name].replace(old, new)
     return result
 
 

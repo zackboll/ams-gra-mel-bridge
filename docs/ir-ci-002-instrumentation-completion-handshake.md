@@ -5,11 +5,13 @@
 **Policy disposition: PROPOSED_PENDING_INDEPENDENT_REVIEW.** Computing hashes,
 passing this proposed checker, or passing hosted CI does not constitute independent
 approval of the native test/mock transition. This is a test synchronization
-correction, not a production request-semantics change. Both commits require
+correction, not a production request-semantics change. All proposal commits require
 independent review. No merge, auto-merge, rebase, force-push, tag, release or
 deployment is authorized. Documentation PR #117 and its worktree/evidence remain
 unchanged; reconciling it is a separate task after independent review and merge.
 The separately planned relative-package type-link correction is not imported.
+The R1 sections below are historical; the R2 addendum supersedes their cleanup
+boundary and active C-test identity. No R1 failure is erased by R2 qualification.
 
 Exact five-file scope:
 
@@ -183,7 +185,7 @@ production failpoints or scheduling overrides. Exact diagnostic patches,
 controllers/commands, runtime identities, binary hashes, outputs and exits remain
 external evidence. Diagnostics are separated from uninstrumented qualification.
 
-## Frozen native proposal and exact atomic policy
+## Historical R1 frozen proposal and exact atomic policy
 
 Immutable DOC-001 foundation stays `42648a92eb0cc84b2980d16db6028992c0494ba1`.
 Originals recomputed from it also equal starting main exactly:
@@ -308,3 +310,168 @@ does not count as passed; any new failure is preserved/diagnosed rather than
 silently expanding this five-file proposal or rerunning to green. External final
 handoff records actual outcomes, complete identities and evidence-manifest hash.
 Stop for independent review; computed acceptance is not independent approval.
+
+## R2 — final-owner logging-resource retirement correction
+
+**Policy disposition remains PROPOSED_PENDING_INDEPENDENT_REVIEW.** R2 is not
+independent approval. Keep three distinct findings: PR #117's original 40 ms
+completion assumption; R1's explicit held-completion correction; and R2's concrete
+logging-resource cleanup race. Neither controlled campaign identifies the actual
+abort site or interleaving in either original R1 hosted failure.
+
+### Refreshed ancestry and immutable evidence
+
+R2 begins at PR #118 head `1f672ef3d13eaab0d229fb68dae8a6757c602d2d`, tree
+`25266c0a8c01b62b8eae57cc7b2750d76b910ae7`, after R1 native commit
+`6702c6c60f3731d5c39ce5fb83f97156f28d9543`. Fetched main and actual PR base
+remain `8be05e9d0284e81a1769b2e1639a4b96b191324c`; no integration merge is needed.
+R1 synthetic merge remains `c9e084c86d60c2de1a80356913b15c755552b907`.
+Preflight found no existing R2 and a clean worktree/index. Exact-head GitHub
+content for the C test, Instrumentation implementation and both completion-probe
+files was compared to authenticated local R1 Git bytes before editing.
+
+R1 evidence remains untouched at `/home/zboll/git/ams-mel-ir-ci-002-evidence/r1`.
+Its complete manifest verifies, with SHA-256
+`b103f691cd7d14600391456c7d0556d3e5a8f72f39f2cb939ddcac6a4a80f96d`.
+Original runs and complete raw logs remain preserved:
+[Bootstrap push 39100004814](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39100004814),
+[Bootstrap PR 39100006728](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39100006728),
+[Documentation PR 39100006783](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/39100006783).
+R2 evidence uses `/home/zboll/git/ams-mel-ir-ci-002-evidence/r2` exclusively.
+PR #117 remains open/non-draft at `d5f397425c907bf27cecc115919cb48a5c65f940`,
+tree `50333c5e6885eb7d9c062e7f35284dc01b523e4b`, auto-merge disabled, clean
+worktree; its original handoff and manifest fingerprints are recorded unchanged.
+
+### Exact retirement boundary and retained contracts
+
+R1 `control_finish()` observed `library_unloaded` but bridge completion probes
+can still log afterward. A probe can capture the environment pathname, pause,
+then execute its original `fopen()` after R1 removes that directory. The existing
+probe aborts on failed open. Provider unload alone is therefore insufficient.
+
+R2 reuses only `ams_mel_test_completion_boundary` (family 4, snapshot operation 3)
+and `ams_mel_test_completion_owner`:
+
+1. Before installing either logging/control environment variable, snapshot the
+   created-owner count, wait for all those earlier owners, and validate the
+   observed count. Record that created-owner baseline in the controller.
+2. After each successful held submission, require exactly one new created owner
+   and save that exact created-owner target. Never derive it from destroyed+1.
+3. Preserve the provider-unload wait and require the target to equal baseline+1.
+   Wait for that target with the existing bounded acquire observer, validate the
+   observed count, then read/validate the final log and perform checked cleanup.
+
+The final-owner counter's release publication follows both final-owner event
+calls, including their file closes. Its acquire observation therefore establishes
+completion of the relevant logging calls/closes, **not OS-thread exit**. Terminal
+results, zero active workers, worker-completed totals, provider unload and visible
+event text do not substitute for this boundary. No extra provider, loader,
+channel or request reference is retained. Production probes remain byte-identical.
+
+Both distinct close orderings, strict held TIMEOUT assertions, rich command/report
+fidelity, synchronous callbacks, successful/cached results, consumed/null handles,
+request-close-not-cancellation, held-producer acknowledgement/explicit release,
+mock safeguards, completion/destruction/unload order and all intentional fail-safe
+retention cases remain. The deliberately unreclaimed post-send cases stay last;
+they are not drained.
+
+### Controlled qualification and negative boundaries
+
+Separate disposable copies preserve exact patches, external controllers, commands,
+toolchain/binary identities, captured paths, counter observations and CTest/native
+output. Diagnostic barriers/labels never enter proposed files or policy authority.
+The original file-open operation and abort predicate remain in the diagnostic.
+
+- **BEFORE:** authenticated R1, parked `worker_return_boundary` after pathname
+  capture and before original `fopen`; positively observed directory removal while
+  the native process remained alive; external controller explicitly released the
+  writer; original open failed with `errno=2` / `ENOENT`; existing abort, CTest 8.
+- **AFTER:** each lifetime case independently passes the same parked-worker event
+  schedule. Its exact current target remains outstanding at the retirement wait;
+  environment/control resources remain available until external release; original
+  open/close succeeds, final-owner retirement publishes, checked cleanup follows.
+- **Late final-owner boundary:** each case also passes with
+  `completion_owner_destroyed` parked before its original open. Worker completion
+  has already published, but owner retirement remains outstanding. This separates
+  worker-completion evidence from the actual final logging-resource boundary.
+- **Focused negatives:** bypassing only the retirement wait reproduces premature
+  cleanup/ENOENT/CTest 8; stale target and incorrect ownership increment fail their
+  exact assertions before cleanup; withholding retirement fails through the
+  existing bounded owner observer, with resources retained and no safe-cleanup
+  claim. Events and counter observations establish success; sleeps only poll or
+  bound failure. Existing R1 negative controls remain preserved and are exercised
+  against R2 separately.
+
+The first diagnostic controller attempt incorrectly treated the earlier case's
+valid cleanup as cleanup of the parked second case. It stopped and was preserved;
+the corrected controller scopes that check to the captured pathname. This was a
+diagnostic-oracle correction, not a candidate assertion change or hosted retry.
+
+### Active atomic exact-content proposal
+
+Native-only R2 commit: `eb62f651440359c2bafa7953b81773e40d6e80a1`, tree
+`da01073aae3d434826f403e7d4104aeb92c2f4f9`.
+The corrected C file was frozen before computing its proposed identity:
+
+| File | FOUNDATION SHA-256 | CURRENT PROPOSAL SHA-256 |
+|---|---|---|
+| `native/tests/mock_provider.cpp` | `8c41c152f18eb9e96c1219d7c4073324719b5364d3a8fa458a59f396dda51666` | `5c816a106bd310443620921979a99ccda6ad830102ac9c65a63766ff4fd95b37` |
+| `native/tests/test_ir_instrumentation.c` | `49deb479383a43f0eba2528b67bc595618dafd7f750de990f6343184b86fa179` | `617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02` |
+
+Historical failed R1 C-test SHA-256
+`8848888d729a083149cfb6c5e42492143ffa9e71aad06123da934d544850f5f9`
+is explicitly **not** a third accepted state. Its independent frozen literal
+reconstruction remains; R2 adds literal edits to that immutable reconstruction,
+never reading candidate worktree bytes as fixture authority. Four new tests
+reject stale R1 bytes in working/index views, complete stale pairs and stale C
+bytes paired with the foundation mock. All 47 prior integrity tests remain:
+**51 integrity tests**, counted once within **133 documentation tests** (129
+retained + 4 new). All **66** main-compatible presentation/semantic/audit tests
+remain. Atomic pairing, crossed states, regular stage-0 requirements, immutable
+foundation checks and existing RF/IR identities and labels are unchanged.
+
+R2 authored scope is exactly the C test, the two integrity scripts and this record.
+The mock remains byte-identical to R1; overall PR scope remains five files versus
+actual main. No production/public ABI/Ada/workflow/vendor/baseline/tool/pin change.
+
+### Final qualification record
+
+Fresh isolated, uninstrumented workflow-equivalent configurations are Clang
+**19.1.7 Release and Debug**, GCC/G++ **14.2.0 Debug and Release**, using
+**libstdc++**. Hosted failures used Clang 18.1.3 and GCC 13.3.0; those exact local
+versions are unavailable, so no local toolchain match is claimed. Every build
+retains all 434 ordinary tests and the unchanged parallel-4 until-fail:50 gate.
+The six required regressions run sequentially with the existing GNAT 16.1.0 /
+GPRbuild 26.0.0 executable from the pinned gprbuild 26.0.1 distribution and Alire
+2.1.1; no global toolchain settings or dependency pins are changed.
+
+Fresh same-pinned-tool documentation generation must retain deterministic pristine
+and publication bytes, independent validation, complete occurrence-audit equality,
+accurate post-return publication hashes and all **41** filenames/full bytes equal
+qualified main and preserved R1. That complete equality, not a new browser claim,
+is the only basis for reusing prior browser evidence. Preservation checks cover
+all 804 vendor checksums, 1,162 protected files, and all 1,341 out-of-scope tracked
+blobs/modes against actual main, plus staged/working integrity, baseline delta,
+whitespace, newlines and exact scope/modes.
+
+Final commit/tree and ordered synthetic-merge identities, actual hosted checkout
+identities, every ordinary/repeat result in both Bootstrap runs, final-head
+Documentation PR's expected deployment skip, independently validated hosted
+artifact/full-byte/audit/hash comparisons, preservation and clean state are
+recorded after final-head execution in external **FINAL-HANDOFF.md** and the PR
+description. They cannot truthfully be embedded in their own source commit.
+Only complete passing final-head gates permit READY_FOR_INDEPENDENT_REVIEW;
+pending/failed gates block. No failed hosted run is retried. The final external
+manifest is verified and its SHA-256 reported without self-reference. Leave PR
+#118 open, non-draft, unmerged, auto-merge disabled and stop for independent review.
+
+
+R2 final local gate: all four fresh compiler/configuration ordinary 434/434 and
+unchanged repeat gates passed; all six required sequential regressions exited 0.
+Documentation 133/133 (including 51 integrity counted once), presentation 66/66,
+controlled BEFORE/AFTER/focused negatives and all 16 retained controls passed
+their required outcomes. Full 41-file deterministic main/R1/R2 publication and
+occurrence-audit/returned-hash equality passed. Preservation, staged/working
+integrity, baseline delta, whitespace, newline, exact scope and modes passed.
+These local results qualify proposed bytes, not independent approval; required
+final-head hosted results remain a separate external gate recorded after push.
