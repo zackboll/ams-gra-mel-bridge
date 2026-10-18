@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -495,6 +496,163 @@ static int test_metadata_registration_failure(void)
     return EXIT_SUCCESS;
 }
 
+/* Test-only observers; no production ABI or provider ownership is added. */
+extern int ams_mel_test_completion_boundary(unsigned family, unsigned operation,
+                                            uint64_t target, uint64_t *values);
+extern int ams_mel_test_completion_owner(unsigned family, uint64_t target,
+                                         uint64_t *observed);
+enum { instrumentation_family = 4U, completion_snapshot = 3U };
+
+/* Per-test external files confer no channel, request or DSO ownership. Keep
+ * files/environment through provider unload AND final-owner retirement: its
+ * release/acquire observation follows the relevant probe calls and file closes,
+ * not necessarily operating-system thread exit. Drain earlier owners before
+ * installing this controller's environment. Intentionally retained cases run last. */
+struct lifetime_control {
+    char directory[128];
+    char log[160];
+    uint64_t owners_created_before;
+    uint64_t owner_target;
+};
+
+static int control_marker(const struct lifetime_control *control, const char *name,
+                          int create)
+{
+    char path[192];
+    CHECK(snprintf(path, sizeof path, "%s/%s", control->directory, name) > 0);
+    if (create) {
+        int descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        CHECK(descriptor >= 0);
+        CHECK(close(descriptor) == 0);
+    } else CHECK(access(path, F_OK) != 0);
+    return EXIT_SUCCESS;
+}
+
+static int control_event(const struct lifetime_control *control, const char *event)
+{
+    FILE *stream = fopen(control->log, "ab");
+    CHECK(stream != NULL);
+    CHECK(fprintf(stream, "%s\n", event) > 0);
+    CHECK(fclose(stream) == 0);
+    return EXIT_SUCCESS;
+}
+
+static int control_open(struct lifetime_control *control)
+{
+    int descriptor;
+    uint64_t values[4], observed;
+    CHECK(ams_mel_test_completion_boundary(instrumentation_family,
+          completion_snapshot, 0, values) == 1);
+    CHECK(ams_mel_test_completion_owner(instrumentation_family, values[2],
+          &observed) == 1);
+    CHECK(observed == values[2]);
+    control->owners_created_before = values[2];
+    control->owner_target = values[2];
+    strcpy(control->directory, "/tmp/ams-mel-instr-held-XXXXXX");
+    CHECK(mkdtemp(control->directory) != NULL);
+    CHECK(snprintf(control->log, sizeof control->log, "%s/log", control->directory) > 0);
+    descriptor = open(control->log, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", control->log, 1) == 0);
+    CHECK(setenv("AMS_MEL_TEST_INSTRUMENTATION_HOLD", control->directory, 1) == 0);
+    return EXIT_SUCCESS;
+}
+
+static int control_submitted(struct lifetime_control *control)
+{
+    uint64_t values[4];
+    CHECK(ams_mel_test_completion_boundary(instrumentation_family,
+          completion_snapshot, 0, values) == 1);
+    CHECK(control->owners_created_before < UINT64_MAX);
+    CHECK(values[2] == control->owners_created_before + 1U);
+    control->owner_target = values[2];
+    return EXIT_SUCCESS;
+}
+
+static int control_wait(const struct lifetime_control *control, const char *event,
+                        int marker)
+{
+    struct timespec start, now;
+    char path[192], log[4096];
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &start) == 0);
+    CHECK(snprintf(path, sizeof path, "%s/%s", control->directory, event) > 0);
+    for (;;) {
+        if (marker) {
+            if (access(path, F_OK) == 0) return EXIT_SUCCESS;
+        } else {
+            CHECK(read_log(control->log, log, sizeof log) == EXIT_SUCCESS);
+            if (strstr(log, event) != NULL) return EXIT_SUCCESS;
+        }
+        CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+        if (now.tv_sec - start.tv_sec >= 5) {
+            fprintf(stderr, "Instrumentation hold timed out waiting for %s in %s\n",
+                    event, control->directory);
+            return EXIT_FAILURE;
+        }
+        {
+            const struct timespec pause = {0, 1000000L};
+            CHECK(nanosleep(&pause, NULL) == 0);
+        }
+    }
+}
+
+static int control_held(const struct lifetime_control *control)
+{
+    char log[4096];
+    CHECK(control_marker(control, "release", 0) == EXIT_SUCCESS);
+    CHECK(control_marker(control, "closed", 0) == EXIT_SUCCESS);
+    CHECK(read_log(control->log, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "instrumentation_completed") == NULL);
+    CHECK(strstr(log, "instrumentation_disabled") == NULL);
+    CHECK(strstr(log, "instrumentation_channel_destroyed") == NULL);
+    CHECK(strstr(log, "library_unloaded") == NULL);
+    return EXIT_SUCCESS;
+}
+
+static int control_release(const struct lifetime_control *control)
+{
+    CHECK(control_held(control) == EXIT_SUCCESS);
+    CHECK(control_event(control, "public_closes_completed") == EXIT_SUCCESS);
+    CHECK(control_marker(control, "closed", 1) == EXIT_SUCCESS);
+    CHECK(control_event(control, "controller_released") == EXIT_SUCCESS);
+    CHECK(control_marker(control, "release", 1) == EXIT_SUCCESS);
+    return EXIT_SUCCESS;
+}
+
+static int control_finish(const struct lifetime_control *control)
+{
+    char log[4096], path[192];
+    uint64_t observed;
+    const char *completed, *destroyed, *unloaded, *released, *closed;
+    CHECK(control_wait(control, "library_unloaded\n", 0) == EXIT_SUCCESS);
+    CHECK(control->owners_created_before < UINT64_MAX);
+    CHECK(control->owner_target == control->owners_created_before + 1U);
+    CHECK(ams_mel_test_completion_owner(instrumentation_family,
+          control->owner_target, &observed) == 1);
+    CHECK(observed == control->owner_target);
+    CHECK(read_log(control->log, log, sizeof log) == EXIT_SUCCESS);
+    closed = strstr(log, "public_closes_completed\n");
+    released = strstr(log, "controller_released\n");
+    completed = strstr(log, "instrumentation_completed\n");
+    destroyed = strstr(log, "instrumentation_channel_destroyed\n");
+    unloaded = strstr(log, "library_unloaded\n");
+    CHECK(closed != NULL && released != NULL && completed != NULL &&
+          destroyed != NULL && unloaded != NULL);
+    CHECK(closed < released && released < completed);
+    CHECK(completed < destroyed && destroyed < unloaded);
+    CHECK(strstr(log, "instrumentation_disabled\n") != NULL);
+    CHECK(unsetenv("AMS_MEL_TEST_INSTRUMENTATION_HOLD") == 0);
+    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
+    for (size_t index = 0; index < 4U; ++index) {
+        const char *names[] = {"entered", "closed", "release", "log"};
+        CHECK(snprintf(path, sizeof path, "%s/%s", control->directory, names[index]) > 0);
+        CHECK(unlink(path) == 0);
+    }
+    CHECK(rmdir(control->directory) == 0);
+    return EXIT_SUCCESS;
+}
+
 static int test_parent_first_close(void)
 {
     /* Session and channel close before the future is ready. The provider and
@@ -504,49 +662,42 @@ static int test_parent_first_close(void)
     ams_mel_ir_instrumentation_result_v1 result;
     ams_mel_ir_instrumentation_level_command_v1 command = rich_command();
     ams_mel_ir_instrumentation_metadata *metadata = NULL;
-    char path[] = "/tmp/ams-mel-instr-parent-XXXXXX";
+    struct lifetime_control control;
     char log[4096];
-    int descriptor = mkstemp(path);
-    CHECK(descriptor >= 0);
-    CHECK(close(descriptor) == 0);
-    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
-    CHECK(open_enabled("instr-lifetime", &session, &channel) == EXIT_SUCCESS);
+    CHECK(control_open(&control) == EXIT_SUCCESS);
+    CHECK(open_enabled("instr-lifetime-held", &session, &channel) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_metadata_open(channel, 8, &metadata,
           NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_instrumentation_submit_level(channel, &command, &request,
           NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(control_submitted(&control) == EXIT_SUCCESS);
+    CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);
+    CHECK(control_held(&control) == EXIT_SUCCESS);
+    CHECK(read_log(control.log, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(strstr(log, "instrumentation_registration_callback_returned") != NULL);
+    CHECK(strstr(log, "instrumentation_send_callback_returned") != NULL);
     CHECK(ams_mel_ir_instrumentation_request_wait(request, 0, &result,
           NULL, 0, NULL) == AMS_MEL_TIMEOUT);
     /* Close the metadata owner, the channel, and the Session parent first. */
     CHECK(ams_mel_ir_instrumentation_metadata_close(&metadata, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(metadata == NULL);
     CHECK(ams_mel_ir_instrumentation_close(&channel, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(channel == NULL);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(session == NULL);
+    CHECK(control_held(&control) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_instrumentation_request_wait(request, 0, &result,
+          NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+    CHECK(control_release(&control) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_request_wait(request, 2000, &result,
           NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(rich_report_matches(&result.report) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_request_wait(request, 0, &result,
           NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(rich_report_matches(&result.report) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 200000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
-    CHECK(strstr(log, "instrumentation_channel_destroyed") != NULL);
-    CHECK(strstr(log, "instrumentation_disabled") != NULL);
-    CHECK(strstr(log, "library_unloaded") != NULL);
-    /* Provider teardown happened only after the delayed completion. */
-    {
-        const char *completed = strstr(log, "instrumentation_completed");
-        const char *destroyed = strstr(log, "instrumentation_channel_destroyed");
-        const char *unloaded = strstr(log, "library_unloaded");
-        CHECK(completed != NULL && destroyed != NULL && unloaded != NULL);
-        CHECK(completed < destroyed);
-        CHECK(destroyed < unloaded);
-    }
-    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
-    CHECK(unlink(path) == 0);
+    CHECK(request == NULL);
+    CHECK(control_finish(&control) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
 
@@ -558,31 +709,26 @@ static int test_request_close_while_pending(void)
     ams_mel_ir_instrumentation_request *request = NULL;
     ams_mel_ir_instrumentation_result_v1 result;
     ams_mel_ir_instrumentation_level_command_v1 command = rich_command();
-    char path[] = "/tmp/ams-mel-instr-pending-XXXXXX";
-    char log[4096];
-    int descriptor = mkstemp(path);
-    CHECK(descriptor >= 0);
-    CHECK(close(descriptor) == 0);
-    CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG", path, 1) == 0);
-    CHECK(open_enabled("instr-lifetime", &session, &channel) == EXIT_SUCCESS);
+    struct lifetime_control control;
+    CHECK(control_open(&control) == EXIT_SUCCESS);
+    CHECK(open_enabled("instr-lifetime-held", &session, &channel) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_submit_level(channel, &command, &request,
           NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(control_submitted(&control) == EXIT_SUCCESS);
+    CHECK(control_wait(&control, "entered", 1) == EXIT_SUCCESS);
+    CHECK(control_held(&control) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_request_wait(request, 0, &result,
           NULL, 0, NULL) == AMS_MEL_TIMEOUT);
     CHECK(ams_mel_ir_instrumentation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(request == NULL);
+    CHECK(control_held(&control) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_instrumentation_close(&channel, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(channel == NULL);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 300000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
-    CHECK(strstr(log, "instrumentation_completed") != NULL);
-    CHECK(strstr(log, "instrumentation_channel_destroyed") != NULL);
-    CHECK(strstr(log, "library_unloaded") != NULL);
-    CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
-    CHECK(unlink(path) == 0);
+    CHECK(session == NULL);
+    CHECK(control_held(&control) == EXIT_SUCCESS);
+    CHECK(control_release(&control) == EXIT_SUCCESS);
+    CHECK(control_finish(&control) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
 

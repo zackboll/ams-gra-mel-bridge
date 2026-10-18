@@ -40,6 +40,16 @@ PROPOSED_IR_TEST_TRANSITION = (
     "6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b",
     "fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400",
 )
+# IR-CI-002 R2: atomic Instrumentation proposal, NOT independent approval.
+# The failed R1 C-test identity is historical evidence, not a third valid state.
+PROPOSED_INSTRUMENTATION_TRANSITION = (
+    ("native/tests/mock_provider.cpp",
+     "8c41c152f18eb9e96c1219d7c4073324719b5364d3a8fa458a59f396dda51666",
+     "5c816a106bd310443620921979a99ccda6ad830102ac9c65a63766ff4fd95b37"),
+    ("native/tests/test_ir_instrumentation.c",
+     "49deb479383a43f0eba2528b67bc595618dafd7f750de990f6343184b86fa179",
+     "617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02"),
+)
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'
     r"(?P<char>'[^\n]')|(?P<word>[A-Za-z][A-Za-z0-9_]*|[0-9][A-Za-z0-9_#.]*)|"
@@ -130,6 +140,40 @@ def proposed_ir_test_state(root, git, existing, current, base):
     return states[0]
 
 
+def proposed_instrumentation_state(root, git, existing, current, base):
+    paths = {name for name, _, _ in PROPOSED_INSTRUMENTATION_TRANSITION}
+    if not paths.intersection(existing):
+        return None  # Ordinary addition rules still deny adding either path.
+    if not paths.issubset(existing):
+        raise ValueError("instrumentation foundation pair incomplete")
+    if not paths.issubset(current):
+        raise ValueError("instrumentation index pair missing")
+    states = {"working tree": [], "index": []}
+    for name, original, proposed in PROPOSED_INSTRUMENTATION_TRANSITION:
+        if hashlib.sha256(git("show", f"{base}:{name}")).hexdigest() != original:
+            raise ValueError("instrumentation foundation bytes changed: " + name)
+        path = root / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("instrumentation working tree missing or nonregular: " + name)
+        entry = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+        if (len(entry) != 2 or not entry[0].startswith(b"100644 ") or
+                entry[0].split(b"\t", 1)[0].split()[-1] != b"0"):
+            raise ValueError("instrumentation index entry is not a regular stage-0 file: " + name)
+        for view, data in (("working tree", path.read_bytes()),
+                           ("index", git("show", f":{name}"))):
+            digest = hashlib.sha256(data).hexdigest()
+            if digest not in (original, proposed):
+                raise ValueError(f"unlisted instrumentation {view} bytes: {name}")
+            states[view].append("original" if digest == original else
+                                "proposed_pending_independent_review")
+    for view, pair in states.items():
+        if len(set(pair)) != 1:
+            raise ValueError("mixed instrumentation pair in " + view)
+    if states["working tree"] != states["index"]:
+        raise ValueError("instrumentation working tree/index state mismatch")
+    return states["working tree"][0]
+
+
 def check(root=ROOT, base=BASE):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(root), *args])
@@ -141,8 +185,10 @@ def check(root=ROOT, base=BASE):
         raise ValueError(f"unauthorized tracked files added: {sorted(unexpected)!r}")
     transition = reviewed_native_test_state(root, git, existing, current, base)
     ir_transition = proposed_ir_test_state(root, git, existing, current, base)
+    instrumentation = proposed_instrumentation_state(root, git, existing, current, base)
     reviewed_paths = {name for name, _, _ in REVIEWED_NATIVE_TEST_TRANSITION}
     proposed_ir_paths = {PROPOSED_IR_TEST_TRANSITION[0]}
+    instrumentation_paths = {name for name, _, _ in PROPOSED_INSTRUMENTATION_TRANSITION}
     original_ada = {name for name in existing if name.startswith(("ada/src/", "ada/tests/src/"))
                     and Path(name).suffix in (".ads", ".adb")}
     current_ada = {path.relative_to(root).as_posix() for directory in ("ada/src", "ada/tests/src")
@@ -162,6 +208,9 @@ def check(root=ROOT, base=BASE):
             # Both views of this independent singleton were checked above.
             checked += 1
             continue
+        if name in instrumentation_paths:
+            checked += 1  # Both views of the complete pair were checked above.
+            continue
         path = root / name
         old = git("show", f"{base}:{name}")
         if not path.is_file():
@@ -175,7 +224,8 @@ def check(root=ROOT, base=BASE):
         checked += 1
     return {"base": base, "protected_files": checked,
             "reviewed_native_tests": transition,
-            "proposed_ir_test": ir_transition}
+            "proposed_ir_test": ir_transition,
+            "proposed_instrumentation_tests": instrumentation}
 
 
 if __name__ == "__main__":

@@ -12,11 +12,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <functional>
 #include <future>
+#include <fcntl.h>
 #include <limits>
 #include <map>
 #include <memory>
@@ -2555,6 +2557,10 @@ public:
         : scenario_{std::move(scenario)} {}
     ~MockInstrumentationChannel() override
     {
+        /* The held scenario is released only by its external test controller,
+         * never by destruction or by the legacy delayed-scenario condition. */
+        if (scenario_ == "instr-lifetime-held" && producer_.joinable() &&
+            !held_released_.load(std::memory_order_acquire)) std::abort();
         {
             std::lock_guard lock{mutex_};
             release_ = true;
@@ -2639,7 +2645,8 @@ public:
             }};
         }
         /* Synchronous emission from inside registration. */
-        if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime") {
+        if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime" ||
+            scenario_ == "instr-lifetime-held") {
             auto value = rich_instrumentation_report();
             report_callback_(*this, &value);
             record("instrumentation_registration_callback_returned");
@@ -2670,6 +2677,7 @@ public:
         record("instrumentation_level_sent");
         if (!enabled_) throw std::logic_error("InstrumentationLevelCmd sent before enable");
         if (scenario_ == "instr-rich" || scenario_ == "instr-lifetime" ||
+            scenario_ == "instr-lifetime-held" ||
             scenario_ == "instr-failpoint") {
             /* Rich command fidelity is verified through upstream getters. */
             if (command.getCommandID() != 0xe1234567U ||
@@ -2688,7 +2696,8 @@ public:
             rich_instrumentation_report());
         /* A provider is permitted to invoke metadata callbacks synchronously
          * from inside send(); prove the adapter does not deadlock. */
-        if (report_callback_ && (scenario_ == "instr-rich" || scenario_ == "instr-lifetime")) {
+        if (report_callback_ && (scenario_ == "instr-rich" || scenario_ == "instr-lifetime" ||
+                                 scenario_ == "instr-lifetime-held")) {
             auto value = rich_instrumentation_report();
             report_callback_(*this, &value);
             record("instrumentation_send_callback_returned");
@@ -2714,6 +2723,38 @@ public:
         } else if (scenario_ == "instr-future-throw")
             promise.set_exception(std::make_exception_ptr(
                 std::runtime_error{"mock Instrumentation future exception"}));
+        else if (scenario_ == "instr-lifetime-held") {
+            const char *setting = std::getenv("AMS_MEL_TEST_INSTRUMENTATION_HOLD");
+            if (!setting || !*setting)
+                throw std::runtime_error("missing Instrumentation hold controller");
+            const std::string base{setting};
+            /* Capture the unique path before launching. No observer owns this
+             * channel/DSO; only the real future and bridge worker retain it. */
+            if (file_exists(base + "/entered") || file_exists(base + "/release") ||
+                file_exists(base + "/closed"))
+                throw std::runtime_error("stale Instrumentation hold markers");
+            producer_ = std::thread{[this, base, promise = std::move(promise), response]() mutable {
+                const int entered = ::open((base + "/entered").c_str(),
+                                           O_WRONLY | O_CREAT | O_EXCL, 0600);
+                if (entered < 0 || ::close(entered) != 0) std::abort();
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+                while (!file_exists(base + "/release")) {
+                    if (std::chrono::steady_clock::now() >= deadline) {
+                        std::fputs("Instrumentation hold watchdog: no controller release\n", stderr);
+                        std::abort(); // Watchdog failure must never publish success.
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+                }
+                if (!file_exists(base + "/closed")) {
+                    std::fputs("Instrumentation released before public closes\n", stderr);
+                    std::abort();
+                }
+                held_released_.store(true, std::memory_order_release);
+                record("instrumentation_completed");
+                promise.set_value(
+                    mel::ErrorOr<std::shared_ptr<irmel::InstrumentationReport>>{response});
+            }};
+        }
         else if (scenario_ == "instr-lifetime" || scenario_ == "instr-delayed") {
             producer_ = std::thread{[this, promise = std::move(promise), response]() mutable {
                 std::unique_lock lock{mutex_};
@@ -2732,6 +2773,7 @@ private:
     std::string scenario_;
     bool enabled_{};
     bool release_{};
+    std::atomic<bool> held_released_{};
     std::mutex mutex_;
     std::condition_variable ready_;
     std::thread producer_;
