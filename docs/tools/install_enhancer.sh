@@ -5,8 +5,8 @@ test "$#" = 1 || { echo 'usage: install_enhancer.sh VENV' >&2; exit 2; }
 test ! -e "$1" || { echo 'VENV must not already exist' >&2; exit 2; }
 archive=$(mktemp)
 trap 'rm -f "$archive"' EXIT HUP INT TERM
-curl --fail --location --output "$archive" https://codeload.github.com/zackboll/ada-gnatdoc-enhancer/tar.gz/c1a691452cf436624809f4043b30087de6688052
-printf '%s  %s\n' d4b422b73df60d6ed41ec534b71bd0248b43827ce54ed4c323455e225be17493 "$archive" | sha256sum --check --status
+curl --fail --location --output "$archive" https://codeload.github.com/zackboll/ada-gnatdoc-enhancer/tar.gz/478d0bbff0be1b9141b5ad39f07a71f0386d86e9
+printf '%s  %s\n' a55cad3e588c7a4e13f19f46d164b2661e97ec546e97a163d2106d04d4851109 "$archive" | sha256sum --check --status
 python3 -m venv "$1"
 "$1/bin/python" -m pip install setuptools==80.9.0 wheel==0.45.1
 # Give pip an archive suffix while retaining the already verified bytes.

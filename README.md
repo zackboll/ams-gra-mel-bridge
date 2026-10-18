@@ -133,7 +133,9 @@ development layout and remaining release work, not a package availability claim.
 The API map links public package names to their generated destinations. Native
 GNATdoc declarations, anchors, profiles and package navigation remain authoritative.
 Published pages receive a reviewed responsive light/dark theme and lexical syntax
-highlighting for Ada declaration snippets. Type hyperlinks and enhanced
+highlighting for Ada declaration snippets. Supported, unambiguously resolved public
+MEL type references link to source-verified local native declarations; unsupported
+or alias-dependent references may remain plain text. External type links and enhanced
 search/navigation remain deferred; the original GNATdoc output is separately qualified.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,
 generation commands and exact renderer exception.

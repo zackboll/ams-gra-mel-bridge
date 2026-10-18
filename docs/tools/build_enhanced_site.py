@@ -14,13 +14,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "docs/tools"))
 from check_doc_coverage import measure, ratchet
 from gnatdoc_inventory import specifications
 from validate_docs import Page, validate as validate_pristine
+from local_type_audit import Authority, restore_page
 
-REVISION = "c1a691452cf436624809f4043b30087de6688052"
-ARCHIVE_SHA256 = "d4b422b73df60d6ed41ec534b71bd0248b43827ce54ed4c323455e225be17493"
-PACKAGE_SHA256 = "384974fefbc2772ef6c79d43b275b549e5c12758535450a60c852c401e56ba1a"
+REVISION = "478d0bbff0be1b9141b5ad39f07a71f0386d86e9"
+ARCHIVE_SHA256 = "a55cad3e588c7a4e13f19f46d164b2661e97ec546e97a163d2106d04d4851109"
+PACKAGE_SHA256 = "4e719d06a60074684144efbb444b75e4eef413ab30410cf29e628f79a32124c9"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
 PRISTINE_SHA256 = "0e6497d6172c918d04ea1c284785f7cfc0fec278e155ab254de0c78e81ac94e2"
@@ -34,7 +36,7 @@ CONFIG = {
     "gnatdoc": {"version": "26.0.0"},
     "sources": {"directories": ["ada/src"], "comment_style": "trailing"},
     "navigation": {"mode": "none"},
-    "presentation": {"theme": True, "syntax_highlighting": True, "type_links": False},
+    "presentation": {"theme": True, "syntax_highlighting": True, "type_links": True},
     "guides": {"mode": "none"},
 }
 
@@ -74,6 +76,27 @@ def hashes(mapping):
     return {name: sha(data) for name, data in mapping.items()}
 
 
+def audit_destination(path, root, pristine, published):
+    """Require a fresh external file; never follow an existing output alias.
+
+    Resolve parent aliases before containment checks and use that checked path
+    for exclusive creation. As with input qualification, parent directories must
+    be trusted and not concurrently replaced while validation runs.
+    """
+    try:
+        supplied = Path(path)
+        require(not supplied.exists() and not supplied.is_symlink(),
+                "audit destination must be a fresh external file")
+        destination = supplied.resolve()
+        protected = (Path(tree).resolve() for tree in (root, pristine, published))
+        require(not any(destination.is_relative_to(tree) for tree in protected),
+                "audit destination must be outside repository, pristine and publication trees")
+        require(destination.parent.is_dir(), "audit destination parent must already exist")
+        return destination
+    except (OSError, RuntimeError) as error:
+        raise PresentationError("invalid audit destination: " + str(error)) from error
+
+
 def tool():
     import ada_gnatdoc_enhancer
     package = Path(ada_gnatdoc_enhancer.__file__).parent
@@ -102,8 +125,9 @@ def qualified_original(pristine, root=ROOT):
     return raw
 
 
-def validate(published, pristine, root=ROOT):
+def validate(published, pristine, root=ROOT, audit_path=None):
     """Neither an output-side manifest nor enhancer self-verification is authority."""
+    destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
     tool()
     raw = qualified_original(pristine, root)
     actual = files(published)
@@ -111,8 +135,10 @@ def validate(published, pristine, root=ROOT):
     for name, data in raw.items():
         if not (name.startswith("api/") and name.endswith(".html")):
             require(actual[name] == data, "changed native CSS or authored portal: " + name)
-    # Independently remove ONLY the approved metadata and flat lexical spans.
-    # Any other markup, nesting, destination, text or anchor change fails bytes.
+    # Independently accept each occurrence before removing exact type wrappers
+    # and lexical spans, only within qualified declaration sections.
+    authority = Authority(root, Path(pristine))
+    audit = []
     restored = {}
     for name, data in raw.items():
         if not (name.startswith("api/") and name.endswith(".html")):
@@ -122,7 +148,8 @@ def validate(published, pristine, root=ROOT):
         require(text.count(METADATA) == 1, "missing/duplicate viewport/theme metadata")
         require(text.count("gnatdoc-theme.css") == 1, "duplicate theme insertion")
         text = text.replace(METADATA, "", 1)
-        text = SPAN.sub(lambda m: m[1], text)
+        text, occurrences = restore_page(Path(name).name, text, authority)
+        audit.extend(occurrences)
         require(text.encode() == data, "native declaration/anchor/link/markup changed: " + name)
         restored[name] = text.encode()
         require(not Page(actual[name].decode()).issues, "unsafe HTML")
@@ -165,9 +192,21 @@ def validate(published, pristine, root=ROOT):
                 (isolated / name).write_bytes(data)
         verify(config, isolated)
     links = sum(len(Page(data.decode()).links) for n, data in actual.items() if n.endswith(".html"))
-    require(links == 1546, "presentation link delta differs from 30 theme links")
+    require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
+    require(counts["linked_external_types"] == 0, "external type links not authorized")
+    require(links == 1516 + 30 + len(audit), "presentation link delta differs from theme plus audited type links")
+    if destination is not None:
+        # Recheck freshness at write time; exclusive creation also rejects a
+        # newly introduced file/hardlink/symlink instead of overwriting it.
+        destination = audit_destination(destination, root, pristine, published)
+        try:
+            with destination.open("x", encoding="utf-8") as stream:
+                stream.write(json.dumps(audit, indent=2, sort_keys=True) + "\n")
+        except OSError as error:
+            raise PresentationError("cannot create audit destination: " + str(error)) from error
     return {"files": 41, "html_pages": 37, "links": links, "public_packages": 29,
             "source_declarations": 1238, "native_sections": 1237,
+            "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,
             "output_sha256": hashes(actual)}
 
@@ -203,6 +242,8 @@ if __name__ == "__main__":
     parser.add_argument("command", choices=("build", "verify"))
     parser.add_argument("--pristine", type=Path, default=ROOT / "_site")
     parser.add_argument("--site", type=Path, default=ROOT / "_site-published")
+    parser.add_argument("--audit", type=Path, help="fresh file outside repository/pristine/publication; existing parent required (verify only)")
     args = parser.parse_args()
-    result = build(args.pristine, args.site) if args.command == "build" else validate(args.site, args.pristine)
+    require(args.audit is None or args.command == "verify", "--audit requires verify")
+    result = build(args.pristine, args.site) if args.command == "build" else validate(args.site, args.pristine, audit_path=args.audit)
     print(json.dumps(result, indent=2, sort_keys=True))
