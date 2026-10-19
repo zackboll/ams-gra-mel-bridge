@@ -144,8 +144,10 @@ class CompletenessTests(unittest.TestCase):
                 text = original.decode()
                 section = next(m for m in SECTION.finditer(text)
                                if m[2] == r['containing']['anchor'])
-                markup = next(m[0] for m in LINK.finditer(section[3]) if m[3] == r['visible'])
-                body = section[3].replace(markup, r['visible'], 1)
+                prior = [q for q in self.required if q['containing']['anchor'] == r['containing']['anchor']
+                         and q['visible'] == r['visible'] and q['native_token_start'] < r['native_token_start']]
+                markup = [m for m in LINK.finditer(section[3]) if m[3] == r['visible']][len(prior)]
+                body = section[3][:markup.start()] + r['visible'] + section[3][markup.end():]
                 path.write_text(text[:section.start(3)] + body + text[section.end(3):])
                 manifest = site / 'api/presentation.json'
                 original_manifest = manifest.read_bytes()
