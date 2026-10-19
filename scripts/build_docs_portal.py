@@ -6,12 +6,17 @@ import collections
 import html
 import json
 import re
+import sys
 from pathlib import Path
 
 from gnatdoc_inventory import ROOT, specifications
 
+sys.path.insert(0, str(ROOT / "docs/tools"))
+from example_sources import render as render_examples, verify_rendered
+
 GUIDES = (
     ("getting-started", "Getting Started"),
+    ("examples", "Examples"),
     ("architecture", "Architecture"),
     ("ir-workflows", "IR Workflows"),
     ("rf-workflows", "RF Workflows"),
@@ -87,7 +92,7 @@ def group(name):
     return "Shared/Core"
 
 
-def render(text, page, data, packages):
+def render(text, page, data, packages, root=ROOT):
     prefix = "../" if page.startswith("guides/") else ""
 
     def package_link(name, directory=False):
@@ -111,6 +116,12 @@ def render(text, page, data, packages):
     text = text.replace("{{navigation}}", nav).replace("{{package-directory}}", directory)
     text = re.sub(r"\{\{package:([A-Za-z0-9_.]+)\}\}",
                   lambda m: package_link(m[1]), text)
+    if page == "guides/examples.html":
+        try:
+            text = render_examples(text, root)
+            verify_rendered(text, root)
+        except (ValueError, OSError) as exc:
+            raise PortalError(str(exc)) from exc
     if "{{" in text or "}}" in text:
         raise PortalError("unresolved portal placeholder")
     return text
@@ -126,7 +137,7 @@ def build(site, root=ROOT):
         path = site / name
         if any(p.is_symlink() for p in (path, *path.parents)):
             raise PortalError("symlink in portal output")
-    rendered = {name: render(text, name, data, packages) if name.endswith(".html") else text
+    rendered = {name: render(text, name, data, packages, root) if name.endswith(".html") else text
                 for name, text in sources.items()}
     for name, text in rendered.items():
         target = site / name

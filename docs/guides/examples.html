@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Executable Ada Examples — AMS MEL</title>
+<link rel="stylesheet" href="../assets/portal.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header><p>AMS MEL developer documentation</p>{{navigation}}</header>
+<main id="main"><h1>Executable Ada Examples</h1>
+<p>These nine complete public-Ada programs are compiled and executed in the
+documentation workflow. Listings are HTML-escaped directly from their canonical
+files, not separately pasted snippets. Supporting source expands without JavaScript.
+Find the project, manifest, runner and all source under <code>docs/examples/</code>
+in your checkout. See <a href="getting-started.html">Getting Started</a> for Linux,
+Alire, GNAT/GPRbuild, CMake, Python 3 and C/C++ compiler prerequisites.</p>
+<p>From the repository root, build the production facade, separate existing mocks,
+and every example, then execute all run cases:</p>
+<pre><code>sh docs/examples/run.sh</code></pre>
+<p>Every individual command below also builds the collection. After that first build,
+append <code>--no-build</code> to run without rebuilding. Each program accepts exactly
+two arguments: a provider shared-library path and its configuration. The runner
+supplies absolute mock paths from <code>native/build-tests/test-providers</code>
+and the fixture strings below. For example, after building:</p>
+<pre><code>LD_LIBRARY_PATH="$PWD/native/build/lib" docs/examples/bin/owned_image \
+  "$PWD/native/build-tests/test-providers/libmock_ir_provider.so" full-frame-rich</code></pre>
+<p>The runner removes inherited loader/preload and AMS_MEL settings, selects
+<code>native/build/lib</code>, checks <code>ldd</code> resolution and the facade's
+SHA-256 and exported-symbol inventory, inspects exit status and semantic observations,
+and inspects the actual child's loader initialization. A 15-second outer timeout
+guards each process. API waits are bounded to one second.
+Missing cases, unexpected rejections, timeouts and incorrect content fail the gate.
+No Squall, hardware, credentials, containers, provider downloads or private test
+entry points are used. Fixture identities are not deployment recommendations.</p>
+<p>All owners have explicit successful-path closure and controlled, non-raising
+finalization fallback during exception unwinding. Top-level unexpected exceptions
+print their name and diagnostic and select an unsuccessful process exit. Serialize
+same-owner operations; read <a href="ownership-and-errors.html">Ownership and Errors</a>.
+Expected rejection cases return zero only after inspecting the documented rejection.</p>
+
+<section id="provider-session"><h2>A. Provider session, snapshot and errors</h2>
+<p>{{package:AMS.MEL}} opens an IR Session and queries provider versions—not the
+facade ABI version. This mock supplies the exact version numbers, UTF-8 vendor
+and description checked below. The owned snapshot remains readable after Session
+Close. The missing-library case intentionally exits unsuccessfully with a loader
+diagnostic; its exact platform-specific path text can vary.</p>
+{{example:provider-session}}</section>
+
+<section id="owned-image"><h2>B. Owned complete IR image</h2>
+<p>{{package:AMS.MEL.IR}} constructs identities, location and bounded image
+configuration; {{package:AMS.MEL.IR.Image}} receives a complete Full_Frame.
+See <a href="ir-workflows.html">IR Workflows</a>. The supported stream path here
+is Mono8, single band—not every format in the vocabulary. The complete header
+and its associated validated payload are copied into one independent Ada value.
+The rich mock supplies 4-by-3 dimensions, two navigation states, sensor label,
+high-bit frame ID, signed time and pixels 160 through 171. Stop and Close do not
+invalidate that independently owned frame.</p>
+{{example:owned-image}}</section>
+
+<section id="frame-lease"><h2>C. Lease and scoped pixels</h2>
+<p>{{package:AMS.MEL.IR.Image}} retains frame payload storage in a limited lease.
+With_Pixels lends an array only during its synchronous processor invocation;
+do not retain it or race lease closure. This avoids an additional bulk Ada payload
+copy, not sensor-to-application or end-to-end zero-copy. Copy_Pixels explicitly
+obtains independent storage. The mock's twelve bytes, 16 through 27, sum to 258.
+Array attributes avoid assumptions about bounds.</p>
+{{example:frame-lease}}</section>
+
+<section id="common-channel"><h2>D. Common capabilities and requests</h2>
+<p>{{package:AMS.MEL.IR.C2}} owns the typed channel; its {{package:AMS.MEL.IR.Channel}}
+View is weak. Is_Open on a View only reports local handle presence, not whether
+its target still lives. Capability snapshots are independently owned. This
+attached-channel KeepAlive is permitted without Enable. A delayed mock may already
+have completed by the zero-duration poll: both immediate completion and Timeout_Error
+followed by bounded Wait are correct. Terminal results are cached. Timeout and
+request Close are not cancellation; closure abandons the observer, not provider work.</p>
+{{example:common-channel}}</section>
+
+<section id="navigation-report"><h2>E. Submit supplied navigation</h2>
+<p>{{package:AMS.MEL.IR.Image}} submits an application-supplied solution through
+an attached stream; Start is not required. This is not position estimation or a
+kinematics transformation. The clearly named fixture helper constructs the complete
+Navigation_Report, including all covariance terms. Radian/metre and nanosecond
+field names establish only those units; System_Time_NS has no established epoch.
+Fields such as Magnetic_Heading and Altitude_MSL retain their source values without
+invented units or conventions. Success and Rejected are checked before response or
+rejection access. Both fixture outcomes are run.</p>
+{{example:navigation-report}}</section>
+
+<section id="track-metadata"><h2>F. Bounded mixed metadata</h2>
+<p>{{package:AMS.MEL.IR.Track}} and {{package:AMS.MEL.IR.Track.Metadata}} deliver
+provider-originated metadata, not a tracking algorithm. Capacity three bounds this
+mixed FIFO: incoming events are dropped when full. The existing mock registers
+request/report/request without private emitters. Receive_Event requires checking
+the discriminant before typed content. Legacy report-only Receive can consume a
+non-report event and raise Provider_Error; it neither skips nor requeues it.</p>
+{{example:track-metadata}}</section>
+
+<section id="rf-discovery"><h2>G. RF discovery and Admin acceptance</h2>
+<p>{{package:AMS.MEL.RF}} copies provider information and MFA capabilities.
+Collection positions 1 and 2 are not provider Face_ID values 7 and 42. Snapshots
+remain valid after DataMEL Close. Advertised format vocabulary is not implemented
+receive support for every listed format. {{package:AMS.MEL.RF.Admin}} opens independently:
+DataMEL, AdminMEL and C2MEL have separate factories and owners. Boolean acceptance
+of Standby is not evidence of a completed physical transition. The fixed Data
+fixture is <code>success</code>; the second argument selects <code>admin:ok</code>
+or <code>admin:reject</code>. See <a href="rf-workflows.html">RF Workflows</a>.</p>
+{{example:rf-discovery}}</section>
+
+<section id="rf-rx-job"><h2>H. Aperture and finite RX Job</h2>
+<p>{{package:AMS.MEL.RF.C2}} Wait observes creation; Claim acquires each resource
+exactly once. C2 must still admit children when Submit_Job is called. The named
+mock constructors preserve the fixture's required UTF-8 labels and full-width
+identifiers without importing test machinery. The claimed Job supplies its own
+Job_Details_ID, distinct from the ProductRx fixture's 0xDEADBEEF. One finite interval
+contains one finite receive event. Finalize_Job ends population; Wait_Job_Status
+reads the cached result of that one Finalize future. Repeated waits on cached
+In_Progress do not become a live progress stream. Job Close does not implicitly
+finalize or cancel. Configuration and Complete do not prove physical RF activity.</p>
+{{example:rf-rx-job}}</section>
+
+<section id="rf-product-rx"><h2>I. ProductRx receive, borrow and copy</h2>
+<p>{{package:AMS.MEL.RF.Product_Rx}} creates a bounded Complex INT16 endpoint
+under {{package:AMS.MEL.RF}}. The mock <code>rx:ok:sync</code> delivers during
+registration, potentially before Claim returns; plain <code>rx:ok</code> needs a
+private emitter and is deliberately not used. Sample counts represent I/Q pairs.
+Native callback samples have already been copied by the bridge. With_Samples
+calls the application processor synchronously; its borrow ends when that processor
+returns. Copy_Samples supplies independently owned Ada storage; borrowed and copied
+lower bounds can differ, so iteration uses Range. The exact two pairs are validated
+after all native owners close. Statistics are read while the endpoint remains open.
+After its sole event is consumed, zero-time Receive deterministically demonstrates
+an empty-queue timeout. The rejection case checks Failed before error accessors.</p>
+{{example:rf-product-rx}}</section>
+</main></body></html>
