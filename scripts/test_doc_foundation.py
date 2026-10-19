@@ -149,7 +149,7 @@ class SiteMutations(unittest.TestCase):
         shutil.copytree(ROOT / '_site', self.site)
 
     def test_valid_site_and_coverage(self):
-        self.assertEqual(validate(self.site)['html_pages'], 37)
+        self.assertEqual(validate(self.site)['html_pages'], 38)
         self.assertEqual(len(list((self.site / 'api').glob('*.html'))), 30)
         report = measure(self.site, anchor_manifest=self.manifest)
         self.assertEqual(report['source_declarations'], report['native_sections'] + 1)

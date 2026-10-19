@@ -26,7 +26,9 @@ PACKAGE_SHA256 = "54d9327e57662a5843198fbc5352d4c5f544a3d5e3047c8269c6b9c68c5e87
 JAVASCRIPT_SHA256 = "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
-PRISTINE_SHA256 = "0e6497d6172c918d04ea1c284785f7cfc0fec278e155ab254de0c78e81ac94e2"
+PRISTINE_SHA256 = "d076b4e9c69f4ffd7c02e82da711704ca90077a82f0db229176492644e0a903d"
+NATIVE_API_SHA256 = "d2026657ddd02d2513514c545633c13fbaf8ce772e1bf35bf51223e16d811983"
+ENHANCED_API_SHA256 = "d391e78aca127e3c14cce805b25c17c9ea8638aa21d5d1998be22116c4583b32"
 EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
@@ -118,15 +120,17 @@ def tool():
 
 def qualified_original(pristine, root=ROOT):
     raw = files(pristine)
-    require(len(raw) == 39 and fingerprint(hashes(raw)) == PRISTINE_SHA256,
+    require(len(raw) == 40 and fingerprint(hashes(raw)) == PRISTINE_SHA256,
             "pristine native/portal bytes differ from reviewed baseline")
+    require(fingerprint(hashes({n: d for n, d in raw.items() if n.startswith("api/")}))
+            == NATIVE_API_SHA256, "complete inherited pristine API inventory/bytes changed")
     sources = {"ada/src/" + n: data for n, data in files(root / "ada/src").items()}
     require(fingerprint(hashes(sources)) == SOURCE_SHA256, "approved source-profile identity changed")
     anchors = (root / "docs/gnatdoc-native-anchors.json").read_bytes()
     require(sha(anchors) == ANCHORS_SHA256, "authoritative anchors/profiles changed")
     require(tomllib.loads((root / "docs/gnatdoc-enhance.toml").read_text()) == CONFIG,
             "unapproved presentation configuration")
-    require(validate_pristine(pristine) == {"html_pages": 37, "links": 1516}, "pristine metrics changed")
+    require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562}, "pristine metrics changed")
     report = measure(pristine, root, json.loads(anchors))
     ratchet(report, (root / "docs/gnatdoc-coverage-baseline.txt").read_text())
     require((report["source_declarations"], report["native_sections"],
@@ -222,8 +226,10 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     links = sum(len(Page(data.decode()).links) for n, data in actual.items() if n.endswith(".html"))
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
-    require(links == 1516 + 30 + len(audit) + 1,
+    require(links == 1562 + 30 + len(audit) + 1,
             "presentation link delta differs from theme plus audited type links and index script")
+    require(fingerprint(hashes({n: d for n, d in actual.items() if n.startswith("api/")}))
+            == ENHANCED_API_SHA256, "complete inherited enhanced API inventory/bytes changed")
     if destination is not None:
         # Recheck freshness at write time; exclusive creation also rejects a
         # newly introduced file/hardlink/symlink instead of overwriting it.
@@ -233,7 +239,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
                 stream.write(json.dumps(audit, indent=2, sort_keys=True) + "\n")
         except OSError as error:
             raise PresentationError("cannot create audit destination: " + str(error)) from error
-    return {"files": 42, "html_pages": 37, "links": links, "public_packages": 29,
+    return {"files": 43, "html_pages": 38, "links": links, "public_packages": 29,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,

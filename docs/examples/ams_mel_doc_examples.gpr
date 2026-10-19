@@ -1,0 +1,24 @@
+with "../../ada/ams_mel.gpr";
+
+project AMS_MEL_Doc_Examples is
+   for Languages use ("Ada");
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use
+     ("provider_session.adb", "owned_image.adb", "frame_lease.adb",
+      "common_channel.adb", "navigation_report.adb", "track_metadata.adb",
+      "rf_discovery.adb", "rf_rx_job.adb", "rf_product_rx.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnatVa", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-Wl,-rpath," & Project'Project_Dir & "../../native/build/lib");
+   end Linker;
+   package Format is
+      for Width ("Ada") use "100";
+   end Format;
+end AMS_MEL_Doc_Examples;

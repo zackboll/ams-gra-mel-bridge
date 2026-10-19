@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "examples": [
+    {
+      "id": "provider-session",
+      "title": "Provider session and owned version",
+      "purpose": "Open a provider and retain its complete version snapshot after explicit Session closure.",
+      "main": "src/provider_session.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#provider-session",
+      "packages": [
+        "AMS.MEL"
+      ],
+      "cases": [
+        {
+          "id": "provider-session",
+          "configuration": "ada-explicit",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "vendor after Close: Mock IR Provider µ",
+            "description: Deterministic task 001 provider",
+            "API=0x12345678 library=0x90ABCDEF"
+          ]
+        },
+        {
+          "id": "provider-session-missing",
+          "configuration": "ada-explicit",
+          "provider": "missing",
+          "exit": 1,
+          "expected": [
+            "AMS.MEL.PROVIDER_ERROR",
+            "cannot"
+          ]
+        }
+      ],
+      "executable": "provider_session"
+    },
+    {
+      "id": "owned-image",
+      "title": "Owned complete IR image frame",
+      "purpose": "Receive a complete header and copied Mono8 payload, then use the owned frame after stream closure.",
+      "main": "src/owned_image.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#owned-image",
+      "packages": [
+        "AMS.MEL.IR",
+        "AMS.MEL.IR.Image"
+      ],
+      "cases": [
+        {
+          "id": "owned-image",
+          "configuration": "full-frame-rich",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "4x3 Mono8; frame=0xFEDCBA98; nav states=2; sensor=face-α",
+            "owned after Close: 12 pixels, first=160 last=171"
+          ]
+        }
+      ],
+      "executable": "owned_image"
+    },
+    {
+      "id": "frame-lease",
+      "title": "Scoped IR pixel borrow and independent copy",
+      "purpose": "Process pixels during a scoped borrow and retain an explicit independent copy.",
+      "main": "src/frame_lease.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#frame-lease",
+      "packages": [
+        "AMS.MEL.IR.Image"
+      ],
+      "cases": [
+        {
+          "id": "frame-lease",
+          "configuration": "ada-lease-success",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "borrow sum=258; independent copy after Close: 12 pixels sum=258"
+          ]
+        }
+      ],
+      "executable": "frame_lease"
+    },
+    {
+      "id": "common-channel",
+      "title": "Weak common channel and cached request",
+      "purpose": "Inspect an owned capability and observe a timeout-safe, cached asynchronous KeepAlive result.",
+      "main": "src/common_channel.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#common-channel",
+      "packages": [
+        "AMS.MEL.IR.C2",
+        "AMS.MEL.IR.Channel"
+      ],
+      "cases": [
+        {
+          "id": "common-channel",
+          "configuration": "keepalive-delayed",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "KeepAlive=RETURN_SUCCESS; cached result agrees; snapshot survives Close"
+          ]
+        }
+      ],
+      "executable": "common_channel"
+    },
+    {
+      "id": "navigation-report",
+      "title": "Submit an application-supplied navigation report",
+      "purpose": "Submit a complete application-supplied navigation solution and inspect success or rejection.",
+      "main": "src/navigation_report.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb",
+        "src/mock_fixtures.ads",
+        "src/mock_fixtures.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#navigation-report",
+      "packages": [
+        "AMS.MEL.IR.Image"
+      ],
+      "cases": [
+        {
+          "id": "navigation-report",
+          "configuration": "navigation-fidelity",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "navigation SUCCESS: command=0xF1234567 request=0x89ABCDEF"
+          ]
+        },
+        {
+          "id": "navigation-report-rejected",
+          "configuration": "navigation-reject",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "navigation REJECTED: invalid navigation report"
+          ]
+        }
+      ],
+      "executable": "navigation_report"
+    },
+    {
+      "id": "track-metadata",
+      "title": "Bounded mixed provider metadata",
+      "purpose": "Consume three discriminated provider-originated metadata events from a bounded mixed queue.",
+      "main": "src/track_metadata.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "IR",
+      "mock_library": "libmock_ir_provider.so",
+      "guide": "guides/examples.html#track-metadata",
+      "packages": [
+        "AMS.MEL.IR.Track",
+        "AMS.MEL.IR.Track.Metadata"
+      ],
+      "cases": [
+        {
+          "id": "track-metadata",
+          "configuration": "track-metadata-mixed",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "request: track=0xE3456789 command=0xC1234567",
+            "report: activity=0xF1234567 range_m=123456.75",
+            "request: track=0xE3456789 command=0xC1234567"
+          ]
+        }
+      ],
+      "executable": "track_metadata"
+    },
+    {
+      "id": "rf-discovery",
+      "title": "RF discovery and administrative acceptance",
+      "purpose": "Retain copied RF discovery data and independently handle Admin command acceptance.",
+      "main": "src/rf_discovery.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "RF",
+      "mock_library": "libmock_rf_provider.so",
+      "guide": "guides/examples.html#rf-discovery",
+      "packages": [
+        "AMS.MEL.RF",
+        "AMS.MEL.RF.Admin"
+      ],
+      "cases": [
+        {
+          "id": "rf-discovery",
+          "configuration": "admin:ok",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "owned after Data Close: indices 1,2 -> Face_ID 7,42; formats=4",
+            "Standby command accepted (not physical completion)"
+          ]
+        },
+        {
+          "id": "rf-discovery-rejected",
+          "configuration": "admin:reject",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "owned after Data Close: indices 1,2 -> Face_ID 7,42; formats=4",
+            "Standby command rejected"
+          ]
+        }
+      ],
+      "executable": "rf_discovery"
+    },
+    {
+      "id": "rf-rx-job",
+      "title": "Virtual aperture and finite RX Job lifecycle",
+      "purpose": "Uniquely claim an aperture and RX Job, add finite population and observe Finalize completion.",
+      "main": "src/rf_rx_job.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb",
+        "src/mock_fixtures.ads",
+        "src/mock_fixtures.adb"
+      ],
+      "provider_family": "RF",
+      "mock_library": "libmock_rf_provider.so",
+      "guide": "guides/examples.html#rf-rx-job",
+      "packages": [
+        "AMS.MEL.RF.C2"
+      ],
+      "cases": [
+        {
+          "id": "rf-rx-job",
+          "configuration": "c2:job-ok",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "Finalize future status: COMPLETE",
+            "claimed once each; Job_Details_ID=0x10203040; finite RX interval added"
+          ]
+        }
+      ],
+      "executable": "rf_rx_job"
+    },
+    {
+      "id": "rf-product-rx",
+      "title": "Complex INT16 receive, borrow and copy",
+      "purpose": "Receive synchronous Complex INT16 callback data, borrow samples and preserve an independent copy.",
+      "main": "src/rf_product_rx.adb",
+      "support": [
+        "src/example_support.ads",
+        "src/example_support.adb"
+      ],
+      "provider_family": "RF",
+      "mock_library": "libmock_rf_provider.so",
+      "guide": "guides/examples.html#rf-product-rx",
+      "packages": [
+        "AMS.MEL.RF",
+        "AMS.MEL.RF.Product_Rx"
+      ],
+      "cases": [
+        {
+          "id": "rf-product-rx",
+          "configuration": "rx:ok:sync",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "empty queue: Timeout_Error (endpoint remains open)",
+            "Complex INT16 pairs after Close: (77,-77) (-1,1); real sum=76",
+            "metadata Job_Details_ID=0xDEADBEEF; products queued=1"
+          ]
+        },
+        {
+          "id": "rf-product-rx-rejected",
+          "configuration": "rx:error-known",
+          "provider": "normal",
+          "exit": 0,
+          "expected": [
+            "ProductRx FAILED: mock ProductRx resources exhausted"
+          ]
+        }
+      ],
+      "executable": "rf_product_rx"
+    }
+  ]
+}

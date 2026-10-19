@@ -132,6 +132,11 @@ def validate(site):
     # Compare every portal package link, not just the directory entries, against
     # deterministic resolution of its authored package name.
     from build_docs_portal import render
+    from example_sources import verify_rendered
+    try:
+        verify_rendered((site / "guides/examples.html").read_text())
+    except ValueError as exc:
+        raise SiteError(str(exc)) from exc
     for name in ("index.html", *(e["path"] for e in data["guides"])):
         expected_text = render(regular(ROOT / "docs" / name), name, data, packages_verified)
         authored = Page(expected_text)
