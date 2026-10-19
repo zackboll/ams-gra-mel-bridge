@@ -135,8 +135,15 @@ GNATdoc declarations, anchors, profiles and package navigation remain authoritat
 Published pages receive a reviewed responsive light/dark theme and lexical syntax
 highlighting for Ada declaration snippets. Supported, unambiguously resolved public
 MEL type references link to source-verified local native declarations; unsupported
-or alias-dependent references may remain plain text. External type links and enhanced
-search/navigation remain deferred; the original GNATdoc output is separately qualified.
+or alias-dependent references may remain plain text. Optional offline search matches
+the 37 native sidebar labels (29 Compilation Units and eight Tagged Types), not
+full documentation text. Approved sidebar destinations support active selection,
+package/declaration bookmarks and Back/Forward. Ordinary non-sidebar declaration
+links remain native navigation and do not automatically update outer bookmarks
+or sidebar selection. With JavaScript disabled, both native groups, direct native
+bookmarks, type links and the authored portal remain usable; search stays hidden.
+External type links, operation categories, generic summaries and shared authored-
+guide rendering remain deferred. Original GNATdoc output is separately qualified.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,
 generation commands and exact renderer exception.
 

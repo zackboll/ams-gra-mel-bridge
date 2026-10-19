@@ -20,22 +20,32 @@ from gnatdoc_inventory import specifications
 from validate_docs import Page, validate as validate_pristine
 from local_type_audit import Authority, restore_page
 
-REVISION = "478d0bbff0be1b9141b5ad39f07a71f0386d86e9"
-ARCHIVE_SHA256 = "a55cad3e588c7a4e13f19f46d164b2661e97ec546e97a163d2106d04d4851109"
-PACKAGE_SHA256 = "4e719d06a60074684144efbb444b75e4eef413ab30410cf29e628f79a32124c9"
+REVISION = "53a321915da2c5a02a54581040673b61f8595b25"
+ARCHIVE_SHA256 = "d324735784435176c0f1a7093cf462e15b2bd92be429ef5e1e42e802331ca52e"
+PACKAGE_SHA256 = "54d9327e57662a5843198fbc5352d4c5f544a3d5e3047c8269c6b9c68c5e878b"
+JAVASCRIPT_SHA256 = "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
 PRISTINE_SHA256 = "0e6497d6172c918d04ea1c284785f7cfc0fec278e155ab254de0c78e81ac94e2"
-EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json"}
+EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
 SPAN = re.compile(r'<span class="ada-(?:keyword|number|string|character|attribute|comment|operator)">([^<]*)</span>')
+# Consumer-owned byte contracts, deliberately not imported from the enhancer or
+# read from a publication manifest. Native index bytes remain the destination
+# authority; restoring these two insertions must recover that entire index.
+NAVIGATION_CONTROL = ('<div id="package-navigation" hidden><label for="package-search">'
+                      'Search documentation</label><input id="package-search" type="search" '
+                      'autocomplete="off" spellcheck="false">'
+                      '<button id="package-clear" type="button">Clear</button>'
+                      '<p id="package-results" role="status" aria-live="polite"></p></div>')
+NAVIGATION_SCRIPT = '<script src="gnatdoc-navigation.js" defer></script>'
 CONFIG = {
     "schema_version": 1, "project": "AMS MEL Bridge",
     "renderer_exceptions": ["AMS.MEL.IR.Health_Status.Metadata.Status"],
     "gnatdoc": {"version": "26.0.0"},
     "sources": {"directories": ["ada/src"], "comment_style": "trailing"},
-    "navigation": {"mode": "none"},
+    "navigation": {"mode": "packages"},
     "presentation": {"theme": True, "syntax_highlighting": True, "type_links": True},
     "guides": {"mode": "none"},
 }
@@ -125,6 +135,17 @@ def qualified_original(pristine, root=ROOT):
     return raw
 
 
+def restore_navigation(text):
+    """Remove only the exact, uniquely placed index-only exceptions."""
+    for insertion, following, label in (
+            (NAVIGATION_CONTROL, '<h2 id=compilation-units>', "controls"),
+            (NAVIGATION_SCRIPT, '<body class=main>', "script")):
+        require(text.count(insertion) == 1 and text.count(insertion + following) == 1,
+                "missing/duplicate/altered/misplaced navigation " + label)
+        text = text.replace(insertion, "", 1)
+    return text
+
+
 def validate(published, pristine, root=ROOT, audit_path=None):
     """Neither an output-side manifest nor enhancer self-verification is authority."""
     destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
@@ -132,6 +153,8 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     raw = qualified_original(pristine, root)
     actual = files(published)
     require(set(actual) == set(raw) | EXTRAS, "missing/unexpected publication files")
+    require(sha(actual["api/gnatdoc-navigation.js"]) == JAVASCRIPT_SHA256,
+            "navigation JavaScript asset identity mismatch")
     for name, data in raw.items():
         if not (name.startswith("api/") and name.endswith(".html")):
             require(actual[name] == data, "changed native CSS or authored portal: " + name)
@@ -145,6 +168,12 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             restored[name] = actual[name]
             continue
         text = actual[name].decode()
+        # The original Page checker still rejects ALL scripts. Remove only the
+        # independently approved index insertions before invoking it. Package
+        # pages and authored HTML receive no active-content exception.
+        safety_text = restore_navigation(text) if name == "api/index.html" else text
+        require(not Page(safety_text).issues, "unsafe HTML")
+        text = safety_text
         require(text.count(METADATA) == 1, "missing/duplicate viewport/theme metadata")
         require(text.count("gnatdoc-theme.css") == 1, "duplicate theme insertion")
         text = text.replace(METADATA, "", 1)
@@ -152,7 +181,6 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         audit.extend(occurrences)
         require(text.encode() == data, "native declaration/anchor/link/markup changed: " + name)
         restored[name] = text.encode()
-        require(not Page(actual[name].decode()).issues, "unsafe HTML")
     # Run the original MEL validator and full source/anchor coverage on the
     # independently restored site. Its allowlist and all original tests stay intact.
     with tempfile.TemporaryDirectory(prefix="mel-native-verification-") as temp:
@@ -194,7 +222,8 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     links = sum(len(Page(data.decode()).links) for n, data in actual.items() if n.endswith(".html"))
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
-    require(links == 1516 + 30 + len(audit), "presentation link delta differs from theme plus audited type links")
+    require(links == 1516 + 30 + len(audit) + 1,
+            "presentation link delta differs from theme plus audited type links and index script")
     if destination is not None:
         # Recheck freshness at write time; exclusive creation also rejects a
         # newly introduced file/hardlink/symlink instead of overwriting it.
@@ -204,7 +233,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
                 stream.write(json.dumps(audit, indent=2, sort_keys=True) + "\n")
         except OSError as error:
             raise PresentationError("cannot create audit destination: " + str(error)) from error
-    return {"files": 41, "html_pages": 37, "links": links, "public_packages": 29,
+    return {"files": 42, "html_pages": 37, "links": links, "public_packages": 29,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,
@@ -229,7 +258,7 @@ def build(pristine, output, root=ROOT):
         verify(config, stage)
         complete = Path(temp) / "complete"
         shutil.copytree(pristine, complete)
-        # Copy over original API files plus exactly the two approved additions.
+        # Copy over original API files plus exactly the three approved additions.
         shutil.copytree(stage / "api", complete / "api", dirs_exist_ok=True)
         result = validate(complete, pristine, root)
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,7 @@ directories = ["ada/src"]
 comment_style = "trailing"
 
 [navigation]
-mode = "none"
+mode = "packages"
 
 [presentation]
 theme = true
