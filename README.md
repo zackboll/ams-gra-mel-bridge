@@ -144,6 +144,11 @@ or sidebar selection. With JavaScript disabled, both native groups, direct nativ
 bookmarks, type links and the authored portal remain usable; search stays hidden.
 External type links, operation categories, generic summaries and shared authored-
 guide rendering remain deferred. Original GNATdoc output is separately qualified.
+DOC-007F adopts the merged GNATDOC-009A/009B/010 enhancer: one ordinary
+subtype base and nine current-package references are independently required,
+alongside source-owned API titles, English language and UTF-8 metadata. All
+1,428 local type occurrences and exact native restoration are checked independently;
+authored portal metadata and bytes remain unchanged.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,
 generation commands and exact renderer exception.
 

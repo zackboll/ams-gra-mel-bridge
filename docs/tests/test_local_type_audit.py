@@ -38,7 +38,7 @@ class IndependentTests(unittest.TestCase):
             restore_page(self.page, text, self.authority)
 
     def test_complete_independent_occurrence_count(self):
-        self.assertEqual(len(self.records), 1418)
+        self.assertEqual(len(self.records), 1428)
         self.assertTrue(all(r['target']['identity'].split(': ')[2] in ('type', 'subtype') for r in self.records))
 
     def test_real_same_package_array_pairs(self):
@@ -84,7 +84,7 @@ class IndependentTests(unittest.TestCase):
                 restored, _ = restore_page(Path(name).name, data.decode(), self.authority)
                 if name == 'api/index.html':
                     restored = presentation.restore_navigation(restored)
-                restored = restored.replace(presentation.METADATA, '', 1)
+                restored = presentation.restore_document(restored, (ROOT / '_site' / name).read_text(), name, self.authority)
                 self.assertEqual(restored.encode(), (ROOT / '_site' / name).read_bytes(), name)
 
     def test_wrong_existing_destination_and_converse(self):
@@ -222,8 +222,8 @@ class IndependentTests(unittest.TestCase):
             self.assertEqual((result, count), (raw, 0))
 
     def test_removed_link_and_consistently_forged_manifest(self):
-        # Removal leaves native bytes intact, so the semantic acceptance layer
-        # alone cannot prove completeness. The separate exact reconstruction can.
+        # Removal leaves native bytes intact. The independent original ordered
+        # audit now proves completeness before separate output reconstruction.
         with tempfile.TemporaryDirectory() as temp:
             site = Path(temp) / 'site'
             presentation.build(ROOT / '_site', site)
@@ -235,7 +235,7 @@ class IndependentTests(unittest.TestCase):
             for counter in ('linked_types', 'linked_local_types'):
                 data['counts'][counter] -= 1
             manifest.write_text(json.dumps(data))
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, 'original ordered type-link audit changed'):
                 presentation.validate(site, ROOT / '_site')
 
 
