@@ -51,8 +51,8 @@ class PublishedTests(unittest.TestCase):
 
     def test_exact_inventory_and_portal_preservation(self):
         result = presentation.validate(self.site, self.original)
-        self.assertEqual((result["files"], result["html_pages"], result["links"]), (43, 38, 3011))
-        self.assertEqual(result["linked_local_types"], 1418)
+        self.assertEqual((result["files"], result["html_pages"], result["links"]), (43, 38, 3021))
+        self.assertEqual(result["linked_local_types"], 1428)
         self.assertEqual(set(presentation.files(self.site)) - set(presentation.files(self.original)), presentation.EXTRAS)
         for name, data in presentation.files(self.original).items():
             if not name.startswith("api/"):

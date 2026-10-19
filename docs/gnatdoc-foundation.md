@@ -1,5 +1,43 @@
 # GNATdoc foundation
 
+## DOC-007F merged enhancer and independent completeness
+
+Production adopts upstream PR #12 merge
+`3867c8879a3c832fb6e096d7680a8b739a2cffe1`, combining GNATDOC-009A ordinary
+subtype bases, GNATDOC-009B current-package short prefixes and GNATDOC-010
+source-verified document metadata. Archive SHA-256 is
+`61adae2b0c42fa588d8b1362f7441e27b79fdc0498a819e1f01fffadc53c586a`;
+installed implementation/assets fingerprint is
+`2ca2b3ecadf7832bd6bd29bf1ac52d69679defffff85fc2cd2c832a6f3aede14`.
+The configuration file is byte-identical to DOC-007E: package navigation,
+theme/highlighting/type links enabled, guides disabled. Navigation JavaScript,
+both stylesheets and every authored portal file remain unchanged.
+
+The complete publication is **42 files / 37 HTML pages / 2,975 references**,
+with **1,428 local type links and zero external links**. The original ordered
+1,418 complete audit records must reproduce their independently recovered
+DOC-007E fingerprint exactly. Before candidate HTML is read, the consumer
+derives the ten new required occurrences from trusted complete source and
+native declarations: one ordinary subtype base and nine flat-record
+current-package references. Missing, extra, wrong-context or wrong-destination
+occurrences fail independently of enhancer counts and manifest reconstruction.
+The separate masked-source/token proof rejects potential shadowing, including
+same-line and comma-list defining names; unsupported scopes fail conservatively.
+
+All 30 API documents have one exact source-established title, `lang="en"`,
+UTF-8 charset and explicit head with only the approved native/theme/viewport
+content. Only the index has the unchanged navigation script, now inside head.
+The package identity is established from actual source and matching native h1,
+not filenames or candidate titles. Exact serialized-title/head validation
+rejects RCDATA markup, comments, character-reference controls and extra metadata.
+Only that authorized transformation is removed; complete pristine restoration,
+unchanged native MEL validation and full manifest/output reconstruction remain
+mandatory. Author pages retain their own original metadata and bytes.
+
+See [source research](doc-007f-source-research.md) and
+[qualification](doc-007f-qualification.md). Historical DOC-007C/D/E findings and
+measurements below remain records of their own checkpoints, not current pins.
+
 ## DOC-007E searchable native package browser
 
 Production now enables `navigation.mode = "packages"`, retaining theme, Ada

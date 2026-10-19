@@ -56,11 +56,13 @@ class NavigationTests(unittest.TestCase):
 
     def test_exact_insertions_restore_complete_index(self):
         enhanced = self.index.read_text()
-        restored = presentation.restore_navigation(enhanced).replace(presentation.METADATA, "", 1)
+        authority = presentation.Authority(ROOT, self.original)
+        restored = presentation.restore_document(presentation.restore_navigation(enhanced),
+                                                 self.native, 'api/index.html', authority)
         self.assertEqual(restored.encode(), (self.original / "api/index.html").read_bytes())
         self.assertEqual((len(self.packages), len(self.tagged)), (29, 8))
         self.assertEqual(self.report["files"], 43)
-        self.assertEqual(self.report["links"], 3011)
+        self.assertEqual(self.report["links"], 3021)
         self.assertEqual(self.report["output_sha256"], presentation.hashes(presentation.files(self.site)))
 
     def test_all_authored_and_native_non_html_bytes_preserved(self):
@@ -129,7 +131,7 @@ class NavigationTests(unittest.TestCase):
 
     def test_additional_local_resource(self):
         self.replace('<body class=main>', '<link rel="stylesheet" href="gnatdoc.css"><body class=main>')
-        # The script is now misplaced, not a generic resource permission.
+        # Insertion between head and body breaks the exact script/head/body boundary.
         self.reject("navigation script")
 
     def test_extra_script_after_approved_script(self):

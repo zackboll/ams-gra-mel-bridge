@@ -100,11 +100,11 @@ class AuditOutputTests(unittest.TestCase):
     def successful_output(self, destination, actual):
         report = presentation.validate(self.site, self.pristine, self.root, audit_path=destination)
         audit = json.loads(actual.read_text())
-        self.assertEqual(len(audit), 1418)
+        self.assertEqual(len(audit), 1428)
         self.assertTrue(all(r["containing"]["source"].startswith("ada/src/")
                             and r["href"] == r["target"]["page"] + "#" + r["target"]["anchor"] for r in audit))
         self.assertEqual((report["files"], report["html_pages"], report["links"],
-                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3011, 1418, 0))
+                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3021, 1428, 0))
         self.assertEqual(report["output_sha256"], presentation.hashes(presentation.files(self.site)))
         self.assertTrue(self.before == self.checked_bytes(), "checked tree bytes changed")
 
