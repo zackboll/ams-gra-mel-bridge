@@ -87,6 +87,13 @@ jobs:
             obj/docs/*.log
             obj/docs/*.json
             docs/gnatdoc-renderer-exceptions.json
+      - name: Retain main-only qualified pristine authority
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ada-api-pristine-${{ github.sha }}
+          path: _site/
+          if-no-files-found: error
       - name: Upload main-only Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
@@ -107,3 +114,48 @@ jobs:
       - name: Deploy validated main site
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify-live:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: deploy
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout exact deployed run SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Confirm checkout identity
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Download same-run qualified publication
+        uses: actions/download-artifact@v4
+        with:
+          name: ada-api-${{ github.sha }}
+          path: _live-artifact
+      - name: Download same-run pinned pristine authority
+        uses: actions/download-artifact@v4
+        with:
+          name: ada-api-pristine-${{ github.sha }}
+          path: _live-pristine
+      - name: Install immutable reviewed enhancer
+        run: sh docs/tools/install_enhancer.sh .doc-tools/live-enhancer
+      - name: Verify all live entities and source-owned publication contracts
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          .doc-tools/live-enhancer/bin/python docs/tools/check_live_docs_site.py \
+            --artifact _live-artifact --pristine _live-pristine \
+            --base-url https://zackboll.github.io/ams-gra-mel-bridge/ \
+            --expected-commit "$EXPECTED_SHA" --attempts 10 --interval 30 \
+            --evidence "$RUNNER_TEMP/live-publication.json"
+      - name: Upload live verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-publication-${{ github.sha }}
+          path: ${{ runner.temp }}/live-publication.json
+          if-no-files-found: warn
