@@ -25,6 +25,11 @@ def command(args, env, timeout=600):
     subprocess.run(args, cwd=ROOT, env=env, check=True, timeout=timeout)
 
 
+def alire():
+    settings = os.environ.get("DOC_EXAMPLES_ALIRE_SETTINGS")
+    return ["alr", "-n", *(["-s", settings] if settings else [])]
+
+
 def loader(executable, env):
     result = subprocess.run(["ldd", str(executable)], env=env, text=True,
                             capture_output=True, check=True, timeout=15)
@@ -83,7 +88,7 @@ def main():
     if not args.no_build:
         command(["sh", "native/scripts/build.sh"], env)
         command(["sh", "native/scripts/build-test-providers.sh"], env)
-        command(["alr", "-n", "-C", "ada", "exec", "--", "gprbuild", "-p", "-P",
+        command([*alire(), "-C", "ada", "exec", "--", "gprbuild", "-p", "-P",
                  str(ROOT / "docs/examples/ams_mel_doc_examples.gpr")], env)
     report = []
     for entry, case in selected:

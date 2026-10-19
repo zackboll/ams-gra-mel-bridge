@@ -16,6 +16,12 @@ native code. All nine mains use Ada 2022, assertions, validity checks and
 warnings-as-errors. Formatting explicitly uses the existing pinned GNATformat
 26.0.0, this GPR, UTF-8 and `--no-subprojects`.
 
+CI sets `DOC_EXAMPLES_ALIRE_SETTINGS` to its isolated Alire settings directory;
+both formatter and build use that same explicit directory. Ordinary local use
+leaves it unset and uses existing Alire settings. Do not wrap this driver in
+an `alr exec` from a different settings directory: conflicting crate-prefix
+environment values are correctly rejected by Alire.
+
 Individual cases (each also builds the collection; append `--no-build` after a
 successful build to avoid rebuilding):
 

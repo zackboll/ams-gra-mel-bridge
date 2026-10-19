@@ -151,6 +151,12 @@ class ExampleTests(unittest.TestCase):
         self.assertNotIn("LD_PRELOAD", env)
         self.assertNotIn("AMS_MEL_FAILPOINT", env)
 
+    def test_explicit_isolated_alire_settings(self):
+        with mock.patch.dict(os.environ, {"DOC_EXAMPLES_ALIRE_SETTINGS": "/isolated/settings"}):
+            self.assertEqual(runner.alire(), ["alr", "-n", "-s", "/isolated/settings"])
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(runner.alire(), ["alr", "-n"])
+
     def test_wrong_facade_rejected(self):
         wrong = self.root / "libams_mel_c.so.0"
         wrong.write_bytes(b"not the production facade")

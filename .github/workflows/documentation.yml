@@ -48,7 +48,7 @@ jobs:
           fi
       - name: Compile and execute canonical public Ada examples
         run: |
-          alr -n -s "$PWD/.doc-tools/settings" -C docs/toolchain exec -- sh ../../docs/tools/qualify_examples.sh
+          DOC_EXAMPLES_ALIRE_SETTINGS="$PWD/.doc-tools/settings" sh docs/tools/qualify_examples.sh
       - name: Qualify fresh deterministic regeneration
         run: |
           cp -a _site /tmp/documentation-first

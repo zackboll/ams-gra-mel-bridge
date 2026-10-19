@@ -78,11 +78,12 @@ No pasted excerpts, source-download assets or JavaScript dependency. Manifest,
 GPR mains, physical source inventory, README commands, guide IDs/placeholders,
 public package references and actual execution inventory agree.
 
-Nineteen focused mutation/control tests cover absent/duplicate/unknown IDs and
+Twenty focused mutation/control tests cover absent/duplicate/unknown IDs and
 cases, fixture/exit changes, malformed paths, missing/symlinked source/parents,
 unlisted source, GPR/README/guide/package disagreement, private dependencies,
 HTML escaping, stale/tampered/missing/duplicated listings, wrong facade, inherited
-loader settings, wrong exits/content/order and outer process timeout. Existing
+loader settings, wrong exits/content/order and outer process timeout. Controls
+also verify consistent explicit isolated Alire settings. Existing
 portal mutations continue to cover broken guide/package/local links and active
 content. No published source URL allowance was added.
 
@@ -144,9 +145,10 @@ against the final authored publication, not merely reused from DOC-007.
 - `alr -n -C ada/tests run`: exit 0.
 - `make check-ada-format`: exit 0; new docs-owned format/check: exit 0.
 - Existing script documentation discovery: **133 tests**, exit 0.
-- Full presentation discovery: **119 tests**, exit 0, comprising all 100
-  inherited tests plus 19 DOC-008 controls. Combined documentation discovery
-  executes **252 distinct tests** (133 + 119).
+- Initial full presentation discovery: **119 tests**, exit 0, comprising all 100
+  inherited tests plus 19 DOC-008 controls. R2 adds one isolated-Alire-settings
+  control: final full discovery is **120 tests**, **253 distinct documentation
+  tests** (133 + 120); its final result is recorded in the handoff.
 - Unchanged source-integrity checker: 1,162 protected files, approved reviewed RF
   pair and unchanged IR transition labels. Native/vendor's 804 files unchanged.
   Coverage/warning baseline-delta check, whitespace and final-newline checks pass.
@@ -161,6 +163,28 @@ correctly rejected a pre-existing publication directory; final builds use fresh
 destinations. A summary command initially used system Python without the isolated
 enhancer and failed import; the same verification uses its qualified venv.
 None required relaxing production/test contracts or documentation safety checks.
+
+### Hosted R1 settings collision and R2 correction
+
+The first submitted head `37d8eb56d71684ef987112ab58c148427d0d6ab3` passed
+local gates but hosted Documentation run `39201413195` failed its explicit
+examples step. The workflow wrapped the driver in the isolated documentation
+crate's `alr exec`; nested formatter/build commands used default Alire settings.
+On a clean runner these select distinct installation prefixes for the same
+compiler, so Alire correctly rejected conflicting `GNAT_NATIVE_ALIRE_PREFIX`
+values before compiling examples. Full raw logs are retained; no rerun of that
+unchanged failure is presented as success.
+
+R2 removes the outer nested environment. The workflow explicitly passes
+`DOC_EXAMPLES_ALIRE_SETTINGS` to the docs-owned driver; formatter and build both
+use that exact settings directory through `alr -s`. Ordinary local commands
+remain unchanged. A new unit control checks both isolated and default command
+construction, and local qualification executes the complete workflow-style
+command with a fresh isolated settings directory. Production/GPR/toolchain
+policy and canonical listings/site fingerprints do not change. R1 native/Ada
+regression evidence remains applicable because this correction changes only
+documentation execution wiring, tests and records; final-head hosted results
+are inspected afresh rather than reused from R1.
 
 ## Remaining coordination
 
