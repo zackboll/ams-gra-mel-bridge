@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import html
 import importlib.metadata
 import json
 import re
@@ -18,15 +19,18 @@ sys.path.insert(0, str(ROOT / "docs/tools"))
 from check_doc_coverage import measure, ratchet
 from gnatdoc_inventory import specifications
 from validate_docs import Page, validate as validate_pristine
-from local_type_audit import Authority, restore_page
+from local_type_audit import Authority, restore_page, require_complete_additions, occurrence_key
 
-REVISION = "53a321915da2c5a02a54581040673b61f8595b25"
-ARCHIVE_SHA256 = "d324735784435176c0f1a7093cf462e15b2bd92be429ef5e1e42e802331ca52e"
-PACKAGE_SHA256 = "54d9327e57662a5843198fbc5352d4c5f544a3d5e3047c8269c6b9c68c5e878b"
+REVISION = "3867c8879a3c832fb6e096d7680a8b739a2cffe1"
+ARCHIVE_SHA256 = "61adae2b0c42fa588d8b1362f7441e27b79fdc0498a819e1f01fffadc53c586a"
+PACKAGE_SHA256 = "2ca2b3ecadf7832bd6bd29bf1ac52d69679defffff85fc2cd2c832a6f3aede14"
 JAVASCRIPT_SHA256 = "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
 PRISTINE_SHA256 = "0e6497d6172c918d04ea1c284785f7cfc0fec278e155ab254de0c78e81ac94e2"
+# Complete ordered records independently recovered with the DOC-007E auditor
+# from control A, not an enhancer manifest or a count-based completeness claim.
+ORIGINAL_AUDIT_SHA256 = "c943b0fd5ff0491ed965dac2ff0cbce180b452fca538e6b87adc7192e8420e5c"
 EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
@@ -139,11 +143,40 @@ def restore_navigation(text):
     """Remove only the exact, uniquely placed index-only exceptions."""
     for insertion, following, label in (
             (NAVIGATION_CONTROL, '<h2 id=compilation-units>', "controls"),
-            (NAVIGATION_SCRIPT, '<body class=main>', "script")):
+            (NAVIGATION_SCRIPT, '</head><body class=main>', "script")):
         require(text.count(insertion) == 1 and text.count(insertion + following) == 1,
                 "missing/duplicate/altered/misplaced navigation " + label)
         text = text.replace(insertion, "", 1)
     return text
+
+
+def restore_document(text, native, name, authority):
+    """Independent serialized boundary: exact source title, not HTMLParser RCDATA.
+
+    Compare the complete head bytes, including ordering, attributes and title
+    serialization. No character-reference equivalence, nested-looking markup,
+    comments, controls or alternative encodings are authorized. After removing
+    this bounded prefix, reject any remaining metadata element before restoring
+    snippets; complete native byte comparison remains a separate requirement.
+    The caller has already removed the uniquely placed index-only script.
+    """
+    index = name == 'api/index.html'
+    package = authority.page_packages.get(Path(name).name)
+    require(index or package is not None, 'document metadata lacks source package identity')
+    title = ('API Reference' if index else package) + ' — ' + CONFIG['project']
+    prologue = '<!DOCTYPE html>\n<html class=main>\n'
+    require(native.startswith(prologue + '<link rel=stylesheet href=gnatdoc.css>'),
+            'unqualified native document layout')
+    prefix = ('<!DOCTYPE html>\n<html class=main lang="en">\n<head><meta charset="utf-8">'
+              '<title>' + html.escape(title) + '</title><link rel=stylesheet href=gnatdoc.css>' +
+              METADATA + '</head>')
+    require(text.startswith(prefix), 'incorrect/missing/duplicate/misplaced document metadata: ' + name)
+    rest = text[len(prefix):]
+    require(rest.startswith('<body class=' + ('main' if index else 'content') + '>'),
+            'misplaced document head/body: ' + name)
+    require(re.search(r'</?(?:html|head|title|meta|link|script)\b', rest, re.I) is None,
+            'extra/misplaced document metadata or script: ' + name)
+    return prologue + '<link rel=stylesheet href=gnatdoc.css>' + rest
 
 
 def validate(published, pristine, root=ROOT, audit_path=None):
@@ -151,6 +184,8 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     destination = audit_destination(audit_path, root, pristine, published) if audit_path is not None else None
     tool()
     raw = qualified_original(pristine, root)
+    authority = Authority(root, Path(pristine))
+    expected_additions = authority.required_additions()
     actual = files(published)
     require(set(actual) == set(raw) | EXTRAS, "missing/unexpected publication files")
     require(sha(actual["api/gnatdoc-navigation.js"]) == JAVASCRIPT_SHA256,
@@ -160,7 +195,6 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             require(actual[name] == data, "changed native CSS or authored portal: " + name)
     # Independently accept each occurrence before removing exact type wrappers
     # and lexical spans, only within qualified declaration sections.
-    authority = Authority(root, Path(pristine))
     audit = []
     restored = {}
     for name, data in raw.items():
@@ -173,14 +207,16 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         # pages and authored HTML receive no active-content exception.
         safety_text = restore_navigation(text) if name == "api/index.html" else text
         require(not Page(safety_text).issues, "unsafe HTML")
-        text = safety_text
-        require(text.count(METADATA) == 1, "missing/duplicate viewport/theme metadata")
-        require(text.count("gnatdoc-theme.css") == 1, "duplicate theme insertion")
-        text = text.replace(METADATA, "", 1)
+        text = restore_document(safety_text, data.decode(), name, authority)
         text, occurrences = restore_page(Path(name).name, text, authority)
         audit.extend(occurrences)
         require(text.encode() == data, "native declaration/anchor/link/markup changed: " + name)
         restored[name] = text.encode()
+    require_complete_additions(audit, expected_additions)
+    new_keys = {occurrence_key(r) for r in expected_additions}
+    original_projection = [r for r in audit if occurrence_key(r) not in new_keys]
+    require(len(original_projection) == 1418 and fingerprint(original_projection) == ORIGINAL_AUDIT_SHA256,
+            "original ordered type-link audit changed")
     # Run the original MEL validator and full source/anchor coverage on the
     # independently restored site. Its allowlist and all original tests stay intact.
     with tempfile.TemporaryDirectory(prefix="mel-native-verification-") as temp:
@@ -237,6 +273,10 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,
+            "document_metadata": {
+                "api/" + page: {"title": package + " — " + CONFIG["project"],
+                                 "lang": "en", "charset": "utf-8"}
+                for page, package in sorted({**authority.page_packages, "index.html": "API Reference"}.items())},
             "output_sha256": hashes(actual)}
 
 
