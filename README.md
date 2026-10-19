@@ -123,6 +123,8 @@ development layout and remaining release work, not a package availability claim.
 **[Open the developer documentation portal](https://zackboll.github.io/ams-gra-mel-bridge/)**
 
 - [Getting Started](https://zackboll.github.io/ams-gra-mel-bridge/guides/getting-started.html)
+- [Executable Ada Examples](https://zackboll.github.io/ams-gra-mel-bridge/guides/examples.html)
+  — complete sources in `docs/examples/`; build and run with `sh docs/examples/run.sh`.
 - [Architecture](https://zackboll.github.io/ams-gra-mel-bridge/guides/architecture.html)
 - [IR Workflows](https://zackboll.github.io/ams-gra-mel-bridge/guides/ir-workflows.html)
 - [RF Workflows](https://zackboll.github.io/ams-gra-mel-bridge/guides/rf-workflows.html)

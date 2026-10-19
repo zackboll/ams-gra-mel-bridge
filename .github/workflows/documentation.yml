@@ -46,6 +46,9 @@ jobs:
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != 0000000000000000000000000000000000000000 ]; then
             python3 scripts/check_doc_baseline_delta.py "$BASE_SHA"
           fi
+      - name: Compile and execute canonical public Ada examples
+        run: |
+          alr -n -s "$PWD/.doc-tools/settings" -C docs/toolchain exec -- sh ../../docs/tools/qualify_examples.sh
       - name: Qualify fresh deterministic regeneration
         run: |
           cp -a _site /tmp/documentation-first

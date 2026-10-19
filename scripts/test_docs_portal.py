@@ -33,8 +33,8 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(len(packages), 29)
         self.assertEqual(set(map(group, packages)), {"Shared/Core", "IR", "RF"})
         self.assertEqual(len(set(packages.values())), 29)
-        self.assertEqual(validate(self.site)["html_pages"], 37)
-        self.assertEqual(len(before), 39)
+        self.assertEqual(validate(self.site)["html_pages"], 38)
+        self.assertEqual(len(before), 40)
         for name in ("index.html", "guides/api-map.html"):
             text = (self.site / name).read_text()
             self.assertEqual(len(Page(text).package_entries), 29)

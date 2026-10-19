@@ -4,6 +4,7 @@
   "stylesheet": "assets/portal.css",
   "guides": [
     {"id": "getting-started", "label": "Getting Started", "path": "guides/getting-started.html"},
+    {"id": "examples", "label": "Examples", "path": "guides/examples.html"},
     {"id": "architecture", "label": "Architecture", "path": "guides/architecture.html"},
     {"id": "ir-workflows", "label": "IR Workflows", "path": "guides/ir-workflows.html"},
     {"id": "rf-workflows", "label": "RF Workflows", "path": "guides/rf-workflows.html"},
