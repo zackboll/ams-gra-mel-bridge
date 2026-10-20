@@ -132,13 +132,14 @@ def validate(site):
     # Compare every portal package link, not just the directory entries, against
     # deterministic resolution of its authored package name.
     from build_docs_portal import render
-    from example_sources import verify_rendered
+    from example_sources import References, verify_rendered
+    references = References(ROOT, site)
     try:
-        verify_rendered((site / "guides/examples.html").read_text())
+        verify_rendered((site / "guides/examples.html").read_text(), references=references)
     except ValueError as exc:
         raise SiteError(str(exc)) from exc
     for name in ("index.html", *(e["path"] for e in data["guides"])):
-        expected_text = render(regular(ROOT / "docs" / name), name, data, packages_verified)
+        expected_text = render(regular(ROOT / "docs" / name), name, data, packages_verified, references=references)
         authored = Page(expected_text)
         def api_links(page):
             return collections.Counter(link for link in page.links

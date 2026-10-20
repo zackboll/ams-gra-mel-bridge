@@ -125,10 +125,10 @@ class ExampleTests(unittest.TestCase):
 
     def test_tampered_stale_missing_or_duplicate_listing(self):
         rendered = sources.render((self.root / "docs/guides/examples.html").read_text(), self.root)
-        for text in (rendered.replace("procedure Provider_Session", "procedure Tampered", 1),
+        for text in (rendered.replace("Provider_Session", "Tampered", 1),
                      rendered.replace('data-example-source="src/provider_session.adb"', '', 1),
                      rendered + sources.listing("src/provider_session.adb", self.root),
-                     rendered.replace("procedure Provider_Session", "<b>procedure</b> Provider_Session", 1)):
+                     rendered.replace('<span class="ada-keyword">procedure</span>', "<b>procedure</b>", 1)):
             with self.assertRaises(ValueError):
                 sources.verify_rendered(text, self.root)
         path = self.root / "docs/examples/src/provider_session.adb"

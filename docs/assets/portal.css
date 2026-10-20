@@ -17,6 +17,18 @@ pre, code { font-family: ui-monospace, monospace; font-size: .92em; }
 pre { overflow-x: auto; padding: 1.2rem; background: var(--panel); border: 1px solid var(--border); border-radius: .3rem; }
 code { overflow-wrap: anywhere; }
 pre code { overflow-wrap: normal; }
+/* Static Ada listings: no generated text, wrapping, or resource dependencies. */
+code[data-example-source] { white-space: pre; tab-size: 8; }
+code[data-example-source] .ada-source-end { display: inline-block; width: 0; height: 1em; }
+code[data-example-source] .ada-keyword { color: #67409d; font-weight: 650; }
+code[data-example-source] .ada-string,
+code[data-example-source] .ada-character { color: #20622d; }
+code[data-example-source] .ada-comment { color: #4c5968; font-style: italic; }
+code[data-example-source] .ada-number { color: #874315; }
+code[data-example-source] .ada-attribute { color: #7b365b; }
+code[data-example-source] .ada-operator { color: #344b66; }
+code[data-example-source] .ada-reference { color: var(--link); text-decoration: underline; overflow-wrap: normal; }
+code[data-example-source] .ada-reference:focus-visible { outline-offset: 2px; }
 aside { padding: 1rem 1.4rem; border-left: .3rem solid var(--link); background: var(--panel); }
 table { width: 100%; border-collapse: collapse; font-size: .92em; }
 th, td { border: 1px solid var(--border); padding: .6rem; text-align: left; vertical-align: top; }
@@ -30,4 +42,11 @@ section[aria-label="Public package directory"] ul { padding-left: 1.4rem; }
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #15202d; --fg: #e3eaf2; --link: #94c8ff; --panel: #223245; --border: #7b8da4; }
+  code[data-example-source] .ada-keyword { color: #d5b4ff; }
+  code[data-example-source] .ada-string,
+  code[data-example-source] .ada-character { color: #a7dfad; }
+  code[data-example-source] .ada-comment { color: #b7c3cf; }
+  code[data-example-source] .ada-number { color: #ffc38e; }
+  code[data-example-source] .ada-attribute { color: #f5b5d7; }
+  code[data-example-source] .ada-operator { color: #c6d4e5; }
 }

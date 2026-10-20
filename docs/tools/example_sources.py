@@ -7,6 +7,8 @@ from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ada_examples import References, annotate
+
 ROOT = Path(__file__).resolve().parents[2]
 IDS = ("provider-session", "owned-image", "frame-lease", "common-channel",
        "navigation-report", "track-metadata", "rf-discovery", "rf-rx-job", "rf-product-rx")
@@ -21,7 +23,7 @@ CASES = (
 def regular(path):
     if any(p.is_symlink() for p in (path, *path.parents)) or not path.is_file():
         raise ValueError(f"missing/nonregular/symlink example input: {path}")
-    return path.read_text(encoding="utf-8")
+    return path.read_bytes().decode("utf-8")
 
 
 def unique(pairs):
@@ -113,20 +115,22 @@ def inventory(root=ROOT):
     return entries
 
 
-def listing(name, root=ROOT):
+def listing(name, root=ROOT, references=None):
+    text = source(name, root)
+    occurrences = references.occurrences(text, name) if references is not None else ()
     return (f'<p>Complete canonical source: <code>docs/examples/{html.escape(name)}</code></p>'
             f'<pre><code data-example-source="{html.escape(name)}">'
-            + html.escape(source(name, root)) + '</code></pre>')
+            + annotate(text, occurrences) + '</code></pre>')
 
 
-def render(text, root=ROOT):
+def render(text, root=ROOT, references=None):
     entries = {e["id"]: e for e in inventory(root)}
     def replace(match):
         entry = entries[match[1]]
-        output = listing(entry["main"], root)
+        output = listing(entry["main"], root, references)
         for name in entry["support"]:
             output += '<details><summary>Supporting source: ' + html.escape(name) + '</summary>'
-            output += listing(name, root) + '</details>'
+            output += listing(name, root, references) + '</details>'
         output += '<h3>Run cases (from repository root)</h3>'
         for case in entry["cases"]:
             output += '<p>Mock configuration: <code>' + html.escape(case["configuration"]) + '</code></p>'
@@ -140,14 +144,26 @@ def render(text, root=ROOT):
 class Listings(HTMLParser):
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
-        self.values, self.active = [], None
+        self.values, self.active, self.stack = [], None, []
         self.feed(text)
         self.close()
+        if self.active is not None:
+            raise ValueError("unclosed canonical listing")
 
     def handle_starttag(self, tag, attrs):
         if self.active is not None:
-            raise ValueError("markup inside canonical listing")
+            allowed = (tag == "span" and len(attrs) == 1 and attrs[0][0] == "class"
+                       and attrs[0][1] in {"ada-" + kind for kind in
+                                          ("keyword", "string", "character", "attribute", "comment", "number", "operator")})
+            allowed |= (tag == "a" and len(attrs) == 2 and attrs[0] == ("class", "ada-reference")
+                        and attrs[1][0] == "href" and "a" not in self.stack)
+            allowed |= (tag == "span" and attrs == [("class", "ada-source-end"), ("aria-hidden", "true")])
+            if not allowed:
+                raise ValueError("unapproved markup inside canonical listing")
+            self.stack.append(tag)
         if tag == "code" and "data-example-source" in dict(attrs):
+            if len(attrs) != 1:
+                raise ValueError("canonical listing attributes")
             self.active = [dict(attrs)["data-example-source"], ""]
 
     def handle_data(self, data):
@@ -156,15 +172,42 @@ class Listings(HTMLParser):
 
     def handle_endtag(self, tag):
         if self.active is not None:
+            if self.stack:
+                if tag != self.stack.pop():
+                    raise ValueError("malformed canonical listing markup")
+                return
             if tag != "code":
                 raise ValueError("malformed canonical listing")
             self.values.append(tuple(self.active))
             self.active = None
 
+    def handle_comment(self, data):
+        if self.active is not None:
+            raise ValueError("comment markup inside canonical listing")
 
-def verify_rendered(text, root=ROOT):
+    def handle_startendtag(self, tag, attrs):
+        if self.active is not None:
+            raise ValueError("empty markup inside canonical listing")
+
+
+def verify_rendered(text, root=ROOT, references=None):
     expected = [(name, source(name, root)) for entry in inventory(root)
                 for name in [entry["main"], *entry["support"]]]
     if Listings(text).values != expected:
         raise ValueError("missing/stale/tampered canonical source listing")
+    # Exact approved serialization also rejects alternate entities, forged token
+    # classes, attributes, links and inconsistent repeated support listings.
+    actual = re.findall(r'<code data-example-source="([^"]+)">(.*?)</code>', text, re.S)
+    annotated = [(name, annotate(value, references.occurrences(value, name)
+                                if references is not None else ())) for name, value in expected]
+    if actual != annotated:
+        raise ValueError("stale/tampered canonical source listing annotation")
     return len(expected)
+
+
+def occurrence_ledger(root=ROOT, references=None):
+    if references is None:
+        raise ValueError("native authority required for example occurrence ledger")
+    return [dict(record, listing=index) for index, (name, _) in enumerate(
+        (name, entry) for entry in inventory(root) for name in [entry["main"], *entry["support"]])
+        for record in references.occurrences(source(name, root), name)]
