@@ -254,6 +254,10 @@ def verify(site, pristine, base, commit, attempts=1, interval=15, loopback=False
                     "served original ordered type destinations changed")
             require(len(audit) == 1428, "served type destination count changed")
             evidence["verified_local_type_destinations"] = audit
+            symbols = publication.symbol_audit.inventory(native, Path(pristine))
+            publication.restore_navigation(served["api/index.html"].decode("utf-8"), symbols)
+            require(symbols == authority["public_symbols"], "served symbol authority changed")
+            evidence["verified_symbol_destinations"] = symbols
             evidence["ten_required_additions"] = additions
             evidence["original_1418_audit_sha256"] = publication.fingerprint(original)
             references = References(publication.ROOT, Path(pristine))

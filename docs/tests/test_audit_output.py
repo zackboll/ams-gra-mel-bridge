@@ -104,7 +104,7 @@ class AuditOutputTests(unittest.TestCase):
         self.assertTrue(all(r["containing"]["source"].startswith("ada/src/")
                             and r["href"] == r["target"]["page"] + "#" + r["target"]["anchor"] for r in audit))
         self.assertEqual((report["files"], report["html_pages"], report["links"],
-                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3287, 1428, 0))
+                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3525, 1428, 0))
         self.assertEqual(report["output_sha256"], presentation.hashes(presentation.files(self.site)))
         self.assertTrue(self.before == self.checked_bytes(), "checked tree bytes changed")
 
