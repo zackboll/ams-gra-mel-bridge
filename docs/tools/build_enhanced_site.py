@@ -20,6 +20,7 @@ from check_doc_coverage import measure, ratchet
 from gnatdoc_inventory import specifications
 from validate_docs import Page, validate as validate_pristine
 from local_type_audit import Authority, restore_page, require_complete_additions, occurrence_key
+from example_sources import References, occurrence_ledger
 
 REVISION = "3867c8879a3c832fb6e096d7680a8b739a2cffe1"
 ARCHIVE_SHA256 = "61adae2b0c42fa588d8b1362f7441e27b79fdc0498a819e1f01fffadc53c586a"
@@ -30,7 +31,7 @@ ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5a
 # Complete ordered records independently recovered with the DOC-007E auditor
 # from control A, not an enhancer manifest or a count-based completeness claim.
 ORIGINAL_AUDIT_SHA256 = "c943b0fd5ff0491ed965dac2ff0cbce180b452fca538e6b87adc7192e8420e5c"
-PRISTINE_SHA256 = "d076b4e9c69f4ffd7c02e82da711704ca90077a82f0db229176492644e0a903d"
+PRISTINE_SHA256 = "3a853e1a6c06e19f7f21d45622de3135054e7beb711245b1838555246c0d6c49"
 NATIVE_API_SHA256 = "d2026657ddd02d2513514c545633c13fbaf8ce772e1bf35bf51223e16d811983"
 # DOC-008 complete API guard retained. The new value is independently established
 # by authenticated DOC-007F R1 API bytes and requalified against the unchanged
@@ -137,7 +138,8 @@ def qualified_original(pristine, root=ROOT):
     require(sha(anchors) == ANCHORS_SHA256, "authoritative anchors/profiles changed")
     require(tomllib.loads((root / "docs/gnatdoc-enhance.toml").read_text()) == CONFIG,
             "unapproved presentation configuration")
-    require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562}, "pristine metrics changed")
+    example_links = len(occurrence_ledger(root, References(root, Path(pristine))))
+    require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562 + example_links}, "pristine metrics changed")
     report = measure(pristine, root, json.loads(anchors))
     ratchet(report, (root / "docs/gnatdoc-coverage-baseline.txt").read_text())
     require((report["source_declarations"], report["native_sections"],
@@ -265,7 +267,8 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     links = sum(len(Page(data.decode()).links) for n, data in actual.items() if n.endswith(".html"))
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
-    require(links == 1562 + 30 + len(audit) + 1,
+    example_audit = occurrence_ledger(root, References(root, Path(pristine)))
+    require(links == 1562 + len(example_audit) + 30 + len(audit) + 1,
             "presentation link delta differs from theme plus audited type links and index script")
     require(fingerprint(hashes({n: d for n, d in actual.items() if n.startswith("api/")}))
             == ENHANCED_API_SHA256, "complete inherited enhanced API inventory/bytes changed")
@@ -279,6 +282,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         except OSError as error:
             raise PresentationError("cannot create audit destination: " + str(error)) from error
     return {"files": 43, "html_pages": 38, "links": links, "public_packages": 29,
+            "example_inline_links": len(example_audit),
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,

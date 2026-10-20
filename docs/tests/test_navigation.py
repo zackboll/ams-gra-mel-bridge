@@ -62,7 +62,7 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(restored.encode(), (self.original / "api/index.html").read_bytes())
         self.assertEqual((len(self.packages), len(self.tagged)), (29, 8))
         self.assertEqual(self.report["files"], 43)
-        self.assertEqual(self.report["links"], 3021)
+        self.assertEqual(self.report["links"], 3287)
         self.assertEqual(self.report["output_sha256"], presentation.hashes(presentation.files(self.site)))
 
     def test_all_authored_and_native_non_html_bytes_preserved(self):

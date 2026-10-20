@@ -12,7 +12,7 @@ from pathlib import Path
 from gnatdoc_inventory import ROOT, specifications
 
 sys.path.insert(0, str(ROOT / "docs/tools"))
-from example_sources import render as render_examples, verify_rendered
+from example_sources import References, render as render_examples, verify_rendered
 
 GUIDES = (
     ("getting-started", "Getting Started"),
@@ -92,7 +92,7 @@ def group(name):
     return "Shared/Core"
 
 
-def render(text, page, data, packages, root=ROOT):
+def render(text, page, data, packages, root=ROOT, references=None):
     prefix = "../" if page.startswith("guides/") else ""
 
     def package_link(name, directory=False):
@@ -118,8 +118,10 @@ def render(text, page, data, packages, root=ROOT):
                   lambda m: package_link(m[1]), text)
     if page == "guides/examples.html":
         try:
-            text = render_examples(text, root)
-            verify_rendered(text, root)
+            if references is None:
+                raise PortalError("native authority required for example rendering")
+            text = render_examples(text, root, references)
+            verify_rendered(text, root, references)
         except (ValueError, OSError) as exc:
             raise PortalError(str(exc)) from exc
     if "{{" in text or "}}" in text:
@@ -130,6 +132,7 @@ def render(text, page, data, packages, root=ROOT):
 def build(site, root=ROOT):
     data = manifest(root)
     packages = package_map(site, root)
+    references = References(root, site)
     paths = [data["home"], *(entry["path"] for entry in data["guides"]), data["stylesheet"]]
     # Validate all inputs and output ancestors before writing any portal file.
     sources = {name: regular(root / "docs" / name) for name in paths}
@@ -137,7 +140,7 @@ def build(site, root=ROOT):
         path = site / name
         if any(p.is_symlink() for p in (path, *path.parents)):
             raise PortalError("symlink in portal output")
-    rendered = {name: render(text, name, data, packages, root) if name.endswith(".html") else text
+    rendered = {name: render(text, name, data, packages, root, references) if name.endswith(".html") else text
                 for name, text in sources.items()}
     for name, text in rendered.items():
         target = site / name
