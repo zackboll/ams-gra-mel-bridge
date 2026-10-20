@@ -1,5 +1,17 @@
 # GNATdoc foundation
 
+## DOC-010 corrected stable public symbols
+
+The current immutable enhancer is GNATDOC-011R3 merge
+`524b7610e21e9a7b87e8e0761580ed59a3b0295c`, with package navigation,
+`symbol_bookmarks = true` and source/native-verified default `AMS.MEL`.
+The independently qualified inventory contains 238 public type/subtype bookmarks;
+the complete publication has 43 files, 38 HTML pages and 3,525 references.
+DOC-011's highlighted examples, all 266 direct API links, examples HTML and portal
+CSS remain byte-identical. Generic-instance routing remains disabled.
+See [dependency identity, bounded contracts and qualification](doc-010-symbol-bookmarks.md).
+Earlier sections below are historical checkpoints, not current pins or metrics.
+
 ## DOC-007F merged enhancer and independent completeness
 
 Production adopts upstream PR #12 merge

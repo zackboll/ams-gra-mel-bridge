@@ -57,12 +57,13 @@ class NavigationTests(unittest.TestCase):
     def test_exact_insertions_restore_complete_index(self):
         enhanced = self.index.read_text()
         authority = presentation.Authority(ROOT, self.original)
-        restored = presentation.restore_document(presentation.restore_navigation(enhanced),
+        symbols = presentation.symbol_audit.inventory(authority, self.original)
+        restored = presentation.restore_document(presentation.restore_navigation(enhanced, symbols),
                                                  self.native, 'api/index.html', authority)
         self.assertEqual(restored.encode(), (self.original / "api/index.html").read_bytes())
         self.assertEqual((len(self.packages), len(self.tagged)), (29, 8))
         self.assertEqual(self.report["files"], 43)
-        self.assertEqual(self.report["links"], 3287)
+        self.assertEqual(self.report["links"], 3525)
         self.assertEqual(self.report["output_sha256"], presentation.hashes(presentation.files(self.site)))
 
     def test_all_authored_and_native_non_html_bytes_preserved(self):

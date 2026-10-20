@@ -36,7 +36,7 @@ class MetadataTests(unittest.TestCase):
                 continue
             text = data.decode()
             if name == 'api/index.html':
-                text = p.restore_navigation(text)
+                text = p.restore_navigation(text, p.symbol_audit.inventory(self.authority, ROOT / '_site'))
                 title = 'API Reference — AMS MEL Bridge'
             else:
                 title = self.authority.page_packages[Path(name).name] + ' — AMS MEL Bridge'
@@ -56,7 +56,8 @@ class MetadataTests(unittest.TestCase):
     def test_correct_index_script_is_inside_head(self):
         text = self.output['api/index.html'].decode()
         self.assertEqual(text.count(p.NAVIGATION_SCRIPT + '</head><body class=main>'), 1)
-        p.restore_document(p.restore_navigation(text), (ROOT / '_site/api/index.html').read_text(),
+        symbols = p.symbol_audit.inventory(self.authority, ROOT / '_site')
+        p.restore_document(p.restore_navigation(text, symbols), (ROOT / '_site/api/index.html').read_text(),
                            'api/index.html', self.authority)
 
     def test_forged_self_consistent_manifest_cannot_authorize_wrong_title(self):

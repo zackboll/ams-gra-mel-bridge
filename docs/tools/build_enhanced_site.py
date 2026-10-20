@@ -21,11 +21,12 @@ from gnatdoc_inventory import specifications
 from validate_docs import Page, validate as validate_pristine
 from local_type_audit import Authority, restore_page, require_complete_additions, occurrence_key
 from example_sources import References, occurrence_ledger
+import symbol_audit
 
-REVISION = "3867c8879a3c832fb6e096d7680a8b739a2cffe1"
-ARCHIVE_SHA256 = "61adae2b0c42fa588d8b1362f7441e27b79fdc0498a819e1f01fffadc53c586a"
-PACKAGE_SHA256 = "2ca2b3ecadf7832bd6bd29bf1ac52d69679defffff85fc2cd2c832a6f3aede14"
-JAVASCRIPT_SHA256 = "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd"
+REVISION = "524b7610e21e9a7b87e8e0761580ed59a3b0295c"
+ARCHIVE_SHA256 = "8b7c0a0d0957ef2ebb2cc27888173e653db6987c4279444fcffe095ccc099101"
+PACKAGE_SHA256 = "af5c5fec03ec3fbc41e3a55a55424a3ce65cf1bb5101d97b0c65ff5614e40632"
+JAVASCRIPT_SHA256 = "233cf43211a711d0d64dfba2815bc2d9cc887720faed0ca38f464bc6d29e145f"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
 # Complete ordered records independently recovered with the DOC-007E auditor
@@ -33,10 +34,11 @@ ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5a
 ORIGINAL_AUDIT_SHA256 = "c943b0fd5ff0491ed965dac2ff0cbce180b452fca538e6b87adc7192e8420e5c"
 PRISTINE_SHA256 = "3a853e1a6c06e19f7f21d45622de3135054e7beb711245b1838555246c0d6c49"
 NATIVE_API_SHA256 = "d2026657ddd02d2513514c545633c13fbaf8ce772e1bf35bf51223e16d811983"
-# DOC-008 complete API guard retained. The new value is independently established
-# by authenticated DOC-007F R1 API bytes and requalified against the unchanged
-# source/native API in R2; metadata and the ten links are audited separately below.
-ENHANCED_API_SHA256 = "8f5090330038b70905211fd8ee32a2d662ee7902a27c9c2dc61028b19c48385f"
+# Preserve the entire DOC-011 API through an independently restored projection,
+# as well as guarding the new complete symbol-enabled API. Both values come from
+# qualified complete A/B/C bytes, not enhancer metadata or predicted link counts.
+ORIGINAL_ENHANCED_API_SHA256 = "8f5090330038b70905211fd8ee32a2d662ee7902a27c9c2dc61028b19c48385f"
+ENHANCED_API_SHA256 = "9790f7666b867250e8c78e998a32eb233c3cbe76f9e83bbda7f4d8978f0b6f37"
 EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
@@ -55,7 +57,7 @@ CONFIG = {
     "renderer_exceptions": ["AMS.MEL.IR.Health_Status.Metadata.Status"],
     "gnatdoc": {"version": "26.0.0"},
     "sources": {"directories": ["ada/src"], "comment_style": "trailing"},
-    "navigation": {"mode": "packages"},
+    "navigation": {"mode": "packages", "symbol_bookmarks": True, "default_package": "AMS.MEL"},
     "presentation": {"theme": True, "syntax_highlighting": True, "type_links": True},
     "guides": {"mode": "none"},
 }
@@ -148,8 +150,12 @@ def qualified_original(pristine, root=ROOT):
     return raw
 
 
-def restore_navigation(text):
+def restore_navigation(text, symbols):
     """Remove only the exact, uniquely placed index-only exceptions."""
+    try:
+        text = symbol_audit.restore(text, symbols)
+    except ValueError as error:
+        raise PresentationError(str(error)) from error
     for insertion, following, label in (
             (NAVIGATION_CONTROL, '<h2 id=compilation-units>', "controls"),
             (NAVIGATION_SCRIPT, '</head><body class=main>', "script")):
@@ -194,6 +200,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     tool()
     raw = qualified_original(pristine, root)
     authority = Authority(root, Path(pristine))
+    symbols = symbol_audit.inventory(authority, Path(pristine))
     expected_additions = authority.required_additions()
     actual = files(published)
     require(set(actual) == set(raw) | EXTRAS, "missing/unexpected publication files")
@@ -214,7 +221,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         # The original Page checker still rejects ALL scripts. Remove only the
         # independently approved index insertions before invoking it. Package
         # pages and authored HTML receive no active-content exception.
-        safety_text = restore_navigation(text) if name == "api/index.html" else text
+        safety_text = restore_navigation(text, symbols) if name == "api/index.html" else text
         require(not Page(safety_text).issues, "unsafe HTML")
         text = restore_document(safety_text, data.decode(), name, authority)
         text, occurrences = restore_page(Path(name).name, text, authority)
@@ -254,11 +261,33 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             "native_css_sha256": sha(raw["api/gnatdoc.css"]),
             "source_sha256": {p.relative_to(root).as_posix(): sha(p.read_bytes())
                               for p in specifications(root)[0].values()},
-            "output_sha256": hashes(expected), "counts": counts,
+            "output_sha256": hashes({n: d for n, d in actual.items()
+                                     if n.startswith("api/") and n not in
+                                     {"api/gnatdoc.css", "api/presentation.json"}}),
+            "counts": {"declaration_snippets": len(authority.sections),
+                       "linked_external_types": 0, "linked_local_types": len(audit),
+                       "linked_types": len(audit), "public_packages": len(authority.packages),
+                       "unrendered_renderer_exceptions": 1},
         }
-        require(actual["api/presentation.json"] == sorted_json(manifest).encode(), "altered/forged presentation manifest")
         for name, data in expected.items():
             require(actual[name] == data, "not the pinned reconstructed transformation: " + name)
+        require(actual["api/presentation.json"] == sorted_json(manifest).encode(), "altered/forged presentation manifest")
+        # Recover the complete previously approved enhanced API, including its
+        # original manifest. This keeps the inherited complete-byte guard active
+        # rather than replacing it with only the new symbol-enabled fingerprint.
+        from ada_gnatdoc_enhancer import __file__ as enhancer_file
+        original_router = (Path(enhancer_file).parent / "assets/gnatdoc-navigation.js").read_bytes()
+        require(sha(original_router) == "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd",
+                "inherited default navigation asset changed")
+        projection = {n: d for n, d in actual.items() if n.startswith("api/")}
+        projection["api/index.html"] = symbol_audit.restore(
+            actual["api/index.html"].decode(), symbols).encode()
+        projection["api/gnatdoc-navigation.js"] = original_router
+        original_manifest = {**manifest, "output_sha256": hashes({
+            n: d for n, d in projection.items() if n not in {"api/gnatdoc.css", "api/presentation.json"}})}
+        projection["api/presentation.json"] = sorted_json(original_manifest).encode()
+        require(fingerprint(hashes(projection)) == ORIGINAL_ENHANCED_API_SHA256,
+                "complete inherited enhanced API projection changed")
         # The enhancer's independent verifier operates on API-only output too.
         for name, data in actual.items():
             if name.startswith("api/"):
@@ -268,8 +297,8 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
     example_audit = occurrence_ledger(root, References(root, Path(pristine)))
-    require(links == 1562 + len(example_audit) + 30 + len(audit) + 1,
-            "presentation link delta differs from theme plus audited type links and index script")
+    require(links == 1562 + len(example_audit) + 30 + len(audit) + 1 + len(symbols),
+            "presentation link delta differs from independently audited type, example and symbol links")
     require(fingerprint(hashes({n: d for n, d in actual.items() if n.startswith("api/")}))
             == ENHANCED_API_SHA256, "complete inherited enhanced API inventory/bytes changed")
     if destination is not None:
@@ -283,6 +312,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             raise PresentationError("cannot create audit destination: " + str(error)) from error
     return {"files": 43, "html_pages": 38, "links": links, "public_packages": 29,
             "example_inline_links": len(example_audit),
+            "public_symbols": symbols,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
             "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,

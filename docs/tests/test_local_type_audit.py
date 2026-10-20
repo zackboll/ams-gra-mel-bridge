@@ -83,7 +83,8 @@ class IndependentTests(unittest.TestCase):
             if name.endswith('.html'):
                 restored, _ = restore_page(Path(name).name, data.decode(), self.authority)
                 if name == 'api/index.html':
-                    restored = presentation.restore_navigation(restored)
+                    symbols = presentation.symbol_audit.inventory(self.authority, ROOT / '_site')
+                    restored = presentation.restore_navigation(restored, symbols)
                 restored = presentation.restore_document(restored, (ROOT / '_site' / name).read_text(), name, self.authority)
                 self.assertEqual(restored.encode(), (ROOT / '_site' / name).read_bytes(), name)
 
