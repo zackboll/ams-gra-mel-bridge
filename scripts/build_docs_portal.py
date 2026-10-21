@@ -13,6 +13,7 @@ from gnatdoc_inventory import ROOT, specifications
 
 sys.path.insert(0, str(ROOT / "docs/tools"))
 from example_sources import References, render as render_examples, verify_rendered
+import api_catalog
 
 GUIDES = (
     ("getting-started", "Getting Started"),
@@ -116,6 +117,15 @@ def render(text, page, data, packages, root=ROOT, references=None):
     text = text.replace("{{navigation}}", nav).replace("{{package-directory}}", directory)
     text = re.sub(r"\{\{package:([A-Za-z0-9_.]+)\}\}",
                   lambda m: package_link(m[1]), text)
+    if page == "guides/api-map.html":
+        if references is None:
+            raise PortalError("native authority required for catalog rendering")
+        catalog = api_catalog.inventory(root, references)
+        for token, scopes in (("{{public-symbol-index}}", ("stable",)),
+                              ("{{example-usage-index}}", ("additional", "operation"))):
+            if text.count(token) != 1:
+                raise PortalError("missing/duplicate catalog placeholder")
+            text = text.replace(token, api_catalog.render(catalog, scopes), 1)
     if page == "guides/examples.html":
         try:
             if references is None:

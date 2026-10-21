@@ -27,6 +27,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 sys.dont_write_bytecode = True
 import build_enhanced_site as publication
 from example_sources import References, inventory, occurrence_ledger, source, verify_rendered
+import api_catalog
 
 
 class LiveError(ValueError):
@@ -217,10 +218,13 @@ def verify(site, pristine, base, commit, attempts=1, interval=15, loopback=False
     require(re.fullmatch(r"[0-9a-f]{40}", commit), "expected deployed commit must be explicit full Git SHA")
     require(1 <= attempts <= 20 and 0 <= interval <= 60, "unbounded readiness policy")
     files, authority = qualified(site, pristine)
+    catalog = api_catalog.verify(files["guides/api-map.html"].decode("utf-8"),
+                                 publication.ROOT, References(publication.ROOT, Path(pristine)))
     expected_graph = graph(files)
     evidence = {"schema_version": 1, "expected_deployed_commit": commit,
                 "commit_authority": "caller-supplied deployment workflow/metadata, not HTTP content",
                 "base_url": base, "authority": authority, "publication_sha256": publication.hashes(files),
+                "qualified_api_catalog": catalog,
                 "publication_fingerprint": publication.fingerprint(publication.hashes(files)),
                 "attempts": [], "passed": False}
     for attempt in range(attempts):
@@ -261,6 +265,8 @@ def verify(site, pristine, base, commit, attempts=1, interval=15, loopback=False
             evidence["ten_required_additions"] = additions
             evidence["original_1418_audit_sha256"] = publication.fingerprint(original)
             references = References(publication.ROOT, Path(pristine))
+            evidence["api_catalog"] = api_catalog.verify(
+                served["guides/api-map.html"].decode("utf-8"), publication.ROOT, references)
             evidence["canonical_source_listings"] = verify_rendered(
                 served["guides/examples.html"].decode("utf-8"), references=references)
             evidence["example_inline_destinations"] = occurrence_ledger(references=references)

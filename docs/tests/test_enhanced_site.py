@@ -20,6 +20,12 @@ from ada_gnatdoc_enhancer.pipeline import enhance
 from ada_gnatdoc_enhancer.profiles import reconcile
 
 
+def catalog_links():
+    from api_catalog import inventory, link_count
+    from ada_examples import References
+    return 3 + link_count(inventory(ROOT, References(ROOT, ROOT / "_site"), independent=True))
+
+
 class PublishedTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -51,7 +57,7 @@ class PublishedTests(unittest.TestCase):
 
     def test_exact_inventory_and_portal_preservation(self):
         result = presentation.validate(self.site, self.original)
-        self.assertEqual((result["files"], result["html_pages"], result["links"]), (43, 38, 3525))
+        self.assertEqual((result["files"], result["html_pages"], result["links"]), (43, 38, 3525 + catalog_links()))
         self.assertEqual(result["linked_local_types"], 1428)
         self.assertEqual(set(presentation.files(self.site)) - set(presentation.files(self.original)), presentation.EXTRAS)
         for name, data in presentation.files(self.original).items():

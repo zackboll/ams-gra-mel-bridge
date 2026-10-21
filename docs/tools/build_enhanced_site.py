@@ -22,6 +22,7 @@ from validate_docs import Page, validate as validate_pristine
 from local_type_audit import Authority, restore_page, require_complete_additions, occurrence_key
 from example_sources import References, occurrence_ledger
 import symbol_audit
+import api_catalog
 
 REVISION = "524b7610e21e9a7b87e8e0761580ed59a3b0295c"
 ARCHIVE_SHA256 = "8b7c0a0d0957ef2ebb2cc27888173e653db6987c4279444fcffe095ccc099101"
@@ -32,13 +33,16 @@ ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5a
 # Complete ordered records independently recovered with the DOC-007E auditor
 # from control A, not an enhancer manifest or a count-based completeness claim.
 ORIGINAL_AUDIT_SHA256 = "c943b0fd5ff0491ed965dac2ff0cbce180b452fca538e6b87adc7192e8420e5c"
-PRISTINE_SHA256 = "3a853e1a6c06e19f7f21d45622de3135054e7beb711245b1838555246c0d6c49"
+ORIGINAL_PRISTINE_SHA256 = "3a853e1a6c06e19f7f21d45622de3135054e7beb711245b1838555246c0d6c49"
+PRISTINE_SHA256 = "2ee21243c766d5183587633947f055a1602c4d744040218db13ee01a8eb33291"
 NATIVE_API_SHA256 = "d2026657ddd02d2513514c545633c13fbaf8ce772e1bf35bf51223e16d811983"
 # Preserve the entire DOC-011 API through an independently restored projection,
 # as well as guarding the new complete symbol-enabled API. Both values come from
 # qualified complete A/B/C bytes, not enhancer metadata or predicted link counts.
 ORIGINAL_ENHANCED_API_SHA256 = "8f5090330038b70905211fd8ee32a2d662ee7902a27c9c2dc61028b19c48385f"
 ENHANCED_API_SHA256 = "9790f7666b867250e8c78e998a32eb233c3cbe76f9e83bbda7f4d8978f0b6f37"
+PUBLICATION_SHA256 = "2249019abba15ec3107069c18dea5e0934eab25d303524e9a5e9768b476838cb"
+ORIGINAL_PUBLICATION_SHA256 = "22e51b0a72744cf4a18991b54433ec802872d6a427d5cee1fe97a8ac33cd83d7"
 EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
@@ -132,6 +136,16 @@ def qualified_original(pristine, root=ROOT):
     raw = files(pristine)
     require(len(raw) == 40 and fingerprint(hashes(raw)) == PRISTINE_SHA256,
             "pristine native/portal bytes differ from reviewed baseline")
+    # Preserve the entire historical DOC-010/011 publication projection, not just
+    # API-only hashes. The independently validated addition has one bounded home.
+    original = dict(raw)
+    text = original["guides/api-map.html"].decode()
+    start, end = '<nav aria-label="Declaration indexes">', '<h2>Required, conditional and represented-only</h2>'
+    require(text.count(start) == text.count(end) == 1, "catalog projection boundaries changed")
+    text = text[:text.index(start)] + text[text.index(end):]
+    original["guides/api-map.html"] = text.encode()
+    require(fingerprint(hashes(original)) == ORIGINAL_PRISTINE_SHA256,
+            "complete inherited pristine publication projection changed")
     require(fingerprint(hashes({n: d for n, d in raw.items() if n.startswith("api/")}))
             == NATIVE_API_SHA256, "complete inherited pristine API inventory/bytes changed")
     sources = {"ada/src/" + n: data for n, data in files(root / "ada/src").items()}
@@ -141,7 +155,8 @@ def qualified_original(pristine, root=ROOT):
     require(tomllib.loads((root / "docs/gnatdoc-enhance.toml").read_text()) == CONFIG,
             "unapproved presentation configuration")
     example_links = len(occurrence_ledger(root, References(root, Path(pristine))))
-    require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562 + example_links}, "pristine metrics changed")
+    catalog = api_catalog.inventory(root, References(root, Path(pristine)), independent=True)
+    require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562 + example_links + 3 + api_catalog.link_count(catalog)}, "pristine metrics changed")
     report = measure(pristine, root, json.loads(anchors))
     ratchet(report, (root / "docs/gnatdoc-coverage-baseline.txt").read_text())
     require((report["source_declarations"], report["native_sections"],
@@ -297,10 +312,18 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
     example_audit = occurrence_ledger(root, References(root, Path(pristine)))
-    require(links == 1562 + len(example_audit) + 30 + len(audit) + 1 + len(symbols),
+    catalog = api_catalog.verify(actual["guides/api-map.html"].decode(), root, References(root, Path(pristine)))
+    require(links == 1562 + len(example_audit) + 30 + len(audit) + 1 + len(symbols) + 3 + api_catalog.link_count(catalog),
             "presentation link delta differs from independently audited type, example and symbol links")
     require(fingerprint(hashes({n: d for n, d in actual.items() if n.startswith("api/")}))
             == ENHANCED_API_SHA256, "complete inherited enhanced API inventory/bytes changed")
+    require(fingerprint(hashes(actual)) == PUBLICATION_SHA256, "complete qualified publication bytes changed")
+    inherited = dict(actual)
+    text = inherited["guides/api-map.html"].decode()
+    start, end = '<nav aria-label="Declaration indexes">', '<h2>Required, conditional and represented-only</h2>'
+    inherited["guides/api-map.html"] = (text[:text.index(start)] + text[text.index(end):]).encode()
+    require(fingerprint(hashes(inherited)) == ORIGINAL_PUBLICATION_SHA256,
+            "complete inherited final publication projection changed")
     if destination is not None:
         # Recheck freshness at write time; exclusive creation also rejects a
         # newly introduced file/hardlink/symlink instead of overwriting it.
@@ -312,6 +335,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             raise PresentationError("cannot create audit destination: " + str(error)) from error
     return {"files": 43, "html_pages": 38, "links": links, "public_packages": 29,
             "example_inline_links": len(example_audit),
+            "api_catalog": catalog,
             "public_symbols": symbols,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,

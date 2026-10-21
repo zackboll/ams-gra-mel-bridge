@@ -135,6 +135,8 @@ def validate(site):
     from example_sources import References, verify_rendered
     references = References(ROOT, site)
     try:
+        import api_catalog
+        api_catalog.verify((site / "guides/api-map.html").read_text(), ROOT, references)
         verify_rendered((site / "guides/examples.html").read_text(), references=references)
     except ValueError as exc:
         raise SiteError(str(exc)) from exc

@@ -76,6 +76,7 @@ class References:
         from gnatdoc_inventory import specifications
         self.root = root
         native = root / "_site" if native is None else native
+        self.native_site = native
         self.native = Authority(root, native)
         self.packages = {name.lower(): "../api/" + page
                          for page, name in self.native.page_packages.items()}

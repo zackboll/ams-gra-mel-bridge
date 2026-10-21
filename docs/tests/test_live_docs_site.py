@@ -32,6 +32,12 @@ def server(handler):
         thread.join()
 
 
+def catalog_links():
+    from api_catalog import inventory, link_count
+    from ada_examples import References
+    return 3 + link_count(inventory(ROOT, References(ROOT, ROOT / "_site"), independent=True))
+
+
 class TransportTests(unittest.TestCase):
     def response(self, status=200, body=b"qualified", headers=None, location=None):
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -233,7 +239,7 @@ class QualifiedArtifactTests(unittest.TestCase):
             result = live.verify(self.site, ROOT / "_site", base, "a" * 40, loopback=True)
         self.assertTrue(result["passed"])
         self.assertEqual(len(result["publication_sha256"]), 43)
-        self.assertEqual(len(result["internal_references"]), 3525)
+        self.assertEqual(len(result["internal_references"]), 3525 + catalog_links())
         self.assertEqual(len(result["verified_symbol_destinations"]), 238)
         self.assertEqual(len(result["verified_local_type_destinations"]), 1428)
         self.assertEqual(len(result["ten_required_additions"]), 10)
