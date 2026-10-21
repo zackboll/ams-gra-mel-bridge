@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT / "docs/tools"))
 import build_enhanced_site as presentation
 
 
+def catalog_links():
+    from api_catalog import inventory, link_count
+    from ada_examples import References
+    return 3 + link_count(inventory(ROOT, References(ROOT, ROOT / "_site"), independent=True))
+
+
 class NavigationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -63,7 +69,7 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(restored.encode(), (self.original / "api/index.html").read_bytes())
         self.assertEqual((len(self.packages), len(self.tagged)), (29, 8))
         self.assertEqual(self.report["files"], 43)
-        self.assertEqual(self.report["links"], 3525)
+        self.assertEqual(self.report["links"], 3525 + catalog_links())
         self.assertEqual(self.report["output_sha256"], presentation.hashes(presentation.files(self.site)))
 
     def test_all_authored_and_native_non_html_bytes_preserved(self):

@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT / "docs/tools"))
 import build_enhanced_site as presentation
 
 
+def catalog_links():
+    from api_catalog import inventory, link_count
+    from ada_examples import References
+    return 3 + link_count(inventory(ROOT, References(ROOT, ROOT / "_site"), independent=True))
+
+
 class AuditOutputTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -104,7 +110,7 @@ class AuditOutputTests(unittest.TestCase):
         self.assertTrue(all(r["containing"]["source"].startswith("ada/src/")
                             and r["href"] == r["target"]["page"] + "#" + r["target"]["anchor"] for r in audit))
         self.assertEqual((report["files"], report["html_pages"], report["links"],
-                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3525, 1428, 0))
+                          report["linked_local_types"], report["linked_external_types"]), (43, 38, 3525 + catalog_links(), 1428, 0))
         self.assertEqual(report["output_sha256"], presentation.hashes(presentation.files(self.site)))
         self.assertTrue(self.before == self.checked_bytes(), "checked tree bytes changed")
 
