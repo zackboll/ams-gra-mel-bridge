@@ -50,6 +50,13 @@ PROPOSED_INSTRUMENTATION_TRANSITION = (
      "49deb479383a43f0eba2528b67bc595618dafd7f750de990f6343184b86fa179",
      "617b95eae28527b383b4d05708dfc667e633047b88313a038272b52c2221eb02"),
 )
+# IR-CI-003: independent exact navigation-test proposal, NOT review approval.
+# Retain every RF/IR/Instrumentation transition above without expansion.
+PROPOSED_NAVIGATION_TRANSITION = (
+    "native/tests/test_ir_navigation.c",
+    "56265cf8a44f1b054777b98457896dc338a79bb306b591b6ee8065c23b3ce224",
+    "7f5aaa15d731f3b5a8b429d42c39565b999a308e1428c01e3ca7c029fe2a36c5",
+)
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'
     r"(?P<char>'[^\n]')|(?P<word>[A-Za-z][A-Za-z0-9_]*|[0-9][A-Za-z0-9_#.]*)|"
@@ -174,6 +181,34 @@ def proposed_instrumentation_state(root, git, existing, current, base):
     return states["working tree"][0]
 
 
+def proposed_navigation_state(root, git, existing, current, base):
+    name, original, corrected = PROPOSED_NAVIGATION_TRANSITION
+    if name not in existing:
+        return None  # Ordinary inventory rules still reject adding this path.
+    if hashlib.sha256(git("show", f"{base}:{name}")).hexdigest() != original:
+        raise ValueError("proposed Navigation-test foundation bytes changed")
+    if name not in current:
+        raise ValueError("proposed Navigation-test index file missing")
+    path = root / name
+    if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o111:
+        raise ValueError("proposed Navigation-test working tree is not a regular nonexecutable file")
+    entry = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+    if (len(entry) != 2 or not entry[0].startswith(b"100644 ") or
+            entry[0].split(b"\t", 1)[0].split()[-1] != b"0"):
+        raise ValueError("proposed Navigation-test index entry is not a regular stage-0 file")
+    states = []
+    for view, content in (("working tree", path.read_bytes()),
+                          ("index", git("show", f":{name}"))):
+        digest = hashlib.sha256(content).hexdigest()
+        if digest not in (original, corrected):
+            raise ValueError(f"unlisted Navigation-test {view} bytes")
+        states.append("original" if digest == original else
+                      "proposed_pending_independent_review")
+    if states[0] != states[1]:
+        raise ValueError("proposed Navigation-test working tree/index state mismatch")
+    return states[0]
+
+
 def check(root=ROOT, base=BASE):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(root), *args])
@@ -186,9 +221,11 @@ def check(root=ROOT, base=BASE):
     transition = reviewed_native_test_state(root, git, existing, current, base)
     ir_transition = proposed_ir_test_state(root, git, existing, current, base)
     instrumentation = proposed_instrumentation_state(root, git, existing, current, base)
+    navigation = proposed_navigation_state(root, git, existing, current, base)
     reviewed_paths = {name for name, _, _ in REVIEWED_NATIVE_TEST_TRANSITION}
     proposed_ir_paths = {PROPOSED_IR_TEST_TRANSITION[0]}
     instrumentation_paths = {name for name, _, _ in PROPOSED_INSTRUMENTATION_TRANSITION}
+    navigation_paths = {PROPOSED_NAVIGATION_TRANSITION[0]}
     original_ada = {name for name in existing if name.startswith(("ada/src/", "ada/tests/src/"))
                     and Path(name).suffix in (".ads", ".adb")}
     current_ada = {path.relative_to(root).as_posix() for directory in ("ada/src", "ada/tests/src")
@@ -211,6 +248,9 @@ def check(root=ROOT, base=BASE):
         if name in instrumentation_paths:
             checked += 1  # Both views of the complete pair were checked above.
             continue
+        if name in navigation_paths:
+            checked += 1  # Both views of this independent singleton were checked.
+            continue
         path = root / name
         old = git("show", f"{base}:{name}")
         if not path.is_file():
@@ -225,7 +265,8 @@ def check(root=ROOT, base=BASE):
     return {"base": base, "protected_files": checked,
             "reviewed_native_tests": transition,
             "proposed_ir_test": ir_transition,
-            "proposed_instrumentation_tests": instrumentation}
+            "proposed_instrumentation_tests": instrumentation,
+            "proposed_navigation_test": navigation}
 
 
 if __name__ == "__main__":
