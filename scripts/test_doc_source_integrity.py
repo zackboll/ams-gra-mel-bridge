@@ -8,7 +8,7 @@ from pathlib import Path
 
 from check_doc_source_integrity import (
     BASE, ROOT, REVIEWED_NATIVE_TEST_TRANSITION, PROPOSED_IR_TEST_TRANSITION,
-    PROPOSED_INSTRUMENTATION_TRANSITION, check,
+    PROPOSED_INSTRUMENTATION_TRANSITION, PROPOSED_NAVIGATION_TRANSITION, check,
 )
 
 
@@ -110,6 +110,140 @@ class SourceIntegrityTests(unittest.TestCase):
         (self.root / 'ada/src/demo.ads').unlink()
         self.commit()
         with self.assertRaisesRegex(ValueError, 'Ada source inventory changed'):
+            check(self.root, self.base)
+
+
+class NavigationTransitionTests(unittest.TestCase):
+    git = SourceIntegrityTests.git
+    write = SourceIntegrityTests.write
+    commit = SourceIntegrityTests.commit
+    name = 'native/tests/test_ir_navigation.c'
+    original_digest = '56265cf8a44f1b054777b98457896dc338a79bb306b591b6ee8065c23b3ce224'
+    proposed_digest = '7f5aaa15d731f3b5a8b429d42c39565b999a308e1428c01e3ca7c029fe2a36c5'
+
+    def setUp(self):
+        SourceIntegrityTests.setUp(self)
+        self.assertEqual(PROPOSED_NAVIGATION_TRANSITION,
+                         (self.name, self.original_digest, self.proposed_digest))
+        self.original = subprocess.check_output(['git', '-C', str(ROOT), 'show', f'{BASE}:{self.name}'])
+        self.assertEqual(hashlib.sha256(self.original).hexdigest(), self.original_digest)
+        text = self.original.decode()
+        edits = [
+            ('    size_t size;\n    CHECK(file != NULL);',
+             '    size_t size;\n    int overflow;\n    CHECK(capacity > 1U);\n    CHECK(file != NULL);'),
+            ('    size = fread(buffer, 1, capacity - 1U, file);\n',
+             "    size = fread(buffer, 1, capacity - 1U, file);\n    buffer[size] = '\\0';\n    overflow = size == capacity - 1U ? fgetc(file) : EOF;\n"),
+            ("    CHECK(fclose(file) == 0);\n    buffer[size] = '\\0';\n",
+             "    CHECK(fclose(file) == 0);\n"
+             "    if (overflow != EOF || memchr(buffer, '\\0', size) != NULL) {\n"
+             '        fprintf(stderr, "Malformed or truncated lifetime log; retained log %s\\n", path);\n'
+             '        return EXIT_FAILURE;\n    }\n'),
+            ('/* A provider completion thread may be scheduled well after its timed wait.',
+             '/* Events are complete newline-delimited records, not matching substrings of\n'
+             '   another event or an unfinished write. */\n'
+             'static const char *log_marker(const char *text, const char *marker)\n'
+             '{\n    const size_t size = strlen(marker);\n    const char *cursor = text;\n'
+             '    while ((cursor = strstr(cursor, marker)) != NULL) {\n'
+             "        if ((cursor == text || cursor[-1] == '\\n') && cursor[size] == '\\n')\n"
+             '            return cursor;\n        ++cursor;\n    }\n    return NULL;\n}\n\n'
+             '/* A provider completion thread may be scheduled well after its timed wait.'),
+            ('if (strstr(buffer, marker) != NULL) return EXIT_SUCCESS;',
+             'if (log_marker(buffer, marker) != NULL) return EXIT_SUCCESS;'),
+            ('const char *a = strstr(text, first);', 'const char *a = log_marker(text, first);'),
+            ('const char *b = strstr(text, second);', 'const char *b = log_marker(text, second);'),
+        ]
+        for old, new in edits:
+            self.assertEqual(text.count(old), 1)
+            text = text.replace(old, new, 1)
+        start = text.index('static int test_request_close_while_pending(void)\n')
+        old = ('    {\n        const struct timespec delay = {0, 200000000L};\n'
+               '        CHECK(nanosleep(&delay, NULL) == 0);\n    }\n'
+               '    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);\n')
+        new = ('    /* Close is not cancellation or a completion barrier. Observe final deferred\n'
+               "       teardown, retaining the bounded wait's log diagnostics on failure. */\n"
+               '    CHECK(wait_for_log_marker(path, "library_unloaded", log, sizeof log) == EXIT_SUCCESS);\n')
+        self.assertIn(old, text[start:])
+        self.proposed = (text[:start] + text[start:].replace(old, new, 1)).encode()
+        self.assertEqual(hashlib.sha256(self.proposed).hexdigest(), self.proposed_digest)
+        self.path = self.root / self.name
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_bytes(self.original)
+        self.commit()
+        self.base = self.git('rev-parse', 'HEAD').decode().strip()
+
+    def stage(self, content):
+        self.path.write_bytes(content)
+        self.git('add', self.name)
+
+    def test_original_and_exact_proposal_accepted_not_approved(self):
+        for content, expected in [(self.original, 'original'),
+                                  (self.proposed, 'proposed_pending_independent_review')]:
+            self.stage(content)
+            self.assertEqual(check(self.root, self.base)['proposed_navigation_test'], expected)
+
+    def test_mixed_index_worktree_rejected_both_directions(self):
+        for indexed, working in [(self.original, self.proposed), (self.proposed, self.original)]:
+            self.stage(indexed)
+            self.path.write_bytes(working)
+            with self.assertRaisesRegex(ValueError, 'working tree/index state mismatch'):
+                check(self.root, self.base)
+
+    def test_unrecognized_working_and_index_bytes_rejected(self):
+        for view in ['working', 'index']:
+            self.stage(self.original)
+            self.path.write_bytes(self.proposed + b'/* unreviewed */\n')
+            if view == 'index':
+                self.git('add', self.name)
+                self.path.write_bytes(self.proposed)
+            with self.assertRaisesRegex(ValueError, 'unlisted Navigation-test'):
+                check(self.root, self.base)
+
+    def test_partial_wait_only_correction_rejected(self):
+        text = self.original.decode()
+        offset = text.index('static int test_request_close_while_pending(void)\n')
+        tail = text[offset:].replace('CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);',
+                                    'CHECK(wait_for_log_marker(path, "library_unloaded", log, sizeof log) == EXIT_SUCCESS);', 1)
+        self.stage((text[:offset] + tail).encode())
+        with self.assertRaisesRegex(ValueError, 'unlisted Navigation-test'):
+            check(self.root, self.base)
+
+    def test_wrong_foundation_rejected(self):
+        self.stage(self.proposed)
+        self.commit()
+        with self.assertRaisesRegex(ValueError, 'foundation bytes changed'):
+            check(self.root, self.git('rev-parse', 'HEAD').decode().strip())
+
+    def test_missing_and_symlink_working_rejected(self):
+        self.path.unlink()
+        with self.assertRaisesRegex(ValueError, 'regular nonexecutable'):
+            check(self.root, self.base)
+        self.path.symlink_to(self.root / 'native/src/existing.cpp')
+        with self.assertRaisesRegex(ValueError, 'regular nonexecutable'):
+            check(self.root, self.base)
+
+    def test_executable_working_file_rejected(self):
+        self.path.chmod(0o755)
+        with self.assertRaisesRegex(ValueError, 'regular nonexecutable'):
+            check(self.root, self.base)
+
+    def test_nonregular_or_unmerged_index_rejected(self):
+        for mode in ['120000', '100755', '160000', 'unmerged']:
+            self.git('update-index', '--force-remove', self.name)
+            self.stage(self.proposed)
+            blob = self.git('rev-parse', f':{self.name}').decode().strip()
+            if mode == 'unmerged':
+                self.git('update-index', '--force-remove', self.name)
+                subprocess.run(['git', '-C', str(self.root), 'update-index', '--index-info'],
+                               input=f'100644 {blob} 1\t{self.name}\n100644 {blob} 2\t{self.name}\n'.encode(), check=True)
+            else:
+                self.git('update-index', '--cacheinfo', f'{mode},{self.base if mode == "160000" else blob},{self.name}')
+            with self.assertRaisesRegex(ValueError, 'regular stage-0'):
+                check(self.root, self.base)
+
+    def test_unrelated_native_bytes_remain_protected(self):
+        self.stage(self.proposed)
+        self.write('native/src/existing.cpp', 'int value = 2;\n')
+        with self.assertRaisesRegex(ValueError, 'production bytes changed'):
             check(self.root, self.base)
 
 

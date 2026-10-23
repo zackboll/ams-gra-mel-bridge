@@ -103,12 +103,33 @@ static int read_log(const char *path, char *buffer, size_t capacity)
 {
     FILE *file = fopen(path, "rb");
     size_t size;
+    int overflow;
+    CHECK(capacity > 1U);
     CHECK(file != NULL);
     size = fread(buffer, 1, capacity - 1U, file);
+    buffer[size] = '\0';
+    overflow = size == capacity - 1U ? fgetc(file) : EOF;
     CHECK(!ferror(file));
     CHECK(fclose(file) == 0);
-    buffer[size] = '\0';
+    if (overflow != EOF || memchr(buffer, '\0', size) != NULL) {
+        fprintf(stderr, "Malformed or truncated lifetime log; retained log %s\n", path);
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
+}
+
+/* Events are complete newline-delimited records, not matching substrings of
+   another event or an unfinished write. */
+static const char *log_marker(const char *text, const char *marker)
+{
+    const size_t size = strlen(marker);
+    const char *cursor = text;
+    while ((cursor = strstr(cursor, marker)) != NULL) {
+        if ((cursor == text || cursor[-1] == '\n') && cursor[size] == '\n')
+            return cursor;
+        ++cursor;
+    }
+    return NULL;
 }
 
 /* A provider completion thread may be scheduled well after its timed wait.
@@ -124,7 +145,7 @@ static int wait_for_log_marker(const char *path, const char *marker,
         struct timespec now;
         struct timespec remaining = {0, 5000000L};
         CHECK(read_log(path, buffer, capacity) == EXIT_SUCCESS);
-        if (strstr(buffer, marker) != NULL) return EXIT_SUCCESS;
+        if (log_marker(buffer, marker) != NULL) return EXIT_SUCCESS;
         CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
         if (now.tv_sec > deadline.tv_sec ||
             (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
@@ -145,8 +166,8 @@ static int wait_for_log_marker(const char *path, const char *marker,
 
 static int check_order(const char *text, const char *first, const char *second)
 {
-    const char *a = strstr(text, first);
-    const char *b = strstr(text, second);
+    const char *a = log_marker(text, first);
+    const char *b = log_marker(text, second);
     CHECK(a != NULL && b != NULL && a < b);
     return EXIT_SUCCESS;
 }
@@ -430,11 +451,9 @@ static int test_request_close_while_pending(void)
     CHECK(ams_mel_ir_navigation_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_stream_close(&stream, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_session_close(&session, NULL, 0, NULL) == AMS_MEL_OK);
-    {
-        const struct timespec delay = {0, 200000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    /* Close is not cancellation or a completion barrier. Observe final deferred
+       teardown, retaining the bounded wait's log diagnostics on failure. */
+    CHECK(wait_for_log_marker(path, "library_unloaded", log, sizeof log) == EXIT_SUCCESS);
     CHECK(strstr(log, "navigation_sent") != NULL);
     CHECK(strstr(log, "navigation_completed") != NULL);
     CHECK(strstr(log, "channel_destroyed") != NULL);
