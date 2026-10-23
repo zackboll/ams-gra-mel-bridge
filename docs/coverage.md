@@ -1,5 +1,18 @@
 # Implementation coverage
 
+## CI-001R2 — reviewed documentation inventory transition
+
+The documentation qualifier retains the immutable 497-test DOC-012 inventory,
+all 49 original CI-001 controls, and the narrow workflow-topology exception.
+An independently pinned, ancestry-checked IR-CI-003 merge authorizes only its
+exact nine policy additions and twelve compiled-C observer tests. The observers
+belong to the existing remaining shard. Twelve additional regression controls
+bring the required inventory to 579 tests (142 script-side, 437 enhanced), with
+all six shards and exact-once artifact/aggregate checks retained. No native,
+binding, provider, example, or publication behavior changes. See
+`ci-001r2-inventory-reconciliation.md` for immutable identities, hashes, ownership,
+and qualification protocol; completed exact-head evidence belongs in PR #125.
+
 ## CI-110-R2 — RF interval-status test ownership observation
 
 The final shutdown-exception regression now counts the selected mock C2 owner,
