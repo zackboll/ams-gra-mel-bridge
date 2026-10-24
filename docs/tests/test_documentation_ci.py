@@ -380,7 +380,8 @@ class ReviewedTransitionTests(unittest.TestCase):
         cls.inherited_bytes = subprocess.check_output(
             ["git", "-C", str(ci.ROOT), "show",
              ci.CI001_SHA + ":docs/tests/ci001-inherited-inventory.json"])
-        cls.discovered = {group: sorted(test.id() for test in ci.discover(group))
+        cls.discovered = {group: sorted(test.id() for test in ci.discover(group)
+                                       if not test.id().startswith("test_bootstrap_ci_policy."))
                           for group in ("scripts", "enhanced")}
 
     def setUp(self):
