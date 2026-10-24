@@ -1,5 +1,17 @@
 # Implementation coverage
 
+## CI-002 — conservative Bootstrap native qualification
+
+Main-only push triggering removes redundant feature-push Bootstrap runs while
+retaining PR and manual qualification. All eight jobs remain; ordinary native
+coverage and installation are unconditional. Only explicitly allowlisted static
+Markdown changes with reconciled complete Git tree/diff authority omit the 50x
+stress campaign. Unknown paths, runtime changes and main/manual events retain
+full stress. Forty additive controls bring documentation inventory to 619 tests
+(142 scripts, 477 enhanced). The exact workflow source-integrity transition is
+proposed pending independent review, not self-approved. See
+`ci-002-bootstrap-policy.md` for source identities, policy and maintainer gates.
+
 ## CI-001R2 — reviewed documentation inventory transition
 
 The documentation qualifier retains the immutable 497-test DOC-012 inventory,

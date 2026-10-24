@@ -24,9 +24,10 @@ SHARDS = {
     "types": ["test_type_link_completeness", "test_local_type_audit"],
     "remaining": ["test_ada_examples", "test_document_metadata", "test_audit_output",
                   "test_examples", "test_documentation_ci",
-                  "test_navigation_completion_observation"],
+                  "test_navigation_completion_observation", "test_bootstrap_ci_policy"],
 }
 INHERITED = ROOT / "docs/tests/ci001-inherited-inventory.json"
+CI002_TEST_SHA256 = "96283fe1f24b76c9c8c3e448ff1a59a2c24f89b3538ae7eaf5b9524fbab0d11f"
 BASELINE_SHA = "9288f6acd4cbf807f576d387db390459f0b117c0"
 CI001_SHA = "a0900430d3b2db8ac5dd9d065eaa66aa88ed6751"
 IR_CI003_SHA = "45f0d147521354777a8ace214172ff268e1c3355"
@@ -176,6 +177,25 @@ def source_methods(content, module):
 
 def validate_inventory(groups, root=None):
     root = ROOT if root is None else Path(root)
+    # CI-002 is additive. Reconcile its exact source-derived identities before
+    # applying the unchanged historical 579-test reconciliation below. Minimal
+    # CI-001R2 fixtures omit this module and continue testing that boundary.
+    ci002_name = "docs/tests/test_bootstrap_ci_policy.py"
+    ci002_path = root / ci002_name
+    ci002 = set()
+    if ci002_path.exists():
+        content = ci002_path.read_bytes()
+        require(hashlib.sha256(content).hexdigest() == CI002_TEST_SHA256,
+                "CI-002 control source changed")
+        ci002 = set(source_methods(content, "test_bootstrap_ci_policy"))
+        require(len(ci002) == 40, "CI-002 control inventory changed")
+        require(set(groups["enhanced"]) >= ci002 and
+                all(groups["enhanced"].count(name) == 1 for name in ci002),
+                "CI-002 control missing or duplicated")
+    else:
+        require(root != ROOT, "CI-002 control source missing")
+    groups = {group: [name for name in names if name not in ci002]
+              for group, names in groups.items()}
     reviewed_authorities(BASELINE_SHA, IR_CI003_SHA, CI001_SHA)
     inventory_name = "docs/tests/ci001-inherited-inventory.json"
     inherited_bytes = git_bytes(CI001_SHA, inventory_name)
@@ -240,7 +260,8 @@ def validate_inventory(groups, root=None):
     source_names = {p.relative_to(root).as_posix()
                     for directory, pattern in (("scripts", "test_*doc*.py"), ("docs/tests", "test_*.py"))
                     for p in (root / directory).glob(pattern)}
-    require(source_names == protected | {controls_name, observer_name}, "unauthorized test source addition/removal")
+    require(source_names - ({ci002_name} if ci002 else set()) ==
+            protected | {controls_name, observer_name}, "unauthorized test source addition/removal")
     require(set(groups) == {"scripts", "enhanced"}, "unexpected inventory groups")
     for group, ids in groups.items():
         require(len(ids) == len(set(ids)), "duplicate discovered identity: " + group)
@@ -264,7 +285,7 @@ def inventory():
     shards = assign(groups["enhanced"])
     require({key: len(value) for key, value in shards.items()} == {
         "navigation": 34, "publication": 35, "live": 72,
-        "symbols-catalog": 57, "types": 52, "remaining": 187}, "reviewed shard inventory changed")
+        "symbols-catalog": 57, "types": 52, "remaining": 227}, "reviewed shard inventory changed")
     return {"schema": 1, "groups": groups, "shards": shards,
             "inherited_sha256": file_sha(INHERITED),
             "test_sources": {p.relative_to(ROOT).as_posix(): file_sha(p)
