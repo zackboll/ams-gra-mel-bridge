@@ -369,13 +369,16 @@ class WorkflowTests(unittest.TestCase):
         text = (ROOT / ".github/workflows/documentation.yml").read_text()
         live_job = text.split("  verify-live:\n")[1]
         self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", live_job)
-        self.assertIn("needs: deploy", live_job)
+        self.assertIn("needs: [prepare-documentation, build, deploy]", live_job)
         self.assertIn("contents: read", live_job)
         self.assertIn("actions: read", live_job)
         self.assertNotIn(": write", live_job)
         self.assertIn("ref: ${{ github.sha }}", live_job)
-        self.assertIn("name: ada-api-${{ github.sha }}", live_job)
-        self.assertIn("name: ada-api-pristine-${{ github.sha }}", live_job)
+        self.assertIn("artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}", live_job)
+        self.assertIn("artifact-ids: ${{ needs.build.outputs.gate_id }}", live_job)
+        self.assertIn("--artifact _site-published --pristine _site", live_job)
+        self.assertIn("documentation_ci.py deployment", live_job)
+        self.assertIn("--gate-sha '${{ needs.build.outputs.gate_sha }}'", live_job)
         self.assertNotIn("run-id:", live_job)
         self.assertNotIn("secrets.", live_job)
         self.assertIn("if: always()", live_job)
@@ -383,7 +386,10 @@ class WorkflowTests(unittest.TestCase):
 
     def test_pr_fixture_discovery_retained(self):
         text = (ROOT / ".github/workflows/documentation.yml").read_text()
-        self.assertIn("-m unittest discover -s docs/tests -p 'test_*.py' -v", text)
+        self.assertIn("documentation_ci.py inventory", text)
+        self.assertIn("--owner '${{ matrix.shard }}'", text)
+        self.assertIn("shard: [navigation, publication, live, symbols-catalog, types, remaining]", text)
+        self.assertIn("documentation_ci.py aggregate", text)
         self.assertIn("Compile and execute canonical public Ada examples", text)
         self.assertIn("DOC_EXAMPLES_ALIRE_SETTINGS", text)
 
