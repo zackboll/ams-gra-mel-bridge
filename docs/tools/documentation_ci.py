@@ -27,7 +27,7 @@ SHARDS = {
                   "test_navigation_completion_observation", "test_bootstrap_ci_policy"],
 }
 INHERITED = ROOT / "docs/tests/ci001-inherited-inventory.json"
-CI002_TEST_SHA256 = "96283fe1f24b76c9c8c3e448ff1a59a2c24f89b3538ae7eaf5b9524fbab0d11f"
+CI002_TEST_SHA256 = "7ce1f723cda1a8566078df386eb0765dd846d1996b00a9a9a5b22c05c1f597ba"
 BASELINE_SHA = "9288f6acd4cbf807f576d387db390459f0b117c0"
 CI001_SHA = "a0900430d3b2db8ac5dd9d065eaa66aa88ed6751"
 IR_CI003_SHA = "45f0d147521354777a8ace214172ff268e1c3355"
@@ -188,7 +188,11 @@ def validate_inventory(groups, root=None):
         require(hashlib.sha256(content).hexdigest() == CI002_TEST_SHA256,
                 "CI-002 control source changed")
         ci002 = set(source_methods(content, "test_bootstrap_ci_policy"))
-        require(len(ci002) == 40, "CI-002 control inventory changed")
+        require(len(ci002) == 71, "CI-002 control inventory changed")
+        original_ci002 = source_methods(git_bytes(
+            "cec2a98ee90cbf532c66ddf8c1ff13e86b6b6ae0", ci002_name), "test_bootstrap_ci_policy")
+        require(len(original_ci002) == 40 and set(original_ci002) <= ci002,
+                "original CI-002 identity removed")
         require(set(groups["enhanced"]) >= ci002 and
                 all(groups["enhanced"].count(name) == 1 for name in ci002),
                 "CI-002 control missing or duplicated")
@@ -285,7 +289,7 @@ def inventory():
     shards = assign(groups["enhanced"])
     require({key: len(value) for key, value in shards.items()} == {
         "navigation": 34, "publication": 35, "live": 72,
-        "symbols-catalog": 57, "types": 52, "remaining": 227}, "reviewed shard inventory changed")
+        "symbols-catalog": 57, "types": 52, "remaining": 258}, "reviewed shard inventory changed")
     return {"schema": 1, "groups": groups, "shards": shards,
             "inherited_sha256": file_sha(INHERITED),
             "test_sources": {p.relative_to(ROOT).as_posix(): file_sha(p)

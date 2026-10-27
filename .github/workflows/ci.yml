@@ -12,6 +12,10 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-24.04
+    env:
+      BOOTSTRAP_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      BOOTSTRAP_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      BOOTSTRAP_BUILD_SHA: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,8 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Verify merge-result source and classify PR changes
+        run: python3 docs/tools/bootstrap_ci_policy.py --fetch --verify-only --audit "$RUNNER_TEMP/bootstrap-policy.json"
       - name: Configure
         shell: bash
         run: |
@@ -34,10 +39,7 @@ jobs:
             -DAMS_MEL_BUILD_TESTS=ON \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       - name: Qualify source policy, build, test and install
-        env:
-          BOOTSTRAP_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          BOOTSTRAP_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: python3 docs/tools/bootstrap_ci_policy.py --fetch --execute
+        run: python3 docs/tools/bootstrap_ci_policy.py --fetch --execute --audit "$RUNNER_TEMP/bootstrap-policy.json"
 
   build-tree-isolation:
     runs-on: ubuntu-24.04

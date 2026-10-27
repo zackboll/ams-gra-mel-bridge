@@ -7,10 +7,29 @@ retaining PR and manual qualification. All eight jobs remain; ordinary native
 coverage and installation are unconditional. Only explicitly allowlisted static
 Markdown changes with reconciled complete Git tree/diff authority omit the 50x
 stress campaign. Unknown paths, runtime changes and main/manual events retain
-full stress. Forty additive controls bring documentation inventory to 619 tests
-(142 scripts, 477 enhanced). The exact workflow source-integrity transition is
+full stress. CI-002R1 restores native synthetic-merge checkout and validates exact
+ordered base/head parents and reconstructed merge tree before configuration,
+separately from PR-specific risk classification. All forty CI-002 identities
+plus 31 corrective controls bring documentation inventory to 650 tests
+(142 scripts, 508 enhanced). Real divergent-branch C fixtures observe the combined
+native implementation, not stale feature code. CI-002R2 incorporates main's
+IR-CI-004 bounded malformed-counter observation without changing its bytes or
+discarding historical source authorities. The exact corrected workflow
+source-integrity transition is
 proposed pending independent review, not self-approved. See
 `ci-002-bootstrap-policy.md` for source identities, policy and maintainer gates.
+
+## IR-CI-004 — proposed malformed-counter observation correction
+
+The native malformed-frame test keeps its 20 ms receive-timeout and rejection
+assertions but independently observes asynchronous accounting with a bounded
+monotonic deadline. External provider-barrier controls demonstrate early
+observation, correct accounting after callback return, and failure when delivery
+never completes. No production/provider/ABI/Ada changes. The exact IR C-test
+source-policy successor remains proposed pending independent approval; historical
+RF/IR/Instrumentation/Navigation transitions and documentation inventories remain
+unchanged. See `ir-ci-004-malformed-counter-observation.md` for identities,
+approved-edit proposal, controls, qualification protocol and preservation limits.
 
 ## CI-001R2 — reviewed documentation inventory transition
 

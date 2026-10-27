@@ -40,6 +40,14 @@ PROPOSED_IR_TEST_TRANSITION = (
     "6a2bb092ce231dd794769194476500e9498f50d34bb30f8c290784a76e39d46b",
     "fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400",
 )
+# IR-CI-004 successor proposal only; not independent source-policy approval.
+# Preserve IR-CI-001 above as historical authority. Only this exact complete
+# successor of reviewed main 5c136a04ff64d980df7aaa2bd1ee49e1ed80daaf is added.
+PROPOSED_IR_COUNTER_TRANSITION = (
+    "native/tests/test_ir_stream.c",
+    "fa724b84a4c0ac06e77ffedd4fea81b225e20a0d5a28e12d02eaa2b1a277d400",
+    "bad90aacb6e19ea19f965c56e07d7856ae1a04696e1a900c90cf91641ba71e32",
+)
 # IR-CI-002 R2: atomic Instrumentation proposal, NOT independent approval.
 # The failed R1 C-test identity is historical evidence, not a third valid state.
 PROPOSED_INSTRUMENTATION_TRANSITION = (
@@ -58,10 +66,12 @@ PROPOSED_NAVIGATION_TRANSITION = (
     "7f5aaa15d731f3b5a8b429d42c39565b999a308e1428c01e3ca7c029fe2a36c5",
 )
 # CI-002 exact complete-file proposal; mechanical acceptance is NOT approval.
+# Superseded CI-002 HEAD-only proposal (historical evidence, NOT admitted):
+# e42d0031368885935b5157babe9f9b2063f157842a306a25995130789fb0fe8c
 PROPOSED_BOOTSTRAP_TRANSITION = (
     ".github/workflows/ci.yml",
     "47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
-    "e42d0031368885935b5157babe9f9b2063f157842a306a25995130789fb0fe8c",
+    "c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2",
 )
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'
@@ -126,6 +136,9 @@ def reviewed_native_test_state(root, git, existing, current, base):
 
 def proposed_ir_test_state(root, git, existing, current, base):
     name, original, corrected = PROPOSED_IR_TEST_TRANSITION
+    successor_name, predecessor, successor = PROPOSED_IR_COUNTER_TRANSITION
+    if successor_name != name or predecessor != corrected:
+        raise ValueError("proposed IR-test successor predecessor mismatch")
     if name not in existing:
         # Minimal fixtures can omit IR; ordinary inventory rules still apply.
         return None
@@ -136,6 +149,8 @@ def proposed_ir_test_state(root, git, existing, current, base):
     path = root / name
     if path.is_symlink() or not path.is_file():
         raise ValueError("proposed IR-test working tree file missing or symlink")
+    if path.stat().st_mode & 0o111:
+        raise ValueError("proposed IR-test working tree file executable")
     entry = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
     if (len(entry) != 2 or not entry[0].startswith(b"100644 ") or
             entry[0].split(b"\t", 1)[0].split()[-1] != b"0"):
@@ -144,10 +159,11 @@ def proposed_ir_test_state(root, git, existing, current, base):
     for view, content in (("working tree", path.read_bytes()),
                           ("index", git("show", f":{name}"))):
         digest = hashlib.sha256(content).hexdigest()
-        if digest not in (original, corrected):
+        if digest not in (original, corrected, successor):
             raise ValueError(f"unlisted IR-test {view} bytes")
         states.append("original" if digest == original else
-                      "proposed_pending_independent_review")
+                      "proposed_pending_independent_review" if digest == corrected else
+                      "counter_observation_proposed_pending_independent_review")
     if states[0] != states[1]:
         raise ValueError("proposed IR-test working tree/index state mismatch")
     return states[0]

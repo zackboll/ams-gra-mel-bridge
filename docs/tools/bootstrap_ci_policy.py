@@ -28,7 +28,7 @@ def require(condition, message):
 
 
 def git(root, *args):
-    return subprocess.check_output(["git", "-C", str(root), *args])
+    return subprocess.check_output(["git", "--no-replace-objects", "-C", str(root), *args])
 
 
 def sha(value):
@@ -103,27 +103,52 @@ def classify_changes(changes):
     return COMPLETE_SMOKE
 
 
-def classify(root, event, head, base=None, fetch=False):
+def commit(root, revision):
+    """Read topology from the actual object, never replace refs or display grafts."""
+    require(git(root, "cat-file", "-t", revision).strip() == b"commit",
+            "source identity is not a commit")
+    headers = git(root, "cat-file", "commit", revision).split(b"\n\n", 1)[0].splitlines()
+    trees = [line[5:].decode("ascii") for line in headers if line.startswith(b"tree ")]
+    parents = [sha(line[7:].decode("ascii")) for line in headers if line.startswith(b"parent ")]
+    require(len(trees) == 1, "invalid commit tree")
+    return sha(trees[0]), parents
+
+
+def classify(root, event, head, base=None, build=None, fetch=False):
     """Failure to establish complete authority raises: the native job fails closed."""
     sha(head)
-    require(git(root, "rev-parse", "HEAD").decode().strip() == head,
+    sha(build)
+    require(git(root, "rev-parse", "HEAD").decode().strip() == build,
             "checked-out source identity mismatch")
     require(not git(root, "status", "--porcelain", "--untracked-files=no"),
             "tracked source differs from checked-out identity")
-    audit = {"event": event, "head": head, "mode": FULL_STRESS,
+    require(git(root, "rev-parse", "--is-shallow-repository").strip() == b"false",
+            "incomplete history")
+    build_tree, parents = commit(root, build)
+    commit(root, head)
+    # A non-shallow repository can still have missing ancestors/trees/blobs.
+    # Traverse the complete reachable source history, not just the merge base.
+    # --missing=error must fail rather than accepting partial-clone omissions.
+    git(root, "rev-list", "--objects", "--no-object-names", "--missing=error", build, head)
+    audit = {"event": event, "head": head, "build": build, "build_tree": build_tree,
+             "build_parents": parents, "mode": FULL_STRESS,
+             "build_authority": "verified immutable event commit and clean checkout",
              "authority": "immutable event source; stress is the default"}
     if event != "pull_request":
+        require(head == build, "non-PR head/build identity mismatch")
         return audit
     sha(base)
     if fetch:
         # checkout uses fetch-depth: 0; explicitly fetch the event base even if
         # main has advanced. Never substitute the current branch tip.
         git(root, "fetch", "--no-tags", "origin", base)
-    require(git(root, "rev-parse", "--is-shallow-repository").strip() == b"false",
-            "incomplete history")
-    for revision in (head, base):
-        require(git(root, "cat-file", "-t", revision).strip() == b"commit",
-                "source identity is not a commit")
+    commit(root, base)
+    require(parents == [base, head], "synthetic merge parents differ from ordered event base/head")
+    # Requires Git's ort merge-tree support. An unavailable command, conflict or
+    # mismatch fails the job; never fall back to building the feature head.
+    reconstructed = sha(git(root, "merge-tree", "--write-tree", "--no-messages",
+                            base, head).decode().strip())
+    require(build_tree == reconstructed, "synthetic merge tree differs from reconstructed merge")
     bases = git(root, "merge-base", "--all", base, head).decode().splitlines()
     require(len(bases) == 1, "missing or ambiguous merge base")
     ancestor = sha(bases[0])
@@ -139,6 +164,8 @@ def classify(root, event, head, base=None, fetch=False):
         require(git(root, "diff", "--raw", "-z", ancestor, head, "--") == b"",
                 "anomalous empty source delta")
     audit.update(base=base, merge_base=ancestor, mode=classify_changes(changes),
+                 reconstructed_merge_tree=reconstructed,
+                 build_authority="event synthetic merge; ordered base/head parents and reconstructed tree",
                  authority="complete merge-base/head trees reconciled with NUL raw diff",
                  paths=[os.fsdecode(name) for name in sorted(changes)])
     return audit
@@ -155,20 +182,44 @@ def native_commands(mode, build="build/native", prefix="build/install"):
     return commands
 
 
-def execute(commands):
+def execute(commands, verify=None):
     for command in commands:
+        if verify is not None:
+            verify()
         print(json.dumps({"execute": command}), flush=True)
         subprocess.run(command, check=True)
+        if verify is not None:
+            verify()
+
+
+def verify_record(root, event, head, base, build, record):
+    current = classify(root, event, head, base, build)
+    require(current == record, "source authority changed since pre-configuration verification")
+    return current
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--execute", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--execute", action="store_true")
+    mode.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--audit", type=Path)
     parser.add_argument("--fetch", action="store_true")
     args = parser.parse_args()
-    audit = classify(Path.cwd(), os.environ["GITHUB_EVENT_NAME"],
-                     os.environ.get("BOOTSTRAP_HEAD_SHA"),
-                     os.environ.get("BOOTSTRAP_BASE_SHA"), fetch=args.fetch)
+    root = Path.cwd()
+    identities = (os.environ["GITHUB_EVENT_NAME"], os.environ.get("BOOTSTRAP_HEAD_SHA"),
+                  os.environ.get("BOOTSTRAP_BASE_SHA"), os.environ.get("BOOTSTRAP_BUILD_SHA"))
+    require(not (args.execute or args.verify_only) or args.audit is not None,
+            "verification/execution requires the pre-configuration audit path")
+    audit = classify(root, *identities, fetch=args.fetch)
+    if args.verify_only:
+        # Exclusive creation prevents reuse of a previous qualification record.
+        with args.audit.open("x") as stream:
+            json.dump(audit, stream, sort_keys=True)
+            stream.write("\n")
+    if args.execute:
+        record = json.loads(args.audit.read_bytes())
+        verify_record(root, *identities, record)
     commands = native_commands(audit["mode"])
     print(json.dumps({**audit, "commands": commands}, sort_keys=True), flush=True)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -176,7 +227,7 @@ def main():
             stream.write("### Native qualification policy\n```json\n" +
                          json.dumps(audit, sort_keys=True, indent=2) + "\n```\n")
     if args.execute:
-        execute(commands)
+        execute(commands, verify=lambda: verify_record(root, *identities, record))
 
 
 if __name__ == "__main__":
