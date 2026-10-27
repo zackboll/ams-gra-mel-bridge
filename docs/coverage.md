@@ -947,6 +947,16 @@ Track; see `task-032a2-common-access-image.md`.
 | Alire/crates.io publication | Not performed | Rust crates also remain unpublished |
 | Formal verification / GRA compliance | Not claimed | Separate evidence required |
 
+## IRMEL-ADA-001 — complete pinned IR coverage baseline
+
+The authoritative current IR declaration audit is now the offline-validated
+[IR MEL Ada coverage inventory](irmel-ada-coverage.md), backed by independently
+pinned upstream Git evidence, per-overload implementation mappings and negative
+regression controls. Historical task tables above describe their own slices,
+not the entire upstream API. This audit adds no IR functionality, public Ada
+source, native ABI, provider behavior, or vendored header. Run
+`make check-ir-api-coverage`; the existing Ada validation path runs it too.
+
 ## Ada IR feature-family progress
 
 | Feature family | Ada status |
