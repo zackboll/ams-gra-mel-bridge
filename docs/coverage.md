@@ -1,5 +1,17 @@
 # Implementation coverage
 
+## IR-CI-004 — proposed malformed-counter observation correction
+
+The native malformed-frame test keeps its 20 ms receive-timeout and rejection
+assertions but independently observes asynchronous accounting with a bounded
+monotonic deadline. External provider-barrier controls demonstrate early
+observation, correct accounting after callback return, and failure when delivery
+never completes. No production/provider/ABI/Ada changes. The exact IR C-test
+source-policy successor remains proposed pending independent approval; historical
+RF/IR/Instrumentation/Navigation transitions and documentation inventories remain
+unchanged. See `ir-ci-004-malformed-counter-observation.md` for identities,
+approved-edit proposal, controls, qualification protocol and preservation limits.
+
 ## CI-001R2 — reviewed documentation inventory transition
 
 The documentation qualifier retains the immutable 497-test DOC-012 inventory,

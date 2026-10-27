@@ -800,6 +800,33 @@ static int test_overflow(void)
     return EXIT_SUCCESS;
 }
 
+/* Receive timeout proves that no accepted frame arrived, not that the
+ * asynchronous producer has delivered a rejected frame. Observe accounting
+ * separately; never retry a failed API call or infer completion from sleep. */
+static int wait_for_malformed_counters(ams_mel_ir_stream *stream,
+                                      const char *scenario,
+                                      ams_mel_ir_stream_counters_v1 *counters)
+{
+    struct timespec deadline, now;
+    const struct timespec interval = {0, 1000000};
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &deadline) == 0);
+    deadline.tv_sec += 2;
+    for (;;) {
+        CHECK(ams_mel_ir_stream_get_counters(stream, counters, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+        if (now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
+            fprintf(stderr, "malformed counter deadline (%s): received=%llu malformed=%llu\n",
+                    scenario, (unsigned long long)counters->frames_received,
+                    (unsigned long long)counters->malformed_or_unsupported_frames);
+            return EXIT_FAILURE;
+        }
+        if (counters->frames_received >= 1 &&
+            counters->malformed_or_unsupported_frames >= 1) return EXIT_SUCCESS;
+        CHECK(nanosleep(&interval, NULL) == 0);
+    }
+}
+
 static int test_malformed(const char *scenario)
 {
     ams_mel_session *session = NULL; ams_mel_ir_stream *stream = NULL;
@@ -809,9 +836,13 @@ static int test_malformed(const char *scenario)
     CHECK(open_stream(scenario, &session, &stream, &config) == EXIT_SUCCESS);
     CHECK(ams_mel_ir_stream_start(stream, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_stream_receive(stream, 20, &frame, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
-    CHECK(ams_mel_ir_stream_get_counters(stream, &counters, NULL, 0, NULL) == AMS_MEL_OK);
+    const int observed = wait_for_malformed_counters(stream, scenario, &counters);
+    /* Cleanup still runs on an observation failure. It cannot change either
+     * the observation result or the last pre-close counter snapshot. */
+    const int closed = close_all(&session, &stream);
+    CHECK(observed == EXIT_SUCCESS);
     CHECK(counters.frames_received >= 1 && counters.malformed_or_unsupported_frames >= 1);
-    CHECK(close_all(&session, &stream) == EXIT_SUCCESS);
+    CHECK(closed == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }
 
