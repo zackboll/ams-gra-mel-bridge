@@ -22,6 +22,7 @@ import check_doc_source_integrity as policy
 import documentation_ci
 
 MAIN = "33720d155d99f183229b6ed87037ecbd53a3875b"
+INTEGRATED_MAIN = "7d5f88164bacfdc40add4b92c74cfaefbefad0a6"
 CANDIDATE = "47630e61d2631effbbbe3e222e998e33daa90f60"
 FOUNDATION = "42648a92eb0cc84b2980d16db6028992c0494ba1"
 # Independent literals: do not derive fixture identities from the implementation.
@@ -54,6 +55,7 @@ class IRMELSourceTransitionTests(unittest.TestCase):
         if policy.BASE != FOUNDATION:
             raise AssertionError("DOC-001 foundation replaced")
         for commit, tree in ((MAIN, "76d7988ea723a07ced054c0275e80763cbdcb772"),
+                             (INTEGRATED_MAIN, "2ce582703250815109cc203c393df5460068e455"),
                              (CANDIDATE, "6b16f462a5072c22b52f13f7b59fa13280f3e252")):
             if source_git("rev-parse", commit + "^{tree}").decode().strip() != tree:
                 raise AssertionError("immutable source tree mismatch")
@@ -80,14 +82,14 @@ class IRMELSourceTransitionTests(unittest.TestCase):
         self.root = Path(self.temporary.name) / "repo"
         subprocess.run(["git", "clone", "--quiet", "--shared", "--no-checkout",
                         str(ROOT), str(self.root)], check=True)
-        self.git("checkout", "--quiet", "--detach", MAIN)
+        self.git("checkout", "--quiet", "--detach", INTEGRATED_MAIN)
 
     def git(self, *args, input=None):
         return subprocess.check_output(["git", "-C", str(self.root), *args], input=input,
                                        stderr=subprocess.STDOUT)
 
     def reset(self):
-        self.git("reset", "--hard", MAIN)
+        self.git("reset", "--hard", INTEGRATED_MAIN)
         self.git("clean", "-fdq")
 
     def install(self, selected=None):
@@ -105,11 +107,23 @@ class IRMELSourceTransitionTests(unittest.TestCase):
         print("  rejected: " + str(caught.exception), file=sys.stderr)
 
     def test_original_state_passes(self):
-        self.assertEqual(policy.check(self.root)["irmel_pol_001"], "ORIGINAL")
+        for revision, bootstrap in ((MAIN, "original"),
+                                    (INTEGRATED_MAIN, "proposed_pending_independent_review")):
+            self.git("restore", "--source=" + revision, "--staged", "--worktree",
+                     "--", ".github/workflows/ci.yml")
+            result = policy.check(self.root)
+            self.assertEqual(result["irmel_pol_001"], "ORIGINAL")
+            self.assertEqual(result["proposed_bootstrap_workflow"], bootstrap)
 
     def test_exact_candidate_state_passes(self):
         self.install()
-        self.assertEqual(policy.check(self.root)["irmel_pol_001"], "CANDIDATE")
+        for revision, bootstrap in ((MAIN, "original"),
+                                    (INTEGRATED_MAIN, "proposed_pending_independent_review")):
+            self.git("restore", "--source=" + revision, "--staged", "--worktree",
+                     "--", ".github/workflows/ci.yml")
+            result = policy.check(self.root)
+            self.assertEqual(result["irmel_pol_001"], "CANDIDATE")
+            self.assertEqual(result["proposed_bootstrap_workflow"], bootstrap)
 
     def test_each_required_new_script_missing_fails(self):
         for name, _, old, _, _ in FILES:
@@ -269,7 +283,8 @@ class IRMELSourceTransitionTests(unittest.TestCase):
         for group, name, revision in (
                 ("scripts", "scripts/test_doc_source_integrity.py", documentation_ci.IR_CI003_SHA),
                 ("enhanced", "docs/tests/test_navigation_completion_observation.py", documentation_ci.IR_CI003_SHA),
-                ("enhanced", "docs/tests/test_documentation_ci.py", MAIN)):
+                ("enhanced", "docs/tests/test_documentation_ci.py", INTEGRATED_MAIN),
+                ("enhanced", "docs/tests/test_bootstrap_ci_policy.py", INTEGRATED_MAIN)):
             methods = documentation_ci.source_methods(source_git("show", revision + ":" + name),
                                                        Path(name).stem)
             groups[group] = sorted(set(groups[group]) | set(methods))

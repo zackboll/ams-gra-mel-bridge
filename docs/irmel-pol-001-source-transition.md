@@ -238,3 +238,55 @@ authorization. Leave auto-merge disabled and request independent source-policy
 review. PR #127/#129 remain unchanged by this task. Only after this policy is
 independently reviewed and merged should PR #129 receive an ordinary merge of
 updated main and fresh exact-head source/audit/native/Ada/documentation CI.
+
+## IRMEL-POL-001-R1 — integration with merged CI-002
+
+The historical measurements above describe the original proposal, not the
+current inventory. R1 fetch verified main
+`7d5f88164bacfdc40add4b92c74cfaefbefad0a6`, tree
+`2ce582703250815109cc203c393df5460068e455`, and unchanged PR #130/#129 heads
+`e2ca271b6a0f0716f09157349e1ca6954faa4f5d` /
+`47630e61d2631effbbbe3e222e998e33daa90f60`. Main incorporates both #127 and
+#128. A normal merge into the existing policy branch preserves both histories.
+The checker conflict consists of adjacent independently added constants,
+validators and result fields: resolution retains both implementations in full.
+Bootstrap's exact original/successor workflow states and IRMEL's exact
+ORIGINAL/CANDIDATE five-file states are independent; neither is an exemption
+for any other source. All previously reviewed blob, SHA-256, mode and foundation
+authorities remain unchanged.
+
+The 24 standalone IRMEL controls remain outside frozen documentation discovery.
+Their isolated fixtures now start at the verified CI-002 main and reconcile its
+71 additive control identities with the original 579: **650 = 142 script-side
++ 508 enhanced**. The original main/tree remains a separate immutable source
+authority for the five audit files. Original and candidate controls exercise
+both Bootstrap workflow states. No historical test, inventory authority,
+Documentation workflow, shard assignment, sealing or deployment gate changes.
+
+Complete original hosted logs were retrieved through the authenticated job-log
+API and preserved at `/tmp/irmel-pol-001-r1-20261027`, alongside the successful
+push run's complete log archive. The CLI `gh run view --log` initially returned
+empty output; those attempts are retained, not treated as evidence of success.
+
+* Documentation run `40446029063`, job `121997408052`, exits 1 on
+  `unauthorized tracked files added: ['scripts/check_ir_api_coverage.py',
+  'scripts/freeze_ir_api_evidence.py', 'scripts/test_ir_api_coverage.py']`.
+* Bootstrap run `40446029045`, GCC Debug job `121997407811`, fails CTest #428,
+  `ir_track_system_response_contract`, on repetition **22 of 50** after the
+  initial full-suite pass and 21 successful stress repetitions. The diagnostic
+  is `test_ir_track_system_response.c:513: strstr(log, "library_unloaded") != NULL`,
+  propagated at line 887 by `test_pending_response_lifetime() == EXIT_SUCCESS`.
+  It is not the malformed-frame counter observation. PR #128 changes the IR
+  stream counter test, not this Track lifetime test, and cannot be represented
+  as fixing this separate observed failure. The root cause is not established
+  by the log; no race claim or source/assertion change is justified here.
+* Successful push run `40445977646` tested the same PR #129 head. Its GCC Debug
+  job passed the suite and all 50 Track repetitions. That success does not
+  explain the PR failure or qualify a future integration head.
+
+R1 local execution, negative controls, synthetic integration identities and
+exact-head hosted status are recorded in the existing PR #130 handoff. Local
+documentation evidence is explicitly non-deployable. PR #129 is not modified
+while policy integration remains unmerged. Any Track correction outside the
+approved source scope needs independent policy authorization; IRMEL-ADA-002
+does not begin as part of this reconciliation.
