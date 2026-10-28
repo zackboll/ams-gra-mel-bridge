@@ -21,6 +21,10 @@ concurrency:
 jobs:
   prepare-documentation:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-3' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     timeout-minutes: 60
     outputs:
       artifact_id: ${{ steps.inputs.outputs.artifact-id }}
@@ -89,6 +93,10 @@ jobs:
     name: enhanced-tests (${{ matrix.shard }})
     needs: prepare-documentation
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && format('main-runner-lane-{0}', (matrix.shard == 'navigation' || matrix.shard == 'symbols-catalog') && '1' || (matrix.shard == 'publication' || matrix.shard == 'types') && '2' || '3') || format('unlimited-{0}-{1}-{2}-{3}', github.run_id, github.run_attempt, github.job, matrix.shard) }}
+      queue: max
+      cancel-in-progress: false
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -138,6 +146,10 @@ jobs:
     if: always()
     needs: [prepare-documentation, enhanced-tests]
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-1' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     timeout-minutes: 20
     outputs:
       gate_id: ${{ steps.gate-upload.outputs.artifact-id }}
@@ -203,6 +215,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [prepare-documentation, build]
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-2' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read
@@ -260,6 +276,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: [prepare-documentation, build, deploy]
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-3' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read

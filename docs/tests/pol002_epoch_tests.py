@@ -18,6 +18,51 @@ import documentation_ci as ci
 import epoch_ci as e
 import feature_source as s
 import source_epoch as epoch
+import test_main_runner_lanes as lanes
+
+
+class MainRunnerLaneTests(lanes.LaneTests):
+    """Run CI-003 controls inside the sealed integration inventory."""
+
+
+class MainRunnerAuthorizationTests(lanes.WorkflowAuthorizationTests):
+    """Run independent workflow-transition negative controls before sealing."""
+
+
+class MainRunnerEpochTransitionTests(unittest.TestCase):
+    def setUp(self):
+        self.old = {n: ('100644', 'old') for n, old, _ in e.CI003_SOURCE if old is not None}
+        self.new = {n: ('100644', 'new') for n, _, _ in e.CI003_SOURCE}
+
+    def blob(self, root, revision, name):
+        if revision == 'old':
+            return subprocess.check_output(['git', '-C', str(ROOT), 'show', lanes.BASELINE + ':' + name])
+        return (ROOT / name).read_bytes()
+
+    def test_exact_transition_only(self):
+        with mock.patch.object(s, 'blob', side_effect=self.blob):
+            self.assertEqual(e.ci003_delta(ROOT, 'old', 'new', self.old, self.new), set(self.new))
+
+    def test_mutated_candidate_or_predecessor_rejected(self):
+        for name, old, _ in e.CI003_SOURCE:
+            for revision in (('old', 'new') if old else ('new',)):
+                def bad(root, ref, path):
+                    return self.blob(root, ref, path) + (b'# unauthorized\n' if (ref, path) == (revision, name) else b'')
+                with self.subTest(path=name, revision=revision), mock.patch.object(s, 'blob', side_effect=bad):
+                    with self.assertRaisesRegex(ValueError, 'CI-003'):
+                        e.ci003_delta(ROOT, 'old', 'new', self.old, self.new)
+
+    def test_missing_executable_and_symlink_modes_rejected(self):
+        for name in self.new:
+            for mode in (None, '100755', '120000'):
+                entries = dict(self.new)
+                if mode is None:
+                    entries.pop(name)
+                else:
+                    entries[name] = (mode, 'new')
+                with mock.patch.object(s, 'blob', side_effect=self.blob):
+                    with self.assertRaisesRegex(ValueError, 'CI-003'):
+                        e.ci003_delta(ROOT, 'old', 'new', self.old, entries)
 
 
 class AggregateTests(unittest.TestCase):

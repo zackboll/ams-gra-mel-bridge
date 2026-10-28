@@ -98,8 +98,26 @@ IRMEL_POL_001_TRANSITION = (
 PROPOSED_BOOTSTRAP_TRANSITION = (
     ".github/workflows/ci.yml",
     "47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
-    "c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2",
+    "1fdeb1545a9fa6820dd247685ec939b1c396101bc3c02b494a60560e400f9244",
 )
+# CI-003: exact atomic workflow successor, NOT independent approval. Keep the
+# CI-002 predecessor admissible; never authorize a workflow directory or rebase
+# the DOC-001 foundation. Documentation was added after that foundation.
+CI003_WORKFLOWS = (
+    (".github/workflows/ci.yml",
+     "c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2",
+     "1fdeb1545a9fa6820dd247685ec939b1c396101bc3c02b494a60560e400f9244"),
+    (".github/workflows/documentation.yml",
+     "979931734ae82a2a98b8684231f06ce17f202c4115eafdf439136c238724a847",
+     "234d25c009043f814c4cafa39a05b7b4d311fbf9565661cba8615ed2f370b181"),
+)
+# Exact historical workflow pairs needed by frozen DOC-001/POL-002 fixtures.
+CI003_HISTORICAL_PAIRS = frozenset({
+    ("47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
+     "f00cf46475d73cb6e9e70d1d202d5cd83a1e6bedec5c394732d838e9020ea9d9"),
+    ("c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2",
+     "f00cf46475d73cb6e9e70d1d202d5cd83a1e6bedec5c394732d838e9020ea9d9"),
+})
 TOKEN = re.compile(
     r'(?P<space>\s+)|(?P<comment>--[^\n]*)|(?P<string>"(?:""|[^"])*")|'
     r"(?P<char>'[^\n]')|(?P<word>[A-Za-z][A-Za-z0-9_]*|[0-9][A-Za-z0-9_#.]*)|"
@@ -351,13 +369,47 @@ def proposed_bootstrap_state(root, git, existing, current, base):
     for view, content in (("working tree", path.read_bytes()),
                           ("index", git("show", f":{name}"))):
         digest = hashlib.sha256(content).hexdigest()
-        if digest not in (original, proposed):
+        if digest not in (original, CI003_WORKFLOWS[0][1], proposed):
             raise ValueError("unlisted Bootstrap " + view + " bytes")
         states.append("original" if digest == original else
                       "proposed_pending_independent_review")
     if states[0] != states[1]:
         raise ValueError("Bootstrap working tree/index state mismatch")
     return states[0]
+
+
+def ci003_workflow_state(root, git, current):
+    """Validate both exact workflow files, modes and views as one transition."""
+    states, identities = [], []
+    for name, predecessor, candidate in CI003_WORKFLOWS:
+        if name not in current:
+            raise ValueError("CI-003 workflow missing: " + name)
+        path = root / name
+        if (any(p.is_symlink() for p in (path, *path.parents)) or
+                not path.is_file() or path.stat().st_mode & 0o111):
+            raise ValueError("CI-003 workflow not regular nonexecutable: " + name)
+        entries = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+        if (len(entries) != 2 or not entries[0].startswith(b"100644 ") or
+                entries[0].split(b"\t", 1)[0].split()[-1] != b"0"):
+            raise ValueError("CI-003 workflow index not regular stage-0: " + name)
+        views = []
+        for content in (path.read_bytes(), git("show", f":{name}")):
+            digest = hashlib.sha256(content).hexdigest()
+            historical = {pair[len(identities)] for pair in CI003_HISTORICAL_PAIRS}
+            if digest not in (predecessor, candidate) and digest not in historical:
+                raise ValueError("CI-003 unlisted workflow bytes: " + name)
+            views.append(digest)
+        if views[0] != views[1]:
+            raise ValueError("CI-003 workflow working tree/index state mismatch: " + name)
+        identities.append(views[0])
+        states.append(views[0] == candidate)
+    if tuple(identities) in CI003_HISTORICAL_PAIRS:
+        return "historical"
+    if not any(states) and tuple(identities) != tuple(row[1] for row in CI003_WORKFLOWS):
+        raise ValueError("CI-003 mixed historical workflows")
+    if len(set(states)) != 1:
+        raise ValueError("CI-003 mixed or partially applied workflows")
+    return "proposed_pending_independent_review" if states[0] else "predecessor"
 
 
 def check(root=ROOT, base=BASE):
@@ -377,6 +429,9 @@ def check(root=ROOT, base=BASE):
     instrumentation = proposed_instrumentation_state(root, git, existing, current, base)
     navigation = proposed_navigation_state(root, git, existing, current, base)
     bootstrap = proposed_bootstrap_state(root, git, existing, current, base)
+    workflow_paths = {name for name, _, _ in CI003_WORKFLOWS}
+    lanes = ci003_workflow_state(root, git, current) if (
+        base == BASE or workflow_paths <= current) else None
     reviewed_paths = {name for name, _, _ in REVIEWED_NATIVE_TEST_TRANSITION}
     proposed_ir_paths = {PROPOSED_IR_TEST_TRANSITION[0]}
     instrumentation_paths = {name for name, _, _ in PROPOSED_INSTRUMENTATION_TRANSITION}
@@ -429,7 +484,8 @@ def check(root=ROOT, base=BASE):
             "proposed_instrumentation_tests": instrumentation,
             "proposed_navigation_test": navigation,
             "irmel_pol_001": irmel,
-            "proposed_bootstrap_workflow": bootstrap}
+            "proposed_bootstrap_workflow": bootstrap,
+            "ci003_workflows": lanes}
 
 
 if __name__ == "__main__":
