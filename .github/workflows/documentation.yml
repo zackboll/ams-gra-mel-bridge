@@ -12,6 +12,7 @@ permissions:
 
 env:
   DOC_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
 
 concurrency:
   group: documentation-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}

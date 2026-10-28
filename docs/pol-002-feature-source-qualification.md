@@ -1,5 +1,119 @@
 # POL-002 — Feature-source qualification and hosted epochs
 
+## R3 — Hosted Alire correction and explicit publication approval
+
+R3 preserves PR #131's R2 commit `db91999832279c4baef66d6af7df0c311f3c4a7e`
+and all earlier evidence. The exact failed Documentation run is `40456564783`,
+attempt 1, at that head; its diagnostic artifact `12712779086` has verified ZIP
+SHA-256 `de220dd9e93e0673d9f8cab6bdc0645399c90408aa506c23abbbf0b05054134d`.
+The artifact shows 34 tests executed before representative class setup failed
+at the actual `make format-ada`: nested Alire prompted “Press Enter to continue
+or Ctrl-C to abort”, then raised `a-tigeli.adb:96`. Documentation preparation
+failed, enhanced jobs were skipped, and aggregate build failed. Both exact-head
+Bootstrap runs passed all eight jobs; that does not qualify Documentation.
+Original artifacts/logs are preserved in `ams-mel-pol-002-build/r3`.
+
+Fetched main advanced to `7d5f88164bacfdc40add4b92c74cfaefbefad0a6`, tree
+`2ce582703250815109cc203c393df5460068e455`. It was incorporated by a normal
+merge, preserving R2. The independently merged CI-002 tests/tooling remain
+unchanged. Historical qualification still runs its exact 142+437 inventory;
+the additional current-main CI-002 controls execute separately, without
+rewriting or reducing either inherited set.
+
+### Noninteractive toolchain boundary
+
+The outer `alr -s SETTINGS exec` does not propagate its `-s` option to nested
+Alire. The workflow now sets explicit task-owned `ALIRE_SETTINGS_DIR`.
+`qualified_alire_environment` preselects GNAT 16.1.0 and GPRbuild 26.0.1 with
+`alr -n`, disables the selection assistant in those settings, and verifies both
+selected versions. All subprocess stdin is EOF. The representative fixture
+uses a fresh settings namespace and actual unchanged `make format-ada`; its
+default selection cannot come from the user's unrelated global configuration.
+Only an explicit task settings cache/toolchain installation may be shared.
+Formatter scripts, warnings, sources, dependency pins and build contracts are
+unchanged. A regression checks fresh nested formatter execution, selection,
+settings isolation and absence of interactive prompts.
+
+### Mechanical qualification is not publication approval
+
+R2's hosted main aggregate could set `deployable=True` while `REVIEWED_EPOCHS`
+was empty. R3 closes that discrepancy: aggregation computes publication
+authority independently from trusted Git, records it separately, and sets
+deployable only for hosted main with that authority. Deployment recomputes the
+same decision; a forged passing gate or manifest approval field cannot confer
+permission. PRs remain read-only and never deploy. Local evidence remains
+nondeployable. The `live` verifier also rejects an unapproved source epoch.
+
+Two authority cases are enforced:
+
+1. **Exact historical preservation.** Complete production/binding/vendor/test
+   inputs must equal one of the literal reviewed historical source trees, and
+   both complete pristine/publication fingerprints must equal DOC-012's fixed
+   identities. Policy-only main merges can continue to publish that unchanged
+   reviewed documentation. The case label alone is not authority.
+2. **Reviewed feature epoch.** `REVIEWED_EPOCHS`, read as a literal tuple from
+   the event's trusted target Git object, must name the actual post-merge
+   feature commit and exact tree, full production-source fingerprint, and both
+   complete pristine/publication fingerprints. That approved merge must be an
+   ancestor of target and candidate; candidate production and complete outputs
+   must match. A PR-head SHA—even with the same tree—is not interchangeable
+   with the post-merge identity. The current registry remains empty; no future
+   034F26 code or hash is approved.
+
+Because main has no configured branch-protection/rulesets, a normal main push
+is **not** treated as enforceable independent review. No settings were changed.
+The literal policy registry requires separate independent policy review, not a
+candidate manifest. Like all repository-executed policy, this assumes review
+of policy/workflow changes and trusted Git; it is not an external signature
+service or adversarial sandbox and does not claim to enforce its own immutability.
+
+A new feature's first post-merge main push may pass mechanical qualification
+but must not publish while unreviewed. After the actual merge exists and its
+output is independently reviewed, a separate policy-only approval records its
+exact commit/tree and output identities. That approval is itself reviewed and
+merged; it cannot approve its own publication using newly supplied candidate
+registry bytes. A subsequent qualified main event reads the already reviewed
+target policy and can publish only matching approved source/output. This
+two-stage procedure avoids circular/future hashes and requires no protection
+settings change. PR evaluation never requires invented future feature hashes.
+
+Positive/negative committed-Git fixtures cover historical policy preservation,
+reviewed post-merge feature publication, unreviewed hosted-main publication,
+PR-head/merge substitution, wrong merge trees, changed artifacts, candidate
+registry self-approval, and manifest-based approval. Full replacement local
+and exact-final-head hosted outcomes are recorded below/external handoff only
+after execution; no queued run is described as successful.
+
+R3 complete replacement local qualification passed on unpublished snapshot
+`e422895bb50d9ea3fde6d861991ead0d0cf13149`, tree
+`1d8068abcb2a576526829518654a666a3fca8d3e`, against current main
+`7d5f88164bacfdc40add4b92c74cfaefbefad0a6`:
+
+- Historical scripts **142/142** and enhanced **437/437**, all six isolated
+  shards and unchanged exact identities; full byte-identical publication.
+- Original policy **41/41** and expanded integration **51/51** (153 exact
+  start/success/stop callbacks), including actual fresh nested formatting.
+- Native **434/434**; Ada, aggregate/check, formatting and both Alire gates;
+  Python **145**, Rust **98 + four doctests**, and **13 cases / nine examples**.
+- Inherited IR-CI-004 **8** and current-main CI-002 **71** additional controls.
+- Source/native candidate regeneration, independent reconstruction, sealed
+  preparation/unpack, all six candidate-bound reports and aggregate: pass.
+- Genuine passing local/PR aggregate offered for deployment: rejected; final
+  aggregate records `deployable=false`, `publication_authority=null`.
+- Vendor **804/804**, **1,145** production/binding/test/integration paths and
+  the separate 034F26 report remain unchanged.
+
+R3 seal bundle SHA-256 is
+`d95e848ec49184310ba7cf31a35256e2400380a96ba70650de423560ab5b1eaa`;
+manifest digest is
+`6a695e9980725abf8e970f715e3c10150b23afa3d2aad3a9496a8385ddccb793`.
+Evidence is retained under `ams-mel-pol-002-build/r3`; final delivery identities
+and exact-head hosted results are recorded externally after normal commit/push.
+One initial local snapshot launcher inherited a stale cloned `origin/main` ref;
+the policy correctly rejected the extra CI-002 delta. The ref/event base were
+corrected before the full replacement campaign. No failed evidence was deleted
+or assertions weakened.
+
 ## R2 completed local qualification — independent review required
 
 The complete local R2 chain passed on exact unpublished snapshot

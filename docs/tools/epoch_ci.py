@@ -146,7 +146,42 @@ def authority(root, value):
 
 def execute(command, cwd, log, env=None):
     with Path(log).open('wb') as stream:
-        subprocess.run(command, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT, check=True)
+        subprocess.run(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                       stdout=stream, stderr=subprocess.STDOUT, check=True)
+
+
+def qualified_alire_environment(settings, log, base=None):
+    """Select the pinned toolchain in task-only settings for *nested* alr calls.
+
+    The outer `alr -s ... exec` does not make -s transitive. ALIRE_SETTINGS_DIR
+    does. Preselect noninteractively before the unchanged formatter script runs;
+    EOF stdin catches accidental prompts rather than answering them blindly.
+    """
+    settings = Path(settings).absolute()
+    settings.mkdir(parents=True, exist_ok=True)
+    require(not any(p.is_symlink() for p in (settings, *settings.parents)), 'symlink Alire settings')
+    env = dict(os.environ if base is None else base)
+    # Reuse only an explicitly supplied task cache/tool install, never infer
+    # selection from HOME. Fresh fixture settings retain independent defaults.
+    inherited = env.get('ALIRE_SETTINGS_DIR')
+    if inherited and Path(inherited).absolute() != settings:
+        inherited = Path(inherited).absolute()
+        require(not any(p.is_symlink() for p in (inherited, *inherited.parents)), 'symlink inherited Alire settings')
+        for key, path in (('cache.dir', inherited / 'cache'),
+                          ('toolchain.dir', inherited / 'cache/toolchains')):
+            execute(['alr', '-n', '-s', str(settings), 'settings', '--global', '--set', key, str(path)],
+                    settings, Path(log).with_name(Path(log).stem + '-' + key + '.log'),
+                    {**env, 'ALIRE_SETTINGS_DIR': str(settings)})
+    env['ALIRE_SETTINGS_DIR'] = str(settings)
+    env['DOC_EXAMPLES_ALIRE_SETTINGS'] = str(settings)
+    execute(['alr', '-n', '-s', str(settings), '--force', 'toolchain', '--select',
+             'gnat_native=16.1.0', 'gprbuild=26.0.1', '--disable-assistant'], settings, log, env)
+    for name, expected in (('gnat', 'gnat_native=16.1.0'), ('gprbuild', 'gprbuild=26.0.1')):
+        actual = subprocess.check_output(['alr', '-n', '-s', str(settings), 'settings', '--global',
+                                          '--get', 'toolchain.use.' + name], cwd=settings, env=env,
+                                         stdin=subprocess.DEVNULL, text=True).strip()
+        require(actual == expected, 'unqualified nested Alire selection: ' + name)
+    return env
 
 
 def historical_environment(outer):
@@ -203,6 +238,7 @@ def prepare(directory, prefix):
     logs.mkdir()
     env = historical_environment(outer)
     env['GNATDOC_PREFIX'] = str(Path(prefix).absolute())
+    env = qualified_alire_environment(ROOT / '.doc-tools/settings', logs / 'alire-selection.log', env)
     py = sys.executable
     execute(['python3', 'scripts/check_doc_source_integrity.py'], history, logs / 'historical-source.log', env)
     execute(['sh', 'scripts/generate_docs_baseline.sh'], history, logs / 'historical-generation.log', env)
@@ -250,6 +286,9 @@ def prepare(directory, prefix):
         execute(command, ROOT, logs / ('language-' + str(i) + '.log'), env)
     if (ROOT / 'docs/tools/test_ir_counter_source_policy.py').exists():
         execute(['python3', 'docs/tools/test_ir_counter_source_policy.py'], ROOT, logs / 'ir-counter-policy.log', env)
+    if (ROOT / 'docs/tests/test_bootstrap_ci_policy.py').exists():
+        execute([py, '-m', 'unittest', 'discover', '-s', 'docs/tests', '-p', 'test_bootstrap_ci_policy.py', '-v'],
+                ROOT, logs / 'inherited-ci002.log', env)
     # Candidates cannot alter their source while executing language/test code.
     require(context() == outer and classify(ROOT, outer['target_sha'], outer['source_sha']) == value,
             'candidate qualification changed source or epoch')
@@ -458,11 +497,26 @@ def reconcile(record, reports, qualified, needs):
                 'mixed artifact/run identity')
         ci.validate_report(report['execution'], owner, inv['shards'][owner], historical_context,
                            ci.digest(inv), historical_qualified)
+    approval = publication_decision(record)
     return {'schema': 2, 'identity': outer, 'epochs_sha256': digest(record), 'qualified': qualified,
             'report_sha256': {k: digest(v) for k, v in reports.items()}, 'historical_scripts': 142,
             'historical_enhanced': 437, 'mechanically_qualified': True,
-            'independent_approval': False, 'deployable': outer['event'] == 'push' and
+            'independent_approval': False, 'publication_authority': approval,
+            'deployable': approval is not None and outer['event'] == 'push' and
             outer['qualification_mode'] == historical_context['qualification_mode'] == 'hosted'}
+
+
+def publication_decision(record):
+    """No output field can authorize publication; recompute from trusted Git."""
+    identity = record['identity']
+    if identity['event'] != 'push' or identity['qualification_mode'] != 'hosted':
+        return None
+    try:
+        return epoch.publication_authority(
+            ROOT, identity['source_sha'], target=identity['target_sha'],
+            pristine=record['candidate']['pristine'], published=record['candidate']['publication']['files'])
+    except ValueError:
+        return None  # Mechanical gate still succeeds, but cannot deploy.
 
 
 def verify_candidate(directory, record):
@@ -512,6 +566,9 @@ def deployment(args):
     require(gate['qualified'] == {'artifact_id': args.artifact_id, 'bundle_sha256': args.bundle_sha,
                                  'manifest_sha256': args.manifest_sha}, 'deployment artifact mismatch')
     require(set(gate['report_sha256']) == set(ci.SHARDS), 'incomplete deployment shard gate')
+    approved = publication_decision(record)
+    require(approved is not None and gate['publication_authority'] == approved,
+            'no independently reviewed publication authority for merged source/tree')
     verify_candidate(Path(args.directory), record)
 
 
@@ -520,6 +577,7 @@ def live(args):
     record = verify(args.directory, args.manifest_sha)
     require(record['identity']['event'] == 'push' and args.expected_commit == record['identity']['source_sha'],
             'live source identity mismatch')
+    require(publication_decision(record) is not None, 'live source epoch is not approved')
     from check_live_docs_site import base_url, get_entity, graph
     import build_enhanced_site as p
     url = base_url(args.base_url)

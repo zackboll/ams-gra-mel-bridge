@@ -6,6 +6,7 @@ than changing any historical fingerprints or accepting a candidate anchor file.
 """
 
 import argparse
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -16,18 +17,82 @@ import tempfile
 
 import feature_source as source
 
-# No future source is preapproved. Populate only in a separately reviewed policy
-# transition, using completed immutable qualification evidence, never a feature's
-# editable manifest. An empty registry deliberately cannot publish new epochs.
+# No future source is preapproved. Entries live in reviewed target policy, never
+# the candidate artifact. Each binds the *post-merge* feature commit/tree, full
+# production-source fingerprint and complete pristine/publication fingerprints.
+# A subsequent policy-only approval commit can name a feature merge that already
+# exists; the feature's first main push remains mechanically testable but blocked
+# from publication. PR head identity is never substituted for the merge identity.
 REVIEWED_EPOCHS = ()
+HISTORICAL_PRODUCTION = (
+    (source.HISTORICAL_MAIN, source.HISTORICAL_TREE),
+    ("33720d155d99f183229b6ed87037ecbd53a3875b", "76d7988ea723a07ced054c0275e80763cbdcb772"),
+)
 
 
-def publication_authority(root, candidate):
+def production_fingerprint(root, candidate):
+    """Complete compiled/binding/provider/vendor/test inputs, not artifact claims."""
+    entries = source.tree(root, candidate)
+    protected = {name: list(value) for name, value in entries.items()
+                 if name.startswith(('native/', 'ada/', 'rust/', 'python/', 'integration/'))
+                 or name == 'Makefile' or name.endswith('.gpr')}
+    require(protected, 'empty production-source identity')
+    return sha(canonical(protected))
+
+
+def trusted_publication_epochs(root, target):
+    """Read a literal registry from the event's trusted target Git object only."""
+    entries = source.tree(root, target)
+    name = 'docs/tools/source_epoch.py'
+    if name not in entries:
+        return ()  # Initial policy merge has no previously approved feature epoch.
+    statements = ast.parse(source.blob(root, target, name)).body
+    definitions = [node for node in statements if isinstance(node, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == 'REVIEWED_EPOCHS' for t in node.targets)]
+    require(len(definitions) == 1, 'missing/duplicate trusted epoch registry')
+    value = ast.literal_eval(definitions[0].value)
+    require(isinstance(value, tuple), 'trusted epoch registry must be a literal tuple')
+    return value
+
+
+def publication_authority(root, candidate, *, target=None, pristine=None, published=None):
+    """Separate source approval from mechanical success; no manifest permission.
+
+    Missing authority rejects. The historical shortcut requires exact reviewed
+    production bytes AND both complete historical publication fingerprints.
+    Feature approval comes only from the trusted target's literal registry.
+    """
     commit = source.revision(root, candidate)
     tree = source.git(root, "rev-parse", commit + "^{tree}").decode().strip()
-    for epoch in REVIEWED_EPOCHS:
-        if (epoch["commit"], epoch["tree"]) == (commit, tree):
-            return epoch
+    require(target is not None and pristine is not None and published is not None,
+            'no independently reviewed publication epoch for candidate')
+    import build_enhanced_site as p
+    production = production_fingerprint(root, commit)
+    if p.fingerprint(pristine) == p.PRISTINE_SHA256 and p.fingerprint(published) == p.PUBLICATION_SHA256:
+        for ancestor, expected_tree in HISTORICAL_PRODUCTION:
+            require(source.git(root, 'rev-parse', ancestor + '^{tree}').decode().strip() == expected_tree,
+                    'historical approved production tree mismatch')
+            if production == production_fingerprint(root, ancestor):
+                return {'kind': 'historical-preservation', 'commit': commit, 'tree': tree,
+                        'reviewed_commit': ancestor, 'reviewed_tree': expected_tree,
+                        'production_sha256': production}
+    for entry in trusted_publication_epochs(root, target):
+        require(set(entry) == {'commit', 'tree', 'production_sha256', 'pristine_sha256', 'published_sha256'},
+                'invalid trusted publication approval schema')
+        approved = source.revision(root, entry['commit'])
+        actual_tree = source.git(root, 'rev-parse', approved + '^{tree}').decode().strip()
+        require(approved == entry['commit'] and actual_tree == entry['tree'], 'reviewed post-merge identity mismatch')
+        # The approval policy target must descend from the actual feature merge;
+        # neither a candidate-provided registry nor a PR-head/merge swap qualifies.
+        import subprocess
+        ancestral = all(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', approved, ref],
+                                       capture_output=True).returncode == 0 for ref in (target, commit))
+        if (ancestral and production == entry['production_sha256'] == production_fingerprint(root, approved)
+                and p.fingerprint(pristine) == entry['pristine_sha256']
+                and p.fingerprint(published) == entry['published_sha256']):
+            return {'kind': 'reviewed-feature-epoch', 'commit': commit, 'tree': tree,
+                    'reviewed_commit': approved, 'reviewed_tree': actual_tree,
+                    'production_sha256': production}
     raise ValueError("source epoch: no independently reviewed publication epoch for candidate")
 
 

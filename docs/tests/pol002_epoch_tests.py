@@ -21,8 +21,18 @@ import source_epoch as epoch
 
 
 class AggregateTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='pol002-historical-inventory-')
+        cls.addClassCleanup(cls.temp.cleanup)
+        historical = Path(cls.temp.name) / 'source'
+        e.historical_checkout(historical)
+        subprocess.run([sys.executable, 'docs/tools/documentation_ci.py', 'inventory'], cwd=historical,
+                       check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        cls.historical_inventory = ci.load(historical / 'qualification/inventory.json')
+
     def setUp(self):
-        inv = ci.inventory()
+        inv = copy.deepcopy(self.historical_inventory)
         self.context = {'source_sha': 'a' * 40, 'source_tree': 'b' * 40,
                         'target_sha': 'c' * 40, 'target_tree': 'd' * 40,
                         'historical_sha': e.HISTORY, 'historical_tree': e.HISTORY_TREE,
@@ -112,6 +122,10 @@ class RepresentativeFeatureTests(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix='pol002-surfaces-')
         cls.addClassCleanup(cls.temp.cleanup)
         cls.dir = Path(cls.temp.name)
+        # A new settings namespace, not ~/.config/alire or implicit outer -s.
+        # The tool binaries/cache may be shared; selection authority is local.
+        cls.environment = e.qualified_alire_environment(
+            cls.dir / 'alire-settings', cls.dir / 'alire-selection.log')
         cls.repo = cls.dir / 'candidate'
         epoch.export(ROOT, e.HISTORY, cls.repo)
         def git(*args):
@@ -190,8 +204,14 @@ end Proof;
 
     @classmethod
     def command(cls, command, name):
+        env = {**cls.environment}
+        # GPR/runtime overrides in the focused consumer are intentionally scoped.
+        for key in ('GPR_PROJECT_PATH', 'LD_LIBRARY_PATH'):
+            if key in os.environ:
+                env[key] = os.environ[key]
         with (cls.dir / (name + '.log')).open('wb') as stream:
-            result = subprocess.run(command, cwd=cls.repo, stdout=stream, stderr=subprocess.STDOUT)
+            result = subprocess.run(command, cwd=cls.repo, env=env, stdin=subprocess.DEVNULL,
+                                    stdout=stream, stderr=subprocess.STDOUT)
         if result.returncode:
             raise AssertionError('representative command failed: ' + ' '.join(command) + '\n' + (cls.dir / (name + '.log')).read_text()[-5000:])
 
@@ -202,6 +222,21 @@ end Proof;
                              'ada/src/ams-mel-rf-product_rx.adb', 'rust/ams-mel-sys/src/lib.rs',
                              'python/ams_mel/_native.py', 'native/tests/product_rx_v10_layout_probe.c'}, paths)
         self.assertFalse(self.value['independent_approval'])
+
+    def test_fresh_nested_formatter_is_noninteractive_and_task_scoped(self):
+        settings = Path(self.environment['ALIRE_SETTINGS_DIR'])
+        self.assertTrue(settings.is_relative_to(self.dir))
+        self.assertNotEqual(settings, Path.home() / '.config/alire')
+        log = (self.dir / 'format.log').read_text()
+        self.assertNotIn('Press Enter', log)
+        self.assertNotIn('selected automatically this toolchain', log)
+        self.assertNotIn('ERROR:', log)
+        self.assertTrue((self.repo / 'ada/tests/alire').is_dir())
+        for name, expected in (('gnat', 'gnat_native=16.1.0'), ('gprbuild', 'gprbuild=26.0.1')):
+            selected = subprocess.check_output(['alr', '-n', 'settings', '--global', '--get',
+                                                'toolchain.use.' + name], cwd=self.dir,
+                                               env=self.environment, stdin=subprocess.DEVNULL, text=True)
+            self.assertEqual(selected.strip(), expected)
 
     def test_representative_candidate_publication_qualifies(self):
         self.assertGreater(self.qualified['added_declarations'], 0)
@@ -379,6 +414,126 @@ class ArtifactBoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 epoch.qualify_evidence(ROOT,evidence,Path(t)/'output',Path(t)/'tools')
         self.assertEqual(evidence,original)
+
+
+class PublicationApprovalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='pol002-publication-approval-')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.dir = Path(cls.temp.name)
+        cls.repo = cls.dir / 'source'
+        e.historical_checkout(cls.repo)
+        def git(*args):
+            return subprocess.check_output(['git', '-C', str(cls.repo), *args], stderr=subprocess.STDOUT).decode().strip()
+        cls.git = staticmethod(git)
+        git('config', 'user.name', 'POL002 Approval Fixture')
+        git('config', 'user.email', 'pol002@example.invalid')
+        cls.output = epoch.qualify(cls.repo, e.HISTORY, e.HISTORY, cls.dir / 'historical',
+                                   Path(os.environ['GNATDOC_PREFIX']))
+        cls.pristine = cls.output['pristine']
+        cls.published = cls.output['publication']['files']
+        (cls.repo / 'docs/historical-policy-fixture.md').write_text('Historical policy-only publication.\n')
+        git('add', '.'); git('commit', '-qm', 'synthetic historical policy merge')
+        cls.historical_policy = git('rev-parse', 'HEAD')
+        # A feature head and distinct actual integration commit, not aliases.
+        p = cls.repo / 'native/src/rf_product_rx.cpp'
+        p.write_text(p.read_text() + '\n/* synthetic approval identity observation */\n')
+        git('add', '.'); git('commit', '-qm', 'synthetic feature PR head')
+        cls.pr_head = git('rev-parse', 'HEAD')
+        tree = git('rev-parse', 'HEAD^{tree}')
+        cls.merge = git('commit-tree', tree, '-p', e.HISTORY, '-p', cls.pr_head, '-m', 'synthetic post-merge identity')
+        git('checkout', '--detach', cls.merge)
+        cls.entry = {'commit': cls.merge, 'tree': tree,
+                     'production_sha256': epoch.production_fingerprint(cls.repo, cls.merge),
+                     'pristine_sha256': __import__('build_enhanced_site').fingerprint(cls.pristine),
+                     'published_sha256': __import__('build_enhanced_site').fingerprint(cls.published)}
+        path = cls.repo / 'docs/tools/source_epoch.py'
+        path.write_text('REVIEWED_EPOCHS = ' + repr((cls.entry,)) + '\n')
+        git('add', '.'); git('commit', '-qm', 'independently reviewed synthetic publication approval')
+        cls.approval_target = git('rev-parse', 'HEAD')
+        (cls.repo / 'docs/approved-fixture.md').write_text('Policy-only descendant.\n')
+        git('add', '.'); git('commit', '-qm', 'publication candidate after approval')
+        cls.candidate = git('rev-parse', 'HEAD')
+
+    def authorize(self, candidate, target):
+        return epoch.publication_authority(self.repo, candidate, target=target,
+                                           pristine=self.pristine, published=self.published)
+
+    def test_unchanged_historical_publication_needs_no_feature_registry(self):
+        value = self.authorize(e.HISTORY, e.HISTORY)
+        self.assertEqual(value['kind'], 'historical-preservation')
+
+    def test_historical_policy_only_merge_keeps_automatic_publication(self):
+        # Production bytes and whole historical outputs, not the policy case label.
+        value = self.authorize(self.historical_policy, e.HISTORY)
+        self.assertEqual(value['reviewed_commit'], e.HISTORY)
+        self.assertEqual(value['commit'], self.historical_policy)
+
+    def test_reviewed_postmerge_feature_publication_passes(self):
+        value = self.authorize(self.candidate, self.approval_target)
+        self.assertEqual(value['kind'], 'reviewed-feature-epoch')
+        self.assertEqual(value['reviewed_commit'], self.merge)
+        self.assertEqual(value['commit'], self.candidate)
+
+    def test_unreviewed_feature_main_push_cannot_publish(self):
+        with self.assertRaisesRegex(ValueError, 'no independently reviewed'):
+            self.authorize(self.merge, e.HISTORY)
+
+    def test_hosted_main_mechanical_result_is_not_publication_permission(self):
+        record = {'identity': {'event': 'push', 'qualification_mode': 'hosted',
+                               'source_sha': self.merge, 'target_sha': e.HISTORY},
+                  'candidate': {'pristine': self.pristine, 'publication': {'files': self.published}}}
+        with mock.patch.object(e, 'ROOT', self.repo):
+            self.assertIsNone(e.publication_decision(record))
+        record['identity'].update(source_sha=self.candidate, target_sha=self.approval_target)
+        with mock.patch.object(e, 'ROOT', self.repo):
+            self.assertEqual(e.publication_decision(record)['reviewed_commit'], self.merge)
+
+    def test_same_tree_pr_head_is_not_postmerge_identity(self):
+        self.assertNotEqual(self.pr_head, self.merge)
+        self.assertEqual(self.git('rev-parse', self.pr_head + '^{tree}'), self.entry['tree'])
+        with self.assertRaises(ValueError): self.authorize(self.pr_head, self.approval_target)
+
+    def test_untrusted_candidate_registry_cannot_self_approve(self):
+        with self.assertRaises(ValueError): self.authorize(self.approval_target, e.HISTORY)
+
+    def test_manifest_approval_claim_does_not_grant_authority(self):
+        record = {'identity': {'event': 'push', 'qualification_mode': 'hosted', 'source_sha': self.merge,
+                               'target_sha': e.HISTORY},
+                  'candidate': {'pristine': self.pristine, 'publication': {'files': self.published},
+                                'independent_approval': True, 'publication_epoch_approved': True},
+                  'publication_authority': self.entry, 'deployable': True}
+        with mock.patch.object(e, 'ROOT', self.repo):
+            self.assertIsNone(e.publication_decision(record))
+
+    def test_mismatched_merge_tree_is_rejected(self):
+        wrong = {**self.entry, 'tree': '0' * 40}
+        with mock.patch.object(epoch, 'trusted_publication_epochs', return_value=(wrong,)):
+            with self.assertRaisesRegex(ValueError, 'post-merge identity'):
+                self.authorize(self.candidate, self.approval_target)
+
+    def test_changed_artifact_cannot_reuse_reviewed_source_approval(self):
+        with self.assertRaises(ValueError):
+            epoch.publication_authority(self.repo, self.candidate, target=self.approval_target,
+                                        pristine=self.pristine, published={**self.published, 'fake': '0' * 64})
+
+    def test_deployment_rechecks_authority_despite_forged_passing_gate(self):
+        identity = {'event': 'push', 'qualification_mode': 'hosted', 'source_sha': self.merge, 'target_sha': e.HISTORY}
+        record = {'identity': identity, 'candidate': {'pristine': self.pristine,
+                   'publication': {'files': self.published}}}
+        qualified = {'artifact_id': '1', 'bundle_sha256': 'a' * 64, 'manifest_sha256': 'b' * 64}
+        gate = {'mechanically_qualified': True, 'deployable': True, 'identity': identity,
+                'epochs_sha256': e.digest(record), 'qualified': qualified,
+                'report_sha256': {k: 'c' * 64 for k in ci.SHARDS}, 'publication_authority': self.entry}
+        args = argparse.Namespace(directory='unused', gate='unused', gate_sha='d' * 64,
+                                  artifact_id='1', bundle_sha='a' * 64, manifest_sha='b' * 64)
+        with mock.patch.object(e, 'ROOT', self.repo), mock.patch.object(e, 'verify', return_value=record), \
+             mock.patch.object(e, 'context', return_value=identity), mock.patch.object(ci, 'file_sha', return_value='d' * 64), \
+             mock.patch.object(ci, 'load', return_value=gate), mock.patch.dict(os.environ, {
+                 'GITHUB_EVENT_NAME': 'push', 'GITHUB_REF': 'refs/heads/main'}):
+            with self.assertRaisesRegex(ValueError, 'no independently reviewed publication authority'):
+                e.deployment(args)
 
 
 class AdditiveDocumentationTests(unittest.TestCase):
