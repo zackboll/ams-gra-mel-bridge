@@ -3,6 +3,8 @@
 import argparse
 from collections import Counter
 import copy
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -114,6 +116,279 @@ class AggregateTests(unittest.TestCase):
         events=[{'event':k,'id':'one','seconds':0.01} for k in ('success','start','stop')]
         with self.assertRaises(ValueError):
             e.validate_policy({'successful':True,'tests':['one'],'events':events},['one'])
+
+
+class FailureDiagnosticsTests(unittest.TestCase):
+    """Real failing child processes through run_shard, not success-shaped stubs."""
+
+    @classmethod
+    def setUpClass(cls):
+        AggregateTests.setUpClass.__func__(cls)
+
+    def setUp(self):
+        AggregateTests.setUp(self)
+        self.temp = tempfile.TemporaryDirectory(prefix='doc-ci004-negative-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.directory = self.root / 'inputs'
+        self.directory.mkdir()
+        self.args = argparse.Namespace(directory=str(self.directory), owner='live',
+            output=str(self.root / 'results/live.json'), diagnostics=str(self.root / 'diagnostics/live'),
+            artifact_id='123', bundle_sha='2' * 64, manifest_sha='1' * 64)
+        self.exit_status = 23
+        self.report_bytes = None
+        self.stdout = io.StringIO()
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(e, 'verify', return_value=self.record).start()
+        mock.patch.object(e, 'historical_checkout', side_effect=self.checkout).start()
+        mock.patch.object(e, 'verify_candidate').start()
+
+    def checkout(self, root):
+        (root / 'docs/tools').mkdir(parents=True)
+        # Execute a real unittest failure and retain its real callback identity.
+        # This synthetic source is never substituted into the historical epoch.
+        (root / 'docs/tools/documentation_ci.py').write_text(
+            'import argparse,json,sys,unittest\n'
+            'sys.path.insert(0,' + repr(str(ROOT / 'docs/tools')) + ')\n'
+            'from documentation_ci import EvidenceResult\n'
+            'p=argparse.ArgumentParser();p.add_argument("command");p.add_argument("--output");'
+            'a,_=p.parse_known_args()\n'
+            'if a.command=="unpack":sys.exit(0)\n'
+            'print("complete-log-prefix-" + "x"*16000, flush=True)\n'
+            'class DeliberateFailure(unittest.TestCase):\n'
+            ' def test_inner_failure_identity(self):self.fail("DOC-CI-004 deliberate inner failure")\n'
+            'r=unittest.TextTestRunner(verbosity=2,resultclass=EvidenceResult).run('
+            'unittest.defaultTestLoader.loadTestsFromTestCase(DeliberateFailure))\n'
+            + ('from pathlib import Path\nPath(a.output).write_bytes(' + repr(self.report_bytes) + ')\n'
+               if self.report_bytes is not None else
+               'from pathlib import Path\nPath(a.output).write_text(json.dumps('
+               '{"successful":r.wasSuccessful(),"events":r.events}))\n')
+            + 'sys.exit(' + str(self.exit_status) + ')\n')
+
+    def run_failure(self):
+        with contextlib.redirect_stderr(self.stdout), self.assertRaises(SystemExit) as failure:
+            e.run_shard(self.args)
+        self.assertEqual(failure.exception.code, self.exit_status)
+        self.assertIsInstance(failure.exception.__cause__, subprocess.CalledProcessError)
+        self.assertEqual(failure.exception.__cause__.returncode, self.exit_status)
+        self.assertFalse(Path(self.args.output).exists())
+
+    def test_real_inner_failure_retains_log_identity_status_and_hashes(self):
+        self.run_failure()
+        root = Path(self.args.diagnostics)
+        diagnostic = ci.load(root / 'failure.json')
+        self.assertEqual(diagnostic['exit_status'], 23)
+        self.assertEqual(diagnostic['identity'], self.context)
+        self.assertEqual(diagnostic['historical_identity'], self.record['historical']['context'])
+        self.assertEqual(diagnostic['historical_seal'], self.record['historical']['seal'])
+        self.assertEqual(diagnostic['artifact_id'], self.args.artifact_id)
+        self.assertEqual(diagnostic['bundle_sha256'], self.args.bundle_sha)
+        self.assertEqual(diagnostic['manifest_sha256'], self.args.manifest_sha)
+        self.assertFalse(diagnostic['successful'])
+        self.assertIn('--owner', diagnostic['command'])
+        self.assertIn('live', diagnostic['command'])
+        for name, sha in diagnostic['files_sha256'].items():
+            self.assertEqual(ci.file_sha(root / name), sha)
+        execution = ci.load(root / 'execution.json')
+        self.assertFalse(execution['successful'])
+        self.assertIn({'event': 'failure', 'id': '__main__.DeliberateFailure.test_inner_failure_identity'},
+                      execution['events'])
+        self.assertIn('complete-log-prefix-', (root / 'historical.log').read_text())
+        self.assertIn('DOC-CI-004 deliberate inner failure', self.stdout.getvalue())
+        self.assertLess(len(self.stdout.getvalue()), 14000)
+        self.assertEqual((root / 'execution.json').read_bytes(),
+                         (self.directory / 'live-execution.json').read_bytes())
+        del self.reports['live']
+        with self.assertRaises(ValueError):
+            e.reconcile(self.record, self.reports, self.qualified, self.needs)
+
+    def test_malformed_and_truncated_inner_reports_retained_as_raw_bytes(self):
+        for number, data in enumerate((b'{"successful":', b'not-json', b'')):
+            with self.subTest(data=data):
+                self.report_bytes = data
+                self.args.directory = str(self.root / ('inputs-' + str(number)))
+                Path(self.args.directory).mkdir()
+                self.args.diagnostics = str(self.root / ('diagnostics-' + str(number)))
+                self.run_failure()
+                self.assertEqual((Path(self.args.diagnostics) / 'execution.json').read_bytes(), data)
+
+    def test_missing_inner_report_does_not_mask_exit_status(self):
+        original = self.checkout
+        def checkout(root):
+            original(root)
+            path = root / 'docs/tools/documentation_ci.py'
+            path.write_text(path.read_text().replace('Path(a.output).write_text(json.dumps(',
+                                                     'print(json.dumps('))
+        with mock.patch.object(e, 'historical_checkout', side_effect=checkout):
+            self.run_failure()
+        self.assertFalse(ci.load(Path(self.args.diagnostics) / 'failure.json')['inner_report_available'])
+
+    def test_diagnostic_write_failure_preserves_original_exit(self):
+        with mock.patch.object(e.shutil, 'copyfile', side_effect=OSError('deliberate disk failure')):
+            self.run_failure()
+        self.assertIn('deliberate disk failure', self.stdout.getvalue())
+        self.assertIn('DOC-CI-004 deliberate inner failure', self.stdout.getvalue())
+
+    def test_unpack_failure_preserves_original_status_without_running_tests(self):
+        def checkout(root):
+            (root / 'docs/tools').mkdir(parents=True)
+            (root / 'docs/tools/documentation_ci.py').write_text(
+                'import sys\nprint("deliberate unpack failure")\nsys.exit(23)\n')
+        with mock.patch.object(e, 'historical_checkout', side_effect=checkout):
+            self.run_failure()
+        root = Path(self.args.diagnostics)
+        diagnostic = ci.load(root / 'failure.json')
+        self.assertIn('unpack', diagnostic['command'])
+        self.assertFalse(diagnostic['inner_report_available'])
+        self.assertFalse((root / 'historical.log').exists())
+        self.assertIn('deliberate unpack failure', self.stdout.getvalue())
+
+    def test_diagnostic_symlink_input_is_not_copied(self):
+        log = self.root / 'historical.log'
+        victim = self.root / 'victim'
+        victim.write_text('private bytes')
+        log.symlink_to(victim)
+        failure = subprocess.CalledProcessError(23, ['historical', 'run'])
+        with contextlib.redirect_stderr(self.stdout), self.assertRaisesRegex(ValueError, 'symlink'):
+            e.failure_diagnostics(self.args, self.record, failure, log,
+                                  self.root / 'unpack.log', self.root / 'execution.json')
+        self.assertNotIn('private bytes', self.stdout.getvalue())
+        self.assertFalse(Path(self.args.diagnostics).exists())
+
+    def test_symlink_diagnostics_cannot_write_outside_destination(self):
+        target = self.root / 'victim'
+        target.mkdir()
+        Path(self.args.diagnostics).parent.mkdir()
+        Path(self.args.diagnostics).symlink_to(target, target_is_directory=True)
+        self.run_failure()
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_diagnostics_cannot_change_sealed_inputs(self):
+        self.args.diagnostics = str(self.directory / 'diagnostics')
+        self.run_failure()
+        self.assertFalse(Path(self.args.diagnostics).exists())
+
+    def test_stale_inner_and_canonical_reports_rejected_before_execution(self):
+        for path in (self.directory / 'live-execution.json', Path(self.args.output)):
+            with self.subTest(path=path):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('{}')
+                with self.assertRaisesRegex(ValueError, 'result must be fresh'):
+                    e.run_shard(self.args)
+                path.unlink()
+
+    def test_zero_exit_with_unsuccessful_execution_cannot_create_canonical_report(self):
+        self.exit_status = 0
+        report = copy.deepcopy(self.reports['live']['execution'])
+        report['successful'] = False
+        self.report_bytes = json.dumps(report).encode()
+        with self.assertRaises(ValueError):
+            e.run_shard(self.args)
+        self.assertFalse(Path(self.args.output).exists())
+
+    def test_diagnostics_missing_truncated_malformed_cannot_authorize_aggregate(self):
+        del self.reports['live']
+        for data in (None, b'{"successful":', b'not-json', b'{"successful":true}'):
+            with self.subTest(data=data):
+                path = self.root / 'failure.json'
+                if data is not None: path.write_bytes(data)
+                with self.assertRaises(ValueError):
+                    e.reconcile(self.record, self.reports, self.qualified, self.needs)
+
+    def test_diagnostic_cannot_substitute_for_canonical_report(self):
+        self.run_failure()
+        self.reports['live'] = ci.load(Path(self.args.diagnostics) / 'failure.json')
+        with self.assertRaises(ValueError):
+            e.reconcile(self.record, self.reports, self.qualified, self.needs)
+
+    def test_workflow_upload_is_independent_and_diagnostics_are_not_gate_inputs(self):
+        workflow = (ROOT / '.github/workflows/documentation.yml').read_text()
+        upload = workflow.split('- name: Upload separate non-authorizing failure diagnostics\n', 1)[1].split('\n  #', 1)[0]
+        self.assertIn('if: always()', upload)
+        self.assertIn('uses: actions/upload-artifact@v4', upload)
+        self.assertIn('name: documentation-failure-diagnostics-', upload)
+        self.assertIn('path: ${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/', upload)
+        self.assertIn('pattern: documentation-result-*', workflow)
+        self.assertNotIn('pattern: documentation-failure-diagnostics-', workflow)
+        self.assertIn('needs: [prepare-documentation, build]', workflow)
+        self.assertIn("all(j['result'] == 'success' for j in jobs.values())", workflow)
+
+
+class CurrentWorkflowSuccessorTests(unittest.TestCase):
+    """Actual POL-002 workflow boundaries; never replace frozen assertions."""
+
+    def setUp(self):
+        import re
+        self.text = (ROOT / '.github/workflows/documentation.yml').read_text()
+        self.jobs = {name: re.split(r'\n  [a-z][a-z-]+:\n',
+            self.text.split('\n  ' + name + ':\n', 1)[1], maxsplit=1)[0]
+            for name in ('prepare-documentation', 'enhanced-tests', 'build', 'deploy', 'verify-live')}
+
+    def test_main_only_publication_and_read_only_preparation_verification(self):
+        for name in ('deploy', 'verify-live'):
+            self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", self.jobs[name])
+        self.assertIn('permissions:\n  contents: read\n  actions: read', self.text)
+        for name in ('prepare-documentation', 'enhanced-tests', 'build', 'verify-live'):
+            self.assertNotIn(': write', self.jobs[name])
+            self.assertNotIn('secrets.', self.jobs[name])
+            self.assertNotIn('actions/upload-pages-artifact', self.jobs[name])
+            self.assertNotIn('actions/deploy-pages', self.jobs[name])
+
+    def test_exact_same_run_inputs_six_shards_and_aggregate_deployment_gate(self):
+        for name in ('enhanced-tests', 'build', 'deploy', 'verify-live'):
+            job = self.jobs[name]
+            self.assertIn('artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}', job)
+            self.assertNotIn('run-id:', job)
+            self.assertIn("--bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}'", job)
+            self.assertIn("--manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'", job)
+        self.assertIn('shard: [navigation, publication, live, symbols-catalog, types, remaining]', self.jobs['enhanced-tests'])
+        self.assertIn('fail-fast: false', self.jobs['enhanced-tests'])
+        self.assertIn('if: always()', self.jobs['build'])
+        self.assertIn("all(j['result'] == 'success' for j in jobs.values())", self.jobs['build'])
+        self.assertIn("' aggregate --root", self.jobs['build'])
+        self.assertIn('pattern: documentation-result-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}', self.jobs['build'])
+        for name in ('deploy', 'verify-live'):
+            self.assertIn('artifact-ids: ${{ needs.build.outputs.gate_id }}', self.jobs[name])
+            self.assertIn("' deployment --root", self.jobs[name])
+            self.assertIn("--gate-sha '${{ needs.build.outputs.gate_sha }}'", self.jobs[name])
+        self.assertIn('needs: [prepare-documentation, build]', self.jobs['deploy'])
+        self.assertIn('needs: [prepare-documentation, build, deploy]', self.jobs['verify-live'])
+        self.assertLess(self.jobs['deploy'].index("' deployment --root"),
+                        self.jobs['deploy'].index('actions/upload-pages-artifact'))
+
+    def test_historical_workflow_assertions_and_inventory_bytes_unchanged(self):
+        for name in ('docs/tests/test_live_docs_site.py', 'docs/tests/test_documentation_ci.py',
+                     'docs/tests/ci001-inherited-inventory.json'):
+            self.assertEqual((ROOT / name).read_bytes(),
+                s.blob(ROOT, 'e4e756aafa4edaffdb11fe341bb016380bf19ca9', name))
+        historical = s.blob(ROOT, e.HISTORY, '.github/workflows/documentation.yml')
+        self.assertIn(b'documentation_ci.py deployment', historical)
+        self.assertIn(b'documentation_ci.py aggregate', historical)
+
+    def test_class_setup_and_teardown_errors_are_not_test_success(self):
+        class SetupError(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                raise RuntimeError('DOC-CI-004 controlled class setup error')
+            def test_not_run(self):
+                self.fail('must not execute')
+        class TeardownError(unittest.TestCase):
+            @classmethod
+            def tearDownClass(cls):
+                raise RuntimeError('DOC-CI-004 controlled class teardown error')
+            def test_body(self):
+                pass
+        for case, count, holder in ((SetupError, 0, 'setUpClass'), (TeardownError, 1, 'tearDownClass')):
+            with self.subTest(case=case.__name__):
+                result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=ci.EvidenceResult).run(
+                    unittest.defaultTestLoader.loadTestsFromTestCase(case))
+                self.assertFalse(result.wasSuccessful())
+                self.assertEqual(result.testsRun, count)
+                self.assertEqual(len(result.errors), 1)
+                errors = [event for event in result.events if event['event'] == 'error']
+                self.assertEqual(len(errors), 1)
+                self.assertIn(holder, errors[0]['id'])
+                self.assertEqual(sum(event['event'] == 'success' for event in result.events), count)
 
 
 class RepresentativeFeatureTests(unittest.TestCase):

@@ -1,5 +1,15 @@
 # POL-002 — Feature-source qualification and hosted epochs
 
+## DOC-CI-004 — non-authorizing historical failure evidence
+
+Historical subprocess failures retain their original exit status, complete logs
+and available raw inner report in a separate failure-diagnostics artifact. No
+failed execution emits a successful canonical shard report; diagnostics are not
+sealed preparation inputs, aggregate inputs or publication authority. Historical
+source identities, exact-once execution and source-policy review are unchanged.
+See `doc-ci-004-live-shard-failure.md` for the preserved main incident, additive
+negative controls, qualification and unresolved underlying root-cause status.
+
 ## R3 — Hosted Alire correction and explicit publication approval
 
 R3 preserves PR #131's R2 commit `db91999832279c4baef66d6af7df0c311f3c4a7e`

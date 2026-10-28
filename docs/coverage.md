@@ -1,5 +1,14 @@
 # Implementation coverage
 
+## DOC-CI-004 — historical shard failure diagnostics
+
+Separate non-authorizing diagnostics preserve failed historical command logs,
+inner reports, status and source/run/artifact identities without manufacturing
+canonical success. Additive POL-002 negative controls retain the historical
+142-script/437-enhanced inventory, all six shards and publication authority.
+The original main live-shard incident remains `ROOT_CAUSE_NOT_YET_ESTABLISHED`;
+see `doc-ci-004-live-shard-failure.md` for evidence, limitations and qualification.
+
 ## CI-002 — conservative Bootstrap native qualification
 
 Main-only push triggering removes redundant feature-push Bootstrap runs while
