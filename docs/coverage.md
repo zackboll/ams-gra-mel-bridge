@@ -1,5 +1,16 @@
 # Implementation coverage
 
+## CI-003 — shared main-branch runner lanes (pending qualification)
+
+Three repository-wide job concurrency groups cover all eight Bootstrap and ten
+main Documentation instances, with queue-max/noncanceling job policy and unique
+PR groups. Existing workloads/check identities and workflow-level cancellation
+remain unchanged. Exact atomic workflow and policy-only successor authorization
+has independent negative controls in the sealed integration inventory. No
+production or publication-fingerprint changes. Actionlint queue-key support and
+complete hosted qualification/review remain unresolved; this is not READY. See
+`ci-003-three-runner-lanes.md` for scope, queue limits, baseline and evidence gates.
+
 ## CI-002 — conservative Bootstrap native qualification
 
 Main-only push triggering removes redundant feature-push Bootstrap runs while

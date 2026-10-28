@@ -12,6 +12,10 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && format('main-runner-lane-{0}', matrix.compiler == 'gcc' && '1' || '2') || format('unlimited-{0}-{1}-{2}-{3}-{4}', github.run_id, github.run_attempt, github.job, matrix.compiler, matrix.build_type) }}
+      queue: max
+      cancel-in-progress: false
     env:
       BOOTSTRAP_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       BOOTSTRAP_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -43,6 +47,10 @@ jobs:
 
   build-tree-isolation:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-3' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Prove production and test build trees stay isolated
@@ -50,6 +58,10 @@ jobs:
 
   ada:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-3' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Install hosted Ada toolchain
@@ -65,6 +77,10 @@ jobs:
 
   rust:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-1' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -92,6 +108,10 @@ jobs:
 
   python:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'main-runner-lane-2' || format('unlimited-{0}-{1}-{2}', github.run_id, github.run_attempt, github.job) }}
+      queue: max
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Build test facade and mock providers

@@ -43,6 +43,40 @@ PROTECTED_INPUTS = (
 )
 require = source.require
 
+# CI-003 is one exact policy-only successor, not a general permission to edit
+# Bootstrap or inherited integrity authority. Historical epochs remain frozen.
+CI003_SOURCE = (
+    ('.github/workflows/ci.yml',
+     'c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2',
+     '1fdeb1545a9fa6820dd247685ec939b1c396101bc3c02b494a60560e400f9244'),
+    ('.github/workflows/documentation.yml',
+     '979931734ae82a2a98b8684231f06ce17f202c4115eafdf439136c238724a847',
+     '234d25c009043f814c4cafa39a05b7b4d311fbf9565661cba8615ed2f370b181'),
+    ('scripts/check_doc_source_integrity.py',
+     'cf7d8bf88288bdbe76be4d8fefa9970d2be2cdd9adfaf296ebbd682d63bd9d7d',
+     '6a1e342672bbf76ee8c3f7f952a92f9bdaf5012740c906a70e217666459e3c71'),
+    ('docs/tools/test_main_runner_lanes.py', None,
+     '2acb6941a1284b130118878cc49517f0a9f46547e3a419623281524cd9a3647b'),
+)
+
+
+def ci003_delta(root, target, candidate, old, new):
+    special = {'.github/workflows/ci.yml', 'scripts/check_doc_source_integrity.py',
+               'docs/tools/test_main_runner_lanes.py'}
+    if not any(old.get(n) != new.get(n) for n in special):
+        return set()
+    for name, predecessor, proposed in CI003_SOURCE:
+        require(new.get(name, (None,))[0] == '100644', 'CI-003 candidate mode/missing: ' + name)
+        require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == proposed,
+                'CI-003 candidate bytes: ' + name)
+        if predecessor is None:
+            require(name not in old, 'CI-003 unexpected predecessor: ' + name)
+        else:
+            require(old.get(name, (None,))[0] == '100644' and
+                    hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
+                    'CI-003 predecessor bytes/mode: ' + name)
+    return {name for name, _, _ in CI003_SOURCE}
+
 
 def digest(value):
     return hashlib.sha256(epoch.canonical(value)).hexdigest()
@@ -119,12 +153,14 @@ def classify(root, target, candidate):
         for name in POLICY_PATHS:
             require(old.get(name) == new.get(name), 'feature changed qualification implementation')
         return value
+    ci003 = ci003_delta(root, target, candidate, old, new)
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
-        require(name in POLICY_PATHS or source.documentation_path(name),
+        require(name in POLICY_PATHS or name in ci003 or source.documentation_path(name),
                 'policy mixed with protected production/source change: ' + name)
     for name in PROTECTED_INPUTS:
-        require(old.get(name) == new.get(name), 'policy proposal changed inherited authority: ' + name)
+        require(name in ci003 or old.get(name) == new.get(name),
+                'policy proposal changed inherited authority: ' + name)
     source.exact_checkout(root, source.revision(root, candidate), new)
     return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
             'target_tree': source.git(root, 'rev-parse', target + '^{tree}').decode().strip(),
