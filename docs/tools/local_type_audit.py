@@ -113,9 +113,10 @@ def type_context(tokens, index, end):
 
 
 class Authority:
-    def __init__(self, root, pristine):
+    def __init__(self, root, pristine, ledger=None):
         self.root = root
-        self.ledger = json.loads((root / 'docs/gnatdoc-native-anchors.json').read_text())
+        self.ledger = (json.loads((root / 'docs/gnatdoc-native-anchors.json').read_text())
+                       if ledger is None else ledger)
         self.packages, self.sections, self.types, self.page_packages = {}, {}, {}, {}
         native_sections = {}
         headings = {}
