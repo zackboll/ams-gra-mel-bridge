@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import re
+import stat
 import subprocess
 from pathlib import Path
 
@@ -64,6 +65,32 @@ PROPOSED_NAVIGATION_TRANSITION = (
     "native/tests/test_ir_navigation.c",
     "56265cf8a44f1b054777b98457896dc338a79bb306b591b6ee8065c23b3ce224",
     "7f5aaa15d731f3b5a8b429d42c39565b999a308e1428c01e3ca7c029fe2a36c5",
+)
+# IRMEL-POL-001: exact PR #129 source unit, mechanically admissible only.
+# Independent review/branch protection, not this checker, authorize merging.
+# Verified from main 33720d155d99f183229b6ed87037ecbd53a3875b and candidate
+# 47630e61d2631effbbbe3e222e998e33daa90f60. None means absent, not arbitrary.
+# (path, Git mode, original (blob, SHA-256), candidate (blob, SHA-256)).
+IRMEL_POL_001_TRANSITION = (
+    ("Makefile", "100644",
+     ("e4c3441a32169c6474dedef00a2db1f798375970",
+      "7cf0c004e277af70766685f91663c1acde5980fcd1037b42c1092e1c310a5236"),
+     ("7b608a960241c87f88819dbe2cd6bbe42cdbdebd",
+      "446ed30875726cc7dd45e2ca59a48254fed65e5036c0de1542dd5d3c38803ba8")),
+    ("scripts/test_ada.sh", "100755",
+     ("d32e162093a94ba77ab482cb53e98d91e31ee29a",
+      "b3d19397440873dbf427fe77663083dc99ab5f13e14cd937e0a250fafb09af66"),
+     ("9d35abb1345aa8b6a71a9d7b1229f19c16d33239",
+      "21ec1d4545f0ef2e6dbb0af110bfa9083b1e102e9b2f32ee6b1e9dedd5ee9acf")),
+    ("scripts/check_ir_api_coverage.py", "100644", None,
+     ("6775d2e9986d3b59233e7c464745a1482d047f81",
+      "6a23700ea3eaa7de8ed7f57d5dcd43d38fc7c5cdd64f67bbf9ad7494202e9e31")),
+    ("scripts/freeze_ir_api_evidence.py", "100644", None,
+     ("48af395041dd3babb1a1df378e61643064ff91b0",
+      "a8f371013211ffaba2f0723388b50acb79f24b8c4abe5e1748b42a6dc38abc9e")),
+    ("scripts/test_ir_api_coverage.py", "100644", None,
+     ("fa96e0ceb5c16b911fdb0acdfec15b1b53ca981a",
+      "96ff71c641673f36ea90a9c1a7707e2eae367000c0e9a16dd3bd4bc1d621b333")),
 )
 # CI-002 exact complete-file proposal; mechanical acceptance is NOT approval.
 # Superseded CI-002 HEAD-only proposal (historical evidence, NOT admitted):
@@ -231,6 +258,80 @@ def proposed_navigation_state(root, git, existing, current, base):
     return states[0]
 
 
+def irmel_pol_001_state(root, git, existing, current, base):
+    """Recognize two complete states; never read authority from candidate docs."""
+    records = IRMEL_POL_001_TRANSITION
+    expected = {"Makefile", "scripts/test_ada.sh", "scripts/check_ir_api_coverage.py",
+                "scripts/freeze_ir_api_evidence.py", "scripts/test_ir_api_coverage.py"}
+    names = [record[0] for record in records]
+    historical = ({name for name, _, _ in REVIEWED_NATIVE_TEST_TRANSITION} |
+                  {PROPOSED_IR_TEST_TRANSITION[0], PROPOSED_IR_COUNTER_TRANSITION[0],
+                   PROPOSED_NAVIGATION_TRANSITION[0]} |
+                  {name for name, _, _ in PROPOSED_INSTRUMENTATION_TRANSITION})
+    if (len(names) != 5 or set(names) != expected or
+            set(names) & (historical | DOCUMENTATION_ADDITIONS)):
+        raise ValueError("IRMEL-POL-001 duplicate or overlapping authorization paths")
+    for name, mode, original, candidate in records:
+        if (mode != ("100755" if name == "scripts/test_ada.sh" else "100644") or
+                (original is None) != (name not in {"Makefile", "scripts/test_ada.sh"}) or
+                original == candidate):
+            raise ValueError("IRMEL-POL-001 contradictory authorization states")
+        for identity in (original, candidate):
+            if identity is not None and (len(identity) != 2 or
+                    not re.fullmatch(r"[0-9a-f]{40}", identity[0]) or
+                    not re.fullmatch(r"[0-9a-f]{64}", identity[1])):
+                raise ValueError("IRMEL-POL-001 invalid content identity")
+    originals = {name for name, _, original, _ in records if original is not None}
+    if not originals.intersection(existing):
+        # Preserve historical minimal fixtures; no source-addition exemption.
+        return None
+    if base != BASE:
+        raise ValueError("IRMEL-POL-001 immutable foundation argument changed")
+    for name, mode, original, _ in records:
+        entry = git("ls-tree", "-z", base, "--", name)
+        if original is None:
+            if entry:
+                raise ValueError("IRMEL-POL-001 foundation addition already exists: " + name)
+        elif (entry != f"{mode} blob {original[0]}\t{name}\0".encode() or
+              hashlib.sha256(git("show", f"{base}:{name}")).hexdigest() != original[1]):
+            raise ValueError("IRMEL-POL-001 immutable foundation identity changed: " + name)
+    states = []
+    for name, mode, original, candidate in records:
+        path = root / name
+        entries = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+        if entries == [b""] and original is None:
+            if path.exists() or path.is_symlink():
+                raise ValueError("IRMEL-POL-001 untracked audit script: " + name)
+            states.append("ORIGINAL")
+            continue
+        if (name not in current or len(entries) != 2 or entries[1] != b"" or
+                b"\t" not in entries[0]):
+            raise ValueError("IRMEL-POL-001 missing or unmerged index entry: " + name)
+        metadata, indexed_name = entries[0].split(b"\t", 1)
+        fields = metadata.split()
+        if (len(fields) != 3 or fields[0] != mode.encode() or fields[2] != b"0" or
+                indexed_name != name.encode()):
+            raise ValueError("IRMEL-POL-001 index path/mode/stage mismatch: " + name)
+        # lstat before reading prevents symlink, FIFO, directory or device reads.
+        if (any((root / parent).is_symlink() for parent in path.relative_to(root).parents
+                if parent != Path(".")) or path.is_symlink() or
+                not path.exists() or not stat.S_ISREG(path.lstat().st_mode)):
+            raise ValueError("IRMEL-POL-001 nonregular working tree path: " + name)
+        if bool(path.stat().st_mode & 0o111) != (mode == "100755"):
+            raise ValueError("IRMEL-POL-001 working tree executable mode mismatch: " + name)
+        working = path.read_bytes()
+        indexed = git("show", f":{name}")
+        if working != indexed:
+            raise ValueError("IRMEL-POL-001 working tree/index bytes differ: " + name)
+        identity = (fields[1].decode(), hashlib.sha256(indexed).hexdigest())
+        if identity not in (original, candidate):
+            raise ValueError("IRMEL-POL-001 unapproved complete bytes: " + name)
+        states.append("ORIGINAL" if identity == original else "CANDIDATE")
+    if len(set(states)) != 1:
+        raise ValueError("IRMEL-POL-001 mixed or partially applied source unit")
+    return states[0]
+
+
 def proposed_bootstrap_state(root, git, existing, current, base):
     name, original, proposed = PROPOSED_BOOTSTRAP_TRANSITION
     if name not in existing:
@@ -264,8 +365,11 @@ def check(root=ROOT, base=BASE):
         return subprocess.check_output(["git", "-C", str(root), *args])
     existing = set(git("ls-tree", "-rz", "--name-only", base).decode().split("\0")) - {""}
     current = set(git("ls-files", "-z", "--cached").decode().split("\0")) - {""}
+    irmel = irmel_pol_001_state(root, git, existing, current, base)
+    irmel_paths = {name for name, _, _, _ in IRMEL_POL_001_TRANSITION} if irmel else set()
     unexpected = {name for name in current - existing
-                  if not name.startswith("docs/") and name not in DOCUMENTATION_ADDITIONS}
+                  if not name.startswith("docs/") and name not in DOCUMENTATION_ADDITIONS
+                  and name not in irmel_paths}
     if unexpected:
         raise ValueError(f"unauthorized tracked files added: {sorted(unexpected)!r}")
     transition = reviewed_native_test_state(root, git, existing, current, base)
@@ -287,6 +391,9 @@ def check(root=ROOT, base=BASE):
     checked = 0
     for name in sorted(existing):
         if name.startswith("docs/") or name in (".gitignore", "README.md"):
+            continue
+        if name in irmel_paths:
+            checked += 1  # Exact original/candidate bytes checked in both views.
             continue
         if name in reviewed_paths:
             # Both views of the complete pair were already checked above.
@@ -321,6 +428,7 @@ def check(root=ROOT, base=BASE):
             "proposed_ir_test": ir_transition,
             "proposed_instrumentation_tests": instrumentation,
             "proposed_navigation_test": navigation,
+            "irmel_pol_001": irmel,
             "proposed_bootstrap_workflow": bootstrap}
 
 
