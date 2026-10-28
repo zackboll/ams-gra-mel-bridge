@@ -305,7 +305,21 @@ class QualifiedArtifactTests(unittest.TestCase):
         self.reject("changed native CSS or authored portal")
 
     def api_page(self):
-        return next(p for p in (self.site / "api").glob("*.html") if p.name != "index.html")
+        authority = live.publication.Authority(ROOT, ROOT / "_site")
+        required = sorted(authority.required_additions(), key=live.publication.occurrence_key)
+        self.assertTrue(required, "missing trusted fixture occurrence")
+        record = required[0]
+        entry = record["containing"]
+        self.assertEqual(authority.sections[(entry["page"], entry["anchor"])], entry)
+        path = self.site / "api" / entry["page"]
+        native = (ROOT / "_site/api" / entry["page"]).read_text()
+        text = live.publication.restore_document(path.read_text(), native,
+                                                "api/" + entry["page"], authority)
+        restored, audit = live.publication.restore_page(entry["page"], text, authority)
+        self.assertIn("<h4 id=" + entry["anchor"] + ">", native)
+        self.assertIn(record, audit, "missing trusted fixture type-reference link")
+        self.assertEqual(restored, native, "changed trusted fixture native declaration")
+        return path
 
     def test_wrong_document_title(self):
         path = self.api_page()

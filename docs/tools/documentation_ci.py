@@ -175,6 +175,47 @@ def source_methods(content, module):
     return methods
 
 
+def live_fixture_source(content):
+    """Exact DOC-PERF-001-R2 helper proposal; pending independent review.
+
+    Reconstruct from immutable CI-001 bytes, not a candidate-supplied digest.
+    Both historical fixtures and the proposed successor retain every other byte,
+    including all test methods and the reviewed WorkflowTests implementation.
+    Mechanical acceptance is not approval of this proposed transition.
+    """
+    original = git_bytes(CI001_SHA, "docs/tests/test_live_docs_site.py")
+    require(hashlib.sha256(original).hexdigest() ==
+            "0658a2e40b8e815e71a9de61e077b7b0a122f74f23ba385d363f80ebfc0b6164",
+            "live fixture historical source mismatch")
+    old = '''    def api_page(self):
+        return next(p for p in (self.site / "api").glob("*.html") if p.name != "index.html")
+'''.encode()
+    new = '''    def api_page(self):
+        authority = live.publication.Authority(ROOT, ROOT / "_site")
+        required = sorted(authority.required_additions(), key=live.publication.occurrence_key)
+        self.assertTrue(required, "missing trusted fixture occurrence")
+        record = required[0]
+        entry = record["containing"]
+        self.assertEqual(authority.sections[(entry["page"], entry["anchor"])], entry)
+        path = self.site / "api" / entry["page"]
+        native = (ROOT / "_site/api" / entry["page"]).read_text()
+        text = live.publication.restore_document(path.read_text(), native,
+                                                "api/" + entry["page"], authority)
+        restored, audit = live.publication.restore_page(entry["page"], text, authority)
+        self.assertIn("<h4 id=" + entry["anchor"] + ">", native)
+        self.assertIn(record, audit, "missing trusted fixture type-reference link")
+        self.assertEqual(restored, native, "changed trusted fixture native declaration")
+        return path
+'''.encode()
+    require(original.count(old) == 1, "live fixture historical helper mismatch")
+    proposed = original.replace(old, new, 1)
+    require(hashlib.sha256(proposed).hexdigest() ==
+            "4693fe458c1fae6dffc5d9d115e21dc9a5ff3a74380a0cd16ac22c4181444c74",
+            "live fixture proposed reconstruction mismatch")
+    require(content in (original, proposed), "unapproved inherited live fixture source")
+    return original
+
+
 def validate_inventory(groups, root=None):
     root = ROOT if root is None else Path(root)
     # CI-002 is additive. Reconcile its exact source-derived identities before
@@ -235,6 +276,7 @@ def validate_inventory(groups, root=None):
             if name in IR_CI003_SOURCES:
                 continue  # Exact approved bytes and original methods verified above.
             if name == "docs/tests/test_live_docs_site.py":
+                current = live_fixture_source(current)
                 # Only the two workflow-shape tests follow the reviewed topology
                 # change. All HTTP/publication/security assertions stay frozen.
                 def invariant_ast(content):
