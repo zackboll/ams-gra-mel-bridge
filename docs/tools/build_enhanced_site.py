@@ -154,8 +154,9 @@ def qualified_original(pristine, root=ROOT):
     require(sha(anchors) == ANCHORS_SHA256, "authoritative anchors/profiles changed")
     require(tomllib.loads((root / "docs/gnatdoc-enhance.toml").read_text()) == CONFIG,
             "unapproved presentation configuration")
-    example_links = len(occurrence_ledger(root, References(root, Path(pristine))))
-    catalog = api_catalog.inventory(root, References(root, Path(pristine)), independent=True)
+    references = References(root, Path(pristine))
+    example_links = len(occurrence_ledger(root, references))
+    catalog = api_catalog.inventory(root, references, independent=True)
     require(validate_pristine(pristine) == {"html_pages": 38, "links": 1562 + example_links + 3 + api_catalog.link_count(catalog)}, "pristine metrics changed")
     report = measure(pristine, root, json.loads(anchors))
     ratchet(report, (root / "docs/gnatdoc-coverage-baseline.txt").read_text())
@@ -311,13 +312,17 @@ def validate(published, pristine, root=ROOT, audit_path=None):
     links = sum(len(Page(data.decode()).links) for n, data in actual.items() if n.endswith(".html"))
     require(counts["linked_local_types"] == len(audit) == counts["linked_types"], "type-link counts disagree with independent audit")
     require(counts["linked_external_types"] == 0, "external type links not authorized")
-    example_audit = occurrence_ledger(root, References(root, Path(pristine)))
-    catalog = api_catalog.verify(actual["guides/api-map.html"].decode(), root, References(root, Path(pristine)))
+    references = References(root, Path(pristine))
+    example_audit = occurrence_ledger(root, references)
+    catalog = api_catalog.verify(actual["guides/api-map.html"].decode(), root, references)
     require(links == 1562 + len(example_audit) + 30 + len(audit) + 1 + len(symbols) + 3 + api_catalog.link_count(catalog),
             "presentation link delta differs from independently audited type, example and symbol links")
-    require(fingerprint(hashes({n: d for n, d in actual.items() if n.startswith("api/")}))
+    # Hash this already captured immutable byte mapping once, not the mutable
+    # publication path. A later validate() always inventories/reads it afresh.
+    actual_hashes = hashes(actual)
+    require(fingerprint({n: d for n, d in actual_hashes.items() if n.startswith("api/")})
             == ENHANCED_API_SHA256, "complete inherited enhanced API inventory/bytes changed")
-    require(fingerprint(hashes(actual)) == PUBLICATION_SHA256, "complete qualified publication bytes changed")
+    require(fingerprint(actual_hashes) == PUBLICATION_SHA256, "complete qualified publication bytes changed")
     inherited = dict(actual)
     text = inherited["guides/api-map.html"].decode()
     start, end = '<nav aria-label="Declaration indexes">', '<h2>Required, conditional and represented-only</h2>'
@@ -344,7 +349,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
                 "api/" + page: {"title": package + " — " + CONFIG["project"],
                                  "lang": "en", "charset": "utf-8"}
                 for page, package in sorted({**authority.page_packages, "index.html": "API Reference"}.items())},
-            "output_sha256": hashes(actual)}
+            "output_sha256": actual_hashes}
 
 
 def build(pristine, output, root=ROOT):
