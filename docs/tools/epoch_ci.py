@@ -43,6 +43,40 @@ PROTECTED_INPUTS = (
 )
 require = source.require
 
+# Exact CI-ACTIONS-001 dependency proposal only. Mechanical policy qualification
+# cannot grant source/publication approval or authorize unrelated production.
+ACTIONS_SOURCE = (
+    ('.github/workflows/ci.yml',
+     'c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2',
+     'de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235'),
+    ('.github/workflows/documentation.yml',
+     '979931734ae82a2a98b8684231f06ce17f202c4115eafdf439136c238724a847',
+     'cb7ea4aa28d20bec2976af8d430fbff84d00bdc69f19b1dd13885f41022cc7d3'),
+    ('scripts/check_doc_source_integrity.py',
+     'cf7d8bf88288bdbe76be4d8fefa9970d2be2cdd9adfaf296ebbd682d63bd9d7d',
+     'e60abd114b984ee3d1f1ce6905c74045e3f1d8ee75da0ba2ac1141f40c726ef9'),
+    ('docs/tools/test_actions_dependencies.py', None,
+     '4312b37b2d54056e83b2970ed84ec1d50e96d4ca4c41a2c273d2fd66b3d5eabc'),
+)
+
+
+def actions_delta(root, target, candidate, old, new):
+    special = {'.github/workflows/ci.yml', 'scripts/check_doc_source_integrity.py',
+               'docs/tools/test_actions_dependencies.py'}
+    if not any(old.get(n) != new.get(n) for n in special):
+        return set()
+    for name, predecessor, proposed in ACTIONS_SOURCE:
+        require(new.get(name, (None,))[0] == '100644', 'CI-ACTIONS-001 candidate mode/missing: ' + name)
+        require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == proposed,
+                'CI-ACTIONS-001 candidate bytes: ' + name)
+        if predecessor is None:
+            require(name not in old, 'CI-ACTIONS-001 unexpected predecessor: ' + name)
+        else:
+            require(old.get(name, (None,))[0] == '100644' and
+                    hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
+                    'CI-ACTIONS-001 predecessor bytes/mode: ' + name)
+    return {name for name, _, _ in ACTIONS_SOURCE}
+
 
 def digest(value):
     return hashlib.sha256(epoch.canonical(value)).hexdigest()
@@ -119,12 +153,14 @@ def classify(root, target, candidate):
         for name in POLICY_PATHS:
             require(old.get(name) == new.get(name), 'feature changed qualification implementation')
         return value
+    actions = actions_delta(root, target, candidate, old, new)
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
-        require(name in POLICY_PATHS or source.documentation_path(name),
+        require(name in POLICY_PATHS or name in actions or source.documentation_path(name),
                 'policy mixed with protected production/source change: ' + name)
     for name in PROTECTED_INPUTS:
-        require(old.get(name) == new.get(name), 'policy proposal changed inherited authority: ' + name)
+        require(name in actions or old.get(name) == new.get(name),
+                'policy proposal changed inherited authority: ' + name)
     source.exact_checkout(root, source.revision(root, candidate), new)
     return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
             'target_tree': source.git(root, 'rev-parse', target + '^{tree}').decode().strip(),

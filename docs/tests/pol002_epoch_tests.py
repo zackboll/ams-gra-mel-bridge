@@ -18,6 +18,49 @@ import documentation_ci as ci
 import epoch_ci as e
 import feature_source as s
 import source_epoch as epoch
+import test_actions_dependencies as dependencies
+
+
+class ActionDependencyWorkflowTests(dependencies.DependencyWorkflowTests):
+    """Migration preservation controls join the sealed integration inventory."""
+
+
+class ActionDependencyAuthorizationTests(dependencies.DependencyAuthorizationTests):
+    """Independent atomic workflow transition negative controls."""
+
+
+class ActionDependencyEpochTests(unittest.TestCase):
+    def setUp(self):
+        self.old = {n: ('100644', 'old') for n, old, _ in e.ACTIONS_SOURCE if old is not None}
+        self.new = {n: ('100644', 'new') for n, _, _ in e.ACTIONS_SOURCE}
+
+    def blob(self, root, revision, name):
+        if revision == 'old':
+            return dependencies.original(name)
+        return (ROOT / name).read_bytes()
+
+    def test_exact_proposal_does_not_approve_itself(self):
+        with mock.patch.object(s, 'blob', side_effect=self.blob):
+            self.assertEqual(e.actions_delta(ROOT, 'old', 'new', self.old, self.new), set(self.new))
+
+    def test_unknown_bytes_in_every_candidate_and_predecessor_rejected(self):
+        for name, predecessor, _ in e.ACTIONS_SOURCE:
+            for revision in (('old', 'new') if predecessor else ('new',)):
+                def bad(root, ref, path):
+                    return self.blob(root, ref, path) + (b'# unauthorized\n' if (ref, path) == (revision, name) else b'')
+                with mock.patch.object(s, 'blob', side_effect=bad), self.assertRaisesRegex(ValueError, 'CI-ACTIONS-001'):
+                    e.actions_delta(ROOT, 'old', 'new', self.old, self.new)
+
+    def test_missing_executable_and_symlink_modes_rejected(self):
+        for name in self.new:
+            for mode in (None, '100755', '120000'):
+                entries = dict(self.new)
+                if mode is None:
+                    entries.pop(name)
+                else:
+                    entries[name] = (mode, 'new')
+                with mock.patch.object(s, 'blob', side_effect=self.blob), self.assertRaisesRegex(ValueError, 'CI-ACTIONS-001'):
+                    e.actions_delta(ROOT, 'old', 'new', self.old, entries)
 
 
 class AggregateTests(unittest.TestCase):
