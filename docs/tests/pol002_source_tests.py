@@ -372,6 +372,222 @@ class GeneratedEpochTests(unittest.TestCase):
                                   "enhanced-tests": {"result": state}})
 
 
+class AuditTrustedTargetTests(unittest.TestCase):
+    """Real immutable audit objects through the target CLI, never feature helpers.
+
+    Synthetic target commits are local policy-review fixtures, not assertions of
+    independent approval. All mutations are committed in isolated Git clones.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.directory = tempfile.TemporaryDirectory(prefix="pol002-audit-authority-")
+        cls.addClassCleanup(cls.directory.cleanup)
+        cls.workspace = Path(cls.directory.name)
+        cls.template = cls.workspace / "template"
+        subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", str(ROOT),
+                        str(cls.template)], check=True)
+        def git(*args):
+            return subprocess.check_output(["git", "-C", str(cls.template), *args],
+                                           stderr=subprocess.STDOUT).decode().strip()
+        git("config", "user.name", "POL002 Audit Fixture")
+        git("config", "user.email", "pol002-audit@example.invalid")
+        git("checkout", "-q", "-b", "trusted-target", policy.AUDIT_TARGET)
+        (cls.template / "docs/tools/feature_source.py").write_bytes(Path(policy.__file__).read_bytes())
+        git("add", "docs/tools/feature_source.py")
+        git("commit", "-qm", "synthetic independently separate policy target")
+        cls.target = git("rev-parse", "HEAD")
+        git("update-ref", "refs/remotes/origin/main", cls.target)
+        git("checkout", "-q", "-b", "audit-candidate", policy.AUDIT_COMMIT)
+        git("merge", "-q", "--no-ff", "--no-edit", cls.target)
+        cls.candidate = git("rev-parse", "HEAD")
+        cls.runner = cls.workspace / "trusted-target" / "feature_source.py"
+        cls.runner.parent.mkdir()
+        cls.runner.write_bytes(policy.blob(cls.template, cls.target, "docs/tools/feature_source.py"))
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="pol002-audit-case-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name) / "repo"
+        subprocess.run(["git", "clone", "-q", "--shared", str(self.template), str(self.root)], check=True)
+        self.git("config", "user.name", "POL002 Audit Fixture")
+        self.git("config", "user.email", "pol002-audit@example.invalid")
+        self.git("update-ref", "refs/remotes/origin/main", self.target)
+
+    def git(self, *args):
+        return subprocess.check_output(["git", "-C", str(self.root), *args],
+                                       stderr=subprocess.STDOUT).decode().strip()
+
+    def commit(self):
+        self.git("add", ".")
+        self.git("commit", "-qm", "committed adversarial audit fixture")
+
+    def evaluate(self, error=None):
+        result = subprocess.run([sys.executable, str(self.runner), "--root", str(self.root)],
+                                capture_output=True, text=True)
+        if error is not None:
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn(error, result.stderr)
+            return None
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def variant(self, label):
+        self.git("checkout", "-q", "-b", label, self.candidate)
+
+    def test_exact_audit_requires_feature_gates_not_policy_shortcut(self):
+        value = self.evaluate()
+        self.assertEqual(value["case"], "feature-source")
+        self.assertFalse(value["independent_approval"])
+        self.assertFalse(value["publication_epoch_approved"])
+        self.assertEqual(len(value["delta"]), 13)
+        import epoch_ci
+        self.assertEqual(epoch_ci.classify(self.root, self.target, "HEAD"), value)
+        epoch_ci.authority(self.root, value)
+
+    def test_documentation_only_through_trusted_target(self):
+        self.git("checkout", "-q", "-b", "documentation", self.target)
+        (self.root / "docs/coverage.md").write_text("Documentation-only fixture.\n")
+        self.commit()
+        self.assertEqual(self.evaluate()["case"], "documentation-only")
+
+    def test_rf_product_rx_through_trusted_target(self):
+        self.git("checkout", "-q", "-b", "rf", self.target)
+        path = self.root / "native/src/rf_product_rx.cpp"
+        path.write_bytes(path.read_bytes() + b"\n// RF fixture\n")
+        self.commit()
+        self.assertEqual(self.evaluate()["case"], "feature-source")
+
+    def test_each_missing_audit_member_rejected(self):
+        for i, (name, _, _, _) in enumerate(policy.AUDIT_TRANSITION):
+            with self.subTest(path=name):
+                self.variant("missing-" + str(i))
+                self.git("rm", name)
+                self.commit()
+                self.evaluate("audit member: " + name)
+
+    def test_each_modified_audit_blob_rejected(self):
+        for i, (name, _, _, _) in enumerate(policy.AUDIT_TRANSITION):
+            with self.subTest(path=name):
+                self.variant("modified-" + str(i))
+                path = self.root / name
+                path.write_bytes(path.read_bytes() + b"\n")
+                self.commit()
+                self.evaluate("audit member: " + name)
+
+    def test_each_wrong_audit_mode_rejected(self):
+        for i, (name, mode, _, _) in enumerate(policy.AUDIT_TRANSITION):
+            with self.subTest(path=name):
+                self.variant("mode-" + str(i))
+                (self.root / name).chmod(0o644 if mode == "100755" else 0o755)
+                self.commit()
+                self.evaluate("audit member: " + name)
+
+    def test_incomplete_original_candidate_group_rejected(self):
+        for i, (name, _, before, _) in enumerate(policy.AUDIT_TRANSITION[:5]):
+            with self.subTest(path=name):
+                self.variant("mixed-" + str(i))
+                if before is None:
+                    self.git("rm", name)
+                else:
+                    (self.root / name).write_bytes(policy.blob(self.root, policy.AUDIT_TARGET, name))
+                self.commit()
+                self.evaluate("audit member: " + name)
+
+    def test_extra_script_json_rf_ada_native_and_removal_rejected(self):
+        cases = (("scripts/unreviewed.py", b"print('unreviewed')\n"),
+                 ("docs/reference/extra-evidence.json", b"{}\n"),
+                 ("native/src/rf_product_rx.cpp", b"// changed RF\n"),
+                 ("ada/src/ams-mel.ads", b"-- changed Ada\n"),
+                 ("native/src/ir_stream.cpp", b"// changed IR\n"),
+                 ("scripts/check.sh", b"#!/bin/sh\nexit 0\n"),
+                 ("native/src/ir_stream.cpp", None))
+        for i, (name, content) in enumerate(cases):
+            with self.subTest(path=name, removal=content is None):
+                self.variant("extra-" + str(i))
+                if content is None:
+                    self.git("rm", name)
+                else:
+                    (self.root / name).write_bytes(content)
+                self.commit()
+                self.evaluate("audit mixed with unrelated source/policy change")
+
+    def test_candidate_cannot_modify_policy_or_approval_registry(self):
+        for i, name in enumerate(("docs/tools/feature_source.py", "docs/tools/source_epoch.py",
+                                  "scripts/check_doc_source_integrity.py")):
+            with self.subTest(path=name):
+                self.variant("policy-" + str(i))
+                path = self.root / name
+                path.write_bytes(path.read_bytes() + b"\nREVIEWED_EPOCHS = ('forged',)\n")
+                self.commit()
+                self.evaluate("candidate changes qualification policy: " + name)
+                import epoch_ci
+                with self.assertRaises(ValueError):
+                    epoch_ci.classify(self.root, self.target, "HEAD")
+
+    def test_forged_manifest_cannot_grant_approval(self):
+        (self.root / "docs/source-authorization.json").write_text(
+            '{"independent_approval":true,"publication_epoch_approved":true}\n')
+        self.commit()
+        self.evaluate("audit mixed with unrelated source/policy change")
+        import source_epoch
+        with self.assertRaisesRegex(ValueError, "no independently reviewed publication epoch"):
+            source_epoch.publication_authority(self.root, "HEAD")
+
+    def test_incorrect_target_ancestry_rejected(self):
+        self.git("update-ref", "refs/remotes/origin/main", "42648a92eb0cc84b2980d16db6028992c0494ba1")
+        self.evaluate("target lacks historical reviewed main")
+
+    def test_incomplete_target_group_and_pol001_disagreement_rejected(self):
+        cases = (("Makefile", "incomplete/modified audit member"),
+                 ("scripts/check_doc_source_integrity.py", "reviewed POL-001 authorization"))
+        for i, (name, error) in enumerate(cases):
+            with self.subTest(path=name):
+                self.git("checkout", "-q", "-b", "incomplete-target-" + str(i), self.target)
+                path = self.root / name
+                if name == "Makefile":
+                    path.write_bytes(policy.blob(self.root, policy.AUDIT_COMMIT, name))
+                else:
+                    path.write_text(path.read_text().replace('("Makefile", "100644",',
+                                                            '("Makefile", "100755",'))
+                self.commit()
+                target = self.git("rev-parse", "HEAD")
+                self.git("update-ref", "refs/remotes/origin/main", target)
+                self.git("checkout", "-q", "-b", "incomplete-candidate-" + str(i), self.candidate)
+                self.git("merge", "-q", "--no-ff", "--no-edit", target)
+                self.evaluate(error)
+
+    def test_target_must_be_candidate_ancestor(self):
+        self.git("checkout", "-q", "-b", "later-target", self.target)
+        (self.root / "docs/coverage.md").write_text("Later target fixture\n")
+        self.commit()
+        later = self.git("rev-parse", "HEAD")
+        self.git("update-ref", "refs/remotes/origin/main", later)
+        self.git("checkout", "-q", "audit-candidate")
+        self.evaluate("target is not candidate ancestor")
+
+    def test_duplicate_or_extra_registry_member_rejected(self):
+        # Deliberately malformed *target* registry: still fails closed through CLI.
+        for i, suffix in enumerate(("AUDIT_TRANSITION[:1]", "(('scripts/extra.py',),)")):
+            with self.subTest(suffix=suffix):
+                self.git("checkout", "-q", "-b", "bad-target-" + str(i), self.target)
+                path = self.root / "docs/tools/feature_source.py"
+                text = Path(policy.__file__).read_text().replace(
+                    "def audit_transition(", "AUDIT_TRANSITION += " + suffix + "\n\n\ndef audit_transition(")
+                path.write_text(text)
+                self.commit()
+                target = self.git("rev-parse", "HEAD")
+                self.git("update-ref", "refs/remotes/origin/main", target)
+                self.git("checkout", "-q", "-b", "bad-candidate-" + str(i), self.candidate)
+                self.git("merge", "-q", "--no-ff", "--no-edit", target)
+                runner = Path(self.directory.name) / ("runner-" + str(i) + ".py")
+                runner.write_text(text)
+                result = subprocess.run([sys.executable, str(runner), "--root", str(self.root)],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("duplicate/incomplete audit registry", result.stderr)
+
+
 if __name__ == "__main__":
     import documentation_ci as ci
     import argparse
