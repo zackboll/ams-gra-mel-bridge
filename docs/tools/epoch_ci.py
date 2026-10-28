@@ -448,26 +448,89 @@ def run_shard(args):
             'invalid input artifact identity')
     directory = Path(args.directory).absolute()
     history = directory / ('shard-' + args.owner)
+    result = directory / (args.owner + '-execution.json')
+    require(not result.exists() and not result.is_symlink(), 'inner result must be fresh')
+    output = Path(args.output).absolute()
+    require(not output.exists() and not output.is_symlink(), 'outer result must be fresh')
+    require(not any(p.is_symlink() for p in output.parents), 'symlink outer result path')
     historical_checkout(history)
     inner = record['historical']['seal']
     env = historical_environment(record['identity'])
-    execute([sys.executable, 'docs/tools/documentation_ci.py', 'unpack', '--bundle', str(directory / 'historical.tar'),
-             '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
-            history, directory / (args.owner + '-unpack.log'), env)
-    result = directory / (args.owner + '-execution.json')
-    execute([sys.executable, 'docs/tools/documentation_ci.py', 'run', '--owner', args.owner,
-             '--output', str(result), '--artifact-id', args.artifact_id,
-             '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
-            history, directory / (args.owner + '.log'), env)
+    log = directory / (args.owner + '.log')
+    unpack_log = directory / (args.owner + '-unpack.log')
+    try:
+        execute([sys.executable, 'docs/tools/documentation_ci.py', 'unpack', '--bundle', str(directory / 'historical.tar'),
+                 '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
+                history, unpack_log, env)
+        execute([sys.executable, 'docs/tools/documentation_ci.py', 'run', '--owner', args.owner,
+                 '--output', str(result), '--artifact-id', args.artifact_id,
+                 '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
+                history, log, env)
+    except subprocess.CalledProcessError as failure:
+        try:
+            failure_diagnostics(args, record, failure, log, unpack_log, result)
+        except (OSError, ValueError) as diagnostic_error:
+            print('Failure diagnostics unavailable: ' + str(diagnostic_error), file=sys.stderr)
+        # A diagnostics error must never replace or conceal the inner exit code.
+        raise SystemExit(failure.returncode) from failure
+    execution = ci.load(result)
+    ci.validate_report(execution, args.owner, record['historical']['inventory']['shards'][args.owner],
+                       record['historical']['context'], ci.digest(record['historical']['inventory']),
+                       {'artifact_id': args.artifact_id, 'manifest_sha256': inner['manifest_sha256'],
+                        'bundle_sha256': inner['bundle_sha256'],
+                        'artifact_name': ci.artifact_name('inputs', record['historical']['context'])})
     report = {'schema': 2, 'owner': args.owner, 'identity': record['identity'],
               'epochs_sha256': digest(record), 'artifact_id': args.artifact_id,
               'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha,
-              'execution': ci.load(result)}
+              'execution': execution}
     # Every runner independently reconstructs candidate source/native profiles,
     # all type links/catalog entries and manifest, not just output hash lists.
     verify_candidate(directory, record)
     verify(args.directory, args.manifest_sha)
     write(args.output, report)
+
+
+def failure_diagnostics(args, record, failure, log, unpack_log, result):
+    """Untrusted forensic bytes, never a shard report or publication authority.
+
+    Preserve raw inner output even if JSON is truncated or malformed. The sealed
+    inputs are read-only; diagnostics live outside that namespace and aggregation
+    never reads them. No retries or additional historical executions occur here.
+    """
+    print('Historical shard failed: ' + json.dumps({'owner': args.owner, 'exit_status': failure.returncode,
+                                                  'command': failure.cmd}), file=sys.stderr)
+    # Prefix and escape controls: historical output must not issue hosted runner
+    # workflow commands. Only this excerpt is bounded, not the saved log.
+    excerpt = log if log.is_file() else unpack_log
+    require(not any(p.is_symlink() for p in (excerpt, *excerpt.parents)), 'symlink diagnostic log')
+    if excerpt.is_file():
+        with excerpt.open('rb') as stream:
+            stream.seek(max(0, excerpt.stat().st_size - 12000))
+            tail = stream.read().decode('utf-8', errors='replace').splitlines()[-80:]
+        for line in tail:
+            print(' | ' + json.dumps(line, ensure_ascii=True)[1:-1], file=sys.stderr)
+    directory = Path(args.directory).absolute()
+    destination = Path(args.diagnostics).absolute()
+    require(not destination.is_relative_to(directory), 'diagnostics overlap sealed inputs')
+    require(not any(p.is_symlink() for p in (destination, *destination.parents)), 'symlink diagnostics path')
+    destination.mkdir(parents=True, exist_ok=False)
+    files = {}
+    for path, name in ((log, 'historical.log'), (unpack_log, 'unpack.log'), (result, 'execution.json')):
+        require(not any(p.is_symlink() for p in (path, *path.parents)), 'symlink diagnostic input')
+        if path.exists():
+            require(path.is_file(), 'nonregular diagnostic input')
+            shutil.copyfile(path, destination / name)
+            files[name] = ci.file_sha(destination / name)
+    write(destination / 'failure.json', {
+        'schema': 1, 'kind': 'failure-diagnostics-not-qualification', 'successful': False,
+        'owner': args.owner, 'identity': record['identity'],
+        'historical_identity': record['historical']['context'],
+        'command': failure.cmd, 'exit_status': failure.returncode,
+        'epochs_sha256': digest(record), 'artifact_id': args.artifact_id,
+        'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha,
+        'historical_seal': record['historical']['seal'], 'files_sha256': files,
+        'inner_report_available': 'execution.json' in files,
+    })
 
 
 def reconcile(record, reports, qualified, needs):
@@ -632,6 +695,7 @@ def main():
     parser.add_argument('--owner', choices=tuple(ci.SHARDS))
     parser.add_argument('--reports')
     parser.add_argument('--output')
+    parser.add_argument('--diagnostics', default='.doc-tools/failure-diagnostics')
     parser.add_argument('--gate')
     parser.add_argument('--gate-sha')
     parser.add_argument('--root', type=Path, default=ROOT)
