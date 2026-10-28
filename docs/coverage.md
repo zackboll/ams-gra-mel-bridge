@@ -1,5 +1,24 @@
 # Implementation coverage
 
+## CI-002 — conservative Bootstrap native qualification
+
+Main-only push triggering removes redundant feature-push Bootstrap runs while
+retaining PR and manual qualification. All eight jobs remain; ordinary native
+coverage and installation are unconditional. Only explicitly allowlisted static
+Markdown changes with reconciled complete Git tree/diff authority omit the 50x
+stress campaign. Unknown paths, runtime changes and main/manual events retain
+full stress. CI-002R1 restores native synthetic-merge checkout and validates exact
+ordered base/head parents and reconstructed merge tree before configuration,
+separately from PR-specific risk classification. All forty CI-002 identities
+plus 31 corrective controls bring documentation inventory to 650 tests
+(142 scripts, 508 enhanced). Real divergent-branch C fixtures observe the combined
+native implementation, not stale feature code. CI-002R2 incorporates main's
+IR-CI-004 bounded malformed-counter observation without changing its bytes or
+discarding historical source authorities. The exact corrected workflow
+source-integrity transition is
+proposed pending independent review, not self-approved. See
+`ci-002-bootstrap-policy.md` for source identities, policy and maintainer gates.
+
 ## IR-CI-004 — proposed malformed-counter observation correction
 
 The native malformed-frame test keeps its 20 ms receive-timeout and rejection
