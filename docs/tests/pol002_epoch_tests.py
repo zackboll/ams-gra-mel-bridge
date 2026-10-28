@@ -586,6 +586,237 @@ class AdditiveDocumentationTests(unittest.TestCase):
             epoch.inherited_declarations(left/'_site',report,right/'_site',report)
 
 
+class CI001R3Tests(unittest.TestCase):
+    """Independent committed source transitions and workflow mutation controls."""
+
+    def setUp(self):
+        import shutil
+        import ci001r3_source as correction
+        self.correction = correction
+        self.temp = tempfile.TemporaryDirectory(prefix='ci001r3-git-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'CI001R3 Fixture')
+        self.git('config', 'user.email', 'ci001r3@example.invalid')
+        self.names = [*correction.TESTS, correction.QUALIFIER, correction.VERIFIER,
+                     'docs/tools/ci001r3_source.py', 'docs/tools/epoch_ci.py',
+                     'docs/tests/pol002_epoch_tests.py']
+        for name in self.names:
+            if name not in s.tree(ROOT, correction.BASE):
+                continue
+            data = s.blob(ROOT, correction.BASE, name)
+            self.write(name, data)
+        self.write('.github/workflows/documentation.yml',
+                   (ROOT / '.github/workflows/documentation.yml').read_bytes())
+        self.write('docs/tools/source_epoch.py', (ROOT / 'docs/tools/source_epoch.py').read_bytes())
+        self.write('native/src/ir_stream.cpp', b'original\n')
+        self.base = self.commit()
+        objects = s.git(ROOT, 'rev-parse', '--path-format=absolute', '--git-path', 'objects').decode().strip()
+        (self.root / '.git/objects/info/alternates').write_text(objects + '\n')
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.root), *args], stderr=subprocess.STDOUT).decode().strip()
+
+    def write(self, name, data):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def commit(self):
+        self.git('add', '.'); self.git('commit', '-qm', 'committed CI001R3 fixture')
+        return self.git('rev-parse', 'HEAD')
+
+    def candidate(self):
+        for name in self.names:
+            self.write(name, (ROOT / name).read_bytes())
+        return self.commit()
+
+    def classify(self):
+        return e.classify(self.root, self.base, self.git('rev-parse', 'HEAD'))
+
+    def test_exact_correction_is_policy_only_not_approval(self):
+        self.candidate()
+        value = self.classify()
+        self.assertEqual(value['case'], 'policy-only')
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+        self.assertTrue(set(self.correction.TESTS).isdisjoint(e.POLICY_PATHS))
+        self.assertNotIn(self.correction.QUALIFIER, e.POLICY_PATHS)
+
+    def test_exact_inherited_views_restore_all_unaffected_bytes(self):
+        self.candidate()
+        restored = self.correction.inherited_sources(self.root, lambda rev, name: s.blob(ROOT, rev, name))
+        self.assertEqual(set(restored), set(self.correction.TESTS))
+        for name in restored:
+            self.assertEqual(restored[name], s.blob(ROOT, self.correction.BASE, name))
+
+    def test_historical_fixtures_continue_to_original_checks(self):
+        for revision in (ci.CI001_SHA, s.HISTORICAL_MAIN):
+            for name in self.correction.TESTS:
+                self.write(name, s.blob(ROOT, revision, name))
+            self.assertEqual(self.correction.inherited_sources(
+                self.root, lambda rev, name: s.blob(ROOT, rev, name)), {})
+
+    def test_unchanged_ci001r2_minimal_fixture_restores_current_control(self):
+        self.write('docs/tests/test_live_docs_site.py', s.blob(ROOT, ci.CI001_SHA, 'docs/tests/test_live_docs_site.py'))
+        name = 'docs/tests/test_documentation_ci.py'
+        self.write(name, (ROOT / name).read_bytes())
+        (self.root / self.correction.QUALIFIER).unlink()
+        views = self.correction.inherited_sources(self.root, lambda rev, path: s.blob(ROOT, rev, path))
+        self.assertEqual(views, {name: s.blob(ROOT, self.correction.BASE, name)})
+
+    def test_incomplete_transition_rejects(self):
+        for name in self.correction.TESTS:
+            self.git('reset', '--hard', self.base)
+            self.candidate()
+            self.write(name, s.blob(ROOT, self.correction.BASE, name))
+            self.commit()
+            with self.assertRaises(ValueError): self.classify()
+
+    def test_unknown_method_helper_test_name_or_qualifier_rejects(self):
+        controls = [
+            ('docs/tests/test_live_docs_site.py', b'live_contract(ROOT)', b'pass'),
+            ('docs/tests/test_live_docs_site.py', b'test_pr_fixture_discovery_retained', b'test_renamed'),
+            ('docs/tests/test_documentation_ci.py', b'deploy_contract(ci.ROOT)', b'pass'),
+            ('docs/tools/documentation_ci.py', b'original 51 source-integrity assertions changed', b'deleted assertion'),
+            ('docs/tools/ci001r3_workflow.py', b'== expected', b'!= expected'),
+        ]
+        for name, old, new in controls:
+            with self.subTest(path=name, mutation=old):
+                self.git('reset', '--hard', self.base)
+                self.candidate()
+                self.write(name, (self.root / name).read_bytes().replace(old, new))
+                self.commit()
+                with self.assertRaises(ValueError): self.classify()
+        for extra in (b'\ndef unrelated_helper(): pass\n', b'\nclass Extra:\n    def test_extra(self): pass\n'):
+            self.git('reset', '--hard', self.base); self.candidate()
+            name = 'docs/tests/test_live_docs_site.py'
+            self.write(name, (self.root / name).read_bytes() + extra); self.commit()
+            with self.assertRaises(ValueError): self.classify()
+
+    def test_stale_predecessor_rejects(self):
+        self.write('docs/tests/test_live_docs_site.py', b'# stale source\n')
+        self.base = self.commit(); self.candidate()
+        with self.assertRaises(ValueError): self.classify()
+
+    def test_unrelated_executable_registry_or_self_approval_rejects(self):
+        for name, value in [('native/src/ir_stream.cpp', b'changed production\n'),
+                            ('docs/tools/source_epoch.py', b'REVIEWED_EPOCHS = ("self-approved",)\n'),
+                            ('docs/approval.json', b'{"independent_approval":true}\n'),
+                            ('docs/tools/ci001r3_source.py', b'approve_everything = True\n')]:
+            self.git('reset', '--hard', self.base); self.candidate()
+            self.write(name, value); self.commit()
+            with self.assertRaises(ValueError): self.classify()
+
+    def test_workflow_mutations_reject_without_changing_protected_source(self):
+        from ci001r3_workflow import live_contract, preparation_contract, deploy_contract
+        original = (self.root / '.github/workflows/documentation.yml').read_bytes()
+        controls = [
+            (b'deployment --root', b'echo --root', deploy_contract),
+            (b'docs/tools/epoch_ci.py select', b'docs/tools/epoch_ci.py bypass', live_contract),
+            (b'--gate-sha', b'--unchecked-gate', deploy_contract),
+            (b'publication, live, symbols-catalog', b'publication, symbols-catalog', preparation_contract),
+            (b'fail-fast: false', b'fail-fast: true', preparation_contract),
+            (b'artifact-ids: ${{ needs.build.outputs.gate_id }}', b'artifact-ids: 123', live_contract),
+            (b"if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", b'if: always()', deploy_contract),
+            (b'EXPECTED_SHA: ${{ github.sha }}', b'EXPECTED_SHA: fake', live_contract),
+            (b'      actions: read', b'      actions: write', live_contract),
+            (b'--attempts 10 --interval 30', b'--attempts 999 --interval 0', live_contract),
+            (b'      fail-fast: false', b'      fail-fast: false\n    if: false', preparation_contract),
+        ]
+        self.write('docs/tools/epoch_ci.py', (ROOT / 'docs/tools/epoch_ci.py').read_bytes())
+        for old, new, verifier in controls:
+            with self.subTest(mutation=old):
+                self.assertIn(old, original)
+                self.write('.github/workflows/documentation.yml', original.replace(old, new))
+                with self.assertRaises((AssertionError, ValueError)): verifier(self.root)
+        self.write('.github/workflows/documentation.yml', original)
+        for verifier in (live_contract, preparation_contract, deploy_contract): verifier(self.root)
+
+    def test_removed_source_integrity_inventory_or_canonical_execution_rejects(self):
+        from ci001r3_workflow import preparation_contract
+        original = (ROOT / 'docs/tools/epoch_ci.py').read_bytes()
+        for old in (b'scripts/check_doc_source_integrity.py', b'docs/tools/qualify_examples.sh',
+                    b"'inventory'", b"'--owner', 'scripts'", b"'seal', '--output'"):
+            self.write('docs/tools/epoch_ci.py', original.replace(old, b'removed'))
+            with self.assertRaises(AssertionError): preparation_contract(self.root)
+
+
+class CI001R3OrderingTests(unittest.TestCase):
+    """R1: precedence is not a missing-source exemption, using committed trees."""
+
+    setUp = CI001R3Tests.setUp
+    git = CI001R3Tests.git
+    write = CI001R3Tests.write
+    commit = CI001R3Tests.commit
+    candidate = CI001R3Tests.candidate
+    classify = CI001R3Tests.classify
+
+    def complete_ci002(self):
+        self.candidate()
+        name = 'docs/tests/test_bootstrap_ci_policy.py'
+        self.write(name, (ROOT / name).read_bytes())
+        self.commit()
+        identities = list(ci.source_methods((self.root / name).read_bytes(), 'test_bootstrap_ci_policy'))
+        self.assertEqual(len(identities), 71)
+        return name, {'scripts': [], 'enhanced': identities}
+
+    def test_valid_ci002_does_not_excuse_missing_protected_sources(self):
+        for name in self.correction.TESTS:
+            with self.subTest(path=name):
+                self.git('reset', '--hard', self.base)
+                _, groups = self.complete_ci002()
+                (self.root / name).unlink()
+                self.commit()
+                with self.assertRaises(FileNotFoundError):
+                    ci.validate_inventory(groups, self.root)
+                with self.assertRaises(ValueError): self.classify()
+
+    def test_complete_ci002_changed_live_or_control_source_rejects(self):
+        for name in self.correction.TESTS:
+            self.git('reset', '--hard', self.base)
+            self.complete_ci002()
+            self.write(name, (self.root / name).read_bytes() + b'\n# unknown source\n')
+            self.commit()
+            with self.assertRaises(ValueError):
+                self.correction.inherited_sources(self.root, lambda rev, path: s.blob(ROOT, rev, path))
+            with self.assertRaises(ValueError): self.classify()
+
+    def test_ci002_rejection_precedes_missing_sources(self):
+        name, groups = self.complete_ci002()
+        for protected in self.correction.TESTS:
+            (self.root / protected).unlink()
+        original = (self.root / name).read_bytes()
+        self.write(name, original + b'\n# mutation\n'); self.commit()
+        with self.assertRaisesRegex(ValueError, 'control source changed'):
+            ci.validate_inventory(groups, self.root)
+        self.write(name, original); self.commit()
+        for ids in (groups['enhanced'][:-1], groups['enhanced'] + groups['enhanced'][:1]):
+            with self.assertRaisesRegex(ValueError, 'missing or duplicated'):
+                ci.validate_inventory({'scripts': [], 'enhanced': ids}, self.root)
+        (self.root / name).unlink(); self.commit()
+        with mock.patch.object(ci, 'ROOT', self.root):
+            with self.assertRaisesRegex(ValueError, 'control source missing'):
+                ci.validate_inventory({'scripts': [], 'enhanced': []})
+
+    def test_unknown_and_duplicated_current_inventory_reject(self):
+        inventory = ci.inventory()
+        for mutation in ('unknown', 'duplicate'):
+            groups = copy.deepcopy(inventory['groups'])
+            groups['enhanced'].append('unknown.Test.test_fake' if mutation == 'unknown' else groups['enhanced'][0])
+            with self.assertRaises(ValueError): ci.validate_inventory(groups)
+
+    def test_dirty_or_staged_source_cannot_claim_exact_transition(self):
+        self.candidate()
+        name = 'docs/tests/test_live_docs_site.py'
+        path = self.root / name
+        path.write_bytes(path.read_bytes() + b'\n# dirty\n')
+        with self.assertRaises(ValueError): self.classify()
+        self.git('add', name)
+        with self.assertRaises(ValueError): self.classify()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', action='store_true')

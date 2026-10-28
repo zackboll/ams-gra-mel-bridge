@@ -113,6 +113,9 @@ def classify(root, target, candidate):
     require(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', target, candidate],
                            capture_output=True).returncode == 0, 'unqualified policy/source ancestry')
     changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+    # Exact inherited-test correction only; these are not general policy paths.
+    from ci001r3_source import policy_transition
+    correction = policy_transition(root, target, candidate, old, new, changed, source)
     policy = any(n in POLICY_PATHS for n in changed)
     if not policy:
         value = source.qualify(root, target, candidate)
@@ -121,10 +124,10 @@ def classify(root, target, candidate):
         return value
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
-        require(name in POLICY_PATHS or source.documentation_path(name),
+        require(name in correction or name in POLICY_PATHS or source.documentation_path(name),
                 'policy mixed with protected production/source change: ' + name)
     for name in PROTECTED_INPUTS:
-        require(old.get(name) == new.get(name), 'policy proposal changed inherited authority: ' + name)
+        require(name in correction or old.get(name) == new.get(name), 'policy proposal changed inherited authority: ' + name)
     source.exact_checkout(root, source.revision(root, candidate), new)
     return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
             'target_tree': source.git(root, 'rev-parse', target + '^{tree}').decode().strip(),
