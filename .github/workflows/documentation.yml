@@ -28,7 +28,7 @@ jobs:
       manifest_sha: ${{ steps.seal.outputs.manifest_sha }}
     steps:
       - name: Checkout exact source head
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -69,7 +69,7 @@ jobs:
           cp .doc-tools/epochs/inputs.tar "$RUNNER_TEMP/qualified-inputs.tar"
       - name: Upload same-run qualified inputs
         id: inputs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: documentation-inputs-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/qualified-inputs.tar
@@ -78,7 +78,7 @@ jobs:
           retention-days: 30
       - name: Upload diagnostics and coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: gnatdoc-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: |
@@ -96,12 +96,12 @@ jobs:
         shard: [navigation, publication, live, symbols-catalog, types, remaining]
     steps:
       - name: Checkout identical source head
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
       - name: Download exact preparation artifact ID from this run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
           path: ${{ runner.temp }}/qualified-download
@@ -126,7 +126,7 @@ jobs:
             --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
       - name: Upload detailed execution result even on failure
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: documentation-result-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/results/${{ matrix.shard }}.json
@@ -154,18 +154,18 @@ jobs:
           assert all(j['result'] == 'success' for j in jobs.values()), jobs
           PY
       - name: Checkout identical source head
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
       - name: Download exact preparation artifact ID
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
           path: ${{ runner.temp }}/qualified-download
           merge-multiple: true
       - name: Download same-run shard execution artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: documentation-result-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/shard-results
@@ -192,7 +192,7 @@ jobs:
             --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
       - name: Upload immutable successful aggregate gate
         id: gate-upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: documentation-gate-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/gate.json
@@ -213,18 +213,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout exact qualified source
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
       - name: Download exact qualified inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
           path: ${{ runner.temp }}/qualified-download
           merge-multiple: true
       - name: Download successful aggregate authorization
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.build.outputs.gate_id }}
           path: ${{ runner.temp }}/gate
@@ -246,13 +246,14 @@ jobs:
             --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
             --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
       - name: Upload aggregate-authorized main-only Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: .doc-tools/epochs/candidate/published/
+          include-hidden-files: true
       - name: Deploy validated main site
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
 
@@ -265,7 +266,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout exact deployed run SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -274,13 +275,13 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Download exact same-run qualified inputs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
           path: ${{ runner.temp }}/qualified-download
           merge-multiple: true
       - name: Download exact successful aggregate gate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           artifact-ids: ${{ needs.build.outputs.gate_id }}
           path: ${{ runner.temp }}/gate
@@ -312,7 +313,7 @@ jobs:
             --evidence "$RUNNER_TEMP/live-publication.json"
       - name: Upload live verification diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: live-publication-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: ${{ runner.temp }}/live-publication.json
