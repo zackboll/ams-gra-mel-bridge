@@ -87,7 +87,9 @@ whole-file predecessor/successor SHA-256 pairs:
 | `docs/tools/documentation_ci.py` | `0df565993ce4858c7c417825f080062d3a21128911e4e45721f897237ab63b5b` | `b97d8ef68c6ed6788179615439cc91afd3e606200e036b775942f5e740934f0f` |
 
 The verifier's exact SHA-256 is
-`97817453acb10e22cf9090509b18dddf10c577bb22c2c8a64d0e7e6785e1c59b`.
+`3423a08b0dd496c540cfeb5c4fec1cc2ac9996e87ed17d1bde3610326f46c71d`
+after the CI-001R3-R2 Node 24 integration below (the R1 identity remains in Git
+and preserved external evidence).
 These values describe this proposed correction only, never future unknown edits.
 
 For the paired successor test sources, the qualifier verifies the exact three
@@ -224,3 +226,80 @@ Earlier partial qualification cannot qualify the new tree. All source/report
 bytes freeze before the full current 650-identity, historical/candidate epoch,
 seven-language-gate and Bootstrap campaigns. Submission remains conditional on
 all mandatory gates and exact frozen/committed-tree parity.
+
+## CI-001R3-R2: normal merge of reviewed CI-ACTIONS-001
+
+The existing PR #137 head `58c75b9f74d409b10d65dfd3b1f980b24995b672`
+(tree `c5784d66192f50ea30a784b6442c1b8ba8baee13`) was clean before merging
+`origin/main` at `219b00c75210f5985d9889e8b541da2e7b658f04` (tree
+`4d5c6bb29cfbe6ac39041808e36af34cb84a8c0e`). Their verified shared ancestor
+is `e4e756aafa4edaffdb11fe341bb016380bf19ca9`. The original PR's successful
+hosted runs are historical evidence, not qualification of the integrated tree.
+No rebase, amend, force push or replacement PR is used.
+
+The normal merge produced one textual conflict, in `epoch_ci.classify()`.
+The conflicting changed-path predicate is resolved by retaining both independently
+validated sets, `correction` and `actions`; the conflicting protected-input
+predicate similarly retains both sets plus exact unchanged-input equality.
+The existing call to `actions_delta()` and its full `ACTIONS_SOURCE` authority
+remain intact, alongside `ci001r3_source.policy_transition()`. Neither
+`POLICY_PATHS` nor `PROTECTED_INPUTS` is broadened or weakened; both proposal
+approval flags remain false. `pol002_epoch_tests.py` auto-merged: every inherited
+test-class AST from both parents is preserved, with seven new integration methods
+added. The external conflict inventory records each hunk and its disposition.
+
+The workflow verifier now checks every action reference against these exact
+reviewed owner/commit/version-comment triples, independently transcribed and
+tested against main's unchanged `test_actions_dependencies.py` authority:
+
+| Owner/action | Exact commit | Required comment |
+| --- | --- | --- |
+| `actions/checkout` | `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` | `v5.1.0` |
+| `actions/upload-artifact` | `b7c566a772e6b6bfb58ed0dc250532a479d7789f` | `v6.0.0` |
+| `actions/download-artifact` | `37930b1c2abaa49bbe596cd826c3c89aef350131` | `v7.0.0` |
+| `actions/upload-pages-artifact` | `fc324d3547104276b827a68afc52ff2a11cc49c9` | `v5.0.0` |
+| `actions/deploy-pages` | `cd2ce8fcbc39b97be8ca5fce6e763baed58fa128` | `v5.0.0` |
+
+The Pages upload requires exactly one `include-hidden-files: true`; false,
+absence or duplicates reject. Unknown SHA, version-tag rollback, wrong owner,
+wrong comment and missing action reject. Global reference validation also closes
+the previous preparation multi-upload path's lack of exact action qualification:
+the old live/deploy verifiers reject the merged pins, but old preparation alone
+could accept them without verifying their authority. No workflow pin, permission,
+artifact, deployment ordering or workflow byte is changed from merged main.
+Every job also retains its exact ordered action-role sequence: a correctly pinned
+checkout cannot replace a required download or upload. A dedicated mutation
+control substitutes a different reviewed action at every action occurrence.
+
+Only the exact verifier successor hash changes in `ci001r3_source.py`; all
+historical predecessor hashes, both inherited-test successors and the R1 qualifier
+successor remain unchanged. Main's two workflow hashes, integrity checker and
+action-dependency controls are independently checked against immutable Git
+objects. Complete CI-002 admission still precedes inherited-source restoration;
+no absent-file exception, skip or fallback is added. Both mechanically qualified
+transitions remain separate from independent approval and publication authority.
+
+Before source freeze, all three workflow tests, original CI-002 inventory controls,
+12 historical CI-001R2 controls, 15 existing corrective controls, seven additive
+integration methods, all 14 action-dependency epoch controls, the complete 41-test
+source suite and complete 87-test epoch suite passed before the fresh freeze.
+Integration controls use
+committed Git fixtures for exact action migration, atomic incomplete transitions,
+the exact correction over real merged main, unknown authority bytes and registry
+changes. Failed development attempts are retained externally rather than erased.
+
+Fresh qualification evidence is under
+`/home/zboll/git/ams-mel-ci-001r3-evidence/R2-integration/final`. The first R2
+freeze and its green partial results remain in the parent evidence directory,
+superseded after independent role-substitution review found that an enhanced
+download could be replaced by a different reviewed action. Task-owned campaigns
+were stopped before correction; no partial result qualifies the revised tree.
+The new staged tree,
+two-parent external snapshot and all file hashes are recorded before official
+campaigns; source/report bytes remain frozen throughout. Full current 650-test
+and historical 579-test execution, sealing, deterministic candidate regeneration,
+independent publication equality, every repository gate and full Bootstrap stress
+remain required. Final outcomes belong in external evidence and the updated PR
+handoff, not edits invalidating a running source freeze. PRs #133/#134/#136/#129
+and performance/policy workspaces remain untouched and unincorporated; they must
+normally reconcile reviewed main and independently requalify any later integration.

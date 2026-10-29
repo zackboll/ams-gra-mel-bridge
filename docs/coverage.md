@@ -1,5 +1,17 @@
 # Implementation coverage
 
+## CI-ACTIONS-001 — proposed Node 24 workflow dependencies
+
+All 23 baseline direct Node 20 findings plus the Pages upload composite's
+transitive upload are migrated to reviewed full-SHA Node 24 releases. Explicit
+hidden-file compatibility preserves the Pages tar contents. Existing jobs,
+checks, permissions, concurrency, native workloads, artifact identities and
+publication gates remain unchanged. Exact atomic workflow/source authorization
+has independent negative controls in the sealed integration suite. No production
+or frozen inventory/fingerprint changes. Local/hosted qualification and independent
+review remain incomplete; see `ci-actions-001-node24-dependencies.md`. CI-003R1
+staged source and PR #133 are not modified by this separate migration.
+
 ## CI-002 — conservative Bootstrap native qualification
 
 Main-only push triggering removes redundant feature-push Bootstrap runs while

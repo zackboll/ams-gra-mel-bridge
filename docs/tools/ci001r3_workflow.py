@@ -9,6 +9,16 @@ from pathlib import Path
 import re
 import shlex
 
+# Independently transcribed from merged CI-ACTIONS-001's reviewed authority.
+# Exact owner, commit and release comment are required, not any 40-hex token.
+ACTION_PINS = {
+    'actions/checkout': 'fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0',
+    'actions/upload-artifact': 'b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0',
+    'actions/download-artifact': '37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0',
+    'actions/upload-pages-artifact': 'fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0',
+    'actions/deploy-pages': 'cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0',
+}
+
 
 def require(condition, message):
     if not condition:
@@ -23,6 +33,9 @@ def field(block, name, indent):
 
 def jobs(root):
     text = (Path(root) / '.github/workflows/documentation.yml').read_text()
+    references = re.findall(r'^\s*(?:- )?uses: (.+)$', text, re.M)
+    require(references and all(ref in {name + '@' + pin for name, pin in ACTION_PINS.items()}
+                               for ref in references), 'unreviewed action owner/pin/comment')
     require(text.count('\njobs:\n') == 1, 'ambiguous job map')
     header, body = text.split('\njobs:\n')
     require('secrets.' not in text and 'pull_request_target' not in text, 'privileged event/input')
@@ -32,7 +45,20 @@ def jobs(root):
     names = parts[1::2]
     require(len(names) == len(set(names)) and set(names) == {
         'prepare-documentation', 'enhanced-tests', 'build', 'deploy', 'verify-live'}, 'job inventory')
-    return dict(zip(names, parts[2::2]))
+    mapping = dict(zip(names, parts[2::2]))
+    roles = {
+        'prepare-documentation': ['checkout', 'upload-artifact', 'upload-artifact'],
+        'enhanced-tests': ['checkout', 'download-artifact', 'upload-artifact'],
+        'build': ['checkout', 'download-artifact', 'download-artifact', 'upload-artifact'],
+        'deploy': ['checkout', 'download-artifact', 'download-artifact',
+                   'upload-pages-artifact', 'deploy-pages'],
+        'verify-live': ['checkout', 'download-artifact', 'download-artifact', 'upload-artifact'],
+    }
+    for name, block in mapping.items():
+        actual = re.findall(r'^\s*(?:- )?uses: (.+)$', block, re.M)
+        expected = ['actions/' + role + '@' + ACTION_PINS['actions/' + role] for role in roles[name]]
+        require(actual == expected, 'missing/replaced/reordered action role in ' + name)
+    return mapping
 
 
 def permissions(block, indent, expected):
@@ -74,8 +100,9 @@ def one(sequence, predicate, label):
 
 
 def action(sequence, name):
+    require(name in ACTION_PINS, 'unknown action ' + name)
     return one(sequence, lambda step: re.search(
-        r'^        uses: ' + re.escape(name) + r'@v[0-9]+$', step, re.M), name)
+        r'^        uses: ' + re.escape(name + '@' + ACTION_PINS[name]) + r'$', step, re.M), name)
 
 
 def run(step):
@@ -270,6 +297,7 @@ def deploy_contract(root):
     verified, step = one(sequence, lambda s: "' unpack --root" in s, 'deployment verification')
     qualified_commands(step, prefix, [('unpack', input_options()), ('deployment', deployment_options())])
     upload, step = action(sequence, 'actions/upload-pages-artifact')
+    require(field(step, 'include-hidden-files', 10) == 'true', 'Pages hidden-file preservation')
     require(field(step, 'path', 10) == '.doc-tools/epochs/candidate/published/', 'unqualified Pages source')
     name = 'github-pages-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}'
     require(field(step, 'name', 10) == name, 'Pages artifact identity')

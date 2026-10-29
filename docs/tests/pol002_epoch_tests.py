@@ -18,6 +18,49 @@ import documentation_ci as ci
 import epoch_ci as e
 import feature_source as s
 import source_epoch as epoch
+import test_actions_dependencies as dependencies
+
+
+class ActionDependencyWorkflowTests(dependencies.DependencyWorkflowTests):
+    """Migration preservation controls join the sealed integration inventory."""
+
+
+class ActionDependencyAuthorizationTests(dependencies.DependencyAuthorizationTests):
+    """Independent atomic workflow transition negative controls."""
+
+
+class ActionDependencyEpochTests(unittest.TestCase):
+    def setUp(self):
+        self.old = {n: ('100644', 'old') for n, old, _ in e.ACTIONS_SOURCE if old is not None}
+        self.new = {n: ('100644', 'new') for n, _, _ in e.ACTIONS_SOURCE}
+
+    def blob(self, root, revision, name):
+        if revision == 'old':
+            return dependencies.original(name)
+        return (ROOT / name).read_bytes()
+
+    def test_exact_proposal_does_not_approve_itself(self):
+        with mock.patch.object(s, 'blob', side_effect=self.blob):
+            self.assertEqual(e.actions_delta(ROOT, 'old', 'new', self.old, self.new), set(self.new))
+
+    def test_unknown_bytes_in_every_candidate_and_predecessor_rejected(self):
+        for name, predecessor, _ in e.ACTIONS_SOURCE:
+            for revision in (('old', 'new') if predecessor else ('new',)):
+                def bad(root, ref, path):
+                    return self.blob(root, ref, path) + (b'# unauthorized\n' if (ref, path) == (revision, name) else b'')
+                with mock.patch.object(s, 'blob', side_effect=bad), self.assertRaisesRegex(ValueError, 'CI-ACTIONS-001'):
+                    e.actions_delta(ROOT, 'old', 'new', self.old, self.new)
+
+    def test_missing_executable_and_symlink_modes_rejected(self):
+        for name in self.new:
+            for mode in (None, '100755', '120000'):
+                entries = dict(self.new)
+                if mode is None:
+                    entries.pop(name)
+                else:
+                    entries[name] = (mode, 'new')
+                with mock.patch.object(s, 'blob', side_effect=self.blob), self.assertRaisesRegex(ValueError, 'CI-ACTIONS-001'):
+                    e.actions_delta(ROOT, 'old', 'new', self.old, entries)
 
 
 class AggregateTests(unittest.TestCase):
@@ -815,6 +858,140 @@ class CI001R3OrderingTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.classify()
         self.git('add', name)
         with self.assertRaises(ValueError): self.classify()
+
+
+class CI001R3ActionsIntegrationTests(unittest.TestCase):
+    """Exact merged Node 24 dependencies plus both committed policy routes."""
+
+    setUp = CI001R3Tests.setUp
+    git = CI001R3Tests.git
+    write = CI001R3Tests.write
+    commit = CI001R3Tests.commit
+    candidate = CI001R3Tests.candidate
+    classify = CI001R3Tests.classify
+
+    def verify(self):
+        from ci001r3_workflow import live_contract, preparation_contract, deploy_contract
+        for verifier in (live_contract, preparation_contract, deploy_contract):
+            verifier(self.root)
+
+    def test_exact_reviewed_node24_actions_and_comments(self):
+        from ci001r3_workflow import ACTION_PINS
+        self.assertEqual(ACTION_PINS, {'actions/' + n: sha + ' # ' + release
+                                      for n, (sha, release, _) in dependencies.PINS.items()})
+        self.candidate()
+        self.verify()
+
+    def test_every_pin_tag_owner_comment_and_missing_action_rejects(self):
+        self.candidate()
+        name = '.github/workflows/documentation.yml'
+        original = (self.root / name).read_text()
+        for action, (sha, release, old) in dependencies.PINS.items():
+            token = 'actions/' + action + '@' + sha + ' # ' + release
+            for replacement in ('actions/' + action + '@' + '0' * 40 + ' # ' + release,
+                                'actions/' + action + '@' + old,
+                                'unreviewed/' + action + '@' + sha + ' # ' + release,
+                                'actions/' + action + '@' + sha + ' # wrong-release', ''):
+                with self.subTest(action=action, replacement=replacement):
+                    self.write(name, original.replace(token, replacement).encode())
+                    with self.assertRaises(AssertionError): self.verify()
+        self.write(name, original.encode())
+        self.verify()
+
+    def test_pages_hidden_files_and_existing_security_contracts_reject(self):
+        self.candidate()
+        name = '.github/workflows/documentation.yml'
+        original = (self.root / name).read_text()
+        for old, new in [('          include-hidden-files: true\n', '          include-hidden-files: false\n'),
+                         ('          include-hidden-files: true\n', ''),
+                         ('  contents: read', '  contents: write'),
+                         ('docs/tools/epoch_ci.py select', 'docs/tools/epoch_ci.py untrusted'),
+                         ('artifact-ids:', 'unbound-artifact:'),
+                         ("' deployment --root", "' bypass --root"),
+                         ("' aggregate --root", "' bypass --root")]:
+            with self.subTest(mutation=old):
+                self.assertIn(old, original)
+                self.write(name, original.replace(old, new).encode())
+                with self.assertRaises(AssertionError): self.verify()
+        self.write(name, original.encode())
+
+    def test_reviewed_pin_cannot_replace_another_required_action_role(self):
+        from ci001r3_workflow import ACTION_PINS
+        self.candidate()
+        name = '.github/workflows/documentation.yml'
+        original = (self.root / name).read_text()
+        import re
+        references = list(re.finditer(r'uses: (actions/[^\n]+)', original))
+        for reference in references:
+            token = reference.group(1)
+            replacement = ('actions/upload-artifact' if token.startswith('actions/checkout@')
+                           else 'actions/checkout')
+            changed = (original[:reference.start(1)] + replacement + '@' + ACTION_PINS[replacement]
+                       + original[reference.end(1):])
+            with self.subTest(action=token, position=reference.start(1)):
+                self.write(name, changed.encode())
+                with self.assertRaisesRegex(AssertionError, 'action role'): self.verify()
+        self.write(name, original.encode())
+        self.verify()
+
+    def test_committed_action_transition_remains_atomic_and_not_approval(self):
+        # No correction delta here: exercise CI-ACTIONS-001 independently with
+        # real old/new Git blobs, not mocked policy decisions or manifests.
+        self.git('reset', '--hard', self.base)
+        for name, old, _ in e.ACTIONS_SOURCE:
+            if old is not None: self.write(name, dependencies.original(name))
+        target = self.commit()
+        for name, _, _ in e.ACTIONS_SOURCE: self.write(name, (ROOT / name).read_bytes())
+        self.write('docs/tools/epoch_ci.py', (ROOT / 'docs/tools/epoch_ci.py').read_bytes())
+        head = self.commit()
+        value = e.classify(self.root, target, head)
+        self.assertEqual(value['case'], 'policy-only')
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+        for name, _, _ in e.ACTIONS_SOURCE:
+            original = (self.root / name).read_bytes()
+            self.write(name, original + b'\n# unreviewed\n'); self.commit()
+            with self.assertRaises(ValueError): e.classify(self.root, target, self.git('rev-parse', 'HEAD'))
+            self.git('reset', '--hard', head)
+        for name, old, _ in e.ACTIONS_SOURCE:
+            if old is None: (self.root / name).unlink()
+            else: self.write(name, dependencies.original(name))
+            self.commit()
+            with self.assertRaises(ValueError): e.classify(self.root, target, self.git('rev-parse', 'HEAD'))
+            self.git('reset', '--hard', head)
+
+    def test_committed_correction_on_merged_main_rejects_mixed_and_registry_changes(self):
+        self.candidate()
+        head = self.git('rev-parse', 'HEAD')
+        value = self.classify()
+        self.assertEqual(value['case'], 'policy-only')
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+        for name in ['.github/workflows/documentation.yml', 'docs/tools/test_actions_dependencies.py',
+                     'scripts/check_doc_source_integrity.py', 'docs/tools/feature_source.py']:
+            self.write(name, (ROOT / name).read_bytes() + b'\n# candidate approval\n'); self.commit()
+            with self.assertRaises(ValueError): self.classify()
+            self.git('reset', '--hard', head)
+
+    def test_real_merged_main_committed_correction_and_incomplete_successors(self):
+        merged_main = '219b00c75210f5985d9889e8b541da2e7b658f04'
+        self.git('read-tree', '--reset', '-u', merged_main)
+        self.base = self.commit()
+        self.candidate()
+        head = self.git('rev-parse', 'HEAD')
+        value = self.classify()
+        self.assertEqual(value['case'], 'policy-only')
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+        for name in self.correction.TESTS:
+            self.write(name, s.blob(ROOT, merged_main, name)); self.commit()
+            with self.assertRaises(ValueError): self.classify()
+            self.git('reset', '--hard', head)
+        for name, _, _ in e.ACTIONS_SOURCE:
+            self.write(name, (ROOT / name).read_bytes() + b'\n# unauthorized combination\n')
+            self.commit()
+            with self.assertRaises(ValueError): self.classify()
+            self.git('reset', '--hard', head)
 
 
 if __name__ == '__main__':

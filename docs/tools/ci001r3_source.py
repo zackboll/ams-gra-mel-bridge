@@ -25,7 +25,7 @@ QUALIFIER = 'docs/tools/documentation_ci.py'
 QUALIFIER_HASHES = ('0df565993ce4858c7c417825f080062d3a21128911e4e45721f897237ab63b5b',
                     'b97d8ef68c6ed6788179615439cc91afd3e606200e036b775942f5e740934f0f')
 VERIFIER = 'docs/tools/ci001r3_workflow.py'
-VERIFIER_HASH = '97817453acb10e22cf9090509b18dddf10c577bb22c2c8a64d0e7e6785e1c59b'
+VERIFIER_HASH = '3423a08b0dd496c540cfeb5c4fec1cc2ac9996e87ed17d1bde3610326f46c71d'
 
 
 def require(condition, message):
