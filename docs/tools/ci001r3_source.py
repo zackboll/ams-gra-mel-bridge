@@ -25,7 +25,8 @@ QUALIFIER = 'docs/tools/documentation_ci.py'
 QUALIFIER_HASHES = ('0df565993ce4858c7c417825f080062d3a21128911e4e45721f897237ab63b5b',
                     'b97d8ef68c6ed6788179615439cc91afd3e606200e036b775942f5e740934f0f')
 VERIFIER = 'docs/tools/ci001r3_workflow.py'
-VERIFIER_HASH = '3423a08b0dd496c540cfeb5c4fec1cc2ac9996e87ed17d1bde3610326f46c71d'
+HISTORICAL_VERIFIER_HASH = '3423a08b0dd496c540cfeb5c4fec1cc2ac9996e87ed17d1bde3610326f46c71d'
+VERIFIER_HASH = 'db88551ac6e9ed522e67ddee3075a3e305025df65a877b0fca9abe643d27cee9'
 
 
 def require(condition, message):
@@ -89,10 +90,13 @@ def inherited_sources(root, git_bytes):
         original = git_bytes(BASE, name)
         require(sha(original) == old and sha(current[name]) == new, 'stale predecessor/successor')
         result[name] = predecessor(name, current[name], original)
-    for name, expected in ((QUALIFIER, QUALIFIER_HASHES[1]), (VERIFIER, VERIFIER_HASH)):
+    # Both exact independently pinned consumers remain historical authorities;
+    # committed policy_transition/diagnostic_transition checks the whole pair.
+    for name, expected in ((QUALIFIER, {QUALIFIER_HASHES[1]}),
+                           (VERIFIER, {HISTORICAL_VERIFIER_HASH, VERIFIER_HASH})):
         path = root / name
         require(path.is_file() and not path.is_symlink() and not path.stat().st_mode & 0o111 and
-                sha(path.read_bytes()) == expected, 'unreviewed correction consumer ' + name)
+                sha(path.read_bytes()) in expected, 'unreviewed correction consumer ' + name)
     return result
 
 
@@ -112,7 +116,7 @@ def policy_transition(root, target, candidate, old, new, changed, source):
         require(sha(source.blob(root, target, name)) == hashes[0] and
                 sha(source.blob(root, candidate, name)) == hashes[1], 'unlisted old/new bytes ' + name)
     require(VERIFIER not in old and new.get(VERIFIER, ('',))[0] == '100644' and
-            sha(source.blob(root, candidate, VERIFIER)) == VERIFIER_HASH, 'unreviewed workflow verifier')
+            sha(source.blob(root, candidate, VERIFIER)) == HISTORICAL_VERIFIER_HASH, 'unreviewed workflow verifier')
     require(paths <= set(new), 'incomplete corrective source set')
     # The executing proposal remains independently reviewable policy code. It
     # cannot combine the exact test transition with unknown executable surfaces.
@@ -120,7 +124,9 @@ def policy_transition(root, target, candidate, old, new, changed, source):
         'docs/tools/epoch_ci.py', 'docs/tests/pol002_epoch_tests.py',
         'docs/ci-001r3-pol002-workflow-reconciliation.md'} for name in changed),
         'correction mixed with unrelated policy/source')
-    require(source.blob(root, candidate, 'docs/tools/ci001r3_source.py') == Path(__file__).read_bytes(),
+    historical = source.blob(root, 'e7eaba2cdf61a51f51f5a12d27e246c1041a1ce4', 'docs/tools/ci001r3_source.py')
+    require(sha(historical) == '47ecd9449efe60e01783f90aa80ef557c69168ab5ba2b137028401ddc9f52ce1' and
+            source.blob(root, candidate, 'docs/tools/ci001r3_source.py') == historical,
             'candidate substituted transition checker')
     for name in TESTS:
         predecessor(name, source.blob(root, candidate, name), source.blob(root, target, name))

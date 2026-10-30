@@ -1,5 +1,19 @@
 # Implementation coverage
 
+## DOC-CI-004 integration with CI-001R3 — diagnostic-only proposal
+
+The proposed successor retains #137's exact three-method workflow correction
+and imports #136's frozen R2 failure preservation, not its branch or pending
+merge. Canonical successful reports remain distinct from always-uploaded,
+non-authorizing failure diagnostics. The strict verifier checks the added action
+role, destination, ordering and source/run/attempt/shard identity. A complete
+exact Git-tree/source transition is separate from the historical Node 24
+migration; neither mechanical route grants independent/publication approval.
+No historical assertion, production source, baseline or publication output is
+changed. Local and hosted qualification are required on the integrated source;
+earlier passing campaigns do not qualify it. Historical live-shard root cause
+remains unknown. See `doc-ci-004-integration.md` for scope and evidence.
+
 ## CI-ACTIONS-001 — proposed Node 24 workflow dependencies
 
 All 23 baseline direct Node 20 findings plus the Pages upload composite's

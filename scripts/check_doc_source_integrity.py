@@ -110,6 +110,12 @@ ACTIONS_WORKFLOWS = (
      "979931734ae82a2a98b8684231f06ce17f202c4115eafdf439136c238724a847",
      "cb7ea4aa28d20bec2976af8d430fbff84d00bdc69f19b1dd13885f41022cc7d3"),
 )
+# DOC-CI-004R1 exact diagnostic-only successor of the complete Node 24 pair.
+# Mechanical acceptance remains pending independent source-policy review.
+DIAGNOSTIC_WORKFLOWS = (
+    "de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235",
+    "1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711",
+)
 ACTIONS_HISTORICAL_PAIRS = frozenset({
     ("47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
      "f00cf46475d73cb6e9e70d1d202d5cd83a1e6bedec5c394732d838e9020ea9d9"),
@@ -390,7 +396,8 @@ def actions_workflow_state(root, git, current):
         if (len(entries) != 2 or not entries[0].startswith(b"100644 ") or
                 entries[0].split(b"\t", 1)[0].split()[-1] != b"0"):
             raise ValueError("CI-ACTIONS-001 workflow index not regular stage-0: " + name)
-        allowed = {predecessor, candidate} | {pair[index] for pair in ACTIONS_HISTORICAL_PAIRS}
+        allowed = {predecessor, candidate, DIAGNOSTIC_WORKFLOWS[index]} | {
+            pair[index] for pair in ACTIONS_HISTORICAL_PAIRS}
         views = [hashlib.sha256(content).hexdigest() for content in
                  (path.read_bytes(), git("show", f":{name}"))]
         if any(digest not in allowed for digest in views):
@@ -399,6 +406,8 @@ def actions_workflow_state(root, git, current):
             raise ValueError("CI-ACTIONS-001 workflow working tree/index state mismatch: " + name)
         identities.append(views[0])
     pair = tuple(identities)
+    if pair == DIAGNOSTIC_WORKFLOWS:
+        return "diagnostics_proposed_pending_independent_review"
     if pair == tuple(row[2] for row in ACTIONS_WORKFLOWS):
         return "proposed_pending_independent_review"
     if pair == tuple(row[1] for row in ACTIONS_WORKFLOWS):

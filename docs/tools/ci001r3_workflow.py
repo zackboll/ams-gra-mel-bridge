@@ -48,7 +48,7 @@ def jobs(root):
     mapping = dict(zip(names, parts[2::2]))
     roles = {
         'prepare-documentation': ['checkout', 'upload-artifact', 'upload-artifact'],
-        'enhanced-tests': ['checkout', 'download-artifact', 'upload-artifact'],
+        'enhanced-tests': ['checkout', 'download-artifact', 'upload-artifact', 'upload-artifact'],
         'build': ['checkout', 'download-artifact', 'download-artifact', 'upload-artifact'],
         'deploy': ['checkout', 'download-artifact', 'download-artifact',
                    'upload-pages-artifact', 'deploy-pages'],
@@ -242,14 +242,36 @@ def preparation_contract(root):
     require(field(enhanced, 'shard', 8) == '[navigation, publication, live, symbols-catalog, types, remaining]', 'six shard identities')
     require(not re.search(r'^    (?:if|continue-on-error):', enhanced, re.M), 'skipped shard job')
     sequence = steps(enhanced)
+    _, download = action(sequence, 'actions/download-artifact')
+    require(field(download, 'artifact-ids', 10) == '${{ needs.prepare-documentation.outputs.artifact_id }}' and
+            field(download, 'path', 10) == '${{ runner.temp }}/qualified-download' and
+            field(download, 'merge-multiple', 10) == 'true' and 'run-id:' not in download and
+            'name:' not in download.split('        with:\n')[1], 'same-run qualified shard inputs')
+    require(': write' not in enhanced and 'secrets.' not in enhanced, 'privileged shard job')
     selected, prefix = select(sequence)
     unpacked, step = one(sequence, lambda s: "' unpack --root" in s, 'shard unpack')
     qualified_commands(step, prefix, [('unpack', input_options())])
     executed, step = one(sequence, lambda s: "' run --root" in s, 'exact-once shard command')
     qualified_commands(step, prefix, [('run', ['--owner', '${{ matrix.shard }}', '--output', '$RUNNER_TEMP/results/${{ matrix.shard }}.json',
+        '--diagnostics', '$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}',
         '--artifact-id', '${{ needs.prepare-documentation.outputs.artifact_id }}', '--bundle-sha', '${{ needs.prepare-documentation.outputs.bundle_sha }}',
         '--manifest-sha', '${{ needs.prepare-documentation.outputs.manifest_sha }}'])])
     require(selected < unpacked < executed, 'shard qualification ordering')
+    uploads = [(i, s) for i, s in enumerate(sequence) if 'uses: actions/upload-artifact@' in s]
+    require(len(uploads) == 2, 'canonical/diagnostic upload inventory')
+    canonical, diagnostic = uploads
+    suffix = '${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}'
+    for (index, step), label, destination, missing in (
+            (canonical, 'result', '${{ runner.temp }}/results/${{ matrix.shard }}.json', 'error'),
+            (diagnostic, 'failure-diagnostics', '${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/', 'warn')):
+        require(field(step, 'uses', 8) == 'actions/upload-artifact@' + ACTION_PINS['actions/upload-artifact'],
+                'unreviewed result/diagnostic action')
+        require(index > executed and field(step, 'name', 10) == 'documentation-' + label + '-' + suffix and
+                field(step, 'path', 10) == destination and field(step, 'if-no-files-found', 10) == missing,
+                'result/diagnostic identity or destination')
+    require(canonical[0] < diagnostic[0] and not re.search(r'^        if:', canonical[1], re.M),
+            'canonical successful report must remain mandatory')
+    require(field(diagnostic[1], 'if', 8) == 'always()', 'failure diagnostics must always upload')
     authority_contract(root)
     node = function(root, 'prepare')
     for statement in ["historical_checkout(history)",
@@ -280,6 +302,12 @@ def deploy_contract(root):
     build = mapping['build']
     require(field(build, 'if', 4) == 'always()' and field(build, 'needs', 4) == '[prepare-documentation, enhanced-tests]', 'aggregate must always evaluate')
     sequence = steps(build)
+    _, download = one(sequence, lambda s: 'pattern:' in s, 'canonical result download')
+    require(field(download, 'uses', 8) == 'actions/download-artifact@' + ACTION_PINS['actions/download-artifact'] and
+            field(download, 'pattern', 10) == 'documentation-result-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}' and
+            field(download, 'path', 10) == '${{ runner.temp }}/shard-results' and
+            'run-id:' not in download and 'failure-diagnostics' not in build,
+            'aggregate must consume only same-run canonical reports')
     selected, prefix = select(sequence)
     aggregated, step = one(sequence, lambda s: "' aggregate --root" in s, 'aggregate command')
     require(field(step, 'DOC_NEEDS', 10) == '${{ toJSON(needs) }}' and selected < aggregated, 'aggregate prerequisite authority')
