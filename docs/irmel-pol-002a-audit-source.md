@@ -139,3 +139,62 @@ Until this exact policy authorization is independently reviewed and merged,
 the disposition for PR #129 is **BLOCKED_POLICY_AUTHORIZATION**. Do not push a
 changed feature head, start IRMEL-ADA-002, request merge, or treat mechanical
 qualification as review approval.
+
+## R2 reconciliation with merged CI-001R3-R4
+
+Verified fetched main advanced to `4d73fd441a21e9c3cc4c54b1a754f9b15cc1ffaf`
+(merged PR #137, CI-001R3-R4, which carries CI-ACTIONS-001 and DOC-CI-004).
+It was normally merged into the existing PR head
+`ca0221e019481176ddbbe274eef7762a57468f62` as
+`69b956fa06928ee4ebd5d2dda14d672def8f2d0e`, tree
+`07a35fba9f1369cbd9e40398a7c7ebb6828d571f`. The merge was not rebased and had
+no conflicts. Both original commits stay in history. Every main file is carried
+byte-identically: the corrected-replay policy, DOC-CI-004 diagnostics, Node 24
+action pins, workflows and `docs/coverage.md`. Relative to main, this proposal
+still changes only this record, `docs/tests/pol002_source_tests.py` and
+`docs/tools/feature_source.py`. The current `epoch_ci.classify` route therefore
+classifies it **policy-only**, with both approval flags false.
+
+The audit registry and its controls are unchanged. On the merged tree, the
+first five registry entries still equal main's literal
+`IRMEL_POL_001_TRANSITION`. Main's Makefile and `scripts/test_ada.sh` still
+have the exact original modes and blobs. PR #129 is unchanged at
+`47630e61d2631effbbbe3e222e998e33daa90f60`.
+
+### Reproduced CI-001R3-R4 blocker (not resolved here)
+
+Both checks below were run in disposable, local-only clones.
+
+- Normally merging unchanged PR #129 into `69b956f…` yields `5eafc344…`
+  (tree `57927587…`), with exactly the original 13-path delta. The proposed
+  trusted `feature_source.py` CLI classifies it **feature-source**, never
+  policy-only, with both approval flags false.
+- Current `epoch_ci.classify` rejects that same merge before reaching
+  `feature_source.qualify`:
+  `CI-001R3-R4 historical replay: not a complete verified predecessor checkout`.
+  The same error results from a one-line documentation-only `docs/coverage.md`
+  edit on unchanged main `4d73fd44…`. It is not caused by this proposal.
+
+Cause: `docs/coverage.md` is a member of two one-time successor sets.
+`ci001r4_replay.source_transition` (`SUCCESSOR`) and
+`doc_ci004_source.diagnostic_transition` (`SUCCESSOR`) are each entered whenever
+any member differs from the target. Each then requires the target tree to equal
+one of its fixed historical predecessors: `219b00c…`/`e85d99b…` and
+`219b00c…`/`e7eaba2…`. Called directly, both validators reject both
+reproductions with "not a complete verified predecessor checkout". Any later
+change to `docs/coverage.md`, including PR #129's, therefore cannot be
+classified on current main.
+
+This proposal does not modify either validator, the replay binding, or any
+CI-001R3-R4 test or control. The correction must be a separate, narrowly scoped
+CI-001R3-R5 corrective. That corrective should limit both one-time validators to
+their intended historical source transitions, and it must preserve every
+exact-content historical control, negative test, trusted-source boundary and
+publication authority. Merging this proposal alone does not authorize PR #129.
+PR #129 stays **BLOCKED_POLICY_AUTHORIZATION** until both this authorization and
+that corrective are independently reviewed and merged. Then it can be normally
+synchronized and fully requalified.
+
+Qualification results for this exact head stay in external evidence
+(`/home/zboll/git/ams-mel-pol-002a-r2-evidence`), not in this record. They are
+local, not deployable, and do not constitute approval.
