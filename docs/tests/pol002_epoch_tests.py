@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 # Exact immutable DOC-CI-004 successor (PR #137 head before CI-001R3-R4). Its
 # historical controls use these committed bytes, not today's working source.
 DOC_CI004_HEAD = 'e85d99bbec15452b4edf5ef554784a18986db709'
+# Exact immutable CI-001R3-R4 successor commit; its transition controls use
+# these committed bytes, never later (CI-001R3-R5+) working-tree policy source.
+CI001R4_HEAD = '2be40f9144ae655da456da2b59b4a6120ba5a6e6'
+# Reviewed main (#134 merge) that first exposed the CI-001R3-R5 defect.
+CI001R5_LATER_MAIN = '10990c39c4fd05b902505767b7dcffc701757d25'
 sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import documentation_ci as ci
 import epoch_ci as e
@@ -2038,7 +2043,7 @@ class HistoricalReplayTransitionTests(unittest.TestCase):
         self.git('config', 'user.email', 'ci001r4@example.invalid')
         self.base = replay.PREDECESSOR
         for name in [*replay.SUCCESSOR, replay.POLICY]:
-            self.write(name, (ROOT / name).read_bytes())
+            self.write(name, s.blob(ROOT, CI001R4_HEAD, name))
         self.head = self.commit()
 
     git = DiagnosticIntegrationTests.git
@@ -2147,6 +2152,285 @@ class HistoricalReplayAggregateTests(unittest.TestCase):
                                                 'source_sha': e.HISTORY, 'source_tree': e.HISTORY_TREE}
         with self.assertRaisesRegex(ValueError, 'historical execution epoch'):
             self.gate()
+
+
+class HistoricalTransitionScopeTests(unittest.TestCase):
+    """CI-001R3-R5: one-time historical successors do not capture later main.
+
+    Every case commits a complete Git tree descended from the real reviewed
+    main that exposed the defect (#134 merge) plus today's R5 executing policy.
+    The trusted classifier, not a mocked decision or candidate manifest, is
+    exercised. Exact predecessor routes stay covered by the classes above.
+    """
+
+    POLICY = ('docs/tools/epoch_ci.py', 'docs/tests/pol002_epoch_tests.py')
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='ci001r5-scope-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / 'source'
+        subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(ROOT), str(self.root)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.git('checkout', '--detach', CI001R5_LATER_MAIN)
+        self.git('config', 'user.name', 'CI-001R3-R5 scope control')
+        self.git('config', 'user.email', 'ci001r5@example.invalid')
+        # Synthetic reviewed target: later main carrying the R5 classifier.
+        for name in self.POLICY:
+            self.write(name, (ROOT / name).read_bytes())
+        self.base = self.commit('synthetic reviewed main carrying CI-001R3-R5')
+        self.git('update-ref', 'refs/remotes/origin/main', self.base)
+
+    git = DiagnosticIntegrationTests.git
+    write = DiagnosticIntegrationTests.write
+
+    def commit(self, message='committed CI-001R3-R5 control'):
+        self.git('add', '-A'); self.git('commit', '-qm', message)
+        return self.git('rev-parse', 'HEAD')
+
+    def classify(self, target=None):
+        return e.classify(self.root, target or self.base, self.git('rev-parse', 'HEAD'))
+
+    def append(self, name, data):
+        path = self.root / name
+        self.write(name, (path.read_bytes() if path.exists() else b'') + data)
+
+    def reset(self):
+        self.git('reset', '-q', '--hard', self.base)
+
+    def assert_unapproved(self, value, case):
+        self.assertEqual(value['case'], case)
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+
+    def test_reproduced_predecessor_defect_is_scoped_not_reauthorized(self):
+        import ci001r4_replay as replay
+        import doc_ci004_source as integration
+        self.append('docs/coverage.md', b'\nCI-001R3-R5 documentation-only fixture.\n')
+        head = self.commit()
+        old, new = s.tree(self.root, self.base), s.tree(self.root, head)
+        changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+        self.assertEqual(changed, ['docs/coverage.md'])
+        # Both unchanged one-time validators still reject a later predecessor.
+        for validator in (replay.source_transition, integration.diagnostic_transition):
+            with self.subTest(validator=validator.__module__):
+                with self.assertRaisesRegex(ValueError, 'not a complete verified predecessor checkout'):
+                    validator(self.root, self.base, head, old, new, changed, s)
+        self.assert_unapproved(self.classify(), 'documentation-only')
+
+    def test_real_unmodified_later_main_documentation_edit_classifies(self):
+        # Trusted target is the actual reviewed main object, not the R5 fixture.
+        self.git('reset', '-q', '--hard', CI001R5_LATER_MAIN)
+        self.append('docs/coverage.md', b'\nLater ordinary coverage record.\n')
+        self.append('docs/r5-followup.md', b'Documentation only; no approval.\n')
+        self.commit()
+        self.assert_unapproved(self.classify(CI001R5_LATER_MAIN), 'documentation-only')
+
+    def test_scope_registry_must_match_each_validator(self):
+        import ci001r4_replay as replay
+        import doc_ci004_source as integration
+        self.assertEqual(e.historical_transition_trees(), {
+            replay.POLICY: frozenset({replay.MAIN_TREE, replay.PREDECESSOR_TREE}),
+            integration.POLICY: frozenset({integration.MAIN_TREE, integration.PREDECESSOR_TREE})})
+        later = s.git(ROOT, 'rev-parse', CI001R5_LATER_MAIN + '^{tree}').decode().strip()
+        for name, trees in e.HISTORICAL_TRANSITION_TREES.items():
+            self.assertNotIn(later, trees)
+            for widened in (trees | {later}, frozenset(sorted(trees)[:1])):
+                with self.subTest(policy=name, size=len(widened)):
+                    scope = {**e.HISTORICAL_TRANSITION_TREES, name: widened}
+                    with mock.patch.object(e, 'HISTORICAL_TRANSITION_TREES', scope):
+                        with self.assertRaisesRegex(ValueError, 'CI-001R3-R5 historical transition scope'):
+                            e.historical_transition_trees()
+        for module, field in ((replay, 'PREDECESSOR_TREE'), (integration, 'MAIN_TREE')):
+            with self.subTest(validator=module.POLICY, field=field):
+                with mock.patch.object(module, field, later):
+                    with self.assertRaisesRegex(ValueError, 'CI-001R3-R5 historical transition scope'):
+                        e.historical_transition_trees()
+
+    def test_executable_and_production_changes_with_documentation_reject(self):
+        for name in ('native/src/ir_stream.cpp', 'ada/src/ams-mel.ads', 'rust/ams-mel/src/lib.rs',
+                     'python/ams_mel/__init__.py', 'native/vendor/ams-math/INTENT.md',
+                     'scripts/extra_checker.py', 'docs/tests/test_unknown_addition.py',
+                     '.github/workflows/unreviewed.yml', 'docs/approval.json'):
+            with self.subTest(name=name):
+                self.reset()
+                self.append('docs/coverage.md', b'\nDocumentation alongside executable change.\n')
+                self.append(name, b'\n# candidate-provided authority\n')
+                self.commit()
+                with self.assertRaises((ValueError, subprocess.CalledProcessError)): self.classify()
+
+    def test_reviewed_feature_surface_keeps_ordinary_unapproved_route(self):
+        # Unchanged POL-002: RF_PRODUCT_RX shared bindings stay feature-source
+        # with an explicit exact-content review obligation, never policy-only.
+        for name in ('rust/ams-mel-sys/src/lib.rs', 'python/ams_mel/_native.py'):
+            with self.subTest(name=name):
+                self.assertIn(name, s.RF_PRODUCT_RX)
+                self.reset()
+                self.append('docs/coverage.md', b'\nDocumentation alongside feature change.\n')
+                self.append(name, b'\n# feature fixture\n')
+                self.commit()
+                value = self.classify()
+                self.assert_unapproved(value, 'feature-source')
+                self.assertEqual(value['review_obligations'],
+                                 [{'path': name, 'obligation': 'requires-exact-content-shared-interface-review'}])
+
+    def test_protected_controls_and_source_identities_reject(self):
+        import ci001r3_source as correction
+        names = ['docs/tools/ci001r4_replay.py', 'docs/tools/doc_ci004_source.py',
+                 'docs/tools/ci001r3_source.py', 'docs/tools/ci001r3_workflow.py',
+                 'docs/tools/documentation_ci.py', 'docs/tools/build_enhanced_site.py',
+                 'docs/tools/test_actions_dependencies.py', 'docs/tests/ci001r4_replay_probe.py',
+                 'docs/tests/ci001-inherited-inventory.json',
+                 'docs/gnatdoc-coverage-baseline.txt', 'scripts/check_doc_source_integrity.py',
+                 '.github/workflows/ci.yml', *correction.TESTS]
+        for name in names:
+            with self.subTest(name=name):
+                self.reset()
+                self.append('docs/coverage.md', b'\nDocumentation alongside protected change.\n')
+                self.append(name, b'\n# unreviewed change\n')
+                self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+
+    def test_policy_paths_remain_separate_unapproved_review_case(self):
+        # Unchanged POL-002 semantics: a POLICY_PATHS edit is a policy-only
+        # proposal needing independent review, never approval, never mixed.
+        for name in ('docs/tools/source_epoch.py', 'docs/tools/feature_source.py',
+                     'docs/tests/pol002_source_tests.py'):
+            with self.subTest(name=name):
+                self.reset()
+                self.append('docs/coverage.md', b'\nDocumentation alongside policy proposal.\n')
+                self.append(name, b'\n# proposed policy\n')
+                self.commit()
+                self.assert_unapproved(self.classify(), 'policy-only')
+                self.append('native/src/ir_stream.cpp', b'\n// hitchhiking production change\n')
+                self.commit()
+                with self.assertRaises(ValueError): self.classify()
+
+    def test_protected_mode_and_removal_reject(self):
+        for name in ('docs/tools/ci001r4_replay.py', 'docs/tools/doc_ci004_source.py', 'docs/tools/epoch_ci.py'):
+            for mutation in ('executable', 'missing'):
+                with self.subTest(name=name, mutation=mutation):
+                    self.reset()
+                    self.append('docs/coverage.md', b'\nDocumentation alongside mode change.\n')
+                    path = self.root / name
+                    if mutation == 'executable': path.chmod(0o755)
+                    else: path.unlink()
+                    self.commit()
+                    with self.assertRaises((ValueError, subprocess.CalledProcessError)): self.classify()
+
+    def test_mixed_historical_transitions_and_replayed_successors_reject(self):
+        import ci001r4_replay as replay
+        import doc_ci004_source as integration
+        # Each case reintroduces one historical transition member's predecessor
+        # bytes beside an ordinary documentation edit; none is that transition.
+        cases = (('pre-diagnostic workflow', '.github/workflows/documentation.yml', integration.PREDECESSOR),
+                 ('pre-Node24 workflow', '.github/workflows/documentation.yml', integration.MAIN),
+                 ('pre-diagnostic checker', 'scripts/check_doc_source_integrity.py', integration.PREDECESSOR),
+                 ('pre-Node24 checker', 'scripts/check_doc_source_integrity.py', integration.MAIN),
+                 ('pre-integration live tests', 'docs/tests/test_live_docs_site.py', integration.MAIN),
+                 ('pre-integration qualifier', 'docs/tools/documentation_ci.py', integration.MAIN),
+                 ('pre-integration actions test', 'docs/tools/test_actions_dependencies.py', integration.PREDECESSOR),
+                 ('pre-R4 transition verifier', 'docs/tools/ci001r3_workflow.py', integration.PREDECESSOR))
+        for label, name, revision in cases:
+            with self.subTest(case=label):
+                self.reset()
+                data = s.blob(ROOT, revision, name)
+                self.assertNotEqual(data, (self.root / name).read_bytes(), label)
+                self.write(name, data)
+                self.append('docs/coverage.md', b'\nMixed historical replay attempt.\n')
+                self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+        # Reapplying the complete historical R4 successor over later main does
+        # not re-enter its exact route, so a hitchhiking validator edit rejects.
+        self.reset()
+        for name in [*replay.SUCCESSOR, replay.POLICY]:
+            self.write(name, s.blob(ROOT, CI001R4_HEAD, name))
+        self.append('docs/tools/doc_ci004_source.py', b'\n# hitchhiking validator edit\n')
+        self.commit()
+        with self.assertRaises((ValueError, AssertionError)): self.classify()
+
+    def test_candidate_cannot_self_authorize(self):
+        import ci001r4_replay as replay
+        import doc_ci004_source as integration
+        later = s.git(ROOT, 'rev-parse', CI001R5_LATER_MAIN + '^{tree}').decode().strip()
+        # Candidate-side widening of the R5 scope to its own target, together
+        # with an executable change: the classifier is the target's, but even
+        # a candidate classifier still rejects the inconsistent registry.
+        text = (self.root / 'docs/tools/epoch_ci.py').read_text()
+        marker = "        '64430578a6e458396561f7888c478634aaed0a8f',   # CI-001R3-R3 e85d99b\n"
+        self.assertEqual(text.count(marker), 1)
+        self.write('docs/tools/epoch_ci.py', text.replace(marker, marker + "        '" + later + "',\n").encode())
+        self.append('native/src/ir_stream.cpp', b'\n// hitchhiking production change\n')
+        self.commit()
+        with self.assertRaises(ValueError): self.classify()
+        # Candidate-side validator predecessor rewrites.
+        for module in (replay, integration):
+            with self.subTest(validator=module.POLICY):
+                self.reset()
+                path = self.root / module.POLICY
+                original = path.read_text()
+                quoted = "'" + module.PREDECESSOR_TREE + "'"
+                self.assertEqual(original.count(quoted), 1)
+                path.write_text(original.replace(quoted, "'" + later + "'"))
+                self.append('docs/coverage.md', b'\nSelf-authorizing predecessor rewrite.\n')
+                self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+        # A candidate-owned approval record is not even a reviewable path.
+        self.reset()
+        self.write('docs/approval.json', b'{"independent_approval": true, "publication_epoch_approved": true}\n')
+        self.commit()
+        with self.assertRaises(ValueError): self.classify()
+        # A candidate publication-epoch registry entry is only a policy-only
+        # proposal; publication authority is read from the trusted target alone.
+        self.reset()
+        path = self.root / 'docs/tools/source_epoch.py'
+        original = path.read_text()
+        self.assertEqual(original.count('REVIEWED_EPOCHS = ()'), 1)
+        path.write_text(original.replace('REVIEWED_EPOCHS = ()', "REVIEWED_EPOCHS = ({'commit': 'HEAD'},)"))
+        candidate = self.commit()
+        self.assert_unapproved(self.classify(), 'policy-only')
+        self.assertEqual(epoch.trusted_publication_epochs(self.root, self.base), ())
+        self.assertEqual(epoch.trusted_publication_epochs(self.root, candidate), ({'commit': 'HEAD'},))
+        with self.assertRaises(ValueError):
+            epoch.publication_authority(self.root, candidate, target=self.base, pristine={}, published={})
+        self.append('docs/coverage.md', b'\nSelf-approval with executable change.\n')
+        self.append('ada/src/ams-mel.ads', b'\n--  hitchhiking\n')
+        self.commit()
+        with self.assertRaises(ValueError): self.classify()
+
+    def test_policy_proposal_still_bound_by_trusted_workflow_contracts(self):
+        name = '.github/workflows/documentation.yml'
+        original = (self.root / name).read_text()
+        self.append('docs/tools/epoch_ci.py', b'\n# Later reviewed runner proposal.\n')
+        self.commit()
+        self.assert_unapproved(self.classify(), 'policy-only')
+        from ci001r3_workflow import ACTION_PINS
+        pin = 'actions/upload-artifact@' + ACTION_PINS['actions/upload-artifact']
+        canonical = '      - name: Upload successful canonical execution result\n'
+        for label, text in (('unpinned upload', original.replace(pin, 'actions/upload-artifact@v4')),
+                            ('PR deploy', original.replace(
+                                "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+                                'always()', 1)),
+                            ('canonical on failure', original.replace(
+                                canonical, canonical + '        if: always()\n', 1))):
+            with self.subTest(mutation=label):
+                self.assertNotEqual(text, original)
+                self.reset()
+                self.write(name, text.encode())
+                self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+
+    def test_exact_historical_routes_remain_selected_only_from_predecessors(self):
+        import ci001r4_replay as replay
+        import doc_ci004_source as integration
+        scope = e.historical_transition_trees()
+        for module in (replay, integration):
+            for ref, tree in ((module.MAIN, module.MAIN_TREE), (module.PREDECESSOR, module.PREDECESSOR_TREE)):
+                with self.subTest(policy=module.POLICY, ref=ref):
+                    self.assertEqual(s.git(self.root, 'rev-parse', ref + '^{tree}').decode().strip(), tree)
+                    self.assertIn(tree, scope[module.POLICY])
+        # The SHA-256 successor sets themselves are unchanged from history.
+        for module, head in ((replay, CI001R4_HEAD), (integration, DOC_CI004_HEAD)):
+            self.assertEqual((ROOT / module.POLICY).read_bytes(), s.blob(ROOT, head, module.POLICY))
 
 
 if __name__ == '__main__':

@@ -1,5 +1,18 @@
 # Implementation coverage
 
+## CI-001R3-R5 — historical transition scope (proposal)
+
+The CI-001R3-R4 replay and DOC-CI-004 integration validators each bind one
+exact historical successor, defined from fixed complete predecessor trees.
+Both include `docs/coverage.md`, so every later ordinary coverage edit was
+rejected as "not a complete verified predecessor checkout". The classifier
+now invokes each validator only from its own verified predecessor trees; a
+literal registry must equal the validators' constants. Later candidates take
+the unchanged ordinary routes, and later workflow/runner policy proposals must
+still satisfy the trusted CI-001R3 workflow contracts. No validator, SHA-256
+identity, protected input, workflow, production source or approval authority
+changes; nothing is approved. See `ci-001r3-r5-historical-transition-scope.md`.
+
 ## CI-001R3-R4 — explicit corrected historical live-fixture replay (proposal)
 
 Hosted run `40989263985` (live job `123862363728`, diagnostic artifact
