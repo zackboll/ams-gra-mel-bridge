@@ -121,16 +121,25 @@ jobs:
         run: |
           .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' run --root "$PWD" \
             --owner '${{ matrix.shard }}' --output "$RUNNER_TEMP/results/${{ matrix.shard }}.json" \
+            --diagnostics "$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}" \
             --artifact-id '${{ needs.prepare-documentation.outputs.artifact_id }}' \
             --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
             --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Upload detailed execution result even on failure
-        if: always()
+      - name: Upload successful canonical execution result
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: documentation-result-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/results/${{ matrix.shard }}.json
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload separate non-authorizing failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: documentation-failure-diagnostics-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
+          path: ${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/
+          if-no-files-found: warn
           retention-days: 30
 
   # Keep the merge-required check name. Never let a failed dependency skip it.

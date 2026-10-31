@@ -4,6 +4,11 @@ Historical test code and publication authority are exported from an immutable
 Git commit. Candidate policies cannot authorize production in the same delta.
 Every outer report binds the exact event head/tree, epochs, sealed input bundle,
 run/attempt and complete inner historical execution. No PR can deploy.
+
+CI-001R3-R4: the historical publication is still generated, verified and
+sealed from the unmodified original epoch. Historical *test execution* uses the
+explicit corrected replay child commit defined by ci001r4_replay; its sealed
+identity, inventory and source hashes name that replay, never the original.
 """
 
 import argparse
@@ -20,6 +25,7 @@ import tarfile
 import tempfile
 
 import documentation_ci as ci
+import ci001r4_replay as replay
 import feature_source as source
 import source_epoch as epoch
 
@@ -58,6 +64,41 @@ ACTIONS_SOURCE = (
     ('docs/tools/test_actions_dependencies.py', None,
      '4312b37b2d54056e83b2970ed84ec1d50e96d4ca4c41a2c273d2fd66b3d5eabc'),
 )
+
+# Exact DOC-CI-004R1 successor of PR #135, not a replacement of ACTIONS_SOURCE
+# or independent approval. Only these four complete files may transition.
+DIAGNOSTIC_SOURCE = (
+    ('.github/workflows/ci.yml',
+     'de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235'),
+    ('.github/workflows/documentation.yml',
+     '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711'),
+    ('scripts/check_doc_source_integrity.py',
+     '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602'),
+    ('docs/tools/test_actions_dependencies.py',
+     '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012'),
+)
+
+
+def diagnostics_delta(root, target, candidate, old, new):
+    names = {name for name, _ in DIAGNOSTIC_SOURCE}
+    if not any(old.get(name) != new.get(name) for name in names):
+        return set()
+    # The original migration path still uses its complete predecessor checks.
+    workflow = '.github/workflows/documentation.yml'
+    if (workflow not in old or hashlib.sha256(source.blob(root, target, workflow)).hexdigest()
+            != ACTIONS_SOURCE[1][2]):
+        return set()
+    predecessors = {name: proposed for name, _, proposed in ACTIONS_SOURCE}
+    for name, proposed in DIAGNOSTIC_SOURCE:
+        require(old.get(name, (None,))[0] == new.get(name, (None,))[0] == '100644',
+                'DOC-CI-004R1 source mode/missing: ' + name)
+        require(hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessors[name],
+                'DOC-CI-004R1 predecessor bytes: ' + name)
+        require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == proposed,
+                'DOC-CI-004R1 candidate bytes: ' + name)
+    require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
+            'DOC-CI-004 candidate changed publication approval registry')
+    return names
 
 
 def actions_delta(root, target, candidate, old, new):
@@ -128,6 +169,7 @@ def context():
     result = {'source_sha': candidate, 'source_tree': git('rev-parse', candidate + '^{tree}').decode().strip(),
               'target_sha': target, 'target_tree': git('rev-parse', target + '^{tree}').decode().strip(),
               'historical_sha': HISTORY, 'historical_tree': HISTORY_TREE,
+              'historical_replay_sha': replay.COMMIT, 'historical_replay_tree': replay.TREE,
               'event': kind, 'repository': repository, 'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'qualification_mode': 'hosted'}
     if os.environ.get('DOC_LOCAL_QUALIFICATION') == '1':
@@ -147,19 +189,29 @@ def classify(root, target, candidate):
     require(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', target, candidate],
                            capture_output=True).returncode == 0, 'unqualified policy/source ancestry')
     changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+    # CI-001R3-R4 binds the complete successor (including every DOC-CI-004
+    # file) exactly; absent its executing policy the earlier routes apply.
+    corrected = replay.source_transition(root, target, candidate, old, new, changed, source)
+    from doc_ci004_source import diagnostic_transition
+    diagnostic = corrected or diagnostic_transition(root, target, candidate, old, new, changed, source)
+    # Exact inherited-test correction only; these are not general policy paths.
+    from ci001r3_source import policy_transition
+    correction = diagnostic or policy_transition(root, target, candidate, old, new, changed, source)
     policy = any(n in POLICY_PATHS for n in changed)
     if not policy:
         value = source.qualify(root, target, candidate)
         for name in POLICY_PATHS:
             require(old.get(name) == new.get(name), 'feature changed qualification implementation')
         return value
-    actions = actions_delta(root, target, candidate, old, new)
+    # The historical four-file diagnostic pair helper is not authorization for
+    # a future checker edit. Only the complete exact integration may succeed it.
+    actions = diagnostic or actions_delta(root, target, candidate, old, new)
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
-        require(name in POLICY_PATHS or name in actions or source.documentation_path(name),
+        require(name in correction or name in actions or name in POLICY_PATHS or source.documentation_path(name),
                 'policy mixed with protected production/source change: ' + name)
     for name in PROTECTED_INPUTS:
-        require(name in actions or old.get(name) == new.get(name),
+        require(name in correction or name in actions or old.get(name) == new.get(name),
                 'policy proposal changed inherited authority: ' + name)
     source.exact_checkout(root, source.revision(root, candidate), new)
     return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
@@ -222,7 +274,8 @@ def qualified_alire_environment(settings, log, base=None):
 
 def historical_environment(outer):
     env = dict(os.environ)
-    env.update(DOC_SOURCE_SHA=HISTORY, GITHUB_RUN_ID=outer['run_id'],
+    # Historical tests execute only from the explicit corrected replay commit.
+    env.update(DOC_SOURCE_SHA=replay.COMMIT, GITHUB_RUN_ID=outer['run_id'],
                GITHUB_RUN_ATTEMPT=outer['run_attempt'], GITHUB_REPOSITORY=outer['repository'])
     return env
 
@@ -233,6 +286,23 @@ def historical_checkout(path):
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(['git', '-C', str(path), 'checkout', '--detach', HISTORY], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def corrected_replay(path):
+    """Switch a clean original-epoch clone to the exact authenticated replay."""
+    return replay.checkout(path)
+
+
+def historical_identity(record):
+    """Original publication epoch and corrected test replay are not interchangeable."""
+    historical = record['historical']
+    require(historical['commit'] == HISTORY and historical['tree'] == HISTORY_TREE,
+            'wrong historical publication epoch')
+    require(historical['replay'] == replay.binding(), 'unauthenticated historical replay binding')
+    require(historical['context']['source_sha'] == replay.COMMIT and
+            historical['context']['source_tree'] == replay.TREE,
+            'historical execution is not the explicit corrected replay')
+    replay.verify_inventories(historical['original_inventory'], historical['inventory'], ci.digest)
 
 
 def file_map(path):
@@ -290,6 +360,12 @@ def prepare(directory, prefix):
         require(file_map(history / '_site') == file_map(second / '_site') and
                 file_map(history / '_site-published') == file_map(second / '_site-published'),
                 'historical regeneration not deterministic')
+    # Original inventory first, then switch the same publication-bearing clone to
+    # the corrected replay. Neither publication byte nor original commit changes.
+    execute([py, 'docs/tools/documentation_ci.py', 'inventory', '--directory', str(directory / 'original-inventory')],
+            history, logs / 'original-inventory.log', env)
+    replay_binding = corrected_replay(history)
+    execute(['python3', 'scripts/check_doc_source_integrity.py'], history, logs / 'replay-source.log', env)
     execute([py, 'docs/tools/documentation_ci.py', 'inventory'], history, logs / 'inventory.log', env)
     execute([py, 'docs/tools/documentation_ci.py', 'run', '--owner', 'scripts',
              '--output', 'qualification/scripts.json'], history, logs / 'scripts.log', env)
@@ -338,10 +414,13 @@ def prepare(directory, prefix):
         require(again == candidate, 'independent candidate epoch mismatch')
     require(context() == outer, 'source changed during candidate generation')
     historical = {'commit': HISTORY, 'tree': HISTORY_TREE,
+                  'replay': replay_binding,
+                  'original_inventory': ci.load(directory / 'original-inventory/inventory.json'),
                   'seal': seal, 'pristine': file_map(history / '_site'),
                   'published': file_map(history / '_site-published'),
                   'context': ci.load(history / 'qualification/manifest.json')['identity'],
                   'inventory': ci.load(history / 'qualification/inventory.json')}
+    replay.verify_inventories(historical['original_inventory'], historical['inventory'], ci.digest)
     record = {'schema': 2, 'identity': outer, 'classification': value,
               'historical': historical, 'candidate': candidate,
               'policy_tests': policy_report['tests'], 'policy_sha256': ci.file_sha(directory / 'policy.json'),
@@ -405,6 +484,7 @@ def verify(directory, manifest_sha):
             'source classification changed')
     authority(ROOT, record['classification'])
     require(record['historical']['commit'] == HISTORY and record['historical']['tree'] == HISTORY_TREE, 'wrong historical epoch')
+    historical_identity(record)
     value = record['candidate']
     require(value['candidate_commit'] == record['identity']['source_sha'] and
             value['candidate_tree'] == record['identity']['source_tree'], 'wrong candidate epoch')
@@ -445,8 +525,8 @@ def verify_historical_bundle(directory, record):
         require(manifest['inventory_sha256'] == ci.digest(inv) and manifest['scripts_sha256'] == ci.digest(scripts),
                 'historical execution evidence mismatch')
         ci.validate_report(scripts, 'scripts', inv['groups']['scripts'], manifest['identity'], ci.digest(inv))
-        require(manifest['identity']['source_sha'] == HISTORY and manifest['identity']['source_tree'] == HISTORY_TREE,
-                'historical epoch substituted')
+        require(manifest['identity']['source_sha'] == replay.COMMIT and manifest['identity']['source_tree'] == replay.TREE,
+                'historical replay epoch substituted')
         for prefix, field in (('_site/', 'pristine'), ('_site-published/', 'published')):
             require({n[len(prefix):]: h for n, h in manifest['payload'].items() if n.startswith(prefix)}
                     == record['historical'][field], 'historical publication assignment mismatch')
@@ -479,31 +559,116 @@ def unpack(args):
 
 
 def run_shard(args):
+    require(args.owner in ci.SHARDS, 'unknown historical shard owner')
     record = verify(args.directory, args.manifest_sha)
     require(args.artifact_id.isdigit() and re.fullmatch(r'[0-9a-f]{64}', args.bundle_sha),
             'invalid input artifact identity')
     directory = Path(args.directory).absolute()
+    require(not any(p.is_symlink() for p in (directory, *directory.parents)), 'symlink shard inputs')
     history = directory / ('shard-' + args.owner)
-    historical_checkout(history)
+    result = directory / (args.owner + '-execution.json')
+    require(not result.exists() and not result.is_symlink(), 'inner result must be fresh')
+    output = Path(args.output).absolute()
+    require('..' not in output.parts, 'unsafe outer result traversal')
+    require(not output.exists() and not output.is_symlink(), 'outer result must be fresh')
+    require(not any(p.is_symlink() for p in output.parents), 'symlink outer result path')
+    require(not output.is_relative_to(directory) and not directory.is_relative_to(output),
+            'outer result overlaps sealed inputs')
+    require(not output.is_relative_to(ROOT.absolute()) or
+            output.is_relative_to(ROOT.absolute() / '.doc-tools/results'),
+            'outer result overlaps protected source')
     inner = record['historical']['seal']
     env = historical_environment(record['identity'])
-    execute([sys.executable, 'docs/tools/documentation_ci.py', 'unpack', '--bundle', str(directory / 'historical.tar'),
-             '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
-            history, directory / (args.owner + '-unpack.log'), env)
-    result = directory / (args.owner + '-execution.json')
-    execute([sys.executable, 'docs/tools/documentation_ci.py', 'run', '--owner', args.owner,
-             '--output', str(result), '--artifact-id', args.artifact_id,
-             '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
-            history, directory / (args.owner + '.log'), env)
+    log = directory / (args.owner + '.log')
+    unpack_log = directory / (args.owner + '-unpack.log')
+    require(all(not path.exists() and not path.is_symlink() for path in (log, unpack_log)),
+            'historical logs must be fresh regular destinations')
+    historical_checkout(history)
+    # Replay construction/verification failures are policy rejections raised
+    # before any child test runs; they are never reported as a test failure.
+    corrected_replay(history)
+    try:
+        execute([sys.executable, 'docs/tools/documentation_ci.py', 'unpack', '--bundle', str(directory / 'historical.tar'),
+                 '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
+                history, unpack_log, env)
+        execute([sys.executable, 'docs/tools/documentation_ci.py', 'run', '--owner', args.owner,
+                 '--output', str(result), '--artifact-id', args.artifact_id,
+                 '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
+                history, log, env)
+    except subprocess.CalledProcessError as failure:
+        try:
+            failure_diagnostics(args, record, failure, log, unpack_log, result)
+        except Exception as diagnostic_error:
+            print('Failure diagnostics unavailable: ' + str(diagnostic_error), file=sys.stderr)
+        # A diagnostics error must never replace or conceal the inner exit code.
+        raise SystemExit(failure.returncode) from failure
+    execution = ci.load(result)
+    ci.validate_report(execution, args.owner, record['historical']['inventory']['shards'][args.owner],
+                       record['historical']['context'], ci.digest(record['historical']['inventory']),
+                       {'artifact_id': args.artifact_id, 'manifest_sha256': inner['manifest_sha256'],
+                        'bundle_sha256': inner['bundle_sha256'],
+                        'artifact_name': ci.artifact_name('inputs', record['historical']['context'])})
     report = {'schema': 2, 'owner': args.owner, 'identity': record['identity'],
               'epochs_sha256': digest(record), 'artifact_id': args.artifact_id,
               'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha,
-              'execution': ci.load(result)}
+              'execution': execution}
     # Every runner independently reconstructs candidate source/native profiles,
     # all type links/catalog entries and manifest, not just output hash lists.
     verify_candidate(directory, record)
     verify(args.directory, args.manifest_sha)
     write(args.output, report)
+
+
+def failure_diagnostics(args, record, failure, log, unpack_log, result):
+    """Untrusted forensic bytes, never a shard report or publication authority.
+
+    Preserve raw inner output even if JSON is truncated or malformed. The sealed
+    inputs are read-only; diagnostics live outside that namespace and aggregation
+    never reads them. No retries or additional historical executions occur here.
+    """
+    print('Historical shard failed: ' + json.dumps({'owner': args.owner, 'exit_status': failure.returncode,
+                                                  'command': failure.cmd}), file=sys.stderr)
+    # Prefix and escape controls: historical output must not issue hosted runner
+    # workflow commands. Only this excerpt is bounded, not the saved log.
+    excerpt = log if log.is_file() else unpack_log
+    require(not any(p.is_symlink() for p in (excerpt, *excerpt.parents)), 'symlink diagnostic log')
+    if excerpt.is_file():
+        with excerpt.open('rb') as stream:
+            stream.seek(max(0, excerpt.stat().st_size - 12000))
+            tail = stream.read().decode('utf-8', errors='replace').splitlines()[-80:]
+        for line in tail:
+            print(' | ' + json.dumps(line, ensure_ascii=True)[1:-1], file=sys.stderr)
+    directory = Path(args.directory).absolute()
+    destination = Path(args.diagnostics).absolute()
+    require('..' not in destination.parts, 'unsafe diagnostics traversal')
+    require(not destination.is_relative_to(directory) and not directory.is_relative_to(destination),
+            'diagnostics overlap sealed inputs')
+    output = Path(args.output).absolute()
+    require(not output.is_relative_to(destination) and not destination.is_relative_to(output),
+            'diagnostics overlap canonical output')
+    root = ROOT.absolute()
+    require(not destination.is_relative_to(root) or
+            destination.is_relative_to(root / '.doc-tools/failure-diagnostics'),
+            'diagnostics overlap protected source')
+    require(not any(p.is_symlink() for p in (destination, *destination.parents)), 'symlink diagnostics path')
+    destination.mkdir(parents=True, exist_ok=False)
+    files = {}
+    for path, name in ((log, 'historical.log'), (unpack_log, 'unpack.log'), (result, 'execution.json')):
+        require(not any(p.is_symlink() for p in (path, *path.parents)), 'symlink diagnostic input')
+        if path.exists():
+            require(path.is_file(), 'nonregular diagnostic input')
+            shutil.copyfile(path, destination / name)
+            files[name] = ci.file_sha(destination / name)
+    write(destination / 'failure.json', {
+        'schema': 1, 'kind': 'failure-diagnostics-not-qualification', 'successful': False,
+        'owner': args.owner, 'identity': record['identity'],
+        'historical_identity': record['historical']['context'],
+        'command': failure.cmd, 'exit_status': failure.returncode,
+        'epochs_sha256': digest(record), 'artifact_id': args.artifact_id,
+        'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha,
+        'historical_seal': record['historical']['seal'], 'files_sha256': files,
+        'inner_report_available': 'execution.json' in files,
+    })
 
 
 def reconcile(record, reports, qualified, needs):
@@ -516,7 +681,7 @@ def reconcile(record, reports, qualified, needs):
     outer = record['identity']
     historical_context = record['historical']['context']
     require(all(historical_context[k] == v for k, v in {
-        'source_sha': HISTORY, 'source_tree': HISTORY_TREE, 'run_id': outer['run_id'],
+        'source_sha': replay.COMMIT, 'source_tree': replay.TREE, 'run_id': outer['run_id'],
         'run_attempt': outer['run_attempt'], 'repository': outer['repository']}.items()), 'wrong historical execution epoch')
     inner = record['historical']['seal']
     historical_qualified = {'artifact_id': qualified['artifact_id'],
@@ -536,7 +701,11 @@ def reconcile(record, reports, qualified, needs):
     approval = publication_decision(record)
     return {'schema': 2, 'identity': outer, 'epochs_sha256': digest(record), 'qualified': qualified,
             'report_sha256': {k: digest(v) for k, v in reports.items()}, 'historical_scripts': 142,
-            'historical_enhanced': 437, 'mechanically_qualified': True,
+            'historical_enhanced': 437,
+            'historical_execution': {'status': replay.binding()['status'],
+                                     'publication_commit': HISTORY, 'replay_commit': replay.COMMIT,
+                                     'replay_tree': replay.TREE},
+            'mechanically_qualified': True,
             'independent_approval': False, 'publication_authority': approval,
             'deployable': approval is not None and outer['event'] == 'push' and
             outer['qualification_mode'] == historical_context['qualification_mode'] == 'hosted'}
@@ -668,6 +837,7 @@ def main():
     parser.add_argument('--owner', choices=tuple(ci.SHARDS))
     parser.add_argument('--reports')
     parser.add_argument('--output')
+    parser.add_argument('--diagnostics', default='.doc-tools/failure-diagnostics')
     parser.add_argument('--gate')
     parser.add_argument('--gate-sha')
     parser.add_argument('--root', type=Path, default=ROOT)

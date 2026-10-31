@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import check_doc_source_integrity as integrity
 
 BASELINE = 'e4e756aafa4edaffdb11fe341bb016380bf19ca9'
+MIGRATION = '219b00c75210f5985d9889e8b541da2e7b658f04'
 IDENTITIES = (
     ('.github/workflows/ci.yml',
      'c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2',
@@ -35,6 +36,32 @@ def original(name):
     return subprocess.check_output(['git', '-C', str(ROOT), 'show', BASELINE + ':' + name])
 
 
+def diagnostics_successor(text):
+    """Independently specified, exact diagnostic-only successor of PR #135.
+
+    This is a proposal, not independent policy approval. No other byte changes
+    are admitted. Keep the original migration validator and identities intact.
+    """
+    text = text.replace(
+        '            --owner \'${{ matrix.shard }}\' --output "$RUNNER_TEMP/results/${{ matrix.shard }}.json" \\\n',
+        '            --owner \'${{ matrix.shard }}\' --output "$RUNNER_TEMP/results/${{ matrix.shard }}.json" \\\n'
+        '            --diagnostics "$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}" \\\n')
+    text = text.replace(
+        '      - name: Upload detailed execution result even on failure\n        if: always()\n',
+        '      - name: Upload successful canonical execution result\n')
+    marker = '\n  # Keep the merge-required check name.'
+    addition = (
+        '\n      - name: Upload separate non-authorizing failure diagnostics\n'
+        '        if: always()\n'
+        '        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0\n'
+        '        with:\n'
+        '          name: documentation-failure-diagnostics-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}\n'
+        '          path: ${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/\n'
+        '          if-no-files-found: warn\n'
+        '          retention-days: 30\n')
+    return text.replace(marker, addition + marker)
+
+
 def validate_workflow(name, text):
     expected = original(name).decode()
     for action, (sha, release, old) in PINS.items():
@@ -44,7 +71,8 @@ def validate_workflow(name, text):
         expected = expected.replace('          path: .doc-tools/epochs/candidate/published/\n',
                                     '          path: .doc-tools/epochs/candidate/published/\n'
                                     '          include-hidden-files: true\n')
-    if text != expected:
+    successor = diagnostics_successor(expected) if name.endswith('/documentation.yml') else expected
+    if text not in (expected, successor):
         raise ValueError('unauthorized action migration workflow bytes')
 
 
@@ -103,7 +131,10 @@ class DependencyAuthorizationTests(unittest.TestCase):
         self.root = Path(temp.name)
         self.git('init', '-q')
         self.old = {name: original(name) for name, _, _ in IDENTITIES}
-        self.new = {name: (ROOT / name).read_bytes() for name, _, _ in IDENTITIES}
+        # Preserve the exact original migration authority, independently of its
+        # explicitly tested DOC-CI-004 successor in pol002_epoch_tests.py.
+        self.new = {name: subprocess.check_output(['git', '-C', str(ROOT), 'show',
+                    MIGRATION + ':' + name]) for name, _, _ in IDENTITIES}
         self.stage(self.old)
 
     def git(self, *args):
