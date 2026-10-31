@@ -4,6 +4,11 @@ Historical test code and publication authority are exported from an immutable
 Git commit. Candidate policies cannot authorize production in the same delta.
 Every outer report binds the exact event head/tree, epochs, sealed input bundle,
 run/attempt and complete inner historical execution. No PR can deploy.
+
+CI-001R3-R4: the historical publication is still generated, verified and
+sealed from the unmodified original epoch. Historical *test execution* uses the
+explicit corrected replay child commit defined by ci001r4_replay; its sealed
+identity, inventory and source hashes name that replay, never the original.
 """
 
 import argparse
@@ -20,6 +25,7 @@ import tarfile
 import tempfile
 
 import documentation_ci as ci
+import ci001r4_replay as replay
 import feature_source as source
 import source_epoch as epoch
 
@@ -163,6 +169,7 @@ def context():
     result = {'source_sha': candidate, 'source_tree': git('rev-parse', candidate + '^{tree}').decode().strip(),
               'target_sha': target, 'target_tree': git('rev-parse', target + '^{tree}').decode().strip(),
               'historical_sha': HISTORY, 'historical_tree': HISTORY_TREE,
+              'historical_replay_sha': replay.COMMIT, 'historical_replay_tree': replay.TREE,
               'event': kind, 'repository': repository, 'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'qualification_mode': 'hosted'}
     if os.environ.get('DOC_LOCAL_QUALIFICATION') == '1':
@@ -182,8 +189,11 @@ def classify(root, target, candidate):
     require(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', target, candidate],
                            capture_output=True).returncode == 0, 'unqualified policy/source ancestry')
     changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+    # CI-001R3-R4 binds the complete successor (including every DOC-CI-004
+    # file) exactly; absent its executing policy the earlier routes apply.
+    corrected = replay.source_transition(root, target, candidate, old, new, changed, source)
     from doc_ci004_source import diagnostic_transition
-    diagnostic = diagnostic_transition(root, target, candidate, old, new, changed, source)
+    diagnostic = corrected or diagnostic_transition(root, target, candidate, old, new, changed, source)
     # Exact inherited-test correction only; these are not general policy paths.
     from ci001r3_source import policy_transition
     correction = diagnostic or policy_transition(root, target, candidate, old, new, changed, source)
@@ -264,7 +274,8 @@ def qualified_alire_environment(settings, log, base=None):
 
 def historical_environment(outer):
     env = dict(os.environ)
-    env.update(DOC_SOURCE_SHA=HISTORY, GITHUB_RUN_ID=outer['run_id'],
+    # Historical tests execute only from the explicit corrected replay commit.
+    env.update(DOC_SOURCE_SHA=replay.COMMIT, GITHUB_RUN_ID=outer['run_id'],
                GITHUB_RUN_ATTEMPT=outer['run_attempt'], GITHUB_REPOSITORY=outer['repository'])
     return env
 
@@ -275,6 +286,23 @@ def historical_checkout(path):
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(['git', '-C', str(path), 'checkout', '--detach', HISTORY], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def corrected_replay(path):
+    """Switch a clean original-epoch clone to the exact authenticated replay."""
+    return replay.checkout(path)
+
+
+def historical_identity(record):
+    """Original publication epoch and corrected test replay are not interchangeable."""
+    historical = record['historical']
+    require(historical['commit'] == HISTORY and historical['tree'] == HISTORY_TREE,
+            'wrong historical publication epoch')
+    require(historical['replay'] == replay.binding(), 'unauthenticated historical replay binding')
+    require(historical['context']['source_sha'] == replay.COMMIT and
+            historical['context']['source_tree'] == replay.TREE,
+            'historical execution is not the explicit corrected replay')
+    replay.verify_inventories(historical['original_inventory'], historical['inventory'], ci.digest)
 
 
 def file_map(path):
@@ -332,6 +360,12 @@ def prepare(directory, prefix):
         require(file_map(history / '_site') == file_map(second / '_site') and
                 file_map(history / '_site-published') == file_map(second / '_site-published'),
                 'historical regeneration not deterministic')
+    # Original inventory first, then switch the same publication-bearing clone to
+    # the corrected replay. Neither publication byte nor original commit changes.
+    execute([py, 'docs/tools/documentation_ci.py', 'inventory', '--directory', str(directory / 'original-inventory')],
+            history, logs / 'original-inventory.log', env)
+    replay_binding = corrected_replay(history)
+    execute(['python3', 'scripts/check_doc_source_integrity.py'], history, logs / 'replay-source.log', env)
     execute([py, 'docs/tools/documentation_ci.py', 'inventory'], history, logs / 'inventory.log', env)
     execute([py, 'docs/tools/documentation_ci.py', 'run', '--owner', 'scripts',
              '--output', 'qualification/scripts.json'], history, logs / 'scripts.log', env)
@@ -380,10 +414,13 @@ def prepare(directory, prefix):
         require(again == candidate, 'independent candidate epoch mismatch')
     require(context() == outer, 'source changed during candidate generation')
     historical = {'commit': HISTORY, 'tree': HISTORY_TREE,
+                  'replay': replay_binding,
+                  'original_inventory': ci.load(directory / 'original-inventory/inventory.json'),
                   'seal': seal, 'pristine': file_map(history / '_site'),
                   'published': file_map(history / '_site-published'),
                   'context': ci.load(history / 'qualification/manifest.json')['identity'],
                   'inventory': ci.load(history / 'qualification/inventory.json')}
+    replay.verify_inventories(historical['original_inventory'], historical['inventory'], ci.digest)
     record = {'schema': 2, 'identity': outer, 'classification': value,
               'historical': historical, 'candidate': candidate,
               'policy_tests': policy_report['tests'], 'policy_sha256': ci.file_sha(directory / 'policy.json'),
@@ -447,6 +484,7 @@ def verify(directory, manifest_sha):
             'source classification changed')
     authority(ROOT, record['classification'])
     require(record['historical']['commit'] == HISTORY and record['historical']['tree'] == HISTORY_TREE, 'wrong historical epoch')
+    historical_identity(record)
     value = record['candidate']
     require(value['candidate_commit'] == record['identity']['source_sha'] and
             value['candidate_tree'] == record['identity']['source_tree'], 'wrong candidate epoch')
@@ -487,8 +525,8 @@ def verify_historical_bundle(directory, record):
         require(manifest['inventory_sha256'] == ci.digest(inv) and manifest['scripts_sha256'] == ci.digest(scripts),
                 'historical execution evidence mismatch')
         ci.validate_report(scripts, 'scripts', inv['groups']['scripts'], manifest['identity'], ci.digest(inv))
-        require(manifest['identity']['source_sha'] == HISTORY and manifest['identity']['source_tree'] == HISTORY_TREE,
-                'historical epoch substituted')
+        require(manifest['identity']['source_sha'] == replay.COMMIT and manifest['identity']['source_tree'] == replay.TREE,
+                'historical replay epoch substituted')
         for prefix, field in (('_site/', 'pristine'), ('_site-published/', 'published')):
             require({n[len(prefix):]: h for n, h in manifest['payload'].items() if n.startswith(prefix)}
                     == record['historical'][field], 'historical publication assignment mismatch')
@@ -546,6 +584,9 @@ def run_shard(args):
     require(all(not path.exists() and not path.is_symlink() for path in (log, unpack_log)),
             'historical logs must be fresh regular destinations')
     historical_checkout(history)
+    # Replay construction/verification failures are policy rejections raised
+    # before any child test runs; they are never reported as a test failure.
+    corrected_replay(history)
     try:
         execute([sys.executable, 'docs/tools/documentation_ci.py', 'unpack', '--bundle', str(directory / 'historical.tar'),
                  '--bundle-sha', inner['bundle_sha256'], '--manifest-sha', inner['manifest_sha256']],
@@ -640,7 +681,7 @@ def reconcile(record, reports, qualified, needs):
     outer = record['identity']
     historical_context = record['historical']['context']
     require(all(historical_context[k] == v for k, v in {
-        'source_sha': HISTORY, 'source_tree': HISTORY_TREE, 'run_id': outer['run_id'],
+        'source_sha': replay.COMMIT, 'source_tree': replay.TREE, 'run_id': outer['run_id'],
         'run_attempt': outer['run_attempt'], 'repository': outer['repository']}.items()), 'wrong historical execution epoch')
     inner = record['historical']['seal']
     historical_qualified = {'artifact_id': qualified['artifact_id'],
@@ -660,7 +701,11 @@ def reconcile(record, reports, qualified, needs):
     approval = publication_decision(record)
     return {'schema': 2, 'identity': outer, 'epochs_sha256': digest(record), 'qualified': qualified,
             'report_sha256': {k: digest(v) for k, v in reports.items()}, 'historical_scripts': 142,
-            'historical_enhanced': 437, 'mechanically_qualified': True,
+            'historical_enhanced': 437,
+            'historical_execution': {'status': replay.binding()['status'],
+                                     'publication_commit': HISTORY, 'replay_commit': replay.COMMIT,
+                                     'replay_tree': replay.TREE},
+            'mechanically_qualified': True,
             'independent_approval': False, 'publication_authority': approval,
             'deployable': approval is not None and outer['event'] == 'push' and
             outer['qualification_mode'] == historical_context['qualification_mode'] == 'hosted'}

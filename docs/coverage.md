@@ -1,5 +1,21 @@
 # Implementation coverage
 
+## CI-001R3-R4 — explicit corrected historical live-fixture replay (proposal)
+
+Hosted run `40989263985` (live job `123862363728`, diagnostic artifact
+`12950348192`) executed all 72 historical live identities: 70 passed and
+`test_missing_required_type_link`/`test_wrong_native_anchor` failed with
+`0 != 1`. The immutable historical `api_page()` used the first enumerated API
+page; the AMS root namespace page has neither a native declaration anchor nor
+a type-reference link (28 other pages have both). The original epoch
+`5c136a0` still generates and seals the publication; historical tests now run
+from the explicit child replay `f1a512f` (tree `cf865c6`), which changes only
+the reviewed DOC-PERF-001-R2 helper and its exact admission. Its identity,
+inventory and source hashes are sealed as the replay, not the original. All
+579 identities, six shards, fingerprints, workflow and publication authority
+are unchanged; no independent/publication approval is granted. See
+`ci-001r3-r4-historical-replay.md`.
+
 ## DOC-CI-004 integration with CI-001R3 — diagnostic-only proposal
 
 The proposed successor retains #137's exact three-method workflow correction
@@ -11,8 +27,9 @@ exact Git-tree/source transition is separate from the historical Node 24
 migration; neither mechanical route grants independent/publication approval.
 No historical assertion, production source, baseline or publication output is
 changed. Local and hosted qualification are required on the integrated source;
-earlier passing campaigns do not qualify it. Historical live-shard root cause
-remains unknown. See `doc-ci-004-integration.md` for scope and evidence.
+earlier passing campaigns do not qualify it. The historical live-shard root
+cause was later established (CI-001R3-R4 above). See
+`doc-ci-004-integration.md` for scope and evidence.
 
 ## CI-ACTIONS-001 — proposed Node 24 workflow dependencies
 
