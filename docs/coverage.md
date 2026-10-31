@@ -1,5 +1,48 @@
 # Implementation coverage
 
+## CI-001R3-R4 — explicit corrected historical live-fixture replay (proposal)
+
+Hosted run `40989263985` (live job `123862363728`, diagnostic artifact
+`12950348192`) executed all 72 historical live identities: 70 passed and
+`test_missing_required_type_link`/`test_wrong_native_anchor` failed with
+`0 != 1`. The immutable historical `api_page()` used the first enumerated API
+page; the AMS root namespace page has neither a native declaration anchor nor
+a type-reference link (28 other pages have both). The original epoch
+`5c136a0` still generates and seals the publication; historical tests now run
+from the explicit child replay `f1a512f` (tree `cf865c6`), which changes only
+the reviewed DOC-PERF-001-R2 helper and its exact admission. Its identity,
+inventory and source hashes are sealed as the replay, not the original. All
+579 identities, six shards, fingerprints, workflow and publication authority
+are unchanged; no independent/publication approval is granted. See
+`ci-001r3-r4-historical-replay.md`.
+
+## DOC-CI-004 integration with CI-001R3 — diagnostic-only proposal
+
+The proposed successor retains #137's exact three-method workflow correction
+and imports #136's frozen R2 failure preservation, not its branch or pending
+merge. Canonical successful reports remain distinct from always-uploaded,
+non-authorizing failure diagnostics. The strict verifier checks the added action
+role, destination, ordering and source/run/attempt/shard identity. A complete
+exact Git-tree/source transition is separate from the historical Node 24
+migration; neither mechanical route grants independent/publication approval.
+No historical assertion, production source, baseline or publication output is
+changed. Local and hosted qualification are required on the integrated source;
+earlier passing campaigns do not qualify it. The historical live-shard root
+cause was later established (CI-001R3-R4 above). See
+`doc-ci-004-integration.md` for scope and evidence.
+
+## CI-ACTIONS-001 — proposed Node 24 workflow dependencies
+
+All 23 baseline direct Node 20 findings plus the Pages upload composite's
+transitive upload are migrated to reviewed full-SHA Node 24 releases. Explicit
+hidden-file compatibility preserves the Pages tar contents. Existing jobs,
+checks, permissions, concurrency, native workloads, artifact identities and
+publication gates remain unchanged. Exact atomic workflow/source authorization
+has independent negative controls in the sealed integration suite. No production
+or frozen inventory/fingerprint changes. Local/hosted qualification and independent
+review remain incomplete; see `ci-actions-001-node24-dependencies.md`. CI-003R1
+staged source and PR #133 are not modified by this separate migration.
+
 ## CI-002 — conservative Bootstrap native qualification
 
 Main-only push triggering removes redundant feature-push Bootstrap runs while

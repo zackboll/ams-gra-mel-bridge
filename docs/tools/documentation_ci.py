@@ -239,6 +239,10 @@ def validate_inventory(groups, root=None):
                 "CI-002 control missing or duplicated")
     else:
         require(root != ROOT, "CI-002 control source missing")
+    # CI-001R3 follows the complete CI-002 admission checks, preserving their
+    # original rejection precedence even for intentionally incomplete fixtures.
+    from ci001r3_source import inherited_sources
+    inherited_views = inherited_sources(root, git_bytes)
     groups = {group: [name for name in names if name not in ci002]
               for group, names in groups.items()}
     reviewed_authorities(BASELINE_SHA, IR_CI003_SHA, CI001_SHA)
@@ -272,7 +276,7 @@ def validate_inventory(groups, root=None):
                 (path.parent == Path("scripts") and path.match("test_*doc*.py"))):
             protected.add(name)
             original = git_bytes(BASELINE_SHA, name)
-            current = (root / name).read_bytes()
+            current = inherited_views.get(name, (root / name).read_bytes())
             if name in IR_CI003_SOURCES:
                 continue  # Exact approved bytes and original methods verified above.
             if name == "docs/tests/test_live_docs_site.py":
@@ -292,11 +296,12 @@ def validate_inventory(groups, root=None):
             {"scripts": 133, "enhanced": 364}, "inherited inventory changed")
     controls_name = "docs/tests/test_documentation_ci.py"
     original_controls = source_methods(git_bytes(CI001_SHA, controls_name), Path(controls_name).stem)
-    controls = source_methods((root / controls_name).read_bytes(), Path(controls_name).stem)
+    controls_content = inherited_views.get(controls_name, (root / controls_name).read_bytes())
+    controls = source_methods(controls_content, Path(controls_name).stem)
     require(len(original_controls) == 49 and original_controls.items() <= controls.items(),
             "original CI-001 controls changed")
     original_tree = ast.parse(git_bytes(CI001_SHA, controls_name))
-    current_tree = ast.parse((root / controls_name).read_bytes())
+    current_tree = ast.parse(controls_content)
     current_tree.body = [node for node in current_tree.body if not (
         (isinstance(node, ast.ClassDef) and node.name == "ReviewedTransitionTests") or
         (isinstance(node, ast.Import) and len(node.names) == 1 and
