@@ -79,6 +79,31 @@ DIAGNOSTIC_SOURCE = (
 )
 
 
+# CI-001R3-R5: the only complete target trees from which each exact historical
+# successor transition is defined. These are the validators' own immutable
+# MAIN_TREE/PREDECESSOR_TREE identities, repeated literally for review and
+# cross-checked in classify(); they authorize nothing by themselves.
+HISTORICAL_TRANSITION_TREES = {
+    'docs/tools/ci001r4_replay.py': frozenset({
+        '4d5c6bb29cfbe6ac39041808e36af34cb84a8c0e',   # main 219b00c
+        '64430578a6e458396561f7888c478634aaed0a8f',   # CI-001R3-R3 e85d99b
+    }),
+    'docs/tools/doc_ci004_source.py': frozenset({
+        '4d5c6bb29cfbe6ac39041808e36af34cb84a8c0e',   # main 219b00c
+        'd90c9b33ed40ada5e363276f01ba09fd044e61d2',   # PR #137 e7eaba2
+    }),
+}
+
+
+def historical_transition_trees():
+    import doc_ci004_source as integration
+    for module in (replay, integration):
+        require(HISTORICAL_TRANSITION_TREES.get(module.POLICY) ==
+                frozenset({module.MAIN_TREE, module.PREDECESSOR_TREE}),
+                'CI-001R3-R5 historical transition scope differs from its validator: ' + module.POLICY)
+    return HISTORICAL_TRANSITION_TREES
+
+
 def diagnostics_delta(root, target, candidate, old, new):
     names = {name for name, _ in DIAGNOSTIC_SOURCE}
     if not any(old.get(name) != new.get(name) for name in names):
@@ -189,11 +214,21 @@ def classify(root, target, candidate):
     require(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', target, candidate],
                            capture_output=True).returncode == 0, 'unqualified policy/source ancestry')
     changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+    # CI-001R3-R5: each exact historical transition is defined only from its
+    # verified complete predecessor trees. A later reviewed main is not such a
+    # predecessor; its successors use the ordinary routes below, which still
+    # reject every unrelated executable, protected-input and transition-policy
+    # change. The validators and their SHA-256 registries are unchanged.
+    target_tree = source.git(root, 'rev-parse', target + '^{tree}').decode().strip()
+    scope = historical_transition_trees()
+    import doc_ci004_source as integration
+    corrected = (replay.source_transition(root, target, candidate, old, new, changed, source)
+                 if target_tree in scope[replay.POLICY] else set())
     # CI-001R3-R4 binds the complete successor (including every DOC-CI-004
     # file) exactly; absent its executing policy the earlier routes apply.
-    corrected = replay.source_transition(root, target, candidate, old, new, changed, source)
-    from doc_ci004_source import diagnostic_transition
-    diagnostic = corrected or diagnostic_transition(root, target, candidate, old, new, changed, source)
+    diagnostic = corrected or (
+        integration.diagnostic_transition(root, target, candidate, old, new, changed, source)
+        if target_tree in scope[integration.POLICY] else set())
     # Exact inherited-test correction only; these are not general policy paths.
     from ci001r3_source import policy_transition
     correction = diagnostic or policy_transition(root, target, candidate, old, new, changed, source)
@@ -214,6 +249,15 @@ def classify(root, target, candidate):
         require(name in correction or name in actions or old.get(name) == new.get(name),
                 'policy proposal changed inherited authority: ' + name)
     source.exact_checkout(root, source.revision(root, candidate), new)
+    # CI-001R3-R5: a later policy proposal to the reviewed workflow or runner
+    # outside the exact historical transitions still must satisfy the trusted
+    # CI-001R3 workflow/deployment contracts. The executing verifier, not the
+    # candidate, supplies them. This narrows rather than broadens that route.
+    if (not diagnostic and 'docs/tools/ci001r3_workflow.py' in old and
+            {'.github/workflows/documentation.yml', 'docs/tools/epoch_ci.py'}.intersection(changed)):
+        from ci001r3_workflow import live_contract, preparation_contract, deploy_contract
+        for contract in (live_contract, preparation_contract, deploy_contract):
+            contract(root)
     return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
             'target_tree': source.git(root, 'rev-parse', target + '^{tree}').decode().strip(),
             'candidate_commit': source.revision(root, candidate),
