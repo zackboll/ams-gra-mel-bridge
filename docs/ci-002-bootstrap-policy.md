@@ -45,9 +45,13 @@ not proof of merge-result qualification. Original proposal commit/tree:
 
 Compilation authority is the exact `BOOTSTRAP_BUILD_SHA` (`github.sha`). Before
 CMake configuration, the policy checks clean tracked checkout parity, non-shallow
-history and actual commit objects. PR builds require exactly two ordered parents
-`[BOOTSTRAP_BASE_SHA, BOOTSTRAP_HEAD_SHA]`. The actual commit tree must match an
-independent `git merge-tree --write-tree --no-messages base head` reconstruction.
+history and actual commit objects. CI-002R3 permits GitHub's synthetic base to
+advance beyond `BOOTSTRAP_BASE_SHA`: PR builds require exactly two ordered parents
+`[actual_synthetic_base, BOOTSTRAP_HEAD_SHA]`. The event base must equal or be an
+ancestor of the actual base, and the actual base must be reachable from the
+explicitly fetched `refs/remotes/origin/main` snapshot. A clean merge alone is
+not authority. The actual commit tree must match an independent
+`git merge-tree --write-tree --no-messages actual_synthetic_base head` reconstruction.
 Git replace objects are disabled; a reachable-object traversal also rejects
 missing historical commits, trees and blobs in non-shallow repositories.
 Missing support, conflicts, missing objects,
@@ -55,8 +59,9 @@ wrong topology, stale event identities or forged trees fail the native job;
 there is no fallback to PR-head builds. Push/manual/unknown events require head
 and build to match and retain FULL_STRESS.
 
-Classification authority remains the immutable PR head and event base, distinct
-from the build commit. The policy fetches the exact event base SHA, rejects
+Classification authority is the immutable PR head and verified actual synthetic
+base, distinct from the build commit. The policy fetches the exact event base SHA
+and main before configuration, rejects
 ambiguous merge bases, and compares
 complete merge-base/head trees with an independently parsed NUL-delimited raw
 diff. Rename detection is disabled deliberately: both old and new paths are
@@ -77,9 +82,12 @@ and perform the existing CMake installation qualification. FULL_STRESS adds the
 unchanged `ctest --test-dir build/native --parallel 4 --repeat until-fail:50
 --output-on-failure`. Commands use checked subprocesses and stop on failure;
 there is no fallback from a failed stress campaign to smoke. The JSON audit and
-job summary identify mode, exact head/base/merge-base, build SHA/tree/parents,
+job summary identify mode, exact head, recorded `event_base`, verified
+`actual_synthetic_base`, fetched `trusted_main`, merge-base, build SHA/tree/parents,
 reconstructed merge tree and all PR-specific changed paths. An exclusively
 created pre-configuration audit must equal fresh verification before execution.
+Execution does not refetch main: subsequent remote advances cannot change the
+sealed snapshot, while any local change to its identity fails re-verification.
 Every build/test/install command rechecks the same authority before and after
 running, rejecting changed checkout, source, identities or classification. The
 audit never authorizes a skipped job or replaces actual source verification.

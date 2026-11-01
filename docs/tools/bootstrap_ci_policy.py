@@ -114,6 +114,15 @@ def commit(root, revision):
     return sha(trees[0]), parents
 
 
+def require_ancestor(root, older, newer, message):
+    try:
+        git(root, "merge-base", "--is-ancestor", older, newer)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 1:
+            raise
+        raise ValueError(message) from error
+
+
 def classify(root, event, head, base=None, build=None, fetch=False):
     """Failure to establish complete authority raises: the native job fails closed."""
     sha(head)
@@ -139,17 +148,31 @@ def classify(root, event, head, base=None, build=None, fetch=False):
         return audit
     sha(base)
     if fetch:
-        # checkout uses fetch-depth: 0; explicitly fetch the event base even if
-        # main has advanced. Never substitute the current branch tip.
-        git(root, "fetch", "--no-tags", "origin", base)
+        # Fetch the recorded identity and an explicit main ref, never a PR ref
+        # or the remote's default branch. Seal this main snapshot before CMake;
+        # execution reuses it rather than racing another remote main advance.
+        git(root, "fetch", "--no-tags", "origin", base,
+            "+refs/heads/main:refs/remotes/origin/main")
     commit(root, base)
-    require(parents == [base, head], "synthetic merge parents differ from ordered event base/head")
+    require(len(parents) == 2 and parents[1] == head,
+            "synthetic merge parents must be exactly actual base / event head")
+    actual_base = parents[0]
+    trusted_main = sha(git(root, "rev-parse", "--verify",
+                           "refs/remotes/origin/main").decode().strip())
+    commit(root, trusted_main)
+    git(root, "rev-list", "--objects", "--no-object-names", "--missing=error",
+        base, trusted_main)
+    if base != actual_base:
+        require_ancestor(root, base, actual_base,
+                         "event base is not an ancestor of actual synthetic base")
+    require_ancestor(root, actual_base, trusted_main,
+                     "actual synthetic base is not reachable from trusted origin/main")
     # Requires Git's ort merge-tree support. An unavailable command, conflict or
     # mismatch fails the job; never fall back to building the feature head.
     reconstructed = sha(git(root, "merge-tree", "--write-tree", "--no-messages",
-                            base, head).decode().strip())
+                            actual_base, head).decode().strip())
     require(build_tree == reconstructed, "synthetic merge tree differs from reconstructed merge")
-    bases = git(root, "merge-base", "--all", base, head).decode().splitlines()
+    bases = git(root, "merge-base", "--all", actual_base, head).decode().splitlines()
     require(len(bases) == 1, "missing or ambiguous merge base")
     ancestor = sha(bases[0])
     before = tree(git(root, "ls-tree", "-rz", "--full-tree", ancestor))
@@ -163,9 +186,10 @@ def classify(root, event, head, base=None, build=None, fetch=False):
     else:
         require(git(root, "diff", "--raw", "-z", ancestor, head, "--") == b"",
                 "anomalous empty source delta")
-    audit.update(base=base, merge_base=ancestor, mode=classify_changes(changes),
+    audit.update(event_base=base, actual_synthetic_base=actual_base,
+                 trusted_main=trusted_main, merge_base=ancestor, mode=classify_changes(changes),
                  reconstructed_merge_tree=reconstructed,
-                 build_authority="event synthetic merge; ordered base/head parents and reconstructed tree",
+                 build_authority="event synthetic merge; exact head, event-base ancestry, trusted main ancestry and reconstructed tree",
                  authority="complete merge-base/head trees reconciled with NUL raw diff",
                  paths=[os.fsdecode(name) for name in sorted(changes)])
     return audit
