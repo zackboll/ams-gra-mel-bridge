@@ -20,8 +20,14 @@
 //! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
 //! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
 //! commands a published [`RfMfaState`]. Its Boolean result is provider
-//! acceptance only, not evidence of a hardware state transition. No other RF
-//! MEL facility is exposed by this crate.
+//! acceptance only, not evidence of a hardware state transition.
+//!
+//! RF DataMEL foundation (RUST-MEL-002): [`RfData`] is an independent RF
+//! `createDataMEL` owner (not a Session or RF Admin owner) offering provider
+//! version, live provider-defined duration quantization, and fully Rust-owned
+//! [`RfMfaInfo`] capability snapshots that outlive the owner and the provider
+//! library. No other RF MEL facility (ProductRx, C2, VA, Job, PhysicalData,
+//! Tx power modes) is exposed by this crate.
 
 use std::error;
 use std::ffi::{c_char, CString};
@@ -35,7 +41,9 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod rf_admin;
+mod rf_data;
 pub use rf_admin::{RfAdmin, RfMfaState};
+pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
@@ -646,61 +654,16 @@ impl Session {
     }
 
     pub fn provider_version(&self) -> Result<ProviderVersion, Error> {
-        let mut raw = empty_version();
-        let first = call_with_diagnostic(|buffer, capacity, required| {
-            // SAFETY: the session owner is live and `raw` is writable. Null/zero
-            // string buffers are the documented required-size query.
+        let session = self.raw;
+        query_provider_version(|version, buffer, capacity, required| {
+            // SAFETY: the session owner is live and the helper passes a valid,
+            // writable version record whose buffers match their capacities
+            // (null/zero buffers are the documented required-size query).
             unsafe {
                 sys::ams_mel_session_get_provider_version(
-                    self.raw, &mut raw, buffer, capacity, required,
+                    session, version, buffer, capacity, required,
                 )
             }
-        });
-        match first {
-            Err(error) if error.kind == ErrorKind::BufferTooSmall => {}
-            Err(error) => return Err(error),
-            Ok(()) => {
-                return Err(Error::new(
-                    ErrorKind::ProtocolInconsistency,
-                    "provider version size query unexpectedly succeeded",
-                ))
-            }
-        }
-        validate_required(raw.vendor_required, "vendor")?;
-        validate_required(raw.description_required, "description")?;
-
-        let mut vendor = vec![0_u8; raw.vendor_required];
-        let mut description = vec![0_u8; raw.description_required];
-        raw.vendor = vendor.as_mut_ptr().cast::<c_char>();
-        raw.vendor_capacity = vendor.len();
-        raw.description = description.as_mut_ptr().cast::<c_char>();
-        raw.description_capacity = description.len();
-        let expected_vendor = raw.vendor_required;
-        let expected_description = raw.description_required;
-
-        call_with_diagnostic(|buffer, capacity, required| {
-            // SAFETY: both output vectors remain allocated with the advertised
-            // capacities, and the live session and record pointers are valid.
-            unsafe {
-                sys::ams_mel_session_get_provider_version(
-                    self.raw, &mut raw, buffer, capacity, required,
-                )
-            }
-        })?;
-        if raw.vendor_required != expected_vendor
-            || raw.description_required != expected_description
-        {
-            return Err(Error::new(
-                ErrorKind::ProtocolInconsistency,
-                "provider version sizes changed between query and copy",
-            ));
-        }
-
-        Ok(ProviderVersion {
-            api_version: raw.api_version,
-            library_version: raw.library_version,
-            vendor: decode_c_buffer(&vendor, "vendor")?,
-            description: decode_c_buffer(&description, "description")?,
         })
     }
 
@@ -1444,6 +1407,72 @@ fn empty_version() -> sys::AmsMelProviderVersionV1 {
         description_capacity: 0,
         description_required: 0,
     }
+}
+
+/// Shared two-stage `ams_mel_provider_version_v1` protocol used by the IR
+/// [`Session`] and RF [`RfData`] owners.
+///
+/// The first `query` passes null/zero string buffers and must report
+/// `AMS_MEL_BUFFER_TOO_SMALL` with nonzero `*_required` counts (each including
+/// the terminal NUL). Buffers of exactly those sizes are then allocated
+/// fallibly, and the second `query` must succeed with unchanged counts. Each
+/// copied buffer must hold exactly `required - 1` bytes of NUL-free UTF-8 and
+/// a terminal NUL. Every other native status keeps its category and complete
+/// diagnostic; malformed output is `ProtocolInconsistency` or `InvalidUtf8`.
+fn query_provider_version(
+    mut query: impl FnMut(*mut sys::AmsMelProviderVersionV1, *mut c_char, usize, *mut usize) -> i32,
+) -> Result<ProviderVersion, Error> {
+    let mut raw = empty_version();
+    let first = call_with_diagnostic(|buffer, capacity, required| {
+        query(&mut raw, buffer, capacity, required)
+    });
+    match first {
+        Err(error) if error.kind == ErrorKind::BufferTooSmall => {}
+        Err(error) => return Err(error),
+        Ok(()) => {
+            return Err(Error::new(
+                ErrorKind::ProtocolInconsistency,
+                "provider version size query unexpectedly succeeded",
+            ))
+        }
+    }
+    validate_required(raw.vendor_required, "vendor")?;
+    validate_required(raw.description_required, "description")?;
+
+    let expected_vendor = raw.vendor_required;
+    let expected_description = raw.description_required;
+    let mut vendor = zeroed_buffer(expected_vendor, "vendor")?;
+    let mut description = zeroed_buffer(expected_description, "description")?;
+    raw.vendor = vendor.as_mut_ptr().cast::<c_char>();
+    raw.vendor_capacity = vendor.len();
+    raw.description = description.as_mut_ptr().cast::<c_char>();
+    raw.description_capacity = description.len();
+
+    call_with_diagnostic(|buffer, capacity, required| {
+        // Both output vectors stay allocated with the advertised capacities
+        // for the duration of this call.
+        query(&mut raw, buffer, capacity, required)
+    })?;
+    if raw.vendor_required != expected_vendor || raw.description_required != expected_description {
+        return Err(Error::new(
+            ErrorKind::ProtocolInconsistency,
+            "provider version sizes changed between query and copy",
+        ));
+    }
+
+    Ok(ProviderVersion {
+        api_version: raw.api_version,
+        library_version: raw.library_version,
+        vendor: decode_c_buffer(&vendor, "vendor")?,
+        description: decode_c_buffer(&description, "description")?,
+    })
+}
+
+/// Fallibly allocates exactly `size` zeroed bytes.
+fn zeroed_buffer(size: usize, field: &str) -> Result<Vec<u8>, Error> {
+    let mut buffer = reserve_owned(size, field)?;
+    buffer.resize(size, 0);
+    Ok(buffer)
 }
 
 fn string_view(value: &str) -> sys::AmsMelStringViewV1 {
