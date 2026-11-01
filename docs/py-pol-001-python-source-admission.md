@@ -227,5 +227,3 @@ uses full stress classification for policy and Python source changes. The PR
 records final commit/tree identities and hosted run links after creation.
 Independent policy authorization is pending; no auto-merge, approval artifact,
 publication permission or self-approval is granted by this implementation.
-
-
