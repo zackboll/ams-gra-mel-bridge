@@ -1,11 +1,12 @@
-"""Safe Python sessions, IR streams/C2, and RF Admin over ``ams_mel_c``.
+"""Safe Python sessions, IR streams/C2/Instrumentation, and RF Admin over ``ams_mel_c``.
 
 IR C2 provides asynchronous :class:`ModeRequest` and :class:`ReturnRequest`
 owners. BIT support is limited to the empty/no-op profile; payload-bearing BIT
 is not exposed. Request timeout and close do not cancel provider work.
 
-Common Channel (Task 032B4): :meth:`ControlChannel.channel_view` and
-:meth:`ImageStream.channel_view` return a weak :class:`ChannelView` offering
+Common Channel: :meth:`ControlChannel.channel_view`,
+:meth:`ImageStream.channel_view`, and :meth:`InstrumentationChannel.channel_view`
+return a weak :class:`ChannelView` offering
 the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 (:class:`CommsRequest`), and a complete Python-owned
 :class:`ChannelCapability`. A Python ``ChannelView`` owns only the native
@@ -13,9 +14,7 @@ the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 family state: keeping a View alive keeps no typed owner, Session, provider
 channel, or provider library alive, and the View holds no reference to its
 Python source. After the source is torn down the View is still open (it still
-owns its wrapper) but every operation fails with ``PROVIDER_FAILED``. Only the
-C2 and Image families are exposed because only they have public Python typed
-owners.
+owns its wrapper) but every operation fails with ``PROVIDER_FAILED``.
 
 Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume an :class:`ImageStream` at
@@ -25,7 +24,9 @@ close, and control enable, either submission operation, and close require
 external serialization. Operations and close on one :class:`ChannelView`
 require external serialization (distinct Views need none), and Wait and close
 on one :class:`ReturnRequest` or :class:`CommsRequest` require external
-serialization. No Python lock is added to claim otherwise.
+serialization. Instrumentation enable, submit, capabilities, view conversion,
+and close on one channel also require serialization, as do Wait and close on
+one InstrumentationRequest. No Python lock or worker thread is added.
 """
 
 from __future__ import annotations
@@ -169,6 +170,107 @@ class ControlConfig:
         sensor_location: ComponentLocation,
     ) -> ControlConfig:
         return cls(channel_id, platform_id, sensor_location)
+
+
+@dataclass(frozen=True)
+class InstrumentationConfig:
+    """Complete attachment input; construction performs no provider work."""
+
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        ControlConfig.__post_init__(self)
+        location = self.sensor_location
+        for name in ("offset_x_m", "offset_y_m", "offset_z_m"):
+            value = getattr(location, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be numeric")
+            try:
+                _ctypes.c_double(value)
+            except (OverflowError, TypeError, ValueError) as error:
+                raise _local_error(
+                    ErrorKind.INVALID_ARGUMENT, f"{name} must fit a C double"
+                ) from error
+        # Reuse validation even for values supplied by subclasses.
+        UciId.__post_init__(self.channel_id)
+        UciId.__post_init__(self.platform_id)
+        _utf8_input(location.key, "key")
+        _utf8_input(location.system_name, "system_name")
+
+    @classmethod
+    def new(
+        cls, channel_id: UciId, platform_id: UciId,
+        sensor_location: ComponentLocation,
+    ) -> InstrumentationConfig:
+        return cls(channel_id, platform_id, sensor_location)
+
+
+class InstrumentationPriority(IntEnum):
+    NORMAL = _native.AMS_MEL_IR_PRIORITY_NORMAL
+    DEBUG = _native.AMS_MEL_IR_PRIORITY_DEBUG
+
+
+def _instrumentation_priority(value: int) -> InstrumentationPriority:
+    _validate_uint32(value, "priority")
+    try:
+        return InstrumentationPriority(value)
+    except ValueError as error:
+        raise _local_error(
+            ErrorKind.INVALID_ARGUMENT, "priority must be NORMAL (0) or DEBUG (1)"
+        ) from error
+
+
+@dataclass(frozen=True)
+class InstrumentationLevelCommand:
+    command_id: int
+    priority: InstrumentationPriority
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.command_id, "command_id")
+        object.__setattr__(self, "priority", _instrumentation_priority(self.priority))
+
+
+@dataclass(frozen=True)
+class InstrumentationReport:
+    """Owned report; size and signed nanosecond timestamp are not interpreted."""
+
+    command_id: int
+    size: int
+    timestamp_ns: int
+    priority: InstrumentationPriority
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.command_id, "command_id")
+        _validate_uint32(self.size, "size")
+        if (isinstance(self.timestamp_ns, bool)
+                or not isinstance(self.timestamp_ns, int)
+                or not -(_INT64_MAX + 1) <= self.timestamp_ns <= _INT64_MAX):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "timestamp_ns must be int64")
+        object.__setattr__(self, "priority", _instrumentation_priority(self.priority))
+
+
+@dataclass(frozen=True)
+class InstrumentationCompleted:
+    report: InstrumentationReport
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.report, InstrumentationReport):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "report must be InstrumentationReport")
+
+
+@dataclass(frozen=True)
+class InstrumentationRejected:
+    code: MelErrorCode
+    description: str
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.code, "code")
+        if self.code > 8:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "Instrumentation error code must be 0..8")
+        object.__setattr__(self, "code", MelErrorCode(self.code))
+        _utf8_input(self.description, "description")
 
 
 class MFAState(IntEnum):
@@ -694,6 +796,23 @@ class _RawControlConfig(_RawImageConfig):
         )
 
 
+class _RawInstrumentationConfig(_RawImageConfig):
+    def __init__(self, config: InstrumentationConfig) -> None:
+        self.buffers = []
+        self.raw = _native.IrInstrumentationConfigV1(
+            channel_id=self._id(config.channel_id),
+            channel_type=_native.AMS_MEL_IR_CHANNEL_INSTRUMENTATION,
+            platform_id=self._id(config.platform_id),
+            sensor_location=_native.ComponentLocationV1(
+                config.sensor_location.offset_x_m,
+                config.sensor_location.offset_y_m,
+                config.sensor_location.offset_z_m,
+                self._view(config.sensor_location.key, "key"),
+                self._view(config.sensor_location.system_name, "system_name"),
+            ),
+        )
+
+
 def abi_version() -> AbiVersion:
     """Return the version of the C façade without loading a provider."""
 
@@ -1023,6 +1142,34 @@ class Session:
             )
         return ImageStream._from_owner(owner)
 
+    def open_instrumentation_channel(
+        self, config: InstrumentationConfig,
+    ) -> InstrumentationChannel:
+        """Attach without enabling; the child does not retain this Python Session."""
+
+        self._require_open()
+        if not isinstance(config, InstrumentationConfig):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "config must be InstrumentationConfig")
+        InstrumentationConfig.__post_init__(config)
+        bundle = _RawInstrumentationConfig(config)
+        channel = InstrumentationChannel._from_owner(_native.IrInstrumentationHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_instrumentation_open(
+                    self._owner, _ctypes.byref(bundle.raw), channel._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not channel.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Instrumentation open succeeded without returning an owner",
+                )
+        except BaseException:
+            channel.__del__()
+            raise
+        return channel
+
     def open_control_channel(self, config: ControlConfig) -> ControlChannel:
         """Open an IR CommandAndControl channel without retaining this object."""
 
@@ -1269,6 +1416,134 @@ class ImageStream:
                 close_function(owner_pointer, None, 0, None)
         except BaseException:
             pass
+
+
+class _InstrumentationOwner:
+    """Private owner mechanics; native close alone decides handle consumption."""
+
+    @classmethod
+    def _from_owner(cls, owner: Any) -> Any:
+        result = cls.__new__(cls)
+        result._owner = owner
+        result._owner_pointer = _ctypes.pointer(owner)
+        return result
+
+    @property
+    def is_open(self) -> bool:
+        """Local handle ownership, not enablement or provider health."""
+        return bool(self._owner.value)
+
+    def _require_open(self) -> None:
+        if not self.is_open:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{type(self).__name__} is closed")
+
+    def close(self) -> None:
+        """Release ownership; retain a retryable handle exactly as native returns it."""
+        if not self.is_open:
+            return
+        _call_with_diagnostic(
+            lambda diagnostic, required: self._close_function(
+                self._owner_pointer, diagnostic, len(diagnostic), _ctypes.byref(required),
+            )
+        )
+        if self.is_open:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "native close succeeded without consuming the owner",
+            )
+
+    def __enter__(self) -> Any:
+        self._require_open()
+        return self
+
+    def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        if exception_type is None:
+            self.close()
+        else:
+            self.__del__()
+        return False
+
+    def __del__(self) -> None:
+        try:
+            if self.is_open:
+                self._close_function(self._owner_pointer, None, 0, None)
+        except BaseException:
+            # Never free an uncertain native graph or replace an application error.
+            pass
+
+
+class InstrumentationChannel(_InstrumentationOwner):
+    """Independent typed owner. Externally serialize enable/submit/close."""
+
+    _close_function = staticmethod(_native.ams_mel_ir_instrumentation_close)
+
+    def __init__(self) -> None:
+        raise TypeError("use Session.open_instrumentation_channel")
+
+    def enable(self) -> None:
+        """Explicit enable; native caches success and refuses failed-state commands."""
+        self._require_open()
+        _call_with_diagnostic(
+            lambda diagnostic, required: _native.ams_mel_ir_instrumentation_enable(
+                self._owner, diagnostic, len(diagnostic), _ctypes.byref(required),
+            )
+        )
+
+    def capabilities(self) -> ChannelCapability:
+        """Complete owned snapshot, available while Attached or Enabled."""
+        self._require_open()
+        return _channel_capabilities(
+            self._owner, _native.ams_mel_ir_instrumentation_get_capabilities,
+        )
+
+    def channel_view(self) -> ChannelView:
+        """Return a weak common view; no Python or native parent is retained."""
+        self._require_open()
+        return _open_channel_view(
+            _native.ams_mel_ir_channel_from_instrumentation, self._owner,
+        )
+
+    def submit_level(self, command: InstrumentationLevelCommand) -> InstrumentationRequest:
+        """Submit only; successful send is not recording-level command completion."""
+        self._require_open()
+        if not isinstance(command, InstrumentationLevelCommand):
+            raise _local_error(
+                ErrorKind.INVALID_ARGUMENT, "command must be InstrumentationLevelCommand",
+            )
+        InstrumentationLevelCommand.__post_init__(command)
+        raw = _native.IrInstrumentationLevelCommandV1(command.command_id, command.priority)
+        request = InstrumentationRequest._from_owner(_native.IrInstrumentationRequestHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_instrumentation_submit_level(
+                    self._owner, _ctypes.byref(raw), request._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not request.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Instrumentation submission succeeded without returning a request",
+                )
+        except BaseException:
+            request.__del__()
+            raise
+        return request
+
+
+class InstrumentationRequest(_InstrumentationOwner):
+    """Independent request. Close is not cancellation and must not race Wait."""
+
+    _close_function = staticmethod(_native.ams_mel_ir_instrumentation_request_close)
+
+    def __init__(self) -> None:
+        raise TypeError("use InstrumentationChannel.submit_level")
+
+    def wait(self, timeout_ms: int) -> InstrumentationCompleted | InstrumentationRejected:
+        """Zero polls; timeout preserves the owner and native terminal results are cached."""
+        self._require_open()
+        _validate_timeout(timeout_ms)
+        return _wait_for_instrumentation(self._owner, timeout_ms)
 
 
 class ControlChannel:
@@ -1692,45 +1967,7 @@ class ChannelView:
         """
 
         self._require_open()
-        snapshot = _CapabilitySnapshot()
-        try:
-            _call_with_diagnostic(
-                lambda diagnostic, required: _native.ams_mel_ir_channel_get_capabilities(
-                    self._owner,
-                    _ctypes.byref(snapshot.owner),
-                    diagnostic,
-                    len(diagnostic),
-                    _ctypes.byref(required),
-                )
-            )
-            if not snapshot.owner.value:
-                raise _local_error(
-                    ErrorKind.PROTOCOL_INCONSISTENCY,
-                    "capability query succeeded without returning a snapshot",
-                )
-            record = _ctypes.POINTER(_native.IrChannelCapabilityV1)()
-            _call_with_diagnostic(
-                lambda diagnostic, required: _native.ams_mel_ir_channel_capability_view(
-                    snapshot.owner,
-                    _ctypes.byref(record),
-                    diagnostic,
-                    len(diagnostic),
-                    _ctypes.byref(required),
-                )
-            )
-            if not record:
-                raise _local_error(
-                    ErrorKind.PROTOCOL_INCONSISTENCY,
-                    "capability view succeeded without returning a record",
-                )
-            value = _capability_from_raw(record.contents)
-            del record
-            # Normal path: explicit Close only after the complete owned copy.
-            snapshot.close()
-        except BaseException:
-            snapshot.abandon()
-            raise
-        return value
+        return _channel_capabilities(self._owner, _native.ams_mel_ir_channel_get_capabilities)
 
     def close(self) -> None:
         """Close only this weak wrapper; idempotent.
@@ -1779,6 +2016,48 @@ class ChannelView:
                 close_function(owner_pointer, None, 0, None)
         except BaseException:
             pass
+
+
+def _channel_capabilities(owner: Any, query: Any) -> ChannelCapability:
+    snapshot = _CapabilitySnapshot()
+    try:
+        _call_with_diagnostic(
+            lambda diagnostic, required: query(
+                owner,
+                _ctypes.byref(snapshot.owner),
+                diagnostic,
+                len(diagnostic),
+                _ctypes.byref(required),
+            )
+        )
+        if not snapshot.owner.value:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "capability query succeeded without returning a snapshot",
+            )
+        record = _ctypes.POINTER(_native.IrChannelCapabilityV1)()
+        _call_with_diagnostic(
+            lambda diagnostic, required: _native.ams_mel_ir_channel_capability_view(
+                snapshot.owner,
+                _ctypes.byref(record),
+                diagnostic,
+                len(diagnostic),
+                _ctypes.byref(required),
+            )
+        )
+        if not record:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "capability view succeeded without returning a record",
+            )
+        value = _capability_from_raw(record.contents)
+        del record
+        # Normal path: explicit Close only after the complete owned copy.
+        snapshot.close()
+    except BaseException:
+        snapshot.abandon()
+        raise
+    return value
 
 
 class CommsRequest:
@@ -2240,6 +2519,81 @@ def _wait_for_return(
     raise _error_from_status(status, message or None, required_value)
 
 
+def _wait_for_instrumentation(
+    owner: _native.IrInstrumentationRequestHandle, timeout_ms: int,
+) -> InstrumentationCompleted | InstrumentationRejected:
+    result = _native.IrInstrumentationResultV1()
+    _ctypes.memset(_ctypes.byref(result), 0xFF, _ctypes.sizeof(result))
+    diagnostic = _ctypes.create_string_buffer(_WAIT_DIAGNOSTIC_CAPACITY)
+    _ctypes.memset(diagnostic, 0xFF, len(diagnostic))
+    required = _ctypes.c_size_t()
+    status = int(_native.ams_mel_ir_instrumentation_request_wait(
+        owner, timeout_ms, _ctypes.byref(result), diagnostic,
+        len(diagnostic), _ctypes.byref(required),
+    ))
+    size = int(required.value)
+    if size == 0:
+        raise _local_error(
+            ErrorKind.PROTOCOL_INCONSISTENCY, "invalid Instrumentation diagnostic size",
+        )
+    if status == _native.AMS_MEL_COMMAND_REJECTED and result.error_code > 8:
+        raise _local_error(
+            ErrorKind.PROTOCOL_INCONSISTENCY, "unknown Instrumentation MEL error code",
+        )
+    if size <= len(diagnostic):
+        message = _decode_complete_buffer(bytes(diagnostic.raw[:size]), "diagnostic")
+    elif status == _native.AMS_MEL_COMMAND_REJECTED:
+        # Only this known terminal status permits a cached Wait(0) diagnostic
+        # retrieval. Never repeat send, enable, or another side-effecting call.
+        try:
+            complete = _ctypes.create_string_buffer(size)
+            _ctypes.memset(complete, 0xFF, size)
+        except (MemoryError, OverflowError, ValueError) as error:
+            raise _local_error(
+                ErrorKind.INTERNAL_ERROR, "unable to allocate Instrumentation diagnostic",
+            ) from error
+        retry = _native.IrInstrumentationResultV1()
+        _ctypes.memset(_ctypes.byref(retry), 0xFF, _ctypes.sizeof(retry))
+        retry_required = _ctypes.c_size_t()
+        retry_status = int(_native.ams_mel_ir_instrumentation_request_wait(
+            owner, 0, _ctypes.byref(retry), complete, size, _ctypes.byref(retry_required),
+        ))
+
+        def identity(raw: _native.IrInstrumentationResultV1) -> tuple[int, ...]:
+            report = raw.report
+            return (report.command_id, report.size, report.timestamp_ns,
+                    report.priority, raw.error_code)
+
+        if (retry_status != status or retry_required.value != size
+                or identity(retry) != identity(result)):
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "native Instrumentation rejection changed during diagnostic retry",
+            )
+        message = _decode_complete_buffer(bytes(complete.raw), "diagnostic")
+    else:
+        message = None
+
+    if status == _native.AMS_MEL_OK:
+        if size != 1 or message or result.error_code != _native.AMS_MEL_ERROR_NONE:
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY,
+                "successful Instrumentation wait returned diagnostic or error code",
+            )
+        report = result.report
+        if report.priority not in (0, 1):
+            raise _local_error(
+                ErrorKind.PROTOCOL_INCONSISTENCY, "invalid Instrumentation report priority",
+            )
+        return InstrumentationCompleted(InstrumentationReport(
+            int(report.command_id), int(report.size), int(report.timestamp_ns),
+            InstrumentationPriority(report.priority),
+        ))
+    if status == _native.AMS_MEL_COMMAND_REJECTED:
+        return InstrumentationRejected(MelErrorCode(result.error_code), message)
+    raise _error_from_status(status, message or None, size)
+
+
 def _wait_for_comms(
     owner: _native.IrChannelCommsRequestHandle, timeout_ms: int
 ) -> CommsCompleted | CommsRejected:
@@ -2423,6 +2777,14 @@ __all__ = [
     "ImageFlip",
     "ImageStream",
     "ImageType",
+    "InstrumentationChannel",
+    "InstrumentationCompleted",
+    "InstrumentationConfig",
+    "InstrumentationLevelCommand",
+    "InstrumentationPriority",
+    "InstrumentationRejected",
+    "InstrumentationReport",
+    "InstrumentationRequest",
     "MelError",
     "MelErrorCode",
     "MetadataCapability",

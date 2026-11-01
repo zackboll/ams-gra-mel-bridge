@@ -139,12 +139,6 @@ isolated in subprocesses. Malformed native result/diagnostic boundaries are
 injected around actual native calls without altering the provider mocks. This is
 mock qualification, not real hardware transition evidence.
 
-Source-policy admission is separate from functionality:
-`PYTHON_SOURCE_POLICY_ADMISSION_REQUIRED`. The current source-integrity/POL-002
-routes do not generally admit safe Python API/test changes. This feature does not
-change or self-authorize policy; a separately reviewed Python-only transition is
-needed, preserving native, Ada, Rust, ABI, vendor and documentation authorities.
-
 From the repository root, run:
 
 ```sh
@@ -164,3 +158,144 @@ the separate real-provider validation is:
 ```sh
 SQUALL_SOURCE_DIR=/path/to/squall make test-squall-ir-python
 ```
+
+## IR Instrumentation commands (PY-MEL-002)
+
+This Python slice implements typed attachment, explicit Enable, complete owned
+capabilities, a weak common Channel view, and asynchronous recording-level
+commands using only the existing published C ABI. It does **not** expose
+Instrumentation metadata receive/callback APIs or add C2, Track, Health, RF, or
+Image commands. The private ctypes layouts and all native exports are unchanged.
+
+```python
+from ams_mel import (
+    ComponentLocation, InstrumentationCompleted, InstrumentationConfig,
+    InstrumentationLevelCommand, InstrumentationPriority, Session, UciId,
+)
+
+config = InstrumentationConfig(
+    UciId(bytes(range(16)), "recording channel"),
+    UciId(bytes(range(16, 32)), "platform"),
+    ComponentLocation(1.25, -2.5, 3.75, "sensor-1", "aircraft"),
+)
+with Session.open("/path/to/provider.so", "instance", "aperture") as session:
+    with session.open_instrumentation_channel(config) as channel:
+        attached_capabilities = channel.capabilities()  # valid before Enable
+        channel.enable()  # Open and context entry never enable implicitly
+        with channel.submit_level(InstrumentationLevelCommand(
+            0xE1234567, InstrumentationPriority.DEBUG,
+        )) as request:
+            result = request.wait(1000)
+            if isinstance(result, InstrumentationCompleted):
+                report = result.report
+                print(report.command_id, report.size, report.timestamp_ns, report.priority)
+            else:
+                print(result.code, result.description)  # explicit MEL rejection
+```
+
+### Public values and Ada mapping
+
+All six new value models are immutable Python values; no ctypes object or
+borrowed native storage escapes. UCI UUID bytes/labels and component location
+offsets/identity strings reuse the existing models and UTF-8/NUL validation.
+`InstrumentationConfig.new(...)` is also available, matching other Python configs.
+The exact native config always selects `AMS_MEL_IR_CHANNEL_INSTRUMENTATION`.
+
+| Ada `AMS.MEL.IR.Instrumentation` | Python | Semantics |
+| --- | --- | --- |
+| `Create_Config` / `Instrumentation_Config` | `InstrumentationConfig` | Channel ID, platform ID, component location |
+| `Instrumentation_Priority` / `Normal`, `Debug` | `InstrumentationPriority.NORMAL=0`, `.DEBUG=1` | Only two published representations |
+| `Instrumentation_Level_Command` | `InstrumentationLevelCommand` | Full uint32 command ID and checked priority |
+| `Instrumentation_Report` | `InstrumentationReport` | Full uint32 command ID and size, signed int64 timestamp_ns, checked priority |
+| `Open`, `Is_Open`, `Enable`, `Capabilities`, `Close` | `Session.open_instrumentation_channel`, `InstrumentationChannel.is_open/enable/capabilities/close` | Independent typed owner; Attached → Enabled; failed Enable blocks submission |
+| Common `AMS.MEL.IR.Channel.From_Instrumentation` | `InstrumentationChannel.channel_view()` | Existing weak `ChannelView`, including capabilities/KeepAlive/CommsTest |
+| `Submit`, `Instrumentation_Request`, `Wait` | `submit_level`, `InstrumentationRequest`, `wait` | Submission is not completion; finite Wait, zero polls |
+| Success/Rejected `Instrumentation_Result` | `InstrumentationCompleted(report)` / `InstrumentationRejected(code, description)` | Complete owned report or explicit typed rejection |
+| `Close` / `Finalize` | `close`, context manager, non-raising finalizer | Release public ownership, never cancel work |
+
+Command IDs, timeout milliseconds and report size must be uint32; booleans,
+floats, strings, negatives and oversized IDs/timeouts are rejected without
+wrapping. Priority inputs accept the enum or exact integers 0/1, canonicalized
+to the enum. Report timestamps preserve signed int64 exactly: Python neither
+invents timestamps nor interprets size units. A report may contain a command ID
+different from the submitted command; all four returned fields are preserved.
+
+For this Instrumentation result **only**, published MEL rejection codes 0..8
+are valid. Unknown codes, invalid report priorities, null/malformed outputs,
+provider send/future exceptions and other native failures raise `MelError`.
+This does not change the older C2 result models' unknown-code preservation.
+Rejection descriptions larger than 512 bytes are recovered with one checked
+native-cached `Wait(0)`; status, code, required size and all report fields must
+remain identical. No provider command is resubmitted. Allocation or malformed
+diagnostic failures leave the request available for explicit close/later Wait.
+
+### Ownership and concurrency
+
+- Open attaches without enabling. Successful Enable is natively idempotent;
+  failed Enable does not admit commands. Capabilities are copied completely
+  before the native snapshot closes and survive provider unload.
+- Channel and request owners do not retain Python parents. A channel remains
+  usable after Session close. A pending request remains valid after both public
+  channel and Session close, because the native future retains the provider graph.
+- A common `ChannelView` is weak: closing it never closes the typed owner, and
+  keeping it alive does not retain that owner or the provider. After teardown,
+  the view still owns its wrapper but operations fail with `PROVIDER_FAILED`.
+- Timeout raises the existing structured `MelError` with `ErrorKind.TIMEOUT`,
+  preserves the request and is not cancellation. Terminal values are cached by
+  native code; repeated successful Wait returns the same value, not necessarily
+  the same Python object. Python adds no worker, implicit retry, polling service,
+  or independent result cache.
+- Request close only drops its public owner, never cancels provider work. Channel
+  close follows the returned native handle: a retryable detach failure may leave
+  it open; a consumed handle stays closed even if cleanup reports failure.
+  Repeated successful close is harmless. Python never forcibly destroys or
+  unloads uncertain native ownership. A finalizer makes one non-raising cleanup
+  attempt; uncertain provider graphs can consequently remain retained.
+- Externally serialize operations and close on each owner. In particular, Wait
+  must not race request close, and channel enable/submit/close must be serialized.
+  The GIL is not a substitute. Context-manager cleanup does not replace an
+  exception raised by the body; normal exit reports close failures.
+
+### Existing native exports used
+
+The feature uses `ams_mel_ir_instrumentation_open`, `_enable`,
+`_get_capabilities`, `_submit_level`, `_request_wait`, `_request_close`, `_close`,
+`ams_mel_ir_channel_from_instrumentation`, and existing common capability
+`ams_mel_ir_channel_capability_view` / `_close`. Views reuse the existing common
+Channel exports unchanged. There are no new C declarations, layouts or exports.
+
+### Qualification and limitations
+
+`python/tests/test_instrumentation.py` uses the existing compiled IR mock for
+configuration fidelity, Normal/Debug commands, the rich four-field report,
+terminal cache, typed/oversized rejection, provider failures, explicit enable,
+complete capability ownership, weak views and parent-first lifetimes. Held
+provider futures use explicit entered/closed/release markers and native owner
+retirement observations, not guessed completion delays. Pending/uncertain
+retention scenarios are subprocess-isolated. Controlled boundary injection
+tests malformed responses the provider cannot publish, including retry identity,
+allocation/diagnostic failures, snapshot release and consumed cleanup errors.
+
+```sh
+make test-native
+make test-python  # all pre-existing tests, ABI/C11 layout probe, import identity
+PYTHONPATH="$PWD/python" \
+ AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0" \
+ AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers" \
+ python3 -W error -m unittest discover -s python/tests -p test_instrumentation.py -v
+python3 -W error -m compileall -q python/ams_mel python/tests
+python3 scripts/check_doc_source_integrity.py
+make test-policy
+python3 scripts/check_final_newlines.py
+git diff --check
+```
+
+Positive Instrumentation behavior is mock-qualified, not hardware-qualified.
+The pinned Squall provider does not attach Instrumentation channels, so this
+feature cannot promise real recording behavior. Provider C++ ABI compatibility
+and native retention of never-completing futures remain necessary. Diagnostics
+from non-Wait side-effecting calls retain the existing 4096-byte limitation:
+oversized text yields the native status and exact required size, not a truncated
+message or a repeated operation. Metadata receive/callback support remains out
+of scope. Ordinary feature tests and the streamlined source/security validators
+apply; no new source-policy authorization or filename allowlist is needed.
