@@ -20,6 +20,41 @@ in-flight NUC callbacks. Production inventory: 229 AMS_MEL_0.1 exports
 (seven new); Python/Rust receive only private raw mirrors. Evidence is
 mock-provider only; no IR camera or Squall NUC qualification.
 
+## PY-POL-001-R2 — historical runner evidence bookkeeping
+
+The isolated historical runner now accepts exactly its generated
+`qualification/{inventory,scripts,manifest}.json` records, validates their fixed
+original/replay inventory and source/tree/run/hash bindings, and snapshots them
+before shards to reject later evidence changes. It independently verifies the
+exact historical commit/tree, complete stage-0 index, tracked bytes and modes;
+unexpected source/evidence, directories, symlinks and nonregular files reject.
+No current-source admission rule or historical commit/test/result changes.
+Fast disposable-repository regressions run through `make test-policy` without
+documentation generation; they also prove real failed-shard status preservation.
+The retained original campaign completed 579 tests successfully but its old
+wrapper exited 1 on generated evidence. R2's read-only final validation accepts
+that unchanged evidence; this is not a rerun or revision of the original exit.
+See the R2 addendum in `py-pol-001-deletion-review.md` for qualification limits.
+
+## PY-POL-001-R1 — ordinary development, isolated historical qualification
+
+Current native, Ada, Rust, Python, test, build and documentation sources are no
+longer frozen to historical bytes, file lists or exact-content transitions.
+Current tests are discovered and sealed to their own source/run identity.
+Functional/ABI tests, vendor checksums/closure checks, read-only PR execution,
+main-only Pages and source/artifact identity verification remain. An added
+Python package cannot silently replace the private ctypes module in tested
+builds: import-origin regressions detect shadowing. Exact PR #140 blobs pass
+normal source checks without feature authorization. Immutable historical
+commits, original tests and recorded failures remain separate from current
+development; the pre-existing corrected replay keeps its distinct identity.
+This supersedes the development-admission/approval requirements in the earlier
+policy entries below, not their historical evidence. No ABI or runtime API
+changes. This is the single redesign effort, including the proposed POL-003
+scope; it is not merge authorization. Deletion accounting, restored security
+regressions and outstanding qualification are in `py-pol-001-deletion-review.md`.
+See also `py-pol-001-python-source-admission.md`.
+
 ## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
 
 The Documentation workflow now runs only on pushes to `main`; its

@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "docs/tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import bootstrap_ci_policy as policy
-import check_doc_source_integrity as integrity
 
 
 class PolicyTests(unittest.TestCase):
@@ -255,10 +254,9 @@ class PolicyTests(unittest.TestCase):
 
     def test_inventory_owner(self):
         import documentation_ci as ci
-        ids = [test.id() for test in ci.discover("enhanced")
-               if test.id().startswith("test_bootstrap_ci_policy.")]
-        self.assertEqual(len(ids), 71)
-        self.assertEqual(ci.SHARDS["remaining"].count("test_bootstrap_ci_policy"), 1)
+        identity = 'test_bootstrap_ci_policy.PolicyTests.test_unknown_modes'
+        assigned = ci.assign([identity], {'remaining': []})
+        self.assertEqual(assigned['remaining'], [identity])
 
     def test_mode_command_mutation(self):
         full = policy.native_commands(policy.FULL_STRESS)
@@ -270,38 +268,20 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.native_commands("user-selected-smoke")
 
-    def inventory_fixture(self):
+    def test_current_inventory_can_evolve(self):
         import documentation_ci as ci
-        root = self.root / "inventory"
-        path = root / "docs/tests/test_bootstrap_ci_policy.py"
-        path.parent.mkdir(parents=True)
-        path.write_bytes((ROOT / "docs/tests/test_bootstrap_ci_policy.py").read_bytes())
-        ids = list(ci.source_methods(path.read_bytes(), "test_bootstrap_ci_policy"))
-        return ci, root, path, {"scripts": [], "enhanced": ids}
+        groups = {'scripts': [], 'enhanced': ['test_future.BindingTests.test_new']}
+        self.assertEqual(ci.validate_inventory(groups, self.root), groups)
 
-    def test_inventory_mutated_source(self):
-        ci, root, path, groups = self.inventory_fixture()
-        path.write_bytes(path.read_bytes().replace(b"self.assertEqual", b"self.assertNotEqual", 1))
-        with self.assertRaisesRegex(ValueError, "control source changed"):
-            ci.validate_inventory(groups, root)
-
-    def test_inventory_missing_identity(self):
-        ci, root, path, groups = self.inventory_fixture()
-        groups["enhanced"].pop()
-        with self.assertRaisesRegex(ValueError, "missing or duplicated"):
-            ci.validate_inventory(groups, root)
-
-    def test_inventory_duplicate_identity(self):
-        ci, root, path, groups = self.inventory_fixture()
-        groups["enhanced"].append(groups["enhanced"][0])
-        with self.assertRaisesRegex(ValueError, "missing or duplicated"):
-            ci.validate_inventory(groups, root)
-
-    def test_inventory_source_required(self):
+    def test_duplicate_current_identity_rejected(self):
         import documentation_ci as ci
-        with mock.patch.object(ci, "ROOT", self.root):
-            with self.assertRaisesRegex(ValueError, "control source missing"):
-                ci.validate_inventory({"scripts": [], "enhanced": []})
+        with self.assertRaisesRegex(ValueError, 'duplicate'):
+            ci.validate_inventory({'scripts': [], 'enhanced': ['test_new.C.test_one'] * 2})
+
+    def test_empty_current_inventory_rejected(self):
+        import documentation_ci as ci
+        with self.assertRaisesRegex(ValueError, 'empty'):
+            ci.validate_inventory({'scripts': [], 'enhanced': []})
 
     def test_unknown_modes(self):
         for mode in (b"120000", b"160000", b"100755", b"100664"):
@@ -309,89 +289,6 @@ class PolicyTests(unittest.TestCase):
                              (None, (mode, b"a" * 40))}), policy.FULL_STRESS)
 
 
-class WorkflowTransitionTests(unittest.TestCase):
-    git = PolicyTests.git
-    write = PolicyTests.write
-    commit = PolicyTests.commit
-
-    def setUp(self):
-        PolicyTests.setUp(self)
-        self.name, self.old_sha, self.new_sha = integrity.PROPOSED_BOOTSTRAP_TRANSITION
-        self.old = subprocess.check_output(["git", "-C", str(ROOT), "show", integrity.BASE + ":" + self.name])
-        self.new = (ROOT / self.name).read_bytes()
-        self.path = self.root / self.name
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_bytes(self.old)
-        self.base = self.commit()
-
-    def state(self):
-        return integrity.proposed_bootstrap_state(self.root, self.git, {self.name}, {self.name}, self.base)
-
-    def stage(self, content):
-        self.path.write_bytes(content)
-        self.git("add", self.name)
-
-    def test_exact_identities(self):
-        self.assertEqual(hashlib.sha256(self.old).hexdigest(), self.old_sha)
-        self.assertEqual(hashlib.sha256(self.new).hexdigest(), self.new_sha)
-        self.assertEqual(self.state(), "original")
-        self.stage(self.new)
-        self.assertEqual(self.state(), "proposed_pending_independent_review")
-
-    def test_parity(self):
-        for indexed, working in ((self.old, self.new), (self.new, self.old)):
-            self.stage(indexed)
-            self.path.write_bytes(working)
-            with self.assertRaisesRegex(ValueError, "state mismatch"):
-                self.state()
-
-    def test_unknown_bytes(self):
-        for indexed in (False, True):
-            self.stage(self.old)
-            self.path.write_bytes(self.new + b"# unknown\n")
-            if indexed:
-                self.git("add", self.name)
-                self.path.write_bytes(self.new)
-            with self.assertRaisesRegex(ValueError, "unlisted Bootstrap"):
-                self.state()
-
-    def test_wrong_foundation(self):
-        self.stage(self.old + b"# wrong foundation\n")
-        self.base = self.commit()
-        self.stage(self.new)
-        with self.assertRaisesRegex(ValueError, "foundation bytes"):
-            self.state()
-
-    def test_workflow_symlink(self):
-        self.path.unlink()
-        self.path.symlink_to(self.root / "README.md")
-        with self.assertRaisesRegex(ValueError, "not regular"):
-            self.state()
-
-    def test_workflow_modes(self):
-        self.path.chmod(0o755)
-        with self.assertRaisesRegex(ValueError, "not regular"):
-            self.state()
-        self.git("add", self.name)
-        self.path.chmod(0o644)
-        with self.assertRaisesRegex(ValueError, "stage-0"):
-            self.state()
-    def test_unmerged_index(self):
-        oid = self.git("hash-object", "-w", str(self.path)).decode().strip()
-        self.git("update-index", "--force-remove", self.name)
-        subprocess.run(["git", "-C", str(self.root), "update-index", "--index-info"],
-                       input=f"100644 {oid} 1\t{self.name}\n100644 {oid} 2\t{self.name}\n".encode(), check=True)
-        with self.assertRaisesRegex(ValueError, "stage-0"):
-            self.state()
-
-    def test_superseded_proposal_rejected(self):
-        previous = subprocess.check_output(["git", "-C", str(ROOT), "show",
-                    "cec2a98ee90cbf532c66ddf8c1ff13e86b6b6ae0:" + self.name])
-        self.assertEqual(hashlib.sha256(previous).hexdigest(),
-                         "e42d0031368885935b5157babe9f9b2063f157842a306a25995130789fb0fe8c")
-        self.stage(previous)
-        with self.assertRaisesRegex(ValueError, "unlisted Bootstrap"):
-            self.state()
 
 
 class MergeResultTests(unittest.TestCase):
