@@ -3,6 +3,7 @@ private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
 with AMS.MEL.Status;
+with AMS.MEL.IR.NUC;
 with Interfaces;
 
 package AMS.MEL.IR.Health_Status.Metadata is
@@ -299,7 +300,51 @@ package AMS.MEL.IR.Health_Status.Metadata is
    --  @param Stream Public metadata owner to close; serialize against other uses.
    --  @exception Provider_Error Native metadata cleanup failure.
 
+   type NUC_Stream is limited private;
+   --  Limited opt-in owner of HealthStatusChannel @Optional NUC_TempData reception, independent
+   --  of Metadata_Stream, so Open is unaffected by providers without NUC support. Close
+   --  deactivates consumption, not provider callback registration; finalization attempts
+   --  non-raising cleanup. Serialize operations on the same owner.
+   function Open_NUC (Channel : Health_Channel; Queue_Capacity : Positive := 16) return NUC_Stream;
+   --  Registers the upstream HealthStatusChannel NUC_TempData callback once per channel,
+   --  including after failure. Registration may deliver synchronously. Failure publishes no
+   --  owner; the retained callback stays inactive because upstream has no unregister. Events
+   --  share one bounded drop-incoming queue; the owner stops after channel destruction drains
+   --  in-flight NUC callbacks.
+   --  @param Channel Attached or enabled typed health channel.
+   --  @param Queue_Capacity Maximum number of queued NUC_TempData messages; defaults to sixteen.
+   --  @return Limited NUC consumption owner.
+   --  @exception AMS.MEL.IR.NUC.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed channel, repeated attempt, other registration failure or
+   --  exception, or native failure.
+   function Receive_NUC
+     (Stream : NUC_Stream; Timeout_Milliseconds : Natural := 0) return AMS.MEL.IR.NUC.NUC_Temp_Data;
+   --  Dequeues one message and copies its complete ordered points into Ada ownership before
+   --  releasing the native event. Queued messages drain after the channel closes.
+   --  @param Stream Open NUC owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned NUC_TempData independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, failed channel cleanup, invalid data or native
+   --  failure.
+   function NUC_Counters (Stream : NUC_Stream) return Metadata_Counters;
+   --  Copies saturating NUC callback counters without consuming messages.
+   --  @param Stream Open NUC owner.
+   --  @return Received, queue-full dropped and malformed/unsupported counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out NUC_Stream);
+   --  Idempotently deactivates NUC consumption; does not unregister the provider callback or
+   --  close the health channel.
+   --  @param Stream NUC owner to close.
+   --  @exception Provider_Error Native close failed.
+
 private
+   type NUC_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.NUC_Metadata_Handle := AMS.MEL_C_API.Null_NUC_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out NUC_Stream);
    package US renames Ada.Strings.Unbounded;
    type Subsystem_Dependency is record
       ID, Importance : Interfaces.Unsigned_32;

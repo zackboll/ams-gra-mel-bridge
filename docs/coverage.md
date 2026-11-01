@@ -1,5 +1,25 @@
 # Implementation coverage
 
+## IRMEL-ADA-002 — opt-in Image/Health NUC_TempData reception
+
+The pinned @Optional `NUC_TempData` callback is registered independently on
+ImageChannel (`ams_mel_ir_image_nuc_open`, Ada `Image.Metadata.Open_NUC`) and
+HealthStatusChannel (`ams_mel_ir_health_nuc_open`, Ada
+`Health_Status.Metadata.Open_NUC`). Existing metadata Open operations, their
+one-shots and every `*_v1` record are unchanged, so providers without NUC keep
+working; a NotSupported answer is reported as `AMS_MEL_IR_RETURN_NOT_SUPPORTED`
+and Ada `AMS.MEL.IR.NUC.Not_Supported`. The complete ordered TempPoint vector
+(empty, one, many) is copied before the callback returns: signed nanosecond
+timestamp, BandInfo, PixelValue tagged as exactly uint8/uint16/uint32 (C kind
+1/2/3, Ada `Pixel_Width` discriminant), Kelvin temperature and TempPointType.
+The pinned private optional `tempError` has **no public accessor** and is not
+represented, read or inferred; TempPoint is therefore `partial`. Queues keep
+DROP-INCOMING; null/unknown enum/allocation failures are counted as malformed;
+late callbacks after Close are memory-safe; Health channel destruction drains
+in-flight NUC callbacks. Production inventory: 229 AMS_MEL_0.1 exports
+(seven new); Python/Rust receive only private raw mirrors. Evidence is
+mock-provider only; no IR camera or Squall NUC qualification.
+
 ## PY-POL-001-R2 — historical runner evidence bookkeeping
 
 The isolated historical runner now accepts exactly its generated
@@ -1102,7 +1122,7 @@ source, native ABI, provider behavior, or vendored header. Run
 | Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
 | Scheduling | Not implemented |
 | Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` bounded DROP-INCOMING queue for the `IRSTTrackReport` callback with a blocking receive/wait (timeout zero is the nonblocking poll case). `@RequiredIfTrackUpdate` `TrackDataUpdate` complete via `AMS.MEL.IR.Track.Updates`. Optional `SystemTrackDataResponse` complete via `AMS.MEL.IR.Track.System_Data`. Optional inbound `RequestSystemTrackData` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares the one bounded queue with `IRSTTrackReport`. Positive behavior/payload evidence is mock-only; pinned Squall is validated only as a clean unsupported provider (`Provider_Error: attachChannel returned null`). `@RequiredIfDetectCandidateObjects` `CandidateObjectMessage` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares that one bounded queue; its owned `Candidate_Object_Message` copies every hot region, every candidate object, and every scalar into Ada storage before the native event is closed, and its Track-facing value types are deliberately independent of `AMS.MEL.IR.Image`. The `@Optional` `CandidateObjectPreProcMessage` is likewise complete via `AMS.MEL.IR.Track.Metadata.Receive_Event` on that same queue; its owned `Candidate_Object_PreProc_Message` copies the header, the message-level inertial state, every hot region, every PreProc entry with all nine background samples and its own nested inertial state, and a safe `Edge : Boolean`, all into Ada storage before the native event is closed. Every published TrackChannel-specific surface is therefore represented and the safe Ada Track API is complete |
-| Health/Status | Complete: required channel plus six required callbacks; LFStatus/NUC_TempData excluded |
+| Health/Status | Complete: required channel plus six required callbacks; opt-in @Optional NUC_TempData owner (IRMEL-ADA-002); LFStatus excluded |
 | Instrumentation | Instrumentation-specific conditional surface complete (send/InstrumentationReport callback plus Enable and ChannelCapability); inherited KeepAlive/CommsTest/ChannelCapability through `AMS.MEL.IR.Channel` via `Instrumentation.As_Channel` (032B2) |
 | StackedImage | Not implemented |
 | RF | Task 034A: `AMS.MEL.RF` and `AMS.MEL.RF.Product_Rx` implement the complete current native RF DataMEL/MFA snapshot and ComplexINT16 ProductRx slice; other formats, richer metadata, RDMA and jobs/C2 remain outside the generic library |

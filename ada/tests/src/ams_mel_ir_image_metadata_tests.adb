@@ -6,6 +6,9 @@ with AMS.MEL.IR.Channel;
 with AMS.MEL.IR.Image;
 with AMS.MEL.IR.Image.Metadata;
 with AMS.MEL.Status;
+with AMS.MEL.IR.NUC;
+with AMS.MEL.IR.NUC.Testing;
+with AMS_MEL_IR_NUC_Checks;
 with Interfaces;
 
 package body AMS_MEL_IR_Image_Metadata_Tests is
@@ -315,8 +318,120 @@ package body AMS_MEL_IR_Image_Metadata_Tests is
       AMS.MEL.Close (Parent);
    end Test_Navigation_Response_Wrong_Kind;
 
+   --  IRMEL-ADA-002: ImageChannel NUC_TempData values survive NUC owner, image stream and
+   --  Session closure; the existing metadata owner coexists on the same stream.
+   procedure Test_NUC_Rich_Lifetime (Provider_Path : String) is
+      Parent   : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-rich");
+      Stream   : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      Existing : Metadata.Metadata_Stream := Metadata.Open (Stream, 2);
+      Queue    : Metadata.NUC_Stream := Metadata.Open_NUC (Stream, 8);
+      Count    : constant Metadata.Metadata_Counters := Metadata.NUC_Counters (Queue);
+      Empty    : constant AMS.MEL.IR.NUC.NUC_Temp_Data := Metadata.Receive_NUC (Queue);
+      One      : constant AMS.MEL.IR.NUC.NUC_Temp_Data := Metadata.Receive_NUC (Queue);
+      Three    : constant AMS.MEL.IR.NUC.NUC_Temp_Data := Metadata.Receive_NUC (Queue);
+   begin
+      if Count.Events_Received /= 3 or else Count.Malformed_Or_Unsupported /= 0 then
+         raise Program_Error with "Ada Image NUC counters failed";
+      end if;
+      Metadata.Close (Queue);
+      Metadata.Close (Queue);
+      Metadata.Close (Existing);
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+      AMS_MEL_IR_NUC_Checks.Check_Rich (Empty, One, Three);
+   end Test_NUC_Rich_Lifetime;
+
+   procedure Test_NUC_Not_Supported (Provider_Path : String) is
+      Parent   : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "image-metadata-sync");
+      Stream   : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+      Existing : Metadata.Metadata_Stream := Metadata.Open (Stream, 2);
+   begin
+      begin
+         declare
+            Ignored : Metadata.NUC_Stream := Metadata.Open_NUC (Stream, 2);
+         begin
+            raise Program_Error with "Ada Image NUC NotSupported was accepted";
+         end;
+      exception
+         when AMS.MEL.IR.NUC.Not_Supported =>
+            null;
+      end;
+      Check_Rich_Event (Metadata.Receive (Existing), 1);
+      Metadata.Close (Existing);
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_NUC_Not_Supported;
+
+   procedure Test_NUC_Malformed_And_Overflow (Provider_Path : String) is
+   begin
+      declare
+         Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-malformed");
+         Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+         Queue  : Metadata.NUC_Stream := Metadata.Open_NUC (Stream, 4);
+         Count  : constant Metadata.Metadata_Counters := Metadata.NUC_Counters (Queue);
+      begin
+         if Count.Events_Received /= 4 or else Count.Malformed_Or_Unsupported /= 3 then
+            raise Program_Error with "Ada Image NUC malformed counters failed";
+         end if;
+         AMS_MEL_IR_NUC_Checks.Check_Single (Metadata.Receive_NUC (Queue), 5);
+         Metadata.Close (Queue);
+         AMS.MEL.IR.Close (Stream);
+         AMS.MEL.Close (Parent);
+      end;
+      declare
+         Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-overflow");
+         Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+         Queue  : Metadata.NUC_Stream := Metadata.Open_NUC (Stream, 2);
+         Count  : constant Metadata.Metadata_Counters := Metadata.NUC_Counters (Queue);
+      begin
+         if Count.Events_Received /= 5 or else Count.Events_Dropped_Queue_Full /= 3 then
+            raise Program_Error with "Ada Image NUC DROP-INCOMING counters failed";
+         end if;
+         AMS_MEL_IR_NUC_Checks.Check_Single (Metadata.Receive_NUC (Queue), 0);
+         AMS_MEL_IR_NUC_Checks.Check_Single (Metadata.Receive_NUC (Queue), 1);
+         AMS.MEL.IR.Close (Stream);
+         begin
+            declare
+               Ignored : constant AMS.MEL.IR.NUC.NUC_Temp_Data := Metadata.Receive_NUC (Queue);
+            begin
+               raise Program_Error with "Ada Image NUC dropped event was retained";
+            end;
+         exception
+            when AMS.MEL.IR.Stream_Stopped =>
+               null;
+         end;
+         Metadata.Close (Queue);
+         AMS.MEL.Close (Parent);
+      end;
+   end Test_NUC_Malformed_And_Overflow;
+
+   procedure Test_NUC_Registration_Failure (Provider_Path : String) is
+      Parent : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-register-fail");
+      Stream : AMS.MEL.IR.Image_Stream := AMS.MEL.IR.Open_Image_Stream (Parent, Config);
+   begin
+      for Attempt in 1 .. 2 loop
+         begin
+            declare
+               Ignored : Metadata.NUC_Stream := Metadata.Open_NUC (Stream, 2);
+            begin
+               raise Program_Error with "Ada Image NUC failed registration published owner";
+            end;
+         exception
+            when AMS.MEL.Provider_Error =>
+               null;
+         end;
+      end loop;
+      AMS.MEL.IR.Close (Stream);
+      AMS.MEL.Close (Parent);
+   end Test_NUC_Registration_Failure;
+
    procedure Run (Provider_Path : String) is
    begin
+      AMS.MEL.IR.NUC.Testing.Check_Representation;
+      Test_NUC_Rich_Lifetime (Provider_Path);
+      Test_NUC_Not_Supported (Provider_Path);
+      Test_NUC_Malformed_And_Overflow (Provider_Path);
+      Test_NUC_Registration_Failure (Provider_Path);
       Test_Capability (Provider_Path);
       Test_Rich_Lifetime (Provider_Path);
       Test_LOS_Rich_Lifetime (Provider_Path);
