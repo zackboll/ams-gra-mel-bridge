@@ -1,5 +1,16 @@
 # Implementation coverage
 
+## DOC-CI-006 — current-source GNATdoc warning correction
+
+Four unexpected warnings are reproduced on failed and current main and removed
+by documenting the two private NUC owner finalizers and their Stream parameters.
+The original 73-identity warning baseline is unchanged. Corrected base and
+synthetic-source warning comparisons pass, but the focused suite then rejects
+17 pre-existing source/rendered coverage gaps; full Documentation qualification
+remains blocked. No ABI, behavior, source admission or historical baseline change.
+See `doc-ci-006-gnatdoc-warning-regression.md` for exact identities, evidence,
+negative controls and the separate qualification dependency.
+
 ## IRMEL-ADA-002 — opt-in Image/Health NUC_TempData reception
 
 The pinned @Optional `NUC_TempData` callback is registered independently on
