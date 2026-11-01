@@ -23,12 +23,14 @@ DOC_CI004_HEAD = 'e85d99bbec15452b4edf5ef554784a18986db709'
 CI001R4_HEAD = '2be40f9144ae655da456da2b59b4a6120ba5a6e6'
 # Reviewed main (#134 merge) that first exposed the CI-001R3-R5 defect.
 CI001R5_LATER_MAIN = '10990c39c4fd05b902505767b7dcffc701757d25'
+DOC_CI005_PREDECESSOR = 'd5243dd924c4a81a548e38d97533e29f9971deea'
 sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import documentation_ci as ci
 import epoch_ci as e
 import feature_source as s
 import source_epoch as epoch
 import test_actions_dependencies as dependencies
+import check_doc_source_integrity as integrity
 
 
 class ActionDependencyWorkflowTests(dependencies.DependencyWorkflowTests):
@@ -76,14 +78,19 @@ class ActionDependencyEpochTests(unittest.TestCase):
                     e.actions_delta(ROOT, 'old', 'new', self.old, entries)
 
 
+def doc_ci004r1(name):
+    """DOC-CI-005: the DOC-CI-004R1 successor is immutable main, not the worktree."""
+    return s.blob(ROOT, DOC_CI005_PREDECESSOR, name)
+
+
 class DiagnosticSuccessorTests(dependencies.DependencyAuthorizationTests):
     """Retain every migration control and add exact successor parity checks."""
 
     def test_diagnostic_successor_requires_complete_node24_pair(self):
-        self.stage({name: (ROOT / name).read_bytes() for name in self.old})
+        self.stage({name: doc_ci004r1(name) for name in self.old})
         self.assertEqual(self.state(), 'diagnostics_proposed_pending_independent_review')
         for name in self.old:
-            self.stage({n: (ROOT / n).read_bytes() for n in self.old})
+            self.stage({n: doc_ci004r1(n) for n in self.old})
             self.stage({name: self.old[name]})
             with self.assertRaisesRegex(ValueError, 'mixed or partially'):
                 self.state()
@@ -91,8 +98,8 @@ class DiagnosticSuccessorTests(dependencies.DependencyAuthorizationTests):
     def test_integrated_workflow_is_exact_diagnostic_successor(self):
         name = '.github/workflows/documentation.yml'
         predecessor = s.blob(ROOT, dependencies.MIGRATION, name).decode()
-        self.assertEqual((ROOT / name).read_text(), dependencies.diagnostics_successor(predecessor))
-        text = (ROOT / name).read_text()
+        self.assertEqual(doc_ci004r1(name).decode(), dependencies.diagnostics_successor(predecessor))
+        text = doc_ci004r1(name).decode()
         canonical = text.split('- name: Upload successful canonical execution result\n', 1)[1].split(
             '- name: Upload separate non-authorizing failure diagnostics\n', 1)[0]
         self.assertNotIn('if: always()', canonical)
@@ -104,7 +111,7 @@ class DiagnosticSuccessorTests(dependencies.DependencyAuthorizationTests):
         new = {n: ('100644', 'new') for n, _ in e.DIAGNOSTIC_SOURCE}
         original_blob = s.blob
         def blob(root, revision, name):
-            return original_blob(ROOT, dependencies.MIGRATION, name) if revision == 'old' else (ROOT / name).read_bytes()
+            return original_blob(ROOT, dependencies.MIGRATION if revision == 'old' else DOC_CI005_PREDECESSOR, name)
         with mock.patch.object(e.source, 'blob', side_effect=blob):
             self.assertEqual(e.diagnostics_delta(ROOT, 'old', 'new', old, new), set(old))
         for name, _ in e.DIAGNOSTIC_SOURCE:
@@ -2431,6 +2438,114 @@ class HistoricalTransitionScopeTests(unittest.TestCase):
         # The SHA-256 successor sets themselves are unchanged from history.
         for module, head in ((replay, CI001R4_HEAD), (integration, DOC_CI004_HEAD)):
             self.assertEqual((ROOT / module.POLICY).read_bytes(), s.blob(ROOT, head, module.POLICY))
+
+
+
+class MainOnlyDocumentationTests(unittest.TestCase):
+    """DOC-CI-005: exact main-only successor; proposal for review, not approval."""
+
+    WORKFLOW = '.github/workflows/documentation.yml'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory(prefix='doc-ci-005-')
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.root = Path(cls.temp.name) / 'source'
+        subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(ROOT), str(cls.root)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.git('checkout', '--detach', DOC_CI005_PREDECESSOR)
+        cls.git('config', 'user.name', 'DOC-CI-005 control')
+        cls.git('config', 'user.email', 'doc-ci-005@example.invalid')
+        for name, _, _ in e.MAIN_ONLY_SOURCE:
+            (cls.root / name).write_bytes((ROOT / name).read_bytes())
+        cls.head = cls.commit()
+
+    @classmethod
+    def git(cls, *args):
+        return subprocess.check_output(['git', '-C', str(cls.root), *args],
+                                       stderr=subprocess.STDOUT).decode().strip()
+
+    @classmethod
+    def commit(cls):
+        cls.git('add', '-A'); cls.git('commit', '-qm', 'DOC-CI-005 control')
+        return cls.git('rev-parse', 'HEAD')
+
+    def classify(self):
+        return e.classify(self.root, DOC_CI005_PREDECESSOR, self.git('rev-parse', 'HEAD'))
+
+    def test_pull_requests_cannot_start_documentation_and_main_push_still_does(self):
+        text = (ROOT / self.WORKFLOW).read_text()
+        on = text.split('\non:\n', 1)[1].split('\n\n', 1)[0]
+        self.assertEqual(on, '  push:\n    branches: [main]')
+        for event in ('pull_request', 'pull_request_target', 'workflow_dispatch', 'workflow_run', 'schedule'):
+            self.assertNotIn(event + ':', text)
+        old = s.blob(ROOT, DOC_CI005_PREDECESSOR, self.WORKFLOW).decode()
+        self.assertEqual(text, dependencies.main_only_successor(old))
+        self.assertNotEqual(text, old)
+
+    def test_exact_transition_is_policy_only_and_does_not_self_approve(self):
+        self.git('reset', '--hard', self.head)
+        value = self.classify()
+        self.assertEqual(value['case'], 'policy-only')
+        self.assertFalse(value['independent_approval'])
+        self.assertFalse(value['publication_epoch_approved'])
+        self.assertEqual({d['path'] for d in value['delta']}, {n for n, _, _ in e.MAIN_ONLY_SOURCE})
+        self.assertEqual(integrity.check(self.root)['actions_workflows'],
+                         'main_only_proposed_pending_independent_review')
+
+    def test_incomplete_unknown_and_hitchhiking_changes_reject(self):
+        cases = [(name, mutation) for name, _, _ in e.MAIN_ONLY_SOURCE
+                 for mutation in ('predecessor', 'unknown', 'executable')]
+        # POLICY_PATHS members (e.g. feature_source.py) remain ordinary policy-only
+        # proposals under unchanged main policy; only non-policy hitchhikers here.
+        cases += [(name, 'unknown') for name in (
+            'docs/tools/source_epoch.py', '.github/workflows/ci.yml',
+            'native/src/rf_product_rx.cpp', 'docs/gnatdoc-coverage-baseline.txt')]
+        for name, mutation in cases:
+            with self.subTest(name=name, mutation=mutation):
+                self.git('reset', '--hard', self.head)
+                path = self.root / name
+                if mutation == 'predecessor':
+                    path.write_bytes(s.blob(ROOT, DOC_CI005_PREDECESSOR, name))
+                elif mutation == 'unknown':
+                    path.write_bytes(path.read_bytes() + b'\n# unreviewed\n')
+                else:
+                    path.chmod(0o755)
+                self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+        self.git('reset', '--hard', self.head)
+
+    def test_workflow_security_mutations_reject(self):
+        text = (ROOT / self.WORKFLOW).read_text()
+        mutations = {
+            'pr trigger': ('on:\n  push:\n', 'on:\n  pull_request:\n  push:\n'),
+            'manual trigger': ('    branches: [main]\n', '    branches: [main]\n  workflow_dispatch:\n'),
+            'write token': ('permissions:\n  contents: read\n', 'permissions:\n  contents: write\n'),
+            'deploy bypass': ("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'\n"
+                              "    needs: [prepare-documentation, build]\n",
+                              'if: always()\n    needs: [prepare-documentation, build]\n'),
+            'untrusted action': ('actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128',
+                                 'evil/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128'),
+            'tag action': ('actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0',
+                           'actions/deploy-pages@v4'),
+        }
+        for label, (old, new) in mutations.items():
+            with self.subTest(mutation=label):
+                self.assertEqual(text.count(old), 1, label)
+                changed = text.replace(old, new)
+                with self.assertRaises(ValueError): dependencies.validate_workflow(self.WORKFLOW, changed)
+                self.git('reset', '--hard', self.head)
+                (self.root / self.WORKFLOW).write_text(changed); self.commit()
+                with self.assertRaises((ValueError, AssertionError)): self.classify()
+                with self.assertRaises(ValueError): integrity.check(self.root)
+        self.git('reset', '--hard', self.head)
+
+    def test_route_is_bound_to_its_exact_predecessor(self):
+        migration = dependencies.MIGRATION
+        self.assertEqual(e.main_only_delta(self.root, migration, self.head, s.tree(self.root, migration),
+                                           s.tree(self.root, self.head)), set())
+        self.assertEqual(integrity.DIAGNOSTIC_WORKFLOWS[1], e.MAIN_ONLY_SOURCE[0][1])
+        self.assertEqual(integrity.MAIN_ONLY_WORKFLOWS[1], e.MAIN_ONLY_SOURCE[0][2])
 
 
 if __name__ == '__main__':

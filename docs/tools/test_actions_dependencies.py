@@ -72,8 +72,14 @@ def validate_workflow(name, text):
                                     '          path: .doc-tools/epochs/candidate/published/\n'
                                     '          include-hidden-files: true\n')
     successor = diagnostics_successor(expected) if name.endswith('/documentation.yml') else expected
-    if text not in (expected, successor):
+    if text not in (expected, successor, main_only_successor(successor)):
         raise ValueError('unauthorized action migration workflow bytes')
+
+
+def main_only_successor(text):
+    """DOC-CI-005: exact removal of the PR/manual triggers; no other byte changes."""
+    old = 'on:\n  pull_request:\n  push:\n    branches: [main]\n  workflow_dispatch:\n'
+    return text.replace(old, 'on:\n  push:\n    branches: [main]\n') if text.count(old) == 1 else text
 
 
 class DependencyWorkflowTests(unittest.TestCase):

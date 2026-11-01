@@ -78,6 +78,23 @@ DIAGNOSTIC_SOURCE = (
      '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012'),
 )
 
+# DOC-CI-005 exact main-only successor of DIAGNOSTIC_SOURCE: (path, predecessor
+# SHA-256, successor SHA-256). epoch_ci.py is the executing policy, compared to
+# the running bytes. Proposal for independent review, not approval.
+MAIN_ONLY_SOURCE = (
+    ('.github/workflows/documentation.yml',
+     '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711',
+     '8971d0d3fe72bdf5d358909a02e0e8e38f38b2a2a6de725e0d0cb40202faa4b8'),
+    ('scripts/check_doc_source_integrity.py',
+     '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602',
+     'c270fc76544c43e979acbd3ab169ef7be9784c3aac30d0b0c91de904a0a07532'),
+    ('docs/tools/epoch_ci.py',
+     '19c339d8983b817d89e9bf7f368b40ec09b0c6fbc893d7e1f8f06e68f44ba3b0', None),
+    ('docs/tools/test_actions_dependencies.py',
+     '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012',
+     '4d2362f726f4a453ac5e9309cfa0a8665ad208271e0790de5004ebcb58113b7b'),
+)
+
 
 # CI-001R3-R5: the only complete target trees from which each exact historical
 # successor transition is defined. These are the validators' own immutable
@@ -123,6 +140,26 @@ def diagnostics_delta(root, target, candidate, old, new):
                 'DOC-CI-004R1 candidate bytes: ' + name)
     require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
             'DOC-CI-004 candidate changed publication approval registry')
+    return names
+
+
+def main_only_delta(root, target, candidate, old, new):
+    """Admit only the complete DOC-CI-005 unit from its exact predecessor bytes."""
+    names = {name for name, _, _ in MAIN_ONLY_SOURCE}
+    workflow = MAIN_ONLY_SOURCE[0][0]
+    if old.get(workflow) == new.get(workflow) or workflow not in old or \
+            hashlib.sha256(source.blob(root, target, workflow)).hexdigest() != MAIN_ONLY_SOURCE[0][1]:
+        return set()  # Other targets keep the ordinary/historical routes.
+    for name, predecessor, successor in MAIN_ONLY_SOURCE:
+        require(old.get(name, (None,))[0] == new.get(name, (None,))[0] == '100644',
+                'DOC-CI-005 source mode/missing: ' + name)
+        require(hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
+                'DOC-CI-005 predecessor bytes: ' + name)
+        data = source.blob(root, candidate, name)
+        require(data == Path(__file__).read_bytes() if successor is None
+                else hashlib.sha256(data).hexdigest() == successor, 'DOC-CI-005 candidate bytes: ' + name)
+    require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
+            'DOC-CI-005 candidate changed publication approval registry')
     return names
 
 
@@ -240,7 +277,8 @@ def classify(root, target, candidate):
         return value
     # The historical four-file diagnostic pair helper is not authorization for
     # a future checker edit. Only the complete exact integration may succeed it.
-    actions = diagnostic or actions_delta(root, target, candidate, old, new)
+    actions = diagnostic or main_only_delta(root, target, candidate, old, new) or \
+        actions_delta(root, target, candidate, old, new)
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
         require(name in correction or name in actions or name in POLICY_PATHS or source.documentation_path(name),
