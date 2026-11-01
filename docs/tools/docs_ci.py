@@ -64,7 +64,8 @@ def output(**values):
 
 def build(root, directory, prefix):
     context = identity(root)
-    require(not directory.exists() and not directory.is_symlink(), 'output must be fresh')
+    require(not directory.exists() and not any(p.is_symlink() for p in (directory, *directory.parents)),
+            'output must be fresh with no symlink ancestors')
     directory.mkdir(parents=True)
     epoch.toolchain(prefix)
     with tempfile.TemporaryDirectory(prefix='docs-current-') as temp:
@@ -87,10 +88,14 @@ def build(root, directory, prefix):
         for name in presentation.files(directory):
             archive.add(directory / name, arcname=name, recursive=False)
     output(bundle_sha=epoch.sha(bundle.read_bytes()), manifest_sha=manifest_sha)
+    warning_report = json.loads((directory / 'warnings.json').read_bytes())
+    warning_summary = (str(warning_report['raw_total']) if 'raw_total' in warning_report
+                       else 'classification unavailable; raw diagnostics retained')
     summary = (f"### Documentation (current Git source)\n\nCommit: `{context['commit']}`\n\n"
                f"Coverage: {report['documented_elements']}/{report['total_elements']} "
                f"({report['documented_percentage']}%). Informational; no completeness threshold.\n\n"
-               f"GNATdoc diagnostics: see `gnatdoc.log` and `warnings.json` in the diagnostic artifact.\n")
+               f"GNATdoc warnings: {warning_summary}. Informational; see `gnatdoc.log` and "
+               f"`warnings.json` in the diagnostic artifact.\n")
     print(summary)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
@@ -128,7 +133,8 @@ def verify(root, directory, manifest_sha, deployment=False):
 
 def unpack(bundle, directory, bundle_sha, manifest_sha):
     require(epoch.sha(bundle.read_bytes()) == bundle_sha, 'bundle digest mismatch')
-    require(not directory.exists() and not directory.is_symlink(), 'unpack destination must be fresh')
+    require(not directory.exists() and not any(p.is_symlink() for p in (directory, *directory.parents)),
+            'unpack destination must be fresh with no symlink ancestors')
     with tarfile.open(bundle) as archive:
         members = archive.getmembers()
         names = [member.name for member in members]
@@ -193,11 +199,10 @@ def main():
     else:
         context = identity(args.root)
         epoch.toolchain(args.gnatdoc_prefix)
-        with tempfile.TemporaryDirectory(prefix='docs-deep-') as temp:
-            result = epoch.qualify_evidence(args.root, {'candidate_commit': context['commit'],
-                                                       'target_commit': context['commit']},
-                                             Path(temp) / 'epoch', args.gnatdoc_prefix)
-            print(json.dumps({'publication_files': len(result['publication']['files'])}))
+        result = epoch.qualify_evidence(args.root, {'candidate_commit': context['commit'],
+                                                   'target_commit': context['commit']},
+                                         args.directory, args.gnatdoc_prefix)
+        print(json.dumps({'publication_files': len(result['publication']['files'])}))
 
 
 if __name__ == '__main__':

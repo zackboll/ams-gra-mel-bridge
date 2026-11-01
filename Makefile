@@ -39,6 +39,8 @@ help:
 	  'make test-rust    Test the Rust workspace against native/build-tests' \
 	  'make test-python  Test the Python binding against native/build-tests' \
 	  'make check        Native + Ada formatting/tests and Git whitespace checks' \
+	  'make docs         Build/verify current-Git docs with pinned documentation tools' \
+	  'make test-docs-ci Fast documentation artifact/security and coverage tests' \
 	  'make test-squall-ir       Opt-in real Squall IR C, Ada, Rust, and Python integration' \
 	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \
 	  'make test-squall-ir-ada   Opt-in real Squall IR Ada integration' \

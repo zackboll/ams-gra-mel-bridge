@@ -33,6 +33,29 @@ def check(root):
         require(actual == ['actions/' + role + '@' + ACTION_PINS['actions/' + role]
                            for role in roles[name]], 'action owner/pin/role mismatch')
         sequence = steps(job)
+        allowed_runs = {
+            'build': {'Install isolated pinned documentation tools',
+                      'Check dependency integrity and deployment boundaries',
+                      'Test current documentation build controls',
+                      'Generate once from Git and verify source-derived publication'},
+            'deploy': {'Install immutable reviewed enhancer',
+                       'Verify bundle, source, run, presentation and main-only authority'},
+            'verify-live': {'Install immutable reviewed enhancer', 'Verify deployed artifact authority',
+                            'Compare every live entity with the verified artifact'},
+        }
+        run_steps = [step for step in sequence if re.search(r'^        run:', step, re.M)]
+        require({field(step, 'name', 8) for step in run_steps} == allowed_runs[name] and
+                len(run_steps) == len(allowed_runs[name]), 'extra/missing executable workflow step')
+        for step in run_steps:
+            label = field(step, 'name', 8)
+            expected = {
+                'Install isolated pinned documentation tools': [['sh', 'docs/tools/install_docs_toolchain.sh']],
+                'Check dependency integrity and deployment boundaries': [['python3', 'scripts/check_doc_source_integrity.py']],
+                'Test current documentation build controls': [['make', 'test-docs-ci']],
+                'Install immutable reviewed enhancer': [['sh', 'docs/tools/install_enhancer.sh', '.doc-tools/enhancer']],
+            }.get(label)
+            if expected is not None:
+                require(commands(step) == expected, 'replaced required workflow command')
         _, checkout = action(sequence, 'actions/checkout')
         require(field(checkout, 'ref', 10) == '${{ env.DOC_SOURCE_SHA }}' and
                 field(checkout, 'persist-credentials', 10) == 'false' and
@@ -66,6 +89,13 @@ def check(root):
                         field(upload, 'path', 10) == '.doc-tools/current/published/' and
                         field(upload, 'include-hidden-files', 10) == 'true' and
                         verified < uploaded < deployed, 'unverified Pages upload/deployment')
+            else:
+                live, step = one(sequence, lambda s: 'docs_ci.py live' in s, 'live verification')
+                require(verified < live and commands(step) == [[
+                    '.doc-tools/enhancer/bin/python', 'docs/tools/docs_ci.py', 'live', '--deployment',
+                    '--manifest-sha', '${{ needs.build.outputs.manifest_sha }}',
+                    '--base-url', 'https://zackboll.github.io/ams-gra-mel-bridge/',
+                    '--evidence', '$RUNNER_TEMP/live-publication.json']], 'live verification bypass')
     build = mapping['build']
     require(not re.search(r'^    (?:if|needs):', build, re.M), 'build may not be skipped')
     require('      artifact_id: ${{ steps.inputs.outputs.artifact-id }}\n' in build and
@@ -73,8 +103,9 @@ def check(root):
             '      manifest_sha: ${{ steps.seal.outputs.manifest_sha }}\n' in build, 'unbound build outputs')
     sequence = steps(build)
     generated, generate = one(sequence, lambda s: 'docs_ci.py build' in s, 'single generation')
-    require(field(generate, 'id', 8) == 'seal' and
-            "'cd ../..; .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build --gnatdoc-prefix \"$GNATDOC_PREFIX\"'" in generate,
+    require(field(generate, 'id', 8) == 'seal' and commands(generate) == [[
+            'alr', '-n', '-s', '$ALIRE_SETTINGS_DIR', '-C', 'docs/toolchain', 'exec', '--', 'sh', '-c',
+            'cd ../..; .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build --gnatdoc-prefix "$GNATDOC_PREFIX"']],
             'source generation bypass')
     uploaded, upload = one(sequence, lambda s: 'id: inputs\n' in s, 'verified input upload')
     require(generated < uploaded and field(upload, 'path', 10) == '.doc-tools/current.tar' and

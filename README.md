@@ -137,9 +137,9 @@ GNATdoc declarations, anchors, profiles and package navigation remain authoritat
 Published pages receive a reviewed responsive light/dark theme and lexical syntax
 highlighting for Ada declaration snippets. Supported, unambiguously resolved public
 MEL type references link to source-verified local native declarations; unsupported
-Optional offline search matches
-the source-derived native sidebar labels, not
-full documentation text. Approved sidebar destinations support active selection,
+or alias-dependent references may remain plain text. Optional offline search
+matches source-derived native sidebar labels, not full documentation text.
+Approved sidebar destinations support active selection,
 package/declaration bookmarks and Back/Forward. Ordinary non-sidebar declaration
 links remain native navigation and do not automatically update outer bookmarks
 or sidebar selection. With JavaScript disabled, both native groups, direct native

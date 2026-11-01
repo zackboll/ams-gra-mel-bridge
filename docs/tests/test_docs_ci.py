@@ -140,6 +140,107 @@ class PipelineTests(unittest.TestCase):
         ci.unpack(bundle, destination, digest, ci.epoch.sha(raw))
         self.assertEqual((destination / 'published/index.html').read_bytes(), b'page')
 
+    def test_archive_missing_manifest_inventory_and_manifest_digest_rejected(self):
+        bundle, digest = self.archive([('page', b'content', tarfile.REGTYPE)])
+        with self.assertRaisesRegex(ValueError, 'missing archive manifest'):
+            ci.unpack(bundle, self.root / 'unpacked', digest, '0' * 64)
+        raw = ci.epoch.canonical({'payload': {'missing': ci.epoch.sha(b'page')}})
+        bundle, digest = self.archive([('manifest.json', raw, tarfile.REGTYPE)])
+        with self.assertRaisesRegex(ValueError, 'archive manifest mismatch'):
+            ci.unpack(bundle, self.root / 'unpacked', digest, '0' * 64)
+        with self.assertRaisesRegex(ValueError, 'archive inventory mismatch'):
+            ci.unpack(bundle, self.root / 'unpacked', digest, ci.epoch.sha(raw))
+
+    def test_archive_symlink_output_ancestor_and_existing_directory_rejected(self):
+        raw = ci.epoch.canonical({'payload': {}})
+        bundle, digest = self.archive([('manifest.json', raw, tarfile.REGTYPE)])
+        link = self.root / 'alias'
+        link.symlink_to(self.repo, target_is_directory=True)
+        for destination in (link / 'unpacked', self.repo):
+            with self.subTest(destination=destination), self.assertRaisesRegex(ValueError, 'fresh'):
+                ci.unpack(bundle, destination, digest, ci.epoch.sha(raw))
+
+    def test_symlink_payload_rejected(self):
+        directory, digest = self.sealed()
+        (directory / 'published/alias').symlink_to(directory / 'published/index.html')
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            ci.verify(self.repo, directory, digest)
+
+    def test_hosted_pr_rejects_another_repository_destination(self):
+        self.hosted('pull_request', 'refs/pull/1/merge')
+        path = Path(os.environ['GITHUB_EVENT_PATH'])
+        event = json.loads(path.read_bytes())
+        event['pull_request']['base']['repo']['full_name'] = 'another/repo'
+        ci.write(path, event)
+        with self.assertRaisesRegex(ValueError, 'untrusted PR'):
+            ci.identity(self.repo)
+
+    def test_warning_classification_failure_is_retained_not_a_gate(self):
+        # Exercise actual generation control flow with isolated fake tool output;
+        # the real GNATdoc source-addition case is in explicit source qualification.
+        from compare_gnatdoc_warnings import WarningComparisonError
+        import classify_gnatdoc_warnings
+        import gnatdoc_inventory
+        import check_doc_coverage
+        import build_docs_portal
+        import ada_examples
+        import validate_docs
+        exported = self.root / 'export'
+
+        def export(*args):
+            exported.mkdir()
+
+        with mock.patch.object(source_epoch, 'export', side_effect=export), \
+             mock.patch.object(gnatdoc_inventory, 'specifications', return_value=({}, {})), \
+             mock.patch.object(source_epoch, 'run'), \
+             mock.patch.object(source_epoch.subprocess, 'run', return_value=mock.Mock(
+                 returncode=0, stdout='new warning format\n', stderr='')), \
+             mock.patch.object(classify_gnatdoc_warnings, 'classify',
+                               side_effect=WarningComparisonError('unmapped diagnostic')), \
+             mock.patch.object(check_doc_coverage, 'measure', return_value={'native': {}}), \
+             mock.patch.object(ada_examples, 'References'), \
+             mock.patch.object(build_docs_portal, 'manifest', return_value={
+                 'home': 'index.html', 'guides': [], 'stylesheet': 'style.css'}), \
+             mock.patch.object(build_docs_portal, 'package_map', return_value={}), \
+             mock.patch.object(build_docs_portal, 'regular', return_value='text'), \
+             mock.patch.object(build_docs_portal, 'render', return_value='page'), \
+             mock.patch.object(validate_docs, 'validate'):
+            source_epoch.generate(self.repo, self.sha, exported, self.root, self.root / 'generation.log')
+        value = json.loads((exported / 'obj/docs/warnings.json').read_bytes())
+        self.assertEqual(value['classification_error'], 'unmapped diagnostic')
+        self.assertEqual((exported / 'obj/docs/gnatdoc.log').read_text(), 'new warning format\n')
+
+    def test_real_build_failure_and_gnatdoc_errors_cannot_reach_coverage(self):
+        import gnatdoc_inventory
+        import check_doc_coverage
+
+        def export(root, commit, destination):
+            destination.mkdir()
+
+        for number, (status, text) in enumerate(((1, ''), (0, 'error: failed'), (0, 'fatal: failed'),
+                                                (0, 'ignore file due to parse failure'))):
+            with self.subTest(status=status, text=text):
+                destination = self.root / ('export-' + str(number))
+                with mock.patch.object(source_epoch, 'export', side_effect=export), \
+                     mock.patch.object(gnatdoc_inventory, 'specifications', return_value=({}, {})), \
+                     mock.patch.object(source_epoch, 'run'), \
+                     mock.patch.object(source_epoch.subprocess, 'run', return_value=mock.Mock(
+                         returncode=status, stdout=text, stderr='')), \
+                     mock.patch.object(check_doc_coverage, 'measure') as measure:
+                    with self.assertRaisesRegex(ValueError, 'incomplete native generation'):
+                        source_epoch.generate(self.repo, self.sha, destination, self.root,
+                                              self.root / 'generation.log')
+                    measure.assert_not_called()
+
+        with mock.patch.object(source_epoch, 'export', side_effect=export), \
+             mock.patch.object(gnatdoc_inventory, 'specifications', return_value=({}, {})), \
+             mock.patch.object(source_epoch, 'run', side_effect=ValueError('compilation failed')), \
+             mock.patch.object(source_epoch.subprocess, 'run') as gnatdoc:
+            with self.assertRaisesRegex(ValueError, 'compilation failed'):
+                source_epoch.generate(self.repo, self.sha, self.root / 'compile-export', self.root,
+                                      self.root / 'generation.log')
+            gnatdoc.assert_not_called()
+
     def test_archive_traversal_links_duplicates_missing_manifest_and_bad_digest_rejected(self):
         for name, kind in (('../escape', tarfile.REGTYPE), ('/escape', tarfile.REGTYPE),
                            ('published/link', tarfile.SYMTYPE), ('published/link', tarfile.LNKTYPE),

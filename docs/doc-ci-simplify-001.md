@@ -99,11 +99,28 @@ Open `.doc-tools/current/published/index.html`; pristine output is alongside it.
 The output is deliberately fresh-only, never an implicit destructive cleanup.
 Local artifacts record `local-not-deployable` and cannot be promoted to hosted
 deployment authority. Explicit deep qualification uses the same environment with
-`docs/tools/docs_ci.py qualify --gnatdoc-prefix "$GNATDOC_PREFIX"` under the pinned
+`docs/tools/docs_ci.py qualify --directory .doc-tools/qualification --gnatdoc-prefix "$GNATDOC_PREFIX"` under the pinned
 enhancer interpreter.
 
 ## Validation
 
-Actual command results and hosted run links are recorded in the PR. No merge or
-auto-merge is authorized. Full historical replay and real Pages deployment are
-not prerequisites for, or claims of, this local normal-path validation.
+Local validation uses the existing pinned tool installations. The initial
+`make test-native` attempt encountered pre-existing CMake caches from another
+workspace; those generated directories were preserved outside this repository
+and validation reran with fresh production/test trees. No source workaround or
+test weakening was needed.
+
+Validated commands include `make test-policy` (including dependency security,
+source identity, historical bookkeeping, epoch boundaries, Bootstrap policy,
+current pipeline and coverage tests), `make test-docs-ci`, the 42 warning parser
+tests, actionlint 1.7.12 for all workflows, `make format-ada` and
+`make check-ada-format`. The real normal build reports 73 warnings,
+4,346/4,347 documented elements, 1,255 source declarations and 1,254 native
+sections plus the existing renderer omission. All seven IR.NUC native entries
+are regenerated. Native tests pass 435/435; Python tests pass 234/234; Rust
+workspace tests, check, clippy with warnings denied and format checks pass
+(three existing ignored Rust tests remain ignored).
+
+Actual exact-head commands and hosted run links are recorded in the PR. No merge
+or auto-merge is authorized. Full historical replay and real Pages deployment
+are not prerequisites for, or claims of, this local normal-path validation.

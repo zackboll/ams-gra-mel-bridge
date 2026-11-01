@@ -36,8 +36,9 @@ jobs:
         run: |
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
-            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify --gnatdoc-prefix "$GNATDOC_PREFIX" &&
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify --directory .doc-tools/qualification --gnatdoc-prefix "$GNATDOC_PREFIX" &&
             make test-documentation-source &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover -s docs/tests -p py_pol_001_tests.py -v &&
             DOC_EXAMPLES_ALIRE_SETTINGS="$ALIRE_SETTINGS_DIR" sh docs/tools/qualify_examples.sh'
       - name: Replay immutable historical qualification
         if: matrix.audit != 'current-source'
@@ -59,5 +60,7 @@ jobs:
           path: |
             ${{ runner.temp }}/history/*.json
             ${{ runner.temp }}/history/*.log
+            .doc-tools/qualification-generation.log
+            .doc-tools/qualification/epoch.json
             obj/docs-examples/
           if-no-files-found: warn
