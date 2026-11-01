@@ -9,6 +9,7 @@
 //! mock's file barriers and lifetime log, never by sleeping.
 
 use std::env;
+use std::ffi::c_int;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -42,8 +43,33 @@ const UNLOADED: &str = "control_destroyed\nmanager_destroyed\nlibrary_unloaded\n
 /// Discrete, seven Security Audit alternatives, MFA Status Detailed.
 const RICH_EVENTS: usize = 12;
 
+// Test-enabled facade only (AMS_MEL_ENABLE_TEST_FAILPOINTS): the number of
+// live native public `ams_mel_ir_health_metadata` wrapper objects in this
+// process. Retained callback state, HealthState and queued events are not
+// counted, so channel teardown cannot masquerade as metadata-owner release.
+extern "C" {
+    fn ams_mel_test_health_metadata_public_owners(out_count: *mut usize) -> c_int;
+}
+
 fn lock() -> MutexGuard<'static, ()> {
     METADATA_TEST.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Current live native public metadata wrapper count.
+fn public_owners() -> usize {
+    let mut count = usize::MAX;
+    // SAFETY: exact test-only signature; `count` is writable `size_t` storage.
+    let status = unsafe { ams_mel_test_health_metadata_public_owners(&mut count) };
+    assert_eq!(status, 1, "public-owner observation failed");
+    count
+}
+
+fn assert_public_owners(expected: usize, context: &str) {
+    assert_eq!(
+        public_owners(),
+        expected,
+        "native public metadata owners {context}"
+    );
 }
 
 fn mock_provider() -> PathBuf {
@@ -741,6 +767,118 @@ fn drop_without_close_releases_owners_independently() {
     drop(stream);
     session.close().expect("session close");
     assert!(scratch.events().ends_with(UNLOADED));
+}
+
+// ---- Native public-owner release (TEST-only facade observation) ----
+//
+// These observe the native wrapper count directly, so they fail if
+// `HealthMetadataStream::Drop` stops releasing its native owner. All run under
+// the binary-wide mutex, and every other test here releases its streams, so
+// the process-global count starts at zero.
+
+/// Scenario A: implicit Drop without Close releases the native owner, and the
+/// HealthStatus channel stays usable.
+#[test]
+fn native_public_owner_released_by_implicit_drop() {
+    let _guard = lock();
+    let scratch = Scratch::new("owner-drop");
+    assert_public_owners(0, "at baseline");
+    let session = open("health-rich");
+    let mut health = open_health(&session);
+    assert_public_owners(0, "before metadata open");
+    let stream = health.open_metadata(32).expect("open metadata");
+    assert!(stream.is_open());
+    assert_public_owners(1, "after metadata open");
+    drop(stream);
+    assert_public_owners(0, "after implicit Drop without close()");
+    assert!(health.is_open());
+    health
+        .capabilities()
+        .expect("capabilities after stream Drop");
+    health.enable().expect("enable after stream Drop");
+    health.close().expect("Health close");
+    session.close().expect("session close");
+    assert_public_owners(0, "after Health and Session close");
+    assert!(scratch.events().ends_with(UNLOADED));
+}
+
+/// Scenario B: explicit Close releases the native owner exactly once; the
+/// subsequent Drop of the closed stream releases nothing further.
+#[test]
+fn native_public_owner_released_once_by_explicit_close() {
+    let _guard = lock();
+    let _scratch = Scratch::new("owner-close");
+    assert_public_owners(0, "at baseline");
+    let session = open("health-rich");
+    let mut health = open_health(&session);
+    let mut stream = health.open_metadata(32).expect("open metadata");
+    assert_public_owners(1, "after metadata open");
+    stream.close().expect("metadata close");
+    assert!(!stream.is_open());
+    assert_public_owners(0, "after explicit close()");
+    stream.close().expect("repeated metadata close");
+    assert_public_owners(0, "after repeated close()");
+    drop(stream);
+    assert_public_owners(0, "after Drop of a closed stream");
+    health.close().expect("Health close");
+    session.close().expect("session close");
+    assert_public_owners(0, "after Health and Session close");
+}
+
+/// Scenario C: streams on two channels of one Session are independent owners.
+#[test]
+fn native_public_owners_are_independent_across_channels() {
+    let _guard = lock();
+    let scratch = Scratch::new("owner-independent");
+    assert_public_owners(0, "at baseline");
+    let session = open("health-rich");
+    let mut first = open_health(&session);
+    let mut second = open_health(&session);
+    let first_stream = first.open_metadata(32).expect("first metadata");
+    assert_public_owners(1, "after first metadata open");
+    let mut second_stream = second.open_metadata(32).expect("second metadata");
+    assert_public_owners(2, "after second metadata open");
+    drop(first_stream);
+    assert_public_owners(1, "after implicit Drop of the first stream");
+    // The surviving stream is unaffected by the other's release.
+    assert_eq!(
+        second_stream.receive(0).expect("second stream event"),
+        rich_events()[0]
+    );
+    second_stream.close().expect("second metadata close");
+    assert_public_owners(0, "after explicit close() of the second stream");
+    drop(second_stream);
+    assert_public_owners(0, "after Drop of the closed second stream");
+    first.close().expect("first Health close");
+    second.close().expect("second Health close");
+    session.close().expect("session close");
+    assert_public_owners(0, "after Health and Session close");
+    assert!(scratch.events().ends_with(UNLOADED));
+}
+
+/// Scenario D: HealthStatus and Session teardown first do not release the
+/// metadata wrapper (channel teardown is not metadata-owner cleanup); the
+/// stream's own Drop does, after its queued events are drained.
+#[test]
+fn native_public_owner_survives_channel_teardown_until_stream_drop() {
+    let _guard = lock();
+    let scratch = Scratch::new("owner-channel-first");
+    assert_public_owners(0, "at baseline");
+    let session = open("health-rich");
+    let mut health = open_health(&session);
+    let mut stream = health.open_metadata(32).expect("open metadata");
+    assert_public_owners(1, "after metadata open");
+    health.close().expect("Health close");
+    session.close().expect("session close");
+    // The provider graph is gone, yet the public wrapper is still owned.
+    assert!(scratch.events().ends_with(UNLOADED), "{}", scratch.events());
+    assert_public_owners(1, "after Health and Session close");
+    assert_eq!(drain(&mut stream, RICH_EVENTS), rich_events());
+    expect_kind(stream.receive(0), ErrorKind::StreamStopped);
+    assert!(stream.is_open());
+    assert_public_owners(1, "after draining the stopped stream");
+    drop(stream);
+    assert_public_owners(0, "after implicit Drop following channel teardown");
 }
 
 /// Registration is valid while Attached and while Enabled; each is shown on a

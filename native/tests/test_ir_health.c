@@ -13,6 +13,11 @@
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL %s:%d: %s\n",__FILE__,__LINE__,#x); return EXIT_FAILURE; } } while (0)
 
+/* Test-enabled facade only: live public ams_mel_ir_health_metadata wrappers. */
+extern int ams_mel_test_health_metadata_public_owners(size_t *out_count);
+static int owners_are(size_t expected)
+{ size_t count=(size_t)-1;return ams_mel_test_health_metadata_public_owners(&count)==1&&count==expected; }
+
 static ams_mel_string_view_v1 text(const char *value)
 { ams_mel_string_view_v1 result={value,strlen(value)};return result; }
 static int text_is(ams_mel_string_view_v1 value,const char *expected)
@@ -222,7 +227,9 @@ static int run_partial_child(const char *log)
     CHECK(setenv("AMS_MEL_TEST_LIFETIME_LOG",log,1)==0);
     CHECK(open_health("health-register-partial",&session,&health)==EXIT_SUCCESS);
     CHECK(ams_mel_ir_health_metadata_open(health,8,&metadata,NULL,0,NULL)==AMS_MEL_PROVIDER_FAILED);
-    CHECK(metadata==NULL);CHECK(ams_mel_ir_health_close(&health,NULL,0,NULL)==AMS_MEL_OK);
+    /* Retained callback state of the failed registration is not a public owner. */
+    CHECK(metadata==NULL);CHECK(owners_are(0U));CHECK(ams_mel_ir_health_close(&health,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(owners_are(0U));
     CHECK(ams_mel_session_close(&session,NULL,0,NULL)==AMS_MEL_OK);return EXIT_SUCCESS;
 }
 
@@ -259,12 +266,41 @@ static int test_quiescence(void)
     char path[512];snprintf(path,sizeof path,"%s.start",base);unlink(path);snprintf(path,sizeof path,"%s.entered",base);unlink(path);snprintf(path,sizeof path,"%s.release",base);unlink(path);unlink(log);return EXIT_SUCCESS;
 }
 
+/* The TEST-only public-owner observer counts exactly the live public metadata
+ * wrappers: Close destroys the wrapper even while channel-retained callback
+ * state and queued events remain, and channel teardown does not release it. */
+static int test_public_owner_observation(void)
+{
+    ams_mel_session *session=NULL;ams_mel_ir_health *first=NULL,*second=NULL;
+    ams_mel_ir_health_metadata *a=NULL,*b=NULL;ams_mel_ir_health_config_v1 config=configuration();
+    CHECK(ams_mel_test_health_metadata_public_owners(NULL)==0);
+    CHECK(owners_are(0U));
+    CHECK(open_health("health-rich",&session,&first)==EXIT_SUCCESS);
+    CHECK(ams_mel_ir_health_open(session,&config,&second,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(owners_are(0U));
+    CHECK(ams_mel_ir_health_metadata_open(first,32,&a,NULL,0,NULL)==AMS_MEL_OK);CHECK(owners_are(1U));
+    /* A rejected second attempt creates no wrapper. */
+    CHECK(ams_mel_ir_health_metadata_open(first,32,&b,NULL,0,NULL)==AMS_MEL_INVALID_ARGUMENT&&b==NULL);CHECK(owners_are(1U));
+    CHECK(ams_mel_ir_health_metadata_open(second,32,&b,NULL,0,NULL)==AMS_MEL_OK);CHECK(owners_are(2U));
+    /* Close with 12 events still queued and callbacks still registered. */
+    CHECK(ams_mel_ir_health_metadata_close(&a,NULL,0,NULL)==AMS_MEL_OK&&a==NULL);CHECK(owners_are(1U));
+    CHECK(ams_mel_ir_health_metadata_close(&a,NULL,0,NULL)==AMS_MEL_OK);CHECK(owners_are(1U));
+    /* Channel and Session teardown first: the wrapper survives. */
+    CHECK(ams_mel_ir_health_close(&first,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(ams_mel_ir_health_close(&second,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(ams_mel_session_close(&session,NULL,0,NULL)==AMS_MEL_OK);CHECK(owners_are(1U));
+    CHECK(ams_mel_ir_health_metadata_close(&b,NULL,0,NULL)==AMS_MEL_OK&&b==NULL);CHECK(owners_are(0U));
+    return EXIT_SUCCESS;
+}
+
 int main(void)
 {
+    CHECK(test_public_owner_observation()==EXIT_SUCCESS);
     CHECK(test_rich()==EXIT_SUCCESS);CHECK(test_capability()==EXIT_SUCCESS);
     CHECK(test_overflow()==EXIT_SUCCESS);CHECK(test_malformed_nested_value()==EXIT_SUCCESS);
     CHECK(test_detach_retry()==EXIT_SUCCESS);
     CHECK(test_allocation_failure()==EXIT_SUCCESS);CHECK(test_partial_registration()==EXIT_SUCCESS);
     CHECK(test_quiescence()==EXIT_SUCCESS);
+    CHECK(owners_are(0U));
     puts("PASS: native IR Health/Status contract");return EXIT_SUCCESS;
 }
