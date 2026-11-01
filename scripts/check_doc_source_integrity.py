@@ -67,10 +67,8 @@ def vendor_integrity(root):
 def workflow_security(root):
     root = Path(root)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'docs/tools'))
-    from ci001r3_workflow import deploy_contract, jobs, live_contract, preparation_contract
-    for contract in (preparation_contract, deploy_contract, live_contract):
-        contract(root)
-    for name, job in jobs(root).items():
+    from docs_workflow import check as documentation_contract
+    for name, job in documentation_contract(root).items():
         require(name == 'deploy' or not re.search(r'^\s+[a-z-]+: write\s*$', job, re.M),
                 'write permission outside Pages deployment job: ' + name)
     workflows = root / '.github/workflows'
@@ -90,10 +88,10 @@ def workflow_security(root):
                     'write permission outside main-only documentation deployment')
             require('actions/deploy-pages@' not in text and 'actions/upload-pages-artifact@' not in text,
                     'Pages outside main-only documentation workflow')
-        else:
-            events = header.split('on:\n', 1)[1].split('\npermissions:', 1)[0]
-            require(events.strip() == 'push:\n    branches: [main]',
-                    'documentation must run only on main pushes')
+        if path.name == 'documentation-qualification.yml':
+            require('  schedule:\n' in header and '  workflow_dispatch:\n' in header and
+                    not re.search(r'^  (?:push|pull_request):', header, re.M),
+                    'deep qualification must be scheduled/manual only')
     return len(names)
 
 

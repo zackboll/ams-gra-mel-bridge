@@ -100,7 +100,7 @@ class GeneratedSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'independently regenerated'):
             epoch.verify_regenerated(self.repo, altered, self.target, self.candidate, self.prefix)
 
-    def test_undocumented_addition_rejected_by_generation(self):
+    def test_undocumented_addition_is_reported_without_blocking_generation(self):
         temp = tempfile.TemporaryDirectory(dir=self.directory)
         self.addCleanup(temp.cleanup)
         directory = Path(temp.name)
@@ -112,8 +112,12 @@ class GeneratedSourceTests(unittest.TestCase):
         subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Documentation Test',
                         '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'undocumented addition'], check=True)
-        with self.assertRaises(ValueError):
-            epoch.generate(repo, 'HEAD', directory / 'export', self.prefix, directory / 'generation.log')
+        site, report, references = epoch.generate(
+            repo, 'HEAD', directory / 'export', self.prefix, directory / 'generation.log')
+        self.assertTrue(site.is_dir())
+        gaps = [e for e in report['elements'] if not e['documented']]
+        self.assertTrue(any('Undocumented_Count' in e['identity'] for e in gaps))
+        self.assertIn('Undocumented_Count', (directory / 'export/obj/docs/gnatdoc.log').read_text())
 
 
 if __name__ == '__main__':

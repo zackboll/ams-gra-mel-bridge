@@ -137,8 +137,8 @@ GNATdoc declarations, anchors, profiles and package navigation remain authoritat
 Published pages receive a reviewed responsive light/dark theme and lexical syntax
 highlighting for Ada declaration snippets. Supported, unambiguously resolved public
 MEL type references link to source-verified local native declarations; unsupported
-or alias-dependent references may remain plain text. Optional offline search matches
-the 37 native sidebar labels (29 Compilation Units and eight Tagged Types), not
+Optional offline search matches
+the source-derived native sidebar labels, not
 full documentation text. Approved sidebar destinations support active selection,
 package/declaration bookmarks and Back/Forward. Ordinary non-sidebar declaration
 links remain native navigation and do not automatically update outer bookmarks
@@ -146,11 +146,12 @@ or sidebar selection. With JavaScript disabled, both native groups, direct nativ
 bookmarks, type links and the authored portal remain usable; search stays hidden.
 External type links, operation categories, generic summaries and shared authored-
 guide rendering remain deferred. Original GNATdoc output is separately qualified.
-DOC-007F adopts the merged GNATDOC-009A/009B/010 enhancer: one ordinary
-subtype base and nine current-package references are independently required,
-alongside source-owned API titles, English language and UTF-8 metadata. All
-1,428 local type occurrences and exact native restoration are checked independently;
-authored portal metadata and bytes remain unchanged.
+The pinned enhancer preserves source-owned API titles, English language and UTF-8
+metadata. Normal builds verify exact native restoration and all local destinations;
+scheduled/manual qualification also repeats generation and deeply audits type-link
+completeness. Warning counts and documentation coverage are reported, not ratcheted.
+See [the current documentation CI contract](docs/doc-ci-simplify-001.md) for local
+commands, artifact identity and fail-closed Pages deployment.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,
 generation commands and exact renderer exception.
 
