@@ -172,22 +172,17 @@ impl HealthStatusChannel {
     /// Registers optional NUC independently of ordinary metadata. Zero capacity
     /// does not consume the one-shot; every native attempt does, even failure.
     /// No automatic retry. Registration may synchronously deliver events.
+    /// A closed owner returns [`ErrorKind::ProviderFailed`] before capacity
+    /// validation or native registration, with no registration return.
     pub fn open_nuc(
         &mut self,
         queue_capacity: usize,
     ) -> Result<crate::NucStream, crate::NucOpenError> {
+        let health = self.live().map_err(crate::NucOpenError::preflight)?;
         crate::NucStream::open_with(queue_capacity, |out, registration, d, c, r| {
             // SAFETY: exclusively borrowed typed owner, writable output slots.
             unsafe {
-                sys::ams_mel_ir_health_nuc_open(
-                    self.raw,
-                    queue_capacity,
-                    out,
-                    registration,
-                    d,
-                    c,
-                    r,
-                )
+                sys::ams_mel_ir_health_nuc_open(health, queue_capacity, out, registration, d, c, r)
             }
         })
     }
@@ -280,7 +275,7 @@ impl HealthStatusChannel {
     /// upstream has no unregister operation.
     ///
     /// The stream does not borrow this owner. It is independent of the
-    /// optional NUC_TempData registration (which this crate does not expose).
+    /// optional NUC_TempData registration through [`Self::open_nuc`].
     /// A closed owner returns [`ErrorKind::ProviderFailed`] without a native
     /// call.
     pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<HealthMetadataStream, Error> {
@@ -478,6 +473,22 @@ mod tests {
         health.close().expect("repeated close of null owner");
         assert!(!health.is_open());
         drop(health);
+    }
+
+    #[test]
+    fn null_owner_nuc_preflight_rejects_before_native_call_and_capacity_validation() {
+        let mut health = null_owner();
+        for capacity in [4, 0] {
+            let error = health.open_nuc(capacity).expect_err("closed Health NUC");
+            assert_eq!(error.error().kind(), &ErrorKind::ProviderFailed);
+            assert_eq!(error.error().diagnostic(), Some(CLOSED));
+            // A native diagnostic call would populate diagnostic_required;
+            // the safe-layer liveness error has no native diagnostic record.
+            assert_eq!(error.error().diagnostic_required(), None);
+            assert_eq!(error.registration(), None);
+            let metadata_error = health.open_metadata(capacity).expect_err("closed metadata");
+            assert_eq!(error.error(), &metadata_error);
+        }
     }
 
     /// The native facade independently rejects a null Health owner, so the

@@ -69,6 +69,13 @@ pub struct NucOpenError {
 }
 
 impl NucOpenError {
+    pub(crate) fn preflight(error: Error) -> Self {
+        Self {
+            error,
+            registration: None,
+        }
+    }
+
     pub fn error(&self) -> &Error {
         &self.error
     }

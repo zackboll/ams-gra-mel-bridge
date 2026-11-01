@@ -324,6 +324,11 @@ families! {
 }
 
 #[test]
+fn closed_health_nuc_preflight_preserves_error_contract() {
+    run("closed-health", false);
+}
+
+#[test]
 #[ignore = "isolated child entry selected by parent tests"]
 fn child_entry() {
     let selected = env::var(CHILD).expect("child selection");
@@ -332,6 +337,11 @@ fn child_entry() {
     let scratch = Scratch::new();
     if case == "independent" {
         independent(&scratch, image);
+        println!("NUC_CHILD_COMPLETE");
+        return;
+    }
+    if case == "closed-health" {
+        closed_health(&scratch);
         println!("NUC_CHILD_COMPLETE");
         return;
     }
@@ -429,6 +439,15 @@ fn child_entry() {
     };
     let mut stream = parent.nuc(if case == "overflow" { 2 } else { 4 }).unwrap();
     assert!(stream.is_open());
+    assert_eq!(
+        scratch
+            .events()
+            .lines()
+            .filter(|line| *line == "nuc_registration_attempted")
+            .count(),
+        1,
+        "live zero-capacity rejection must leave the single registration available"
+    );
     assert_eq!(
         parent.nuc(4).unwrap_err().error().kind(),
         &ErrorKind::InvalidArgument
@@ -588,4 +607,27 @@ fn independent(scratch: &Scratch, image_first: bool) {
     expect(&mut b, ErrorKind::StreamStopped);
     b.close().unwrap();
     assert_eq!(copied, rich());
+}
+
+fn closed_health(scratch: &Scratch) {
+    let session = Session::open(provider(), "nuc-rich", "").unwrap();
+    let mut health = session
+        .open_health_channel(&HealthConfig::new(id("health"), id("platform"), location()))
+        .unwrap();
+    health.close().unwrap();
+    assert!(!health.is_open());
+    for capacity in [4, 0] {
+        let error = health.open_nuc(capacity).expect_err("closed Health NUC");
+        assert_eq!(error.error().kind(), &ErrorKind::ProviderFailed);
+        assert_eq!(
+            error.error().diagnostic(),
+            Some("IR Health channel is closed")
+        );
+        assert_eq!(error.error().diagnostic_required(), None);
+        assert_eq!(error.registration(), None);
+        assert_eq!(error.error(), &health.open_metadata(capacity).unwrap_err());
+    }
+    assert!(!scratch.events().contains("nuc_registration_attempted"));
+    session.close().unwrap();
+    scratch.unloaded();
 }

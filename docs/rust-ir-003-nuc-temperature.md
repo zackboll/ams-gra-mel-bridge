@@ -147,3 +147,93 @@ change is included. These are local source/mock results, **not real hardware or
 Squall qualification**. Hosted exact-head Bootstrap status and final commit/tree
 identities are delivery metadata reported separately in the PR/handoff; a local
 pass does not imply a hosted CI pass.
+
+## RUST-IR-003-R1 — closed Health owner preflight correction
+
+Reviewed starting commit: `86e015aa295ea2eabddfadc2d6f89b91beb40390`;
+reviewed tree: `4113be1de8228a463f3b7cef94004b154b48acdb`.
+Local HEAD, remote feature HEAD and PR #156 HEAD matched, with a clean worktree.
+Current main `80dcd76ee92b645cf41e8ddc6c6124e91cd7b91c` was incorporated by
+ordinary merge commit `6439a96c97d370c7375dff5f2331c38c8fa6ea2b` (merge tree
+`b3c93043117c5893148d1c2bc45be89377e30939`). The Python package changes came
+only from that upstream merge; they are not corrective feature edits.
+
+The corrective source changes are limited to `ir_health.rs`, `ir_nuc.rs` and
+`tests/ir_nuc.rs`, plus this report. `HealthStatusChannel::open_nuc` now calls
+the existing `live()` before capacity validation or native entry, matching
+`open_metadata`. A crate-private `NucOpenError::preflight` retains that error
+without fabricating a provider Return. Both null and successfully closed Health
+owners, at capacities 4 and 0, return:
+
+- `ErrorKind::ProviderFailed`;
+- diagnostic exactly `IR Health channel is closed`;
+- `diagnostic_required() == None` (no native diagnostic call);
+- `registration() == None`.
+
+The private null-owner unit test compares the error with `open_metadata`. The
+isolated integration regression closes a real mock Health owner before Open,
+checks the same contract and zero-capacity precedence, observes no
+`nuc_registration_attempted` provider log entry, then verifies normal Session
+teardown and provider unload. Existing live zero-capacity checks now additionally
+assert that exactly one subsequent registration reaches the provider. Image NUC
+behavior and all actual native registration-result handling remain unchanged.
+
+### Original-defect negative control
+
+A disposable Rust source copy was created at
+`/home/zboll/git/ams-rust-ir-003/rust/target/qualification-r1/mutant/rust`.
+Only in that copy, the new liveness guard was replaced with
+`let health = self.raw;`, restoring direct native entry. With
+`AMS_MEL_NATIVE_LIB_DIR="$PWD/native/build-tests/lib"`,
+`AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers"`, and
+`CARGO_TARGET_DIR="$PWD/rust/target/qualification-r1/mutant-target"`, the actual
+commands were:
+
+```sh
+cargo test --manifest-path rust/target/qualification-r1/mutant/rust/Cargo.toml \
+  -p ams-mel --lib null_owner_nuc_preflight
+cargo test --manifest-path rust/target/qualification-r1/mutant/rust/Cargo.toml \
+  -p ams-mel --test ir_nuc closed_health_nuc_preflight
+```
+
+Both compiled and exited **101**, failing `assert_eq!` on error kind:
+`left: InvalidArgument`, `right: ProviderFailed`. The integration failure was
+observed inside the isolated child and propagated to its parent test. The
+correct source was copied back into the disposable tree and both commands then
+exited **0**. The working feature source was never mutated. Result: **1 applied,
+1 killed, 0 surviving, 0 invalid**, observed by two regressions. The earlier
+seven mutations were not rerun: their implementation targets are unchanged.
+
+### Reconciled-tree local acceptance
+
+The full acceptance campaign passed after incorporating main:
+
+- `make native`; `make test-native` (**435/435**); `make test-build-isolation`.
+- Focused integration: **16 passed**, one intentionally ignored child entry.
+- Focused NUC tests at **1, 4 and 16 threads**: **16 integration + 12 unit tests**
+  at each setting (the unit filter `nuc` includes the new Health preflight test).
+- Rust workspace: **255 passed**, including doctests; five isolated child
+  entries intentionally ignored in outer runs.
+- Workspace `cargo check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo fmt --all -- --check`, and
+  `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`, all using
+  `--manifest-path rust/Cargo.toml`.
+- `make test-policy` and `git diff --check`.
+- Separate production-facade Cargo build, **12 NUC unit tests** and **15
+  integration tests** passed; only the test-facade allocation failpoint case was
+  excluded. ELF RUNPATH names `native/build/lib`, NEEDED names
+  `libams_mel_c.so.0`, and there is no undefined `ams_mel_test*` dependency.
+- Production exports exactly match the reviewed unchanged map: **229** versioned
+  exports, all seven original NUC exports, no test exports. Production C/C++,
+  native providers, ABI headers/maps, raw Rust bindings and ImageStream source
+  are unchanged from the reviewed commit.
+
+An initial focused Rust attempt overlapped rebuilding the native library and
+failed to link against the in-progress artifact. It is not counted as a pass;
+the complete Rust acceptance campaign ran successfully after native/build
+isolation checks finished. Raw R1 logs are retained under
+`/home/zboll/git/ams-rust-ir-003/rust/target/qualification-r1`.
+
+These results remain local source/mock qualification, not hardware or Squall
+qualification. Final commit/tree and the one-time exact-head hosted Bootstrap
+observation are reported separately in PR #156 and the handoff.
