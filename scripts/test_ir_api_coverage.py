@@ -84,8 +84,34 @@ class CoverageTests(unittest.TestCase):
         self.reject("coverage entry schema")
 
     def test_fake_safe_ada_complete(self):
-        self.operation("C2Channel", "send(CameraCommand)")["status"] = "safe_ada"
+        # IRMEL-ADA-003 implemented CameraCommand; CameraProtectCmd remains missing.
+        self.operation("C2Channel", "send(CameraProtectCmd)")["status"] = "safe_ada"
         self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_camera_command_slice_is_exact(self):
+        # IRMEL-ADA-003: exactly the two independent sends and the Image callback;
+        # no C2 CameraCommandResp callback exists upstream or is claimed.
+        c2 = self.operation("C2Channel", "send(CameraCommand)")
+        image = self.operation("ImageChannel", "send(CameraCommand)")
+        callback = self.operation("ImageChannel", "const CameraCommandResp*const")
+        for entry in (c2, image, callback):
+            self.assertEqual(entry["status"], "safe_ada")
+        self.assertEqual(c2["native"][0]["symbol"], "ams_mel_ir_c2_submit_camera_command")
+        self.assertEqual(image["native"][0]["symbol"], "ams_mel_ir_stream_submit_camera_command")
+        self.assertFalse(any(o["interface"] == "C2Channel" and "CameraCommandResp*" in o["overload"]
+                             for o in self.upstream["operations"]))
+        types = {e["id"].split(":type:")[1]: e for e in self.coverage["types"]}
+        for name in ("CameraCommand", "CameraCommandResp"):
+            entry = types["ams::iface::irmel::" + name]
+            self.assertEqual(entry["status"], "safe_ada")
+            self.assertTrue(all(f["status"] == "represented" for f in entry["representation"]))
+        self.assertEqual(len(types["ams::iface::irmel::CameraCommand"]["representation"]), 11)
+        self.assertEqual(len(types["ams::iface::irmel::CameraCommandResp"]["representation"]), 4)
+
+    def test_camera_callback_needs_evidence(self):
+        callback = self.operation("ImageChannel", "const CameraCommandResp*const")
+        callback["native"][0]["symbol"] = "ams_mel_ir_fictitious_camera_open"
+        self.reject("missing native symbol")
 
     def test_missing_native_export(self):
         e = self.operation("C2Channel", "send(ModeCmd)")

@@ -10,7 +10,7 @@ option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp src/ir_camera_command.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
@@ -925,6 +925,29 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_ir_nuc mock_ir_provider)
     ams_mel_warnings(test_ir_nuc)
     add_test(NAME ir_nuc_contract COMMAND test_ir_nuc)
+
+    # IRMEL-ADA-003: C2/Image CameraCommand and Image CameraCommandResp, compiled as C.
+    add_executable(test_ir_camera_command tests/test_ir_camera_command.c)
+    target_compile_features(test_ir_camera_command PRIVATE c_std_11)
+    set_target_properties(test_ir_camera_command PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_camera_command PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    find_package(Threads REQUIRED)
+    target_link_libraries(test_ir_camera_command PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_camera_command mock_ir_provider)
+    ams_mel_warnings(test_ir_camera_command)
+    add_test(NAME ir_camera_command_contract COMMAND test_ir_camera_command)
+    set_tests_properties(ir_camera_command_contract PROPERTIES TIMEOUT 120)
+    foreach(family IN ITEMS c2 image)
+        foreach(failure allocation worker-launch)
+            add_test(NAME ir_camera_command_${family}_post_send_${failure}
+                COMMAND test_ir_camera_command post-send ${family} ${failure})
+            set_tests_properties(ir_camera_command_${family}_post_send_${failure} PROPERTIES TIMEOUT 30)
+        endforeach()
+        add_test(NAME ir_camera_command_${family}_finish_failure
+            COMMAND test_ir_camera_command finish-failure ${family})
+        set_tests_properties(ir_camera_command_${family}_finish_failure PROPERTIES TIMEOUT 30)
+    endforeach()
 
     add_executable(test_ir_c2 tests/test_ir_c2.c)
     target_compile_features(test_ir_c2 PRIVATE c_std_11)

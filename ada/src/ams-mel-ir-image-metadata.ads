@@ -3,6 +3,7 @@ private with Ada.Finalization;
 with Interfaces;
 with AMS.MEL.Status;
 with AMS.MEL.IR.NUC;
+with AMS.MEL.IR.Camera;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Image.Metadata is
@@ -11,7 +12,8 @@ package AMS.MEL.IR.Image.Metadata is
    --  OpticalDistortionMap and other upstream callbacks are not bound here. Payloads are copied at
    --  the native callback boundary and again into safe Ada values; no provider pointer is exposed.
    --  Optional NUC_TempData has a separate opt-in owner, NUC_Stream, so Open is unaffected by
-   --  providers without NUC support.
+   --  providers without NUC support. CameraCommandResp (@RequiredIfCameraCtrl) likewise has its
+   --  own opt-in owner, Camera_Response_Stream; Open never registers it.
 
    type Metadata_Kind is
      (Bad_Pixel_List_Event,
@@ -241,7 +243,51 @@ package AMS.MEL.IR.Image.Metadata is
    --  close the image stream.
    --  @param Stream NUC owner to close.
    --  @exception Provider_Error Native close failed.
+   type Camera_Response_Stream is limited private;
+   --  Limited opt-in owner of ImageChannel CameraCommandResp reception, independent of Open, the
+   --  NUC owner and every CameraCommand request. Explicit Close is preferred; finalization
+   --  attempts non-raising cleanup. Serialize operations on the same owner.
+   function Open_Camera_Response
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive) return Camera_Response_Stream;
+   --  Registers the upstream ImageChannel CameraCommandResp callback once per image stream,
+   --  including after failure. Registration may deliver synchronously. Failure publishes no
+   --  owner; the retained callback stays inactive because upstream has no unregister. Responses
+   --  are copied before the callback returns into one bounded drop-incoming queue; the owner
+   --  stops with the stream. Delivery never proves a CameraCommand request completed.
+   --  @param Stream Attached or running image stream.
+   --  @param Queue_Capacity Maximum number of queued responses.
+   --  @return Limited CameraCommandResp consumption owner.
+   --  @exception AMS.MEL.IR.Camera.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible stream, repeated attempt, other registration
+   --  failure or exception, or native failure.
+   function Receive_Camera_Response
+     (Stream : Camera_Response_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Camera.Camera_Command_Response;
+   --  Dequeues one complete response in successful-enqueue order. Queued responses drain after
+   --  the image stream stops.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned response independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, invalid native data or native failure.
+   function Camera_Response_Counters (Stream : Camera_Response_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming responses.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Camera_Response_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback or close
+   --  the image stream.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
 private
+   type Camera_Response_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Camera_Response_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Camera_Response_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Camera_Response_Stream);
    type NUC_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.NUC_Metadata_Handle := AMS.MEL_C_API.Null_NUC_Metadata;
    end record;

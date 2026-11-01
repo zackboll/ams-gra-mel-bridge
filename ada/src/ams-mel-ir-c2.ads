@@ -1,6 +1,7 @@
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 with Ada.Containers.Indefinite_Vectors;
+with AMS.MEL.IR.Camera;
 with AMS.MEL.IR.Channel;
 private with AMS.MEL_C_API;
 
@@ -413,6 +414,20 @@ package AMS.MEL.IR.C2 is
    --  @param Request Open Return observer; must not race Close.
    --  @param Timeout_Milliseconds Maximum wait in milliseconds; zero polls.
    --  @return Owned terminal payload or explicit rejection.
+
+   function Submit_Camera_Command
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Camera.Camera_Command)
+      return AMS.MEL.IR.Camera.Camera_Request;
+   --  Submit a complete CameraCommand through C2Channel::send(CameraCommand) while Enabled,
+   --  never through the Image channel. Every field is copied exactly; the provider is called
+   --  without bridge locks and may deliver callbacks synchronously. The pending request
+   --  retains the channel, Session and provider after Close of the request, channel or Session;
+   --  closing the channel defers teardown and never cancels the command. Session admission
+   --  exhaustion raises the resource-exhaustion exception; a closed or non-Enabled channel,
+   --  provider send exception and other failures raise a provider error.
+   --  @param Channel Enabled typed owner; externally serialize owner operations.
+   --  @param Command Complete owned command to copy.
+   --  @return Limited request owner whose result may report Command_Success False.
 
    procedure Close (Request : in out Mode_Request);
    --  Idempotently release the public Mode observer. Pending native work retains

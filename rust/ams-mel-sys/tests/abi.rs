@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 229);
-    assert_eq!(exported.len(), 229);
+    assert_eq!(declared.len(), 239);
+    assert_eq!(exported.len(), 239);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3360,6 +3360,34 @@ fn declarations_match_the_c_header() {
     );
     layout!(expected, AmsMelRfVaDataPipeGroupSpanV1, data, size);
     layout!(expected, AmsMelRfVaDataPipeConnectionsSnapshotV1, groups);
+    layout!(
+        expected,
+        AmsMelIrCameraCommandV1,
+        command_id,
+        system_time_ns,
+        image_type,
+        width,
+        height,
+        frame_rate_hz,
+        integration_time_ns,
+        row_offset,
+        column_offset,
+        direction,
+        number_of_stages
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraCommandResponseV1,
+        command_id,
+        size,
+        timestamp_ns,
+        command_success
+    );
+    layout!(expected, AmsMelIrCameraCommandResultV1, response, error_code);
+    expected.extend([
+        AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ as usize,
+        AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ as usize,
+    ]);
     expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,

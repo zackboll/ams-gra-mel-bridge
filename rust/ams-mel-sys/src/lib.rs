@@ -1120,6 +1120,41 @@ span!(AmsMelIrTempPointSpanV1, AmsMelIrTempPointV1);
 pub struct AmsMelIrNucTempDataEventV1 {
     pub temp_points: AmsMelIrTempPointSpanV1,
 }
+/// IRMEL-ADA-003: pinned ScanDir alternatives.
+pub type AmsMelIrScanDir = u32;
+pub const AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ: AmsMelIrScanDir = 0;
+pub const AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ: AmsMelIrScanDir = 1;
+/// IRMEL-ADA-003: every CameraCommand field (raw mirror; no safe Rust API yet).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraCommandV1 {
+    pub command_id: u32,
+    pub system_time_ns: i64,
+    pub image_type: u32,
+    pub width: u32,
+    pub height: u32,
+    pub frame_rate_hz: u32,
+    pub integration_time_ns: i64,
+    pub row_offset: u32,
+    pub column_offset: u32,
+    pub direction: AmsMelIrScanDir,
+    pub number_of_stages: u32,
+}
+/// IRMEL-ADA-003: every CameraCommandResp field; command_success is 0 or 1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraCommandResponseV1 {
+    pub command_id: u32,
+    pub size: u32,
+    pub timestamp_ns: i64,
+    pub command_success: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraCommandResultV1 {
+    pub response: AmsMelIrCameraCommandResponseV1,
+    pub error_code: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrImageBandV1 {
@@ -1871,6 +1906,24 @@ pub struct AmsMelIrNucMetadata {
 /// IRMEL-ADA-002: opaque copied NUC_TempData event.
 #[repr(C)]
 pub struct AmsMelIrNucEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-003: opaque asynchronous C2/Image CameraCommand request.
+#[repr(C)]
+pub struct AmsMelIrCameraCommandRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-003: opaque opt-in Image CameraCommandResp owner.
+#[repr(C)]
+pub struct AmsMelIrCameraResponseMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-003: opaque copied CameraCommandResp event.
+#[repr(C)]
+pub struct AmsMelIrCameraResponseEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3161,6 +3214,79 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_nuc_event_close(
         event: *mut *mut AmsMelIrNucEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_camera_command(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrCameraCommandV1,
+        out: *mut *mut AmsMelIrCameraCommandRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stream_submit_camera_command(
+        stream: *mut AmsMelIrStream,
+        command: *const AmsMelIrCameraCommandV1,
+        out: *mut *mut AmsMelIrCameraCommandRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_command_request_wait(
+        request: *const AmsMelIrCameraCommandRequest,
+        timeout_ms: u32,
+        out: *mut AmsMelIrCameraCommandResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_command_request_close(
+        request: *mut *mut AmsMelIrCameraCommandRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_camera_response_open(
+        stream: *mut AmsMelIrStream,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrCameraResponseMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_response_receive(
+        metadata: *mut AmsMelIrCameraResponseMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrCameraResponseEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_response_get_counters(
+        metadata: *const AmsMelIrCameraResponseMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_response_close(
+        metadata: *mut *mut AmsMelIrCameraResponseMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_response_event_view(
+        event: *const AmsMelIrCameraResponseEvent,
+        out: *mut *const AmsMelIrCameraCommandResponseV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_response_event_close(
+        event: *mut *mut AmsMelIrCameraResponseEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

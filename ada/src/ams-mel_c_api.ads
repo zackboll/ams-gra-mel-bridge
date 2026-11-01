@@ -83,6 +83,16 @@ private package AMS.MEL_C_API is
    type NUC_Event_Handle is new System.Address;
    Null_NUC_Event                     : constant NUC_Event_Handle :=
      NUC_Event_Handle (System.Null_Address);
+   --  IRMEL-ADA-003 CameraCommand request and opt-in CameraCommandResp owner/event.
+   type Camera_Command_Request_Handle is new System.Address;
+   Null_Camera_Command_Request        : constant Camera_Command_Request_Handle :=
+     Camera_Command_Request_Handle (System.Null_Address);
+   type Camera_Response_Metadata_Handle is new System.Address;
+   Null_Camera_Response_Metadata      : constant Camera_Response_Metadata_Handle :=
+     Camera_Response_Metadata_Handle (System.Null_Address);
+   type Camera_Response_Event_Handle is new System.Address;
+   Null_Camera_Response_Event         : constant Camera_Response_Event_Handle :=
+     Camera_Response_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
    Null_Navigation_Request            : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
@@ -836,6 +846,34 @@ private package AMS.MEL_C_API is
       Clear_Fault_Codes : String_View_Span_V1;
    end record
    with Convention => C;
+   --  IRMEL-ADA-003 records; layouts are asserted against C by the Ada tests.
+   type IR_Camera_Command_V1 is record
+      Command_ID          : Interfaces.Unsigned_32;
+      System_Time_NS      : Interfaces.Integer_64;
+      Image_Type          : Interfaces.Unsigned_32;
+      Width               : Interfaces.Unsigned_32;
+      Height              : Interfaces.Unsigned_32;
+      Frame_Rate_Hz       : Interfaces.Unsigned_32;
+      Integration_Time_NS : Interfaces.Integer_64;
+      Row_Offset          : Interfaces.Unsigned_32;
+      Column_Offset       : Interfaces.Unsigned_32;
+      Direction           : Interfaces.Unsigned_32;
+      Number_Of_Stages    : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Camera_Command_Response_V1 is record
+      Command_ID      : Interfaces.Unsigned_32;
+      Size            : Interfaces.Unsigned_32;
+      Timestamp_NS    : Interfaces.Integer_64;
+      Command_Success : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Camera_Command_Result_V1 is record
+      Response   : IR_Camera_Command_Response_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
    type IR_Config_Set_Command_V1 is record
       Command_ID     : Interfaces.Unsigned_32;
       System_Time_NS : Interfaces.Integer_64;
@@ -1503,6 +1541,79 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_nuc_event_close";
+   function IR_C2_Submit_Camera_Command
+     (Handle              : C2_Handle;
+      Command             : access IR_Camera_Command_V1;
+      Output              : access Camera_Command_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_camera_command";
+   function IR_Stream_Submit_Camera_Command
+     (Stream              : Stream_Handle;
+      Command             : access IR_Camera_Command_V1;
+      Output              : access Camera_Command_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stream_submit_camera_command";
+   function IR_Camera_Command_Request_Wait
+     (Handle              : Camera_Command_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Camera_Command_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_command_request_wait";
+   function IR_Camera_Command_Request_Close
+     (Handle              : access Camera_Command_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_command_request_close";
+   function IR_Image_Camera_Response_Open
+     (Stream              : Stream_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Camera_Response_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_camera_response_open";
+   function IR_Camera_Response_Receive
+     (Handle              : Camera_Response_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Camera_Response_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_receive";
+   function IR_Camera_Response_Get_Counters
+     (Handle              : Camera_Response_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_get_counters";
+   function IR_Camera_Response_Close
+     (Handle              : access Camera_Response_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_close";
+   function IR_Camera_Response_Event_View
+     (Handle              : Camera_Response_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_event_view";
+   function IR_Camera_Response_Event_Close
+     (Handle              : access Camera_Response_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_event_close";
    function IR_Instrumentation_Open
      (Parent              : Session_Handle;
       Config              : access constant IR_Instrumentation_Config_V1;

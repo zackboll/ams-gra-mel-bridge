@@ -434,12 +434,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CameraCommand)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Enabled-only C2Channel::send(CameraCommand) through the shared camera completion engine: lifetime claim under the C2 lock, unlocked provider send, Session admission, deferred C2 teardown on pending Close, cached Wait; all 11 fields exact; CommandSuccess=false is a successful response distinct from MEL rejection.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -1328,12 +1357,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::registerMetadataCallback(std::function<void(Channel&,const CameraCommandResp*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_image_camera_response_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Open_Camera_Response"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Camera_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Opt-in ImageChannel CameraCommandResp owner, never registered by the four-kind metadata Open; one shot, NotSupported distinct, synchronous delivery safe, complete copy before callback return, bounded drop-incoming queue, stops with the stream, no upstream unregister; independent of request futures.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -1510,12 +1564,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::send(CameraCommand)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Attached/Running ImageChannel::send(CameraCommand), independent of the C2 send: Image request accounting under the frame-callback lock, unlocked send, deferred Image teardown across Stop/Close, cached Wait; never routed through C2.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -6335,98 +6418,291 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraCommand",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing ID/time/image type/dimensions/frame rate/integration/offset/direction/stage representation and both independent C2/Image sends.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All 11 fields in ams_mel_ir_camera_command_v1 and the shared Ada AMS.MEL.IR.Camera.Camera_Command: unsigned 32-bit ID/width/height/frame rate/offsets/stages, signed-nanosecond system and integration times, exact Staring/Scanning and both ScanDir values. Reserved13 and unknown discriminators are rejected before send, not treated as modes; no physical limits or normalization.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getSystemTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getImageType",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getWidth",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getHeight",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getFrameRate",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getIntegrationTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getRowOffset",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getColumnOffset",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getDirection",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getNumberOfStages",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraCommandResp",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing ID/size/timestamp/success representation and Image registration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_response_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Camera_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All four fields in ams_mel_ir_camera_command_response_v1 and Ada Camera_Command_Response (unsigned 32-bit ID and size, signed-nanosecond timestamp, Boolean CommandSuccess), shared by both request results and the Image callback; CommandSuccess=false stays a successful response.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getSize",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getTimestamp",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getCommandSuccess",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         }
       ]
     },
@@ -10130,11 +10406,30 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ScanDir",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Both pinned alternatives as AMS_MEL_IR_SCAN_DIR_* and Ada Camera.Scan_Direction, used by CameraCommand; unknown values rejected before send.",
       "limitations": [],
       "representation": []
     },
@@ -12896,8 +13191,12 @@
     "ada/src/ams-mel-ir-c2-common.ads": "bd8177f8da2d5ebc8cd3b870c0dc536cf78732144ffa1dcee89a17ca85c43891",
     "ada/src/ams-mel-ir-c2-metadata.adb": "425b888f01d45049927366fcaec61354a5bd0531fe517513a7a0fe5f8f7d45f3",
     "ada/src/ams-mel-ir-c2-metadata.ads": "e04e9b7760ebb7126257526356472239769dba14b99ae123b37ec9bcf64549db",
-    "ada/src/ams-mel-ir-c2.adb": "4be8347f481b61c913ac709cf6543529d6d8dafef836c493c8b3b575280b58b1",
-    "ada/src/ams-mel-ir-c2.ads": "44bd9d07d15d473e684e30c0eb041b4fd3ad6280adb50dd67286b118a8bc1da6",
+    "ada/src/ams-mel-ir-c2.adb": "32d5415830ba2d9447ed6be75ddfff505a7921af3644053639046246187bb150",
+    "ada/src/ams-mel-ir-c2.ads": "c5bfe5d23aa06cfaaf8356831b3c62a6834414dae688180097857bdb2aaa217d",
+    "ada/src/ams-mel-ir-camera.adb": "d2a50ae65e16a8e673057a1ce87269cef91b05b3f0f41c1526824f28ca84224b",
+    "ada/src/ams-mel-ir-camera.ads": "3db98c57bbc03d68fecdf74d5ae771815af30cfe145b278d9791a83d3f631d60",
+    "ada/src/ams-mel-ir-camera_conversion.adb": "da79bc05a194e9be42661985a7db275aa757d761901f8907f5bf2c4db364ced6",
+    "ada/src/ams-mel-ir-camera_conversion.ads": "e6102ce7c75dac79b70651013edc8b16c0645eff2390395352255e1c178d3e86",
     "ada/src/ams-mel-ir-capability_conversion.adb": "d3b5180fc9af805054972a3923344cb30ca1b7cd84d8a8402e260e51073dbced",
     "ada/src/ams-mel-ir-capability_conversion.ads": "26a27f95e177af2ec1a8111f8461152e5e5665ed39e6ec7d1beffeeaaa6c86bc",
     "ada/src/ams-mel-ir-channel.adb": "7992ea2ae8786fe01e735c06f2b93d4cb264f598bc872009dbd3b26dc84814d5",
@@ -12906,10 +13205,10 @@
     "ada/src/ams-mel-ir-health_status-metadata.ads": "b9b32acf1fb83fb0d050f56e8bd01188c34c4c2150ab8c32182d30b66aca6e71",
     "ada/src/ams-mel-ir-health_status.adb": "d114a876d51b9912c0e129ba1141ac8dfd8585e6b0cc43c50613b7083a74682b",
     "ada/src/ams-mel-ir-health_status.ads": "5fb3a8d7d08c2330b5b770241c1f724d551958ec8484c57f4736702e23f75b61",
-    "ada/src/ams-mel-ir-image-metadata.adb": "b41eb70dfeff0bc264a4d638371f1df90879aaa030413b92c511403d8928e569",
-    "ada/src/ams-mel-ir-image-metadata.ads": "af158dd84ff76e3cb388771ee5e79a5a8f452041dc987d00d81fcae5aa5bee98",
-    "ada/src/ams-mel-ir-image.adb": "5b5bfe2ab7c0a18bb7ff544975d5c0d6458706d0b082739d2213afe0f3a3ffa3",
-    "ada/src/ams-mel-ir-image.ads": "decb360621617d35433cee90cec66c0faf5cd64cc1b18e876d16844406801100",
+    "ada/src/ams-mel-ir-image-metadata.adb": "5ef6cd78cc92d042cea7dbc71aaa456878eac2c96d88cdb78f4e2d4943b3dc23",
+    "ada/src/ams-mel-ir-image-metadata.ads": "374c3d6b2339a5e6e1f436f9f098b425e9e4ab37ebba448d170f2f62d5aea79b",
+    "ada/src/ams-mel-ir-image.adb": "38171a977785bd1d6cd473e8abdae0331ea0953271baf5692e6b07db4d23fe27",
+    "ada/src/ams-mel-ir-image.ads": "54646122500bc4ba94db73945052e30c2403c36300c5d84243c24afe21d9af5c",
     "ada/src/ams-mel-ir-instrumentation-metadata.adb": "f15f64a5bc9cf852d48b401482e2fdafbcad8b74db3ff9b33f5a197765de087d",
     "ada/src/ams-mel-ir-instrumentation-metadata.ads": "a8d39c78fc3e63d76eb0cd40a5da27ecf915904075b944bff5be2fc88569271f",
     "ada/src/ams-mel-ir-instrumentation.adb": "892db54f14e65ed4fe8639f58d7a4c8f1ec65537a3726d17ab24adeb5d70865e",
@@ -12925,34 +13224,36 @@
     "ada/src/ams-mel-ir-track-updates.ads": "db60fbb65ea04f026d33c353165e29214005378c61aae760d2569a6e33b60051",
     "ada/src/ams-mel-ir-track.adb": "be5ba8477967aeb6e2b8950b68120913427459da83c2220314884c75680bcb4c",
     "ada/src/ams-mel-ir-track.ads": "0a02dbfc84a51ac6fd1de72cfb71a1ba74cb364e9cacb568ca9027254831a856",
-    "ada/src/ams-mel-ir.adb": "1cb1b2a5a6f8c1220ebf32d4524b7c1221e15c2ecf69246ce5fe5e21fe6340f7",
-    "ada/src/ams-mel-ir.ads": "86c997ea2be72c78582e44a98ce03edc774e638d54b4a8acb79da3e076a74f60",
+    "ada/src/ams-mel-ir.adb": "5072a38ee8743ad3e8637f118a0cbce9cefba661bd8c3ec6537e3834e205a592",
+    "ada/src/ams-mel-ir.ads": "25b86b3ecee2acbd8ae7f972200d56187264cb28110a004ae74aee4bddc41e9e",
     "ada/src/ams-mel-status.adb": "9df708f84c149acb3b01f3decb6501564795108fd6a97d7d31fa1e5a213efbe1",
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "632262f97f525c7605ccd30123d0ecadbdea3624893370bfbfd47e7d9b9960b3",
-    "native/include/ams_mel/abi.h": "10a175bd5080758806410dc1b175db91d491addec6f3eea5ab562cc04020b4f5",
+    "ada/src/ams-mel_c_api.ads": "de92f907601f3bed6ba36ca579bf04139b8e217145a58eaae10596f7f82207a1",
+    "native/include/ams_mel/abi.h": "eb75c14445078927b6e725ba9f26af56b76210a8ca588073cdd177974c8c3edc",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "025cdf101c2609c5d0eaeadda0e16c3aaabde60c26a307f68c6a93e31a4420e5",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "e0ecdebcdd18f384ea508350ec5017dd22d782324094c70b5070830a021caeb5",
+    "native/src/exports.map": "b8459310c789a2f5dde319f4a08ac82cb170ff1f5c0f43987c36bcaeb6a76e50",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "5bc7dae97c242c5640a9748b213b345e50835ff19fd3e14103e573212e7eb544",
-    "native/src/internal/completion_probe.hpp": "a12f634cdc1b6ecaded92b3195ccfab26a723df468cf94bccad1ae59a9ac7008",
+    "native/src/internal/completion_probe.hpp": "3457c8c42fe9d7be5c07ba3a112f98323db048a8ac5ca22a7d90cf7100d812e1",
+    "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
     "native/src/internal/ir_channel.hpp": "0b276634a2637c34fc997c02ccf0e845eaf0184af991e75b9f2add88d639b1a0",
     "native/src/internal/ir_nuc.hpp": "034369c2cfad4e2c1e2d914fc3e867c23caf05ab5073c53e653fc27d2d10568b",
-    "native/src/internal/ir_stream.hpp": "32b60bdd738352cc35dc69453214dbcf18b023b7cca333983ee9fe0450410566",
+    "native/src/internal/ir_stream.hpp": "771212fd2f0c21ab48167f21cf8e63cd6854cb93740111a6b8c9dd9d61b872fd",
     "native/src/internal/provider_common.hpp": "c0c16122b30afce07dced9b59b57b1a8bf3d2c4b3b2ffd18d28ecad79fe6c46e",
     "native/src/internal/shared_library.hpp": "d1aaf08fa318e128efdcb9515b4171d953a6e8bb0d320c4506a6aeec96e97dbd",
-    "native/src/ir_c2.cpp": "f63be3623e1c6abd44e49a4cb44e40316ef0c74671d5457c64d0b87b894af607",
+    "native/src/ir_c2.cpp": "926f0d468bca91cd14c8f17119076a6357b36a7626f2e2a4f2028e05c5e309e3",
+    "native/src/ir_camera_command.cpp": "cf7b9d6f47f1311b06f21f2293c2e534c78475fdf3f0d56d28eb843cf1a0b11c",
     "native/src/ir_channel.cpp": "d72e0666fa0e6966a6abc766be1ce21a577ec031908851bc09500e2fc970d149",
     "native/src/ir_health.cpp": "dd84f18b2dc94bb6b3421ae1169b3443c00ac4bb4538b79b77b68a92f28f38fa",
     "native/src/ir_image.cpp": "51a264c8fd3879b6b8b7b3e41cf8616539a326744d4361c11c3a98bcf2274132",
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
-    "native/src/ir_stream.cpp": "704761569ed05220c5bcd59db6daffaee856eee218fb65e70c55d2f9522c5f9b",
+    "native/src/ir_stream.cpp": "b8ab436598dd603e594936dcc8225ce1a31ae31143201429ce835998fa77fd5f",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
     "native/src/provider.cpp": "3dc1a0478a4f3762fb35a8607efd743001b6faef1a4a668fa2dc0865b821f50d"
   }
