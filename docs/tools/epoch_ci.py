@@ -289,6 +289,9 @@ def prepare(directory, prefix):
                 ["sh", "docs/tools/qualify_examples.sh"])
     for i, command in enumerate(commands):
         execute(command, ROOT, logs / ('language-' + str(i) + '.log'), env)
+    execute([py, '-W', 'error', '-m', 'unittest', 'discover', '-s', 'docs/tests',
+             '-p', 'source_epoch_regression_tests.py', '-v'],
+            ROOT, logs / 'current-documentation-regressions.log', env)
     # Candidates cannot alter their source while executing language/test code.
     require(context() == outer and classify(ROOT, outer['target_sha'], outer['source_sha']) == value,
             'candidate qualification changed source or epoch')

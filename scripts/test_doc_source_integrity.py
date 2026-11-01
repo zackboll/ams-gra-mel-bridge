@@ -83,6 +83,16 @@ class IntegrityTests(unittest.TestCase):
                      '  python:\n    permissions:\n      contents: write\n')
         self.reject_workflow()
 
+    def test_documentation_preparation_and_aggregate_tokens_cannot_write(self):
+        path = self.root / '.github/workflows/documentation.yml'
+        original = path.read_text()
+        for job in ('prepare-documentation', 'build'):
+            with self.subTest(job=job):
+                path.write_text(original.replace('  ' + job + ':\n',
+                    '  ' + job + ':\n    permissions:\n      contents: write\n', 1))
+                self.reject_workflow()
+        path.write_text(original)
+
     def test_privileged_pr_event_rejected(self):
         self.replace('.github/workflows/ci.yml', '  pull_request:', '  pull_request_target:')
         self.reject_workflow()
@@ -116,6 +126,43 @@ class IntegrityTests(unittest.TestCase):
         self.replace('.github/workflows/documentation.yml',
                      '--gate-sha', '--unchecked-gate')
         self.reject_workflow()
+
+    def test_documentation_action_pin_owner_and_role_mutations_reject(self):
+        from ci001r3_workflow import ACTION_PINS
+        path = self.root / '.github/workflows/documentation.yml'
+        original = path.read_text()
+        for action, pin in ACTION_PINS.items():
+            token = action + '@' + pin
+            alternatives = (action + '@main', 'untrusted/' + action.split('/')[1] + '@' + pin,
+                            action + '@' + '0' * 40 + ' # wrong-release', '')
+            for replacement in alternatives:
+                with self.subTest(action=action, replacement=replacement):
+                    self.assertIn(token, original)
+                    path.write_text(original.replace(token, replacement, 1))
+                    self.reject_workflow()
+            replacement = 'actions/checkout' if action != 'actions/checkout' else 'actions/upload-artifact'
+            path.write_text(original.replace(token, replacement + '@' + ACTION_PINS[replacement], 1))
+            self.reject_workflow()
+        path.write_text(original)
+
+    def test_required_shards_hidden_files_and_diagnostic_boundaries_reject_mutation(self):
+        path = self.root / '.github/workflows/documentation.yml'
+        original = path.read_text()
+        changes = (
+            ('include-hidden-files: true', 'include-hidden-files: false'),
+            ('fail-fast: false', 'fail-fast: true'),
+            ('if: always()\n    needs: [prepare-documentation, enhanced-tests]',
+             'if: success()\n    needs: [prepare-documentation, enhanced-tests]'),
+            ('pattern: documentation-result-*', 'pattern: documentation-failure-diagnostics-*'),
+            ('--diagnostics "$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}"', ''),
+            ('--bundle-sha', '--unverified-bundle'),
+        )
+        for before, after in changes:
+            with self.subTest(mutation=before):
+                self.assertIn(before, original)
+                path.write_text(original.replace(before, after, 1))
+                self.reject_workflow()
+        path.write_text(original)
 
 
 if __name__ == '__main__':

@@ -10,6 +10,10 @@ transition table is required for normal development. Additions, modifications,
 removals and renames are source deltas, not authorization requests.
 
 PR #142 is updated in place. No new PR, force push, auto-merge or publication.
+This is the single source-policy redesign effort, including the overlapping
+proposed POL-003 scope. Independent review owns merging. The deletion audit and
+coverage limitations are in `py-pol-001-deletion-review.md`; passing Bootstrap
+alone does not establish equivalence for every removed historical control.
 PR #140 stays unchanged until this correction is qualified. Its exact head is
 `e738a001e620b85abf2a38cb32b1ffad24713c4c`; its three byte-identical Python files
 pass the normal revised source checkers in a disposable checkout.
@@ -112,7 +116,7 @@ recorded in PR #142 and `/home/zboll/git/ams-py-pol-001-r1-evidence/`. Pending o
 failed checks are not reported as successful. Original historical fixture
 failures are distinguished from actual current functional/security defects.
 
-After qualification, resume Python MEL binding implementation with PR #140;
+After independent review of this redesign, resume Python MEL binding work with PR #140;
 no further source-policy task is a prerequisite for bindings over existing C
 interfaces. Merge/approval and implementation of that feature are not performed
 by this revision.

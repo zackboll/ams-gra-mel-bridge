@@ -10,6 +10,13 @@ test-policy:
 	@python3 -W error -m unittest discover -s docs/tests -p py_pol_001_tests.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_bootstrap_ci_policy.py -v
 
+# Explicitly requires the pinned enhancer interpreter and GNATdoc environment.
+# Ordinary provider-free Bootstrap remains independent of documentation downloads.
+.PHONY: test-documentation-source
+DOC_PYTHON ?= .doc-tools/enhancer/bin/python
+test-documentation-source:
+	@$(DOC_PYTHON) -W error -m unittest discover -s docs/tests -p source_epoch_regression_tests.py -v
+
 help:
 	@printf '%s\n' \
 	  'make native       Build the production C ABI library in native/build' \

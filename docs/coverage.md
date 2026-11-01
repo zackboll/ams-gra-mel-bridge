@@ -14,7 +14,10 @@ commits, original tests and recorded failures remain separate from current
 development; the pre-existing corrected replay keeps its distinct identity.
 This supersedes the development-admission/approval requirements in the earlier
 policy entries below, not their historical evidence. No ABI or runtime API
-changes. See `py-pol-001-python-source-admission.md`.
+changes. This is the single redesign effort, including the proposed POL-003
+scope; it is not merge authorization. Deletion accounting, restored security
+regressions and outstanding qualification are in `py-pol-001-deletion-review.md`.
+See also `py-pol-001-python-source-admission.md`.
 
 ## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
 

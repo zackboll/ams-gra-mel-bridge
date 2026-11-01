@@ -149,6 +149,88 @@ class HistoricalIsolationTests(unittest.TestCase):
             self.assertEqual(source.revision(checkout, 'HEAD'), source.HISTORICAL_MAIN)
 
 
+class HistoricalReplayConstructionTests(unittest.TestCase):
+    def setUp(self):
+        import ci001r4_replay as replay
+        self.replay = replay
+        self.temp = tempfile.TemporaryDirectory(prefix='ci001r4-source-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / 'source'
+        subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(ROOT), str(self.root)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.git('checkout', '--detach', source.HISTORICAL_MAIN)
+        self.git('config', 'user.name', 'CI-001R3-R4 control')
+        self.git('config', 'user.email', 'ci001r4@example.invalid')
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.root), *args], stderr=subprocess.STDOUT).decode().strip()
+
+    def blob(self, revision, name):
+        return source.blob(ROOT, revision, name)
+
+    def test_construction_is_deterministic_and_bound_to_reviewed_sources(self):
+        first = self.replay.build_objects(self.root)
+        self.assertEqual(first, (self.replay.TREE, self.replay.COMMIT))
+        self.assertEqual(self.replay.build_objects(self.root), first)
+        self.assertEqual(self.git('rev-parse', self.replay.COMMIT + '^'), source.HISTORICAL_MAIN)
+        names = self.git('diff-tree', '-r', '--name-only', '--no-commit-id', source.HISTORICAL_MAIN, self.replay.COMMIT).split()
+        self.assertEqual(sorted(names), sorted(self.replay.SOURCES))
+        self.assertEqual(self.git('rev-parse', 'HEAD'), source.HISTORICAL_MAIN)  # Original never rewritten.
+        self.assertEqual(self.git('rev-parse', source.HISTORICAL_MAIN + '^{tree}'), source.HISTORICAL_TREE)
+
+    def test_replay_changes_only_reviewed_helper_and_admission(self):
+        sources = self.replay.successor_sources(self.blob)
+        original = self.blob(source.HISTORICAL_MAIN, self.replay.LIVE)
+        self.assertEqual(self.replay.restore_helper(sources[self.replay.LIVE], original), original)
+        self.assertEqual(sources[self.replay.LIVE], self.blob(self.replay.REVIEWED, self.replay.LIVE))
+        qualifier = sources[self.replay.QUALIFIER]
+        self.assertIn(b'def live_fixture_source(content):', qualifier)
+        self.assertNotIn(b'def live_fixture_source(content):', self.blob(source.HISTORICAL_MAIN, self.replay.QUALIFIER))
+
+    def test_missing_or_altered_replay_sources_reject(self):
+        for revision, name in ((source.HISTORICAL_MAIN, self.replay.LIVE), (source.HISTORICAL_MAIN, self.replay.QUALIFIER),
+                               (self.replay.REVIEWED, self.replay.LIVE), (self.replay.REVIEWED, self.replay.QUALIFIER)):
+            for mutation in ('missing', 'altered'):
+                with self.subTest(revision=revision, name=name, mutation=mutation):
+                    def blob(rev, path):
+                        if (rev, path) == (revision, name):
+                            if mutation == 'missing':
+                                raise subprocess.CalledProcessError(128, ['git', 'show'])
+                            return self.blob(rev, path) + b'\n# altered\n'
+                        return self.blob(rev, path)
+                    with self.assertRaisesRegex(ValueError, 'historical replay'):
+                        self.replay.successor_sources(blob)
+
+    def test_other_helper_test_body_or_admission_changes_reject(self):
+        reviewed = self.blob(self.replay.REVIEWED, self.replay.LIVE)
+        qualifier = self.blob(self.replay.REVIEWED, self.replay.QUALIFIER)
+        # (mutation, outside the reviewed api_page() helper?) Every mutation is
+        # rejected by exact replay bytes; outside-helper edits also by restore.
+        live_cases = [(reviewed.replace(b'self.assertEqual(count, 1)', b'self.assertEqual(count, 0)', 1), True),
+                      (reviewed.replace(b'def reject(self, guard):', b'def reject(self, other):', 1), True),
+                      (reviewed.replace(b'required[0]', b'required[-1]', 1), False),
+                      (reviewed.replace(b'    def test_wrong_native_anchor(self):', b'    def test_renamed(self):', 1), True),
+                      (reviewed + b'\nclass Extra(unittest.TestCase):\n    def test_extra(self): pass\n', True)]
+        admission_cases = [qualifier.replace(b'content in (original, proposed)', b'True', 1),
+                           qualifier.replace(b'live fixture historical source mismatch', b'changed', 1)]
+        for number, (data, outside) in enumerate(live_cases):
+            with self.subTest(live=number):
+                self.assertNotEqual(data, reviewed)
+                blob = lambda rev, path: data if (rev, path) == (self.replay.REVIEWED, self.replay.LIVE) else self.blob(rev, path)
+                with self.assertRaisesRegex(ValueError, 'historical replay'):
+                    self.replay.successor_sources(blob)
+                if outside:
+                    with self.assertRaisesRegex(ValueError, 'historical replay'):
+                        self.replay.restore_helper(data, self.blob(source.HISTORICAL_MAIN, self.replay.LIVE))
+                else:  # Helper-internal: restoration alone cannot judge reviewed bytes.
+                    self.replay.restore_helper(data, self.blob(source.HISTORICAL_MAIN, self.replay.LIVE))
+        for number, data in enumerate(admission_cases):
+            with self.subTest(admission=number):
+                blob = lambda rev, path: data if (rev, path) == (self.replay.REVIEWED, self.replay.QUALIFIER) else self.blob(rev, path)
+                with self.assertRaisesRegex(ValueError, 'historical replay'):
+                    self.replay.successor_sources(blob)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', action='store_true')

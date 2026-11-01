@@ -67,9 +67,12 @@ def vendor_integrity(root):
 def workflow_security(root):
     root = Path(root)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'docs/tools'))
-    from ci001r3_workflow import deploy_contract, live_contract, preparation_contract
+    from ci001r3_workflow import deploy_contract, jobs, live_contract, preparation_contract
     for contract in (preparation_contract, deploy_contract, live_contract):
         contract(root)
+    for name, job in jobs(root).items():
+        require(name == 'deploy' or not re.search(r'^\s+[a-z-]+: write\s*$', job, re.M),
+                'write permission outside Pages deployment job: ' + name)
     workflows = root / '.github/workflows'
     names = sorted({*workflows.glob('*.yml'), *workflows.glob('*.yaml')})
     require(names, 'missing workflows')

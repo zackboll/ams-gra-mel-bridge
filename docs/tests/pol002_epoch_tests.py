@@ -514,7 +514,6 @@ class EventAuthorityTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.context()
 
 
-
 class MainPublicationTests(unittest.TestCase):
     def test_pr_identity_cannot_authorize_publication(self):
         head = s.revision(ROOT, 'HEAD')
@@ -546,6 +545,223 @@ class MainPublicationTests(unittest.TestCase):
                                          'GITHUB_REF': 'refs/heads/main', 'GITHUB_SHA': '0' * 40}):
             with self.assertRaises(ValueError):
                 epoch.publication_authority(ROOT, head, pristine={'a': '1'}, published={'b': '2'})
+
+
+class DiagnosticR2FailureControls(unittest.TestCase):
+    """Required job failure remains failure after complete forensic capture."""
+
+    setUpClass = classmethod(FailureDiagnosticsTests.setUpClass.__func__)
+    setUp = FailureDiagnosticsTests.setUp
+    checkout = FailureDiagnosticsTests.checkout
+    run_failure = FailureDiagnosticsTests.run_failure
+
+    def test_wrong_owner_and_preexisting_log_symlinks_rejected_before_child(self):
+        self.args.owner = '../live'
+        with self.assertRaisesRegex(ValueError, 'owner'):
+            e.run_shard(self.args)
+        self.args.owner = 'live'
+        victim = self.root / 'protected'
+        victim.write_bytes(b'unchanged')
+        for name in ('live.log', 'live-unpack.log'):
+            path = self.directory / name
+            path.symlink_to(victim)
+            with self.assertRaisesRegex(ValueError, 'logs must be fresh'):
+                e.run_shard(self.args)
+            self.assertEqual(victim.read_bytes(), b'unchanged')
+            path.unlink()
+
+    def test_unsafe_source_canonical_and_input_ancestor_destinations_rejected(self):
+        failure = subprocess.CalledProcessError(23, ['historical', 'run'])
+        for destination in (self.root, Path(self.args.output),
+                            ROOT / 'docs/diagnostic-must-not-be-created'):
+            self.args.diagnostics = str(destination)
+            with contextlib.redirect_stderr(self.stdout), self.assertRaisesRegex(ValueError, 'overlap'):
+                e.failure_diagnostics(self.args, self.record, failure,
+                                      self.directory / 'live.log', self.directory / 'unpack.log',
+                                      self.directory / 'execution.json')
+
+    def test_real_failure_with_success_shaped_report_never_authorizes(self):
+        self.report_bytes = json.dumps(self.reports['live']['execution']).encode()
+        self.run_failure()
+        captured = Path(self.args.diagnostics)
+        self.assertEqual((captured / 'execution.json').read_bytes(), self.report_bytes)
+        self.assertEqual(ci.load(captured / 'failure.json')['exit_status'], 23)
+        self.needs['enhanced-tests']['result'] = 'failure'
+        with self.assertRaisesRegex(ValueError, 'prerequisite'):
+            e.reconcile(self.record, self.reports, self.qualified, self.needs)
+
+    def test_complete_diagnostics_in_aggregate_directory_cannot_create_gate(self):
+        self.run_failure()
+        reports = self.root / 'aggregate-inputs'
+        reports.mkdir()
+        for owner, report in self.reports.items():
+            if owner != 'live': e.write(reports / (owner + '.json'), report)
+        import shutil
+        shutil.copytree(self.args.diagnostics, reports / 'diagnostics')
+        args = argparse.Namespace(directory=self.args.directory, manifest_sha=self.args.manifest_sha,
+            reports=str(reports), output=str(self.root / 'gate.json'), artifact_id=self.args.artifact_id,
+            bundle_sha=self.args.bundle_sha)
+        with mock.patch.dict(os.environ, {'DOC_NEEDS': json.dumps(self.needs)}):
+            with self.assertRaises((ValueError, KeyError)): e.aggregate(args)
+        self.assertFalse(Path(args.output).exists())
+
+    def test_changed_source_or_qualified_artifact_cannot_reuse_success(self):
+        for field in ('source_sha', 'source_tree', 'run_id', 'run_attempt'):
+            report = copy.deepcopy(self.reports['live'])
+            report['identity'][field] = '0' * 40
+            self.reports['live'] = report
+            with self.assertRaises(ValueError):
+                e.reconcile(self.record, self.reports, self.qualified, self.needs)
+            self.reports['live']['identity'] = self.context
+        for field in ('artifact_id', 'bundle_sha256', 'manifest_sha256'):
+            original = self.reports['live'][field]
+            self.reports['live'][field] = '0' * 64
+            with self.assertRaises(ValueError):
+                e.reconcile(self.record, self.reports, self.qualified, self.needs)
+            self.reports['live'][field] = original
+
+    def test_real_child_exit_codes_and_workflow_commands_are_not_masked(self):
+        original = self.checkout
+        def checkout(root):
+            original(root)
+            path = root / 'docs/tools/documentation_ci.py'
+            path.write_text(path.read_text().replace('class DeliberateFailure',
+                'print("::error::untrusted\\x1b[31m\\rtext", flush=True)\nclass DeliberateFailure'))
+        for status in (1, 7, 63):
+            self.exit_status = status
+            self.args.directory = str(self.root / ('inputs-exit-' + str(status)))
+            Path(self.args.directory).mkdir()
+            self.args.diagnostics = str(self.root / ('diagnostics-exit-' + str(status)))
+            self.stdout = io.StringIO()
+            with mock.patch.object(e, 'historical_checkout', side_effect=checkout):
+                self.run_failure()
+            self.assertEqual(ci.load(Path(self.args.diagnostics) / 'failure.json')['exit_status'], status)
+            excerpt = self.stdout.getvalue()
+            self.assertIn(' | ::error::untrusted\\u001b', excerpt)
+            self.assertNotIn('\x1b', excerpt)
+            self.assertFalse(any(line.startswith('::') for line in excerpt.splitlines()))
+            self.assertLess(len(excerpt), 14000)
+
+
+class DiagnosticIntegrationFailureTests(unittest.TestCase):
+    setUpClass = classmethod(FailureDiagnosticsTests.setUpClass.__func__)
+    setUp = FailureDiagnosticsTests.setUp
+    checkout = FailureDiagnosticsTests.checkout
+    run_failure = FailureDiagnosticsTests.run_failure
+
+    def test_each_real_child_status_survives_diagnostic_write_failure(self):
+        for status in (1, 7, 63):
+            self.exit_status = status
+            self.args.directory = str(self.root / ('write-failure-' + str(status)))
+            Path(self.args.directory).mkdir()
+            self.args.diagnostics = str(self.root / ('diagnostic-' + str(status)))
+            with mock.patch.object(e.shutil, 'copyfile', side_effect=RuntimeError('controlled collection failure')):
+                self.run_failure()
+
+    def test_traversal_and_sealed_input_outputs_rejected_before_child(self):
+        for output in (self.directory / 'historical.tar', self.root / 'new/../output.json',
+                       ROOT / 'docs/output-must-not-exist.json'):
+            self.args.output = str(output)
+            with mock.patch.object(e, 'historical_checkout') as child, self.assertRaises(ValueError):
+                e.run_shard(self.args)
+            child.assert_not_called()
+
+    def test_diagnostic_path_traversal_does_not_mask_failed_child(self):
+        self.args.diagnostics = str(self.root / 'new/../diagnostics')
+        self.exit_status = 7
+        self.run_failure()
+        self.assertFalse((self.root / 'diagnostics').exists())
+
+
+class HistoricalReplayIdentityTests(unittest.TestCase):
+    setUpClass = classmethod(AggregateTests.setUpClass.__func__)
+    setUp = AggregateTests.setUp
+    gate = AggregateTests.gate
+
+    def test_replay_success_is_mechanical_not_approval(self):
+        gate = self.gate()
+        self.assertTrue(gate['mechanically_qualified'])
+        self.assertFalse(gate['independent_approval'])
+        self.assertIsNone(gate['publication_authority'])
+        self.assertFalse(gate['deployable'])
+        import ci001r4_replay as replay
+        self.assertEqual(gate['historical_execution'], {
+            'status': 'corrected-replay-not-original-historical-execution',
+            'publication_commit': e.HISTORY, 'replay_commit': replay.COMMIT, 'replay_tree': replay.TREE})
+
+    def test_original_epoch_cannot_be_relabelled_as_replay_execution(self):
+        self.record['historical']['context'] = {**self.record['historical']['context'],
+                                                'source_sha': e.HISTORY, 'source_tree': e.HISTORY_TREE}
+        with self.assertRaisesRegex(ValueError, 'historical execution epoch'):
+            self.gate()
+
+
+class RunnerLifecycleTests(unittest.TestCase):
+    def test_class_teardown_error_cannot_be_a_successful_report(self):
+        class BrokenTeardown(unittest.TestCase):
+            @classmethod
+            def tearDownClass(cls):
+                raise RuntimeError('controlled teardown failure')
+
+            def test_body(self):
+                pass
+
+        result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=ci.EvidenceResult).run(
+            unittest.defaultTestLoader.loadTestsFromTestCase(BrokenTeardown))
+        self.assertFalse(result.wasSuccessful())
+        self.assertEqual(result.testsRun, 1)
+        self.assertEqual([event['event'] for event in result.events], ['start', 'success', 'stop', 'error'])
+        report = {'successful': result.wasSuccessful(), 'tests': ['one'], 'events': result.events}
+        with self.assertRaises(ValueError):
+            e.validate_policy(report, ['one'])
+
+
+class PublicationGateTests(unittest.TestCase):
+    def setUp(self):
+        self.identity = {'event': 'push', 'qualification_mode': 'hosted',
+                         'source_sha': 'a' * 40, 'source_tree': 'b' * 40}
+        self.record = {'identity': self.identity}
+        self.qualified = {'artifact_id': '1', 'bundle_sha256': 'c' * 64, 'manifest_sha256': 'd' * 64}
+        self.authority = {'kind': 'qualified-main-ci', 'commit': 'a' * 40}
+        self.gate = {'mechanically_qualified': True, 'deployable': True,
+                     'identity': self.identity, 'epochs_sha256': e.digest(self.record),
+                     'qualified': self.qualified, 'report_sha256': {key: 'e' * 64 for key in ci.SHARDS},
+                     'publication_authority': self.authority}
+        self.args = argparse.Namespace(directory='unused', manifest_sha='d' * 64,
+                                       gate='unused', gate_sha='f' * 64, artifact_id='1',
+                                       bundle_sha='c' * 64)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(e, 'verify', return_value=self.record).start()
+        mock.patch.object(e, 'context', return_value=self.identity).start()
+        mock.patch.object(ci, 'file_sha', return_value='f' * 64).start()
+        mock.patch.object(ci, 'load', return_value=self.gate).start()
+        self.reconstruct = mock.patch.object(e, 'verify_candidate').start()
+        self.decision = mock.patch.object(e, 'publication_decision', return_value=self.authority).start()
+        mock.patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'push', 'GITHUB_REF': 'refs/heads/main'}).start()
+
+    def test_main_gate_reconstructs_candidate_before_deployment(self):
+        e.deployment(self.args)
+        self.reconstruct.assert_called_once()
+
+    def test_passing_flags_cannot_bypass_recomputed_publication_identity(self):
+        self.decision.return_value = None
+        with self.assertRaisesRegex(ValueError, 'publication identity'):
+            e.deployment(self.args)
+        self.reconstruct.assert_not_called()
+
+    def test_source_and_artifact_gate_substitution_rejected(self):
+        mutations = {'identity': {**self.identity, 'source_tree': '0' * 40},
+                     'epochs_sha256': '0' * 64,
+                     'qualified': {**self.qualified, 'artifact_id': '2'},
+                     'publication_authority': {'kind': 'forged'},
+                     'report_sha256': {}, 'deployable': False}
+        for field, changed in mutations.items():
+            with self.subTest(field=field):
+                original = self.gate[field]
+                self.gate[field] = changed
+                with self.assertRaises(ValueError):
+                    e.deployment(self.args)
+                self.gate[field] = original
 
 
 if __name__ == '__main__':

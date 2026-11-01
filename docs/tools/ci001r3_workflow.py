@@ -286,6 +286,7 @@ def preparation_contract(root):
     contains(node, "for i, command in enumerate(commands):\n    execute(command, ROOT, logs / ('language-' + str(i) + '.log'), env)")
     contains(node, "env = qualified_alire_environment(ROOT / '.doc-tools/settings', logs / 'alire-selection.log', env)")
     contains(node, "candidate = epoch.qualify_evidence(ROOT, value, directory / 'candidate', prefix)")
+    contains(node, "execute([py, '-W', 'error', '-m', 'unittest', 'discover', '-s', 'docs/tests', '-p', 'source_epoch_regression_tests.py', '-v'], ROOT, logs / 'current-documentation-regressions.log', env)")
     contains(function(root, 'run_shard'), 'verify(args.directory, args.manifest_sha)')
     contains(function(root, 'reconcile'), "require(set(reports) == set(ci.SHARDS), 'missing/unknown historical shard')")
     contains(function(root, 'reconcile'), "require(set(needs) == {'prepare-documentation', 'enhanced-tests'} and all(v['result'] == 'success' for v in needs.values()), 'incomplete prerequisite jobs')")
