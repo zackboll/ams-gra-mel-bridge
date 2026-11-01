@@ -1,5 +1,28 @@
 # Implementation coverage
 
+## PY-MEL-005 — complete safe Python IR Health/Status metadata
+
+`HealthStatusChannel.open_metadata` now uses only the six existing published C
+metadata functions. `HealthMetadataStream` independently owns public consumption
+of the one native bounded DROP-INCOMING queue. Frozen, typed events deeply copy
+all nested MFA, BIT, subsystem/CSCI, ordered Discrete, Security Audit (all seven
+alternatives with six distinct category domains), and ordered MFA Detailed
+payloads. Provider-reported counts, full-width IDs/counters, signed timestamps,
+Unicode, duplicate/empty pairs and native floating-point values are preserved.
+Native enums, strict Booleans, spans, text and inactive security fields are
+checked before returning a complete Python-owned graph. Registration remains
+one-shot and opt-in, does not enable Health or register NUC, and adds no Python
+callback/worker/queue. Parent-first closure and non-raising finalization follow
+native retention rules; Close is not unregister or callback quiescence.
+
+`python/tests/test_ir_health_metadata.py` qualifies the unchanged compiled mock
+and malformed C boundary injection, including public-wrapper finalization and
+subprocess-isolated deterministic callback barriers. Positive evidence is
+mock-only, not Squall or hardware qualification. Native ABI, `_native.py`, Ada,
+Rust, providers and source policies are unchanged. No NUC, Image/Track/C2/RF
+metadata or out-of-scope placeholders. See
+[Python API, ownership, and six-family mapping](../python/README.md#ir-healthstatus-metadata-py-mel-005).
+
 ## DOC-CI-SIMPLIFY-001 — current-source documentation CI
 
 Normal documentation generation uses one current-Git export and regenerated
