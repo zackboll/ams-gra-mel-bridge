@@ -13,5 +13,12 @@ A pull request should state what changed, exact commands run, actual results,
 unsupported cases, and any unresolved upstream behavior. Do not claim registry
 readiness, real-provider interoperability, or formal proof based on smoke tests.
 
+Ordinary Ada/C++/Rust/Python development is not subject to frozen GNATdoc warning
+or documentation-coverage baselines. Bootstrap still enforces compilation, tests,
+ABI checks, dependency integrity and deployment security. The separate docs build
+generates once from the current committed Git source and rejects actual build,
+output-integrity and destination errors. See `docs/doc-ci-simplify-001.md` for
+the pinned local docs command and non-deploying scheduled/manual qualification.
+
 Before a first public release, complete the release checklist in
 `docs/packaging.md` and select actual maintainer contact information.

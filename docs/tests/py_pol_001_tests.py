@@ -31,7 +31,9 @@ class ExactFeatureTests(unittest.TestCase):
             # Exercise today's checkers, not a historical checkout's obsolete policy.
             # There is no trusted evaluator-byte match or source approval commit.
             for name in ('docs/tools/feature_source.py', 'scripts/check_doc_source_integrity.py',
-                         'docs/tools/ci001r3_workflow.py', 'docs/tools/epoch_ci.py'):
+                         'docs/tools/ci001r3_workflow.py', 'docs/tools/epoch_ci.py',
+                         'docs/tools/docs_workflow.py', '.github/workflows/documentation.yml',
+                         '.github/workflows/documentation-qualification.yml'):
                 (root / name).write_bytes((ROOT / name).read_bytes())
             hashes = {}
             for name in FEATURE_PATHS:

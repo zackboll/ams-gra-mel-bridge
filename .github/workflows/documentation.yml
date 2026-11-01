@@ -1,8 +1,11 @@
 name: Ada API Documentation
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,9 +20,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prepare-documentation:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 45
     outputs:
       artifact_id: ${{ steps.inputs.outputs.artifact-id }}
       bundle_sha: ${{ steps.seal.outputs.bundle_sha }}
@@ -28,187 +31,44 @@ jobs:
       - name: Checkout exact source head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
-      - name: Record checkout
-        run: |
-          test "$(git rev-parse HEAD)" = "$DOC_SOURCE_SHA"
-          git fetch origin main
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            number=$(python3 -c 'import json,os; print(json.load(open(os.environ["GITHUB_EVENT_PATH"]))["number"])')
-            git fetch origin "refs/pull/$number/head:refs/remotes/origin/pull/$number/head"
-          fi
-      - name: Install Alire 2.1.1
-        run: |
-          curl --fail --location --output /tmp/alire.zip https://github.com/alire-project/alire/releases/download/v2.1.1/alr-2.1.1-bin-x86_64-linux.zip
-          unzip /tmp/alire.zip -d /tmp/alire
-          sudo install -m 0755 /tmp/alire/bin/alr /usr/local/bin/alr
-      - name: Install isolated documentation tools
-        run: |
-          mkdir -p .doc-tools/settings
-          alr -n -s "$PWD/.doc-tools/settings" --force toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
-          alr -n -s "$PWD/.doc-tools/settings" install --prefix="$PWD/.doc-tools/gnatdoc-26.0.0" gnatdoc_bin=26.0.0
-          alr -s "$PWD/.doc-tools/settings" toolchain
-      - name: Install exact reviewed documentation enhancer distribution
-        run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
-      - name: Select event-bound target policy or isolated policy-review case
-        id: authority
-        run: .doc-tools/enhancer/bin/python docs/tools/epoch_ci.py select
-      - name: Establish historical and candidate epochs, qualify, then seal completed inputs
+          persist-credentials: false
+      - name: Install isolated pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Check dependency integrity and deployment boundaries
+        run: python3 scripts/check_doc_source_integrity.py
+      - name: Test current documentation build controls
+        run: make test-docs-ci
+      - name: Generate once from Git and verify source-derived publication
         id: seal
         env:
           GNATDOC_PREFIX: ${{ github.workspace }}/.doc-tools/gnatdoc-26.0.0
-          CC: /usr/bin/gcc
-          CXX: /usr/bin/g++
-          POLICY_RUNNER: ${{ steps.authority.outputs.runner }}
         run: |
-          alr -n -s "$PWD/.doc-tools/settings" -C docs/toolchain exec -- sh -c \
-            'cd ../..; .doc-tools/enhancer/bin/python "$POLICY_RUNNER" prepare --root "$PWD" --gnatdoc-prefix "$GNATDOC_PREFIX"'
-          cp .doc-tools/epochs/inputs.tar "$RUNNER_TEMP/qualified-inputs.tar"
-      - name: Upload same-run qualified inputs
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c \
+            'cd ../..; .doc-tools/enhancer/bin/python docs/tools/docs_ci.py build --gnatdoc-prefix "$GNATDOC_PREFIX"'
+      - name: Upload verified same-run inputs
         id: inputs
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: documentation-inputs-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: ${{ runner.temp }}/qualified-inputs.tar
+          path: .doc-tools/current.tar
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
-      - name: Upload diagnostics and coverage
+      - name: Upload non-authorizing diagnostics and coverage
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: gnatdoc-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
+          name: documentation-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: |
-            .doc-tools/epochs/logs/*
-            .doc-tools/epochs/*.json
-
-  enhanced-tests:
-    name: enhanced-tests (${{ matrix.shard }})
-    needs: prepare-documentation
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [navigation, publication, live, symbols-catalog, types, remaining]
-    steps:
-      - name: Checkout identical source head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          ref: ${{ env.DOC_SOURCE_SHA }}
-          fetch-depth: 0
-      - name: Download exact preparation artifact ID from this run
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
-          path: ${{ runner.temp }}/qualified-download
-          merge-multiple: true
-      - name: Install immutable reviewed enhancer
-        run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
-      - name: Select event-bound target policy or isolated policy-review case
-        id: authority
-        run: .doc-tools/enhancer/bin/python docs/tools/epoch_ci.py select
-      - name: Verify and unpack private qualified inputs
-        run: |
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' unpack --root "$PWD" \
-            --bundle "$RUNNER_TEMP/qualified-download/qualified-inputs.tar" \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Execute assigned tests exactly once
-        run: |
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' run --root "$PWD" \
-            --owner '${{ matrix.shard }}' --output "$RUNNER_TEMP/results/${{ matrix.shard }}.json" \
-            --diagnostics "$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}" \
-            --artifact-id '${{ needs.prepare-documentation.outputs.artifact_id }}' \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Upload successful canonical execution result
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: documentation-result-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: ${{ runner.temp }}/results/${{ matrix.shard }}.json
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload separate non-authorizing failure diagnostics
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: documentation-failure-diagnostics-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: ${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/
+            .doc-tools/current/*.log
+            .doc-tools/current/*.json
           if-no-files-found: warn
-          retention-days: 30
-
-  # Keep the merge-required check name. Never let a failed dependency skip it.
-  build:
-    if: always()
-    needs: [prepare-documentation, enhanced-tests]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    outputs:
-      gate_id: ${{ steps.gate-upload.outputs.artifact-id }}
-      gate_sha: ${{ steps.aggregate.outputs.gate_sha }}
-    steps:
-      - name: Reject failed, missing, cancelled or skipped dependencies
-        env:
-          DOC_NEEDS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          jobs = json.loads(os.environ['DOC_NEEDS'])
-          assert set(jobs) == {'prepare-documentation', 'enhanced-tests'}, jobs
-          assert all(j['result'] == 'success' for j in jobs.values()), jobs
-          PY
-      - name: Checkout identical source head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          ref: ${{ env.DOC_SOURCE_SHA }}
-          fetch-depth: 0
-      - name: Download exact preparation artifact ID
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
-          path: ${{ runner.temp }}/qualified-download
-          merge-multiple: true
-      - name: Download same-run shard execution artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          pattern: documentation-result-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: ${{ runner.temp }}/shard-results
-      - name: Install immutable reviewed enhancer for source-derived discovery
-        run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
-      - name: Select event-bound target policy or isolated policy-review case
-        id: authority
-        run: .doc-tools/enhancer/bin/python docs/tools/epoch_ci.py select
-      - name: Verify qualified inputs
-        run: |
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' unpack --root "$PWD" \
-            --bundle "$RUNNER_TEMP/qualified-download/qualified-inputs.tar" \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Reconcile every execution identity and issue deployment gate
-        id: aggregate
-        env:
-          DOC_NEEDS: ${{ toJSON(needs) }}
-        run: |
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' aggregate --root "$PWD" \
-            --reports "$RUNNER_TEMP/shard-results" --output "$RUNNER_TEMP/gate.json" \
-            --artifact-id '${{ needs.prepare-documentation.outputs.artifact_id }}' \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Upload immutable successful aggregate gate
-        id: gate-upload
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: documentation-gate-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: ${{ runner.temp }}/gate.json
-          if-no-files-found: error
-          retention-days: 30
 
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [prepare-documentation, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -224,39 +84,26 @@ jobs:
         with:
           ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
-      - name: Download exact qualified inputs
+          persist-credentials: false
+      - name: Download exact same-run verified inputs
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
-          path: ${{ runner.temp }}/qualified-download
-          merge-multiple: true
-      - name: Download successful aggregate authorization
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          artifact-ids: ${{ needs.build.outputs.gate_id }}
-          path: ${{ runner.temp }}/gate
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: ${{ runner.temp }}/verified-download
           merge-multiple: true
       - name: Install immutable reviewed enhancer
         run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
-      - name: Select merged-main event-bound authority
-        id: authority
-        run: .doc-tools/enhancer/bin/python docs/tools/epoch_ci.py select
-      - name: Reject unqualified or changed deployment inputs
+      - name: Verify bundle, source, run, presentation and main-only authority
         run: |
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' unpack --root "$PWD" \
-            --bundle "$RUNNER_TEMP/qualified-download/qualified-inputs.tar" \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-          .doc-tools/enhancer/bin/python '${{ steps.authority.outputs.runner }}' deployment --root "$PWD" \
-            --gate "$RUNNER_TEMP/gate/gate.json" --gate-sha '${{ needs.build.outputs.gate_sha }}' \
-            --artifact-id '${{ needs.prepare-documentation.outputs.artifact_id }}' \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Upload aggregate-authorized main-only Pages artifact
+          .doc-tools/enhancer/bin/python docs/tools/docs_ci.py unpack --deployment \
+            --bundle "$RUNNER_TEMP/verified-download/current.tar" \
+            --bundle-sha '${{ needs.build.outputs.bundle_sha }}' \
+            --manifest-sha '${{ needs.build.outputs.manifest_sha }}'
+      - name: Upload verified main-only Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
-          path: .doc-tools/epochs/candidate/published/
+          path: .doc-tools/current/published/
           include-hidden-files: true
       - name: Deploy validated main site
         id: deployment
@@ -265,63 +112,40 @@ jobs:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
 
   verify-live:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [prepare-documentation, build, deploy]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, deploy]
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: read
     steps:
-      - name: Checkout exact deployed run SHA
+      - name: Checkout exact deployed source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.DOC_SOURCE_SHA }}
           fetch-depth: 0
-      - name: Confirm checkout identity
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - name: Download exact same-run qualified inputs
+          persist-credentials: false
+      - name: Download exact same-run verified inputs
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}
-          path: ${{ runner.temp }}/qualified-download
-          merge-multiple: true
-      - name: Download exact successful aggregate gate
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          artifact-ids: ${{ needs.build.outputs.gate_id }}
-          path: ${{ runner.temp }}/gate
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: ${{ runner.temp }}/verified-download
           merge-multiple: true
       - name: Install immutable reviewed enhancer
-        run: sh docs/tools/install_enhancer.sh .doc-tools/live-enhancer
-      - name: Select merged-main event-bound authority
-        id: authority
-        run: .doc-tools/live-enhancer/bin/python docs/tools/epoch_ci.py select
-      - name: Verify live authority artifact identities
+        run: sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+      - name: Verify deployed artifact authority
         run: |
-          .doc-tools/live-enhancer/bin/python '${{ steps.authority.outputs.runner }}' unpack --root "$PWD" \
-            --bundle "$RUNNER_TEMP/qualified-download/qualified-inputs.tar" \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-          .doc-tools/live-enhancer/bin/python '${{ steps.authority.outputs.runner }}' deployment --root "$PWD" \
-            --gate "$RUNNER_TEMP/gate/gate.json" --gate-sha '${{ needs.build.outputs.gate_sha }}' \
-            --artifact-id '${{ needs.prepare-documentation.outputs.artifact_id }}' \
-            --bundle-sha '${{ needs.prepare-documentation.outputs.bundle_sha }}' \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}'
-      - name: Verify all live entities and source-owned publication contracts
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
+          .doc-tools/enhancer/bin/python docs/tools/docs_ci.py unpack --deployment \
+            --bundle "$RUNNER_TEMP/verified-download/current.tar" \
+            --bundle-sha '${{ needs.build.outputs.bundle_sha }}' \
+            --manifest-sha '${{ needs.build.outputs.manifest_sha }}'
+      - name: Compare every live entity with the verified artifact
         run: |
-          .doc-tools/live-enhancer/bin/python '${{ steps.authority.outputs.runner }}' live --root "$PWD" \
-            --manifest-sha '${{ needs.prepare-documentation.outputs.manifest_sha }}' \
+          .doc-tools/enhancer/bin/python docs/tools/docs_ci.py live --deployment \
+            --manifest-sha '${{ needs.build.outputs.manifest_sha }}' \
             --base-url https://zackboll.github.io/ams-gra-mel-bridge/ \
-            --expected-commit "$EXPECTED_SHA" --attempts 10 --interval 30 \
             --evidence "$RUNNER_TEMP/live-publication.json"
       - name: Upload live verification diagnostics
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: live-publication-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: live-publication-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.DOC_SOURCE_SHA }}
           path: ${{ runner.temp }}/live-publication.json
           if-no-files-found: warn

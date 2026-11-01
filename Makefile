@@ -8,8 +8,17 @@ test-policy:
 	@python3 -W error -m unittest discover -s docs/tests -p pol002_source_tests.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_qualify_history.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p pol002_epoch_tests.py -v
-	@python3 -W error -m unittest discover -s docs/tests -p py_pol_001_tests.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_bootstrap_ci_policy.py -v
+	@$(MAKE) test-docs-ci
+
+.PHONY: test-docs-ci docs
+test-docs-ci:
+	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
+	@python3 -W error -m unittest discover -s scripts -p test_doc_coverage.py -v
+
+# Run under the pinned documentation toolchain; output is ignored and fresh-only.
+docs:
+	@$(DOC_PYTHON) docs/tools/docs_ci.py build --gnatdoc-prefix "$(GNATDOC_PREFIX)"
 
 # Explicitly requires the pinned enhancer interpreter and GNATdoc environment.
 # Ordinary provider-free Bootstrap remains independent of documentation downloads.
@@ -30,6 +39,8 @@ help:
 	  'make test-rust    Test the Rust workspace against native/build-tests' \
 	  'make test-python  Test the Python binding against native/build-tests' \
 	  'make check        Native + Ada formatting/tests and Git whitespace checks' \
+	  'make docs         Build/verify current-Git docs with pinned documentation tools' \
+	  'make test-docs-ci Fast documentation artifact/security and coverage tests' \
 	  'make test-squall-ir       Opt-in real Squall IR C, Ada, Rust, and Python integration' \
 	  'make test-squall-ir-c     Opt-in real Squall IR C integration' \
 	  'make test-squall-ir-ada   Opt-in real Squall IR Ada integration' \
