@@ -1,7 +1,10 @@
 # IRMEL-ADA-003 — C2/Image CameraCommand and Image CameraCommandResp
 
-Feature task. Base: `origin/main` `e84ab3830034f4e2f09ae736901e6ea2526dd1c2`
-(unchanged from the supplied starting SHA at fetch time).
+Feature task. Branched from `origin/main` `e84ab3830034f4e2f09ae736901e6ea2526dd1c2`
+(the supplied starting SHA). Before push, main advanced to `888553c` (PY-MEL-002
+Python Instrumentation and RUST-IR-001 safe Rust HealthStatus, disjoint
+Python/Rust files); it was merged normally (no rebase). After the merge, Python
+204/204 and the full Rust workspace pass.
 
 ## Implemented upstream operations
 
