@@ -86,7 +86,7 @@ class IntegrityTests(unittest.TestCase):
     def test_documentation_preparation_and_aggregate_tokens_cannot_write(self):
         path = self.root / '.github/workflows/documentation.yml'
         original = path.read_text()
-        for job in ('prepare-documentation', 'build'):
+        for job in ('build', 'verify-live'):
             with self.subTest(job=job):
                 path.write_text(original.replace('  ' + job + ':\n',
                     '  ' + job + ':\n    permissions:\n      contents: write\n', 1))
@@ -97,8 +97,8 @@ class IntegrityTests(unittest.TestCase):
         self.replace('.github/workflows/ci.yml', '  pull_request:', '  pull_request_target:')
         self.reject_workflow()
 
-    def test_pages_pr_trigger_rejected(self):
-        self.replace('.github/workflows/documentation.yml', 'on:\n', 'on:\n  pull_request:\n')
+    def test_pages_privileged_pr_trigger_rejected(self):
+        self.replace('.github/workflows/documentation.yml', 'on:\n', 'on:\n  pull_request_target:\n')
         self.reject_workflow()
 
     def test_pages_non_main_trigger_rejected(self):
@@ -107,7 +107,7 @@ class IntegrityTests(unittest.TestCase):
 
     def test_pages_deploy_guard_cannot_be_bypassed(self):
         self.replace('.github/workflows/documentation.yml',
-                     "if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+                     "if: github.ref == 'refs/heads/main' && github.event_name == 'push'",
                      'if: always()')
         self.reject_workflow()
 
@@ -118,13 +118,13 @@ class IntegrityTests(unittest.TestCase):
 
     def test_artifacts_must_be_selected_by_same_run_id(self):
         self.replace('.github/workflows/documentation.yml',
-                     'artifact-ids: ${{ needs.build.outputs.gate_id }}',
+                     'artifact-ids: ${{ needs.build.outputs.artifact_id }}',
                      'name: arbitrary-untrusted-artifact')
         self.reject_workflow()
 
     def test_artifact_source_verification_cannot_be_removed(self):
         self.replace('.github/workflows/documentation.yml',
-                     '--gate-sha', '--unchecked-gate')
+                     '--manifest-sha', '--unchecked-manifest')
         self.reject_workflow()
 
     def test_documentation_action_pin_owner_and_role_mutations_reject(self):
@@ -145,16 +145,14 @@ class IntegrityTests(unittest.TestCase):
             self.reject_workflow()
         path.write_text(original)
 
-    def test_required_shards_hidden_files_and_diagnostic_boundaries_reject_mutation(self):
+    def test_required_build_hidden_files_and_diagnostic_boundaries_reject_mutation(self):
         path = self.root / '.github/workflows/documentation.yml'
         original = path.read_text()
         changes = (
             ('include-hidden-files: true', 'include-hidden-files: false'),
-            ('fail-fast: false', 'fail-fast: true'),
-            ('if: always()\n    needs: [prepare-documentation, enhanced-tests]',
-             'if: success()\n    needs: [prepare-documentation, enhanced-tests]'),
-            ('pattern: documentation-result-*', 'pattern: documentation-failure-diagnostics-*'),
-            ('--diagnostics "$RUNNER_TEMP/failure-diagnostics/${{ matrix.shard }}"', ''),
+            ('needs: [build]', 'needs: []'),
+            ('path: .doc-tools/current.tar', 'path: .doc-tools/current/warnings.json'),
+            ('docs_ci.py unpack --deployment', 'docs_ci.py unpack'),
             ('--bundle-sha', '--unverified-bundle'),
         )
         for before, after in changes:

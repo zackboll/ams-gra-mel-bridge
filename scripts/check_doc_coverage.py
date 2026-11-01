@@ -77,6 +77,33 @@ def attached_block(lines, declaration):
     return block
 
 
+def prose_text(text):
+    """Remove paired inline formatting, never identifier punctuation.
+
+    Code spans are opaque: only their matching backtick delimiters disappear.
+    Emphasis must be paired outside words; an underscore within Field_Name is
+    content, not markup. Unknown/unpaired syntax remains significant.
+    """
+    marker = "\0"
+    while marker in text:
+        marker += "\0"
+    spans = []
+
+    def code_span(match):
+        spans.append(match[2])
+        return marker + str(len(spans) - 1) + marker
+
+    text = re.sub(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", code_span, text)
+    pattern = r"(?<![\w*_])(\*\*|__|\*|_)(?=\S)(.+?)(?<=\S)\1(?![\w*_])"
+    previous = None
+    while text != previous:
+        previous = text
+        text = re.sub(pattern, r"\2", text)
+    text = re.sub(re.escape(marker) + r"(\d+)" + re.escape(marker),
+                  lambda match: spans[int(match[1])], text)
+    return " ".join(text.split())
+
+
 def source_prose(block, tag=None, name=None):
     sections = {None: []}
     current = None
@@ -94,13 +121,14 @@ def source_prose(block, tag=None, name=None):
         else:
             sections.setdefault(current, []).append(line)
     text = " ".join(sections.get(None if tag is None else (tag, name), []))
-    text = re.sub(r"[`*_]", "", text)
-    return " ".join(text.split())
+    return prose_text(text)
 
 
 def evidence_matches(rendered, source):
     # Count no accidental native text, including another declaration's comment.
-    return meaningful(rendered) and meaningful(source) and source in rendered
+    rendered = " ".join(rendered.split())
+    return meaningful(rendered) and meaningful(source) and re.search(
+        r"(?<!\w)" + re.escape(source) + r"(?!\w)", rendered) is not None
 
 
 def measure(site, root=ROOT, anchor_manifest=None):

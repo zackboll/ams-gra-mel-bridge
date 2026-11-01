@@ -360,15 +360,14 @@ class FailureDiagnosticsTests(unittest.TestCase):
 
     def test_workflow_upload_is_independent_and_diagnostics_are_not_gate_inputs(self):
         workflow = (ROOT / '.github/workflows/documentation.yml').read_text()
-        upload = workflow.split('- name: Upload separate non-authorizing failure diagnostics\n', 1)[1].split('\n  #', 1)[0]
+        upload = workflow.split('- name: Upload non-authorizing diagnostics and coverage\n', 1)[1].split('\n  deploy:', 1)[0]
         self.assertIn('if: always()', upload)
-        self.assertIn('uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0', upload)
-        self.assertIn('name: documentation-failure-diagnostics-', upload)
-        self.assertIn('path: ${{ runner.temp }}/failure-diagnostics/${{ matrix.shard }}/', upload)
-        self.assertIn('pattern: documentation-result-*', workflow)
-        self.assertNotIn('pattern: documentation-failure-diagnostics-', workflow)
-        self.assertIn('needs: [prepare-documentation, build]', workflow)
-        self.assertIn("all(j['result'] == 'success' for j in jobs.values())", workflow)
+        self.assertIn('documentation-diagnostics-', upload)
+        self.assertIn('if-no-files-found: warn', upload)
+        self.assertNotIn('artifact-ids:', upload)
+        self.assertNotIn('pattern:', workflow)
+        self.assertIn('needs: [build]', workflow)
+        self.assertIn('artifact-ids: ${{ needs.build.outputs.artifact_id }}', workflow)
 
 class ArtifactBoundaryTests(unittest.TestCase):
     def setUp(self):
@@ -429,15 +428,15 @@ class ArtifactBoundaryTests(unittest.TestCase):
         text=(ROOT/'.github/workflows/documentation.yml').read_text()
         self.assertNotIn('pull_request_target:',text)
         self.assertIn('permissions:\n  contents: read\n  actions: read',text)
-        self.assertIn('  build:\n    if: always()\n    needs: [prepare-documentation, enhanced-tests]',text)
-        self.assertIn('shard: [navigation, publication, live, symbols-catalog, types, remaining]',text)
-        self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",text)
-        prepare=text.split('\n  enhanced-tests:\n')[0]
-        self.assertLess(prepare.index('epoch_ci.py select'),prepare.index('Establish historical and candidate epochs'))
-        self.assertLess(prepare.index('Establish historical and candidate epochs'),prepare.index('Upload same-run qualified inputs'))
+        from docs_workflow import check
+        self.assertEqual(set(check(ROOT)), {'build', 'deploy', 'verify-live'})
+        self.assertNotIn('epoch_ci.py', text)
+        self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name == 'push'",text)
+        prepare=text.split('\n  deploy:\n')[0]
+        self.assertLess(prepare.index('docs_ci.py build'),prepare.index('Upload verified same-run inputs'))
         deploy=text.split('\n  deploy:\n')[1].split('\n  verify-live:\n')[0]
-        self.assertLess(deploy.index("' deployment --root"),deploy.index('actions/upload-pages-artifact'))
-        self.assertIn('path: .doc-tools/epochs/candidate/published/',deploy)
+        self.assertLess(deploy.index('docs_ci.py unpack --deployment'),deploy.index('actions/upload-pages-artifact'))
+        self.assertIn('path: .doc-tools/current/published/',deploy)
 
     def test_generation_does_not_mutate_source_classification(self):
         evidence={'target_commit':'a'*40,'candidate_commit':'b'*40,'case':'feature-source'}
