@@ -1,21 +1,28 @@
-//! Safe Rust provider sessions, IR Mono8 frames, IR C2, and the common Channel
-//! façade for C2 and Image through `ams_mel_c`.
+//! Safe Rust provider sessions, IR Mono8 frames, IR C2, IR HealthAndStatus
+//! lifecycle, and the common Channel façade for C2, Image, and Health through
+//! `ams_mel_c`.
 //!
-//! [`Session`], [`ImageStream`], [`ControlChannel`], [`ModeRequest`],
-//! [`ReturnRequest`], [`ChannelView`], and [`CommsRequest`] are intentionally
-//! neither `Send` nor `Sync`. A zero receive or request timeout polls. Request
-//! timeout and request close or drop do not cancel provider work. BIT support is
-//! limited to the empty/no-op profile; payload-bearing BIT is not exposed.
+//! [`Session`], [`ImageStream`], [`ControlChannel`], [`HealthStatusChannel`],
+//! [`ModeRequest`], [`ReturnRequest`], [`ChannelView`], and [`CommsRequest`]
+//! are intentionally neither `Send` nor `Sync`. A zero receive or request
+//! timeout polls. Request timeout and request close or drop do not cancel
+//! provider work. BIT support is limited to the empty/no-op profile;
+//! payload-bearing BIT is not exposed.
 //!
-//! Common Channel coverage (Task 032B3):
+//! Common Channel coverage (Task 032B3, RUST-IR-001):
 //!
 //! ```text
-//! safe Rust common Channel:      C2 + Image
+//! safe Rust common Channel:      C2 + Image + Health
 //! native C / safe Ada common:    C2/Image/Health/Instrumentation/Track
 //! ```
 //!
-//! Safe Rust has no typed Health, Instrumentation, or Track owners, so no
-//! common Channel view of those families is offered here.
+//! Safe Rust has no typed Instrumentation or Track owners, so no common
+//! Channel view of those families is offered here.
+//!
+//! IR HealthAndStatus (RUST-IR-001): [`HealthStatusChannel`] covers Open,
+//! explicit Enable, capability snapshots, retryable Close, and its weak
+//! [`ChannelView`]. The six HealthStatus metadata callback families are not
+//! exposed by safe Rust.
 //!
 //! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
 //! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
@@ -40,8 +47,10 @@ use std::slice;
 
 use ams_mel_sys as sys;
 
+mod ir_health;
 mod rf_admin;
 mod rf_data;
+pub use ir_health::{HealthConfig, HealthStatusChannel};
 pub use rf_admin::{RfAdmin, RfMfaState};
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
@@ -1068,8 +1077,8 @@ impl Drop for ReturnRequest {
     }
 }
 
-/// Weak common Channel view of one safe typed owner ([`ControlChannel`] or
-/// [`ImageStream`]).
+/// Weak common Channel view of one safe typed owner ([`ControlChannel`],
+/// [`ImageStream`], or [`HealthStatusChannel`]).
 ///
 /// Ownership model:
 ///
@@ -1197,49 +1206,16 @@ impl ChannelView {
     /// pointer survives this call.
     pub fn capabilities(&mut self) -> Result<ChannelCapability, Error> {
         let channel = self.live("capabilities")?;
-        let mut owner = CapabilityOwner {
-            raw: ptr::null_mut(),
-        };
-        call_with_diagnostic(|diagnostic, capacity, required| {
+        capability_snapshot(|owner, diagnostic, capacity, required| {
             // SAFETY: `channel` is this wrapper's live weak view, exclusively
-            // used through `&mut self`; `owner.raw` is an initially null owner
-            // which the guard closes on every return path.
+            // used through `&mut self`; `owner` is the helper's initially null
+            // writable capability owner.
             unsafe {
                 sys::ams_mel_ir_channel_get_capabilities(
-                    channel,
-                    &mut owner.raw,
-                    diagnostic,
-                    capacity,
-                    required,
+                    channel, owner, diagnostic, capacity, required,
                 )
             }
-        })?;
-        if owner.raw.is_null() {
-            return Err(protocol(
-                "capability query succeeded without a capability owner",
-            ));
-        }
-        let mut view: *const sys::AmsMelIrChannelCapabilityV1 = ptr::null();
-        call_with_diagnostic(|diagnostic, capacity, required| {
-            // SAFETY: `owner.raw` is a live capability owner and `view` is
-            // writable storage for the borrowed record pointer.
-            unsafe {
-                sys::ams_mel_ir_channel_capability_view(
-                    owner.raw, &mut view, diagnostic, capacity, required,
-                )
-            }
-        })?;
-        if view.is_null() {
-            return Err(protocol(
-                "capability view succeeded without a capability record",
-            ));
-        }
-        // SAFETY: `view` is non-null and points to a record owned by the live
-        // `owner`; it is copied before `owner` is closed.
-        let raw = unsafe { *view };
-        let value = capability_from_raw(&raw)?;
-        owner.close()?;
-        Ok(value)
+        })
     }
 
     /// Destroys only the weak native view. Idempotent; it never closes the
@@ -1361,6 +1337,51 @@ impl Drop for CapabilityOwner {
             best_effort_close_capability(&mut self.raw);
         }
     }
+}
+
+/// Shared complete ChannelCapability snapshot protocol used by
+/// [`ChannelView::capabilities`] and typed owners such as
+/// [`HealthStatusChannel::capabilities`].
+///
+/// `query` receives an initially null writable capability owner. The native
+/// snapshot is guarded so that it is closed on every return path, its borrowed
+/// record is converted into a fully Rust-owned value while alive, and no native
+/// pointer survives this call.
+fn capability_snapshot(
+    query: impl FnOnce(*mut *mut sys::AmsMelIrChannelCapability, *mut c_char, usize, *mut usize) -> i32,
+) -> Result<ChannelCapability, Error> {
+    let mut owner = CapabilityOwner {
+        raw: ptr::null_mut(),
+    };
+    call_with_diagnostic(|diagnostic, capacity, required| {
+        query(&mut owner.raw, diagnostic, capacity, required)
+    })?;
+    if owner.raw.is_null() {
+        return Err(protocol(
+            "capability query succeeded without a capability owner",
+        ));
+    }
+    let mut view: *const sys::AmsMelIrChannelCapabilityV1 = ptr::null();
+    call_with_diagnostic(|diagnostic, capacity, required| {
+        // SAFETY: `owner.raw` is a live capability owner and `view` is
+        // writable storage for the borrowed record pointer.
+        unsafe {
+            sys::ams_mel_ir_channel_capability_view(
+                owner.raw, &mut view, diagnostic, capacity, required,
+            )
+        }
+    })?;
+    if view.is_null() {
+        return Err(protocol(
+            "capability view succeeded without a capability record",
+        ));
+    }
+    // SAFETY: `view` is non-null and points to a record owned by the live
+    // `owner`; it is copied before `owner` is closed.
+    let raw = unsafe { *view };
+    let value = capability_from_raw(&raw)?;
+    owner.close()?;
+    Ok(value)
 }
 
 fn channel_view_from(
