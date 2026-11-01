@@ -1,11 +1,12 @@
-"""Safe Python sessions, IR streams/C2/Instrumentation, and RF Admin over ``ams_mel_c``.
+"""Safe Python sessions, IR streams/C2/Instrumentation/Health, and RF Admin.
 
 IR C2 provides asynchronous :class:`ModeRequest` and :class:`ReturnRequest`
 owners. BIT support is limited to the empty/no-op profile; payload-bearing BIT
 is not exposed. Request timeout and close do not cancel provider work.
 
 Common Channel: :meth:`ControlChannel.channel_view`,
-:meth:`ImageStream.channel_view`, and :meth:`InstrumentationChannel.channel_view`
+:meth:`ImageStream.channel_view`, :meth:`InstrumentationChannel.channel_view`,
+and :meth:`HealthStatusChannel.channel_view`
 return a weak :class:`ChannelView` offering
 the inherited KeepAlive (the existing :class:`ReturnRequest`), CommsTest
 (:class:`CommsRequest`), and a complete Python-owned
@@ -28,7 +29,8 @@ serialization. Instrumentation enable, submit, metadata open, capabilities,
 view conversion, and close on one channel also require serialization, as do Wait
 and close on one InstrumentationRequest. Receive, counters, and close on one
 InstrumentationMetadata require external serialization. No Python lock or worker
-thread is added.
+thread is added. Health enable, capabilities, view conversion, and close on one
+owner likewise require external serialization.
 """
 
 from __future__ import annotations
@@ -183,23 +185,7 @@ class InstrumentationConfig:
     sensor_location: ComponentLocation
 
     def __post_init__(self) -> None:
-        ControlConfig.__post_init__(self)
-        location = self.sensor_location
-        for name in ("offset_x_m", "offset_y_m", "offset_z_m"):
-            value = getattr(location, name)
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be numeric")
-            try:
-                _ctypes.c_double(value)
-            except (OverflowError, TypeError, ValueError) as error:
-                raise _local_error(
-                    ErrorKind.INVALID_ARGUMENT, f"{name} must fit a C double"
-                ) from error
-        # Reuse validation even for values supplied by subclasses.
-        UciId.__post_init__(self.channel_id)
-        UciId.__post_init__(self.platform_id)
-        _utf8_input(location.key, "key")
-        _utf8_input(location.system_name, "system_name")
+        _validate_attachment_config(self)
 
     @classmethod
     def new(
@@ -207,6 +193,45 @@ class InstrumentationConfig:
         sensor_location: ComponentLocation,
     ) -> InstrumentationConfig:
         return cls(channel_id, platform_id, sensor_location)
+
+
+@dataclass(frozen=True)
+class HealthConfig:
+    """Complete HealthAndStatus attachment input; no provider work at construction."""
+
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        _validate_attachment_config(self)
+
+    @classmethod
+    def new(
+        cls, channel_id: UciId, platform_id: UciId,
+        sensor_location: ComponentLocation,
+    ) -> HealthConfig:
+        return cls(channel_id, platform_id, sensor_location)
+
+
+def _validate_attachment_config(config: InstrumentationConfig | HealthConfig) -> None:
+    ControlConfig.__post_init__(config)
+    location = config.sensor_location
+    for name in ("offset_x_m", "offset_y_m", "offset_z_m"):
+        value = getattr(location, name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be numeric")
+        try:
+            _ctypes.c_double(value)
+        except (OverflowError, TypeError, ValueError) as error:
+            raise _local_error(
+                ErrorKind.INVALID_ARGUMENT, f"{name} must fit a C double"
+            ) from error
+    # Reuse validation even for values supplied by subclasses.
+    UciId.__post_init__(config.channel_id)
+    UciId.__post_init__(config.platform_id)
+    _utf8_input(location.key, "key")
+    _utf8_input(location.system_name, "system_name")
 
 
 class InstrumentationPriority(IntEnum):
@@ -807,6 +832,25 @@ class _RawControlConfig(_RawImageConfig):
         )
 
 
+class _RawHealthConfig(_RawImageConfig):
+    """C field order and borrowed storage are kept through the native Open call."""
+
+    def __init__(self, config: HealthConfig) -> None:
+        self.buffers = []
+        self.raw = _native.IrHealthConfigV1(
+            channel_id=self._id(config.channel_id),
+            channel_type=_native.AMS_MEL_IR_CHANNEL_HEALTH_AND_STATUS,
+            platform_id=self._id(config.platform_id),
+            sensor_location=_native.ComponentLocationV1(
+                config.sensor_location.offset_x_m,
+                config.sensor_location.offset_y_m,
+                config.sensor_location.offset_z_m,
+                self._view(config.sensor_location.key, "key"),
+                self._view(config.sensor_location.system_name, "system_name"),
+            ),
+        )
+
+
 class _RawInstrumentationConfig(_RawImageConfig):
     def __init__(self, config: InstrumentationConfig) -> None:
         self.buffers = []
@@ -1181,6 +1225,32 @@ class Session:
             raise
         return channel
 
+    def open_health_channel(self, config: HealthConfig) -> HealthStatusChannel:
+        """Attach without enabling; native state, not a Python parent, owns lifetime."""
+
+        self._require_open()
+        if not isinstance(config, HealthConfig):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "config must be HealthConfig")
+        HealthConfig.__post_init__(config)
+        bundle = _RawHealthConfig(config)
+        channel = HealthStatusChannel._from_owner(_native.IrHealthHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_health_open(
+                    self._owner, _ctypes.byref(bundle.raw), channel._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not channel.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Health open succeeded without returning an owner",
+                )
+        except BaseException:
+            channel.__del__()
+            raise
+        return channel
+
     def open_control_channel(self, config: ControlConfig) -> ControlChannel:
         """Open an IR CommandAndControl channel without retaining this object."""
 
@@ -1429,7 +1499,7 @@ class ImageStream:
             pass
 
 
-class _InstrumentationOwner:
+class _NativeOwner:
     """Private owner mechanics; native close alone decides handle consumption."""
 
     @classmethod
@@ -1483,7 +1553,55 @@ class _InstrumentationOwner:
             pass
 
 
-class InstrumentationChannel(_InstrumentationOwner):
+class HealthStatusChannel(_NativeOwner):
+    """Independent HealthAndStatus owner, initially Attached, not Enabled.
+
+    Externally serialize enable, capabilities, view conversion, and close. Native
+    state implements idempotent enable and failed-state rejection. Close may
+    defer teardown for common requests; it never cancels them. A failed detach
+    retains the handle for explicit retry; consumed owners are never retried.
+    No Health metadata or NUC reception is exposed.
+    """
+
+    _close_function = staticmethod(_native.ams_mel_ir_health_close)
+
+    def __init__(self) -> None:
+        raise TypeError("use Session.open_health_channel")
+
+    def enable(self) -> None:
+        """Enable explicitly; repeated success does not reach the provider again."""
+        self._require_open()
+        _call_with_diagnostic(
+            lambda diagnostic, required: _native.ams_mel_ir_health_enable(
+                self._owner, diagnostic, len(diagnostic), _ctypes.byref(required),
+            )
+        )
+
+    def capabilities(self) -> ChannelCapability:
+        """Complete Python-owned snapshot, available while Attached or Enabled."""
+        self._require_open()
+        return _channel_capabilities(
+            self._owner, _native.ams_mel_ir_health_get_capabilities,
+        )
+
+    def channel_view(self) -> ChannelView:
+        """Weak inherited services; retains neither this owner nor its Session."""
+        self._require_open()
+        return _open_channel_view(_native.ams_mel_ir_channel_from_health, self._owner)
+
+    def __del__(self) -> None:
+        # Exception-path cleanup and automatic finalization must not silently
+        # retry an uncertain retained handle. Explicit close remains retryable.
+        try:
+            if getattr(self, "_finalized", False):
+                return
+            self._finalized = True
+            super().__del__()
+        except BaseException:
+            pass
+
+
+class InstrumentationChannel(_NativeOwner):
     """Independent typed owner. Externally serialize enable/submit/close."""
 
     _close_function = staticmethod(_native.ams_mel_ir_instrumentation_close)
@@ -1573,7 +1691,7 @@ class InstrumentationChannel(_InstrumentationOwner):
         return request
 
 
-class InstrumentationMetadata(_InstrumentationOwner):
+class InstrumentationMetadata(_NativeOwner):
     """Independent polling owner; externally serialize receive/counters/close.
 
     Native channel-owned callbacks feed a bounded FIFO DROP-INCOMING queue.
@@ -1673,7 +1791,7 @@ class InstrumentationMetadata(_InstrumentationOwner):
         super().close()
 
 
-class InstrumentationRequest(_InstrumentationOwner):
+class InstrumentationRequest(_NativeOwner):
     """Independent request. Close is not cancellation and must not race Wait."""
 
     _close_function = staticmethod(_native.ams_mel_ir_instrumentation_request_close)
@@ -1993,10 +2111,11 @@ def _open_channel_view(convert: Any, source: _ctypes.c_void_p) -> ChannelView:
 
 
 class ChannelView:
-    """Weak common Channel view of one C2 or Image typed owner.
+    """Weak common Channel view of one typed owner.
 
-    Created only by :meth:`ControlChannel.channel_view` and
-    :meth:`ImageStream.channel_view`. This object owns only the native
+    Created by :meth:`ControlChannel.channel_view`, :meth:`ImageStream.channel_view`,
+    :meth:`InstrumentationChannel.channel_view`, or :meth:`HealthStatusChannel.channel_view`.
+    This object owns only the native
     ``ams_mel_ir_channel`` weak-view wrapper; that native view owns only weak
     family state. It never retains its typed Python source, the Session, the
     provider channel, or the provider library, so it can outlive all of them
@@ -2914,6 +3033,8 @@ __all__ = [
     "CoordinateSystem",
     "ErrorKind",
     "Frame",
+    "HealthConfig",
+    "HealthStatusChannel",
     "ImageBand",
     "ImageConfig",
     "ImageFlip",

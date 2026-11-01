@@ -31,7 +31,7 @@ Frames preserve the supported metadata, and `Frame.pixels` is an owned `bytes`
 copy: no view into ctypes storage, provider storage, or the native receive queue
 escapes. Timeout and clean stream stop are distinct structured errors.
 
-`ImageStream`, `ControlChannel`, `ModeRequest`, and `ReturnRequest` independently
+`ImageStream`, `ControlChannel`, `HealthStatusChannel`, `ModeRequest`, and `ReturnRequest` independently
 own their native handles and do not retain Python parent objects. Session and
 control owners may close first while a pending request remains valid. Request close only releases
 the public owner and does not cancel provider work. Native C2 close decides
@@ -401,3 +401,132 @@ mock-qualified: no real Instrumentation hardware/provider qualification, new
 transport, callback-unregister guarantee, or general provider C++ ABI compatibility
 is claimed. The existing 4096-byte diagnostic limitation described above applies;
 side-effecting registration is never repeated to retrieve diagnostic text.
+
+## IR Health/Status channel (PY-MEL-004)
+
+```python
+from ams_mel import ComponentLocation, HealthConfig, Session, UciId
+
+config = HealthConfig.new(
+    UciId(bytes(range(16)), "health-μ"),
+    UciId(bytes(range(240, 256)), "platform-€"),
+    ComponentLocation(1.25, -2.5, 3.75, "station-1", "aircraft"),
+)
+with Session.open("/path/to/provider.so", "provider-instance", "") as session:
+    with session.open_health_channel(config) as health:
+        attached_capabilities = health.capabilities()
+        # Open attaches only: Enable is explicit and repeated success is a no-op.
+        health.enable()
+        with health.channel_view() as channel:
+            request = channel.send_keepalive()  # Existing ReturnRequest, not a new Health API.
+            try:
+                result = request.wait(1000)  # Timeout does not cancel or consume it.
+            finally:
+                request.close()
+# attached_capabilities is independent of every native owner and the provider DSO.
+```
+
+### Public API and source mapping
+
+`HealthConfig(channel_id, platform_id, sensor_location)` and its equivalent
+`HealthConfig.new(...)` are frozen dataclasses using the existing `UciId` and
+`ComponentLocation`. Construction and Open validate both 16-byte UUIDs, all UTF-8
+labels/location strings without embedded NUL, the location type, and numeric
+coordinates representable as C doubles. Empty strings are supported; UUID bytes,
+Unicode spelling, meter offsets (including representable IEEE nonfinite values),
+keys, and system names are neither truncated nor normalized. Open revalidates
+before calling native code, and keeps all borrowed input buffers alive through
+the call. The private C record follows `channel_id`, `channel_type = 4`,
+`platform_id`, `sensor_location`, not the C2 field order.
+
+| Python | Ada `AMS.MEL.IR.Health_Status` | Rust `ir_health` | Existing C ABI |
+| --- | --- | --- | --- |
+| `HealthConfig.new(...)` | `Create_Config` | `HealthConfig::new` | `ams_mel_ir_health_config_v1` |
+| `Session.open_health_channel(config)` | `Open` | `Session::open_health_channel` | `ams_mel_ir_health_open` |
+| `HealthStatusChannel.is_open` | `Is_Open` | `HealthStatusChannel::is_open` | Local nonnull owner check |
+| `enable()` | `Enable` | `enable` | `ams_mel_ir_health_enable` |
+| `capabilities()` | `Capabilities` | `capabilities` | `ams_mel_ir_health_get_capabilities`, common snapshot view/close |
+| `channel_view()` | `As_Channel` | `channel_view` | `ams_mel_ir_channel_from_health` |
+| `close()`, context exit, finalization | `Close`, `Finalize` | `close`, `Drop` | `ams_mel_ir_health_close` |
+
+Direct `HealthStatusChannel()` construction is rejected. `is_open` describes only
+ownership of the local native handle, **not** enablement or provider health.
+Native status, diagnostic text and required diagnostic size remain structured
+`MelError` data; the existing 4096-byte non-retrying diagnostic limit applies.
+An unexpected null successful Open is a protocol error. An owner published before
+an exception or malformed diagnostic receives one non-raising cleanup attempt.
+
+### Lifecycle and inherited services
+
+- Open leaves the channel Attached, without Enable or metadata registration.
+  Capabilities and inherited common services work while Attached or Enabled.
+- Repeated successful Enable reaches the provider once. Failed Enable leaves
+  native state Failed: enable, capabilities, and provider-facing view operations
+  reject rather than implying enabled service. Native weak-wrapper conversion can
+  still succeed in Failed state; this does not restore provider access.
+- The typed owner retains no Python Session. Closing or collecting the Session
+  first is safe because native state retains its underlying provider graph.
+- Close before Enable does not disable. Close after an enable attempt follows
+  native disable/detach/channel destruction/Session destruction/DSO unload order.
+  Common pending requests can defer physical cleanup independently of public owners.
+- Successful Close is idempotent. A failed detach retaining the handle leaves
+  `is_open` true for **explicit** retry. A consumed handle stays closed even if
+  Close reports cleanup failure; it is never retried. Finalization makes one
+  best-effort attempt, never forces destruction or unload of uncertain state, and
+  never raises. Context exit reports close failure on normal exit but preserves
+  an exception from the body.
+- `channel_view()` reuses the existing weak `ChannelView`: `send_keepalive()`,
+  `submit_comms_test(CommsTestRequest(...))`, `capabilities()`, and `close()`.
+  There are no duplicate Health KeepAlive/CommsTest methods. Views retain no
+  Python typed owner or Session, nor a strong native provider graph. Closing a
+  view does not close Health. After typed-owner teardown a view remains an open
+  wrapper, but provider-facing operations fail cleanly with `PROVIDER_FAILED`.
+- Existing `ReturnRequest`/`CommsRequest` owners independently preserve admitted
+  native requests after view, Health, and Session closure. Request close is not
+  cancellation. CommsTest preserves every uint32 command/channel/request ID;
+  replies carry command and request IDs only. `CommsRequest` uses explicit Close,
+  not context-manager syntax.
+
+**Externally serialize enable, capabilities, view conversion, and close on the
+same Health owner.** Serialize operations/close on each view and wait/close on each
+request under their existing contracts. The GIL does not satisfy native
+serialization. No Python locks, worker threads, background cleanup, implicit
+thread-safety promise, or hidden retries are added.
+
+Capabilities reuse `_channel_capabilities` and `ChannelCapability`: every nested
+array, ID, label, location string, image band, Boolean and enumeration is checked
+and deep-copied before the native snapshot closes. No ctypes object or borrowed
+span escapes. Copies survive child/Session Close and actual provider DSO unload.
+Existing malformed-pointer checks validate NULL/size/alignment/representable span
+boundaries; they cannot prove arbitrary nonnull ABI-violating pointers are mapped.
+
+### Coverage and limits
+
+`python/tests/test_ir_health.py` covers config validation/immutability and exact
+conversion, Attached/Enabled capabilities, enable failure, independent ownership,
+weak views, inherited services, high uint32 IDs, parent-first request completion,
+teardown order, retained-handle detach retry, one-attempt uncertain finalization,
+Open failure/publication cleanup, and malformed snapshot cleanup. It uses the
+existing compiled `libmock_ir_provider.so` scenarios, deterministic completion
+gates and blocking retirement observations, not sleeps. Uncertain graph retention
+and extra test DSO loading run only in subprocesses. Boundary injection is limited
+to malformed C output and conversion failure paths the mock cannot produce.
+Existing Instrumentation, C2, ABI/layout, and private import-identity regressions
+remain applicable.
+
+```sh
+PYTHONPATH="$PWD/python" \
+ AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0" \
+ AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers" \
+ python3 -W error -m unittest discover -s python/tests -p test_ir_health.py -v
+```
+
+This is Python parity for the published Ada/Rust/C lifecycle and common-service
+slice only. The six Health metadata families (`MFA_Status`, `BIT_Status`,
+`SubsystemStatusResp`, `DiscreteStatus`, `MFA_SecurityAuditRecord`,
+`MFA_StatusDetailed`) and optional Health `NUC_TempData` reception are **not
+exposed**; no placeholders are provided. A capability enumeration is not a
+metadata receive API. Evidence is mock-provider only, not real Health hardware or
+Squall qualification, general C++ ABI compatibility, or callback-quiescence
+evidence. No public C ABI, native/provider implementation, private ctypes module,
+Ada, Rust, workflow, policy, or vendored source changes are required.
