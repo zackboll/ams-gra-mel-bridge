@@ -757,7 +757,7 @@ finally:
             # Cleanup failure must not replace the original conversion error.
             raise RuntimeError("cleanup")
 
-        with mock.patch.object(mel, "_capability_from_raw", side_effect=MemoryError("copy")), \
+        with mock.patch.object(mel._ffi, "_capability_from_raw", side_effect=MemoryError("copy")), \
                 mock.patch.object(_native, "ams_mel_ir_channel_capability_close", side_effect=cleanup):
             with self.assertRaisesRegex(MemoryError, "copy"):
                 channel.capabilities()
