@@ -65,36 +65,33 @@ and five new implementation files added (63 entries). Only six classification
 entries changed (two operations, four types); `inherited`/`image_capabilities`
 are unchanged. `REVIEW_SHA256` in `scripts/check_ir_api_coverage.py` is the
 SHA-256 of the sorted-key reviewed JSON; `CATALOG_SHA256`, upstream pins, the
-catalog and frozen Git evidence are unchanged.
+catalog and frozen Git evidence are unchanged. Under PY-POL-001-R1,
+`source_sha256` is the reviewed baseline record. The checker no longer locks
+current implementation bytes to it, but it still checks `REVIEW_SHA256` and
+classification equality.
 
-## POL-002 / POL-001 source-integrity result (not bypassed)
+## Source-integrity and policy result under PY-POL-001-R1/R2 (not bypassed)
 
-Executed unchanged trusted-main tools against merged candidate `4cceeaf`:
+Main `6e4f7eb` (PY-POL-001-R1/R2) replaced the exact-file admission scheme
+with ordinary-development checks, and this branch merged it normally. On the
+merge commit, with the policy tools left as they are on main:
 
 ```text
-docs/tools/feature_source.py --root .   -> exit 1
-ValueError: source qualification: incomplete/modified audit member: Makefile
-scripts/check_doc_source_integrity.py  -> exit 1
-ValueError: IRMEL-POL-001 unapproved complete bytes: scripts/check_ir_api_coverage.py
+python3 scripts/check_doc_source_integrity.py   -> exit 0
+python3 docs/tools/feature_source.py --root .   -> exit 0 (case feature-source)
+make test-policy                                -> exit 0 (all six suites OK)
+make check-ir-api-coverage                      -> exit 0 (24 tests OK)
+make check-ada-format                           -> exit 0
+git diff --check                                -> clean
 ```
 
-Control on unmodified `origin/main` `52285ce`: `feature_source.py` exit 0
-(documentation-only); `check_doc_source_integrity.py` **already exits 1**
-(`unauthorized tracked files added: ['rust/ams-mel/src/rf_admin.rs',
-'rust/ams-mel/tests/rf_admin.rs']`), i.e. it fails on main independently of
-this PR.
+None of these needed a separate policy authorization for this PR. The merge
+added no new authorization, brought back no filename or byte freeze, and left
+the historical test corpus unchanged. Catalog completeness, upstream Git pins,
+`CATALOG_SHA256`, the reviewed-classification check against `REVIEW_SHA256`
+and current symbol/evidence validation are all still enforced.
 
-Cause: both policies freeze the nine-member IRMEL audit unit at its PR #129
-bytes and admit only documentation or RF ProductRx surfaces, so any legitimate
-IR binding PR that updates the audit records is rejected. Neither policy file
-is modified here. Documentation CI runs only on `main` (DOC-CI-005), so this
-blocks only post-merge documentation qualification, not PR Bootstrap.
-
-Narrow post-merge authorization needed (separate policy task, independent
-review): admit this exact merged commit's delta as a reviewed IR binding
-transition — the 39 implementation/audit paths (plus this record) listed by `git diff --name-status
-52285ce 4cceeaf`, including ten new source files, and new exact identities for
-`scripts/check_ir_api_coverage.py`, `scripts/test_ir_api_coverage.py`,
-`docs/irmel-ada-coverage.json` and `docs/reference/irmel-reviewed-bindings.json`
-(other five audit members unchanged) — keyed to the immutable merge commit and
-tree, plus the pre-existing RUST-MEL-001 additions on main.
+Historical note: before that policy change, the then-current freeze tools
+rejected candidate `4cceeaf` because they froze the IRMEL audit unit at its
+PR #129 bytes. That rejection, and the separate authorization it seemed to
+require, no longer apply; PY-POL-001-R1 superseded that admission requirement.
