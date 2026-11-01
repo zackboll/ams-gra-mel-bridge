@@ -86,10 +86,10 @@ MAIN_ONLY_SOURCE = (
      '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711',
      '8971d0d3fe72bdf5d358909a02e0e8e38f38b2a2a6de725e0d0cb40202faa4b8'),
     ('.github/workflows/source-policy.yml', None,
-     '1dc55e3121c6722f719f5a0b175cb7aa72bfeec487b215a7a55b4c79519dd143'),
+     'ad2ff17dfa4c91da46f6e7ffef862523e0f9b3154a3cc90b133aca63df8cfcf7'),
     ('scripts/check_doc_source_integrity.py',
      '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602',
-     'b772d132a7d5a10ed983952ba2c89560f7369a6d4325e3e78837a405d5cbf64b'),
+     'f5cd3e53458f7ae36319cdacefaa86d8025920231df9f7a7140efdb898b96059'),
     ('docs/tools/epoch_ci.py',
      '19c339d8983b817d89e9bf7f368b40ec09b0c6fbc893d7e1f8f06e68f44ba3b0', None),
 )

@@ -37,13 +37,28 @@ jobs:
           trusted="$RUNNER_TEMP/trusted-main-policy"
           mkdir "$trusted"
           git archive --format=tar "$BASE_SHA" docs/tools scripts | tar -xf - -C "$trusted"
-          if python3 "$trusted/docs/tools/epoch_ci.py" select --root "$PWD" > "$RUNNER_TEMP/trusted.json"; then
-            cat "$RUNNER_TEMP/trusted.json"
-            echo "::notice::Trusted main $BASE_SHA policy classified this PR; mechanical evidence, not approval."
+          # POL-002 select and exact workflow bytes, both from one policy tree.
+          # errexit is suspended inside `if`, so every failure returns explicitly.
+          check() {
+            python3 "$1/docs/tools/epoch_ci.py" select --root "$PWD" | tee "$RUNNER_TEMP/$2.json" || return 1
+            python3 - "$1" <<'PY' || return 1
+          import subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, sys.argv[1] + '/scripts')
+          import check_doc_source_integrity as integrity
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          current = set(git('ls-files', '-z', '--cached').decode().split('\0')) - {''}
+          print('workflow state:', integrity.actions_workflow_state(Path.cwd(), git, current))
+          PY
+          }
+          if check "$trusted" trusted; then
+            echo "::notice::Trusted main $BASE_SHA policy accepted this PR; mechanical evidence, not approval."
             exit 0
           fi
+          # Trusted main lists decide whether the isolated policy-review case applies.
           python3 - "$trusted" <<'PY'
-          import json, os, subprocess, sys
+          import os, sys
           sys.path.insert(0, sys.argv[1] + '/docs/tools')
           import epoch_ci as e, feature_source as s, source_epoch as epoch
           root, base, head = os.getcwd(), os.environ['BASE_SHA'], os.environ['HEAD_SHA']
@@ -62,13 +77,9 @@ jobs:
               sys.exit('policy-review case cannot carry non-policy source: ' + ', '.join(other))
           if epoch.production_fingerprint(root, base) != epoch.production_fingerprint(root, head):
               sys.exit('policy-review case cannot carry production, binding or test source changes')
-          review = subprocess.run([sys.executable, 'docs/tools/epoch_ci.py', 'select', '--root', root],
-                                  stdout=subprocess.PIPE, text=True)
-          print(review.stdout, end='')
-          if review.returncode != 0:
-              sys.exit('candidate policy-review case also rejected this PR')
-          if json.loads(review.stdout.strip().splitlines()[-1])['policy_case'] != 'policy-only':
-              sys.exit('trusted main rejected a PR that the candidate does not classify as policy-only')
-          print('::warning::Isolated policy-review case: trusted main policy rejected this PR; its own '
-                'candidate policy accepted it. NOT approval; independent review of: ' + ', '.join(touched))
+          print('Policy-review candidates: ' + ', '.join(touched))
           PY
+          check "$PWD" candidate
+          python3 -c 'import json,sys; v=json.loads(open(sys.argv[1]).read().splitlines()[-1]); sys.exit(v["policy_case"] != "policy-only")' \
+            "$RUNNER_TEMP/candidate.json"
+          echo "::warning::Isolated policy-review case: trusted main $BASE_SHA rejected this PR and its own policy accepted it. NOT approval; independent review required."
