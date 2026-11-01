@@ -1,5 +1,15 @@
 # Implementation coverage
 
+## DOC-CI-007 — identifier-preserving coverage prose evidence
+
+Paired formatting is normalized without deleting identifier underscores or
+code-span contents. Thirteen focused controls preserve declaration/member
+attachment, native reconciliation, exact renderer exceptions and the gap ratchet.
+Real main, PR #149 and synthetic output resolve exactly 17 false gaps with no
+baseline changes. The source-epoch suite then encounters the separate stale
+portal package-ledger gate; complete Documentation qualification remains blocked.
+See `doc-ci-007-coverage-normalization.md` for per-gap causes and qualification.
+
 ## DOC-CI-006 — current-source GNATdoc warning correction
 
 Four unexpected warnings are reproduced on failed and current main and removed
