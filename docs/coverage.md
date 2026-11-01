@@ -32,6 +32,13 @@ CameraCommandResp callback exists upstream and none is fabricated. Production
 inventory: 239 AMS_MEL_0.1 exports (ten new); Python/Rust receive only private
 raw mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
 
+R3 makes `Camera.Camera_Request` a type derived from the existing limited-private
+controlled request owner, rather than an ordinary subtype. Limited ownership,
+hidden representation, Wait, Close and inherited non-raising finalization retain
+their existing semantics. A focused documentation regression checks the derived
+parent link and five operation links, and retains rejection of the original
+private-base subtype link. No documentation security rule or native ABI changes.
+
 ## DOC-CI-SIMPLIFY-001 — current-source documentation CI
 
 Normal documentation generation uses one current-Git export and regenerated

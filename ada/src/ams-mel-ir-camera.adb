@@ -50,7 +50,7 @@ package body AMS.MEL.IR.Camera is
    is (US.To_String (Result.Result_Text));
 
    function Is_Open (Request : Camera_Request) return Boolean
-   is (Request.Handle /= C.Null_Camera_Command_Request);
+   is (Camera_Request_Owner (Request).Handle /= C.Null_Camera_Command_Request);
 
    function Wait (Request : Camera_Request; Timeout_Milliseconds : Natural) return Camera_Result is
       Empty    : constant C.IR_Camera_Command_Result_V1 :=
@@ -61,12 +61,12 @@ package body AMS.MEL.IR.Camera is
       Required : aliased C.Size_T := 0;
       Code     : Interfaces.Integer_32;
    begin
-      if Request.Handle = C.Null_Camera_Command_Request then
+      if Camera_Request_Owner (Request).Handle = C.Null_Camera_Command_Request then
          raise Provider_Error with "IR CameraCommand request is closed";
       end if;
       Code :=
         C.IR_Camera_Command_Request_Wait
-          (Request.Handle,
+          (Camera_Request_Owner (Request).Handle,
            Interfaces.Unsigned_32 (Timeout_Milliseconds),
            Raw'Access,
            D'Address,
@@ -95,7 +95,7 @@ package body AMS.MEL.IR.Camera is
                   Retry_Required : aliased C.Size_T := 0;
                   Retry_Code     : constant Interfaces.Integer_32 :=
                     C.IR_Camera_Command_Request_Wait
-                      (Request.Handle,
+                      (Camera_Request_Owner (Request).Handle,
                        0,
                        Retry_Raw'Access,
                        Complete'Address,
@@ -127,7 +127,8 @@ package body AMS.MEL.IR.Camera is
       D    : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       R    : aliased C.Size_T := 0;
       Code : constant Interfaces.Integer_32 :=
-        C.IR_Camera_Command_Request_Close (Request.Handle'Access, D'Address, D'Length, R'Access);
+        C.IR_Camera_Command_Request_Close
+          (Camera_Request_Owner (Request).Handle'Access, D'Address, D'Length, R'Access);
    begin
       if Code /= C.Success then
          raise Provider_Error with Failure (D);

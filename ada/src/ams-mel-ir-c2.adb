@@ -538,7 +538,7 @@ package body AMS.MEL.IR.C2 is
               C.IR_C2_Submit_Camera_Command
                 (Channel.Handle,
                  Raw'Access,
-                 Result.Handle'Access,
+                 Camera_Request_Owner (Result).Handle'Access,
                  Diagnostic'Address,
                  Diagnostic'Length,
                  Required'Access);

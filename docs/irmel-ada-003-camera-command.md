@@ -6,6 +6,60 @@ Python Instrumentation and RUST-IR-001 safe Rust HealthStatus, disjoint
 Python/Rust files); it was merged normally (no rebase). After the merge, Python
 204/204 and the full Rust workspace pass.
 
+## R3 — documentation private-subtype link correction
+
+Starting PR #150 head: `59d76ec842cdfe44696b7cdc4f9dbf21ca423096`, tree
+`39c6b7e3894ce441262165826c3e8553533818b1`; its second parent is the R2 merged
+main `1d0ab0caa745077e2a7e79f3490344b584105741`. During R3 inspection, live main
+advanced to `c85aee316cc745168ece12d63eda434a3b0baac0` (Rust Health metadata;
+no changes to the relevant Ada or documentation code).
+
+Pinned current-source generation reproduces Documentation run `41345552072`:
+`AMS.MEL.IR.Camera.Camera_Request` is rendered as an ordinary subtype whose base
+links to `type Camera_Request_Owner is limited private;` in `AMS.MEL.IR`.
+The containing native page/section is
+`3d4e52a331f7fd13f06b72e4cf48e4adb29d8af65047a1134b2e2e456c2ae586.html#98eed098456b82b24600c4e3016b250504f9de135bf3a630f07dacea0cfeddb1`;
+the rejected destination is
+`fcc2aff5e67a49dbd4266c4d14c896260883e1cde02a978e467f1747f5236656.html#3b07f2aa98f84714b8c25aafee1ff515cfa800c40effd20db5b41ed401272988`.
+Both declarations originate in this PR, not unmodified main.
+
+The correction makes `Camera.Camera_Request` a private extension of the existing
+limited-private controlled parent owner, using the audit's existing derived-type
+context. The type remains limited, inherits the same non-raising finalizer and
+hides its handle representation. The public request operations, submission
+profiles are unchanged; private bodies use parent view conversions to access the
+same handle without copies. No native lifecycle, audit/security checks or
+policy exceptions change. The request is now a distinct type, not an alias of
+the implementation owner; intended clients use `Camera.Camera_Request` as
+documented.
+
+The parent's partial view explicitly says `tagged limited private`, matching its
+existing controlled full view and allowing visible derivation in the child.
+Its handle and controlled completion remain private; no C representation leaks.
+
+`docs/tests/test_camera_request_links.py` checks the real source's derived-type
+link, the parent's limited-private declaration, the five public operation type
+links, and continued rejection of the original ordinary subtype's private target.
+It runs with the pinned enhancer interpreter as a targeted regression, alongside
+the unchanged current-source Documentation build and its independent audit.
+
+R3 local validation (provider-free, mock evidence only):
+
+| Check | Result |
+|---|---|
+| Pinned `docs_ci.py build`, fresh current-source fixture | PASS; native restoration, six request-related links and all destinations verified |
+| Pinned enhancer `unittest discover -s docs/tests -p test_camera_request_links.py -v` | PASS 3/3; original unsafe subtype link remains rejected |
+| Alire `gprbuild -p -P ada/tests/ams_mel_tests.gpr ams_mel_smoke.adb`, GNAT 16.1.0, warnings as errors | PASS |
+| `ams_mel_smoke` against test facade and mock providers | PASS, including CameraCommand ownership, repeated Wait, timeout, Close and finalization contracts |
+| Native `ctest -R '^ir_camera_command_' --output-on-failure` | PASS 7/7, C11 contract and isolated failure processes |
+| `make check-ir-api-coverage` | PASS, 26 regression tests |
+| `make test-policy` | PASS, all seven suites |
+| `check_doc_source_integrity.py`, `make format-ada`, `make check-ada-format`, final newlines, `git diff --check` | PASS |
+
+No historical documentation campaign or FULL_STRESS was rerun. No provider,
+hardware or Squall qualification is claimed. Earlier exploratory representation
+forms were rejected by compilation or documentation checks and are not retained.
+
 ## Implemented upstream operations
 
 1. `C2Channel::send(CameraCommand)` → `ams_mel_ir_c2_submit_camera_command`,

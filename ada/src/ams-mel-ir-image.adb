@@ -622,7 +622,12 @@ package body AMS.MEL.IR.Image is
          declare
             Code : constant Interfaces.Integer_32 :=
               C.IR_Stream_Submit_Camera_Command
-                (Object.Handle, Raw'Access, Result.Handle'Access, D'Address, D'Length, R'Access);
+                (Object.Handle,
+                 Raw'Access,
+                 Camera_Request_Owner (Result).Handle'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
          begin
             Check (Code, D);
          end;

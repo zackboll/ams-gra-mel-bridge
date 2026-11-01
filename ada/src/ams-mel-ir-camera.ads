@@ -101,7 +101,7 @@ package AMS.MEL.IR.Camera is
    --  @param Result Rejected terminal result.
    --  @return Owned description, retried from the native cache when long.
 
-   subtype Camera_Request is AMS.MEL.IR.Camera_Request_Owner;
+   type Camera_Request is new AMS.MEL.IR.Camera_Request_Owner with private;
    --  Limited request owner returned by C2/Image Submit_Camera_Command. Pending native work
    --  retains its channel, Session and provider library after request/channel/Session
    --  closure; finalization is non-raising and Close never cancels provider work.
@@ -126,6 +126,10 @@ package AMS.MEL.IR.Camera is
 
 private
    package US renames Ada.Strings.Unbounded;
+   type Camera_Request is new AMS.MEL.IR.Camera_Request_Owner with record
+      null;
+   end record;
+
    type Camera_Result is record
       Result_Status   : Outcome := AMS.MEL.IR.Channel.Success;
       Result_Response : Camera_Command_Response;

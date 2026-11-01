@@ -266,7 +266,7 @@ package AMS.MEL.IR is
    --  IRMEL-ADA-003 limited controlled owner of exactly one native CameraCommand
    --  request. Applications use it only through AMS.MEL.IR.Camera.Camera_Request;
    --  C2 and Image submissions fill it from their own private handles.
-   type Camera_Request_Owner is limited private;
+   type Camera_Request_Owner is tagged limited private;
    --  Limited controlled request owner; finalization is non-raising and does not
    --  cancel pending native work, which retains the provider graph independently.
 
