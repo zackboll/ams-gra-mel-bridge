@@ -1,5 +1,16 @@
 # Implementation coverage
 
+## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
+
+The Documentation workflow now runs only on pushes to `main`; its
+`pull_request` and `workflow_dispatch` triggers are removed and every job,
+permission, pin, artifact binding and deployment gate is unchanged. Bootstrap
+is unchanged and still runs on PRs. This also removes the hosted POL-002 PR
+qualification gate; that deferral to main is accepted, and a lightweight PR
+replacement is separate work. The exact four-file transition is admitted only
+from predecessor main `d5243dd`; nothing is approved and the publication
+registry is unchanged. See `doc-ci-005-main-only-documentation.md`.
+
 ## CI-001R3-R5 — historical transition scope (proposal)
 
 The CI-001R3-R4 replay and DOC-CI-004 integration validators each bind one

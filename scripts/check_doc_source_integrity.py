@@ -117,15 +117,11 @@ DIAGNOSTIC_WORKFLOWS = (
     "1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711",
 )
 # DOC-CI-005 exact main-only successor of the complete DIAGNOSTIC_WORKFLOWS
-# pair, plus one new read-only PR source-policy workflow. Proposal only; the
-# predecessor/historical identities above remain valid independent routes.
+# pair (pull_request/workflow_dispatch triggers removed; push to main kept).
+# Proposal only; predecessor/historical identities remain independent routes.
 MAIN_ONLY_WORKFLOWS = (
     "de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235",
     "8971d0d3fe72bdf5d358909a02e0e8e38f38b2a2a6de725e0d0cb40202faa4b8",
-)
-SOURCE_POLICY_WORKFLOW = (
-    ".github/workflows/source-policy.yml",
-    "55dd5a00fe0167a6a8f573081b3737d44357d1c3651f48c572fd17ef6d3c5914",
 )
 ACTIONS_HISTORICAL_PAIRS = frozenset({
     ("47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
@@ -393,28 +389,6 @@ def proposed_bootstrap_state(root, git, existing, current, base):
     return states[0]
 
 
-def source_policy_state(root, git, current):
-    """Exact DOC-CI-005 PR check bytes in both views, or complete absence."""
-    name, expected = SOURCE_POLICY_WORKFLOW
-    path = root / name
-    if name not in current:
-        if path.exists() or path.is_symlink():
-            raise ValueError("DOC-CI-005 untracked source-policy workflow")
-        return False
-    if (any(p.is_symlink() for p in (path, *path.parents)) or
-            not path.is_file() or path.stat().st_mode & 0o111):
-        raise ValueError("DOC-CI-005 source-policy workflow not regular nonexecutable")
-    entries = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
-    if (len(entries) != 2 or not entries[0].startswith(b"100644 ") or
-            entries[0].split(b"\t", 1)[0].split()[-1] != b"0"):
-        raise ValueError("DOC-CI-005 source-policy index not regular stage-0")
-    views = [hashlib.sha256(content).hexdigest() for content in
-             (path.read_bytes(), git("show", f":{name}"))]
-    if any(digest != expected for digest in views):
-        raise ValueError("DOC-CI-005 unlisted source-policy workflow bytes")
-    return True
-
-
 def actions_workflow_state(root, git, current):
     """Accept complete historical/predecessor/candidate pairs, never mixed views."""
     identities = []
@@ -440,9 +414,6 @@ def actions_workflow_state(root, git, current):
             raise ValueError("CI-ACTIONS-001 workflow working tree/index state mismatch: " + name)
         identities.append(views[0])
     pair = tuple(identities)
-    source_policy = source_policy_state(root, git, current)
-    if (pair == MAIN_ONLY_WORKFLOWS) != source_policy:
-        raise ValueError("DOC-CI-005 main-only workflow and source-policy check must change together")
     if pair == MAIN_ONLY_WORKFLOWS:
         return "main_only_proposed_pending_independent_review"
     if pair == DIAGNOSTIC_WORKFLOWS:
@@ -463,11 +434,9 @@ def check(root=ROOT, base=BASE):
     current = set(git("ls-files", "-z", "--cached").decode().split("\0")) - {""}
     irmel = irmel_pol_001_state(root, git, existing, current, base)
     irmel_paths = {name for name, _, _, _ in IRMEL_POL_001_TRANSITION} if irmel else set()
-    # Only exact DOC-CI-005 bytes in both views may add the PR source-policy check.
-    source_policy = {SOURCE_POLICY_WORKFLOW[0]} if source_policy_state(root, git, current) else set()
     unexpected = {name for name in current - existing
                   if not name.startswith("docs/") and name not in DOCUMENTATION_ADDITIONS
-                  and name not in irmel_paths and name not in source_policy}
+                  and name not in irmel_paths}
     if unexpected:
         raise ValueError(f"unauthorized tracked files added: {sorted(unexpected)!r}")
     transition = reviewed_native_test_state(root, git, existing, current, base)
