@@ -371,7 +371,7 @@ class InstrumentationTests(_InstrumentationTestCase):
     def test_rejection_that_fits_initial_buffer_needs_no_retry(self):
         _, _, request = self.request("instr-reject")
         native = _native.ams_mel_ir_instrumentation_request_wait
-        with mock.patch.object(mel, "_WAIT_DIAGNOSTIC_CAPACITY", 1024), mock.patch.object(
+        with mock.patch.object(mel._instrumentation, "_WAIT_DIAGNOSTIC_CAPACITY", 1024), mock.patch.object(
                 _native, "ams_mel_ir_instrumentation_request_wait", wraps=native) as wait:
             self.assertEqual(request.wait(5000), mel.InstrumentationRejected(
                 mel.MelErrorCode.INVALID_STATE, LONG_TEXT))

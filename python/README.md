@@ -12,6 +12,63 @@ Set `AMS_MEL_NATIVE_LIB` to the absolute full path of `libams_mel_c.so.0` (or
 separate path passed to `Session.open` or `RFAdmin.open`; Python never loads
 provider factories or models provider C++ interfaces directly.
 
+## Internal package layout (PY-PKG-001)
+
+`ams_mel/__init__.py` explicitly re-exports the existing public API. Public
+classes and enums retain `__module__ == "ams_mel"` for introspection and pickle;
+the exports are the implementation objects themselves, not wrappers or copies.
+Consumers should continue importing public names from `ams_mel`.
+
+The implementation dependency graph is acyclic. In this diagram arrows mean
+"may import from" (higher layers depend on lower layers):
+
+```text
+_errors -> _native
+_validation -> _errors
+_types -> _native, _errors, _validation
+_ffi -> _native, _errors, _validation, _types
+_requests -> _native, _errors, _validation, _types
+_common -> _native, _errors, _types, _ffi, _requests
+_image / _c2 / _instrumentation / _health -> shared layers above
+_rf_admin -> _native, _errors, _validation, _types
+_session -> _native, _errors, _validation, _types, _ffi, family implementations
+__init__ -> explicit public exports from implementation modules
+```
+
+Responsibilities:
+
+- `_errors`: structured errors, native status mapping and diagnostic handling.
+- `_validation`: numeric/timeout/size and input-string validation, independent of
+  public value models.
+- `_types`: frozen value models, enums, command/report values and model validation.
+- `_ffi`: raw argument bundles retaining borrowed string storage, checked spans,
+  capability snapshots/conversion, and best-effort close utilities.
+- `_requests`: Mode/Return/Comms owners and their native-cached Wait handling.
+- `_common`: weak `ChannelView`, common operations and shared `_NativeOwner`
+  mechanics (the existing implementation, not a new ownership model).
+- `_image`, `_c2`, `_instrumentation`, `_health`, `_rf_admin`: family owners and
+  operations. Instrumentation's specialized Wait/metadata conversion stays with
+  that family; image-frame conversion stays with Image.
+- `_session`: Session lifetime, version queries and typed channel factories.
+
+No implementation module imports public names back from `__init__`. `_native.py`
+remains the single, unchanged private ctypes module, not a package. This layout
+adds no API, native calls, locks, workers, retries or lifecycle semantics.
+
+`tests/public_api_baseline.json` records the pre-refactor API from main commit
+`d1847d3e8043704352deedfc7f3f680d9752fce3` (tree
+`5d6c8a6ad05b63156caf4941e0be7048e58cc379`). `test_package_layout.py` compares all
+54 ordered exports, public identities/metadata, package-defined method
+signatures, enum values/representations, dataclass fields/defaults/frozen status,
+and representative errors. Interpreter-provided inherited methods are excluded
+from signature snapshots so Python minor-version changes are not mistaken for
+binding changes. Additional tests check defining-module object identity, the
+import graph, fresh-process imports and representative pickle round-trips.
+Existing native-backed lifecycle tests remain unchanged except for four private
+failure-injection patch targets, now patched in their implementation modules.
+
+## Supported behavior
+
 The current API supports RF Admin state commands (see below), façade ABI/version
 queries, provider `Session` open/version/close, host-memory Mono8 `ImageStream`
 open/start/receive/counters/stop/close, and the existing IR CommandAndControl

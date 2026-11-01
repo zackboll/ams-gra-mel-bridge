@@ -472,7 +472,7 @@ class InstrumentationMetadataBoundaryTests(_MetadataTestCase):
                 return result
 
             with self.subTest(failed_cleanup=failed_cleanup), \
-                    mock.patch.object(mel, "InstrumentationReport", side_effect=MemoryError("copy")), \
+                    mock.patch.object(mel._instrumentation, "InstrumentationReport", side_effect=MemoryError("copy")), \
                     mock.patch.object(_native, PREFIX + "event_close", side_effect=close_event) as close:
                 with self.assertRaisesRegex(MemoryError, "copy"):
                     metadata.receive()
