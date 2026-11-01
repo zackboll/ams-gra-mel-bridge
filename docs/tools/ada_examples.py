@@ -71,13 +71,13 @@ def tokenize(text):
 class References:
     """Authority from public source declarations, approved ledger and native HTML."""
 
-    def __init__(self, root=ROOT, native=None):
+    def __init__(self, root=ROOT, native=None, ledger=None):
         from local_type_audit import Authority
         from gnatdoc_inventory import specifications
         self.root = root
         native = root / "_site" if native is None else native
         self.native_site = native
-        self.native = Authority(root, native)
+        self.native = Authority(root, native, ledger=ledger)
         self.packages = {name.lower(): "../api/" + page
                          for page, name in self.native.page_packages.items()}
         self.package_sources = {name.lower(): path.relative_to(root).as_posix()

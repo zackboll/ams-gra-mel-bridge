@@ -24,9 +24,10 @@ SHARDS = {
     "types": ["test_type_link_completeness", "test_local_type_audit"],
     "remaining": ["test_ada_examples", "test_document_metadata", "test_audit_output",
                   "test_examples", "test_documentation_ci",
-                  "test_navigation_completion_observation"],
+                  "test_navigation_completion_observation", "test_bootstrap_ci_policy"],
 }
 INHERITED = ROOT / "docs/tests/ci001-inherited-inventory.json"
+CI002_TEST_SHA256 = "7ce1f723cda1a8566078df386eb0765dd846d1996b00a9a9a5b22c05c1f597ba"
 BASELINE_SHA = "9288f6acd4cbf807f576d387db390459f0b117c0"
 CI001_SHA = "a0900430d3b2db8ac5dd9d065eaa66aa88ed6751"
 IR_CI003_SHA = "45f0d147521354777a8ace214172ff268e1c3355"
@@ -174,8 +175,76 @@ def source_methods(content, module):
     return methods
 
 
+def live_fixture_source(content):
+    """Exact DOC-PERF-001-R2 helper proposal; pending independent review.
+
+    Reconstruct from immutable CI-001 bytes, not a candidate-supplied digest.
+    Both historical fixtures and the proposed successor retain every other byte,
+    including all test methods and the reviewed WorkflowTests implementation.
+    Mechanical acceptance is not approval of this proposed transition.
+    """
+    original = git_bytes(CI001_SHA, "docs/tests/test_live_docs_site.py")
+    require(hashlib.sha256(original).hexdigest() ==
+            "0658a2e40b8e815e71a9de61e077b7b0a122f74f23ba385d363f80ebfc0b6164",
+            "live fixture historical source mismatch")
+    old = '''    def api_page(self):
+        return next(p for p in (self.site / "api").glob("*.html") if p.name != "index.html")
+'''.encode()
+    new = '''    def api_page(self):
+        authority = live.publication.Authority(ROOT, ROOT / "_site")
+        required = sorted(authority.required_additions(), key=live.publication.occurrence_key)
+        self.assertTrue(required, "missing trusted fixture occurrence")
+        record = required[0]
+        entry = record["containing"]
+        self.assertEqual(authority.sections[(entry["page"], entry["anchor"])], entry)
+        path = self.site / "api" / entry["page"]
+        native = (ROOT / "_site/api" / entry["page"]).read_text()
+        text = live.publication.restore_document(path.read_text(), native,
+                                                "api/" + entry["page"], authority)
+        restored, audit = live.publication.restore_page(entry["page"], text, authority)
+        self.assertIn("<h4 id=" + entry["anchor"] + ">", native)
+        self.assertIn(record, audit, "missing trusted fixture type-reference link")
+        self.assertEqual(restored, native, "changed trusted fixture native declaration")
+        return path
+'''.encode()
+    require(original.count(old) == 1, "live fixture historical helper mismatch")
+    proposed = original.replace(old, new, 1)
+    require(hashlib.sha256(proposed).hexdigest() ==
+            "4693fe458c1fae6dffc5d9d115e21dc9a5ff3a74380a0cd16ac22c4181444c74",
+            "live fixture proposed reconstruction mismatch")
+    require(content in (original, proposed), "unapproved inherited live fixture source")
+    return original
+
+
 def validate_inventory(groups, root=None):
     root = ROOT if root is None else Path(root)
+    # CI-002 is additive. Reconcile its exact source-derived identities before
+    # applying the unchanged historical 579-test reconciliation below. Minimal
+    # CI-001R2 fixtures omit this module and continue testing that boundary.
+    ci002_name = "docs/tests/test_bootstrap_ci_policy.py"
+    ci002_path = root / ci002_name
+    ci002 = set()
+    if ci002_path.exists():
+        content = ci002_path.read_bytes()
+        require(hashlib.sha256(content).hexdigest() == CI002_TEST_SHA256,
+                "CI-002 control source changed")
+        ci002 = set(source_methods(content, "test_bootstrap_ci_policy"))
+        require(len(ci002) == 71, "CI-002 control inventory changed")
+        original_ci002 = source_methods(git_bytes(
+            "cec2a98ee90cbf532c66ddf8c1ff13e86b6b6ae0", ci002_name), "test_bootstrap_ci_policy")
+        require(len(original_ci002) == 40 and set(original_ci002) <= ci002,
+                "original CI-002 identity removed")
+        require(set(groups["enhanced"]) >= ci002 and
+                all(groups["enhanced"].count(name) == 1 for name in ci002),
+                "CI-002 control missing or duplicated")
+    else:
+        require(root != ROOT, "CI-002 control source missing")
+    # CI-001R3 follows the complete CI-002 admission checks, preserving their
+    # original rejection precedence even for intentionally incomplete fixtures.
+    from ci001r3_source import inherited_sources
+    inherited_views = inherited_sources(root, git_bytes)
+    groups = {group: [name for name in names if name not in ci002]
+              for group, names in groups.items()}
     reviewed_authorities(BASELINE_SHA, IR_CI003_SHA, CI001_SHA)
     inventory_name = "docs/tests/ci001-inherited-inventory.json"
     inherited_bytes = git_bytes(CI001_SHA, inventory_name)
@@ -207,10 +276,11 @@ def validate_inventory(groups, root=None):
                 (path.parent == Path("scripts") and path.match("test_*doc*.py"))):
             protected.add(name)
             original = git_bytes(BASELINE_SHA, name)
-            current = (root / name).read_bytes()
+            current = inherited_views.get(name, (root / name).read_bytes())
             if name in IR_CI003_SOURCES:
                 continue  # Exact approved bytes and original methods verified above.
             if name == "docs/tests/test_live_docs_site.py":
+                current = live_fixture_source(current)
                 # Only the two workflow-shape tests follow the reviewed topology
                 # change. All HTTP/publication/security assertions stay frozen.
                 def invariant_ast(content):
@@ -226,11 +296,12 @@ def validate_inventory(groups, root=None):
             {"scripts": 133, "enhanced": 364}, "inherited inventory changed")
     controls_name = "docs/tests/test_documentation_ci.py"
     original_controls = source_methods(git_bytes(CI001_SHA, controls_name), Path(controls_name).stem)
-    controls = source_methods((root / controls_name).read_bytes(), Path(controls_name).stem)
+    controls_content = inherited_views.get(controls_name, (root / controls_name).read_bytes())
+    controls = source_methods(controls_content, Path(controls_name).stem)
     require(len(original_controls) == 49 and original_controls.items() <= controls.items(),
             "original CI-001 controls changed")
     original_tree = ast.parse(git_bytes(CI001_SHA, controls_name))
-    current_tree = ast.parse((root / controls_name).read_bytes())
+    current_tree = ast.parse(controls_content)
     current_tree.body = [node for node in current_tree.body if not (
         (isinstance(node, ast.ClassDef) and node.name == "ReviewedTransitionTests") or
         (isinstance(node, ast.Import) and len(node.names) == 1 and
@@ -240,7 +311,8 @@ def validate_inventory(groups, root=None):
     source_names = {p.relative_to(root).as_posix()
                     for directory, pattern in (("scripts", "test_*doc*.py"), ("docs/tests", "test_*.py"))
                     for p in (root / directory).glob(pattern)}
-    require(source_names == protected | {controls_name, observer_name}, "unauthorized test source addition/removal")
+    require(source_names - ({ci002_name} if ci002 else set()) ==
+            protected | {controls_name, observer_name}, "unauthorized test source addition/removal")
     require(set(groups) == {"scripts", "enhanced"}, "unexpected inventory groups")
     for group, ids in groups.items():
         require(len(ids) == len(set(ids)), "duplicate discovered identity: " + group)
@@ -264,7 +336,7 @@ def inventory():
     shards = assign(groups["enhanced"])
     require({key: len(value) for key, value in shards.items()} == {
         "navigation": 34, "publication": 35, "live": 72,
-        "symbols-catalog": 57, "types": 52, "remaining": 187}, "reviewed shard inventory changed")
+        "symbols-catalog": 57, "types": 52, "remaining": 258}, "reviewed shard inventory changed")
     return {"schema": 1, "groups": groups, "shards": shards,
             "inherited_sha256": file_sha(INHERITED),
             "test_sources": {p.relative_to(ROOT).as_posix(): file_sha(p)

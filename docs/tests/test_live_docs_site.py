@@ -305,7 +305,21 @@ class QualifiedArtifactTests(unittest.TestCase):
         self.reject("changed native CSS or authored portal")
 
     def api_page(self):
-        return next(p for p in (self.site / "api").glob("*.html") if p.name != "index.html")
+        authority = live.publication.Authority(ROOT, ROOT / "_site")
+        required = sorted(authority.required_additions(), key=live.publication.occurrence_key)
+        self.assertTrue(required, "missing trusted fixture occurrence")
+        record = required[0]
+        entry = record["containing"]
+        self.assertEqual(authority.sections[(entry["page"], entry["anchor"])], entry)
+        path = self.site / "api" / entry["page"]
+        native = (ROOT / "_site/api" / entry["page"]).read_text()
+        text = live.publication.restore_document(path.read_text(), native,
+                                                "api/" + entry["page"], authority)
+        restored, audit = live.publication.restore_page(entry["page"], text, authority)
+        self.assertIn("<h4 id=" + entry["anchor"] + ">", native)
+        self.assertIn(record, audit, "missing trusted fixture type-reference link")
+        self.assertEqual(restored, native, "changed trusted fixture native declaration")
+        return path
 
     def test_wrong_document_title(self):
         path = self.api_page()
@@ -366,32 +380,12 @@ class QualifiedArtifactTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def test_main_only_read_only_dependency(self):
-        text = (ROOT / ".github/workflows/documentation.yml").read_text()
-        live_job = text.split("  verify-live:\n")[1]
-        self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", live_job)
-        self.assertIn("needs: [prepare-documentation, build, deploy]", live_job)
-        self.assertIn("contents: read", live_job)
-        self.assertIn("actions: read", live_job)
-        self.assertNotIn(": write", live_job)
-        self.assertIn("ref: ${{ github.sha }}", live_job)
-        self.assertIn("artifact-ids: ${{ needs.prepare-documentation.outputs.artifact_id }}", live_job)
-        self.assertIn("artifact-ids: ${{ needs.build.outputs.gate_id }}", live_job)
-        self.assertIn("--artifact _site-published --pristine _site", live_job)
-        self.assertIn("documentation_ci.py deployment", live_job)
-        self.assertIn("--gate-sha '${{ needs.build.outputs.gate_sha }}'", live_job)
-        self.assertNotIn("run-id:", live_job)
-        self.assertNotIn("secrets.", live_job)
-        self.assertIn("if: always()", live_job)
-        self.assertIn("--attempts 10 --interval 30", live_job)
+        from ci001r3_workflow import live_contract
+        live_contract(ROOT)
 
     def test_pr_fixture_discovery_retained(self):
-        text = (ROOT / ".github/workflows/documentation.yml").read_text()
-        self.assertIn("documentation_ci.py inventory", text)
-        self.assertIn("--owner '${{ matrix.shard }}'", text)
-        self.assertIn("shard: [navigation, publication, live, symbols-catalog, types, remaining]", text)
-        self.assertIn("documentation_ci.py aggregate", text)
-        self.assertIn("Compile and execute canonical public Ada examples", text)
-        self.assertIn("DOC_EXAMPLES_ALIRE_SETTINGS", text)
+        from ci001r3_workflow import preparation_contract
+        preparation_contract(ROOT)
 
 
 if __name__ == "__main__":

@@ -21,16 +21,23 @@ def require(condition, message):
 def inventory(authority, pristine):
     """Return source-spelled symbols in package/source declaration order."""
     result = []
+    # One immutable public-token projection per source file in this call only.
+    # Do not retain this on Authority: callers may change source/native inputs
+    # between inventories, including when reusing an existing Authority object.
+    public_sources, native_pages = {}, {}
     for key, entry in sorted(authority.types.items()):
         owner = authority.packages[entry["package"]]
-        _, lines, header, boundary, _, _ = specification(authority.root / entry["source"])
-        public = [t[0] for t in lex("\n".join(lines[header:boundary - 1]))]
+        path = authority.root / entry["source"]
+        if path not in public_sources:
+            _, lines, header, boundary, _, _ = specification(path)
+            public_sources[path] = tuple(t[0] for t in lex("\n".join(lines[header:boundary - 1])))
+        public = public_sources[path]
         # Unsupported scopes cannot promote nested/private declarations. Public
         # limited-private views remain public; private completions do not.
         if set(public) & {"package", "generic", "task", "protected", "begin", "declare"}:
             continue
         require("internal" not in entry["package"].split("."), "private owner")
-        declaration = [t[0] for t in lex(entry["declaration"])]
+        declaration = tuple(t[0] for t in lex(entry["declaration"]))
         require(declaration[0] in {"type", "subtype"}, "unsupported declaration kind")
         require(any(public[i:i + len(declaration)] == declaration for i in range(len(public))),
                 "declaration lacks complete public source identity")
@@ -43,7 +50,10 @@ def inventory(authority, pristine):
             suffix = native[i + 1:]
             require(bool(suffix) and source[:i] == native[:i] and source[-len(suffix):] == suffix,
                     "abbreviated native profile differs from source")
-            text = (pristine / "api" / entry["page"]).read_text()
+            path = pristine / "api" / entry["page"]
+            if path not in native_pages:
+                native_pages[path] = path.read_text()
+            text = native_pages[path]
             marker = "<h4 id=" + entry["anchor"] + ">"
             require(text.count(marker) == 1, "missing/duplicate native anchor")
             section = text.split(marker, 1)[1].split("<h4 ", 1)[0]

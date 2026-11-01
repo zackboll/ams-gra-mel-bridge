@@ -1,5 +1,103 @@
 # Implementation coverage
 
+## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
+
+The Documentation workflow now runs only on pushes to `main`; its
+`pull_request` and `workflow_dispatch` triggers are removed and every job,
+permission, pin, artifact binding and deployment gate is unchanged. Bootstrap
+is unchanged and still runs on PRs. This also removes the hosted POL-002 PR
+qualification gate; that deferral to main is accepted, and a lightweight PR
+replacement is separate work. The exact four-file transition is admitted only
+from predecessor main `d5243dd`; nothing is approved and the publication
+registry is unchanged. See `doc-ci-005-main-only-documentation.md`.
+
+## CI-001R3-R5 — historical transition scope (proposal)
+
+The CI-001R3-R4 replay and DOC-CI-004 integration validators each bind one
+exact historical successor, defined from fixed complete predecessor trees.
+Both include `docs/coverage.md`, so every later ordinary coverage edit was
+rejected as "not a complete verified predecessor checkout". The classifier
+now invokes each validator only from its own verified predecessor trees; a
+literal registry must equal the validators' constants. Later candidates take
+the unchanged ordinary routes, and later workflow/runner policy proposals must
+still satisfy the trusted CI-001R3 workflow contracts. No validator, SHA-256
+identity, protected input, workflow, production source or approval authority
+changes; nothing is approved. See `ci-001r3-r5-historical-transition-scope.md`.
+
+## CI-001R3-R4 — explicit corrected historical live-fixture replay (proposal)
+
+Hosted run `40989263985` (live job `123862363728`, diagnostic artifact
+`12950348192`) executed all 72 historical live identities: 70 passed and
+`test_missing_required_type_link`/`test_wrong_native_anchor` failed with
+`0 != 1`. The immutable historical `api_page()` used the first enumerated API
+page; the AMS root namespace page has neither a native declaration anchor nor
+a type-reference link (28 other pages have both). The original epoch
+`5c136a0` still generates and seals the publication; historical tests now run
+from the explicit child replay `f1a512f` (tree `cf865c6`), which changes only
+the reviewed DOC-PERF-001-R2 helper and its exact admission. Its identity,
+inventory and source hashes are sealed as the replay, not the original. All
+579 identities, six shards, fingerprints, workflow and publication authority
+are unchanged; no independent/publication approval is granted. See
+`ci-001r3-r4-historical-replay.md`.
+
+## DOC-CI-004 integration with CI-001R3 — diagnostic-only proposal
+
+The proposed successor retains #137's exact three-method workflow correction
+and imports #136's frozen R2 failure preservation, not its branch or pending
+merge. Canonical successful reports remain distinct from always-uploaded,
+non-authorizing failure diagnostics. The strict verifier checks the added action
+role, destination, ordering and source/run/attempt/shard identity. A complete
+exact Git-tree/source transition is separate from the historical Node 24
+migration; neither mechanical route grants independent/publication approval.
+No historical assertion, production source, baseline or publication output is
+changed. Local and hosted qualification are required on the integrated source;
+earlier passing campaigns do not qualify it. The historical live-shard root
+cause was later established (CI-001R3-R4 above). See
+`doc-ci-004-integration.md` for scope and evidence.
+
+## CI-ACTIONS-001 — proposed Node 24 workflow dependencies
+
+All 23 baseline direct Node 20 findings plus the Pages upload composite's
+transitive upload are migrated to reviewed full-SHA Node 24 releases. Explicit
+hidden-file compatibility preserves the Pages tar contents. Existing jobs,
+checks, permissions, concurrency, native workloads, artifact identities and
+publication gates remain unchanged. Exact atomic workflow/source authorization
+has independent negative controls in the sealed integration suite. No production
+or frozen inventory/fingerprint changes. Local/hosted qualification and independent
+review remain incomplete; see `ci-actions-001-node24-dependencies.md`. CI-003R1
+staged source and PR #133 are not modified by this separate migration.
+
+## CI-002 — conservative Bootstrap native qualification
+
+Main-only push triggering removes redundant feature-push Bootstrap runs while
+retaining PR and manual qualification. All eight jobs remain; ordinary native
+coverage and installation are unconditional. Only explicitly allowlisted static
+Markdown changes with reconciled complete Git tree/diff authority omit the 50x
+stress campaign. Unknown paths, runtime changes and main/manual events retain
+full stress. CI-002R1 restores native synthetic-merge checkout and validates exact
+ordered base/head parents and reconstructed merge tree before configuration,
+separately from PR-specific risk classification. All forty CI-002 identities
+plus 31 corrective controls bring documentation inventory to 650 tests
+(142 scripts, 508 enhanced). Real divergent-branch C fixtures observe the combined
+native implementation, not stale feature code. CI-002R2 incorporates main's
+IR-CI-004 bounded malformed-counter observation without changing its bytes or
+discarding historical source authorities. The exact corrected workflow
+source-integrity transition is
+proposed pending independent review, not self-approved. See
+`ci-002-bootstrap-policy.md` for source identities, policy and maintainer gates.
+
+## IR-CI-004 — proposed malformed-counter observation correction
+
+The native malformed-frame test keeps its 20 ms receive-timeout and rejection
+assertions but independently observes asynchronous accounting with a bounded
+monotonic deadline. External provider-barrier controls demonstrate early
+observation, correct accounting after callback return, and failure when delivery
+never completes. No production/provider/ABI/Ada changes. The exact IR C-test
+source-policy successor remains proposed pending independent approval; historical
+RF/IR/Instrumentation/Navigation transitions and documentation inventories remain
+unchanged. See `ir-ci-004-malformed-counter-observation.md` for identities,
+approved-edit proposal, controls, qualification protocol and preservation limits.
+
 ## CI-001R2 — reviewed documentation inventory transition
 
 The documentation qualifier retains the immutable 497-test DOC-012 inventory,

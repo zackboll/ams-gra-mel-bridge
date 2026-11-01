@@ -318,14 +318,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("fail-fast: false", text)
 
     def test_deploy_is_main_only_and_aggregate_authorized(self):
-        text = (ci.ROOT / ".github/workflows/documentation.yml").read_text()
-        deploy = text.split("\n  deploy:\n")[1].split("\n  verify-live:\n")[0]
-        self.assertIn("if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", deploy)
-        self.assertIn("needs: [prepare-documentation, build]", deploy)
-        self.assertLess(deploy.index("documentation_ci.py deployment"), deploy.index("actions/upload-pages-artifact"))
-        prepare = text.split("\n  enhanced-tests:\n")[0]
-        self.assertNotIn("actions/upload-pages-artifact", prepare)
-        self.assertNotIn("actions/deploy-pages", prepare)
+        from ci001r3_workflow import deploy_contract
+        deploy_contract(ci.ROOT)
 
 
 class MeasurementTests(unittest.TestCase):
@@ -380,7 +374,8 @@ class ReviewedTransitionTests(unittest.TestCase):
         cls.inherited_bytes = subprocess.check_output(
             ["git", "-C", str(ci.ROOT), "show",
              ci.CI001_SHA + ":docs/tests/ci001-inherited-inventory.json"])
-        cls.discovered = {group: sorted(test.id() for test in ci.discover(group))
+        cls.discovered = {group: sorted(test.id() for test in ci.discover(group)
+                                       if not test.id().startswith("test_bootstrap_ci_policy."))
                           for group in ("scripts", "enhanced")}
 
     def setUp(self):
