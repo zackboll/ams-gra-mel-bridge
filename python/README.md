@@ -163,9 +163,9 @@ SQUALL_SOURCE_DIR=/path/to/squall make test-squall-ir-python
 
 This Python slice implements typed attachment, explicit Enable, complete owned
 capabilities, a weak common Channel view, and asynchronous recording-level
-commands using only the existing published C ABI. It does **not** expose
-Instrumentation metadata receive/callback APIs or add C2, Track, Health, RF, or
-Image commands. The private ctypes layouts and all native exports are unchanged.
+commands using only the existing published C ABI. Metadata reception is provided
+by PY-MEL-003 below; neither slice adds C2, Track, Health, RF, or Image commands.
+The private ctypes layouts and all native exports are unchanged.
 
 ```python
 from ams_mel import (
@@ -296,6 +296,108 @@ feature cannot promise real recording behavior. Provider C++ ABI compatibility
 and native retention of never-completing futures remain necessary. Diagnostics
 from non-Wait side-effecting calls retain the existing 4096-byte limitation:
 oversized text yields the native status and exact required size, not a truncated
-message or a repeated operation. Metadata receive/callback support remains out
-of scope. Ordinary feature tests and the streamlined source/security validators
-apply; no new source-policy authorization or filename allowlist is needed.
+message or a repeated operation. Ordinary feature tests and the streamlined
+source/security validators apply; no new source-policy authorization or filename
+allowlist is needed.
+
+## IR Instrumentation metadata (PY-MEL-003)
+
+`InstrumentationChannel.open_metadata(queue_capacity=16)` returns an independent
+`InstrumentationMetadata` owner, matching `AMS.MEL.IR.Instrumentation.Metadata`.
+Registration is allowed while Attached or Enabled and does not enable the channel.
+The positive capacity must fit native `size_t`; bool, zero, negatives, non-integers,
+and overflow are rejected before native registration. Registration is **one-shot
+per native channel**, including failed attempts. Closing metadata does not permit
+another registration.
+
+```python
+with session.open_instrumentation_channel(config) as channel:
+    with channel.open_metadata(queue_capacity=16) as metadata:
+        channel.enable()
+        report = metadata.receive(timeout_ms=1000)
+        print(report.command_id, report.size, report.timestamp_ns, report.priority)
+        activity = metadata.counters()
+        print(activity.events_received, activity.events_dropped_queue_full,
+              activity.malformed_or_unsupported)
+```
+
+The provider may invoke callbacks synchronously during registration or command
+send. Only the existing C++ façade registers callbacks, validates/copies payloads,
+and queues reports. Python registers no callback and adds no callback thread or
+background polling. Metadata reports and asynchronous command completion are
+independent; neither receiving nor waiting consumes the other's result.
+
+| Ada `AMS.MEL.IR.Instrumentation.Metadata` | Python | Existing C ABI suffix under `ams_mel_ir_instrumentation_` |
+| --- | --- | --- |
+| `Open` / `Metadata_Channel` | `channel.open_metadata(queue_capacity=16)` / `InstrumentationMetadata` | `metadata_open` |
+| `Is_Open` | `metadata.is_open` | Local owner presence, not callback activity |
+| `Receive` | `metadata.receive(timeout_ms=0)` → existing `InstrumentationReport` | `metadata_receive`, `metadata_event_view`, `metadata_event_close` |
+| `Counters` / `Metadata_Counters` | `metadata.counters()` → frozen `InstrumentationMetadataCounters` | `metadata_get_counters` |
+| `Close` / `Finalize` | `metadata.close()`, context manager, non-raising finalizer | `metadata_close` |
+
+Receive validates a uint32 timeout in milliseconds (bool/non-integers/overflow
+are rejected); zero polls. Native TIMEOUT, STREAM_STOPPED, and PROVIDER_FAILED
+remain distinct `MelError.kind` values, with native status and the existing
+structured diagnostic behavior. Successful receive must publish an event owner
+and a nonnull view of exactly report kind 1 with priority NORMAL (0) or DEBUG (1).
+Python copies full uint32 command ID and size, signed int64 nanosecond timestamp
+without conversion, and typed priority before closing the temporary event.
+No ctypes object, borrowed view, or provider pointer escapes. Reports survive
+event release and closure of every owner. Events are also released on malformed
+views, conversion exceptions, and unexpected owner publication on failed receive;
+cleanup failure never replaces an existing exception.
+
+The bounded FIFO uses **DROP-INCOMING**, not oldest-event eviction. Ordering is
+successful enqueue order, not timestamp or concurrent callback entry order.
+Counters preserve native uint64 values as Python integers and saturate natively:
+`events_received`, `events_dropped_queue_full`, and `malformed_or_unsupported`.
+They measure callback activity, not successful receives, and reads never reset
+them. Null payloads and invalid priorities are counted malformed; callback
+allocation failure instead fails the stream. Already queued reports drain before
+the empty failed queue returns PROVIDER_FAILED.
+
+### Metadata ownership and serialization
+
+- Metadata retains no Python Session or typed-channel parent. The native owner
+  provides the necessary lifetime; callback state remains channel-owned.
+- Typed-channel close deactivates metadata, but an existing metadata owner can
+  drain queued reports. An empty inactive queue returns STREAM_STOPPED; an empty
+  failed queue returns PROVIDER_FAILED even after channel close.
+- Metadata close is idempotent after success and invalidates further receive and
+  counters calls. It closes consumption only: it does not unregister callbacks,
+  close/destroy the typed/provider channel, cancel requests, or promise immediate
+  callback quiescence.
+- **Externally serialize receive, counters, and close on one metadata owner.**
+  Also serialize metadata open with enable, submit, capabilities, view conversion,
+  and close on its typed channel. The GIL is not serialization; no Python lock is
+  added. A blocking receive must finish before closing that metadata owner.
+- Cleanup follows consumed versus retryable native handles; Python never forces
+  unload of an uncertain provider graph. Context cleanup preserves body exceptions;
+  normal exit reports cleanup failure. Finalization makes non-raising best-effort
+  closure, not a cancellation or quiescence guarantee.
+
+### Metadata qualification and limits
+
+`python/tests/test_instrumentation_metadata.py` uses existing compiled mock
+scenarios for registration/send callbacks, queue behavior, malformed callbacks,
+failed streams, command independence and parent-first lifetimes. Held-future and
+in-flight-callback tests use existing deterministic provider barriers in
+subprocesses; uncertain detach behavior is subprocess-isolated. Native-boundary
+injection is limited to malformed C responses absent from the mock and conversion
+failure cleanup. Existing command, ABI/layout and private import-identity tests
+remain applicable.
+
+```sh
+PYTHONPATH="$PWD/python" \
+ AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0" \
+ AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers" \
+ python3 -W error -m unittest discover -s python/tests -p test_instrumentation_metadata.py -v
+```
+
+This is Python parity over the published Ada/C metadata slice, not a native ABI
+extension or new production export. Only the safe Python API, these tests and this
+README change. No source-policy authorization is needed. Positive behavior remains
+mock-qualified: no real Instrumentation hardware/provider qualification, new
+transport, callback-unregister guarantee, or general provider C++ ABI compatibility
+is claimed. The existing 4096-byte diagnostic limitation described above applies;
+side-effecting registration is never repeated to retrieve diagnostic text.

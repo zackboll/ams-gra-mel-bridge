@@ -24,9 +24,11 @@ close, and control enable, either submission operation, and close require
 external serialization. Operations and close on one :class:`ChannelView`
 require external serialization (distinct Views need none), and Wait and close
 on one :class:`ReturnRequest` or :class:`CommsRequest` require external
-serialization. Instrumentation enable, submit, capabilities, view conversion,
-and close on one channel also require serialization, as do Wait and close on
-one InstrumentationRequest. No Python lock or worker thread is added.
+serialization. Instrumentation enable, submit, metadata open, capabilities,
+view conversion, and close on one channel also require serialization, as do Wait
+and close on one InstrumentationRequest. Receive, counters, and close on one
+InstrumentationMetadata require external serialization. No Python lock or worker
+thread is added.
 """
 
 from __future__ import annotations
@@ -249,6 +251,15 @@ class InstrumentationReport:
                 or not -(_INT64_MAX + 1) <= self.timestamp_ns <= _INT64_MAX):
             raise _local_error(ErrorKind.INVALID_ARGUMENT, "timestamp_ns must be int64")
         object.__setattr__(self, "priority", _instrumentation_priority(self.priority))
+
+
+@dataclass(frozen=True)
+class InstrumentationMetadataCounters:
+    """Saturating callback activity counters, not successful receive counts."""
+
+    events_received: int
+    events_dropped_queue_full: int
+    malformed_or_unsupported: int
 
 
 @dataclass(frozen=True)
@@ -1503,6 +1514,37 @@ class InstrumentationChannel(_InstrumentationOwner):
             _native.ams_mel_ir_channel_from_instrumentation, self._owner,
         )
 
+    def open_metadata(self, queue_capacity: int = 16) -> InstrumentationMetadata:
+        """Register once while Attached or Enabled, without implicitly enabling.
+
+        Failed native attempts also consume registration; closing the metadata
+        owner never permits re-registration. Callbacks stay entirely in native
+        code and may run synchronously during this call.
+        """
+        self._require_open()
+        _validate_size_t(queue_capacity, "queue_capacity")
+        if queue_capacity == 0:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "queue_capacity must be positive")
+        metadata = InstrumentationMetadata._from_owner(
+            _native.IrInstrumentationMetadataHandle(),
+        )
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_instrumentation_metadata_open(
+                    self._owner, queue_capacity, metadata._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not metadata.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Instrumentation metadata open succeeded without returning an owner",
+                )
+        except BaseException:
+            metadata.__del__()
+            raise
+        return metadata
+
     def submit_level(self, command: InstrumentationLevelCommand) -> InstrumentationRequest:
         """Submit only; successful send is not recording-level command completion."""
         self._require_open()
@@ -1529,6 +1571,106 @@ class InstrumentationChannel(_InstrumentationOwner):
             request.__del__()
             raise
         return request
+
+
+class InstrumentationMetadata(_InstrumentationOwner):
+    """Independent polling owner; externally serialize receive/counters/close.
+
+    Native channel-owned callbacks feed a bounded FIFO DROP-INCOMING queue.
+    Queued reports drain after channel close or callback failure, followed by
+    STREAM_STOPPED or PROVIDER_FAILED respectively. No Python parent is retained.
+    """
+
+    _close_function = staticmethod(_native.ams_mel_ir_instrumentation_metadata_close)
+
+    def __init__(self) -> None:
+        raise TypeError("use InstrumentationChannel.open_metadata")
+
+    def receive(self, timeout_ms: int = 0) -> InstrumentationReport:
+        """Copy a complete report before releasing its native event; zero polls."""
+        self._require_open()
+        _validate_timeout(timeout_ms)
+        event = _native.IrInstrumentationMetadataEventHandle()
+        copied = False
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_instrumentation_metadata_receive(
+                    self._owner, timeout_ms, _ctypes.byref(event),
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not event.value:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Instrumentation receive succeeded without returning an event",
+                )
+            record = _ctypes.POINTER(_native.IrInstrumentationMetadataEventV1)()
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_instrumentation_metadata_event_view(
+                    event, _ctypes.byref(record),
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not record:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Instrumentation event view succeeded without returning a record",
+                )
+            raw = record.contents
+            if raw.kind != _native.AMS_MEL_IR_INSTRUMENTATION_METADATA_REPORT:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY, "invalid Instrumentation event kind",
+                )
+            report = raw.report
+            if report.priority not in (0, 1):
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY, "invalid Instrumentation report priority",
+                )
+            result = InstrumentationReport(
+                int(report.command_id), int(report.size), int(report.timestamp_ns),
+                InstrumentationPriority(report.priority),
+            )
+            copied = True
+            return result
+        finally:
+            if event.value:
+                # Also release an unexpected event published on a failed call.
+                # Cleanup must never replace a receive/view/conversion exception.
+                try:
+                    # Event close has no diagnostic payload. Do not allocate a
+                    # diagnostic buffer before releasing, especially on OOM.
+                    status = int(_native.ams_mel_ir_instrumentation_metadata_event_close(
+                        _ctypes.byref(event), None, 0, None,
+                    ))
+                    if status != _native.AMS_MEL_OK:
+                        raise _error_from_status(status, None, None)
+                    if event.value:
+                        raise _local_error(
+                            ErrorKind.PROTOCOL_INCONSISTENCY,
+                            "native event close succeeded without consuming the owner",
+                        )
+                except BaseException:
+                    if copied:
+                        raise
+
+    def counters(self) -> InstrumentationMetadataCounters:
+        """Owned uint64 snapshot; reading reports never resets these counters."""
+        self._require_open()
+        raw = _native.IrC2MetadataCountersV1()
+        _call_with_diagnostic(
+            lambda diagnostic, required: _native.ams_mel_ir_instrumentation_metadata_get_counters(
+                self._owner, _ctypes.byref(raw),
+                diagnostic, len(diagnostic), _ctypes.byref(required),
+            )
+        )
+        return InstrumentationMetadataCounters(
+            int(raw.events_received), int(raw.events_dropped_queue_full),
+            int(raw.malformed_or_unsupported),
+        )
+
+    def close(self) -> None:
+        """Deactivate consumption only; no unregister, cancellation, or quiescence."""
+        super().close()
 
 
 class InstrumentationRequest(_InstrumentationOwner):
@@ -2781,6 +2923,8 @@ __all__ = [
     "InstrumentationCompleted",
     "InstrumentationConfig",
     "InstrumentationLevelCommand",
+    "InstrumentationMetadata",
+    "InstrumentationMetadataCounters",
     "InstrumentationPriority",
     "InstrumentationRejected",
     "InstrumentationReport",
