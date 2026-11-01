@@ -5,8 +5,9 @@
 //!
 //! Scope: attachment, explicit enablement, complete capability snapshots,
 //! Close/Drop, and the weak common [`ChannelView`] (KeepAlive, CommsTest, and
-//! capabilities). The six HealthStatus metadata callback families
-//! (`ams_mel_ir_health_metadata_*`) are not exposed by this crate.
+//! capabilities). The six HealthStatus metadata callback families are opened
+//! through [`HealthStatusChannel::open_metadata`] (RUST-IR-002, implemented in
+//! `ir_health_metadata.rs`); the optional NUC_TempData callback is not exposed.
 
 use std::ptr;
 use std::rc::Rc;
@@ -15,8 +16,8 @@ use ams_mel_sys as sys;
 
 use crate::{
     call_with_diagnostic, capability_snapshot, channel_view_from, protocol, raw_uci_id,
-    string_view, ChannelCapability, ChannelView, ComponentLocation, Error, ErrorKind, Session,
-    UciId,
+    string_view, ChannelCapability, ChannelView, ComponentLocation, Error, ErrorKind,
+    HealthMetadataStream, Session, UciId,
 };
 
 const CLOSED: &str = "IR Health channel is closed";
@@ -148,7 +149,8 @@ impl Session {
 /// Code that circumvents that confinement must provide that serialization
 /// itself.
 ///
-/// HealthStatus metadata callbacks are not exposed by this type.
+/// HealthStatus metadata is received through an independent
+/// [`HealthMetadataStream`] from [`open_metadata`](Self::open_metadata).
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -231,6 +233,35 @@ impl HealthStatusChannel {
             },
             "Health",
         )
+    }
+
+    /// Makes this channel's single HealthStatus metadata registration attempt
+    /// and returns its independent [`HealthMetadataStream`].
+    ///
+    /// The native facade registers all six callback families in the published
+    /// order (MFA Status, BIT Status, Subsystem Status, Discrete Status,
+    /// Security Audit, MFA Status Detailed) into one bounded drop-incoming
+    /// queue of `queue_capacity` events. Registration is valid while Attached
+    /// or Enabled and may deliver events synchronously before this returns.
+    ///
+    /// `queue_capacity` must be nonzero; zero is rejected with
+    /// [`ErrorKind::InvalidArgument`] before any native call and does not
+    /// consume the registration attempt. Every other attempt, including a
+    /// failed or partial one, consumes it: a later call on the same channel is
+    /// refused by the native facade with [`ErrorKind::InvalidArgument`], and
+    /// this crate never retries. A provider rejection is
+    /// [`ErrorKind::ProviderFailed`] and a provider throw is
+    /// [`ErrorKind::ProviderException`]. A failed Open publishes no stream;
+    /// partially registered callback state remains retained inactive, because
+    /// upstream has no unregister operation.
+    ///
+    /// The stream does not borrow this owner. It is independent of the
+    /// optional NUC_TempData registration (which this crate does not expose).
+    /// A closed owner returns [`ErrorKind::ProviderFailed`] without a native
+    /// call.
+    pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<HealthMetadataStream, Error> {
+        let health = self.live()?;
+        HealthMetadataStream::open(health, queue_capacity)
     }
 
     /// Stops new common requests, then disables (if Enable was attempted) and

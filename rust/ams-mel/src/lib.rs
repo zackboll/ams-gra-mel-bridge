@@ -21,8 +21,16 @@
 //!
 //! IR HealthAndStatus (RUST-IR-001): [`HealthStatusChannel`] covers Open,
 //! explicit Enable, capability snapshots, retryable Close, and its weak
-//! [`ChannelView`]. The six HealthStatus metadata callback families are not
-//! exposed by safe Rust.
+//! [`ChannelView`].
+//!
+//! IR HealthStatus metadata (RUST-IR-002):
+//! [`HealthStatusChannel::open_metadata`] returns an independent
+//! [`HealthMetadataStream`] that polls the native bounded queue and returns
+//! fully Rust-owned [`HealthMetadataEvent`]s for all six HealthStatus metadata
+//! families (MFA Status, BIT Status, Subsystem Status, Discrete Status,
+//! Security Audit, MFA Status Detailed), plus [`HealthMetadataCounters`].
+//! Image metadata, C2 metadata, and the optional NUC_TempData callbacks are
+//! not exposed by safe Rust.
 //!
 //! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
 //! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
@@ -48,9 +56,21 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod ir_health;
+mod ir_health_metadata;
 mod rf_admin;
 mod rf_data;
 pub use ir_health::{HealthConfig, HealthStatusChannel};
+pub use ir_health_metadata::{
+    About, ActiveBit, BitResult, BitStatus, CompletedBit, CompletedBitItem, ComponentState,
+    CsciInfo, CsciMode, CsciVersion, Euler, FailureLevel, Fault, FaultAmbiguityGroup, FaultData,
+    FaultSeverity, FaultState, ForeignKey, HealthMetadataCounters, HealthMetadataEvent,
+    HealthMetadataKind, HealthMetadataStream, InstallationDetails, MfaComponent, MfaStatus,
+    NameValuePair, SecurityArtifact, SecurityAuditRecord, SecurityAuthenticationCategory,
+    SecurityEvent, SecurityEventKind, SecurityFileManagementCategory, SecurityIntegrityCategory,
+    SecurityKeyManagementCategory, SecurityOutcome, SecuritySanitizationCategory, SecuritySeverity,
+    SecuritySystemCategory, StateTransitionStatus, SubsystemDependency, SubsystemStatus,
+    TemperatureState, TemperatureStatus,
+};
 pub use rf_admin::{RfAdmin, RfMfaState};
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
