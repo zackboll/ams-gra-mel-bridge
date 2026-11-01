@@ -16,6 +16,12 @@
 //!
 //! Safe Rust has no typed Health, Instrumentation, or Track owners, so no
 //! common Channel view of those families is offered here.
+//!
+//! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
+//! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
+//! commands a published [`RfMfaState`]. Its Boolean result is provider
+//! acceptance only, not evidence of a hardware state transition. No other RF
+//! MEL facility is exposed by this crate.
 
 use std::error;
 use std::ffi::{c_char, CString};
@@ -27,6 +33,9 @@ use std::rc::Rc;
 use std::slice;
 
 use ams_mel_sys as sys;
+
+mod rf_admin;
+pub use rf_admin::{RfAdmin, RfMfaState};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
