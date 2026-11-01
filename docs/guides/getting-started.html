@@ -64,10 +64,15 @@ does not install a real provider or prove its optional capabilities.</p>
 <h2>Generate and read documentation</h2>
 <p>From repository root, with the qualified GNAT/GPRbuild on PATH and
 <code>GNATDOC_PREFIX</code> naming a qualified GNATdoc installation:</p>
-<pre><code>sh scripts/generate_docs_baseline.sh
-python3 -m unittest discover -s scripts -p 'test_*doc*.py' -v</code></pre>
-<p>Open <code>_site/index.html</code>; the untouched complete GNATdoc reference
-lives under <code>_site/api</code>. The generator compiles specifications
+<pre><code>make docs
+make test-docs-ci</code></pre>
+<p>Use the pinned enhancer interpreter via <code>DOC_PYTHON</code> when overriding
+the default installation. Builds require a clean committed Git source and a fresh
+<code>.doc-tools/current</code> output directory. Open
+<code>.doc-tools/current/published/index.html</code>; the untouched GNATdoc reference
+lives under <code>.doc-tools/current/pristine/api</code>. Warnings and documentation
+coverage are informational reports, not feature-development gates.
+The generator compiles specifications
 semantically, without a production build or runtime provider. Capability enums
 describe vocabulary, not a guarantee that all corresponding operations exist.</p>
 <h2>Source basis and next steps</h2>

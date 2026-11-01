@@ -1,8 +1,8 @@
-"""Regenerated, Git-bound feature documentation evidence; ordinary development.
+"""Source-derived generation and presentation verification.
 
-Historical publication continues in isolated immutable checkouts. This
-independent candidate path consumes Git objects and pinned GNATdoc output rather
-than changing any historical fingerprints or accepting a candidate anchor file.
+The normal docs_ci runner generates once. Explicit qualification may repeat
+generation and enumerate every eligible type-link occurrence. Neither path
+compares current warnings or coverage to a frozen completeness baseline.
 """
 
 import argparse
@@ -88,7 +88,7 @@ def generate(root, commit, directory, prefix, log):
     trusted = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(trusted / "scripts"))
     from gnatdoc_inventory import specifications
-    from check_doc_coverage import measure, ratchet
+    from check_doc_coverage import measure
     from build_docs_portal import manifest, package_map, regular, render
     from ada_examples import References
 
@@ -107,34 +107,37 @@ def generate(root, commit, directory, prefix, log):
     with log.open("ab") as stream:
         stream.write(warning_text.encode())
     require(native.returncode == 0 and not re.search(r"(^|\s)(error:|fatal:|ignore file due to)", warning_text, re.I), "incomplete native generation")
-    # Same original warning comparator/ratchet; no candidate baseline expansion.
-    run(["python3", str(trusted / "scripts/compare_gnatdoc_warnings.py"), "--fail-on-removed",
-         "--sources", str(directory / "ada/src"),
-         str(directory / "docs/gnatdoc-warning-baseline.txt"), str(obj / "gnatdoc.log")], directory, log)
+    # Diagnostics are information, never a documentation-completeness gate.
+    from classify_gnatdoc_warnings import classify
+    from compare_gnatdoc_warnings import WarningComparisonError
+    try:
+        warnings = classify(warning_text, directory)
+    except (ValueError, WarningComparisonError) as error:
+        warnings = {"classification_error": str(error), "raw_log": "gnatdoc.log"}
+    (obj / "warnings.json").write_bytes(canonical(warnings))
     report = measure(site, directory)
-    ratchet(report, (directory / "docs/gnatdoc-coverage-baseline.txt").read_text())
+    (obj / "coverage.json").write_bytes(canonical(report))
     ledger = report["native"]
+    (obj / "native-anchors.json").write_bytes(canonical(ledger))
     references = References(directory, site, ledger=ledger)
     data = manifest(directory)
-    packages = package_map(site, directory)
+    packages = package_map(site, directory, ledger)
     for name in [data["home"], *(e["path"] for e in data["guides"]), data["stylesheet"]]:
         text = regular(directory / "docs" / name)
         output = render(text, name, data, packages, directory, references) if name.endswith(".html") else text
         path = site / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(output)
+    from validate_docs import validate
+    validate(site, directory, ledger)
     return site, report, references
 
 
-def enhance(site, root, report, references, output):
+def enhance(site, root, report, references, output, *, deep=True):
     """Pinned renderer plus consumer-owned restoration and independent catalog."""
     import build_enhanced_site as p
-    from local_type_audit import Authority, restore_page, lex, IDENT, occurrence_key
     from ada_gnatdoc_enhancer.config import load
     from ada_gnatdoc_enhancer.pipeline import enhance as renderer, verify
-    from ada_gnatdoc_enhancer.util import sorted_json
-    import api_catalog
-    import symbol_audit
     p.tool()
     # Renderer needs a native ledger; supply only the independently measured one
     # in the disposable export, never authorize/modify the candidate's ledger.
@@ -147,6 +150,17 @@ def enhance(site, root, report, references, output):
     verify(config, api_stage)
     shutil.copytree(site, output)
     shutil.copytree(api_stage / "api", output / "api", dirs_exist_ok=True)
+    return verify_presentation(site, root, report, references, output, deep=deep)
+
+
+def verify_presentation(site, root, report, references, output, *, deep=False):
+    """Restore every native byte and check all destinations without regenerating."""
+    import build_enhanced_site as p
+    from local_type_audit import Authority, restore_page, lex, IDENT, occurrence_key
+    from ada_gnatdoc_enhancer.util import sorted_json
+    import api_catalog
+    import symbol_audit
+    p.tool()
     authority = Authority(root, site, ledger=report["native"])
     symbols = symbol_audit.inventory(authority, site)
     raw, actual = p.files(site), p.files(output)
@@ -188,7 +202,7 @@ def enhance(site, root, report, references, output):
     # Enumerate every eligible occurrence from plain native snippets, independently
     # of renderer wrappers and counts, including newly added declarations.
     expected_occurrences = []
-    for (page, anchor), entry in authority.sections.items():
+    for (page, anchor), entry in (authority.sections.items() if deep else ()):
         words = lex(entry['native'])
         for i, token in enumerate(words):
             if not IDENT.fullmatch(token[0]) or (i and words[i - 1][0] == '.'):
@@ -204,8 +218,8 @@ def enhance(site, root, report, references, output):
                     destination['page'] + '#' + destination['anchor'], identity))
             except ValueError:
                 continue  # Ineligible grammar cannot acquire a type link.
-    require(len(audit) == len(expected_occurrences) and
-            {occurrence_key(r): r for r in audit} == {occurrence_key(r): r for r in expected_occurrences},
+    require(not deep or (len(audit) == len(expected_occurrences) and
+            {occurrence_key(r): r for r in audit} == {occurrence_key(r): r for r in expected_occurrences}),
             "missing/extra source-derived type-link occurrence")
     require(actual["api/presentation.json"] == sorted_json(manifest).encode(), "source/renderer manifest mismatch")
     api_catalog.verify(actual["guides/api-map.html"].decode(), root, references)

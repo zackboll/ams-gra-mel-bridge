@@ -32,6 +32,18 @@ CameraCommandResp callback exists upstream and none is fabricated. Production
 inventory: 239 AMS_MEL_0.1 exports (ten new); Python/Rust receive only private
 raw mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
 
+## DOC-CI-SIMPLIFY-001 — current-source documentation CI
+
+Normal documentation generation uses one current-Git export and regenerated
+source/native anchors. Warnings and coverage are informational; historical warning
+and coverage baselines no longer authorize current feature development. Bootstrap
+compilation, tests, ABI and dependency controls remain in place. Source/run-bound
+artifact verification, native restoration, destination checks and push-main-only
+Pages privileges remain mandatory. Repeated generation, deep audits, examples
+qualification and historical replay move to scheduled/manual non-deploying jobs.
+The finalizer comment and identifier-preserving coverage fixes from open PRs #149
+and #152 are incorporated directly. See `doc-ci-simplify-001.md` for validation.
+
 ## IRMEL-ADA-002 — opt-in Image/Health NUC_TempData reception
 
 The pinned @Optional `NUC_TempData` callback is registered independently on

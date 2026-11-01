@@ -42,17 +42,17 @@ class Page(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def validate(site):
+def validate(site, root=ROOT, ledger=None):
     if site.is_symlink():
         raise SiteError("symlink site root")
     site = site.resolve()
     pages = {}
     allowed = {"index.html", "api/index.html", "api/gnatdoc.css"}
     try:
-        data = manifest()
-        packages_verified = package_map(site)
+        data = manifest(root)
+        packages_verified = package_map(site, root, ledger)
         for name in (data["home"], data["stylesheet"], *(e["path"] for e in data["guides"])):
-            regular(ROOT / "docs" / name)
+            regular(root / "docs" / name)
     except (PortalError, ValueError, OSError) as exc:
         raise SiteError(str(exc)) from exc
     allowed.update(e["path"] for e in data["guides"])
@@ -133,15 +133,15 @@ def validate(site):
     # deterministic resolution of its authored package name.
     from build_docs_portal import render
     from example_sources import References, verify_rendered
-    references = References(ROOT, site)
+    references = References(root, site, ledger=ledger)
     try:
         import api_catalog
-        api_catalog.verify((site / "guides/api-map.html").read_text(), ROOT, references)
-        verify_rendered((site / "guides/examples.html").read_text(), references=references)
+        api_catalog.verify((site / "guides/api-map.html").read_text(), root, references)
+        verify_rendered((site / "guides/examples.html").read_text(), root, references)
     except ValueError as exc:
         raise SiteError(str(exc)) from exc
     for name in ("index.html", *(e["path"] for e in data["guides"])):
-        expected_text = render(regular(ROOT / "docs" / name), name, data, packages_verified, references=references)
+        expected_text = render(regular(root / "docs" / name), name, data, packages_verified, root, references)
         authored = Page(expected_text)
         def api_links(page):
             return collections.Counter(link for link in page.links
@@ -150,7 +150,7 @@ def validate(site):
             raise SiteError("portal package links differ from verified authored references")
         if (site / name).read_text() != expected_text:
             raise SiteError("portal output differs from deterministic authored page")
-    if (site / data["stylesheet"]).read_text() != regular(ROOT / "docs" / data["stylesheet"]):
+    if (site / data["stylesheet"]).read_text() != regular(root / "docs" / data["stylesheet"]):
         raise SiteError("portal stylesheet differs from authorized source")
     return {"html_pages": len(pages), "links": sum(len(p.links) for p in pages.values())}
 
