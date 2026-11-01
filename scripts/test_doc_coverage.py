@@ -40,6 +40,10 @@ class ProseTests(unittest.TestCase):
                 self.assertTrue(evidence_matches('The owned value survives.', source))
         for text in ('Field_Name', 'uint8_t', 'a*b', '*unclosed', 'unclosed_'):
             self.assertEqual(source_prose(['The ' + text + ' value.']), 'The ' + text + ' value.')
+        self.assertEqual(source_prose(['The **`Field_Name` value** survives.']),
+                         'The Field_Name value survives.')
+        self.assertEqual(source_prose(['The *`*Field_Name*` value* survives.']),
+                         'The *Field_Name* value survives.')
 
     def test_whitespace_and_identifier_boundaries(self):
         self.assertTrue(evidence_matches('The\n uint8_t\t value.', source_prose([' The uint8_t ', 'value. '])))
