@@ -721,6 +721,13 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_health_metadata_close",
                 "ams_mel_ir_health_metadata_event_view",
                 "ams_mel_ir_health_metadata_event_close",
+                "ams_mel_ir_image_nuc_open",
+                "ams_mel_ir_health_nuc_open",
+                "ams_mel_ir_nuc_receive",
+                "ams_mel_ir_nuc_get_counters",
+                "ams_mel_ir_nuc_close",
+                "ams_mel_ir_nuc_event_view",
+                "ams_mel_ir_nuc_event_close",
                 "ams_mel_ir_instrumentation_open",
                 "ams_mel_ir_instrumentation_enable",
                 "ams_mel_ir_instrumentation_get_capabilities",
@@ -858,8 +865,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 222)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 222)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 229)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 229)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -867,7 +874,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 222)
+        self.assertEqual(len(exported), 229)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

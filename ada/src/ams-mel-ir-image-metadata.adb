@@ -2,6 +2,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces.C;
 with System;
 with System.Storage_Elements;
+with AMS.MEL.IR.NUC_Conversion;
 
 package body AMS.MEL.IR.Image.Metadata is
    package C renames AMS.MEL_C_API;
@@ -254,4 +255,50 @@ package body AMS.MEL.IR.Image.Metadata is
       end if;
       return Event.Navigation_Response_Value;
    end;
+   function Open_NUC (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive) return NUC_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : NUC_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Image_NUC_Open
+                (Stream.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            NUC_Conversion.Check_Open (Code, Registration, Message (D));
+         end;
+      end return;
+   end Open_NUC;
+   function Receive_NUC
+     (Stream : NUC_Stream; Timeout_Milliseconds : Natural := 0) return AMS.MEL.IR.NUC.NUC_Temp_Data
+   is (NUC_Conversion.Receive (Stream.Handle, Timeout_Milliseconds));
+   function NUC_Counters (Stream : NUC_Stream) return Metadata_Counters is
+      Raw : constant C.Metadata_Counters_V1 := NUC_Conversion.Counters (Stream.Handle);
+   begin
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end NUC_Counters;
+   procedure Close (Stream : in out NUC_Stream) is
+   begin
+      NUC_Conversion.Close (Stream.Handle);
+   end Close;
+   overriding
+   procedure Finalize (Stream : in out NUC_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_NUC_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_NUC_Metadata;
+   end Finalize;
 end AMS.MEL.IR.Image.Metadata;

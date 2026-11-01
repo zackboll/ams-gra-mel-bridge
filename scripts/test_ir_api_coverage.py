@@ -113,7 +113,9 @@ class CoverageTests(unittest.TestCase):
         self.reject("duplicate coverage operations identity")
 
     def test_optional_callback_not_implemented(self):
-        target = self.operation("ImageChannel", "NUC_TempData")
+        # IRMEL-ADA-002 implemented NUC_TempData; OpticalDistortionMap remains an
+        # unimplemented @Optional Image callback for this borrowed-evidence control.
+        target = self.operation("ImageChannel", "OpticalDistortionMap")
         source = self.operation("ImageChannel", "BadPixelList")
         for key in ("status", "native", "ada", "tests"):
             target[key] = copy.deepcopy(source[key])

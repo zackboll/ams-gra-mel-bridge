@@ -1097,6 +1097,29 @@ pub struct AmsMelIrBandInfoV1 {
     pub max_wavelength_m: f64,
 }
 span!(AmsMelIrBandInfoSpanV1, AmsMelIrBandInfoV1);
+/// IRMEL-ADA-002: tagged TempPoint::PixelValue; `kind` is authoritative.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrPixelValueV1 {
+    pub kind: u32,
+    pub value: u32,
+}
+/// IRMEL-ADA-002: every publicly readable TempPoint field (no tempError accessor upstream).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrTempPointV1 {
+    pub timestamp_ns: i64,
+    pub frame_band: AmsMelIrBandInfoV1,
+    pub pixel_value: AmsMelIrPixelValueV1,
+    pub temperature_k: f64,
+    pub point_type: u32,
+}
+span!(AmsMelIrTempPointSpanV1, AmsMelIrTempPointV1);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrNucTempDataEventV1 {
+    pub temp_points: AmsMelIrTempPointSpanV1,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrImageBandV1 {
@@ -1836,6 +1859,18 @@ pub struct AmsMelIrHealth {
 }
 #[repr(C)]
 pub struct AmsMelIrHealthMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-002: opaque opt-in NUC_TempData owner (Image or Health).
+#[repr(C)]
+pub struct AmsMelIrNucMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-002: opaque copied NUC_TempData event.
+#[repr(C)]
+pub struct AmsMelIrNucEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3074,6 +3109,58 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_health_metadata_event_close(
         event: *mut *mut AmsMelIrHealthMetadataEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_nuc_open(
+        stream: *mut AmsMelIrStream,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrNucMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_health_nuc_open(
+        health: *mut AmsMelIrHealth,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrNucMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_nuc_receive(
+        metadata: *mut AmsMelIrNucMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrNucEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_nuc_get_counters(
+        metadata: *const AmsMelIrNucMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_nuc_close(
+        metadata: *mut *mut AmsMelIrNucMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_nuc_event_view(
+        event: *const AmsMelIrNucEvent,
+        out: *mut *const AmsMelIrNucTempDataEventV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_nuc_event_close(
+        event: *mut *mut AmsMelIrNucEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

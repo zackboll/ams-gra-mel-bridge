@@ -76,6 +76,13 @@ private package AMS.MEL_C_API is
    type Image_Metadata_Event_Handle is new System.Address;
    Null_Image_Metadata_Event          : constant Image_Metadata_Event_Handle :=
      Image_Metadata_Event_Handle (System.Null_Address);
+   --  IRMEL-ADA-002 opt-in NUC_TempData owner and copied event.
+   type NUC_Metadata_Handle is new System.Address;
+   Null_NUC_Metadata                  : constant NUC_Metadata_Handle :=
+     NUC_Metadata_Handle (System.Null_Address);
+   type NUC_Event_Handle is new System.Address;
+   Null_NUC_Event                     : constant NUC_Event_Handle :=
+     NUC_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
    Null_Navigation_Request            : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
@@ -702,6 +709,22 @@ private package AMS.MEL_C_API is
    type IR_Band_Info_V1 is record
       Kind                               : Interfaces.Unsigned_32;
       Min_Wavelength_M, Max_Wavelength_M : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Pixel_Value_V1 is record
+      Kind, Value : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Temp_Point_V1 is record
+      Timestamp_NS  : Interfaces.Integer_64;
+      Frame_Band    : IR_Band_Info_V1;
+      Pixel_Value   : IR_Pixel_Value_V1;
+      Temperature_K : Interfaces.C.double;
+      Point_Type    : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_NUC_Temp_Data_Event_V1 is record
+      Temp_Points : Span_V1;
    end record
    with Convention => C;
    type IR_Image_Band_V1 is record
@@ -1428,6 +1451,58 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_health_metadata_event_close";
+   function IR_Image_NUC_Open
+     (Stream              : Stream_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access NUC_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_nuc_open";
+   function IR_Health_NUC_Open
+     (Handle              : Health_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access NUC_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_health_nuc_open";
+   function IR_NUC_Receive
+     (Handle              : NUC_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access NUC_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_nuc_receive";
+   function IR_NUC_Get_Counters
+     (Handle              : NUC_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_nuc_get_counters";
+   function IR_NUC_Close
+     (Handle              : access NUC_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_nuc_close";
+   function IR_NUC_Event_View
+     (Handle              : NUC_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_nuc_event_view";
+   function IR_NUC_Event_Close
+     (Handle              : access NUC_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_nuc_event_close";
    function IR_Instrumentation_Open
      (Parent              : Session_Handle;
       Config              : access constant IR_Instrumentation_Config_V1;

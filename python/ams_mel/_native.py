@@ -932,6 +932,34 @@ ams_mel_ir_health_metadata_event_view.restype = ctypes.c_int32
 ams_mel_ir_health_metadata_event_close = _LIBRARY.ams_mel_ir_health_metadata_event_close
 ams_mel_ir_health_metadata_event_close.argtypes = [ctypes.POINTER(IrHealthMetadataEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_health_metadata_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-002 private raw mirror of opt-in NUC_TempData reception; no public Python API.
+class IrPixelValueV1(ctypes.Structure): _fields_ = [("kind", ctypes.c_uint32), ("value", ctypes.c_uint32)]
+class IrTempPointV1(ctypes.Structure): _fields_ = [("timestamp_ns", ctypes.c_int64), ("frame_band", IrBandInfoV1), ("pixel_value", IrPixelValueV1), ("temperature_k", ctypes.c_double), ("point_type", ctypes.c_uint32)]
+class IrTempPointSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(IrTempPointV1)), ("size", ctypes.c_size_t)]
+class IrNucTempDataEventV1(ctypes.Structure): _fields_ = [("temp_points", IrTempPointSpanV1)]
+IrNucMetadataHandle = ctypes.c_void_p
+IrNucEventHandle = ctypes.c_void_p
+ams_mel_ir_image_nuc_open = _LIBRARY.ams_mel_ir_image_nuc_open
+ams_mel_ir_image_nuc_open.argtypes = [IrStreamHandle, ctypes.c_size_t, ctypes.POINTER(IrNucMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_nuc_open.restype = ctypes.c_int32
+ams_mel_ir_health_nuc_open = _LIBRARY.ams_mel_ir_health_nuc_open
+ams_mel_ir_health_nuc_open.argtypes = [IrHealthHandle, ctypes.c_size_t, ctypes.POINTER(IrNucMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_health_nuc_open.restype = ctypes.c_int32
+ams_mel_ir_nuc_receive = _LIBRARY.ams_mel_ir_nuc_receive
+ams_mel_ir_nuc_receive.argtypes = [IrNucMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrNucEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_nuc_receive.restype = ctypes.c_int32
+ams_mel_ir_nuc_get_counters = _LIBRARY.ams_mel_ir_nuc_get_counters
+ams_mel_ir_nuc_get_counters.argtypes = [IrNucMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_nuc_get_counters.restype = ctypes.c_int32
+ams_mel_ir_nuc_close = _LIBRARY.ams_mel_ir_nuc_close
+ams_mel_ir_nuc_close.argtypes = [ctypes.POINTER(IrNucMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_nuc_close.restype = ctypes.c_int32
+ams_mel_ir_nuc_event_view = _LIBRARY.ams_mel_ir_nuc_event_view
+ams_mel_ir_nuc_event_view.argtypes = [IrNucEventHandle, ctypes.POINTER(ctypes.POINTER(IrNucTempDataEventV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_nuc_event_view.restype = ctypes.c_int32
+ams_mel_ir_nuc_event_close = _LIBRARY.ams_mel_ir_nuc_event_close
+ams_mel_ir_nuc_event_close.argtypes = [ctypes.POINTER(IrNucEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_nuc_event_close.restype = ctypes.c_int32
 
 ams_mel_ir_instrumentation_open = _LIBRARY.ams_mel_ir_instrumentation_open
 ams_mel_ir_instrumentation_open.argtypes = [SessionHandle, ctypes.POINTER(IrInstrumentationConfigV1), ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
@@ -2089,6 +2117,13 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_health_metadata_close",
     "ams_mel_ir_health_metadata_event_view",
     "ams_mel_ir_health_metadata_event_close",
+    "ams_mel_ir_image_nuc_open",
+    "ams_mel_ir_health_nuc_open",
+    "ams_mel_ir_nuc_receive",
+    "ams_mel_ir_nuc_get_counters",
+    "ams_mel_ir_nuc_close",
+    "ams_mel_ir_nuc_event_view",
+    "ams_mel_ir_nuc_event_close",
     "ams_mel_ir_instrumentation_open",
     "ams_mel_ir_instrumentation_enable",
     "ams_mel_ir_instrumentation_get_capabilities",

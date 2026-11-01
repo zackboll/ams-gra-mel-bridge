@@ -930,12 +930,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::HealthStatusChannel::registerMetadataCallback(std::function<void(Channel&,const NUC_TempData*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_health.cpp",
+          "symbol": "ams_mel_ir_health_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Open_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_health_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Opt-in HealthStatusChannel NUC_TempData owner, independent of the six-kind metadata Open; copied ordered TempPoints, bounded drop-incoming queue, channel destruction drains in-flight NUC callbacks, no upstream unregister.",
+      "limitations": [
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence."
+      ],
       "representation": []
     },
     {
@@ -1411,12 +1436,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::registerMetadataCallback(std::function<void(Channel&,const NUC_TempData*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image.cpp",
+          "symbol": "ams_mel_ir_image_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Open_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Opt-in ImageChannel NUC_TempData owner, independent of the four-kind metadata Open; copied ordered TempPoints, bounded drop-incoming queue, synchronous delivery and late callbacks safe, no upstream unregister.",
+      "limitations": [
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence."
+      ],
       "representation": []
     },
     {
@@ -9444,17 +9494,60 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::NUC_TempData",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing complete ordered TempPoint collection; Image and Health registrations are independently absent.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image.cpp",
+          "symbol": "ams_mel_ir_image_nuc_open"
+        },
+        {
+          "path": "native/src/ir_health.cpp",
+          "symbol": "ams_mel_ir_health_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Receive_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
+          "symbol": "Run"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_health_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete ordered getTempPoints() collection, including empty and multi-point messages, copied into event-owned C spans and Ada-owned vectors on both Image and Health.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence."
+      ],
       "representation": [
         {
           "upstream": "getTempPoints",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         }
       ]
     },
@@ -11424,58 +11517,206 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TempPoint",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing timestamp, BandInfo, conditional PixelValue, temperature, optional tempError and point type. Pinned header declares tempError storage without public getter/setter; do not invent access semantics.",
-      "limitations": [],
+      "status": "partial",
+      "native": [
+        {
+          "path": "native/src/ir_image.cpp",
+          "symbol": "ams_mel_ir_image_nuc_open"
+        },
+        {
+          "path": "native/src/ir_health.cpp",
+          "symbol": "ams_mel_ir_health_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Receive_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
+          "symbol": "Run"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_health_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Every publicly readable field represented: signed-nanosecond timestamp, BandInfo, tagged PixelValue, Kelvin temperature and point type. Pinned TempPoint private optional tempError has no public getter/setter; it is NOT represented, read from private storage, inferred, or reported as present/absent. Requires an upstream accessor decision.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence.",
+        "Pinned TempPoint private optional tempError has no public getter/setter; it is NOT represented, read from private storage, inferred, or reported as present/absent. Requires an upstream accessor decision."
+      ],
       "representation": [
         {
           "upstream": "getTimestamp",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         },
         {
           "upstream": "getFrameBand",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         },
         {
           "upstream": "getPixelValue",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         },
         {
           "upstream": "getTemperature",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         },
         {
           "upstream": "getPointType",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_NUC"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+              "symbol": "Receive_NUC"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::TempPoint::PixelValue",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing std::variant<uint8_t, uint16_t, uint32_t>; the integer width must remain explicit rather than coercing alternatives.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image.cpp",
+          "symbol": "ams_mel_ir_image_nuc_open"
+        },
+        {
+          "path": "native/src/ir_health.cpp",
+          "symbol": "ams_mel_ir_health_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Receive_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
+          "symbol": "Run"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_health_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Exactly uint8_t/uint16_t/uint32_t alternatives, tagged C kind 1/2/3 and Ada Pixel_Width discriminant; width never inferred from magnitude; maxima tested.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence."
+      ],
       "representation": []
     },
     {
       "id": "ir:type:ams::iface::irmel::TempPointType",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image.cpp",
+          "symbol": "ams_mel_ir_image_nuc_open"
+        },
+        {
+          "path": "native/src/ir_health.cpp",
+          "symbol": "ams_mel_ir_health_nuc_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_NUC"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-health_status-metadata.ads",
+          "symbol": "Receive_NUC"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_nuc.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
+          "symbol": "Run"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_health_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All three pinned alternatives NUC_Point, MFA_Estimate and Other represented; unknown values rejected.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: NUC is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.NUC.Not_Supported and existing Image/Health metadata owners are unaffected. Mock-qualified only; no physical IR or Squall NUC evidence."
+      ],
       "representation": []
     },
     {
@@ -12661,18 +12902,21 @@
     "ada/src/ams-mel-ir-capability_conversion.ads": "26a27f95e177af2ec1a8111f8461152e5e5665ed39e6ec7d1beffeeaaa6c86bc",
     "ada/src/ams-mel-ir-channel.adb": "7992ea2ae8786fe01e735c06f2b93d4cb264f598bc872009dbd3b26dc84814d5",
     "ada/src/ams-mel-ir-channel.ads": "b2237cc64e2f6415f5c23a8452889e97fb9483a5593172a736d0b077433c5487",
-    "ada/src/ams-mel-ir-health_status-metadata.adb": "b61a8691540f50077319e086f7ae58a6bae00141033980dc536f5b7c524784a4",
-    "ada/src/ams-mel-ir-health_status-metadata.ads": "0d68b9eae39a0cf8b1ce09abf023bbf41b7f2907a24463da9203bc6df372821d",
+    "ada/src/ams-mel-ir-health_status-metadata.adb": "dfbc5defd764489d92e5cb999f1a676100ed961233a87d7950086964a5a8f996",
+    "ada/src/ams-mel-ir-health_status-metadata.ads": "b9b32acf1fb83fb0d050f56e8bd01188c34c4c2150ab8c32182d30b66aca6e71",
     "ada/src/ams-mel-ir-health_status.adb": "d114a876d51b9912c0e129ba1141ac8dfd8585e6b0cc43c50613b7083a74682b",
     "ada/src/ams-mel-ir-health_status.ads": "5fb3a8d7d08c2330b5b770241c1f724d551958ec8484c57f4736702e23f75b61",
-    "ada/src/ams-mel-ir-image-metadata.adb": "946adbd1d7c725267e8474dd7cc3b528fa673a0b4f20517b3d73d213e04586d7",
-    "ada/src/ams-mel-ir-image-metadata.ads": "ee11276532bc82c397d1e625ff544602519a3eddfb7b1a30891bc3e30728fbd4",
+    "ada/src/ams-mel-ir-image-metadata.adb": "b41eb70dfeff0bc264a4d638371f1df90879aaa030413b92c511403d8928e569",
+    "ada/src/ams-mel-ir-image-metadata.ads": "af158dd84ff76e3cb388771ee5e79a5a8f452041dc987d00d81fcae5aa5bee98",
     "ada/src/ams-mel-ir-image.adb": "5b5bfe2ab7c0a18bb7ff544975d5c0d6458706d0b082739d2213afe0f3a3ffa3",
     "ada/src/ams-mel-ir-image.ads": "decb360621617d35433cee90cec66c0faf5cd64cc1b18e876d16844406801100",
     "ada/src/ams-mel-ir-instrumentation-metadata.adb": "f15f64a5bc9cf852d48b401482e2fdafbcad8b74db3ff9b33f5a197765de087d",
     "ada/src/ams-mel-ir-instrumentation-metadata.ads": "a8d39c78fc3e63d76eb0cd40a5da27ecf915904075b944bff5be2fc88569271f",
     "ada/src/ams-mel-ir-instrumentation.adb": "892db54f14e65ed4fe8639f58d7a4c8f1ec65537a3726d17ab24adeb5d70865e",
     "ada/src/ams-mel-ir-instrumentation.ads": "3a7ddc0f747b05fb0cbd05e86a70c81f2ece97f35c57553145433ed2c1f6bb73",
+    "ada/src/ams-mel-ir-nuc.ads": "2085b42bacea22eb26bd18b3635c95d7ea4d581aee812000866f6dcc399ce148",
+    "ada/src/ams-mel-ir-nuc_conversion.adb": "1d79490802ffc1b8c43f995c642f01e65745ca132dbe95e6103705780ccb5044",
+    "ada/src/ams-mel-ir-nuc_conversion.ads": "5ec9f9cb273418069d80fae0b04e15ef043d5ae3309f02fffe3420578ab4f945",
     "ada/src/ams-mel-ir-track-metadata.adb": "cfb6aa1e4561f75861bc372f765fd7f4dd757372fccbbf51a9499d77c5b8ef87",
     "ada/src/ams-mel-ir-track-metadata.ads": "59346c1683bd0b78fca7e6cddbbbb397ccfe1e8e9ebc96f8216511c90306c0ed",
     "ada/src/ams-mel-ir-track-system_data.adb": "dd2ac9d13aef1f8ebafde894f1092f5a322d485e3ec6cfd6be1e33ff0c1c3e03",
@@ -12687,26 +12931,28 @@
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "7a9d0ca345b61511bdb77aec3a54887bdead1a5409be203a62eebefd7329d955",
-    "native/include/ams_mel/abi.h": "b7209c4aff61edd9bd30c13a254534b08c5ea26e24948d1581be67bf9633af88",
+    "ada/src/ams-mel_c_api.ads": "632262f97f525c7605ccd30123d0ecadbdea3624893370bfbfd47e7d9b9960b3",
+    "native/include/ams_mel/abi.h": "10a175bd5080758806410dc1b175db91d491addec6f3eea5ab562cc04020b4f5",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "025cdf101c2609c5d0eaeadda0e16c3aaabde60c26a307f68c6a93e31a4420e5",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "272893d5f3c2acc01ed1032f98729e6949682af872d8115d74917e2a3c80728b",
+    "native/src/exports.map": "e0ecdebcdd18f384ea508350ec5017dd22d782324094c70b5070830a021caeb5",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "5bc7dae97c242c5640a9748b213b345e50835ff19fd3e14103e573212e7eb544",
     "native/src/internal/completion_probe.hpp": "a12f634cdc1b6ecaded92b3195ccfab26a723df468cf94bccad1ae59a9ac7008",
     "native/src/internal/ir_channel.hpp": "0b276634a2637c34fc997c02ccf0e845eaf0184af991e75b9f2add88d639b1a0",
-    "native/src/internal/ir_stream.hpp": "9f3e1dd8465bf7de05bdfb462f67a4375c000aaa86584960e0d4742088b59b9c",
+    "native/src/internal/ir_nuc.hpp": "034369c2cfad4e2c1e2d914fc3e867c23caf05ab5073c53e653fc27d2d10568b",
+    "native/src/internal/ir_stream.hpp": "32b60bdd738352cc35dc69453214dbcf18b023b7cca333983ee9fe0450410566",
     "native/src/internal/provider_common.hpp": "c0c16122b30afce07dced9b59b57b1a8bf3d2c4b3b2ffd18d28ecad79fe6c46e",
     "native/src/internal/shared_library.hpp": "d1aaf08fa318e128efdcb9515b4171d953a6e8bb0d320c4506a6aeec96e97dbd",
     "native/src/ir_c2.cpp": "f63be3623e1c6abd44e49a4cb44e40316ef0c74671d5457c64d0b87b894af607",
     "native/src/ir_channel.cpp": "d72e0666fa0e6966a6abc766be1ce21a577ec031908851bc09500e2fc970d149",
-    "native/src/ir_health.cpp": "dd5c0b477d58afd000205fdc99dfa87189f1ca44e9669c84ecfdb896307e2afc",
-    "native/src/ir_image.cpp": "67663ded5878d98bdad5ab1dd335e0bcf52f500f45c93588d6d5f5fea8766d93",
+    "native/src/ir_health.cpp": "dd84f18b2dc94bb6b3421ae1169b3443c00ac4bb4538b79b77b68a92f28f38fa",
+    "native/src/ir_image.cpp": "51a264c8fd3879b6b8b7b3e41cf8616539a326744d4361c11c3a98bcf2274132",
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
-    "native/src/ir_stream.cpp": "4011a04b76251e9c6e8237506f95dedee1367d3c7fe4629453098e465baa2566",
+    "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
+    "native/src/ir_stream.cpp": "704761569ed05220c5bcd59db6daffaee856eee218fb65e70c55d2f9522c5f9b",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
     "native/src/provider.cpp": "3dc1a0478a4f3762fb35a8607efd743001b6faef1a4a668fa2dc0865b821f50d"
   }

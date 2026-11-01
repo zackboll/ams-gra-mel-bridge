@@ -16,6 +16,7 @@
 struct CallbackState;
 class Listener;
 struct ImageMetadataState;
+struct NucState;
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -75,6 +76,10 @@ struct ImageStreamState {
     std::shared_ptr<Listener> listener;
     std::shared_ptr<ImageMetadataState> image_metadata;
     bool image_metadata_attempted{false};
+    /* IRMEL-ADA-002 opt-in @Optional NUC_TempData owner, independent of the
+     * four-kind metadata owner above. Guarded by callback->mutex. */
+    std::shared_ptr<NucState> image_nuc;
+    bool image_nuc_attempted{false};
     BufferFactory buffer_factory{};
     std::string instance;
     std::size_t buffer_count{};
@@ -134,6 +139,11 @@ struct ams_mel_ir_stream {
 };
 
 void image_metadata_stream_stopped(const std::shared_ptr<ImageMetadataState>& state) noexcept;
+void image_nuc_stream_stopped(const std::shared_ptr<NucState>& state) noexcept;
+bool claim_image_nuc(
+    ImageStreamState& stream,
+    const std::shared_ptr<NucState>& state,
+    std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
 bool claim_image_metadata(
     ImageStreamState& stream,
     const std::shared_ptr<ImageMetadataState>& state,
