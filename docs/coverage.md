@@ -1,5 +1,21 @@
 # Implementation coverage
 
+## PY-POL-001-R2 — historical runner evidence bookkeeping
+
+The isolated historical runner now accepts exactly its generated
+`qualification/{inventory,scripts,manifest}.json` records, validates their fixed
+original/replay inventory and source/tree/run/hash bindings, and snapshots them
+before shards to reject later evidence changes. It independently verifies the
+exact historical commit/tree, complete stage-0 index, tracked bytes and modes;
+unexpected source/evidence, directories, symlinks and nonregular files reject.
+No current-source admission rule or historical commit/test/result changes.
+Fast disposable-repository regressions run through `make test-policy` without
+documentation generation; they also prove real failed-shard status preservation.
+The retained original campaign completed 579 tests successfully but its old
+wrapper exited 1 on generated evidence. R2's read-only final validation accepts
+that unchanged evidence; this is not a rerun or revision of the original exit.
+See the R2 addendum in `py-pol-001-deletion-review.md` for qualification limits.
+
 ## PY-POL-001-R1 — ordinary development, isolated historical qualification
 
 Current native, Ada, Rust, Python, test, build and documentation sources are no

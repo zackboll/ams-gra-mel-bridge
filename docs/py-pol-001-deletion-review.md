@@ -1,5 +1,58 @@
 # PR #142 — source-policy deletion review
 
+## R2 addendum — final historical runner correction
+
+R2 starts at `1507472838e1fc99439160b915891cb934895421`, with no concurrent
+branch delta. The original historical campaign has now finished: all 13 steps
+returned zero, including **142 scripts + 437 enhanced tests = 579 tests**.
+The old wrapper nevertheless exited 1 because its blanket final Git status
+check saw three expected untracked evidence records. That original exit/log
+remains preserved; later successful validation does not rewrite it.
+
+`qualify_history.verify_execution` now checks the exact original or existing
+corrected-replay commit/tree, stage-0 index against the complete immutable tree,
+tracked bytes/modes, and filesystem entity types. The only nonignored untracked
+files accepted are the three runner-generated records:
+`qualification/inventory.json`, `qualification/scripts.json`, and
+`qualification/manifest.json`. Their regular-file membership, schemas, fixed
+historical inventory digest, script execution callbacks and source/tree/run/
+repository/local identity are validated. Hashes captured immediately after
+sealing must remain identical after shard execution. Existing ignored site
+payloads/compiler outputs/bytecode are handled separately; arbitrary source,
+unexpected directories (including empty ones), additional qualification files,
+symlinks and nonregular files reject. No blanket ignore, cleanup or historical
+file/commit/result rewrite is introduced. This is an isolated historical-output
+contract, not an authorization list for current first-party development.
+
+`docs/tests/test_qualify_history.py` uses deterministic disposable Git
+repositories and evidence fixtures, no compiler or renderer. Its 28 tests cover original
+and replay identities, legitimate evidence acceptance, tracked/index/mode/
+deletion/conflict rejection, arbitrary untracked/ignored source, unexpected
+evidence/directories, symlinks/FIFO, missing/malformed/duplicate-key JSON,
+source/run/digest substitution and post-seal mutation. Runner integration
+fixtures preserve failed-shard exit 7, return failure, and still attempt all
+other shards. These tests are part of `make test-policy`.
+
+Read-only R2 validation of the **retained real original checkout** accepts the
+three evidence files and verifies unchanged tracked history. Before/after
+hashes confirm no log, result, identity, bundle or qualification record was
+changed. Evidence is at `/home/zboll/git/ams-py-pol-001-r2-evidence/`; the original
+campaign and previous proposal/audit evidence remain at their existing paths.
+No expensive campaign was restarted. A full new corrected-replay campaign is
+not claimed; fixed replay construction/source tests remain in the policy suite.
+
+R2 changes only the runner, its focused tests, Makefile test inclusion and these
+coverage/review notes. Security workflow/vendor/import/runtime/ABI sources and
+tests are unchanged. Their earlier native/Ada/Rust/Python and real generation
+results are **inherited evidence**, not fresh exact-head executions. Requested
+policy/integrity/newline/whitespace checks and latest-head hosted status are
+reported in PR #142. No PR #140/#141 modification or merge is part of R2.
+
+The original review below is retained as the contemporaneous R1 audit snapshot;
+its pending historical status is superseded only by this addendum. Independent
+review and exact-head hosted qualification remain required; R2 does not claim
+a new end-to-end hosted Pages deployment or exhaustive provider/binary ABI proof.
+
 ## Review boundary and disposition
 
 PR #142 is the **single source-policy redesign effort**, including the proposed
