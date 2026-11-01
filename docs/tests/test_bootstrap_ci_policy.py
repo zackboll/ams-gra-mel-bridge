@@ -583,15 +583,34 @@ class MergeResultTests(unittest.TestCase):
 
     def test_record_local_main_change(self):
         record = self.audit(base=self.initial)
-        self.trust_main(self.build)
+        self.git("update-ref", "refs/remotes/origin/main", self.build, record["trusted_main"])
+        current = self.audit(base=self.initial)
+        self.assertEqual(current, dict(record, trusted_main=self.build))
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         record["trusted_main"])
         with self.assertRaisesRegex(ValueError, "changed since"):
             policy.verify_record(self.root, "pull_request", self.head,
                                  self.initial, self.build, record)
 
     def test_execution_uses_sealed_main_snapshot(self):
         record = self.audit(base=self.initial, fetch=True)
-        # The remote can advance after preparation; no fetch occurs on execute.
-        self.git("push", "-q", str(self.remote), self.build + ":refs/heads/main")
+        sealed_main = record["trusted_main"]
+        self.assertNotEqual(self.build, sealed_main)
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main").decode().strip(),
+                         sealed_main)
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         sealed_main)
+        # Advance main from the independent bare remote, not by pushing from the
+        # checkout: Git 2.56 also updates tracking refs for a matching push URL.
+        policy.git(self.remote, "fetch", "-q", "--no-tags", "--no-write-fetch-head",
+                   str(self.root), self.build)
+        policy.git(self.remote, "update-ref", "refs/heads/main", self.build, sealed_main)
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         self.build)
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main").decode().strip(),
+                         sealed_main)
+        self.assertEqual(self.audit(base=self.initial), record)
+        # No checkout fetch occurs: compare the complete authority record.
         self.assertEqual(policy.verify_record(self.root, "pull_request", self.head,
                                              self.initial, self.build, record), record)
 
