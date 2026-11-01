@@ -24,6 +24,9 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
+#include <utility>
+#include <variant>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -1098,6 +1101,120 @@ private:
     std::weak_ptr<irmel::Buffer> self_;
 };
 
+/* IRMEL-ADA-002 deterministic @Optional NUC_TempData fixture, shared by the
+ * Image and Health mock channels. Any scenario not named "nuc-*" models a
+ * provider without NUC support and answers NotSupported. */
+using NucCallback = std::function<void(irmel::Channel&, const irmel::NUC_TempData *const)>;
+
+irmel::TempPoint temp_point(std::int64_t ns, irmel::BandType band, double min, double max,
+                            irmel::TempPoint::PixelValue pixel, double kelvin,
+                            std::optional<double> error, irmel::TempPointType type)
+{
+    return irmel::TempPoint{std::chrono::nanoseconds{ns}, irmel::BandInfo{band, min, max},
+                            pixel, kelvin, error, type};
+}
+
+irmel::NUC_TempData single_nuc(std::int64_t ns)
+{
+    return irmel::NUC_TempData{{temp_point(
+        ns, irmel::BandType::IR_Shortwave, 1.0e-6, 2.5e-6,
+        irmel::TempPoint::PixelValue{std::in_place_index<1>, std::uint16_t{1234}}, 273.15,
+        std::nullopt, irmel::TempPointType::NUC_Point)}};
+}
+
+/* Empty, one-point and three-point messages; every PixelValue alternative at
+ * its maximum, all TempPointType alternatives, signed timestamp extremes. The
+ * private tempError is set on some points and must have no observable effect. */
+std::vector<irmel::NUC_TempData> rich_nuc_messages()
+{
+    using PV = irmel::TempPoint::PixelValue;
+    std::vector<irmel::NUC_TempData> messages;
+    messages.emplace_back();
+    messages.emplace_back(std::vector<irmel::TempPoint>{temp_point(
+        std::numeric_limits<std::int64_t>::min(), irmel::BandType::IR_Midwave, 3.0e-6, 5.0e-6,
+        PV{std::in_place_index<0>, std::uint8_t{0xffU}}, 300.25, 0.5,
+        irmel::TempPointType::NUC_Point)});
+    messages.emplace_back(std::vector<irmel::TempPoint>{
+        temp_point(-1, irmel::BandType::IR_Longwave, 8.0e-6, 1.2e-5,
+                   PV{std::in_place_index<1>, std::uint16_t{0xffffU}}, 0.0, std::nullopt,
+                   irmel::TempPointType::MFA_Estimate),
+        temp_point(std::numeric_limits<std::int64_t>::max(), irmel::BandType::UV_Vacuum, 1.0e-8,
+                   2.0e-7, PV{std::in_place_index<2>, std::uint32_t{0xffffffffU}}, 1.0e6, -1.0,
+                   irmel::TempPointType::Other),
+        temp_point(42, irmel::BandType::Invalid, -1.0, 0.0,
+                   PV{std::in_place_index<0>, std::uint8_t{0U}}, -5.5, std::nullopt,
+                   irmel::TempPointType::NUC_Point)});
+    return messages;
+}
+
+class MockNuc {
+public:
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             NucCallback callback)
+    {
+        if (scenario.rfind("nuc-", 0U) != 0U) return Return::NotSupported;
+        record("nuc_registration_attempted");
+        callback_ = std::move(callback);
+        if (scenario == "nuc-register-throw") throw std::runtime_error("NUC registration exception");
+        if (scenario == "nuc-register-fail") {
+            auto value = single_nuc(7); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "nuc-rich" || scenario == "nuc-late") {
+            for (const auto& value : rich_nuc_messages()) callback_(channel, &value);
+        } else if (scenario == "nuc-malformed") {
+            callback_(channel, nullptr);
+            auto band = single_nuc(1);
+            band.addTempPoint(temp_point(2, static_cast<irmel::BandType>(99U), 0.0, 0.0,
+                irmel::TempPoint::PixelValue{std::in_place_index<0>, std::uint8_t{1U}}, 1.0,
+                std::nullopt, irmel::TempPointType::Other));
+            callback_(channel, &band);
+            auto type = single_nuc(3);
+            type.addTempPoint(temp_point(4, irmel::BandType::IR_Far, 0.0, 0.0,
+                irmel::TempPoint::PixelValue{std::in_place_index<2>, std::uint32_t{1U}}, 1.0,
+                std::nullopt, static_cast<irmel::TempPointType>(7U)));
+            callback_(channel, &type);
+            auto valid = single_nuc(5); callback_(channel, &valid);
+        } else if (scenario == "nuc-overflow") {
+            for (std::int64_t i = 0; i < 5; ++i) { auto value = single_nuc(i); callback_(channel, &value); }
+        } else if (scenario == "nuc-allocation") {
+            auto failed = single_nuc(1); callback_(channel, &failed);
+            auto valid = single_nuc(2); callback_(channel, &valid);
+        } else if (scenario == "nuc-nonquiescing") {
+            producer_ = std::thread{[this, &channel] {
+                const char *base = std::getenv("AMS_MEL_TEST_NUC_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                record("nuc_callback_entered");
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+                auto value = single_nuc(9); callback_(channel, &value);
+                record("nuc_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
+    /* Called from the owning channel destructor, i.e. after the bridge has
+     * closed its public owners: late callbacks must remain memory-safe. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if ((scenario == "nuc-register-fail" || scenario == "nuc-late") && callback_) {
+            record("late_nuc_callback_invoked");
+            auto value = single_nuc(11); callback_(channel, &value);
+            record("late_nuc_callback_returned");
+        }
+        if (scenario == "nuc-nonquiescing") {
+            const char *base = std::getenv("AMS_MEL_TEST_NUC_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
+        if (producer_.joinable()) producer_.join();
+    }
+private:
+    NucCallback callback_;
+    std::thread producer_;
+};
+
 #define UNSUPPORTED_CALLBACK(Type) \
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
     { return Return::NotSupported; }
@@ -1114,6 +1231,7 @@ public:
     ~MockImageChannel() override
     {
         stopping_ = true;
+        nuc_.finish(*this, scenario_);
         if (scenario_ == "image-metadata-navigation-register-fail" ||
             scenario_ == "image-metadata-navigation-register-throw") {
             if (!bad_pixel_callback_) std::abort();
@@ -1501,7 +1619,8 @@ public:
     { return Return::NotSupported; }
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectMessage)
     UNSUPPORTED_CALLBACK(irmel::CandidateObjectPreProcMessage)
-    UNSUPPORTED_CALLBACK(irmel::NUC_TempData)
+    Return registerMetadataCallback(NucCallback callback) override
+    { return nuc_.register_callback(scenario_, *this, std::move(callback)); }
 private:
     /* Deterministic backpressure scenarios drive production explicitly from
      * the test instead of free-running, so buffer reuse can be asserted with
@@ -1944,6 +2063,7 @@ private:
     std::function<void(irmel::Channel&, const irmel::LineOfSightReport *const)> line_of_sight_report_callback_;
     std::function<void(irmel::Channel&, const irmel::LineOfSightEuler *const)> line_of_sight_euler_callback_;
     std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> navigation_response_callback_;
+    MockNuc nuc_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -2481,6 +2601,7 @@ public:
     explicit MockHealthStatusChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockHealthStatusChannel() override
     {
+        nuc_.finish(*this, scenario_);
         if (scenario_ == "health-register-partial" && mfa_callback_) {
             auto value=rich_mfa_status(); record("retained_health_callback_invoked");
             mfa_callback_(*this,&value);
@@ -2529,10 +2650,10 @@ public:
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::DiscreteStatus*const)> cb) override{discrete_callback_=std::move(cb);if(rich()){std::vector<mel::NameValuePair> pairs{{"duplicate","one"},{"duplicate",""},{"utf8","\xE2\x82\xAC"}};mel::DiscreteStatus value{pairs};discrete_callback_(*this,&value);}return Return::Success;}
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_SecurityAuditRecord*const)> cb) override{security_callback_=std::move(cb);if(rich())for(unsigned i=0;i<7U;++i){auto value=security_record(i);security_callback_(*this,&value);}return Return::Success;}
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_StatusDetailed*const)> cb) override{detailed_callback_=std::move(cb);if(rich()){std::vector<mel::NameValuePair> pairs{{"load","23"},{"load",""},{"label","\xCE\xBC"}};mel::MFA_StatusDetailed value{pairs};detailed_callback_(*this,&value);}if(scenario_=="health-metadata-nonquiescing-disable")producer_=std::thread{[this]{const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".start");auto value=rich_mfa_status();mfa_callback_(*this,&value);record("health_callback_returned");}};return Return::Success;}
-    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::NUC_TempData*const)>) override{return Return::NotSupported;}
+    Return registerMetadataCallback(NucCallback cb) override{return nuc_.register_callback(scenario_,*this,std::move(cb));}
 private:
     bool rich()const{return scenario_=="health-rich"||scenario_=="health-overflow";}
-    std::string scenario_;bool enabled_{};std::thread producer_;
+    std::string scenario_;bool enabled_{};std::thread producer_;MockNuc nuc_;
     std::function<void(irmel::Channel&,const mel::MFA_Status*const)> mfa_callback_;
     std::function<void(irmel::Channel&,const mel::BIT_Status*const)> bit_callback_;
     std::function<void(irmel::Channel&,const irmel::SubsystemStatusResp*const)> subsystem_callback_;

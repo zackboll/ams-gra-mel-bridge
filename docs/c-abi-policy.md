@@ -1,5 +1,25 @@
 # Experimental C ABI policy
 
+## IRMEL-ADA-002 — opt-in Image/Health NUC_TempData reception
+
+The pinned @Optional `NUC_TempData` callback is registered independently on
+ImageChannel (`ams_mel_ir_image_nuc_open`, Ada `Image.Metadata.Open_NUC`) and
+HealthStatusChannel (`ams_mel_ir_health_nuc_open`, Ada
+`Health_Status.Metadata.Open_NUC`). Existing metadata Open operations, their
+one-shots and every `*_v1` record are unchanged, so providers without NUC keep
+working; a NotSupported answer is reported as `AMS_MEL_IR_RETURN_NOT_SUPPORTED`
+and Ada `AMS.MEL.IR.NUC.Not_Supported`. The complete ordered TempPoint vector
+(empty, one, many) is copied before the callback returns: signed nanosecond
+timestamp, BandInfo, PixelValue tagged as exactly uint8/uint16/uint32 (C kind
+1/2/3, Ada `Pixel_Width` discriminant), Kelvin temperature and TempPointType.
+The pinned private optional `tempError` has **no public accessor** and is not
+represented, read or inferred; TempPoint is therefore `partial`. Queues keep
+DROP-INCOMING; null/unknown enum/allocation failures are counted as malformed;
+late callbacks after Close are memory-safe; Health channel destruction drains
+in-flight NUC callbacks. Production inventory: 229 AMS_MEL_0.1 exports
+(seven new); Python/Rust receive only private raw mirrors. Evidence is
+mock-provider only; no IR camera or Squall NUC qualification.
+
 ## Task 034F25 — ProductRx stabilization-point receive metadata
 
 Additive submit/view-v9 preserve the pinned nonoptional ordered stabilization
@@ -736,7 +756,8 @@ snapshot, and retains Session/provider state independently of the public Session
 
 Metadata registration attempts exactly MFA_Status, BIT_Status,
 SubsystemStatusResp, DiscreteStatus, MFA_SecurityAuditRecord, and
-MFA_StatusDetailed in that order. LFStatus and NUC_TempData are not registered.
+MFA_StatusDetailed in that order. LFStatus and NUC_TempData are not registered
+by this Open; NUC_TempData has the separate IRMEL-ADA-002 opt-in owner.
 The bounded queue is ready before registration, uses DROP-INCOMING, and has
 saturating received/dropped/malformed counters. Every callback validates and
 deep-copies complete nested values, including all SecurityAudit variant fields;

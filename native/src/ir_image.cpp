@@ -1,5 +1,6 @@
 #include <ams_mel/abi.h>
 #include "internal/ir_stream.hpp"
+#include "internal/ir_nuc.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -332,4 +333,34 @@ extern "C" ams_mel_status_t ams_mel_ir_image_metadata_event_close(
     if (!event || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     try { delete std::exchange(*event, nullptr); return AMS_MEL_OK; }
     catch (...) { return AMS_MEL_INTERNAL_ERROR; }
+}
+
+/* IRMEL-ADA-002: opt-in @Optional ImageChannel NUC_TempData registration.
+ * Independent of ams_mel_ir_image_metadata_open: neither one-shot affects the
+ * other, so providers without NUC keep the four-kind owner unchanged. */
+void image_nuc_stream_stopped(const std::shared_ptr<NucState>& state) noexcept
+{
+    if (state) state->stop();
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_nuc_open(
+    ams_mel_ir_stream *stream, std::size_t queue_capacity,
+    ams_mel_ir_nuc_metadata **output, ams_mel_ir_return_t *registration,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!stream || !stream->state || !queue_capacity || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<NucState> state;
+    try {
+        state = std::make_shared<NucState>();
+        state->capacity = queue_capacity;
+    } catch (...) {
+        diagnostic("NUC_TempData metadata allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::shared_ptr<irmel::ImageChannel> channel;
+    if (!claim_image_nuc(*stream->state, state, channel)) return AMS_MEL_INVALID_ARGUMENT;
+    return ams_mel::internal::open_nuc_owner(*channel, state, output, registration, out,
+                                             capacity, required);
 }

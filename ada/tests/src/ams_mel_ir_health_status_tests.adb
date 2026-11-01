@@ -5,6 +5,8 @@ with AMS.MEL.IR.Channel;
 with AMS.MEL.IR.Health_Status;
 with AMS.MEL.IR.Health_Status.Metadata;
 with AMS.MEL.Status;
+with AMS.MEL.IR.NUC;
+with AMS_MEL_IR_NUC_Checks;
 with Interfaces;
 
 package body AMS_MEL_IR_Health_Status_Tests is
@@ -192,8 +194,87 @@ package body AMS_MEL_IR_Health_Status_Tests is
       AMS.MEL.Close (Parent);
    end Check_Overflow_And_Close;
 
+   --  IRMEL-ADA-002: HealthStatusChannel NUC_TempData values survive NUC owner, channel and
+   --  Session closure; queued messages drain after channel close, then Stream_Stopped.
+   procedure Check_NUC (Provider_Path : String) is
+      Parent   : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-late");
+      Channel  : H.Health_Channel := H.Open (Parent, Config);
+      Existing : M.Metadata_Stream := M.Open (Channel, 4);
+      Stream   : M.NUC_Stream := M.Open_NUC (Channel, 8);
+      Empty    : constant AMS.MEL.IR.NUC.NUC_Temp_Data := M.Receive_NUC (Stream);
+   begin
+      H.Enable (Channel);
+      H.Close (Channel);
+      AMS.MEL.Close (Parent);
+      declare
+         One   : constant AMS.MEL.IR.NUC.NUC_Temp_Data := M.Receive_NUC (Stream);
+         Three : constant AMS.MEL.IR.NUC.NUC_Temp_Data := M.Receive_NUC (Stream);
+      begin
+         begin
+            declare
+               Ignored : constant AMS.MEL.IR.NUC.NUC_Temp_Data := M.Receive_NUC (Stream);
+            begin
+               raise Program_Error with "Ada Health late NUC callback was queued";
+            end;
+         exception
+            when AMS.MEL.IR.Stream_Stopped =>
+               null;
+         end;
+         if M.NUC_Counters (Stream).Events_Received /= 4 then
+            raise Program_Error with "Ada Health late NUC callback was not observed";
+         end if;
+         M.Close (Stream);
+         M.Close (Existing);
+         AMS_MEL_IR_NUC_Checks.Check_Rich (Empty, One, Three);
+      end;
+   end Check_NUC;
+
+   procedure Check_NUC_Not_Supported (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "health-rich");
+      Channel : H.Health_Channel := H.Open (Parent, Config);
+      Stream  : M.Metadata_Stream := M.Open (Channel, 32);
+   begin
+      begin
+         declare
+            Ignored : M.NUC_Stream := M.Open_NUC (Channel, 2);
+         begin
+            raise Program_Error with "Ada Health NUC NotSupported was accepted";
+         end;
+      exception
+         when AMS.MEL.IR.NUC.Not_Supported =>
+            null;
+      end;
+      if M.Kind (M.Receive (Stream, 1_000)) /= M.MFA_Status_Event then
+         raise Program_Error with "Health metadata changed without NUC support";
+      end if;
+      M.Close (Stream);
+      H.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Check_NUC_Not_Supported;
+
+   procedure Check_NUC_Failure (Provider_Path : String) is
+      Parent  : AMS.MEL.Session := AMS.MEL.Open (Provider_Path, "nuc-register-throw");
+      Channel : H.Health_Channel := H.Open (Parent, Config);
+   begin
+      begin
+         declare
+            Ignored : M.NUC_Stream := M.Open_NUC (Channel, 2);
+         begin
+            raise Program_Error with "Ada Health NUC exception published owner";
+         end;
+      exception
+         when AMS.MEL.Provider_Error =>
+            null;
+      end;
+      H.Close (Channel);
+      AMS.MEL.Close (Parent);
+   end Check_NUC_Failure;
+
    procedure Run (Provider_Path : String) is
    begin
+      Check_NUC (Provider_Path);
+      Check_NUC_Not_Supported (Provider_Path);
+      Check_NUC_Failure (Provider_Path);
       Check_Rich (Provider_Path);
       Check_Overflow_And_Close (Provider_Path);
       Ada.Text_IO.Put_Line ("PASS: Ada IR Health/Status contract");

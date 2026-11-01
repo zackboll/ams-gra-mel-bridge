@@ -2,6 +2,7 @@ with Ada.Containers.Vectors;
 private with Ada.Finalization;
 with Interfaces;
 with AMS.MEL.Status;
+with AMS.MEL.IR.NUC;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Image.Metadata is
@@ -9,6 +10,8 @@ package AMS.MEL.IR.Image.Metadata is
    --  line-of-sight Euler and navigation response. Optional LineOfSightQuaternion,
    --  OpticalDistortionMap and other upstream callbacks are not bound here. Payloads are copied at
    --  the native callback boundary and again into safe Ada values; no provider pointer is exposed.
+   --  Optional NUC_TempData has a separate opt-in owner, NUC_Stream, so Open is unaffected by
+   --  providers without NUC support.
 
    type Metadata_Kind is
      (Bad_Pixel_List_Event,
@@ -201,7 +204,49 @@ package AMS.MEL.IR.Image.Metadata is
    --  @param Event Owned event with the corresponding kind.
    --  @return Independent owned navigation response value.
    --  @exception Provider_Error Event kind does not match this accessor.
+
+   type NUC_Stream is limited private;
+   --  Limited opt-in owner of ImageChannel @Optional NUC_TempData reception, independent of
+   --  Metadata_Stream. Close deactivates consumption, not provider callback registration;
+   --  finalization attempts non-raising cleanup. Serialize operations on the same owner.
+   function Open_NUC
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive) return NUC_Stream;
+   --  Registers the upstream ImageChannel NUC_TempData callback once per image stream, including
+   --  after failure. Registration may deliver synchronously. Failure publishes no owner; the
+   --  retained callback stays inactive because upstream has no unregister. Events share one
+   --  bounded drop-incoming queue in successful-enqueue order; the owner stops with the stream.
+   --  @param Stream Attached or running image stream.
+   --  @param Queue_Capacity Maximum number of queued NUC_TempData messages.
+   --  @return Limited NUC consumption owner.
+   --  @exception AMS.MEL.IR.NUC.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible stream, repeated attempt, other registration
+   --  failure or exception, or native failure.
+   function Receive_NUC
+     (Stream : NUC_Stream; Timeout_Milliseconds : Natural := 0) return AMS.MEL.IR.NUC.NUC_Temp_Data;
+   --  Dequeues one message and copies its complete ordered points into Ada ownership before
+   --  releasing the native event. Queued messages drain after the image stream stops.
+   --  @param Stream Open NUC owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned NUC_TempData independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, invalid native data or native failure.
+   function NUC_Counters (Stream : NUC_Stream) return Metadata_Counters;
+   --  Copies saturating NUC callback counters without consuming messages.
+   --  @param Stream Open NUC owner.
+   --  @return Received, queue-full dropped and malformed/unsupported counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out NUC_Stream);
+   --  Idempotently deactivates NUC consumption; does not unregister the provider callback or
+   --  close the image stream.
+   --  @param Stream NUC owner to close.
+   --  @exception Provider_Error Native close failed.
 private
+   type NUC_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.NUC_Metadata_Handle := AMS.MEL_C_API.Null_NUC_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out NUC_Stream);
    package Pixel_Vectors is new Ada.Containers.Vectors (Positive, Bad_Pixel);
    type Bad_Pixel_List is record
       Size, Count : Interfaces.Unsigned_32;

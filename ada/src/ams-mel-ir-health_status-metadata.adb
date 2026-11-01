@@ -2,6 +2,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces.C;
 with System;
 with System.Storage_Elements;
+with AMS.MEL.IR.NUC_Conversion;
 
 package body AMS.MEL.IR.Health_Status.Metadata is
    package C renames AMS.MEL_C_API;
@@ -612,4 +613,53 @@ package body AMS.MEL.IR.Health_Status.Metadata is
    is (Natural (Value.CSCIs.Length));
    function CSCI_At (Value : Subsystem_Status; Index : Positive) return Subsystem_CSCI
    is (Value.CSCIs (Index));
+   function Open_NUC (Channel : Health_Channel; Queue_Capacity : Positive := 16) return NUC_Stream
+   is
+      D            : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required     : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      if Channel.Handle = C.Null_Health then
+         raise Provider_Error with "Health channel is closed";
+      end if;
+      return Result : NUC_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Health_NUC_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 Required'Access);
+         begin
+            NUC_Conversion.Check_Open (Code, Registration, Message (D));
+         end;
+      end return;
+   end Open_NUC;
+   function Receive_NUC
+     (Stream : NUC_Stream; Timeout_Milliseconds : Natural := 0) return AMS.MEL.IR.NUC.NUC_Temp_Data
+   is (NUC_Conversion.Receive (Stream.Handle, Timeout_Milliseconds));
+   function NUC_Counters (Stream : NUC_Stream) return Metadata_Counters is
+      Raw : constant C.Metadata_Counters_V1 := NUC_Conversion.Counters (Stream.Handle);
+   begin
+      return
+        (Counter (Raw.Events_Received),
+         Counter (Raw.Events_Dropped_Queue_Full),
+         Counter (Raw.Malformed_Or_Unsupported));
+   end NUC_Counters;
+   procedure Close (Stream : in out NUC_Stream) is
+   begin
+      NUC_Conversion.Close (Stream.Handle);
+   end Close;
+   overriding
+   procedure Finalize (Stream : in out NUC_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_NUC_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_NUC_Metadata;
+   end Finalize;
 end AMS.MEL.IR.Health_Status.Metadata;

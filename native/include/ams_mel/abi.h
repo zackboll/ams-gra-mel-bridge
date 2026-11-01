@@ -82,6 +82,10 @@ typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 typedef struct ams_mel_ir_health ams_mel_ir_health;
 typedef struct ams_mel_ir_health_metadata ams_mel_ir_health_metadata;
 typedef struct ams_mel_ir_health_metadata_event ams_mel_ir_health_metadata_event;
+/* IRMEL-ADA-002: opt-in @Optional NUC_TempData owner, opened independently
+ * from an Image stream or a Health channel, and its copied event. */
+typedef struct ams_mel_ir_nuc_metadata ams_mel_ir_nuc_metadata;
+typedef struct ams_mel_ir_nuc_event ams_mel_ir_nuc_event;
 typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
 typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
@@ -674,6 +678,7 @@ typedef struct ams_mel_ir_image_metadata_event_v1 {
     ams_mel_ir_line_of_sight_euler_v1 line_of_sight_euler;
     ams_mel_ir_navigation_response_v1 navigation_response;
 } ams_mel_ir_image_metadata_event_v1;
+
 typedef struct ams_mel_ir_c2_metadata_counters_v1 {
     uint64_t events_received;
     uint64_t events_dropped_queue_full;
@@ -709,6 +714,47 @@ typedef struct ams_mel_ir_band_info_span_v1 {
     const ams_mel_ir_band_info_v1 *data;
     size_t size;
 } ams_mel_ir_band_info_span_v1;
+/* IRMEL-ADA-002: pinned TempPoint / NUC_TempData (@Optional on ImageChannel
+ * and HealthStatusChannel). Separate new records; no *_v1 event above changes.
+ *
+ * TempPointType: exactly the three pinned alternatives. */
+typedef uint32_t ams_mel_ir_temp_point_type_t;
+#define AMS_MEL_IR_TEMP_POINT_NUC_POINT UINT32_C(0)
+#define AMS_MEL_IR_TEMP_POINT_MFA_ESTIMATE UINT32_C(1)
+#define AMS_MEL_IR_TEMP_POINT_OTHER UINT32_C(2)
+/* PixelValue is std::variant<uint8_t,uint16_t,uint32_t>. kind records which
+ * alternative was active; value holds that alternative's exact value and never
+ * exceeds the alternative's maximum. Consumers must not infer width from the
+ * magnitude: kind is authoritative. Zero is not a valid kind. */
+typedef uint32_t ams_mel_ir_pixel_value_kind_t;
+#define AMS_MEL_IR_PIXEL_VALUE_UINT8 UINT32_C(1)
+#define AMS_MEL_IR_PIXEL_VALUE_UINT16 UINT32_C(2)
+#define AMS_MEL_IR_PIXEL_VALUE_UINT32 UINT32_C(3)
+typedef struct ams_mel_ir_pixel_value_v1 {
+    ams_mel_ir_pixel_value_kind_t kind;
+    uint32_t value;
+} ams_mel_ir_pixel_value_v1;
+/* Every publicly readable TempPoint field. timestamp_ns is the unconverted
+ * std::chrono::nanoseconds count (clock/epoch unspecified upstream).
+ * temperature_k is Kelvin as documented upstream. The pinned private optional
+ * tempError has NO public accessor, so it is deliberately absent: the bridge
+ * neither reads private storage nor reports a value or presence for it. */
+typedef struct ams_mel_ir_temp_point_v1 {
+    int64_t timestamp_ns;
+    ams_mel_ir_band_info_v1 frame_band;
+    ams_mel_ir_pixel_value_v1 pixel_value;
+    double temperature_k;
+    ams_mel_ir_temp_point_type_t point_type;
+} ams_mel_ir_temp_point_v1;
+typedef struct ams_mel_ir_temp_point_span_v1 {
+    const ams_mel_ir_temp_point_v1 *data;
+    size_t size;
+} ams_mel_ir_temp_point_span_v1;
+/* Complete ordered getTempPoints() vector. An empty message is data NULL,
+ * size 0; storage is event-owned until ams_mel_ir_nuc_event_close. */
+typedef struct ams_mel_ir_nuc_temp_data_event_v1 {
+    ams_mel_ir_temp_point_span_v1 temp_points;
+} ams_mel_ir_nuc_temp_data_event_v1;
 typedef struct ams_mel_ir_image_band_v1 {
     uint32_t band_index;
     ams_mel_ir_band_info_span_v1 bands;
@@ -2063,6 +2109,55 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_health_metadata_event_close(
     ams_mel_ir_health_metadata_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-002 opt-in NUC_TempData reception. NUC is @Optional upstream, so
+ * the existing Image/Health metadata Open operations never register it and
+ * are unaffected by a provider that lacks it. Each open registers exactly the
+ * upstream NUC_TempData callback on its own channel family, once per channel
+ * (a failed attempt also consumes the one shot). Registration may deliver
+ * synchronously. out_registration (nullable) receives the mapped upstream
+ * Return whenever registerMetadataCallback returned one, so NOT_SUPPORTED is
+ * distinguishable from FAIL; it is left unchanged otherwise. Any non-Success
+ * Return yields AMS_MEL_PROVIDER_FAILED, a throw AMS_MEL_PROVIDER_EXCEPTION;
+ * failure publishes no owner and leaves retained callback state inactive
+ * (upstream has no unregister). Events are copied before the callback
+ * returns into one bounded drop-incoming queue; null/unknown-enum/allocation
+ * failures are counted as malformed. Image: the owner stops with the stream.
+ * Health: the owner stops when the channel is destroyed, after in-flight NUC
+ * callbacks drain. Late provider callbacks remain memory-safe. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_nuc_open(
+    ams_mel_ir_stream *stream, size_t queue_capacity,
+    ams_mel_ir_nuc_metadata **out_metadata, ams_mel_ir_return_t *out_registration,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_health_nuc_open(
+    ams_mel_ir_health *health, size_t queue_capacity,
+    ams_mel_ir_nuc_metadata **out_metadata, ams_mel_ir_return_t *out_registration,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty; STREAM_STOPPED once inactive/stopped and
+ * empty; PROVIDER_FAILED after an uncertain Health detach. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_receive(
+    ams_mel_ir_nuc_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_nuc_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_get_counters(
+    const ams_mel_ir_nuc_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the callback. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_close(
+    ams_mel_ir_nuc_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view, valid until ams_mel_ir_nuc_event_close
+ * and independent of the owner, channel, Session and provider library. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_event_view(
+    const ams_mel_ir_nuc_event *event,
+    const ams_mel_ir_nuc_temp_data_event_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_event_close(
+    ams_mel_ir_nuc_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Instrumentation owner. This façade implements only the Instrumentation-
