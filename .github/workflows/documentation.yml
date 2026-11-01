@@ -19,7 +19,7 @@ concurrency:
 jobs:
   prepare-documentation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     outputs:
       artifact_id: ${{ steps.inputs.outputs.artifact-id }}
       bundle_sha: ${{ steps.seal.outputs.bundle_sha }}
