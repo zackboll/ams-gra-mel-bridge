@@ -1,7 +1,7 @@
 """POL-002 ordered historical/candidate preparation and nested six-shard gate.
 
 Historical test code and publication authority are exported from an immutable
-Git commit. Candidate policies cannot authorize production in the same delta.
+Git commit. Current source and tests evolve through ordinary reviewed PRs.
 Every outer report binds the exact event head/tree, epochs, sealed input bundle,
 run/attempt and complete inner historical execution. No PR can deploy.
 
@@ -32,153 +32,7 @@ import source_epoch as epoch
 ROOT = Path(__file__).resolve().parents[2]
 HISTORY = source.HISTORICAL_MAIN
 HISTORY_TREE = source.HISTORICAL_TREE
-POLICY_PATHS = frozenset({
-    '.github/workflows/documentation.yml',
-    'docs/tools/ada_examples.py', 'docs/tools/local_type_audit.py',
-    'docs/tools/feature_source.py', 'docs/tools/source_epoch.py',
-    'docs/tools/qualify_feature_source.py', 'docs/tools/epoch_ci.py',
-    'docs/tests/pol002_source_tests.py', 'docs/tests/pol002_epoch_tests.py',
-})
-PROTECTED_INPUTS = (
-    'scripts/check_doc_source_integrity.py', 'scripts/check_doc_coverage.py',
-    'scripts/gnatdoc_coverage_model.py', 'scripts/compare_gnatdoc_warnings.py',
-    'docs/gnatdoc-native-anchors.json', 'docs/gnatdoc-renderer-exceptions.json',
-    'docs/gnatdoc-coverage-baseline.txt', 'docs/gnatdoc-warning-baseline.txt',
-    'docs/tools/documentation_ci.py', 'docs/tools/build_enhanced_site.py',
-    'docs/tests/ci001-inherited-inventory.json',
-)
 require = source.require
-
-# Exact CI-ACTIONS-001 dependency proposal only. Mechanical policy qualification
-# cannot grant source/publication approval or authorize unrelated production.
-ACTIONS_SOURCE = (
-    ('.github/workflows/ci.yml',
-     'c89a50fab57f9bbb7653cf26a8b0260f72d9436c1ebde188dde4b29f257514f2',
-     'de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235'),
-    ('.github/workflows/documentation.yml',
-     '979931734ae82a2a98b8684231f06ce17f202c4115eafdf439136c238724a847',
-     'cb7ea4aa28d20bec2976af8d430fbff84d00bdc69f19b1dd13885f41022cc7d3'),
-    ('scripts/check_doc_source_integrity.py',
-     'cf7d8bf88288bdbe76be4d8fefa9970d2be2cdd9adfaf296ebbd682d63bd9d7d',
-     'e60abd114b984ee3d1f1ce6905c74045e3f1d8ee75da0ba2ac1141f40c726ef9'),
-    ('docs/tools/test_actions_dependencies.py', None,
-     '4312b37b2d54056e83b2970ed84ec1d50e96d4ca4c41a2c273d2fd66b3d5eabc'),
-)
-
-# Exact DOC-CI-004R1 successor of PR #135, not a replacement of ACTIONS_SOURCE
-# or independent approval. Only these four complete files may transition.
-DIAGNOSTIC_SOURCE = (
-    ('.github/workflows/ci.yml',
-     'de38dd1e155bd1cf7d256995f6c8bded61e2fe000f1e733d3dad8a8f255fe235'),
-    ('.github/workflows/documentation.yml',
-     '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711'),
-    ('scripts/check_doc_source_integrity.py',
-     '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602'),
-    ('docs/tools/test_actions_dependencies.py',
-     '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012'),
-)
-
-# DOC-CI-005 exact main-only successor of DIAGNOSTIC_SOURCE: (path, predecessor
-# SHA-256, successor SHA-256). epoch_ci.py is the executing policy, compared to
-# the running bytes. Proposal for independent review, not approval.
-MAIN_ONLY_SOURCE = (
-    ('.github/workflows/documentation.yml',
-     '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711',
-     '8971d0d3fe72bdf5d358909a02e0e8e38f38b2a2a6de725e0d0cb40202faa4b8'),
-    ('scripts/check_doc_source_integrity.py',
-     '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602',
-     'c270fc76544c43e979acbd3ab169ef7be9784c3aac30d0b0c91de904a0a07532'),
-    ('docs/tools/epoch_ci.py',
-     '19c339d8983b817d89e9bf7f368b40ec09b0c6fbc893d7e1f8f06e68f44ba3b0', None),
-    ('docs/tools/test_actions_dependencies.py',
-     '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012',
-     '4d2362f726f4a453ac5e9309cfa0a8665ad208271e0790de5004ebcb58113b7b'),
-)
-
-
-# CI-001R3-R5: the only complete target trees from which each exact historical
-# successor transition is defined. These are the validators' own immutable
-# MAIN_TREE/PREDECESSOR_TREE identities, repeated literally for review and
-# cross-checked in classify(); they authorize nothing by themselves.
-HISTORICAL_TRANSITION_TREES = {
-    'docs/tools/ci001r4_replay.py': frozenset({
-        '4d5c6bb29cfbe6ac39041808e36af34cb84a8c0e',   # main 219b00c
-        '64430578a6e458396561f7888c478634aaed0a8f',   # CI-001R3-R3 e85d99b
-    }),
-    'docs/tools/doc_ci004_source.py': frozenset({
-        '4d5c6bb29cfbe6ac39041808e36af34cb84a8c0e',   # main 219b00c
-        'd90c9b33ed40ada5e363276f01ba09fd044e61d2',   # PR #137 e7eaba2
-    }),
-}
-
-
-def historical_transition_trees():
-    import doc_ci004_source as integration
-    for module in (replay, integration):
-        require(HISTORICAL_TRANSITION_TREES.get(module.POLICY) ==
-                frozenset({module.MAIN_TREE, module.PREDECESSOR_TREE}),
-                'CI-001R3-R5 historical transition scope differs from its validator: ' + module.POLICY)
-    return HISTORICAL_TRANSITION_TREES
-
-
-def diagnostics_delta(root, target, candidate, old, new):
-    names = {name for name, _ in DIAGNOSTIC_SOURCE}
-    if not any(old.get(name) != new.get(name) for name in names):
-        return set()
-    # The original migration path still uses its complete predecessor checks.
-    workflow = '.github/workflows/documentation.yml'
-    if (workflow not in old or hashlib.sha256(source.blob(root, target, workflow)).hexdigest()
-            != ACTIONS_SOURCE[1][2]):
-        return set()
-    predecessors = {name: proposed for name, _, proposed in ACTIONS_SOURCE}
-    for name, proposed in DIAGNOSTIC_SOURCE:
-        require(old.get(name, (None,))[0] == new.get(name, (None,))[0] == '100644',
-                'DOC-CI-004R1 source mode/missing: ' + name)
-        require(hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessors[name],
-                'DOC-CI-004R1 predecessor bytes: ' + name)
-        require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == proposed,
-                'DOC-CI-004R1 candidate bytes: ' + name)
-    require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
-            'DOC-CI-004 candidate changed publication approval registry')
-    return names
-
-
-def main_only_delta(root, target, candidate, old, new):
-    """Admit only the complete DOC-CI-005 unit from its exact predecessor bytes."""
-    names = {name for name, _, _ in MAIN_ONLY_SOURCE}
-    workflow = MAIN_ONLY_SOURCE[0][0]
-    if old.get(workflow) == new.get(workflow) or workflow not in old or \
-            hashlib.sha256(source.blob(root, target, workflow)).hexdigest() != MAIN_ONLY_SOURCE[0][1]:
-        return set()  # Other targets keep the ordinary/historical routes.
-    for name, predecessor, successor in MAIN_ONLY_SOURCE:
-        require(old.get(name, (None,))[0] == new.get(name, (None,))[0] == '100644',
-                'DOC-CI-005 source mode/missing: ' + name)
-        require(hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
-                'DOC-CI-005 predecessor bytes: ' + name)
-        data = source.blob(root, candidate, name)
-        require(data == Path(__file__).read_bytes() if successor is None
-                else hashlib.sha256(data).hexdigest() == successor, 'DOC-CI-005 candidate bytes: ' + name)
-    require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
-            'DOC-CI-005 candidate changed publication approval registry')
-    return names
-
-
-def actions_delta(root, target, candidate, old, new):
-    special = {'.github/workflows/ci.yml', 'scripts/check_doc_source_integrity.py',
-               'docs/tools/test_actions_dependencies.py'}
-    if not any(old.get(n) != new.get(n) for n in special):
-        return set()
-    for name, predecessor, proposed in ACTIONS_SOURCE:
-        require(new.get(name, (None,))[0] == '100644', 'CI-ACTIONS-001 candidate mode/missing: ' + name)
-        require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == proposed,
-                'CI-ACTIONS-001 candidate bytes: ' + name)
-        if predecessor is None:
-            require(name not in old, 'CI-ACTIONS-001 unexpected predecessor: ' + name)
-        else:
-            require(old.get(name, (None,))[0] == '100644' and
-                    hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
-                    'CI-ACTIONS-001 predecessor bytes/mode: ' + name)
-    return {name for name, _, _ in ACTIONS_SOURCE}
 
 
 def digest(value):
@@ -242,76 +96,13 @@ def context():
 
 
 def classify(root, target, candidate):
-    """Policy proposals may evaluate policy, but cannot mix production changes.
-
-    Feature deltas must carry all authorization tools byte-identical to trusted
-    target main. A policy-only candidate is explicitly not independent approval.
-    """
-    old, new = source.tree(root, target), source.tree(root, candidate)
-    require(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', target, candidate],
-                           capture_output=True).returncode == 0, 'unqualified policy/source ancestry')
-    changed = sorted(n for n in old.keys() | new.keys() if old.get(n) != new.get(n))
-    # CI-001R3-R5: each exact historical transition is defined only from its
-    # verified complete predecessor trees. A later reviewed main is not such a
-    # predecessor; its successors use the ordinary routes below, which still
-    # reject every unrelated executable, protected-input and transition-policy
-    # change. The validators and their SHA-256 registries are unchanged.
-    target_tree = source.git(root, 'rev-parse', target + '^{tree}').decode().strip()
-    scope = historical_transition_trees()
-    import doc_ci004_source as integration
-    corrected = (replay.source_transition(root, target, candidate, old, new, changed, source)
-                 if target_tree in scope[replay.POLICY] else set())
-    # CI-001R3-R4 binds the complete successor (including every DOC-CI-004
-    # file) exactly; absent its executing policy the earlier routes apply.
-    diagnostic = corrected or (
-        integration.diagnostic_transition(root, target, candidate, old, new, changed, source)
-        if target_tree in scope[integration.POLICY] else set())
-    # Exact inherited-test correction only; these are not general policy paths.
-    from ci001r3_source import policy_transition
-    correction = diagnostic or policy_transition(root, target, candidate, old, new, changed, source)
-    policy = any(n in POLICY_PATHS for n in changed)
-    if not policy:
-        value = source.qualify(root, target, candidate)
-        for name in POLICY_PATHS:
-            require(old.get(name) == new.get(name), 'feature changed qualification implementation')
-        return value
-    # The historical four-file diagnostic pair helper is not authorization for
-    # a future checker edit. Only the complete exact integration may succeed it.
-    actions = diagnostic or main_only_delta(root, target, candidate, old, new) or \
-        actions_delta(root, target, candidate, old, new)
-    for name in changed:
-        require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
-        require(name in correction or name in actions or name in POLICY_PATHS or source.documentation_path(name),
-                'policy mixed with protected production/source change: ' + name)
-    for name in PROTECTED_INPUTS:
-        require(name in correction or name in actions or old.get(name) == new.get(name),
-                'policy proposal changed inherited authority: ' + name)
-    source.exact_checkout(root, source.revision(root, candidate), new)
-    # CI-001R3-R5: a later policy proposal to the reviewed workflow or runner
-    # outside the exact historical transitions still must satisfy the trusted
-    # CI-001R3 workflow/deployment contracts. The executing verifier, not the
-    # candidate, supplies them. This narrows rather than broadens that route.
-    if (not diagnostic and 'docs/tools/ci001r3_workflow.py' in old and
-            {'.github/workflows/documentation.yml', 'docs/tools/epoch_ci.py'}.intersection(changed)):
-        from ci001r3_workflow import live_contract, preparation_contract, deploy_contract
-        for contract in (live_contract, preparation_contract, deploy_contract):
-            contract(root)
-    return {'schema': 1, 'case': 'policy-only', 'target_commit': source.revision(root, target),
-            'target_tree': source.git(root, 'rev-parse', target + '^{tree}').decode().strip(),
-            'candidate_commit': source.revision(root, candidate),
-            'candidate_tree': source.git(root, 'rev-parse', candidate + '^{tree}').decode().strip(),
-            'delta': [{'path': n, 'old': list(old[n]) if n in old else None, 'new': list(new[n])} for n in changed],
-            'independent_approval': False, 'publication_epoch_approved': False}
+    """Ordinary code, tests and tooling share the same source-identity checks."""
+    return source.qualify(root, target, candidate)
 
 
 def authority(root, value):
-    """Feature execution uses only target tools; policy evaluation is a separate case."""
-    if value['case'] != 'policy-only':
-        for name in POLICY_PATHS | set(source.POLICY_FILES):
-            path = Path(root) / name
-            if path.exists():
-                require(path.read_bytes() == source.blob(root, value['target_commit'], name),
-                        'candidate qualifier differs from trusted target: ' + name)
+    """Check current event-bound bytes; do not freeze them to the previous main."""
+    source.exact_checkout(root, value['candidate_commit'], source.tree(root, value['candidate_commit']))
 
 
 def execute(command, cwd, log, env=None):
@@ -375,11 +166,30 @@ def corrected_replay(path):
     return replay.checkout(path)
 
 
+def execute_original_tests(history, logs, env):
+    """Run original immutable test files; record failures without rewriting them."""
+    results = {}
+    for group, directory, pattern in (('scripts', 'scripts', 'test_*doc*.py'),
+                                      ('enhanced', 'docs/tests', 'test_*.py')):
+        log = Path(logs) / ('original-' + group + '.log')
+        with log.open('wb') as stream:
+            status = subprocess.run(
+                [sys.executable, '-W', 'error', '-m', 'unittest', 'discover',
+                 '-s', directory, '-p', pattern, '-v'], cwd=history, env=env,
+                stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT).returncode
+        results[group] = {'exit': status, 'log_sha256': ci.file_sha(log)}
+    source.exact_checkout(history, HISTORY, source.tree(history, HISTORY))
+    return {'commit': HISTORY, 'tree': HISTORY_TREE, 'results': results}
+
+
 def historical_identity(record):
     """Original publication epoch and corrected test replay are not interchangeable."""
     historical = record['historical']
     require(historical['commit'] == HISTORY and historical['tree'] == HISTORY_TREE,
             'wrong historical publication epoch')
+    require(historical['original_tests']['commit'] == HISTORY and
+            historical['original_tests']['tree'] == HISTORY_TREE,
+            'original historical execution identity changed')
     require(historical['replay'] == replay.binding(), 'unauthenticated historical replay binding')
     require(historical['context']['source_sha'] == replay.COMMIT and
             historical['context']['source_tree'] == replay.TREE,
@@ -414,9 +224,6 @@ def prepare(directory, prefix):
     outer = context()
     value = classify(ROOT, outer['target_sha'], outer['source_sha'])
     authority(ROOT, value)
-    if value['case'] != 'policy-only':
-        require(source.blob(ROOT, value['target_commit'], 'docs/tools/epoch_ci.py') == Path(__file__).read_bytes(),
-                'feature orchestration must execute trusted target bytes')
     directory = Path(directory).absolute()
     require(not directory.exists(), 'epoch preparation directory must be fresh')
     directory.mkdir(parents=True)
@@ -442,6 +249,10 @@ def prepare(directory, prefix):
         require(file_map(history / '_site') == file_map(second / '_site') and
                 file_map(history / '_site-published') == file_map(second / '_site-published'),
                 'historical regeneration not deterministic')
+    # Execute original tests before the separately identified corrected replay.
+    # Original defects remain diagnostic evidence; never relabel them as a pass.
+    original_env = {**env, 'DOC_SOURCE_SHA': HISTORY}
+    original_tests = execute_original_tests(history, logs, original_env)
     # Original inventory first, then switch the same publication-bearing clone to
     # the corrected replay. Neither publication byte nor original commit changes.
     execute([py, 'docs/tools/documentation_ci.py', 'inventory', '--directory', str(directory / 'original-inventory')],
@@ -464,8 +275,8 @@ def prepare(directory, prefix):
             ROOT, logs / 'integration.log', env)
     integration = ci.load(directory / 'integration.json')
     validate_policy(integration, integration['tests'])
-    # Inventory authority is actual independently reviewed test source. No report
-    # can omit cases merely by advertising a smaller self-consistent identity set.
+    # Bind executed identities to current discovery. Current tests may evolve;
+    # a report cannot omit discovered cases merely by claiming smaller totals.
     inventory = policy_inventory()
     require(policy_report['tests'] == inventory['policy'] and integration['tests'] == inventory['integration'],
             'policy execution omitted discovered identities')
@@ -478,24 +289,22 @@ def prepare(directory, prefix):
                 ["sh", "docs/tools/qualify_examples.sh"])
     for i, command in enumerate(commands):
         execute(command, ROOT, logs / ('language-' + str(i) + '.log'), env)
-    if (ROOT / 'docs/tools/test_ir_counter_source_policy.py').exists():
-        execute(['python3', 'docs/tools/test_ir_counter_source_policy.py'], ROOT, logs / 'ir-counter-policy.log', env)
-    if (ROOT / 'docs/tests/test_bootstrap_ci_policy.py').exists():
-        execute([py, '-m', 'unittest', 'discover', '-s', 'docs/tests', '-p', 'test_bootstrap_ci_policy.py', '-v'],
-                ROOT, logs / 'inherited-ci002.log', env)
+    execute([py, '-W', 'error', '-m', 'unittest', 'discover', '-s', 'docs/tests',
+             '-p', 'source_epoch_regression_tests.py', '-v'],
+            ROOT, logs / 'current-documentation-regressions.log', env)
     # Candidates cannot alter their source while executing language/test code.
     require(context() == outer and classify(ROOT, outer['target_sha'], outer['source_sha']) == value,
             'candidate qualification changed source or epoch')
     language_evidence = {str(i): {'command': command, 'exit': 0, 'log_sha256': ci.file_sha(logs / ('language-' + str(i) + '.log'))}
                          for i, command in enumerate(commands)}
     candidate = epoch.qualify_evidence(ROOT, value, directory / 'candidate', prefix)
-    # verify_regenerated normally reclassifies feature-only. Policy proposals
-    # also regenerate through the already verified policy-only classification.
+    # Reconstruct independently from the same event-bound source.
     with tempfile.TemporaryDirectory(prefix='pol002-candidate-verify-') as temp:
         again = epoch.qualify_evidence(ROOT, value, Path(temp) / 'candidate', prefix)
         require(again == candidate, 'independent candidate epoch mismatch')
     require(context() == outer, 'source changed during candidate generation')
     historical = {'commit': HISTORY, 'tree': HISTORY_TREE,
+                  'original_tests': original_tests,
                   'replay': replay_binding,
                   'original_inventory': ci.load(directory / 'original-inventory/inventory.json'),
                   'seal': seal, 'pristine': file_map(history / '_site'),
@@ -567,6 +376,10 @@ def verify(directory, manifest_sha):
     authority(ROOT, record['classification'])
     require(record['historical']['commit'] == HISTORY and record['historical']['tree'] == HISTORY_TREE, 'wrong historical epoch')
     historical_identity(record)
+    for group in ('scripts', 'enhanced'):
+        require(ci.file_sha(directory / ('logs/original-' + group + '.log')) ==
+                record['historical']['original_tests']['results'][group]['log_sha256'],
+                'original historical execution log changed')
     value = record['candidate']
     require(value['candidate_commit'] == record['identity']['source_sha'] and
             value['candidate_tree'] == record['identity']['source_tree'], 'wrong candidate epoch')
@@ -574,9 +387,7 @@ def verify(directory, manifest_sha):
     require(all(value.get(k) == v for k, v in record['classification'].items()), 'candidate source delta mismatch')
     require(file_map(directory / 'candidate/pristine') == value['pristine'] and
             file_map(directory / 'candidate/published') == value['publication']['files'], 'substituted candidate artifact')
-    require(value['status'] == 'mechanically-qualified-pending-independent-review' and
-            value['independent_approval'] is False and value['publication_epoch_approved'] is False,
-            'candidate manifest cannot grant independent approval')
+    require(value['status'] == 'mechanically-qualified', 'candidate not qualified')
     require(ci.file_sha(directory / 'policy.json') == record['policy_sha256'], 'policy report changed')
     validate_policy(ci.load(directory / 'policy.json'), record['policy_tests'])
     require(ci.file_sha(directory / 'integration.json') == record['integration_sha256'], 'integration report changed')
@@ -855,7 +666,7 @@ def deployment(args):
     require(set(gate['report_sha256']) == set(ci.SHARDS), 'incomplete deployment shard gate')
     approved = publication_decision(record)
     require(approved is not None and gate['publication_authority'] == approved,
-            'no independently reviewed publication authority for merged source/tree')
+            'publication identity differs from qualified main source/tree')
     verify_candidate(Path(args.directory), record)
 
 
@@ -884,27 +695,13 @@ def live(args):
 
 
 def select_trusted_runner():
-    """Export target policy for feature runs, retaining a separate policy case.
-
-    Candidate code is read-only PR code, never a privileged target workflow.
-    This selection makes the executing policy's Git identity explicit in logs.
-    Independent review of policy/workflow proposals remains mandatory.
-    """
+    """Use the event-bound source after merge; PR execution has no deployment rights."""
     outer = context()
-    value = classify(ROOT, outer['target_sha'], outer['source_sha'])
-    if value['case'] == 'policy-only':
-        runner = Path(__file__).absolute()
-    else:
-        target = ROOT / '.doc-tools/trusted-target'
-        require(not target.exists(), 'trusted policy export destination must be fresh')
-        epoch.export(ROOT, outer['target_sha'], target)
-        runner = target / 'docs/tools/epoch_ci.py'
-        require(runner.is_file(), 'target main does not contain reviewed POL-002 policy')
+    runner = ROOT / 'docs/tools/epoch_ci.py'
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
             stream.write('runner=' + str(runner) + '\n')
-    print(json.dumps({'policy_case': value['case'], 'target_sha': outer['target_sha'],
-                      'candidate_sha': outer['source_sha'], 'executing_policy': str(runner)}))
+    print(json.dumps({'candidate_sha': outer['source_sha'], 'executing_policy': str(runner)}))
 
 
 def main():

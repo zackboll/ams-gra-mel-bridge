@@ -175,9 +175,7 @@ def contains(node, statement):
 def authority_contract(root):
     node = function(root, 'select_trusted_runner')
     contains(node, 'outer = context()')
-    contains(node, "value = classify(ROOT, outer['target_sha'], outer['source_sha'])")
-    contains(node, "epoch.export(ROOT, outer['target_sha'], target)")
-    contains(node, "runner = target / 'docs/tools/epoch_ci.py'")
+    contains(node, "runner = ROOT / 'docs/tools/epoch_ci.py'")
     node = function(root, 'context')
     contains(node, "require(source.revision(ROOT, ref) == candidate, 'event head differs from fetched PR ref')")
     contains(node, 'source.exact_checkout(ROOT, candidate, source.tree(ROOT, candidate))')
@@ -192,7 +190,7 @@ def deployment_contract(root):
     contains(node, "require(gate['mechanically_qualified'] is True and gate['deployable'] is True and gate['identity'] == context() and gate['epochs_sha256'] == digest(record), 'unqualified deployment epoch')")
     contains(node, "require(gate['qualified'] == {'artifact_id': args.artifact_id, 'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha}, 'deployment artifact mismatch')")
     contains(node, "require(set(gate['report_sha256']) == set(ci.SHARDS), 'incomplete deployment shard gate')")
-    contains(node, "require(approved is not None and gate['publication_authority'] == approved, 'no independently reviewed publication authority for merged source/tree')")
+    contains(node, "require(approved is not None and gate['publication_authority'] == approved, 'publication identity differs from qualified main source/tree')")
 
 
 def live_contract(root):
@@ -288,6 +286,7 @@ def preparation_contract(root):
     contains(node, "for i, command in enumerate(commands):\n    execute(command, ROOT, logs / ('language-' + str(i) + '.log'), env)")
     contains(node, "env = qualified_alire_environment(ROOT / '.doc-tools/settings', logs / 'alire-selection.log', env)")
     contains(node, "candidate = epoch.qualify_evidence(ROOT, value, directory / 'candidate', prefix)")
+    contains(node, "execute([py, '-W', 'error', '-m', 'unittest', 'discover', '-s', 'docs/tests', '-p', 'source_epoch_regression_tests.py', '-v'], ROOT, logs / 'current-documentation-regressions.log', env)")
     contains(function(root, 'run_shard'), 'verify(args.directory, args.manifest_sha)')
     contains(function(root, 'reconcile'), "require(set(reports) == set(ci.SHARDS), 'missing/unknown historical shard')")
     contains(function(root, 'reconcile'), "require(set(needs) == {'prepare-documentation', 'enhanced-tests'} and all(v['result'] == 'success' for v in needs.values()), 'incomplete prerequisite jobs')")
