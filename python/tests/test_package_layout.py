@@ -6,10 +6,13 @@ import enum
 import importlib
 import inspect
 import json
+import os
 from pathlib import Path
 import pickle
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 import ams_mel as mel
@@ -65,38 +68,28 @@ def public_snapshot():
 
 class PackageCompatibilityTests(unittest.TestCase):
     def test_exports_are_defining_module_objects(self):
-        definitions = {
-            "_errors": "ErrorKind MelError",
-            "_types": (
-                "AbiVersion BandInfo BandType ChannelCapability ChannelType CommandReturn "
-                "CommsCompleted CommsRejected CommsTestReport CommsTestRequest "
-                "ComponentLocation ControlConfig CoordinateSystem Frame HealthConfig "
-                "ImageBand ImageConfig ImageFlip ImageType InstrumentationCompleted "
-                "InstrumentationConfig InstrumentationLevelCommand "
-                "InstrumentationMetadataCounters InstrumentationPriority "
-                "InstrumentationRejected InstrumentationReport MelErrorCode "
-                "MetadataCapability MFAState MfaMode ModeRejected ModeSuccess "
-                "PixelFormat ProviderVersion ReturnCompleted ReturnRejected SensorType "
-                "StreamCounters UciId"
-            ),
-            "_requests": "ModeRequest ReturnRequest CommsRequest",
-            "_common": "ChannelView",
-            "_image": "ImageStream",
-            "_c2": "ControlChannel",
-            "_instrumentation": (
-                "InstrumentationChannel InstrumentationMetadata InstrumentationRequest"
-            ),
-            "_health": "HealthStatusChannel",
-            "_rf_admin": "RFAdmin",
-            "_session": "Session abi_version",
-        }
-        checked = []
-        for module, names in definitions.items():
-            implementation = importlib.import_module(f"ams_mel.{module}")
-            for name in names.split():
-                self.assertIs(getattr(mel, name), getattr(implementation, name))
-                checked.append(name)
-        self.assertCountEqual(checked, mel.__all__)
+        # Public __module__ is deliberately rewritten, so find definitions in
+        # implementation source rather than trusting that attribute or a fixed
+        # inventory that would need editing whenever an export is added.
+        definitions = {}
+        for path in Path(mel.__file__).parent.glob("_*.py"):
+            if path.name == "__init__.py":
+                continue
+            implementation = importlib.import_module(f"ams_mel.{path.stem}")
+            for node in ast.parse(path.read_text()).body:
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    definitions.setdefault(node.name, []).append(
+                        getattr(implementation, node.name)
+                    )
+        for name in mel.__all__:
+            with self.subTest(export=name):
+                value = getattr(mel, name)
+                self.assertEqual(value.__module__, "ams_mel")
+                self.assertTrue(
+                    any(value is definition
+                        for definition in definitions.get(value.__name__, ())),
+                    f"{name} is not its defining-module object",
+                )
 
     def test_internal_import_graph_is_acyclic_and_not_public(self):
         package = Path(mel.__file__).parent
@@ -140,7 +133,88 @@ class PackageCompatibilityTests(unittest.TestCase):
 
     def test_original_public_snapshot(self):
         baseline = json.loads(Path(__file__).with_name("public_api_baseline.json").read_text())
-        self.assertEqual(public_snapshot(), baseline["api"])
+        current = public_snapshot()
+        original = baseline["api"]
+        # Preserve the original export order, but allow additions anywhere.
+        self.assertEqual([name for name in current["all"] if name in original["all"]],
+                         original["all"])
+        for name, expected in original["symbols"].items():
+            with self.subTest(export=name):
+                self.assertIn(name, current["symbols"])
+                actual = current["symbols"][name]
+                self.assertEqual(actual.keys(), expected.keys())
+                for contract, value in expected.items():
+                    if contract == "methods":
+                        for method, signature in value.items():
+                            self.assertIn(method, actual["methods"], f"{name}.{method}")
+                            self.assertEqual(actual["methods"][method], signature,
+                                             f"{name}.{method}")
+                    else:
+                        self.assertEqual(actual[contract], value, f"{name}.{contract}")
+        self.assertEqual([pair for pair in current["aliases"]
+                          if all(name in original["all"] for name in pair)],
+                         original["aliases"])
+
+    def _check_modified_package(self, exports, implementation=""):
+        """Run the real compatibility/identity checks on an isolated package copy."""
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "ams_mel"
+            shutil.copytree(Path(mel.__file__).parent, package,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            with (package / "_types.py").open("a") as stream:
+                stream.write("\n" + implementation + "\n")
+            with (package / "__init__.py").open("a") as stream:
+                stream.write("\n" + exports + "\n")
+            return subprocess.run(
+                [sys.executable, "-W", "error", "-m", "unittest", "-v",
+                 "test_package_layout.PackageCompatibilityTests.test_original_public_snapshot",
+                 "test_package_layout.PackageCompatibilityTests.test_exports_are_defining_module_objects"],
+                cwd=directory,
+                env={**os.environ, "PYTHONPATH": os.pathsep.join(
+                    (directory, str(Path(__file__).resolve().parent)))},
+                capture_output=True, text=True, timeout=30,
+            )
+
+    def test_additive_public_api_is_accepted(self):
+        result = self._check_modified_package(
+            'from ._types import AdditiveValue\n'
+            'AdditiveValue.__module__ = __name__\n'
+            '__all__.insert(0, "AdditiveValue")',
+            'class AdditiveValue:\n'
+            '    pass\n'
+            'def _additive_method(self):\n'
+            '    return None\n'
+            'AbiVersion.additive_method = _additive_method',
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_original_api_removal_or_incompatible_change_is_rejected(self):
+        changes = {
+            "export removal": '__all__.remove("Session")',
+            "method removal": 'del Session.provider_version',
+            "method signature": 'Session.close = lambda self, required: None',
+            "public module": 'Session.__module__ = "ams_mel._session"',
+            "enum numeric value": 'SensorType.GIMBAL_HORIZONTAL._value_ = 42',
+            "dataclass default": 'AbiVersion.__dataclass_fields__["major"].default = 0',
+            "dataclass frozen": 'AbiVersion.__dataclass_params__.frozen = False',
+        }
+        for contract, change in changes.items():
+            with self.subTest(contract=contract):
+                result = self._check_modified_package(change)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("FAIL: test_original_public_snapshot", result.stderr)
+
+    def test_new_export_must_be_its_implementation_object(self):
+        result = self._check_modified_package(
+            'class AdditiveValue:\n'
+            '    pass\n'
+            '__all__.append("AdditiveValue")',
+            'class AdditiveValue:\n'
+            '    pass',
+        )
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("test_original_public_snapshot) ... ok", result.stderr)
+        self.assertIn("FAIL: test_exports_are_defining_module_objects", result.stderr)
 
     def test_pickle_values_keep_public_identity(self):
         values = (
