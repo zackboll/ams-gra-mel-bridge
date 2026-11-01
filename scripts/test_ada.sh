@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+python3 "$root/scripts/check_ir_api_coverage.py"
+python3 -m unittest discover -s "$root/scripts" -p 'test_ir_api_coverage.py' -v
 command -v gprbuild >/dev/null 2>&1 || {
     echo "GNAT/GPRbuild is required on PATH. Alternatively use: alr -C ada/tests run" >&2
     exit 1

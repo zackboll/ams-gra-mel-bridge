@@ -8,6 +8,7 @@ help:
 	  'make test-native  Build/run native tests in native/build-tests' \
 	  'make test-build-isolation Prove the production/test build trees stay separate' \
 	  'make test-ada     Build/run Ada smoke test using GPRbuild on PATH' \
+	  'make check-ir-api-coverage Offline pinned IR API audit and regression tests' \
 	  'make format-ada       Format Ada crate sources with GNATformat' \
 	  'make check-ada-format Verify Ada crate sources are GNATformat-clean' \
 	  'make test-rust    Test the Rust workspace against native/build-tests' \
@@ -34,6 +35,11 @@ test-native:
 
 test-ada:
 	@sh scripts/test_ada.sh
+
+.PHONY: check-ir-api-coverage
+check-ir-api-coverage:
+	@python3 scripts/check_ir_api_coverage.py
+	@python3 -m unittest discover -s scripts -p 'test_ir_api_coverage.py' -v
 
 format-ada:
 	@sh scripts/format_ada.sh format
