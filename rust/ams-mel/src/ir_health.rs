@@ -7,7 +7,8 @@
 //! Close/Drop, and the weak common [`ChannelView`] (KeepAlive, CommsTest, and
 //! capabilities). The six HealthStatus metadata callback families are opened
 //! through [`HealthStatusChannel::open_metadata`] (RUST-IR-002, implemented in
-//! `ir_health_metadata.rs`); the optional NUC_TempData callback is not exposed.
+//! `ir_health_metadata.rs`); optional NUC reception is opened independently
+//! through [`HealthStatusChannel::open_nuc`].
 
 use std::ptr;
 use std::rc::Rc;
@@ -168,6 +169,29 @@ pub struct HealthStatusChannel {
 }
 
 impl HealthStatusChannel {
+    /// Registers optional NUC independently of ordinary metadata. Zero capacity
+    /// does not consume the one-shot; every native attempt does, even failure.
+    /// No automatic retry. Registration may synchronously deliver events.
+    pub fn open_nuc(
+        &mut self,
+        queue_capacity: usize,
+    ) -> Result<crate::NucStream, crate::NucOpenError> {
+        crate::NucStream::open_with(queue_capacity, |out, registration, d, c, r| {
+            // SAFETY: exclusively borrowed typed owner, writable output slots.
+            unsafe {
+                sys::ams_mel_ir_health_nuc_open(
+                    self.raw,
+                    queue_capacity,
+                    out,
+                    registration,
+                    d,
+                    c,
+                    r,
+                )
+            }
+        })
+    }
+
     /// Returns whether this wrapper still owns its native Health handle.
     ///
     /// This reports local handle ownership only, not whether the channel is
