@@ -18,10 +18,10 @@
 #error "mock provider path is required"
 #endif
 
+#include "admission_observation.h"
+
 extern int ams_mel_test_completion_snapshot(unsigned, uint64_t *);
 extern int ams_mel_test_completion_owner(unsigned, uint64_t, uint64_t *);
-extern int ams_mel_test_c2_requests(const ams_mel_ir_c2 *, size_t *);
-extern int ams_mel_test_navigation_requests(const ams_mel_ir_stream *, size_t *);
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #x); return EXIT_FAILURE; } } while (0)
 #define CAMERA_PROBE_FAMILY 6U
@@ -531,36 +531,112 @@ static int test_pending_close(int image, int stop_first)
     return EXIT_SUCCESS;
 }
 
-/* Session admission is shared with every other request family. */
-static int test_admission(int image)
+/* This Session's own admission slot count, read through a test-only token. */
+static int admission_is(ams_mel_test_admission_token **token, uint32_t expected)
 {
-    struct owners o;
-    const unsigned family = image ? IMAGE_SEND : C2_SEND;
-    ams_mel_ir_camera_command_request *first = NULL, *refused = NULL;
-    ams_mel_ir_camera_command_result_v1 result;
-    const ams_mel_ir_camera_command_v1 c = command(5);
-    uint64_t base, observed = 0;
-    size_t count = 0;
+    uint32_t active = 99, maximum = 0;
+    CHECK(ams_mel_test_admission(NULL, 1, token, &active, &maximum));
+    CHECK(active == expected && maximum == 1U);
+    return EXIT_SUCCESS;
+}
+
+/* Deterministic wait for this Session's slot (not a family-global worker
+ * count) to be released; exactly once: the count is 0, never wrapped. */
+static int admission_released(ams_mel_test_admission_token **token)
+{
+    uint32_t active = 0, maximum = 0;
+    CHECK(ams_mel_test_admission(NULL, 3, token, &active, &maximum));
+    CHECK(active == 0U && maximum == 1U);
+    return EXIT_SUCCESS;
+}
+
+/* Submission is the sole holder of the refused request's state, so its
+ * Camera FinalOwner is destroyed before the refusal returns. */
+static int refuse(int image, struct owners *o, unsigned family)
+{
+    ams_mel_ir_camera_command_request *refused = NULL;
+    const ams_mel_ir_camera_command_v1 c = command(9);
+    const unsigned before = sends(family);
     char d[64];
-    unsigned before;
-    CHECK(open_owner(image, "camera-held", 1, &o) == EXIT_SUCCESS);
-    base = owners_destroyed();
-    CHECK(submit(image, &o, &c, &first, NULL, 0) == AMS_MEL_OK);
-    before = sends(family);
-    CHECK(submit(image, &o, &c, &refused, d, sizeof d) == AMS_MEL_RESOURCE_EXHAUSTED);
+    CHECK(submit(image, o, &c, &refused, d, sizeof d) == AMS_MEL_RESOURCE_EXHAUSTED);
     CHECK(strcmp(d, "async request limit reached") == 0 && refused == NULL);
     CHECK(sends(family) == before);
+    return EXIT_SUCCESS;
+}
+
+/* Session admission is shared with every other request family. The permit
+ * survives public request Close and is released only after the request's
+ * completion graph is gone. Negative controls: the family-global Camera
+ * FinalOwner count advances for a refused submission and for an unrelated
+ * Session's completed worker while this Session's slot is still held, so
+ * that count can never prove release of this Session's permit. */
+static int test_admission(int image)
+{
+    struct owners o, other;
+    const unsigned family = image ? IMAGE_SEND : C2_SEND;
+    const unsigned other_family = image ? C2_SEND : IMAGE_SEND;
+    ams_mel_ir_camera_command_request *first = NULL, *unrelated = NULL;
+    ams_mel_ir_camera_command_result_v1 result;
+    const ams_mel_ir_camera_command_v1 c = command(5);
+    ams_mel_test_admission_token *token = NULL;
+    uint64_t base, observed = 0;
+    size_t count = 0;
+    CHECK(open_owner(image, "camera-held", 1, &o) == EXIT_SUCCESS);
+    CHECK(ams_mel_test_admission(o.session, 0, &token, NULL, NULL));
+    CHECK(admission_is(&token, 0U) == EXIT_SUCCESS);
+    {   /* Quiesce: every earlier Camera graph in this process is gone, so the
+         * global count below moves only for owners this test creates. */
+        uint64_t values[4] = {0};
+        CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+        CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, values[2], &observed));
+        base = owners_destroyed();
+        CHECK(base == values[2]);
+    }
+    CHECK(submit(image, &o, &c, &first, NULL, 0) == AMS_MEL_OK);
+    CHECK(admission_is(&token, 1U) == EXIT_SUCCESS);
+    CHECK(refuse(image, &o, family) == EXIT_SUCCESS);
+    CHECK(request_count(image, &o, &count) && count == 1U);
+
+    /* Negative control 1 (the hosted failure): the refused submission alone
+     * satisfies the old base + 1 wait while the first request is held. */
+    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 1U, &observed));
+    CHECK(observed == base + 1U);
+    CHECK(admission_is(&token, 1U) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_camera_command_request_wait(first, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+
+    /* Negative control 2: an unrelated Session's Camera worker completes and
+     * is destroyed; this Session's slot is unaffected and still enforced. */
+    CHECK(open_owner(!image, "camera-held", 0, &other) == EXIT_SUCCESS);
+    CHECK(submit(!image, &other, &c, &unrelated, NULL, 0) == AMS_MEL_OK);
+    CHECK(release_family(other_family, 1) == 1);
+    CHECK(ams_mel_ir_camera_command_request_wait(unrelated, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(ams_mel_ir_camera_command_request_close(&unrelated, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_owner(&other) == EXIT_SUCCESS);
+    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 2U, &observed));
+    CHECK(observed == base + 2U);
+    CHECK(admission_is(&token, 1U) == EXIT_SUCCESS);
+    CHECK(ams_mel_ir_camera_command_request_wait(first, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
+    CHECK(refuse(image, &o, family) == EXIT_SUCCESS);
+
+    /* Public request Close is not cancellation and does not release the slot. */
+    CHECK(ams_mel_ir_camera_command_request_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(admission_is(&token, 1U) == EXIT_SUCCESS);
+    CHECK(refuse(image, &o, family) == EXIT_SUCCESS);
     CHECK(request_count(image, &o, &count) && count == 1U);
     CHECK(release_family(family, 1) == 1);
-    CHECK(ams_mel_ir_camera_command_request_wait(first, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
-    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 1U, &observed));
-    CHECK(ams_mel_ir_camera_command_request_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
-    /* The permit is released only after the completion owner is destroyed. */
+    /* Positive observation: this Session's own slot is released. */
+    CHECK(admission_released(&token) == EXIT_SUCCESS);
+    CHECK(request_count(image, &o, &count) && count == 0U);
+
     CHECK(submit(image, &o, &c, &first, NULL, 0) == AMS_MEL_OK);
+    CHECK(admission_is(&token, 1U) == EXIT_SUCCESS);
+    CHECK(refuse(image, &o, family) == EXIT_SUCCESS);
     CHECK(release_family(family, 1) == 1);
     CHECK(ams_mel_ir_camera_command_request_wait(first, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
-    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 2U, &observed));
+    CHECK(result.response.command_id == 5U && result.error_code == AMS_MEL_ERROR_NONE);
     CHECK(ams_mel_ir_camera_command_request_close(&first, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(admission_released(&token) == EXIT_SUCCESS);
+    CHECK(ams_mel_test_admission(NULL, 2, &token, NULL, NULL) && token == NULL);
     CHECK(close_owner(&o) == EXIT_SUCCESS);
     return EXIT_SUCCESS;
 }

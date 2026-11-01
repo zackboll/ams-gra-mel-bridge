@@ -3383,7 +3383,12 @@ fn declarations_match_the_c_header() {
         timestamp_ns,
         command_success
     );
-    layout!(expected, AmsMelIrCameraCommandResultV1, response, error_code);
+    layout!(
+        expected,
+        AmsMelIrCameraCommandResultV1,
+        response,
+        error_code
+    );
     expected.extend([
         AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ as usize,
         AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ as usize,
