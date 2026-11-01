@@ -24,6 +24,8 @@ CI001R4_HEAD = '2be40f9144ae655da456da2b59b4a6120ba5a6e6'
 # Reviewed main (#134 merge) that first exposed the CI-001R3-R5 defect.
 CI001R5_LATER_MAIN = '10990c39c4fd05b902505767b7dcffc701757d25'
 DOC_CI005_PREDECESSOR = 'd5243dd924c4a81a548e38d97533e29f9971deea'
+# Historical exact transition fixtures must not import later live policy bytes.
+DOC_CI005_SUCCESSOR = 'dc04ee5bff50ac09ca3e8461393ec2a1a76aa528'
 sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import documentation_ci as ci
 import epoch_ci as e
@@ -2255,7 +2257,7 @@ class HistoricalTransitionScopeTests(unittest.TestCase):
 
     def test_executable_and_production_changes_with_documentation_reject(self):
         for name in ('native/src/ir_stream.cpp', 'ada/src/ams-mel.ads', 'rust/ams-mel/src/lib.rs',
-                     'python/ams_mel/__init__.py', 'native/vendor/ams-math/INTENT.md',
+                     'python/unowned.py', 'native/vendor/ams-math/INTENT.md',
                      'scripts/extra_checker.py', 'docs/tests/test_unknown_addition.py',
                      '.github/workflows/unreviewed.yml', 'docs/approval.json'):
             with self.subTest(name=name):
@@ -2457,7 +2459,7 @@ class MainOnlyDocumentationTests(unittest.TestCase):
         cls.git('config', 'user.name', 'DOC-CI-005 control')
         cls.git('config', 'user.email', 'doc-ci-005@example.invalid')
         for name, _, _ in e.MAIN_ONLY_SOURCE:
-            (cls.root / name).write_bytes((ROOT / name).read_bytes())
+            (cls.root / name).write_bytes(s.blob(ROOT, DOC_CI005_SUCCESSOR, name))
         cls.head = cls.commit()
 
     @classmethod

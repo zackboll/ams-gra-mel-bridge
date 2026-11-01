@@ -46,7 +46,7 @@ class SourceIntegrityTests(unittest.TestCase):
         additions = {
             'native/src/new.cpp': 'int added = 1;\n',
             'rust/src/new.rs': 'pub fn added() {}\n',
-            'python/ams_mel/new.py': 'added = True\n',
+            'python/ams_mel/_native.py': 'added = True\n',
             'ada/src/new.ads': 'package New_Unit is end New_Unit;\n',
             'ada/src/new.adb': 'package body New_Unit is end New_Unit;\n',
             'ada/tests/src/new.ads': 'package New_Test is end New_Test;\n',

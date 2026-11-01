@@ -10,13 +10,14 @@ import difflib
 import hashlib
 import json
 from pathlib import Path
+import re
 import stat
 import subprocess
 
 
 HISTORICAL_MAIN = "5c136a04ff64d980df7aaa2bd1ee49e1ed80daaf"
 HISTORICAL_TREE = "0073b8627bab4f8409438fdf7102ba5e461fb439"
-# Exact surfaces, not directory exemptions. New filenames need policy review.
+# Exact RF surfaces; Python safe source has a separate ownership rule below.
 RF_PRODUCT_RX = frozenset({
     "native/include/ams_mel/abi.h", "native/src/exports.map",
     "native/src/rf_product_rx.cpp", "native/tests/test_rf_product_rx.c",
@@ -192,7 +193,23 @@ def exact_checkout(root, candidate, objects):
 
 def documentation_path(name):
     return (name.startswith("docs/") and name.endswith((".md", ".html"))
-            and not name.startswith(("docs/tools/", "docs/tests/", "docs/examples/"))) or name == "README.md"
+            and not name.startswith(("docs/tools/", "docs/tests/", "docs/examples/"))) or name in {"README.md", "python/README.md"}
+
+
+def python_safe_path(name):
+    """PY-POL-001 source ownership, not ABI or generated-file authority.
+
+    Keep in sync with check_doc_source_integrity.python_safe_path; parity is
+    regression-tested. No candidate-supplied manifest or exact-content approval.
+    """
+    if name == "python/README.md":
+        return True
+    parts = name.split("/")
+    return (len(parts) >= 3 and parts[:2] in (["python", "ams_mel"], ["python", "tests"])
+            and all(re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", p) for p in parts[2:-1])
+            and re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*\.py", parts[-1]) is not None
+            and not set(parts[2:-1]) & {"__pycache__", "generated", "_generated", "build", "dist", "vendor"}
+            and parts[-1] not in {"_native.py", "test_abi.py"})
 
 
 def shared_surface_delta(root, target, candidate, name):
@@ -244,8 +261,11 @@ def qualify(root, target, candidate, *, check_checkout=True, documentation_only=
     for name in changed:
         require(name in new, "source removal is not authorized: " + name)
         require(new[name][0] == old.get(name, ("100644",))[0], "mode transition: " + name)
-        require(documentation_path(name) or name in RF_PRODUCT_RX or name in audit, "out-of-scope delta: " + name)
-        require(name in old or name in NEW_RF_FILES or documentation_path(name) or name in audit, "unauthorized new source: " + name)
+        python = python_safe_path(name)
+        if python:
+            require(new[name][0] == "100644", "Python source must be regular nonexecutable: " + name)
+        require(python or documentation_path(name) or name in RF_PRODUCT_RX or name in audit, "out-of-scope delta: " + name)
+        require(python or name in old or name in NEW_RF_FILES or documentation_path(name) or name in audit, "unauthorized new source: " + name)
         if name in old:
             obligation = shared_surface_delta(root, target, candidate, name)
             if obligation:

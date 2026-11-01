@@ -1,5 +1,16 @@
 # Implementation coverage
 
+## PY-POL-001 — Python safe API source admission (proposal)
+
+The feature qualifier and DOC-001 integrity checker gain narrow ownership for
+regular nonexecutable safe Python modules/tests and `python/README.md`, without
+per-feature content approval. Private ctypes/ABI files, native fixtures,
+generated artifacts and unrelated ownership retain their existing authorities.
+Disposable regressions include the exact byte-identical PR #140 delta and
+adversarial cross-ownership, path, mode, deletion and rename controls. No runtime,
+ABI, provider, Ada, Rust, workflow or publication behavior changes; independent
+policy authorization remains pending. See `py-pol-001-python-source-admission.md`.
+
 ## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
 
 The Documentation workflow now runs only on pushes to `main`; its

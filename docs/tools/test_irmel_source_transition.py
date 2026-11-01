@@ -263,8 +263,9 @@ class IRMELSourceTransitionTests(unittest.TestCase):
             self.reject("production bytes changed|unlisted instrumentation")
 
     def test_unrelated_production_additions_in_all_languages_fail(self):
+        # PY-POL-001 admits safe package/tests source, not the entire Python root.
         for name in ("ada/src/unapproved.ads", "native/src/unapproved.cpp",
-                     "python/ams_mel/unapproved.py", "rust/unapproved.rs"):
+                     "python/unapproved.py", "rust/unapproved.rs"):
             self.reset()
             self.install()
             path = self.root / name

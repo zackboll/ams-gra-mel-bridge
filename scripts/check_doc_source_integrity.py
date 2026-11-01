@@ -427,16 +427,53 @@ def actions_workflow_state(root, git, current):
     raise ValueError("CI-ACTIONS-001 mixed or partially applied workflows")
 
 
+def python_safe_path(name):
+    """PY-POL-001; mirrored in feature_source and checked for parity by tests."""
+    if name == "python/README.md":
+        return True
+    parts = name.split("/")
+    return (len(parts) >= 3 and parts[:2] in (["python", "ams_mel"], ["python", "tests"])
+            and all(re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", p) for p in parts[2:-1])
+            and re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*\.py", parts[-1]) is not None
+            and not set(parts[2:-1]) & {"__pycache__", "generated", "_generated", "build", "dist", "vendor"}
+            and parts[-1] not in {"_native.py", "test_abi.py"})
+
+
+def check_python_source(root, git, name, existing, current, base):
+    """Admit source bytes, never removals, modes, links or divergent views."""
+    if name not in current:
+        raise ValueError("Python source removal is not authorized: " + name)
+    entries = git("ls-files", "--stage", "-z", "--", name).split(b"\0")
+    if (len(entries) != 2 or not entries[0].startswith(b"100644 ") or
+            entries[0].split(b"\t", 1)[0].split()[-1] != b"0"):
+        raise ValueError("Python source index must be regular nonexecutable stage-0: " + name)
+    if name in existing:
+        before = git("ls-tree", "-z", base, "--", name)
+        if not before.startswith(b"100644 blob "):
+            raise ValueError("Python source foundation mode is not regular nonexecutable: " + name)
+    path = root / name
+    if (any(p.is_symlink() for p in (path, *path.parents)) or
+            not path.exists() or not stat.S_ISREG(path.lstat().st_mode)):
+        raise ValueError("Python source working path is not regular: " + name)
+    if path.stat().st_mode & 0o111:
+        raise ValueError("Python source working path must be nonexecutable: " + name)
+    if path.read_bytes() != git("show", ":" + name):
+        raise ValueError("Python source working tree/index bytes differ: " + name)
+
+
 def check(root=ROOT, base=BASE):
     def git(*args):
         return subprocess.check_output(["git", "-C", str(root), *args])
     existing = set(git("ls-tree", "-rz", "--name-only", base).decode().split("\0")) - {""}
     current = set(git("ls-files", "-z", "--cached").decode().split("\0")) - {""}
+    python_paths = {name for name in existing | current if python_safe_path(name)}
+    for name in sorted(python_paths):
+        check_python_source(root, git, name, existing, current, base)
     irmel = irmel_pol_001_state(root, git, existing, current, base)
     irmel_paths = {name for name, _, _, _ in IRMEL_POL_001_TRANSITION} if irmel else set()
     unexpected = {name for name in current - existing
                   if not name.startswith("docs/") and name not in DOCUMENTATION_ADDITIONS
-                  and name not in irmel_paths}
+                  and name not in irmel_paths and name not in python_paths}
     if unexpected:
         raise ValueError(f"unauthorized tracked files added: {sorted(unexpected)!r}")
     transition = reviewed_native_test_state(root, git, existing, current, base)
@@ -459,6 +496,9 @@ def check(root=ROOT, base=BASE):
         raise ValueError(f"Ada source inventory changed: {original_ada ^ current_ada}")
     checked = 0
     for name in sorted(existing):
+        if name in python_paths:
+            checked += 1  # Ownership admission; index/mode/working bytes checked above.
+            continue
         if name.startswith("docs/") or name in (".gitignore", "README.md"):
             continue
         if name in irmel_paths:
