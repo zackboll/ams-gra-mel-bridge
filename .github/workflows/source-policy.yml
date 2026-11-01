@@ -52,8 +52,16 @@ jobs:
           print('workflow state:', integrity.actions_workflow_state(Path.cwd(), git, current))
           PY
           }
+          policy_case() {
+            python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).read().splitlines()[-1])["policy_case"])' "$1"
+          }
           if check "$trusted" trusted; then
-            echo "::notice::Trusted main $BASE_SHA policy accepted this PR; mechanical evidence, not approval."
+            kind=$(policy_case "$RUNNER_TEMP/trusted.json")
+            if [ "$kind" = policy-only ]; then
+              echo "::warning::Trusted main $BASE_SHA classified this PR as a policy-only proposal. NOT approval; independent review required."
+            else
+              echo "::notice::Trusted main $BASE_SHA qualified this $kind PR; mechanical evidence, not approval."
+            fi
             exit 0
           fi
           # Trusted main lists decide whether the isolated policy-review case applies.
@@ -80,6 +88,5 @@ jobs:
           print('Policy-review candidates: ' + ', '.join(touched))
           PY
           check "$PWD" candidate
-          python3 -c 'import json,sys; v=json.loads(open(sys.argv[1]).read().splitlines()[-1]); sys.exit(v["policy_case"] != "policy-only")' \
-            "$RUNNER_TEMP/candidate.json"
+          test "$(policy_case "$RUNNER_TEMP/candidate.json")" = policy-only
           echo "::warning::Isolated policy-review case: trusted main $BASE_SHA rejected this PR and its own policy accepted it. NOT approval; independent review required."

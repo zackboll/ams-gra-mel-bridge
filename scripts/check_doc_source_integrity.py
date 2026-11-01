@@ -125,7 +125,7 @@ MAIN_ONLY_WORKFLOWS = (
 )
 SOURCE_POLICY_WORKFLOW = (
     ".github/workflows/source-policy.yml",
-    "ad2ff17dfa4c91da46f6e7ffef862523e0f9b3154a3cc90b133aca63df8cfcf7",
+    "55dd5a00fe0167a6a8f573081b3737d44357d1c3651f48c572fd17ef6d3c5914",
 )
 ACTIONS_HISTORICAL_PAIRS = frozenset({
     ("47ec6d285239ce84ca89c3ec303561c539158c2fa491abfa1adc0769605df28e",
