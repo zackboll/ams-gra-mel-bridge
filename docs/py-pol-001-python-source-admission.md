@@ -227,3 +227,30 @@ uses full stress classification for policy and Python source changes. The PR
 records final commit/tree identities and hosted run links after creation.
 Independent policy authorization is pending; no auto-merge, approval artifact,
 publication permission or self-approval is granted by this implementation.
+
+### Retained independent-authorization rejection
+
+The broad epoch attempt completed **171 tests, one failure and four errors,
+exit 1**. The obsolete Python rejection and historical DOC-CI-005 live-policy
+fixture are corrected and their 17 focused controls pass. A replay setup error
+was a missing enhancer in its isolated child interpreter; a complete rerun uses
+the pinned enhancer interpreter and remains unqualified until completion.
+
+Two errors expose a retained independent-authority boundary:
+`CI001R3OrderingTests.test_unknown_and_duplicated_current_inventory_reject` and
+`DiagnosticIntegrationTests.test_original_inventory_is_complete_and_unchanged`
+reject `approved IR-CI-003 assertions changed: scripts/test_doc_source_integrity.py`.
+The unchanged `documentation_ci.validate_inventory` binds that entire inherited
+test file to reviewed Git bytes and preserves the original 51 methods. This
+proposal changes one obsolete all-Python-additions fixture in that frozen file.
+The direct inventory check confirms the same rejection with the pinned enhancer
+interpreter. **No frozen hash, method identity, source/publication authority or
+approval artifact is changed to authorize this proposal.** Independent review
+must authorize or specify the appropriate historical/current test separation.
+The broad suite is not green; passing targeted checks do not supersede it.
+
+The non-draft delivery PR is
+<https://github.com/zackboll/ams-gra-mel-bridge/pull/142>. Its body carries the
+latest exact head/tree and hosted Bootstrap run status. Documentation has no PR
+trigger under the unchanged main-only workflow. Both PR #142 and PR #140 remain
+open without auto-merge. Final disposition: **POLICY_AUTHORIZATION_PENDING**.
