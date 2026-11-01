@@ -175,9 +175,7 @@ def contains(node, statement):
 def authority_contract(root):
     node = function(root, 'select_trusted_runner')
     contains(node, 'outer = context()')
-    contains(node, "value = classify(ROOT, outer['target_sha'], outer['source_sha'])")
-    contains(node, "epoch.export(ROOT, outer['target_sha'], target)")
-    contains(node, "runner = target / 'docs/tools/epoch_ci.py'")
+    contains(node, "runner = ROOT / 'docs/tools/epoch_ci.py'")
     node = function(root, 'context')
     contains(node, "require(source.revision(ROOT, ref) == candidate, 'event head differs from fetched PR ref')")
     contains(node, 'source.exact_checkout(ROOT, candidate, source.tree(ROOT, candidate))')
@@ -192,7 +190,7 @@ def deployment_contract(root):
     contains(node, "require(gate['mechanically_qualified'] is True and gate['deployable'] is True and gate['identity'] == context() and gate['epochs_sha256'] == digest(record), 'unqualified deployment epoch')")
     contains(node, "require(gate['qualified'] == {'artifact_id': args.artifact_id, 'bundle_sha256': args.bundle_sha, 'manifest_sha256': args.manifest_sha}, 'deployment artifact mismatch')")
     contains(node, "require(set(gate['report_sha256']) == set(ci.SHARDS), 'incomplete deployment shard gate')")
-    contains(node, "require(approved is not None and gate['publication_authority'] == approved, 'no independently reviewed publication authority for merged source/tree')")
+    contains(node, "require(approved is not None and gate['publication_authority'] == approved, 'publication identity differs from qualified main source/tree')")
 
 
 def live_contract(root):

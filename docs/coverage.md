@@ -1,15 +1,20 @@
 # Implementation coverage
 
-## PY-POL-001 — Python safe API source admission (proposal)
+## PY-POL-001-R1 — ordinary development, isolated historical qualification
 
-The feature qualifier and DOC-001 integrity checker gain narrow ownership for
-regular nonexecutable safe Python modules/tests and `python/README.md`, without
-per-feature content approval. Private ctypes/ABI files, native fixtures,
-generated artifacts and unrelated ownership retain their existing authorities.
-Disposable regressions include the exact byte-identical PR #140 delta and
-adversarial cross-ownership, path, mode, deletion and rename controls. No runtime,
-ABI, provider, Ada, Rust, workflow or publication behavior changes; independent
-policy authorization remains pending. See `py-pol-001-python-source-admission.md`.
+Current native, Ada, Rust, Python, test, build and documentation sources are no
+longer frozen to historical bytes, file lists or exact-content transitions.
+Current tests are discovered and sealed to their own source/run identity.
+Functional/ABI tests, vendor checksums/closure checks, read-only PR execution,
+main-only Pages and source/artifact identity verification remain. An added
+Python package cannot silently replace the private ctypes module in tested
+builds: import-origin regressions detect shadowing. Exact PR #140 blobs pass
+normal source checks without feature authorization. Immutable historical
+commits, original tests and recorded failures remain separate from current
+development; the pre-existing corrected replay keeps its distinct identity.
+This supersedes the development-admission/approval requirements in the earlier
+policy entries below, not their historical evidence. No ABI or runtime API
+changes. See `py-pol-001-python-source-admission.md`.
 
 ## DOC-CI-005 — full Documentation CI only after merge to main (proposal)
 

@@ -60,6 +60,13 @@ From the repository root, run:
 make test-python
 ```
 
+Binding features using existing C interfaces follow ordinary feature branches,
+PRs, functional/ABI tests, hosted CI, and code review. No filename admission,
+historical source freeze, or separate source-policy task is required. Tests
+check that `ams_mel._native` is the intended private `_native.py` module, not
+an accidentally shadowing package. Private bindings may evolve with ABI tests;
+they are not byte-frozen.
+
 With the exact pinned external Squall checkout and a supported container runtime,
 the separate real-provider validation is:
 

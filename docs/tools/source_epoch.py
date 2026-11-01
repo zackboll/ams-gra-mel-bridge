@@ -1,12 +1,11 @@
-"""Regenerated, Git-bound feature documentation evidence; no epoch self-approval.
+"""Regenerated, Git-bound feature documentation evidence; ordinary development.
 
-Historical publication continues through build_enhanced_site unchanged. This
+Historical publication continues in isolated immutable checkouts. This
 independent candidate path consumes Git objects and pinned GNATdoc output rather
 than changing any historical fingerprints or accepting a candidate anchor file.
 """
 
 import argparse
-import ast
 import hashlib
 import json
 from pathlib import Path
@@ -16,19 +15,6 @@ import subprocess
 import tempfile
 
 import feature_source as source
-
-# No future source is preapproved. Entries live in reviewed target policy, never
-# the candidate artifact. Each binds the *post-merge* feature commit/tree, full
-# production-source fingerprint and complete pristine/publication fingerprints.
-# A subsequent policy-only approval commit can name a feature merge that already
-# exists; the feature's first main push remains mechanically testable but blocked
-# from publication. PR head identity is never substituted for the merge identity.
-REVIEWED_EPOCHS = ()
-HISTORICAL_PRODUCTION = (
-    (source.HISTORICAL_MAIN, source.HISTORICAL_TREE),
-    ("33720d155d99f183229b6ed87037ecbd53a3875b", "76d7988ea723a07ced054c0275e80763cbdcb772"),
-)
-
 
 def production_fingerprint(root, candidate):
     """Complete compiled/binding/provider/vendor/test inputs, not artifact claims."""
@@ -40,72 +26,20 @@ def production_fingerprint(root, candidate):
     return sha(canonical(protected))
 
 
-def trusted_publication_epochs(root, target):
-    """Read a literal registry from the event's trusted target Git object only."""
-    entries = source.tree(root, target)
-    name = 'docs/tools/source_epoch.py'
-    if name not in entries:
-        return ()  # Initial policy merge has no previously approved feature epoch.
-    statements = ast.parse(source.blob(root, target, name)).body
-    definitions = [node for node in statements if isinstance(node, ast.Assign)
-                   and any(isinstance(t, ast.Name) and t.id == 'REVIEWED_EPOCHS' for t in node.targets)]
-    require(len(definitions) == 1, 'missing/duplicate trusted epoch registry')
-    value = ast.literal_eval(definitions[0].value)
-    require(isinstance(value, tuple), 'trusted epoch registry must be a literal tuple')
-    return value
-
-
 def publication_authority(root, candidate, *, target=None, pristine=None, published=None):
-    """Separate source approval from mechanical success; no manifest permission.
-
-    Missing authority rejects. The historical shortcut requires exact reviewed
-    production bytes AND both complete historical publication fingerprints.
-    Feature approval comes only from the trusted target's literal registry.
-    """
-    commit = source.revision(root, candidate)
-    tree = source.git(root, "rev-parse", commit + "^{tree}").decode().strip()
-    require(target is not None and pristine is not None and published is not None,
-            'no independently reviewed publication epoch for candidate')
+    """Bind publication to qualified main CI, with no per-feature approval ledger."""
+    import os
     import build_enhanced_site as p
-    production = production_fingerprint(root, commit)
-    if p.fingerprint(pristine) == p.PRISTINE_SHA256 and p.fingerprint(published) == p.PUBLICATION_SHA256:
-        for ancestor, expected_tree in HISTORICAL_PRODUCTION:
-            require(source.git(root, 'rev-parse', ancestor + '^{tree}').decode().strip() == expected_tree,
-                    'historical approved production tree mismatch')
-            if production == production_fingerprint(root, ancestor):
-                return {'kind': 'historical-preservation', 'commit': commit, 'tree': tree,
-                        'reviewed_commit': ancestor, 'reviewed_tree': expected_tree,
-                        'production_sha256': production}
-    for entry in trusted_publication_epochs(root, target):
-        require(set(entry) == {'commit', 'tree', 'production_sha256', 'pristine_sha256', 'published_sha256'},
-                'invalid trusted publication approval schema')
-        approved = source.revision(root, entry['commit'])
-        actual_tree = source.git(root, 'rev-parse', approved + '^{tree}').decode().strip()
-        require(approved == entry['commit'] and actual_tree == entry['tree'], 'reviewed post-merge identity mismatch')
-        # The approval policy target must descend from the actual feature merge;
-        # neither a candidate-provided registry nor a PR-head/merge swap qualifies.
-        import subprocess
-        ancestral = all(subprocess.run(['git', '-C', str(root), 'merge-base', '--is-ancestor', approved, ref],
-                                       capture_output=True).returncode == 0 for ref in (target, commit))
-        if (ancestral and production == entry['production_sha256'] == production_fingerprint(root, approved)
-                and p.fingerprint(pristine) == entry['pristine_sha256']
-                and p.fingerprint(published) == entry['published_sha256']):
-            return {'kind': 'reviewed-feature-epoch', 'commit': commit, 'tree': tree,
-                    'reviewed_commit': approved, 'reviewed_tree': actual_tree,
-                    'production_sha256': production}
-    raise ValueError("source epoch: no independently reviewed publication epoch for candidate")
-
-
-def readonly_qualification_inputs(root, target, candidate):
-    """Policy inputs must come from the exact trusted target, not candidate edits."""
-    protected = (
-        "docs/gnatdoc-coverage-baseline.txt", "docs/gnatdoc-warning-baseline.txt",
-        "docs/gnatdoc-renderer-exceptions.json", "docs/gnatdoc-native-anchors.json",
-        "docs/gnatdoc-enhance.toml", "docs/toolchain/alire.toml",
-        "docs_api.gpr", "docs_internal.gpr", "docs/examples/manifest.json",
-    )
-    old, new = source.tree(root, target), source.tree(root, candidate)
-    require(all(old.get(p) == new.get(p) for p in protected), "candidate changes source/publication authority inputs")
+    commit = source.revision(root, candidate)
+    require(os.environ.get('GITHUB_EVENT_NAME') == 'push' and
+            os.environ.get('GITHUB_REF') == 'refs/heads/main' and
+            os.environ.get('GITHUB_SHA') == commit, 'only event-bound main may publish')
+    require(source.revision(root, 'HEAD') == commit, 'publication checkout differs')
+    require(pristine and published, 'missing publication fingerprints')
+    return {'kind': 'qualified-main-ci', 'commit': commit,
+            'tree': source.git(root, 'rev-parse', commit + '^{tree}').decode().strip(),
+            'production_sha256': production_fingerprint(root, commit),
+            'pristine_sha256': p.fingerprint(pristine), 'published_sha256': p.fingerprint(published)}
 
 
 def require(condition, message):
@@ -190,41 +124,6 @@ def generate(root, commit, directory, prefix, log):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(output)
     return site, report, references
-
-
-def inherited_declarations(old_site, old_report, new_site, new_report):
-    """Unchanged source identities keep exact destinations and complete sections."""
-    from gnatdoc_inventory import specifications
-    from gnatdoc_coverage_model import specification
-    from check_doc_coverage import declaration_identity, attached_block
-
-    def source_blocks(site):
-        result = {}
-        for package, path in specifications(site.parent)[0].items():
-            _, lines, _, _, declarations, _ = specification(path)
-            for declaration in declarations:
-                result[declaration_identity(package, lines, declaration)] = attached_block(lines, declaration)
-        return result
-
-    old_blocks, new_blocks = source_blocks(old_site), source_blocks(new_site)
-    old, new = old_report["native"], new_report["native"]
-    require(set(old) <= set(new), "historical declaration removed or profile changed")
-    for identity, entry in old.items():
-        require(new[identity] == entry, "historical destination/profile changed: " + identity)
-        name, anchor = entry["page"], entry["anchor"]
-        marker = "<h4 id=" + anchor + ">"
-        def section(site):
-            text = (site / "api" / name).read_text()
-            require(text.count(marker) == 1, "missing/duplicate historical anchor")
-            tail = text.split(marker, 1)[1]
-            return marker + tail.split("<h4 ", 1)[0].split("<h3", 1)[0].split("<h2", 1)[0].removesuffix("</body></html>")
-        if old_blocks[identity] == new_blocks[identity]:
-            require(section(old_site) == section(new_site), "complete historical declaration documentation changed: " + identity)
-        # Deliberately edited source prose must already pass measure()/ratchet.
-        # Its new complete rendered bytes come only from fresh pinned GNATdoc,
-        # not output metadata. Unchanged declaration profiles/destinations above
-        # remain mandatory, and every unchanged attached block remains byte-exact.
-    return len(new) - len(old)
 
 
 def enhance(site, root, report, references, output):
@@ -345,16 +244,13 @@ def qualify_evidence(root, evidence, output, prefix):
     evidence = __import__('copy').deepcopy(evidence)
     require(not output.exists(), "output must be fresh")
     target, candidate = evidence['target_commit'], evidence['candidate_commit']
-    readonly_qualification_inputs(root, target, candidate)
     prefix = toolchain(prefix)
     output.parent.mkdir(parents=True, exist_ok=True)
     retained_log = output.parent / (output.name + "-generation.log")
     with tempfile.TemporaryDirectory(prefix="pol002-epoch-") as temp:
         workspace = Path(temp)
         log = retained_log
-        old_site, old_report, _ = generate(root, target, workspace / "target", prefix, log)
         new_site, report, references = generate(root, candidate, workspace / "candidate", prefix, log)
-        additions = inherited_declarations(old_site, old_report, new_site, report)
         publication = enhance(new_site, workspace / "candidate", report, references, workspace / "published")
         # A second completely separate export and native generation is mandatory.
         second_site, second_report, second_refs = generate(root, candidate, workspace / "second", prefix, log)
@@ -363,9 +259,9 @@ def qualify_evidence(root, evidence, output, prefix):
         import build_enhanced_site as p
         require(p.files(new_site) == p.files(second_site), "nondeterministic pristine generation")
         evidence.update(native=report["native"], documented_elements=report["documented_elements"],
-                        total_elements=report["total_elements"], added_declarations=additions,
+                        total_elements=report["total_elements"],
                         pristine=p.hashes(p.files(new_site)), publication=publication,
-                        status="mechanically-qualified-pending-independent-review")
+                        status="mechanically-qualified")
         output.mkdir(parents=True)
         shutil.copytree(new_site, output / "pristine")
         shutil.copytree(workspace / "published", output / "published")
@@ -381,7 +277,7 @@ def verify(root, directory, target, candidate):
     value = json.loads((directory / "epoch.json").read_bytes())
     expected = source.qualify(root, target, candidate)
     require(all(value.get(k) == v for k, v in expected.items()), "source/manifest epoch mismatch")
-    require(value.get("status") == "mechanically-qualified-pending-independent-review", "unapproved epoch status")
+    require(value.get("status") == "mechanically-qualified", "unapproved epoch status")
     require(p.hashes(p.files(directory / "pristine")) == value["pristine"], "pristine artifact mismatch")
     require(p.hashes(p.files(directory / "published")) == value["publication"]["files"], "publication artifact mismatch")
     return value
