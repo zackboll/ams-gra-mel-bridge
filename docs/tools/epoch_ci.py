@@ -78,6 +78,22 @@ DIAGNOSTIC_SOURCE = (
      '208caa1df12fbd197424145a87b2612e69c57e04338518ae43d9cf187fcee012'),
 )
 
+# DOC-CI-005 exact main-only successor of the complete DIAGNOSTIC_SOURCE state.
+# (path, predecessor SHA-256 or None, successor SHA-256). Every member must
+# match on both sides; it is a proposal for independent review, not approval.
+MAIN_ONLY_SOURCE = (
+    ('.github/workflows/documentation.yml',
+     '1b4be1e4cb526d58021a8aac25154faf8f8ee3e2172a98931f359d720983c711',
+     '8971d0d3fe72bdf5d358909a02e0e8e38f38b2a2a6de725e0d0cb40202faa4b8'),
+    ('.github/workflows/source-policy.yml', None,
+     '1dc55e3121c6722f719f5a0b175cb7aa72bfeec487b215a7a55b4c79519dd143'),
+    ('scripts/check_doc_source_integrity.py',
+     '3e8d60e64765321153b2e1d7683d0ee0e2c8cdbe3e9860835778884a7922f602',
+     'b772d132a7d5a10ed983952ba2c89560f7369a6d4325e3e78837a405d5cbf64b'),
+    ('docs/tools/epoch_ci.py',
+     '19c339d8983b817d89e9bf7f368b40ec09b0c6fbc893d7e1f8f06e68f44ba3b0', None),
+)
+
 
 # CI-001R3-R5: the only complete target trees from which each exact historical
 # successor transition is defined. These are the validators' own immutable
@@ -123,6 +139,41 @@ def diagnostics_delta(root, target, candidate, old, new):
                 'DOC-CI-004R1 candidate bytes: ' + name)
     require(old.get('docs/tools/source_epoch.py') == new.get('docs/tools/source_epoch.py'),
             'DOC-CI-004 candidate changed publication approval registry')
+    return names
+
+
+def main_only_delta(root, target, candidate, old, new):
+    """Admit only the complete DOC-CI-005 unit from its exact predecessor bytes.
+
+    epoch_ci.py is this executing policy; the policy route requires it to be
+    the running bytes, so its successor hash is not self-referentially pinned.
+    """
+    names = {name for name, _, _ in MAIN_ONLY_SOURCE}
+    if not any(old.get(n) != new.get(n) for n in names - {'docs/tools/epoch_ci.py'}):
+        return set()
+    # Like DOC-CI-004R1, defined only from its exact predecessor workflow. Other
+    # targets use the ordinary routes, which reject the new workflow/checker.
+    workflow = MAIN_ONLY_SOURCE[0][0]
+    if (workflow not in old or hashlib.sha256(source.blob(root, target, workflow)).hexdigest()
+            != MAIN_ONLY_SOURCE[0][1]):
+        return set()
+    for name, predecessor, successor in MAIN_ONLY_SOURCE:
+        require(new.get(name, (None,))[0] == '100644', 'DOC-CI-005 candidate mode/missing: ' + name)
+        if predecessor is None:
+            require(name not in old, 'DOC-CI-005 unexpected predecessor: ' + name)
+        else:
+            require(old.get(name, (None,))[0] == '100644' and
+                    hashlib.sha256(source.blob(root, target, name)).hexdigest() == predecessor,
+                    'DOC-CI-005 predecessor bytes/mode: ' + name)
+        if successor is None:
+            require(source.blob(root, candidate, name) == Path(__file__).read_bytes(),
+                    'DOC-CI-005 candidate runner is not the executing policy: ' + name)
+        else:
+            require(hashlib.sha256(source.blob(root, candidate, name)).hexdigest() == successor,
+                    'DOC-CI-005 candidate bytes: ' + name)
+    for name in ('.github/workflows/ci.yml', 'docs/tools/test_actions_dependencies.py',
+                 'docs/tools/source_epoch.py', 'docs/tools/feature_source.py'):
+        require(old.get(name) == new.get(name), 'DOC-CI-005 changed protected authority: ' + name)
     return names
 
 
@@ -240,7 +291,8 @@ def classify(root, target, candidate):
         return value
     # The historical four-file diagnostic pair helper is not authorization for
     # a future checker edit. Only the complete exact integration may succeed it.
-    actions = diagnostic or actions_delta(root, target, candidate, old, new)
+    actions = diagnostic or main_only_delta(root, target, candidate, old, new) or \
+        actions_delta(root, target, candidate, old, new)
     for name in changed:
         require(name in new and new[name][0] == old.get(name, ('100644',))[0], 'policy mode/removal change')
         require(name in correction or name in actions or name in POLICY_PATHS or source.documentation_path(name),

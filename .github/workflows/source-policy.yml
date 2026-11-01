@@ -1,0 +1,74 @@
+name: Source policy
+
+# DOC-CI-005: lightweight PR source-policy classification only. The complete
+# Documentation campaign (historical replay, six shards, Pages) runs post-merge.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-source-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head without persisted credentials
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify with policy exported from the trusted main base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main \
+            "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pull/$PR_NUMBER/head"
+          trusted="$RUNNER_TEMP/trusted-main-policy"
+          mkdir "$trusted"
+          git archive --format=tar "$BASE_SHA" docs/tools scripts | tar -xf - -C "$trusted"
+          if python3 "$trusted/docs/tools/epoch_ci.py" select --root "$PWD" > "$RUNNER_TEMP/trusted.json"; then
+            cat "$RUNNER_TEMP/trusted.json"
+            echo "::notice::Trusted main $BASE_SHA policy classified this PR; mechanical evidence, not approval."
+            exit 0
+          fi
+          python3 - "$trusted" <<'PY'
+          import json, os, subprocess, sys
+          sys.path.insert(0, sys.argv[1] + '/docs/tools')
+          import epoch_ci as e, feature_source as s, source_epoch as epoch
+          root, base, head = os.getcwd(), os.environ['BASE_SHA'], os.environ['HEAD_SHA']
+          old, new = s.tree(root, base), s.tree(root, head)
+          changed = {n for n in old.keys() | new.keys() if old.get(n) != new.get(n)}
+          registries = [getattr(e, n, ()) for n in ('ACTIONS_SOURCE', 'DIAGNOSTIC_SOURCE', 'MAIN_ONLY_SOURCE')]
+          policy = (set(e.POLICY_PATHS) | set(e.PROTECTED_INPUTS) | set(s.POLICY_FILES) |
+                    {row[0] for registry in registries for row in registry} |
+                    {'docs/tools/ci001r3_source.py', 'docs/tools/ci001r3_workflow.py',
+                     'docs/tools/doc_ci004_source.py', 'docs/tools/ci001r4_replay.py'})
+          touched = sorted(n for n in changed if n in policy or n.startswith('.github/workflows/'))
+          if not touched:
+              sys.exit('trusted main policy rejected this PR, which changes no main policy file')
+          other = sorted(n for n in changed if n not in touched and not s.documentation_path(n))
+          if other:
+              sys.exit('policy-review case cannot carry non-policy source: ' + ', '.join(other))
+          if epoch.production_fingerprint(root, base) != epoch.production_fingerprint(root, head):
+              sys.exit('policy-review case cannot carry production, binding or test source changes')
+          review = subprocess.run([sys.executable, 'docs/tools/epoch_ci.py', 'select', '--root', root],
+                                  stdout=subprocess.PIPE, text=True)
+          print(review.stdout, end='')
+          if review.returncode != 0:
+              sys.exit('candidate policy-review case also rejected this PR')
+          if json.loads(review.stdout.strip().splitlines()[-1])['policy_case'] != 'policy-only':
+              sys.exit('trusted main rejected a PR that the candidate does not classify as policy-only')
+          print('::warning::Isolated policy-review case: trusted main policy rejected this PR; its own '
+                'candidate policy accepted it. NOT approval; independent review of: ' + ', '.join(touched))
+          PY
