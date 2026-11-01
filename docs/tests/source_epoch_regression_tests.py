@@ -13,12 +13,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / 'docs/tools'), str(ROOT / 'scripts')]
 import build_enhanced_site as presentation
 import feature_source as source
 import source_epoch as epoch
+import docs_ci
 
 
 class GeneratedSourceTests(unittest.TestCase):
@@ -100,7 +102,42 @@ class GeneratedSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'independently regenerated'):
             epoch.verify_regenerated(self.repo, altered, self.target, self.candidate, self.prefix)
 
-    def test_undocumented_addition_rejected_by_generation(self):
+    def test_normal_verifier_rejects_corruption_even_with_recomputed_payload_hashes(self):
+        from check_doc_coverage import measure
+        with tempfile.TemporaryDirectory(dir=self.directory) as temp:
+            directory = Path(temp) / 'normal'
+            directory.mkdir()
+            for name in ('pristine', 'published'):
+                shutil.copytree(self.output / name, directory / name)
+            report = measure(directory / 'pristine', self.repo)
+            docs_ci.write(directory / 'coverage.json', report)
+            docs_ci.write(directory / 'native-anchors.json', report['native'])
+            with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+                manifest = {'schema': 1, 'identity': docs_ci.identity(self.repo),
+                            'payload': presentation.hashes(presentation.files(directory))}
+                docs_ci.write(directory / 'manifest.json', manifest)
+                digest = epoch.sha((directory / 'manifest.json').read_bytes())
+                docs_ci.verify(self.repo, directory, digest)
+                for name, replacement in (
+                    ('published/api/index.html', lambda data: data + b'<!-- forged -->'),
+                    ('published/guides/getting-started.html', lambda data: data + b'<a href="missing.html">broken</a>'),
+                    ('published/api/gnatdoc-navigation.js', lambda data: data + b'// modified'),
+                    ('pristine/api/index.html', lambda data: data.replace(b'gnatdoc.css', b'missing.css')),
+                ):
+                    with self.subTest(path=name):
+                        path = directory / name
+                        original = path.read_bytes()
+                        path.write_bytes(replacement(original))
+                        content = presentation.files(directory)
+                        del content['manifest.json']
+                        manifest['payload'] = presentation.hashes(content)
+                        docs_ci.write(directory / 'manifest.json', manifest)
+                        digest = epoch.sha((directory / 'manifest.json').read_bytes())
+                        with self.assertRaises(ValueError):
+                            docs_ci.verify(self.repo, directory, digest)
+                        path.write_bytes(original)
+
+    def test_undocumented_addition_is_reported_without_blocking_generation(self):
         temp = tempfile.TemporaryDirectory(dir=self.directory)
         self.addCleanup(temp.cleanup)
         directory = Path(temp.name)
@@ -108,12 +145,17 @@ class GeneratedSourceTests(unittest.TestCase):
         subprocess.run(['git', 'clone', '-q', '--shared', str(self.repo), str(repo)], check=True)
         path = repo / 'ada/src/ams-mel-rf-product_rx.ads'
         path.write_text(self.original.replace('\nprivate\n',
-                        '\n   subtype Undocumented_Count is Natural;\n\nprivate\n'))
+                        '\n   subtype Undocumented_Count is Natural;\n'
+                        '   function Undocumented_Value (Input : Natural) return Natural;\n\nprivate\n'))
         subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
         subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Documentation Test',
                         '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'undocumented addition'], check=True)
-        with self.assertRaises(ValueError):
-            epoch.generate(repo, 'HEAD', directory / 'export', self.prefix, directory / 'generation.log')
+        site, report, references = epoch.generate(
+            repo, 'HEAD', directory / 'export', self.prefix, directory / 'generation.log')
+        self.assertTrue(site.is_dir())
+        gaps = [e for e in report['elements'] if not e['documented']]
+        self.assertTrue(any('Undocumented_Count' in e['identity'] for e in gaps))
+        self.assertIn('Undocumented_Count', (directory / 'export/obj/docs/gnatdoc.log').read_text())
 
 
 if __name__ == '__main__':

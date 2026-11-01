@@ -247,6 +247,8 @@ private
    end record;
    overriding
    procedure Finalize (Stream : in out NUC_Stream);
+   --  Non-raising fallback that attempts to close the NUC metadata owner.
+   --  @param Stream NUC owner being finalized.
    package Pixel_Vectors is new Ada.Containers.Vectors (Positive, Bad_Pixel);
    type Bad_Pixel_List is record
       Size, Count : Interfaces.Unsigned_32;

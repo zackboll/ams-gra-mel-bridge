@@ -345,6 +345,8 @@ private
    end record;
    overriding
    procedure Finalize (Stream : in out NUC_Stream);
+   --  Non-raising fallback that attempts to close the NUC metadata owner.
+   --  @param Stream NUC owner being finalized.
    package US renames Ada.Strings.Unbounded;
    type Subsystem_Dependency is record
       ID, Importance : Interfaces.Unsigned_32;

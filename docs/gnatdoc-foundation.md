@@ -1,5 +1,15 @@
 # GNATdoc foundation
 
+## Current build contract
+
+[DOC-CI-SIMPLIFY-001](doc-ci-simplify-001.md) supersedes the frozen completeness
+and publication-count requirements below for normal builds. Generate once from
+current committed Git source with `make docs` under the pinned toolchain; native
+anchors are regenerated, warnings/coverage are informational, and verified
+publication is in `.doc-tools/current/published`. Historical baseline utilities
+and deep replay remain explicit scheduled/manual qualification, not feature gates.
+The sections below record earlier checkpoints, not current source locks or counts.
+
 ## DOC-010 corrected stable public symbols
 
 The current immutable enhancer is GNATDOC-011R3 merge

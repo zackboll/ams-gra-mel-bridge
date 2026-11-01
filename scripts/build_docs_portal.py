@@ -55,7 +55,7 @@ def manifest(root=ROOT):
     return data
 
 
-def package_map(site, root=ROOT):
+def package_map(site, root=ROOT, ledger=None):
     expected = set(specifications(root)[0])
     packages = {}
     if site.is_symlink() or (site / "api").is_symlink():
@@ -74,7 +74,8 @@ def package_map(site, root=ROOT):
         raise PortalError("missing or duplicate public package destination")
     # Independently reconcile observed package destinations with the qualified
     # source/profile/anchor manifest; headings alone cannot authorize a swap.
-    anchors = json.loads(regular(root / "docs/gnatdoc-native-anchors.json"))
+    anchors = (json.loads(regular(root / "docs/gnatdoc-native-anchors.json"))
+               if ledger is None else ledger)
     qualified = collections.defaultdict(set)
     for identity, entry in anchors.items():
         qualified[identity.split(":", 1)[0]].add("api/" + entry["page"])
