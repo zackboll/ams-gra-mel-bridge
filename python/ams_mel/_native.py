@@ -960,6 +960,46 @@ ams_mel_ir_nuc_event_view.restype = ctypes.c_int32
 ams_mel_ir_nuc_event_close = _LIBRARY.ams_mel_ir_nuc_event_close
 ams_mel_ir_nuc_event_close.argtypes = [ctypes.POINTER(IrNucEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_nuc_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-003 private raw mirror of C2/Image CameraCommand and opt-in Image
+# CameraCommandResp reception; no public Python API.
+AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ = 0
+AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ = 1
+class IrCameraCommandV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("system_time_ns", ctypes.c_int64), ("image_type", ctypes.c_uint32), ("width", ctypes.c_uint32), ("height", ctypes.c_uint32), ("frame_rate_hz", ctypes.c_uint32), ("integration_time_ns", ctypes.c_int64), ("row_offset", ctypes.c_uint32), ("column_offset", ctypes.c_uint32), ("direction", ctypes.c_uint32), ("number_of_stages", ctypes.c_uint32)]
+class IrCameraCommandResponseV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("size", ctypes.c_uint32), ("timestamp_ns", ctypes.c_int64), ("command_success", ctypes.c_uint32)]
+class IrCameraCommandResultV1(ctypes.Structure): _fields_ = [("response", IrCameraCommandResponseV1), ("error_code", ctypes.c_uint32)]
+IrCameraCommandRequestHandle = ctypes.c_void_p
+IrCameraResponseMetadataHandle = ctypes.c_void_p
+IrCameraResponseEventHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_camera_command = _LIBRARY.ams_mel_ir_c2_submit_camera_command
+ams_mel_ir_c2_submit_camera_command.argtypes = [IrC2Handle, ctypes.POINTER(IrCameraCommandV1), ctypes.POINTER(IrCameraCommandRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_camera_command.restype = ctypes.c_int32
+ams_mel_ir_stream_submit_camera_command = _LIBRARY.ams_mel_ir_stream_submit_camera_command
+ams_mel_ir_stream_submit_camera_command.argtypes = [IrStreamHandle, ctypes.POINTER(IrCameraCommandV1), ctypes.POINTER(IrCameraCommandRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_stream_submit_camera_command.restype = ctypes.c_int32
+ams_mel_ir_camera_command_request_wait = _LIBRARY.ams_mel_ir_camera_command_request_wait
+ams_mel_ir_camera_command_request_wait.argtypes = [IrCameraCommandRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrCameraCommandResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_command_request_wait.restype = ctypes.c_int32
+ams_mel_ir_camera_command_request_close = _LIBRARY.ams_mel_ir_camera_command_request_close
+ams_mel_ir_camera_command_request_close.argtypes = [ctypes.POINTER(IrCameraCommandRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_command_request_close.restype = ctypes.c_int32
+ams_mel_ir_image_camera_response_open = _LIBRARY.ams_mel_ir_image_camera_response_open
+ams_mel_ir_image_camera_response_open.argtypes = [IrStreamHandle, ctypes.c_size_t, ctypes.POINTER(IrCameraResponseMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_camera_response_open.restype = ctypes.c_int32
+ams_mel_ir_camera_response_receive = _LIBRARY.ams_mel_ir_camera_response_receive
+ams_mel_ir_camera_response_receive.argtypes = [IrCameraResponseMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrCameraResponseEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_response_receive.restype = ctypes.c_int32
+ams_mel_ir_camera_response_get_counters = _LIBRARY.ams_mel_ir_camera_response_get_counters
+ams_mel_ir_camera_response_get_counters.argtypes = [IrCameraResponseMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_response_get_counters.restype = ctypes.c_int32
+ams_mel_ir_camera_response_close = _LIBRARY.ams_mel_ir_camera_response_close
+ams_mel_ir_camera_response_close.argtypes = [ctypes.POINTER(IrCameraResponseMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_response_close.restype = ctypes.c_int32
+ams_mel_ir_camera_response_event_view = _LIBRARY.ams_mel_ir_camera_response_event_view
+ams_mel_ir_camera_response_event_view.argtypes = [IrCameraResponseEventHandle, ctypes.POINTER(ctypes.POINTER(IrCameraCommandResponseV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_response_event_view.restype = ctypes.c_int32
+ams_mel_ir_camera_response_event_close = _LIBRARY.ams_mel_ir_camera_response_event_close
+ams_mel_ir_camera_response_event_close.argtypes = [ctypes.POINTER(IrCameraResponseEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_response_event_close.restype = ctypes.c_int32
 
 ams_mel_ir_instrumentation_open = _LIBRARY.ams_mel_ir_instrumentation_open
 ams_mel_ir_instrumentation_open.argtypes = [SessionHandle, ctypes.POINTER(IrInstrumentationConfigV1), ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
@@ -2124,6 +2164,16 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_nuc_close",
     "ams_mel_ir_nuc_event_view",
     "ams_mel_ir_nuc_event_close",
+    "ams_mel_ir_c2_submit_camera_command",
+    "ams_mel_ir_stream_submit_camera_command",
+    "ams_mel_ir_camera_command_request_wait",
+    "ams_mel_ir_camera_command_request_close",
+    "ams_mel_ir_image_camera_response_open",
+    "ams_mel_ir_camera_response_receive",
+    "ams_mel_ir_camera_response_get_counters",
+    "ams_mel_ir_camera_response_close",
+    "ams_mel_ir_camera_response_event_view",
+    "ams_mel_ir_camera_response_event_close",
     "ams_mel_ir_instrumentation_open",
     "ams_mel_ir_instrumentation_enable",
     "ams_mel_ir_instrumentation_get_capabilities",

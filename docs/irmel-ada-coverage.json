@@ -1073,12 +1073,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CameraCommand)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Enabled-only C2Channel::send(CameraCommand) through the shared camera completion engine: lifetime claim under the C2 lock, unlocked provider send, Session admission, deferred C2 teardown on pending Close, cached Wait; all 11 fields exact; CommandSuccess=false is a successful response distinct from MEL rejection.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -1967,12 +1996,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::registerMetadataCallback(std::function<void(Channel&,const CameraCommandResp*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_image_camera_response_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Open_Camera_Response"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Camera_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Opt-in ImageChannel CameraCommandResp owner, never registered by the four-kind metadata Open; one shot, NotSupported distinct, synchronous delivery safe, complete copy before callback return, bounded drop-incoming queue, stops with the stream, no upstream unregister; independent of request futures.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -2149,12 +2203,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::send(CameraCommand)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Attached/Running ImageChannel::send(CameraCommand), independent of the C2 send: Image request accounting under the frame-callback lock, unlocked send, deferred Image teardown across Stop/Close, cached Wait; never routed through C2.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -6974,98 +7057,291 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraCommand",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing ID/time/image type/dimensions/frame rate/integration/offset/direction/stage representation and both independent C2/Image sends.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_command"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Command"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All 11 fields in ams_mel_ir_camera_command_v1 and the shared Ada AMS.MEL.IR.Camera.Camera_Command: unsigned 32-bit ID/width/height/frame rate/offsets/stages, signed-nanosecond system and integration times, exact Staring/Scanning and both ScanDir values. Reserved13 and unknown discriminators are rejected before send, not treated as modes; no physical limits or normalization.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getSystemTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getImageType",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getWidth",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getHeight",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getFrameRate",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getIntegrationTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getRowOffset",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getColumnOffset",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getDirection",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         },
         {
           "upstream": "getNumberOfStages",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Command"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image.ads",
+              "symbol": "Submit_Camera_Command"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraCommandResp",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing ID/size/timestamp/success representation and Image registration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_command_request_wait"
+        },
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_camera_response_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-camera.ads",
+          "symbol": "Wait"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Camera_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All four fields in ams_mel_ir_camera_command_response_v1 and Ada Camera_Command_Response (unsigned 32-bit ID and size, signed-nanosecond timestamp, Boolean CommandSuccess), shared by both request results and the Image callback; CommandSuccess=false stays a successful response.",
+      "limitations": [
+        "CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getSize",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getTimestamp",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         },
         {
           "upstream": "getCommandSuccess",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Camera_Response"
+            }
+          ]
         }
       ]
     },
@@ -10769,11 +11045,30 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ScanDir",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_command.cpp",
+          "symbol": "ams_mel_ir_stream_submit_camera_command"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image.ads",
+          "symbol": "Submit_Camera_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_command.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_command_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Both pinned alternatives as AMS_MEL_IR_SCAN_DIR_* and Ada Camera.Scan_Direction, used by CameraCommand; unknown values rejected before send.",
       "limitations": [],
       "representation": []
     },
@@ -13531,7 +13826,6 @@
     }
   ],
   "priorities": [
-    "Independent C2 and Image CameraCommand sends, CameraCommandResp and Image callback.",
     "C2 camera-protection command/response and callback with complete response alternatives.",
     "C2 calibration configuration request/callback and complete SubsystemCalibration vector.",
     "C2 calibration status request/callback and complete active/completed calibration collections.",
@@ -13543,13 +13837,14 @@
   ],
   "qualifications": [
     "Verified upstream Git commit/tree objects fetched from the two authoritative repositories; main has not advanced from the supplied reference base. Frozen objects and licenses are audit evidence, not extra native vendor inputs.",
-    "Source-derived totals confirm 21 outgoing overloads, 9 currently accessible via safe Ada, and 38 metadata registrations, 21 with working paths. The common ChannelCommsTestRep registration is partial overall: C2-only, unlike common outgoing requests across five families. Thus metadata has 20 fully classified safe_ada plus one partial registration with a working C2 path.",
+    "Source-derived totals confirm 21 outgoing overloads, 11 currently accessible via safe Ada, and 38 metadata registrations, 22 with working paths. The common ChannelCommsTestRep registration is partial overall: C2-only, unlike common outgoing requests across five families. Thus metadata has 21 fully classified safe_ada plus one partial registration with a working C2 path.",
     "Unique totals count inherited Channel declarations once; all 56 inherited family exposures are separately classified. Counting inherited outgoing sends repeatedly would inflate the hypothesis totals.",
     "Pinned Squall does not positively qualify Track or Instrumentation; rich field/lifetime behavior is mock-qualified. RequiredIf and Optional are upstream declarations, not provider capability promises.",
     "The pinned surface is a declaration audit, not normative PDF conformance certification. Upstream inconsistent prose (for example Optional SystemTrackDataResponse wording) is retained as exact tags, not silently reinterpreted.",
     "Full FrameHeader schema/collections and complete capability enums do not imply support for pixel formats beyond Mono8 single-band. Validation rejects unsupported input rather than silently dropping metadata.",
     "No upstream unregisterMetadataCallback exists. Disable alone does not promise quiescence; existing retention/deferred teardown behavior remains unchanged.",
     "The checker proves catalog completeness against pinned bytes and validates reviewed source evidence, not C++ semantic correctness or runtime provider conformance. Native/Ada tests remain required. Extraction is limited to the frozen source dialect with explicit tested exceptions documented in the schema.",
-    "IRMEL-ADA-002 adds opt-in Image and Health NUC_TempData owners. TempPoint stays partial solely because the pinned private tempError has no public accessor; it is neither read nor inferred."
+    "IRMEL-ADA-002 adds opt-in Image and Health NUC_TempData owners. TempPoint stays partial solely because the pinned private tempError has no public accessor; it is neither read nor inferred.",
+    "IRMEL-ADA-003 implements both independent CameraCommand sends (C2 Enabled, Image Attached/Running) and the opt-in Image CameraCommandResp owner. No C2 CameraCommandResp callback exists upstream and none is fabricated; the Image callback never completes a request future."
   ]
 }

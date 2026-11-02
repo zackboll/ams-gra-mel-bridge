@@ -1,5 +1,37 @@
 # Changelog
 
+## IRMEL-ADA-003 — C2/Image CameraCommand and Image CameraCommandResp
+
+The pinned @RequiredIfCameraCtrl `send(CameraCommand)` is implemented
+independently on C2Channel (`ams_mel_ir_c2_submit_camera_command`, Ada
+`C2.Submit_Camera_Command`, Enabled only) and ImageChannel
+(`ams_mel_ir_stream_submit_camera_command`, Ada `Image.Submit_Camera_Command`,
+Attached/Running); each calls only its own channel's overload. Both share one
+native completion engine (`ir_camera_command.cpp`) built from the established
+pieces: Session CompletionPermit, family lifetime claim under the family lock,
+unlocked provider send, a single completion worker, deferred C2/Image teardown
+through the erased `CommonRequestClaim`, allocation-free retention on post-send
+failure, and a cached result (`ams_mel_ir_camera_command_request_wait/close`,
+Ada `AMS.MEL.IR.Camera.Camera_Request`). The new records
+`ams_mel_ir_camera_command_v1` (all 11 fields: uint32 ID/width/height/frame
+rate/offsets/stages, int64 nanosecond system and integration times, exact
+Staring/Scanning, both ScanDir values), `ams_mel_ir_camera_command_response_v1`
+(uint32 ID and size, int64 nanosecond timestamp, 0/1 CommandSuccess) and
+`ams_mel_ir_camera_command_result_v1` are new; no existing `*_v1` record
+changes. `Reserved13` and unknown discriminators are rejected with
+`AMS_MEL_INVALID_ARGUMENT` before any provider call. `CommandSuccess = false`
+is an ordinary successful result, distinct from a MEL rejection. Null
+responses, unknown MEL codes, provider exceptions and deferred-cleanup failure
+are reported distinctly. The opt-in Image CameraCommandResp owner
+(`ams_mel_ir_image_camera_response_open`, Ada
+`Image.Metadata.Open_Camera_Response`) is never registered by the existing
+metadata Open, reports NotSupported distinctly (`AMS.MEL.IR.Camera.Not_Supported`),
+copies each response before callback return into a bounded DROP-INCOMING
+queue, stops with the stream and is independent of request futures. No C2
+CameraCommandResp callback exists upstream and none is fabricated. Production
+inventory: 239 AMS_MEL_0.1 exports (ten new); Python/Rust receive only private
+raw mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
+
 ## IRMEL-ADA-002 — opt-in Image/Health NUC_TempData reception
 
 The pinned @Optional `NUC_TempData` callback is registered independently on

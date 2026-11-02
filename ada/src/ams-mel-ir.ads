@@ -263,6 +263,13 @@ package AMS.MEL.IR is
    --  AMS.MEL.IR.Channel.View; its operations live in AMS.MEL.IR.Channel and
    --  the typed-family As_Channel conversions. It never owns the typed family
    --  state, Session, provider Channel, Control, or provider library.
+   --  IRMEL-ADA-003 limited controlled owner of exactly one native CameraCommand
+   --  request. Applications use it only through AMS.MEL.IR.Camera.Camera_Request;
+   --  C2 and Image submissions fill it from their own private handles.
+   type Camera_Request_Owner is tagged limited private;
+   --  Limited controlled request owner; finalization is non-raising and does not
+   --  cancel pending native work, which retains the provider graph independently.
+
    type Channel_View is limited private;
    --  Limited controlled owner of a weak common-channel view, used through the
    --  channel child package's View subtype. It owns only the view handle and
@@ -303,4 +310,11 @@ private
    end record;
    overriding
    procedure Finalize (Object : in out Channel_View);
+
+   type Camera_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Camera_Command_Request_Handle :=
+        AMS.MEL_C_API.Null_Camera_Command_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Camera_Request_Owner);
 end AMS.MEL.IR;

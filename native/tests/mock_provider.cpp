@@ -52,15 +52,16 @@ std::atomic<std::uint64_t> buffers_outstanding{};
 struct C2SendBarrier {
     bool armed{}, entered{}, released{}, throws{};
 };
-C2SendBarrier c2_send_barriers[6];
-unsigned send_entries[6]{};
+/* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends. */
+C2SendBarrier c2_send_barriers[8];
+unsigned send_entries[8]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 6U || operation > 3U) return 0;
+    if (family >= 8U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -197,11 +198,12 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 }
 
 /* Release a specified worker family in a controlled wave, without depending
- * on the order in which channels were submitted. 0..5 match the test probe. */
+ * on the order in which channels were submitted. 0..5 match the test probe;
+ * 6/7 are the mock C2/Image CameraCommand sends (both probe family Camera). */
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 6U) return 0;
+    if (family >= 8U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -1215,6 +1217,146 @@ private:
     std::thread producer_;
 };
 
+/* IRMEL-ADA-003 deterministic CameraCommand / CameraCommandResp fixture shared
+ * by the C2 (send family 6) and Image (send family 7) mock channels. Scenarios
+ * not named "camera-*" model a provider without programmable camera control:
+ * send completes with MEL Unsupported and the Image callback answers
+ * NotSupported. Every delivered command is recorded per family so tests can
+ * prove complete field fidelity and correct overload routing. */
+using CameraCallback = std::function<void(irmel::Channel&, const irmel::CameraCommandResp *const)>;
+std::mutex camera_mutex;
+std::uint64_t camera_last[2][11]{};
+bool camera_seen[2]{};
+unsigned camera_sends[2]{};
+
+extern "C" __attribute__((visibility("default"))) int mock_camera_last_command(
+    unsigned family, std::uint64_t *values, unsigned *sends)
+{
+    if (family < 6U || family > 7U) return 0;
+    std::lock_guard lock{camera_mutex};
+    if (sends) *sends = camera_sends[family - 6U];
+    if (!camera_seen[family - 6U]) return 0;
+    if (values) std::copy(std::begin(camera_last[family - 6U]),
+                          std::end(camera_last[family - 6U]), values);
+    return 1;
+}
+
+irmel::CameraCommandResp camera_response(std::uint32_t id, std::uint32_t size, std::int64_t ns,
+                                         bool success)
+{
+    irmel::CameraCommandResp value;
+    value.setCommandID(id); value.setSize(size);
+    value.setTimestamp(std::chrono::nanoseconds{ns}); value.setCommandSuccess(success);
+    return value;
+}
+
+class MockCamera {
+public:
+    mel::RequestFor<irmel::CameraCommandResp> send(const std::string& scenario, unsigned family,
+                                                   irmel::Channel& channel,
+                                                   const irmel::CameraCommand& command)
+    {
+        c2_send_boundary(family);
+        record(family == 6U ? "c2_camera_command_sent" : "image_camera_command_sent");
+        {
+            std::lock_guard lock{camera_mutex};
+            auto& last = camera_last[family - 6U];
+            last[0] = command.getCommandID();
+            last[1] = static_cast<std::uint64_t>(command.getSystemTime().count());
+            last[2] = static_cast<std::uint32_t>(command.getImageType());
+            last[3] = command.getWidth(); last[4] = command.getHeight();
+            last[5] = command.getFrameRate();
+            last[6] = static_cast<std::uint64_t>(command.getIntegrationTime().count());
+            last[7] = command.getRowOffset(); last[8] = command.getColumnOffset();
+            last[9] = static_cast<std::uint32_t>(command.getDirection());
+            last[10] = command.getNumberOfStages();
+            camera_seen[family - 6U] = true;
+            ++camera_sends[family - 6U];
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CameraCommandResp>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("camera-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
+        if (scenario == "camera-send-throw") throw std::runtime_error("mock camera send exception");
+        if (scenario == "camera-invalid-future") return {};
+        /* Echo: commandID, size = width, timestamp = systemTime. */
+        auto value = std::make_shared<irmel::CameraCommandResp>(camera_response(
+            command.getCommandID(), command.getWidth(), command.getSystemTime().count(),
+            scenario != "camera-unsatisfied"));
+        if (scenario == "camera-held") return held_request(std::move(value), family);
+        if (scenario == "camera-sync" && callback_) {
+            /* Synchronous metadata delivery from inside send, before return. */
+            record("camera_sync_callback_entered");
+            auto event = camera_response(command.getCommandID(), 77U, -77, true);
+            callback_(channel, &event);
+            record("camera_sync_callback_returned");
+        }
+        if (scenario == "camera-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "camera command rejected"}});
+        else if (scenario == "camera-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario == "camera-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "camera-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CameraCommandResp>{}});
+        else if (scenario == "camera-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock camera future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             CameraCallback callback)
+    {
+        if (scenario.rfind("camera-", 0U) != 0U) return Return::NotSupported;
+        record("camera_registration_attempted");
+        callback_ = std::move(callback);
+        if (scenario == "camera-register-throw")
+            throw std::runtime_error("CameraCommandResp registration exception");
+        if (scenario == "camera-register-fail") {
+            auto value = camera_response(5U, 5U, 5, true); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "camera-callback-rich" || scenario == "camera-late") {
+            auto first = camera_response(1U, 0U, std::numeric_limits<std::int64_t>::min(), true);
+            auto second = camera_response(0xffffffffU, 0xffffffffU,
+                                          std::numeric_limits<std::int64_t>::max(), false);
+            auto third = camera_response(0U, 7U, -1, true);
+            callback_(channel, &first); callback_(channel, &second); callback_(channel, &third);
+        } else if (scenario == "camera-callback-malformed") {
+            callback_(channel, nullptr);
+            auto valid = camera_response(9U, 9U, 9, true); callback_(channel, &valid);
+        } else if (scenario == "camera-callback-overflow") {
+            for (std::uint32_t i = 0; i < 5U; ++i) {
+                auto value = camera_response(i, i, i, (i % 2U) == 0U); callback_(channel, &value);
+            }
+        } else if (scenario == "camera-callback-allocation") {
+            auto failed = camera_response(1U, 1U, 1, true); callback_(channel, &failed);
+            auto valid = camera_response(2U, 2U, 2, true); callback_(channel, &valid);
+        }
+        return Return::Success;
+    }
+
+    /* From the owning channel destructor: after the bridge owners are closed. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if ((scenario == "camera-late" || scenario == "camera-register-fail") && callback_) {
+            record("late_camera_callback_invoked");
+            auto value = camera_response(11U, 11U, 11, true); callback_(channel, &value);
+            record("late_camera_callback_returned");
+        }
+    }
+
+private:
+    CameraCallback callback_;
+};
+
 #define UNSUPPORTED_CALLBACK(Type) \
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
     { return Return::NotSupported; }
@@ -1232,6 +1374,7 @@ public:
     {
         stopping_ = true;
         nuc_.finish(*this, scenario_);
+        camera_.finish(*this, scenario_);
         if (scenario_ == "image-metadata-navigation-register-fail" ||
             scenario_ == "image-metadata-navigation-register-throw") {
             if (!bad_pixel_callback_) std::abort();
@@ -1304,7 +1447,8 @@ public:
         promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{std::move(result)});
         return future;
     }
-    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override { return {}; }
+    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand command) override
+    { return camera_.send(scenario_, 7U, *this, command); }
     mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport report) override
     {
         c2_send_boundary(3);
@@ -1577,7 +1721,9 @@ public:
         }
         return Return::Success;
     }
-    UNSUPPORTED_CALLBACK(irmel::CameraCommandResp)
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::CameraCommandResp *const)> callback) override
+    { return camera_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> callback) override
     {
@@ -2064,6 +2210,7 @@ private:
     std::function<void(irmel::Channel&, const irmel::LineOfSightEuler *const)> line_of_sight_euler_callback_;
     std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> navigation_response_callback_;
     MockNuc nuc_;
+    MockCamera camera_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -2232,8 +2379,12 @@ public:
     { return unsupported_request<mel::CalibrationConfiguration>(); }
     mel::RequestFor<mel::CalibrationStatus> send(irmel::CalibrationStatusCmd) override
     { return unsupported_request<mel::CalibrationStatus>(); }
-    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override
-    { return unsupported_request<irmel::CameraCommandResp>(); }
+    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand command) override
+    {
+        if (!enabled_ && scenario_.rfind("camera-", 0U) == 0U)
+            throw std::logic_error("CameraCommand sent before C2 enable");
+        return camera_.send(scenario_, 6U, *this, command);
+    }
     mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd) override
     { return unsupported_request<irmel::CameraProtectCmdResp>(); }
     mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand) override
@@ -2512,6 +2663,8 @@ private:
     std::function<void(irmel::Channel&, const mel::BIT_Status *const)> bit_status_callback_;
     std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> comms_callback_;
     mutable unsigned capability_calls_{};
+    /* No C2 CameraCommandResp callback exists upstream; never fabricated. */
+    MockCamera camera_;
 };
 #undef C2_UNSUPPORTED_CALLBACK
 

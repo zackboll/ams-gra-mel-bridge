@@ -318,4 +318,16 @@ package body AMS.MEL.IR is
       when others =>
          Object.Handle := C.Null_Channel;
    end Finalize;
+
+   overriding
+   procedure Finalize (Object : in out Camera_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Drops only the public observer; pending native work is not cancelled.
+      Ignored :=
+        C.IR_Camera_Command_Request_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Camera_Command_Request;
+   end Finalize;
 end AMS.MEL.IR;

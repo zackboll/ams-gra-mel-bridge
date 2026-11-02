@@ -86,6 +86,12 @@ typedef struct ams_mel_ir_health_metadata_event ams_mel_ir_health_metadata_event
  * from an Image stream or a Health channel, and its copied event. */
 typedef struct ams_mel_ir_nuc_metadata ams_mel_ir_nuc_metadata;
 typedef struct ams_mel_ir_nuc_event ams_mel_ir_nuc_event;
+/* IRMEL-ADA-003: one asynchronous CameraCommand request type shared by the
+ * independent C2Channel and ImageChannel sends, plus the opt-in Image
+ * CameraCommandResp metadata owner and its copied event. */
+typedef struct ams_mel_ir_camera_command_request ams_mel_ir_camera_command_request;
+typedef struct ams_mel_ir_camera_response_metadata ams_mel_ir_camera_response_metadata;
+typedef struct ams_mel_ir_camera_response_event ams_mel_ir_camera_response_event;
 typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
 typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
@@ -755,6 +761,51 @@ typedef struct ams_mel_ir_temp_point_span_v1 {
 typedef struct ams_mel_ir_nuc_temp_data_event_v1 {
     ams_mel_ir_temp_point_span_v1 temp_points;
 } ams_mel_ir_nuc_temp_data_event_v1;
+/* IRMEL-ADA-003: pinned CameraCommand / CameraCommandResp (@RequiredIfCameraCtrl
+ * on C2Channel::send, ImageChannel::send and ImageChannel CameraCommandResp
+ * registration). New records only; no existing *_v1 record changes.
+ *
+ * ScanDir: exactly the two pinned alternatives. */
+typedef uint32_t ams_mel_ir_scan_dir_t;
+#define AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ UINT32_C(0)
+#define AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ UINT32_C(1)
+/* Every CameraCommand field, losslessly. image_type accepts only
+ * AMS_MEL_IR_IMAGE_STARING or AMS_MEL_IR_IMAGE_SCANNING: the upstream reserved
+ * discriminator AMS_MEL_IR_IMAGE_RESERVED13 and every unknown value are
+ * rejected with AMS_MEL_INVALID_ARGUMENT before any provider call, as is any
+ * direction other than the two ScanDir alternatives. The two signed
+ * nanosecond counts are passed unconverted (clock/epoch unspecified upstream).
+ * No dimension, rate, offset or stage limit is imposed by the bridge. */
+typedef struct ams_mel_ir_camera_command_v1 {
+    uint32_t command_id;
+    int64_t system_time_ns;
+    ams_mel_ir_image_type_t image_type;
+    uint32_t width;
+    uint32_t height;
+    uint32_t frame_rate_hz;
+    int64_t integration_time_ns;
+    uint32_t row_offset;
+    uint32_t column_offset;
+    ams_mel_ir_scan_dir_t direction;
+    uint32_t number_of_stages;
+} ams_mel_ir_camera_command_v1;
+/* Every CameraCommandResp field. command_success is 1 for true and 0 for
+ * false; false is an ordinary successful response in which the MFA reports it
+ * could not satisfy every requested parameter, never a MEL rejection. */
+typedef struct ams_mel_ir_camera_command_response_v1 {
+    uint32_t command_id;
+    uint32_t size;
+    int64_t timestamp_ns;
+    uint32_t command_success;
+} ams_mel_ir_camera_command_response_v1;
+/* Terminal CameraCommand request outcome. On AMS_MEL_OK, response is valid
+ * (including command_success == 0) and error_code is AMS_MEL_ERROR_NONE. On
+ * AMS_MEL_COMMAND_REJECTED, error_code is valid, the per-call diagnostic holds
+ * the provider description, and response must be ignored. */
+typedef struct ams_mel_ir_camera_command_result_v1 {
+    ams_mel_ir_camera_command_response_v1 response;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_camera_command_result_v1;
 typedef struct ams_mel_ir_image_band_v1 {
     uint32_t band_index;
     ams_mel_ir_band_info_span_v1 bands;
@@ -2158,6 +2209,86 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_nuc_event_close(
     ams_mel_ir_nuc_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-003 CameraCommand. Two independent submissions invoke the pinned
+ * send(CameraCommand) overload of their own channel only: C2 requires the
+ * Enabled lifecycle (as ModeCmd); Image requires Attached or Running (as
+ * NavigationReport). Session admission, the family lifetime claim and the
+ * channel copy happen under the family lock; provider send runs with no
+ * bridge lock held, so a provider may deliver callbacks synchronously. A
+ * pending request retains its channel, Session and provider library after
+ * public request, channel and Session closure; closing a channel defers its
+ * physical teardown to final completion and never cancels provider work.
+ * Statuses: INVALID_ARGUMENT (including Reserved13/unknown image_type or
+ * direction; nothing is sent), RESOURCE_EXHAUSTED (Session admission),
+ * PROVIDER_FAILED (ineligible lifecycle, or an invalid provider future),
+ * PROVIDER_EXCEPTION (send threw), INTERNAL_ERROR (pre-send allocation, or a
+ * post-send allocation/worker-launch failure, in which case the provider
+ * future and graph are retained for process lifetime rather than released). */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_camera_command(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_camera_command_v1 *command,
+    ams_mel_ir_camera_command_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_submit_camera_command(
+    ams_mel_ir_stream *stream, const ams_mel_ir_camera_command_v1 *command,
+    ams_mel_ir_camera_command_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Finite wait; zero polls. TIMEOUT neither consumes nor cancels. The terminal
+ * result is cached and repeated waits return it. OK and COMMAND_REJECTED are
+ * described by ams_mel_ir_camera_command_result_v1. PROVIDER_EXCEPTION: the
+ * future threw. PROVIDER_FAILED: null successful response, unknown MEL error
+ * code, or deferred channel cleanup failure (never reported as OK).
+ * INTERNAL_ERROR: facade allocation failure. Close must not race Wait. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_command_request_wait(
+    const ams_mel_ir_camera_command_request *request, uint32_t timeout_ms,
+    ams_mel_ir_camera_command_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking; drops only the public observer, not the work. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_command_request_close(
+    ams_mel_ir_camera_command_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-003 opt-in Image CameraCommandResp reception. Never registered by
+ * ams_mel_ir_image_metadata_open, so providers without programmable camera
+ * control keep every existing Image API unchanged. Registers the pinned
+ * ImageChannel CameraCommandResp callback once per stream (a failed attempt
+ * also consumes the one shot). out_registration (nullable) receives the
+ * mapped upstream Return whenever one was returned, so NOT_SUPPORTED is
+ * distinguishable from FAIL. Non-Success Return -> PROVIDER_FAILED, a throw ->
+ * PROVIDER_EXCEPTION; failure publishes no owner and the retained callback
+ * stays inactive (no upstream unregister). Registration may deliver
+ * synchronously. Each response is copied before the callback returns into
+ * one bounded drop-incoming queue; null payloads and copy/allocation failures
+ * are counted as malformed. The owner stops with the stream. Callback
+ * delivery is independent of, and never completes, a CameraCommand request. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_camera_response_open(
+    ams_mel_ir_stream *stream, size_t queue_capacity,
+    ams_mel_ir_camera_response_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty; STREAM_STOPPED once inactive/stopped and
+ * empty. Queued events drain first. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_receive(
+    ams_mel_ir_camera_response_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_camera_response_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_get_counters(
+    const ams_mel_ir_camera_response_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the callback. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_close(
+    ams_mel_ir_camera_response_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view, valid until event close and
+ * independent of the owner, stream, Session and provider library. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_view(
+    const ams_mel_ir_camera_response_event *event,
+    const ams_mel_ir_camera_command_response_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_close(
+    ams_mel_ir_camera_response_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Instrumentation owner. This façade implements only the Instrumentation-
