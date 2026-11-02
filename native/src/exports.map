@@ -1,5 +1,15 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_ir_c2_submit_calibration_configuration;
+        ams_mel_ir_calibration_configuration_request_wait;
+        ams_mel_ir_calibration_configuration_request_close;
+        ams_mel_ir_c2_calibration_configuration_open;
+        ams_mel_ir_calibration_configuration_receive;
+        ams_mel_ir_calibration_configuration_get_counters;
+        ams_mel_ir_calibration_configuration_close;
+        ams_mel_ir_calibration_configuration_event_view;
+        ams_mel_ir_calibration_configuration_event_close;
+
         ams_mel_rf_data_submit_product_rx_v8;
     ams_mel_rf_data_submit_product_rx_v9;
     ams_mel_rf_product_rx_event_view_v9;

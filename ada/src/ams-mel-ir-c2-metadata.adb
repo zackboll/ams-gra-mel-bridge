@@ -1,3 +1,4 @@
+with AMS.MEL.IR.Calibration_Configuration_Conversion;
 with Ada.Unchecked_Conversion;
 with Interfaces.C;
 with System;
@@ -630,5 +631,148 @@ package body AMS.MEL.IR.C2.Metadata is
    exception
       when others =>
          Stream.Handle := C.Null_Camera_Protect_Metadata;
+   end Finalize;
+   --  IRMEL-ADA-005 opt-in C2 CalibrationConfiguration owner.
+   type Calibration_View_Access is access all C.IR_Calibration_Configuration_V1;
+   function To_Calibration_View is new
+     Ada.Unchecked_Conversion (System.Address, Calibration_View_Access);
+   use type C.Calibration_Configuration_Metadata_Handle;
+
+   function Open_Calibration_Configuration
+     (Channel : Control_Channel; Queue_Capacity : Positive := 16)
+      return Calibration_Configuration_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "C2 channel is closed";
+      end if;
+      return Result : Calibration_Configuration_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Calibration_Configuration_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Success then
+               null;
+            elsif Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise AMS.MEL.IR.Calibration_Configuration.Not_Supported with Message (D);
+            else
+               raise Provider_Error with Message (D);
+            end if;
+         end;
+      end return;
+   end Open_Calibration_Configuration;
+
+   function Is_Open (Stream : Calibration_Configuration_Stream) return Boolean
+   is (Stream.Handle /= C.Null_Calibration_Configuration_Metadata);
+
+   function Receive_Calibration_Configuration
+     (Stream : Calibration_Configuration_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Calibration_Configuration.Calibration_Collection
+   is
+      Event   : aliased C.Calibration_Configuration_Event_Handle :=
+        C.Null_Calibration_Configuration_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Code    : Interfaces.Integer_32;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored :=
+           C.IR_Calibration_Configuration_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Calibration_Configuration_Metadata then
+         raise Provider_Error with "CalibrationConfiguration metadata owner is closed";
+      end if;
+      Code :=
+        C.IR_Calibration_Configuration_Receive
+          (Stream.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Event'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+      if Code = C.Timeout then
+         raise Timeout_Error;
+      elsif Code = C.Stream_Stopped then
+         raise Stream_Stopped;
+      elsif Code /= C.Success then
+         raise Provider_Error with Message (D);
+      end if;
+      begin
+         if C.IR_Calibration_Configuration_Event_View
+              (Event, Address'Access, D'Address, D'Length, R'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Message (D);
+         end if;
+         declare
+            Result : constant AMS.MEL.IR.Calibration_Configuration.Calibration_Collection :=
+              Calibration_Configuration_Conversion.To_Collection
+                (To_Calibration_View (Address).all);
+         begin
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Receive_Calibration_Configuration;
+
+   function Calibration_Configuration_Counters
+     (Stream : Calibration_Configuration_Stream) return Metadata_Counters
+   is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      if Stream.Handle = C.Null_Calibration_Configuration_Metadata then
+         raise Provider_Error with "CalibrationConfiguration metadata owner is closed";
+      end if;
+      if C.IR_Calibration_Configuration_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access)
+        /= C.Success
+      then
+         raise Provider_Error with Message (D);
+      end if;
+      return
+        (Counter (Raw.Events_Received),
+         Counter (Raw.Events_Dropped_Queue_Full),
+         Counter (Raw.Malformed_Or_Unsupported));
+   end Calibration_Configuration_Counters;
+
+   procedure Close (Stream : in out Calibration_Configuration_Stream) is
+      D    : aliased Diagnostic := [others => Interfaces.C.nul];
+      R    : aliased C.Size_T := 0;
+      Code : constant Interfaces.Integer_32 :=
+        C.IR_Calibration_Configuration_Close (Stream.Handle'Access, D'Address, D'Length, R'Access);
+   begin
+      if Code /= C.Success then
+         raise Provider_Error with Message (D);
+      end if;
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Calibration_Configuration_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored :=
+        C.IR_Calibration_Configuration_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Calibration_Configuration_Metadata;
    end Finalize;
 end AMS.MEL.IR.C2.Metadata;

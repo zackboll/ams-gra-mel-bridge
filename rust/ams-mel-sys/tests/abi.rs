@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 248);
-    assert_eq!(exported.len(), 248);
+    assert_eq!(declared.len(), 257);
+    assert_eq!(exported.len(), 257);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -4363,4 +4363,58 @@ fn user_context_abi() {
         offset_of!(AmsMelRfJobIntervalConfigSpanV16, size),
     ];
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn calibration_configuration_abi() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let temp = env::temp_dir().join(format!("ams-calibration-layout-{}", std::process::id()));
+    std::fs::create_dir_all(&temp).unwrap();
+    let executable = temp.join("layout");
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/calibration_configuration_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    let mut expected = Vec::new();
+    layout!(
+        expected,
+        AmsMelIrCalibrationConfigurationCommandV1,
+        command_id,
+        request_id
+    );
+    layout!(
+        expected,
+        AmsMelIrSubsystemCalibrationV1,
+        calibration_id,
+        accepted_interface,
+        calibration_item_names,
+        subsystem_component_ids,
+        capability_ids
+    );
+    layout!(expected, AmsMelIrCalibrationConfigurationV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCalibrationConfigurationResultV1,
+        configuration,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_CALIBRATION_NOT_SET as usize,
+        AMS_MEL_IR_CALIBRATION_COMMAND as usize,
+        AMS_MEL_IR_CALIBRATION_STATE_COMMAND as usize,
+    ]);
+    assert_eq!(actual, expected);
+    std::fs::remove_dir_all(temp).unwrap();
 }

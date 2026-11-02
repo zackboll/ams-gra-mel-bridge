@@ -113,7 +113,40 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 39)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 41)
+
+    def test_calibration_configuration_slice_is_complete_and_independent(self):
+        send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
+        callback = self.operation("C2Channel", "CalibrationConfiguration*const")
+        self.assertEqual(send["native"][0]["symbol"], "ams_mel_ir_c2_submit_calibration_configuration")
+        self.assertEqual(callback["native"][0]["symbol"], "ams_mel_ir_c2_calibration_configuration_open")
+        for entry in (send, callback):
+            self.assertEqual(entry["status"], "safe_ada")
+            self.assertIn({"path": "native/tests/test_ir_calibration_configuration.c", "symbol": "main"}, entry["tests"])
+            self.assertIn({"path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb", "symbol": "Run"}, entry["tests"])
+        types = {e["id"].split(":type:")[1].split("::")[-1]: e for e in self.coverage["types"]}
+        for name in ("CalibrationConfigurationCmd", "CalibrationConfiguration", "SubsystemCalibration", "SubsystemCalibrationControlInterfaces"):
+            self.assertEqual(types[name]["status"], "safe_ada")
+        for name in ("CalibrationStatus", "CalibrationStatusCmd", "SubsystemCompletedCalibration"):
+            self.assertEqual(types[name]["status"], "missing")
+        for name, getters in (("CalibrationConfigurationCmd", ["getCommandID", "getRequestID"]),
+                              ("SubsystemCalibration", ["getCalibrationID", "getAcceptedInterface", "getCalibrationItemName", "getSubsystemComponentID", "getCapabilityID"])):
+            self.assertEqual([field["upstream"] for field in types[name]["representation"]], getters)
+            self.assertTrue(all(field["status"] == "represented" for field in types[name]["representation"]))
+        enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
+        self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
+                         ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 41)
+
+    def test_calibration_nested_field_omission_is_detected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCalibration"))
+        entry["representation"].pop()
+        self.reject("field representation inventory mismatch")
+
+    def test_calibration_callback_cannot_borrow_base_metadata_evidence(self):
+        entry = self.operation("C2Channel", "CalibrationConfiguration*const")
+        entry["ada"][1]["symbol"] = "Receive_Fictitious_Configuration"
+        self.reject("missing ada symbol")
 
     def test_camera_protection_callback_needs_evidence(self):
         callback = self.operation("C2Channel", "const CameraProtectCmdResp*const")
