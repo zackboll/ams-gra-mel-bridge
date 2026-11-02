@@ -6,6 +6,50 @@ Python Instrumentation and RUST-IR-001 safe Rust HealthStatus, disjoint
 Python/Rust files); it was merged normally (no rebase). After the merge, Python
 204/204 and the full Rust workspace pass.
 
+## R4 — final integration and focused local regression
+
+Starting PR #150 head: `4e5cb535d3a4ba3bf2986050076ebb22ae2d783d`, tree
+`7cea631c6f38ada70b9fb30d918379aeb3f70315`. Main
+`1ab36aa488d9c12273efa5f338ef1f2dcbbe323d` is incorporated by a normal merge.
+The only conflict was the independent additions at the top of `docs/coverage.md`;
+both the CameraCommand/R3 and Rust NUC sections are preserved. CMake and the
+Python common-channel test merged automatically, retaining the Health public-owner
+test probe, all seven camera CTests, the modularized Python patch target and the
+239-function ABI expectation.
+
+CameraCommand production code, the session-specific admission correction, the
+Ada private extension/non-raising finalizer and private ABI mirrors are unchanged
+from the starting head. Main's Python modularization, Rust Health metadata and
+NUC implementations are retained. The CI-002R3 source-authority verifier,
+workflow and policy tests are byte-identical to main: an older event base must
+be an ancestor of the actual base, the actual base must be reachable from trusted
+main, the synthetic commit must have exactly two ordered parents with PR head
+second, and its tree must match reconstructed merge output. Production changes
+continue to require `FULL_STRESS`; no policy exceptions are introduced.
+
+| Focused local check | Result |
+|---|---|
+| `make test-policy` | PASS, seven suites / 234 tests, including 75 Bootstrap policy tests |
+| `python3 scripts/check_doc_source_integrity.py` | PASS |
+| `make check-ir-api-coverage` | PASS, 26 tests; 37 safe Ada operations |
+| `make check-ada-format`, Rust workspace format check, Git whitespace checks | PASS |
+| Pinned enhancer Camera_Request type-link regression | PASS 3/3, including rejection of the old subtype link |
+| Native camera, Health, NUC, Image metadata and navigation CTests | PASS 11/11, including all seven camera tests |
+| Alire GPRbuild and Ada smoke against test facade/mock providers | PASS, including camera, navigation and NUC |
+| Rust `ams-mel-sys` ABI tests | PASS 42/42 |
+| Rust Health metadata / NUC integration tests | PASS 17 / 16; one subprocess helper ignored in each suite |
+| Rust library unit tests | PASS 64/64 |
+| Python tests with Makefile library/provider environment, plus package compile check | PASS 271/271 |
+| Production build and dynamic symbol inspection | PASS, 239 `AMS_MEL_0.1` exports, zero `ams_mel_test_*` symbols |
+
+Python's first full run lacked the unbuilt RF missing-symbol provider fixture;
+building the existing target fixed the environment and the full rerun passed.
+No local native 442 × 50 stress, GNATdoc regeneration, historical documentation
+campaign or five-stage qualification was performed. Exact-head hosted Bootstrap
+(including mandatory native stress) and Documentation remain the final gates;
+their run identities and status are recorded in the PR handoff, not assumed here.
+All runtime evidence is mock-provider only, not IR hardware or Squall evidence.
+
 ## R3 — documentation private-subtype link correction
 
 Starting PR #150 head: `59d76ec842cdfe44696b7cdc4f9dbf21ca423096`, tree

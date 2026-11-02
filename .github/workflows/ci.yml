@@ -51,7 +51,8 @@ jobs:
             -DAMS_MEL_BUILD_TESTS=ON \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       - name: Qualify source policy, build, test and install
-        run: python3 docs/tools/bootstrap_ci_policy.py --fetch --execute --audit "$RUNNER_TEMP/bootstrap-policy.json"
+        # Reuse the fetched main identity sealed before configuration.
+        run: python3 docs/tools/bootstrap_ci_policy.py --execute --audit "$RUNNER_TEMP/bootstrap-policy.json"
 
   build-tree-isolation:
     runs-on: ubuntu-24.04

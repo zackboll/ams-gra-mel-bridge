@@ -1134,7 +1134,7 @@ class CapabilityConversionTests(unittest.TestCase):
 
     def test_owned_storage_failure_is_internal_error(self) -> None:
         self.record.sensor_types = self.u32_span([1, 2])
-        with mock.patch.object(ams_mel, "SensorType", side_effect=MemoryError):
+        with mock.patch.object(ams_mel._ffi, "SensorType", side_effect=MemoryError):
             self.assert_rejected(ErrorKind.INTERNAL_ERROR)
         self.setUp()
         self.record.channel_id.descriptive_label = self.string(b"label")

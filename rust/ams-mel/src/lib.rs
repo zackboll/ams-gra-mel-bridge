@@ -21,8 +21,21 @@
 //!
 //! IR HealthAndStatus (RUST-IR-001): [`HealthStatusChannel`] covers Open,
 //! explicit Enable, capability snapshots, retryable Close, and its weak
-//! [`ChannelView`]. The six HealthStatus metadata callback families are not
-//! exposed by safe Rust.
+//! [`ChannelView`].
+//!
+//! IR HealthStatus metadata (RUST-IR-002):
+//! [`HealthStatusChannel::open_metadata`] returns an independent
+//! [`HealthMetadataStream`] that polls the native bounded queue and returns
+//! fully Rust-owned [`HealthMetadataEvent`]s for all six HealthStatus metadata
+//! families (MFA Status, BIT Status, Subsystem Status, Discrete Status,
+//! Security Audit, MFA Status Detailed), plus [`HealthMetadataCounters`].
+//! Image and C2 ordinary metadata are not exposed by safe Rust.
+//!
+//! Optional Image/Health NUC_TempData (RUST-IR-003): [`ImageStream::open_nuc`]
+//! and [`HealthStatusChannel::open_nuc`] return the same [`NucStream`], copying
+//! all publicly readable TempPoint fields into owned values. The inaccessible
+//! upstream optional `tempError` is not represented or inferred. Optional
+//! registration returns are available through [`NucOpenError::registration`].
 //!
 //! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
 //! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
@@ -48,9 +61,25 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod ir_health;
+mod ir_health_metadata;
+pub mod ir_nuc;
 mod rf_admin;
 mod rf_data;
 pub use ir_health::{HealthConfig, HealthStatusChannel};
+pub use ir_health_metadata::{
+    About, ActiveBit, BitResult, BitStatus, CompletedBit, CompletedBitItem, ComponentState,
+    CsciInfo, CsciMode, CsciVersion, Euler, FailureLevel, Fault, FaultAmbiguityGroup, FaultData,
+    FaultSeverity, FaultState, ForeignKey, HealthMetadataCounters, HealthMetadataEvent,
+    HealthMetadataKind, HealthMetadataStream, InstallationDetails, MfaComponent, MfaStatus,
+    NameValuePair, SecurityArtifact, SecurityAuditRecord, SecurityAuthenticationCategory,
+    SecurityEvent, SecurityEventKind, SecurityFileManagementCategory, SecurityIntegrityCategory,
+    SecurityKeyManagementCategory, SecurityOutcome, SecuritySanitizationCategory, SecuritySeverity,
+    SecuritySystemCategory, StateTransitionStatus, SubsystemDependency, SubsystemStatus,
+    TemperatureState, TemperatureStatus,
+};
+pub use ir_nuc::{
+    NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
+};
 pub use rf_admin::{RfAdmin, RfMfaState};
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
@@ -763,6 +792,19 @@ pub struct ImageStream {
 }
 
 impl ImageStream {
+    /// Registers the optional NUC callback independently of ordinary metadata.
+    /// Zero capacity is rejected before registration; every actual attempt
+    /// consumes the native one-shot, including failure. No automatic retries.
+    /// Synchronous registration events are available immediately after Open.
+    pub fn open_nuc(&mut self, queue_capacity: usize) -> Result<NucStream, NucOpenError> {
+        NucStream::open_with(queue_capacity, |out, registration, d, c, r| {
+            // SAFETY: exclusively borrowed typed owner, writable output slots.
+            unsafe {
+                sys::ams_mel_ir_image_nuc_open(self.raw, queue_capacity, out, registration, d, c, r)
+            }
+        })
+    }
+
     pub fn start(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the live stream handle.

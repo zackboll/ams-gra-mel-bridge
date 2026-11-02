@@ -299,8 +299,31 @@ bool finish_health_request(const std::shared_ptr<HealthState>& state) noexcept
 }
 } // namespace
 
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+namespace {
+/* TEST-only: number of live public ams_mel_ir_health_metadata wrapper objects
+ * in this process. The probe is a member of the wrapper itself, so the count
+ * follows exactly the wrapper's construction and destruction. MetadataState,
+ * callback closures retained by the provider, HealthState and queued events
+ * are deliberately not counted. */
+std::atomic<std::size_t> metadata_public_owners{0};
+struct MetadataPublicOwnerProbe {
+    MetadataPublicOwnerProbe() noexcept { metadata_public_owners.fetch_add(1, std::memory_order_acq_rel); }
+    ~MetadataPublicOwnerProbe() { metadata_public_owners.fetch_sub(1, std::memory_order_acq_rel); }
+    MetadataPublicOwnerProbe(const MetadataPublicOwnerProbe&) = delete;
+    MetadataPublicOwnerProbe& operator=(const MetadataPublicOwnerProbe&) = delete;
+};
+} // namespace
+#endif
+
 struct ams_mel_ir_health { std::shared_ptr<HealthState> state; };
-struct ams_mel_ir_health_metadata { std::shared_ptr<MetadataState> state;std::weak_ptr<HealthState> channel; };
+struct ams_mel_ir_health_metadata {
+    std::shared_ptr<MetadataState> state;std::weak_ptr<HealthState> channel;
+#if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+    /* Last member: constructed only after the wrapper is complete. */
+    MetadataPublicOwnerProbe public_owner_probe;
+#endif
+};
 struct ams_mel_ir_health_metadata_event { std::unique_ptr<EventData> data; };
 
 namespace {
@@ -365,6 +388,13 @@ extern "C" __attribute__((visibility("default"))) int ams_mel_test_health_callba
 {
     if (!owner || !count) return 0;
     *count = owner->state->callbacks.load(std::memory_order_acquire);
+    return 1;
+}
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_health_metadata_public_owners(
+    std::size_t *out_count) noexcept
+{
+    if (!out_count) return 0;
+    *out_count = metadata_public_owners.load(std::memory_order_acquire);
     return 1;
 }
 #endif

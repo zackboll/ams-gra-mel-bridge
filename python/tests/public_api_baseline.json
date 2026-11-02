@@ -1,0 +1,2271 @@
+{
+  "source_commit": "d1847d3e8043704352deedfc7f3f680d9752fce3",
+  "source_tree": "5d6c8a6ad05b63156caf4941e0be7048e58cc379",
+  "api": {
+    "all": [
+      "AbiVersion",
+      "BandInfo",
+      "BandType",
+      "ChannelCapability",
+      "ChannelType",
+      "ChannelView",
+      "CommandReturn",
+      "CommsCompleted",
+      "CommsRejected",
+      "CommsRequest",
+      "CommsTestReport",
+      "CommsTestRequest",
+      "ComponentLocation",
+      "ControlChannel",
+      "ControlConfig",
+      "CoordinateSystem",
+      "ErrorKind",
+      "Frame",
+      "HealthConfig",
+      "HealthStatusChannel",
+      "ImageBand",
+      "ImageConfig",
+      "ImageFlip",
+      "ImageStream",
+      "ImageType",
+      "InstrumentationChannel",
+      "InstrumentationCompleted",
+      "InstrumentationConfig",
+      "InstrumentationLevelCommand",
+      "InstrumentationMetadata",
+      "InstrumentationMetadataCounters",
+      "InstrumentationPriority",
+      "InstrumentationRejected",
+      "InstrumentationReport",
+      "InstrumentationRequest",
+      "MelError",
+      "MelErrorCode",
+      "MetadataCapability",
+      "MFAState",
+      "MfaMode",
+      "ModeRejected",
+      "ModeRequest",
+      "ModeSuccess",
+      "PixelFormat",
+      "ProviderVersion",
+      "ReturnCompleted",
+      "ReturnRejected",
+      "ReturnRequest",
+      "RFAdmin",
+      "SensorType",
+      "Session",
+      "StreamCounters",
+      "UciId",
+      "abi_version"
+    ],
+    "symbols": {
+      "AbiVersion": {
+        "name": "AbiVersion",
+        "qualname": "AbiVersion",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, major: 'int', minor: 'int') -> None"
+        },
+        "fields": [
+          [
+            "major",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "minor",
+            "int",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "BandInfo": {
+        "name": "BandInfo",
+        "qualname": "BandInfo",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, kind: 'BandType', min_wavelength_m: 'float', max_wavelength_m: 'float') -> None"
+        },
+        "fields": [
+          [
+            "kind",
+            "BandType",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "min_wavelength_m",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "max_wavelength_m",
+            "float",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "BandType": {
+        "name": "BandType",
+        "qualname": "BandType",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "INVALID",
+            0,
+            "<BandType.INVALID: 0>",
+            "0"
+          ],
+          [
+            "MULTIBAND",
+            1,
+            "<BandType.MULTIBAND: 1>",
+            "1"
+          ],
+          [
+            "IR_FAR",
+            2,
+            "<BandType.IR_FAR: 2>",
+            "2"
+          ],
+          [
+            "IR_NEAR",
+            3,
+            "<BandType.IR_NEAR: 3>",
+            "3"
+          ],
+          [
+            "IR_LONGWAVE",
+            4,
+            "<BandType.IR_LONGWAVE: 4>",
+            "4"
+          ],
+          [
+            "IR_MIDWAVE",
+            5,
+            "<BandType.IR_MIDWAVE: 5>",
+            "5"
+          ],
+          [
+            "IR_SHORTWAVE",
+            6,
+            "<BandType.IR_SHORTWAVE: 6>",
+            "6"
+          ],
+          [
+            "VISIBLE_WHITE",
+            7,
+            "<BandType.VISIBLE_WHITE: 7>",
+            "7"
+          ],
+          [
+            "VISIBLE_RED",
+            8,
+            "<BandType.VISIBLE_RED: 8>",
+            "8"
+          ],
+          [
+            "VISIBLE_GREEN",
+            9,
+            "<BandType.VISIBLE_GREEN: 9>",
+            "9"
+          ],
+          [
+            "VISIBLE_BLUE",
+            10,
+            "<BandType.VISIBLE_BLUE: 10>",
+            "10"
+          ],
+          [
+            "UVA",
+            11,
+            "<BandType.UVA: 11>",
+            "11"
+          ],
+          [
+            "UVB",
+            12,
+            "<BandType.UVB: 12>",
+            "12"
+          ],
+          [
+            "UVC",
+            13,
+            "<BandType.UVC: 13>",
+            "13"
+          ],
+          [
+            "UV_VACUUM",
+            14,
+            "<BandType.UV_VACUUM: 14>",
+            "14"
+          ]
+        ]
+      },
+      "ChannelCapability": {
+        "name": "ChannelCapability",
+        "qualname": "ChannelCapability",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, channel_id: 'UciId', height: 'int', width: 'int', bit_depth: 'int', row_pitch: 'int', buffer_size: 'int', image_size: 'int', number_of_bands: 'int', pixel_format: 'PixelFormat', sensor_types: 'tuple[SensorType, ...]', platform_id: 'UciId', sensor_location: 'ComponentLocation', channel_types: 'tuple[ChannelType, ...]', task_schedule_depth: 'int', odc_available: 'bool', nuc_available: 'bool', metadata_capabilities: 'tuple[MetadataCapability, ...]', image_bands: 'tuple[ImageBand, ...]', nav_frames: 'tuple[CoordinateSystem, ...]') -> None"
+        },
+        "fields": [
+          [
+            "channel_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "height",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "width",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "bit_depth",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "row_pitch",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "buffer_size",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "image_size",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "number_of_bands",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "pixel_format",
+            "PixelFormat",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_types",
+            "tuple[SensorType, ...]",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "platform_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_location",
+            "ComponentLocation",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "channel_types",
+            "tuple[ChannelType, ...]",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "task_schedule_depth",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "odc_available",
+            "bool",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "nuc_available",
+            "bool",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "metadata_capabilities",
+            "tuple[MetadataCapability, ...]",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "image_bands",
+            "tuple[ImageBand, ...]",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "nav_frames",
+            "tuple[CoordinateSystem, ...]",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ChannelType": {
+        "name": "ChannelType",
+        "qualname": "ChannelType",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "IRST_TRACK",
+            0,
+            "<ChannelType.IRST_TRACK: 0>",
+            "0"
+          ],
+          [
+            "IRST_IMAGE",
+            1,
+            "<ChannelType.IRST_IMAGE: 1>",
+            "1"
+          ],
+          [
+            "COMMAND_AND_CONTROL",
+            2,
+            "<ChannelType.COMMAND_AND_CONTROL: 2>",
+            "2"
+          ],
+          [
+            "SCHEDULING",
+            3,
+            "<ChannelType.SCHEDULING: 3>",
+            "3"
+          ],
+          [
+            "HEALTH_AND_STATUS",
+            4,
+            "<ChannelType.HEALTH_AND_STATUS: 4>",
+            "4"
+          ],
+          [
+            "INSTRUMENTATION",
+            5,
+            "<ChannelType.INSTRUMENTATION: 5>",
+            "5"
+          ],
+          [
+            "STACKED_IMAGE",
+            6,
+            "<ChannelType.STACKED_IMAGE: 6>",
+            "6"
+          ],
+          [
+            "RESERVED_1",
+            7,
+            "<ChannelType.RESERVED_1: 7>",
+            "7"
+          ],
+          [
+            "RESERVED_2",
+            8,
+            "<ChannelType.RESERVED_2: 8>",
+            "8"
+          ]
+        ]
+      },
+      "ChannelView": {
+        "name": "ChannelView",
+        "qualname": "ChannelView",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'ChannelView'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "capabilities": "(self) -> 'ChannelCapability'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "send_keepalive": "(self) -> 'ReturnRequest'",
+          "submit_comms_test": "(self, request: 'CommsTestRequest') -> 'CommsRequest'"
+        }
+      },
+      "CommandReturn": {
+        "name": "CommandReturn",
+        "qualname": "CommandReturn",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "SUCCESS",
+            0,
+            "<CommandReturn.SUCCESS: 0>",
+            "0"
+          ],
+          [
+            "BAD_POINTER",
+            1,
+            "<CommandReturn.BAD_POINTER: 1>",
+            "1"
+          ],
+          [
+            "FAIL",
+            2,
+            "<CommandReturn.FAIL: 2>",
+            "2"
+          ],
+          [
+            "NOT_SUPPORTED",
+            3,
+            "<CommandReturn.NOT_SUPPORTED: 3>",
+            "3"
+          ],
+          [
+            "NOT_IMPLEMENTED",
+            4,
+            "<CommandReturn.NOT_IMPLEMENTED: 4>",
+            "4"
+          ]
+        ]
+      },
+      "CommsCompleted": {
+        "name": "CommsCompleted",
+        "qualname": "CommsCompleted",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, report: 'CommsTestReport') -> None"
+        },
+        "fields": [
+          [
+            "report",
+            "CommsTestReport",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "CommsRejected": {
+        "name": "CommsRejected",
+        "qualname": "CommsRejected",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, code: 'MelErrorCode', description: 'str') -> None"
+        },
+        "fields": [
+          [
+            "code",
+            "MelErrorCode",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "description",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "CommsRequest": {
+        "name": "CommsRequest",
+        "qualname": "CommsRequest",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "wait": "(self, timeout_ms: 'int') -> 'CommsCompleted | CommsRejected'"
+        }
+      },
+      "CommsTestReport": {
+        "name": "CommsTestReport",
+        "qualname": "CommsTestReport",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, command_id: 'int', request_id: 'int') -> None"
+        },
+        "fields": [
+          [
+            "command_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "request_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "CommsTestRequest": {
+        "name": "CommsTestRequest",
+        "qualname": "CommsTestRequest",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, command_id: 'int', channel_id: 'int', request_id: 'int') -> None"
+        },
+        "fields": [
+          [
+            "command_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "channel_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "request_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ComponentLocation": {
+        "name": "ComponentLocation",
+        "qualname": "ComponentLocation",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, offset_x_m: 'float', offset_y_m: 'float', offset_z_m: 'float', key: 'str', system_name: 'str') -> None"
+        },
+        "fields": [
+          [
+            "offset_x_m",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "offset_y_m",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "offset_z_m",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "key",
+            "str",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "system_name",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ControlChannel": {
+        "name": "ControlChannel",
+        "qualname": "ControlChannel",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'ControlChannel'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "channel_view": "(self) -> 'ChannelView'",
+          "close": "(self) -> 'None'",
+          "enable": "(self) -> 'None'",
+          "is_open": "property",
+          "submit_bit_noop": "(self, command_id: 'int') -> 'ReturnRequest'",
+          "submit_operate": "(self, command_id: 'int') -> 'ModeRequest'"
+        }
+      },
+      "ControlConfig": {
+        "name": "ControlConfig",
+        "qualname": "ControlConfig",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> None",
+          "new": "(channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> 'ControlConfig'"
+        },
+        "fields": [
+          [
+            "channel_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "platform_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_location",
+            "ComponentLocation",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "CoordinateSystem": {
+        "name": "CoordinateSystem",
+        "qualname": "CoordinateSystem",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "LLA",
+            0,
+            "<CoordinateSystem.LLA: 0>",
+            "0"
+          ],
+          [
+            "ECEF",
+            1,
+            "<CoordinateSystem.ECEF: 1>",
+            "1"
+          ],
+          [
+            "NED_PLATFORM",
+            2,
+            "<CoordinateSystem.NED_PLATFORM: 2>",
+            "2"
+          ],
+          [
+            "NED_SENSOR",
+            3,
+            "<CoordinateSystem.NED_SENSOR: 3>",
+            "3"
+          ]
+        ]
+      },
+      "ErrorKind": {
+        "name": "ErrorKind",
+        "qualname": "ErrorKind",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "INVALID_ARGUMENT",
+            "invalid_argument",
+            "<ErrorKind.INVALID_ARGUMENT: 'invalid_argument'>",
+            "ErrorKind.INVALID_ARGUMENT"
+          ],
+          [
+            "LIBRARY_LOAD_FAILED",
+            "library_load_failed",
+            "<ErrorKind.LIBRARY_LOAD_FAILED: 'library_load_failed'>",
+            "ErrorKind.LIBRARY_LOAD_FAILED"
+          ],
+          [
+            "SYMBOL_NOT_FOUND",
+            "symbol_not_found",
+            "<ErrorKind.SYMBOL_NOT_FOUND: 'symbol_not_found'>",
+            "ErrorKind.SYMBOL_NOT_FOUND"
+          ],
+          [
+            "FACTORY_FAILED",
+            "factory_failed",
+            "<ErrorKind.FACTORY_FAILED: 'factory_failed'>",
+            "ErrorKind.FACTORY_FAILED"
+          ],
+          [
+            "INITIALIZATION_FAILED",
+            "initialization_failed",
+            "<ErrorKind.INITIALIZATION_FAILED: 'initialization_failed'>",
+            "ErrorKind.INITIALIZATION_FAILED"
+          ],
+          [
+            "PROVIDER_EXCEPTION",
+            "provider_exception",
+            "<ErrorKind.PROVIDER_EXCEPTION: 'provider_exception'>",
+            "ErrorKind.PROVIDER_EXCEPTION"
+          ],
+          [
+            "BUFFER_TOO_SMALL",
+            "buffer_too_small",
+            "<ErrorKind.BUFFER_TOO_SMALL: 'buffer_too_small'>",
+            "ErrorKind.BUFFER_TOO_SMALL"
+          ],
+          [
+            "PROVIDER_FAILED",
+            "provider_failed",
+            "<ErrorKind.PROVIDER_FAILED: 'provider_failed'>",
+            "ErrorKind.PROVIDER_FAILED"
+          ],
+          [
+            "INTERNAL_ERROR",
+            "internal_error",
+            "<ErrorKind.INTERNAL_ERROR: 'internal_error'>",
+            "ErrorKind.INTERNAL_ERROR"
+          ],
+          [
+            "TIMEOUT",
+            "timeout",
+            "<ErrorKind.TIMEOUT: 'timeout'>",
+            "ErrorKind.TIMEOUT"
+          ],
+          [
+            "STREAM_STOPPED",
+            "stream_stopped",
+            "<ErrorKind.STREAM_STOPPED: 'stream_stopped'>",
+            "ErrorKind.STREAM_STOPPED"
+          ],
+          [
+            "RESOURCE_EXHAUSTED",
+            "resource_exhausted",
+            "<ErrorKind.RESOURCE_EXHAUSTED: 'resource_exhausted'>",
+            "ErrorKind.RESOURCE_EXHAUSTED"
+          ],
+          [
+            "INVALID_UTF8",
+            "invalid_utf8",
+            "<ErrorKind.INVALID_UTF8: 'invalid_utf8'>",
+            "ErrorKind.INVALID_UTF8"
+          ],
+          [
+            "PROTOCOL_INCONSISTENCY",
+            "protocol_inconsistency",
+            "<ErrorKind.PROTOCOL_INCONSISTENCY: 'protocol_inconsistency'>",
+            "ErrorKind.PROTOCOL_INCONSISTENCY"
+          ],
+          [
+            "UNKNOWN",
+            "unknown",
+            "<ErrorKind.UNKNOWN: 'unknown'>",
+            "ErrorKind.UNKNOWN"
+          ]
+        ]
+      },
+      "Frame": {
+        "name": "Frame",
+        "qualname": "Frame",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, system_time_ns: 'int', integration_time_ns: 'int', width: 'int', height: 'int', bits_per_pixel: 'int', number_of_bands: 'int', horizontal_fov_rad: 'float', vertical_fov_rad: 'float', frame_id: 'int', subframe_id: 'int', subframe_total: 'int', image_type: 'ImageType', image_flip: 'ImageFlip', image_flags: 'int', dither_row: 'float', dither_column: 'float', row_offset: 'int', column_offset: 'int', band_index: 'int', pixels: 'bytes') -> None"
+        },
+        "fields": [
+          [
+            "system_time_ns",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "integration_time_ns",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "width",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "height",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "bits_per_pixel",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "number_of_bands",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "horizontal_fov_rad",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "vertical_fov_rad",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "frame_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "subframe_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "subframe_total",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "image_type",
+            "ImageType",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "image_flip",
+            "ImageFlip",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "image_flags",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "dither_row",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "dither_column",
+            "float",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "row_offset",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "column_offset",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "band_index",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "pixels",
+            "bytes",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "HealthConfig": {
+        "name": "HealthConfig",
+        "qualname": "HealthConfig",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> None",
+          "new": "(channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> 'HealthConfig'"
+        },
+        "fields": [
+          [
+            "channel_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "platform_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_location",
+            "ComponentLocation",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "HealthStatusChannel": {
+        "name": "HealthStatusChannel",
+        "qualname": "HealthStatusChannel",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'Any'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "capabilities": "(self) -> 'ChannelCapability'",
+          "channel_view": "(self) -> 'ChannelView'",
+          "close": "(self) -> 'None'",
+          "enable": "(self) -> 'None'",
+          "is_open": "property"
+        }
+      },
+      "ImageBand": {
+        "name": "ImageBand",
+        "qualname": "ImageBand",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, band_index: 'int', bands: 'tuple[BandInfo, ...]') -> None"
+        },
+        "fields": [
+          [
+            "band_index",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "bands",
+            "tuple[BandInfo, ...]",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ImageConfig": {
+        "name": "ImageConfig",
+        "qualname": "ImageConfig",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation', buffer_count: 'int' = 3, buffer_size: 'int' = 1048576, queue_capacity: 'int' = 4) -> None",
+          "new": "(channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation', buffer_count: 'int' = 3, buffer_size: 'int' = 1048576, queue_capacity: 'int' = 4) -> 'ImageConfig'"
+        },
+        "fields": [
+          [
+            "channel_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "platform_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_location",
+            "ComponentLocation",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "buffer_count",
+            "int",
+            "3",
+            true,
+            false
+          ],
+          [
+            "buffer_size",
+            "int",
+            "1048576",
+            true,
+            false
+          ],
+          [
+            "queue_capacity",
+            "int",
+            "4",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ImageFlip": {
+        "name": "ImageFlip",
+        "qualname": "ImageFlip",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "NONE",
+            "none",
+            "<ImageFlip.NONE: 'none'>",
+            "ImageFlip.NONE"
+          ],
+          [
+            "VERTICAL",
+            "vertical",
+            "<ImageFlip.VERTICAL: 'vertical'>",
+            "ImageFlip.VERTICAL"
+          ],
+          [
+            "HORIZONTAL",
+            "horizontal",
+            "<ImageFlip.HORIZONTAL: 'horizontal'>",
+            "ImageFlip.HORIZONTAL"
+          ],
+          [
+            "BOTH",
+            "both",
+            "<ImageFlip.BOTH: 'both'>",
+            "ImageFlip.BOTH"
+          ]
+        ]
+      },
+      "ImageStream": {
+        "name": "ImageStream",
+        "qualname": "ImageStream",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'ImageStream'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "channel_view": "(self) -> 'ChannelView'",
+          "close": "(self) -> 'None'",
+          "counters": "(self) -> 'StreamCounters'",
+          "is_open": "property",
+          "receive": "(self, timeout_ms: 'int') -> 'Frame'",
+          "start": "(self) -> 'None'",
+          "stop": "(self) -> 'None'"
+        }
+      },
+      "ImageType": {
+        "name": "ImageType",
+        "qualname": "ImageType",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "STARING",
+            "staring",
+            "<ImageType.STARING: 'staring'>",
+            "ImageType.STARING"
+          ],
+          [
+            "SCANNING",
+            "scanning",
+            "<ImageType.SCANNING: 'scanning'>",
+            "ImageType.SCANNING"
+          ]
+        ]
+      },
+      "InstrumentationChannel": {
+        "name": "InstrumentationChannel",
+        "qualname": "InstrumentationChannel",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'Any'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "capabilities": "(self) -> 'ChannelCapability'",
+          "channel_view": "(self) -> 'ChannelView'",
+          "close": "(self) -> 'None'",
+          "enable": "(self) -> 'None'",
+          "is_open": "property",
+          "open_metadata": "(self, queue_capacity: 'int' = 16) -> 'InstrumentationMetadata'",
+          "submit_level": "(self, command: 'InstrumentationLevelCommand') -> 'InstrumentationRequest'"
+        }
+      },
+      "InstrumentationCompleted": {
+        "name": "InstrumentationCompleted",
+        "qualname": "InstrumentationCompleted",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, report: 'InstrumentationReport') -> None"
+        },
+        "fields": [
+          [
+            "report",
+            "InstrumentationReport",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationConfig": {
+        "name": "InstrumentationConfig",
+        "qualname": "InstrumentationConfig",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> None",
+          "new": "(channel_id: 'UciId', platform_id: 'UciId', sensor_location: 'ComponentLocation') -> 'InstrumentationConfig'"
+        },
+        "fields": [
+          [
+            "channel_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "platform_id",
+            "UciId",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "sensor_location",
+            "ComponentLocation",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationLevelCommand": {
+        "name": "InstrumentationLevelCommand",
+        "qualname": "InstrumentationLevelCommand",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, command_id: 'int', priority: 'InstrumentationPriority') -> None"
+        },
+        "fields": [
+          [
+            "command_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "priority",
+            "InstrumentationPriority",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationMetadata": {
+        "name": "InstrumentationMetadata",
+        "qualname": "InstrumentationMetadata",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'Any'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "counters": "(self) -> 'InstrumentationMetadataCounters'",
+          "is_open": "property",
+          "receive": "(self, timeout_ms: 'int' = 0) -> 'InstrumentationReport'"
+        }
+      },
+      "InstrumentationMetadataCounters": {
+        "name": "InstrumentationMetadataCounters",
+        "qualname": "InstrumentationMetadataCounters",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, events_received: 'int', events_dropped_queue_full: 'int', malformed_or_unsupported: 'int') -> None"
+        },
+        "fields": [
+          [
+            "events_received",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "events_dropped_queue_full",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "malformed_or_unsupported",
+            "int",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationPriority": {
+        "name": "InstrumentationPriority",
+        "qualname": "InstrumentationPriority",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "NORMAL",
+            0,
+            "<InstrumentationPriority.NORMAL: 0>",
+            "0"
+          ],
+          [
+            "DEBUG",
+            1,
+            "<InstrumentationPriority.DEBUG: 1>",
+            "1"
+          ]
+        ]
+      },
+      "InstrumentationRejected": {
+        "name": "InstrumentationRejected",
+        "qualname": "InstrumentationRejected",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, code: 'MelErrorCode', description: 'str') -> None"
+        },
+        "fields": [
+          [
+            "code",
+            "MelErrorCode",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "description",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationReport": {
+        "name": "InstrumentationReport",
+        "qualname": "InstrumentationReport",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, command_id: 'int', size: 'int', timestamp_ns: 'int', priority: 'InstrumentationPriority') -> None"
+        },
+        "fields": [
+          [
+            "command_id",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "size",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "timestamp_ns",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "priority",
+            "InstrumentationPriority",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "InstrumentationRequest": {
+        "name": "InstrumentationRequest",
+        "qualname": "InstrumentationRequest",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'Any'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "wait": "(self, timeout_ms: 'int') -> 'InstrumentationCompleted | InstrumentationRejected'"
+        }
+      },
+      "MelError": {
+        "name": "MelError",
+        "qualname": "MelError",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, kind: 'ErrorKind', diagnostic: 'str | None', diagnostic_required: 'int | None' = None, native_status: 'int | None' = None) -> 'None'"
+        }
+      },
+      "MelErrorCode": {
+        "name": "MelErrorCode",
+        "qualname": "MelErrorCode",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "NONE",
+            0,
+            "<MelErrorCode.NONE: 0>",
+            "0"
+          ],
+          [
+            "INVALID_ID",
+            1,
+            "<MelErrorCode.INVALID_ID: 1>",
+            "1"
+          ],
+          [
+            "INVALID_STATE",
+            2,
+            "<MelErrorCode.INVALID_STATE: 2>",
+            "2"
+          ],
+          [
+            "INVALID_PARAMETERS",
+            3,
+            "<MelErrorCode.INVALID_PARAMETERS: 3>",
+            "3"
+          ],
+          [
+            "INSUFFICIENT_PERMISSIONS",
+            4,
+            "<MelErrorCode.INSUFFICIENT_PERMISSIONS: 4>",
+            "4"
+          ],
+          [
+            "INSUFFICIENT_RESOURCES",
+            5,
+            "<MelErrorCode.INSUFFICIENT_RESOURCES: 5>",
+            "5"
+          ],
+          [
+            "INSUFFICIENT_LOCAL_RESOURCES",
+            6,
+            "<MelErrorCode.INSUFFICIENT_LOCAL_RESOURCES: 6>",
+            "6"
+          ],
+          [
+            "INSUFFICIENT_REMOTE_RESOURCES",
+            7,
+            "<MelErrorCode.INSUFFICIENT_REMOTE_RESOURCES: 7>",
+            "7"
+          ],
+          [
+            "UNSUPPORTED",
+            8,
+            "<MelErrorCode.UNSUPPORTED: 8>",
+            "8"
+          ]
+        ]
+      },
+      "MetadataCapability": {
+        "name": "MetadataCapability",
+        "qualname": "MetadataCapability",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "BAD_PIXEL_LIST",
+            0,
+            "<MetadataCapability.BAD_PIXEL_LIST: 0>",
+            "0"
+          ],
+          [
+            "OPTICAL_DISTORTION_MAP",
+            1,
+            "<MetadataCapability.OPTICAL_DISTORTION_MAP: 1>",
+            "1"
+          ],
+          [
+            "LF_STATUS",
+            2,
+            "<MetadataCapability.LF_STATUS: 2>",
+            "2"
+          ],
+          [
+            "LINE_OF_SIGHT_REPORT",
+            3,
+            "<MetadataCapability.LINE_OF_SIGHT_REPORT: 3>",
+            "3"
+          ],
+          [
+            "LINE_OF_SIGHT_QUATERNION",
+            4,
+            "<MetadataCapability.LINE_OF_SIGHT_QUATERNION: 4>",
+            "4"
+          ],
+          [
+            "LINE_OF_SIGHT_EULER",
+            5,
+            "<MetadataCapability.LINE_OF_SIGHT_EULER: 5>",
+            "5"
+          ],
+          [
+            "MFA_STATUS",
+            6,
+            "<MetadataCapability.MFA_STATUS: 6>",
+            "6"
+          ],
+          [
+            "MFA_STATUS_DETAILED",
+            7,
+            "<MetadataCapability.MFA_STATUS_DETAILED: 7>",
+            "7"
+          ],
+          [
+            "BIT_CONFIGURATION",
+            8,
+            "<MetadataCapability.BIT_CONFIGURATION: 8>",
+            "8"
+          ],
+          [
+            "COMMAND_STATUS",
+            9,
+            "<MetadataCapability.COMMAND_STATUS: 9>",
+            "9"
+          ],
+          [
+            "BIT_STATUS",
+            10,
+            "<MetadataCapability.BIT_STATUS: 10>",
+            "10"
+          ],
+          [
+            "CANDIDATE_OBJECT_MESSAGE",
+            11,
+            "<MetadataCapability.CANDIDATE_OBJECT_MESSAGE: 11>",
+            "11"
+          ],
+          [
+            "TASK_EXECUTING_REP",
+            12,
+            "<MetadataCapability.TASK_EXECUTING_REP: 12>",
+            "12"
+          ],
+          [
+            "SUBSYSTEM_STATUS_RESP",
+            13,
+            "<MetadataCapability.SUBSYSTEM_STATUS_RESP: 13>",
+            "13"
+          ],
+          [
+            "EXECUTE_TASK_ACK",
+            14,
+            "<MetadataCapability.EXECUTE_TASK_ACK: 14>",
+            "14"
+          ],
+          [
+            "SCHED_CREATED_REP",
+            15,
+            "<MetadataCapability.SCHED_CREATED_REP: 15>",
+            "15"
+          ],
+          [
+            "IRST_TRACK_REPORT",
+            16,
+            "<MetadataCapability.IRST_TRACK_REPORT: 16>",
+            "16"
+          ],
+          [
+            "CHANNEL_COMMS_TEST_REP",
+            17,
+            "<MetadataCapability.CHANNEL_COMMS_TEST_REP: 17>",
+            "17"
+          ],
+          [
+            "CAMERA_COMMAND_RESP",
+            18,
+            "<MetadataCapability.CAMERA_COMMAND_RESP: 18>",
+            "18"
+          ],
+          [
+            "CAMERA_PROTECT_CMD_RESP",
+            19,
+            "<MetadataCapability.CAMERA_PROTECT_CMD_RESP: 19>",
+            "19"
+          ],
+          [
+            "INSTRUMENTATION_REPORT",
+            20,
+            "<MetadataCapability.INSTRUMENTATION_REPORT: 20>",
+            "20"
+          ],
+          [
+            "NAVIGATION_REPORT_RESP",
+            21,
+            "<MetadataCapability.NAVIGATION_REPORT_RESP: 21>",
+            "21"
+          ],
+          [
+            "REQUEST_SYSTEM_TRACK_DATA",
+            22,
+            "<MetadataCapability.REQUEST_SYSTEM_TRACK_DATA: 22>",
+            "22"
+          ],
+          [
+            "UPDATE_TRACK_LIST_RESPONSE",
+            23,
+            "<MetadataCapability.UPDATE_TRACK_LIST_RESPONSE: 23>",
+            "23"
+          ],
+          [
+            "LOS_3D_KINEMATICS_TYPE",
+            24,
+            "<MetadataCapability.LOS_3D_KINEMATICS_TYPE: 24>",
+            "24"
+          ],
+          [
+            "CANDIDATE_OBJECT_PREPROC_MESSAGE",
+            25,
+            "<MetadataCapability.CANDIDATE_OBJECT_PREPROC_MESSAGE: 25>",
+            "25"
+          ],
+          [
+            "TASK_EVENTS",
+            26,
+            "<MetadataCapability.TASK_EVENTS: 26>",
+            "26"
+          ],
+          [
+            "SCAN_PERFORMANCE_REPORT",
+            27,
+            "<MetadataCapability.SCAN_PERFORMANCE_REPORT: 27>",
+            "27"
+          ],
+          [
+            "RESERVED_3",
+            28,
+            "<MetadataCapability.RESERVED_3: 28>",
+            "28"
+          ],
+          [
+            "RESERVED_5",
+            29,
+            "<MetadataCapability.RESERVED_5: 29>",
+            "29"
+          ],
+          [
+            "RESERVED_9",
+            30,
+            "<MetadataCapability.RESERVED_9: 30>",
+            "30"
+          ],
+          [
+            "RESERVED_10",
+            31,
+            "<MetadataCapability.RESERVED_10: 31>",
+            "31"
+          ]
+        ]
+      },
+      "MFAState": {
+        "name": "MFAState",
+        "qualname": "MFAState",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "NOT_SET",
+            0,
+            "<MFAState.NOT_SET: 0>",
+            "0"
+          ],
+          [
+            "UNKNOWN",
+            1,
+            "<MFAState.UNKNOWN: 1>",
+            "1"
+          ],
+          [
+            "NOT_INSTALLED",
+            2,
+            "<MFAState.NOT_INSTALLED: 2>",
+            "2"
+          ],
+          [
+            "OFF",
+            3,
+            "<MFAState.OFF: 3>",
+            "3"
+          ],
+          [
+            "PRE_INITIALIZATION",
+            4,
+            "<MFAState.PRE_INITIALIZATION: 4>",
+            "4"
+          ],
+          [
+            "INITIALIZATION",
+            5,
+            "<MFAState.INITIALIZATION: 5>",
+            "5"
+          ],
+          [
+            "STANDBY",
+            6,
+            "<MFAState.STANDBY: 6>",
+            "6"
+          ],
+          [
+            "OPERATE",
+            7,
+            "<MFAState.OPERATE: 7>",
+            "7"
+          ],
+          [
+            "OPERATE_RX_ONLY",
+            8,
+            "<MFAState.OPERATE_RX_ONLY: 8>",
+            "8"
+          ],
+          [
+            "OPERATE_TX_ONLY",
+            9,
+            "<MFAState.OPERATE_TX_ONLY: 9>",
+            "9"
+          ],
+          [
+            "MAINTENANCE",
+            10,
+            "<MFAState.MAINTENANCE: 10>",
+            "10"
+          ],
+          [
+            "CALIBRATION",
+            11,
+            "<MFAState.CALIBRATION: 11>",
+            "11"
+          ],
+          [
+            "INITIATED_BIT",
+            12,
+            "<MFAState.INITIATED_BIT: 12>",
+            "12"
+          ],
+          [
+            "SHUTDOWN",
+            13,
+            "<MFAState.SHUTDOWN: 13>",
+            "13"
+          ],
+          [
+            "DEGRADED",
+            14,
+            "<MFAState.DEGRADED: 14>",
+            "14"
+          ]
+        ]
+      },
+      "MfaMode": {
+        "name": "MfaMode",
+        "qualname": "MfaMode",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "UNUSED",
+            0,
+            "<MfaMode.UNUSED: 0>",
+            "0"
+          ],
+          [
+            "TASK_SCHED",
+            1,
+            "<MfaMode.TASK_SCHED: 1>",
+            "1"
+          ],
+          [
+            "SCAN_VOLUME_SCHED",
+            2,
+            "<MfaMode.SCAN_VOLUME_SCHED: 2>",
+            "2"
+          ],
+          [
+            "SCAN_BAR_SCHED",
+            3,
+            "<MfaMode.SCAN_BAR_SCHED: 3>",
+            "3"
+          ]
+        ]
+      },
+      "ModeRejected": {
+        "name": "ModeRejected",
+        "qualname": "ModeRejected",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, code: 'MelErrorCode', description: 'str') -> None"
+        },
+        "fields": [
+          [
+            "code",
+            "MelErrorCode",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "description",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ModeRequest": {
+        "name": "ModeRequest",
+        "qualname": "ModeRequest",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "wait": "(self, timeout_ms: 'int') -> 'ModeSuccess | ModeRejected'"
+        }
+      },
+      "ModeSuccess": {
+        "name": "ModeSuccess",
+        "qualname": "ModeSuccess",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, mode: 'MfaMode') -> None"
+        },
+        "fields": [
+          [
+            "mode",
+            "MfaMode",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "PixelFormat": {
+        "name": "PixelFormat",
+        "qualname": "PixelFormat",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "MONO",
+            0,
+            "<PixelFormat.MONO: 0>",
+            "0"
+          ],
+          [
+            "RGB",
+            1,
+            "<PixelFormat.RGB: 1>",
+            "1"
+          ],
+          [
+            "BAYER",
+            2,
+            "<PixelFormat.BAYER: 2>",
+            "2"
+          ]
+        ]
+      },
+      "ProviderVersion": {
+        "name": "ProviderVersion",
+        "qualname": "ProviderVersion",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, api_version: 'int', library_version: 'int', vendor: 'str', description: 'str') -> None"
+        },
+        "fields": [
+          [
+            "api_version",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "library_version",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "vendor",
+            "str",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "description",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ReturnCompleted": {
+        "name": "ReturnCompleted",
+        "qualname": "ReturnCompleted",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, value: 'CommandReturn') -> None"
+        },
+        "fields": [
+          [
+            "value",
+            "CommandReturn",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ReturnRejected": {
+        "name": "ReturnRejected",
+        "qualname": "ReturnRejected",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, code: 'MelErrorCode', description: 'str') -> None"
+        },
+        "fields": [
+          [
+            "code",
+            "MelErrorCode",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "description",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "ReturnRequest": {
+        "name": "ReturnRequest",
+        "qualname": "ReturnRequest",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "wait": "(self, timeout_ms: 'int') -> 'ReturnCompleted | ReturnRejected'"
+        }
+      },
+      "RFAdmin": {
+        "name": "RFAdmin",
+        "qualname": "RFAdmin",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'RFAdmin'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "command_state": "(self, state: 'MFAState | int') -> 'bool'",
+          "is_open": "property",
+          "open": "(provider_library: 'str | os.PathLike[str]', configuration: 'str') -> 'RFAdmin'"
+        }
+      },
+      "SensorType": {
+        "name": "SensorType",
+        "qualname": "SensorType",
+        "module": "ams_mel",
+        "methods": {},
+        "members": [
+          [
+            "UNSPECIFIED",
+            0,
+            "<SensorType.UNSPECIFIED: 0>",
+            "0"
+          ],
+          [
+            "GIMBAL_HORIZONTAL",
+            1,
+            "<SensorType.GIMBAL_HORIZONTAL: 1>",
+            "1"
+          ],
+          [
+            "GIMBAL_VERTICAL",
+            2,
+            "<SensorType.GIMBAL_VERTICAL: 2>",
+            "2"
+          ],
+          [
+            "GIMBAL_ROTATION",
+            3,
+            "<SensorType.GIMBAL_ROTATION: 3>",
+            "3"
+          ],
+          [
+            "STEP_STARE",
+            4,
+            "<SensorType.STEP_STARE: 4>",
+            "4"
+          ]
+        ]
+      },
+      "Session": {
+        "name": "Session",
+        "qualname": "Session",
+        "module": "ams_mel",
+        "methods": {
+          "__enter__": "(self) -> 'Session'",
+          "__exit__": "(self, exception_type: 'object', exception: 'object', traceback: 'object') -> 'bool'",
+          "__init__": "(self) -> 'None'",
+          "close": "(self) -> 'None'",
+          "is_open": "property",
+          "open": "(provider_library: 'str | os.PathLike[str]', instance: 'str', aperture: 'str', *, max_async_requests: 'int' = 0) -> 'Session'",
+          "open_control_channel": "(self, config: 'ControlConfig') -> 'ControlChannel'",
+          "open_health_channel": "(self, config: 'HealthConfig') -> 'HealthStatusChannel'",
+          "open_image_stream": "(self, config: 'ImageConfig') -> 'ImageStream'",
+          "open_instrumentation_channel": "(self, config: 'InstrumentationConfig') -> 'InstrumentationChannel'",
+          "provider_version": "(self) -> 'ProviderVersion'"
+        }
+      },
+      "StreamCounters": {
+        "name": "StreamCounters",
+        "qualname": "StreamCounters",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, frames_received: 'int', frames_dropped_queue_full: 'int', malformed_or_unsupported: 'int') -> None"
+        },
+        "fields": [
+          [
+            "frames_received",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "frames_dropped_queue_full",
+            "int",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "malformed_or_unsupported",
+            "int",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "UciId": {
+        "name": "UciId",
+        "qualname": "UciId",
+        "module": "ams_mel",
+        "methods": {
+          "__init__": "(self, uuid: 'bytes', descriptive_label: 'str') -> None"
+        },
+        "fields": [
+          [
+            "uuid",
+            "bytes",
+            "MISSING",
+            true,
+            false
+          ],
+          [
+            "descriptive_label",
+            "str",
+            "MISSING",
+            true,
+            false
+          ]
+        ],
+        "frozen": true
+      },
+      "abi_version": {
+        "name": "abi_version",
+        "qualname": "abi_version",
+        "module": "ams_mel",
+        "signature": "() -> 'AbiVersion'"
+      }
+    },
+    "aliases": []
+  },
+  "errors": [
+    [
+      "invalid_argument",
+      "diagnostic µ",
+      14,
+      1,
+      "invalid_argument: diagnostic µ",
+      [
+        "invalid_argument: diagnostic µ"
+      ]
+    ],
+    [
+      "library_load_failed",
+      "diagnostic µ",
+      14,
+      2,
+      "library_load_failed: diagnostic µ",
+      [
+        "library_load_failed: diagnostic µ"
+      ]
+    ],
+    [
+      "symbol_not_found",
+      "diagnostic µ",
+      14,
+      3,
+      "symbol_not_found: diagnostic µ",
+      [
+        "symbol_not_found: diagnostic µ"
+      ]
+    ],
+    [
+      "factory_failed",
+      "diagnostic µ",
+      14,
+      4,
+      "factory_failed: diagnostic µ",
+      [
+        "factory_failed: diagnostic µ"
+      ]
+    ],
+    [
+      "initialization_failed",
+      "diagnostic µ",
+      14,
+      5,
+      "initialization_failed: diagnostic µ",
+      [
+        "initialization_failed: diagnostic µ"
+      ]
+    ],
+    [
+      "provider_exception",
+      "diagnostic µ",
+      14,
+      6,
+      "provider_exception: diagnostic µ",
+      [
+        "provider_exception: diagnostic µ"
+      ]
+    ],
+    [
+      "buffer_too_small",
+      "diagnostic µ",
+      14,
+      7,
+      "buffer_too_small: diagnostic µ",
+      [
+        "buffer_too_small: diagnostic µ"
+      ]
+    ],
+    [
+      "internal_error",
+      "diagnostic µ",
+      14,
+      8,
+      "internal_error: diagnostic µ",
+      [
+        "internal_error: diagnostic µ"
+      ]
+    ],
+    [
+      "timeout",
+      "diagnostic µ",
+      14,
+      9,
+      "timeout: diagnostic µ",
+      [
+        "timeout: diagnostic µ"
+      ]
+    ],
+    [
+      "stream_stopped",
+      "diagnostic µ",
+      14,
+      10,
+      "stream_stopped: diagnostic µ",
+      [
+        "stream_stopped: diagnostic µ"
+      ]
+    ],
+    [
+      "provider_failed",
+      "diagnostic µ",
+      14,
+      11,
+      "provider_failed: diagnostic µ",
+      [
+        "provider_failed: diagnostic µ"
+      ]
+    ],
+    [
+      "unknown",
+      "diagnostic µ",
+      14,
+      12,
+      "unknown: diagnostic µ",
+      [
+        "unknown: diagnostic µ"
+      ]
+    ],
+    [
+      "unknown",
+      "diagnostic µ",
+      14,
+      12345,
+      "unknown: diagnostic µ",
+      [
+        "unknown: diagnostic µ"
+      ]
+    ],
+    [
+      "MelError",
+      "invalid_argument: uuid must be exactly 16 bytes",
+      "invalid_argument"
+    ],
+    [
+      "MelError",
+      "invalid_argument: descriptive_label contains an embedded NUL",
+      "invalid_argument"
+    ],
+    [
+      "MelError",
+      "invalid_argument: command_id must be an integer",
+      "invalid_argument"
+    ],
+    [
+      "MelError",
+      "invalid_argument: timestamp_ns must be int64",
+      "invalid_argument"
+    ],
+    [
+      "TypeError",
+      "Session objects must be created with Session.open",
+      null
+    ],
+    [
+      "TypeError",
+      "RFAdmin objects must be created with RFAdmin.open",
+      null
+    ],
+    [
+      "TypeError",
+      "use Session.open_health_channel",
+      null
+    ]
+  ]
+}
