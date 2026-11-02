@@ -32,8 +32,10 @@ _common -> _native, _errors, _types, _ffi, _requests
 _health_types -> _types
 _health_convert -> _native, _errors, _types, _ffi, _health_types
 _health_metadata -> _native, _errors, _validation, _common, _ffi, _health_types, _health_convert
-_health -> shared layers above, _health_metadata
-_image / _c2 / _instrumentation -> shared layers above
+_nuc -> _native, _errors, _validation, _common, _ffi, _types
+_health -> shared layers above, _health_metadata, _nuc
+_image -> shared layers above, _nuc
+_c2 / _instrumentation -> shared layers above
 _rf_admin -> _native, _errors, _validation, _types
 _session -> _native, _errors, _validation, _types, _ffi, family implementations
 __init__ -> explicit public exports from implementation modules
@@ -585,8 +587,8 @@ PYTHONPATH="$PWD/python" \
  python3 -W error -m unittest discover -s python/tests -p test_ir_health.py -v
 ```
 
-The lifecycle slice above is extended by PY-MEL-005 below. Optional Health
-`NUC_TempData` reception remains unexposed; no placeholder is provided. Evidence
+The lifecycle slice above is extended by PY-MEL-005 and the independently opt-in
+Image/Health `NUC_TempData` reception in PY-MEL-006 below. Evidence
 is mock-provider only, not real Health hardware or Squall qualification or a
 general C++ ABI compatibility claim.
 
@@ -707,4 +709,137 @@ PYTHONPATH="$PWD/python:$PWD/python/tests" \
 ```
 
 No native ABI/provider, Ada, Rust, workflow or policy changes. No Health/Image
-NUC, Image/Track/C2/RF metadata, processing, or new transport APIs are added.
+Image/Track/C2/RF metadata, processing, or new transport APIs are added by
+PY-MEL-005. Optional NUC is covered separately below.
+
+## IR Image/Health NUC temperature metadata (PY-MEL-006)
+
+NUC is optional and explicitly opt-in on either channel family. Both factories
+return the **same** public `NucStream` type; neither implicitly starts Image nor
+enables Health. For example, using an existing `ImageConfig` or `HealthConfig`:
+
+```python
+from ams_mel import CommandReturn, NucOpenError, Session
+
+with Session.open(provider_path, "", "") as session:
+    with session.open_image_stream(image_config) as image:
+        try:
+            with image.open_nuc(queue_capacity=16) as nuc:
+                image.start()
+                data = nuc.receive(timeout_ms=1000)
+                for point in data.points:
+                    print(point.timestamp_ns, point.frame_band,
+                          point.pixel.kind, point.pixel.value, point.temperature_k)
+                print(nuc.counters())
+        except NucOpenError as error:
+            if error.registration is CommandReturn.NOT_SUPPORTED:
+                print("Optional Image NUC is unavailable")
+            else:
+                raise  # FAIL and exceptions are not NOT_SUPPORTED.
+
+with Session.open(provider_path, "", "") as session:
+    with session.open_health_channel(health_config) as health:
+        with health.open_nuc() as nuc:
+            health.enable()
+            data = nuc.receive(timeout_ms=1000)
+# data is fully Python-owned and remains usable after every native owner closes.
+```
+
+Providers may deliver synchronously during Open. Registration is one attempt per
+channel/family, independent of ordinary metadata. Actual failed attempts consume
+the one-shot; invalid local capacities (including zero) do not call native or
+consume it. Unsupported NUC leaves the parent and its ordinary metadata usable.
+`NucOpenError(MelError)` preserves `kind`, `diagnostic`, `diagnostic_required`, and
+`native_status`, plus `registration: CommandReturn | None`. The independent native
+Return output is initialized to an unpublished sentinel: `NOT_SUPPORTED` and
+`FAIL` retain their exact Return with `PROVIDER_FAILED`; a provider exception is
+`PROVIDER_EXCEPTION` with `registration=None`. No diagnostic text is parsed.
+
+### Owned values and units
+
+All new classes/enums are explicitly exported from `ams_mel` with public module
+identity. Models are frozen dataclasses, with tuples for collections:
+
+| Model | Fields / published domain |
+|---|---|
+| `NucPointType` | `NUC_POINT=0`, `MFA_ESTIMATE=1`, `OTHER=2` |
+| `NucPixelKind` | `UINT8=1`, `UINT16=2`, `UINT32=3` |
+| `NucPixelValue` | `kind`, `value`; validated against 8/16/32-bit unsigned width |
+| `NucTempPoint` | `timestamp_ns`, `frame_band: BandInfo`, `pixel: NucPixelValue`, `temperature_k`, `point_type` |
+| `NucTempData` | `points: tuple[NucTempPoint, ...]` |
+| `NucCounters` | `events_received`, `events_dropped_queue_full`, `malformed_or_unsupported` |
+
+Pixel **width is the original provider variant**, never inferred from magnitude:
+the value 1 may be UINT8, UINT16 or UINT32. Signed int64 timestamps are exact
+nanoseconds, with **unknown upstream clock/epoch**; no epoch conversion occurs.
+Bands reuse `BandInfo`/`BandType`, preserving wavelength limits in **meters**.
+Unlike forward-compatible capability snapshots, NUC rejects unpublished bands.
+Temperatures are native doubles in **Kelvin, not Celsius**: negative values,
+nonfinite values and signed zero are preserved, not clamped or normalized. All
+three classifications, point order, duplicates, and empty messages survive.
+The upstream private optional `tempError` has **no public accessor**; it is not
+exposed, inferred or fabricated. This is complete coverage of publicly readable
+TempPoint fields, not a claim to expose that inaccessible field.
+
+Receive validates a uint32 timeout, calls native exactly once, validates the outer
+event and point spans (NULL/length, alignment, representable size), and copies
+every point before closing the native event. Unknown bands/point/pixel kinds and
+width mismatches are `PROTOCOL_INCONSISTENCY`. No ctypes storage escapes. As with
+other FFI snapshots, pointer validation cannot prove an arbitrary aligned address
+from an ABI-violating provider is mapped memory. Event cleanup is attempted once
+on success or failure; an earlier exception is never masked by cleanup.
+
+### Queue, ownership and concurrency
+
+- `receive(timeout_ms=0)` polls; active-empty returns `TIMEOUT`. All native error
+  categories remain structured `MelError` values. Counters preserve full uint64
+  values and never reset when events are consumed.
+- The existing native bounded FIFO uses **DROP-INCOMING**. Unlike ordinary Health
+  metadata, a NUC callback allocation/copy failure increments
+  `malformed_or_unsupported` and rejects **only that event**, not the stream.
+- `NucStream` retains neither the Python parent nor Session. Native state controls
+  provider/library retention. Session may close first; child owners may close
+  independently. Owned data survives actual provider DSO unload.
+- NUC Close is idempotent and deactivates public consumption. It does **not**
+  unregister callbacks, stop Image, close Health, cancel requests, or promise
+  immediate callback quiescence. Late callbacks remain native-owned and counted,
+  but are not queued after deactivation.
+- Image Stop ends its NUC producer/consumption lifecycle. Health teardown ends
+  its NUC consumption independently. Queued messages remain drainable, followed
+  by `STREAM_STOPPED`; uncertain Health detach may instead report `PROVIDER_FAILED`.
+- Explicit closure and context managers are supported. Finalization makes one
+  non-raising best-effort Close attempt. A Close that consumed or uncertainly
+  retained a handle is never automatically retried; a context body exception is
+  preserved. An uncertain retained graph may necessarily remain allocated.
+- **Externally serialize operations and Close on one NucStream**, and serialize
+  NUC Open with parent operations/Close. The GIL is not a native ownership lock.
+  No Python callbacks, registration infrastructure, queues, polling threads or
+  background workers are added.
+
+### Existing C ABI mapping and qualification
+
+Shared models, registration, ownership, conversion and counters live in `_nuc.py`;
+`_image.py` and `_health.py` add only small factories. The private import graph
+remains acyclic, `__init__.py` only re-exports, and `_native.py` is byte-identical.
+
+| Python operation | Existing published C function(s) |
+|---|---|
+| `ImageStream.open_nuc` | `ams_mel_ir_image_nuc_open` |
+| `HealthStatusChannel.open_nuc` | `ams_mel_ir_health_nuc_open` |
+| `NucStream.receive` | `ams_mel_ir_nuc_receive`, `ams_mel_ir_nuc_event_view`, `ams_mel_ir_nuc_event_close` |
+| `NucStream.counters` | `ams_mel_ir_nuc_get_counters` |
+| `NucStream.close` | `ams_mel_ir_nuc_close` |
+
+`python/tests/test_ir_nuc.py` independently runs Image and Health through the
+existing compiled `nuc-rich`, `nuc-malformed`, `nuc-overflow`, `nuc-allocation`,
+`nuc-register-fail`, `nuc-register-throw`, `nuc-late`, and `nuc-nonquiescing`
+scenarios, plus unsupported `image-metadata-four-mixed`/`health-rich` cases.
+Malformed C-boundary injection covers records the mock cannot produce. Failpoints,
+provider unload and callback barriers are subprocess-isolated; barrier observations,
+not arbitrary sleeps, establish ordering. Existing Health metadata and the additive
+package/import compatibility baseline remain tested unchanged. No native ABI,
+provider mock, Ada/Rust source, policy or workflow changes are needed.
+
+Evidence is **mock-only**, not IR hardware or Squall NUC qualification. PY-MEL-006
+final qualification requires PR #158 (PY-MEL-005) integrated into main; a stacked
+branch containing its reconciled head is not itself evidence of that integration.
