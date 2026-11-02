@@ -4,6 +4,8 @@
 #include "internal/common_channel_requests.hpp"
 #include "internal/completion_probe.hpp"
 #include "internal/ir_camera_command.hpp"
+#include "internal/ir_camera_protect.hpp"
+#include "internal/ir_nuc.hpp"
 
 #include <irmel/library/c2/C2Channel.h>
 
@@ -394,6 +396,10 @@ struct ChannelState {
     std::shared_ptr<struct MetadataState> metadata;
     bool metadata_attempted{};
     bool comms_metadata_attempted{};
+    /* IRMEL-ADA-004 opt-in @RequiredIfCameraProtect CameraProtectCmdResp owner,
+     * independent of the base metadata owner above. Guarded by mutex. */
+    std::shared_ptr<CameraProtectState> camera_protect;
+    bool camera_protect_attempted{};
 };
 
 /* A failed deferred detach cannot safely destroy its graph. Keep it for process
@@ -417,6 +423,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
 {
     std::shared_ptr<irmel::Channel> channel;
     std::shared_ptr<MetadataState> metadata;
+    std::shared_ptr<CameraProtectState> protect;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
@@ -424,6 +431,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         state->cleanup_started = true;
         channel = state->channel;
         metadata = state->metadata;
+        protect = state->camera_protect;
         disable = state->enable_attempted;
     }
     if (metadata) {
@@ -431,6 +439,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         if (metadata->lifecycle == MetadataLifecycle::Active)
             metadata->lifecycle = MetadataLifecycle::Inactive;
     }
+    if (protect) protect->deactivate();
     bool ok = true;
     if (channel && disable) {
         try { if (channel->disable() != irmel::Return::Success) ok = false; }
@@ -449,6 +458,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
             metadata->lifecycle = MetadataLifecycle::Failed;
             metadata->ready.notify_all();
         }
+        if (protect) protect->fail();
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -471,6 +481,9 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         if (metadata->lifecycle != MetadataLifecycle::Failed) metadata->lifecycle = MetadataLifecycle::Stopped;
         metadata->ready.notify_all();
     }
+    /* Same boundary as the base metadata owner: wait for in-flight bridge
+     * CameraProtectCmdResp callbacks after the provider channel is released. */
+    if (protect) protect->drain_and_stop();
     return ok;
 }
 
@@ -1205,6 +1218,111 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_camera_command(
     }
     return ams_mel_camera::submit(c2_camera_family, c2, command, out_request, out, capacity,
                                   required);
+}
+
+/* IRMEL-ADA-004: C2Channel::send(CameraProtectCmd). Same Enabled lifecycle
+ * rule, lock-linearized claim and erased deferred-cleanup finish as the other
+ * C2 requests; provider send runs unlocked. */
+namespace {
+const ams_mel_camera_protect::Family c2_camera_protect_family{
+    [](const void *context) noexcept {
+        return static_cast<const ams_mel_ir_c2 *>(context)->state->session->admission;
+    },
+    [](const void *context, std::shared_ptr<void>& channel, CommonRequestClaim& claim) {
+        const auto& state = static_cast<const ams_mel_ir_c2 *>(context)->state;
+        std::shared_ptr<irmel::C2Channel> c2;
+        if (!claim_c2_submission(state, SubmissionRequirement::Enabled, c2)) return false;
+        claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+        channel = std::move(c2);
+        return true;
+    },
+    [](const std::shared_ptr<void>& channel, irmel::CameraProtectCmd command) {
+        return std::static_pointer_cast<irmel::C2Channel>(channel)->send(std::move(command));
+    },
+    "C2 channel is not enabled"};
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_camera_protect(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_camera_protect_command_v1 *command,
+    ams_mel_ir_camera_protect_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state) {
+        diagnostic("invalid CameraProtectCmd input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    return ams_mel_camera_protect::submit(c2_camera_protect_family, c2, command, out_request,
+                                          out, capacity, required);
+}
+
+/* IRMEL-ADA-004: opt-in C2 CameraProtectCmdResp registration, independent of
+ * ams_mel_ir_c2_metadata_open. The one-shot attempt and the state publication
+ * happen under the C2 lock; registration itself runs with no bridge lock
+ * held, so synchronous delivery during registration cannot deadlock. */
+extern "C" ams_mel_status_t ams_mel_ir_c2_camera_protect_open(
+    ams_mel_ir_c2 *c2, std::size_t queue_capacity,
+    ams_mel_ir_camera_protect_metadata **output, ams_mel_ir_return_t *registration,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !queue_capacity || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<CameraProtectState> state;
+    std::function<void(irmel::Channel&, const irmel::CameraProtectCmdResp *const)> callback;
+    std::unique_ptr<ams_mel_ir_camera_protect_metadata> owner;
+    try {
+        state = std::make_shared<CameraProtectState>();
+        state->capacity = queue_capacity;
+        callback = [state](irmel::Channel&, const irmel::CameraProtectCmdResp *const value) noexcept {
+            state->receive(value);
+        };
+        owner = std::make_unique<ams_mel_ir_camera_protect_metadata>();
+        owner->state = state;
+    } catch (...) {
+        diagnostic("CameraProtectCmdResp metadata allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::shared_ptr<irmel::C2Channel> channel;
+    try {
+        std::lock_guard lock{c2->state->mutex};
+        if ((c2->state->lifecycle != C2Lifecycle::Attached &&
+             c2->state->lifecycle != C2Lifecycle::Enabled) ||
+            c2->state->camera_protect_attempted || !c2->state->c2) {
+            diagnostic("C2 channel is not eligible or CameraProtectCmdResp was already attempted",
+                       out, capacity, required);
+            return AMS_MEL_INVALID_ARGUMENT;
+        }
+        c2->state->camera_protect_attempted = true;
+        c2->state->camera_protect = state;
+        channel = c2->state->c2;
+    } catch (...) {
+        diagnostic("C2 CameraProtectCmdResp lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    irmel::Return result{};
+    try {
+        result = channel->registerMetadataCallback(std::move(callback));
+    } catch (...) {
+        state->deactivate();
+        diagnostic("provider exception during CameraProtectCmdResp registration", out, capacity,
+                   required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+    channel.reset();
+    ams_mel_ir_return_t mapped = AMS_MEL_IR_RETURN_FAIL;
+    const bool known = ams_mel::internal::nuc_map_return(result, mapped);
+    if (known && registration) *registration = mapped;
+    if (!known || mapped != AMS_MEL_IR_RETURN_SUCCESS) {
+        state->deactivate();
+        diagnostic(known && mapped == AMS_MEL_IR_RETURN_NOT_SUPPORTED ?
+                       "provider does not support camera self-protection CameraProtectCmdResp" :
+                       "CameraProtectCmdResp callback registration failed",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    *output = owner.release();
+    return AMS_MEL_OK;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_mode_request_wait(

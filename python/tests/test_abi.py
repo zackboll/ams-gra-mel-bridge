@@ -738,6 +738,15 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_camera_response_close",
                 "ams_mel_ir_camera_response_event_view",
                 "ams_mel_ir_camera_response_event_close",
+                "ams_mel_ir_c2_submit_camera_protect",
+                "ams_mel_ir_camera_protect_request_wait",
+                "ams_mel_ir_camera_protect_request_close",
+                "ams_mel_ir_c2_camera_protect_open",
+                "ams_mel_ir_camera_protect_receive",
+                "ams_mel_ir_camera_protect_get_counters",
+                "ams_mel_ir_camera_protect_close",
+                "ams_mel_ir_camera_protect_event_view",
+                "ams_mel_ir_camera_protect_event_close",
                 "ams_mel_ir_instrumentation_open",
                 "ams_mel_ir_instrumentation_enable",
                 "ams_mel_ir_instrumentation_get_capabilities",
@@ -875,8 +884,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 239)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 239)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 248)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 248)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -884,7 +893,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 239)
+        self.assertEqual(len(exported), 248)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -2088,6 +2097,11 @@ class AbiTests(unittest.TestCase):
                 *self._layout(_native.IrCameraCommandResponseV1, 'command_id', 'size', 'timestamp_ns', 'command_success'),
                 *self._layout(_native.IrCameraCommandResultV1, 'response', 'error_code'),
                 _native.AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ, _native.AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ,
+                *self._layout(_native.IrCameraProtectCommandV1, 'command_id', 'response_time_ns', 'protect_flag'),
+                *self._layout(_native.IrCameraProtectResponseV1, 'command_id', 'response_time_ns', 'command_response'),
+                *self._layout(_native.IrCameraProtectResultV1, 'response', 'error_code'),
+                _native.AMS_MEL_IR_CAMERA_PROTECT_OK, _native.AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE,
+                _native.AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED,
                 _native.AMS_MEL_ABI_VERSION_MAJOR,
                 _native.AMS_MEL_ABI_VERSION_MINOR,
                 _native.AMS_MEL_ABI_VERSION_MAJOR,

@@ -2,6 +2,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces.C;
 with System;
 with System.Storage_Elements;
+with AMS.MEL.IR.Camera_Protection_Conversion;
 
 package body AMS.MEL.IR.C2.Metadata is
    package C renames AMS.MEL_C_API;
@@ -493,5 +494,141 @@ package body AMS.MEL.IR.C2.Metadata is
    exception
       when others =>
          Stream.Handle := C.Null_Metadata;
+   end Finalize;
+
+   --  IRMEL-ADA-004 opt-in C2 CameraProtectCmdResp owner.
+   type Protect_View_Access is access all C.IR_Camera_Protect_Response_V1;
+   function To_Protect_View is new Ada.Unchecked_Conversion (System.Address, Protect_View_Access);
+   use type C.Camera_Protect_Metadata_Handle;
+   Not_Supported_Return : constant Interfaces.Unsigned_32 := 3;
+
+   function Open_Camera_Protection
+     (Channel : Control_Channel; Queue_Capacity : Positive := 16) return Camera_Protection_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "C2 channel is closed";
+      end if;
+      return Result : Camera_Protection_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Camera_Protect_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Success then
+               null;
+            elsif Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise AMS.MEL.IR.Camera_Protection.Not_Supported with Message (D);
+            else
+               raise Provider_Error with Message (D);
+            end if;
+         end;
+      end return;
+   end Open_Camera_Protection;
+
+   function Is_Open (Stream : Camera_Protection_Stream) return Boolean
+   is (Stream.Handle /= C.Null_Camera_Protect_Metadata);
+
+   function Receive_Camera_Protection
+     (Stream : Camera_Protection_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Camera_Protection.Protection_Response
+   is
+      Event   : aliased C.Camera_Protect_Event_Handle := C.Null_Camera_Protect_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      Code    : Interfaces.Integer_32;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.IR_Camera_Protect_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Camera_Protect_Metadata then
+         raise Provider_Error with "CameraProtectCmdResp metadata owner is closed";
+      end if;
+      Code :=
+        C.IR_Camera_Protect_Receive
+          (Stream.Handle,
+           Interfaces.Unsigned_32 (Timeout_Milliseconds),
+           Event'Access,
+           D'Address,
+           D'Length,
+           R'Access);
+      if Code = C.Timeout then
+         raise Timeout_Error;
+      elsif Code = C.Stream_Stopped then
+         raise Stream_Stopped;
+      elsif Code /= C.Success then
+         raise Provider_Error with Message (D);
+      end if;
+      begin
+         if C.IR_Camera_Protect_Event_View (Event, Address'Access, D'Address, D'Length, R'Access)
+           /= C.Success
+         then
+            raise Provider_Error with Message (D);
+         end if;
+         declare
+            Result : constant AMS.MEL.IR.Camera_Protection.Protection_Response :=
+              Camera_Protection_Conversion.To_Response (To_Protect_View (Address).all);
+         begin
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Receive_Camera_Protection;
+
+   function Camera_Protection_Counters (Stream : Camera_Protection_Stream) return Metadata_Counters
+   is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      if Stream.Handle = C.Null_Camera_Protect_Metadata then
+         raise Provider_Error with "CameraProtectCmdResp metadata owner is closed";
+      end if;
+      if C.IR_Camera_Protect_Get_Counters (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access)
+        /= C.Success
+      then
+         raise Provider_Error with Message (D);
+      end if;
+      return
+        (Counter (Raw.Events_Received),
+         Counter (Raw.Events_Dropped_Queue_Full),
+         Counter (Raw.Malformed_Or_Unsupported));
+   end Camera_Protection_Counters;
+
+   procedure Close (Stream : in out Camera_Protection_Stream) is
+      D    : aliased Diagnostic := [others => Interfaces.C.nul];
+      R    : aliased C.Size_T := 0;
+      Code : constant Interfaces.Integer_32 :=
+        C.IR_Camera_Protect_Close (Stream.Handle'Access, D'Address, D'Length, R'Access);
+   begin
+      if Code /= C.Success then
+         raise Provider_Error with Message (D);
+      end if;
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Camera_Protection_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_Camera_Protect_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Camera_Protect_Metadata;
    end Finalize;
 end AMS.MEL.IR.C2.Metadata;
