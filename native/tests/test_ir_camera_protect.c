@@ -398,8 +398,14 @@ static int test_timeout_then_success(void)
     const ams_mel_ir_camera_protect_command_v1 c = command(0x1234U, 99, 1U);
     size_t count = 0;
     uint64_t base, observed = 0;
+    uint64_t values[4] = {0};
+    /* Quiesce every earlier CameraProtect owner (closed set) before recording
+     * the base, so only this request's teardown can satisfy base + 1. */
+    CHECK(ams_mel_test_completion_boundary(PROTECT_PROBE_FAMILY, 3, 0, values));
+    CHECK(ams_mel_test_completion_owner(PROTECT_PROBE_FAMILY, values[2], &observed));
+    CHECK(observed == values[2]);
+    base = observed;
     CHECK(open_owner("protect-held", 0, 1, &o) == EXIT_SUCCESS);
-    base = owners_destroyed();
     CHECK(submit(&o, &c, &request, NULL, 0) == AMS_MEL_OK);
     CHECK(request_count(&o, &count) && count == 1U);
     CHECK(ams_mel_ir_camera_protect_request_wait(request, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
@@ -410,6 +416,7 @@ static int test_timeout_then_success(void)
     CHECK(ams_mel_ir_camera_protect_request_wait(request, 0, &result, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(result.response.command_id == 0x1234U);
     CHECK(ams_mel_test_completion_owner(PROTECT_PROBE_FAMILY, base + 1U, &observed));
+    CHECK(observed == base + 1U);
     CHECK(request_count(&o, &count) && count == 0U);
     CHECK(ams_mel_ir_camera_protect_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(close_owner(&o) == EXIT_SUCCESS);
@@ -428,14 +435,26 @@ static int test_pending_close(void)
     ams_mel_ir_camera_protect_result_v1 result;
     const ams_mel_ir_camera_protect_command_v1 c = command(0xabcU, -9, 0U);
     uint64_t base, observed = 0;
+    uint64_t values[4] = {0};
+    size_t count = 0;
     void *pin;
+    /* Same quiescence as IR-CAMERA-CI-001: earlier Wait calls publish results
+     * before their detached workers drop the final owner, so drain every
+     * earlier CameraProtect owner first; otherwise an unrelated teardown could
+     * satisfy base + 2. No other thread submits here: created is a closed set. */
+    CHECK(ams_mel_test_completion_boundary(PROTECT_PROBE_FAMILY, 3, 0, values));
+    CHECK(ams_mel_test_completion_owner(PROTECT_PROBE_FAMILY, values[2], &observed));
+    CHECK(observed == values[2]);
+    base = observed;
     CHECK(make_log(log) == EXIT_SUCCESS);
     CHECK(open_owner("protect-held", 0, 1, &o) == EXIT_SUCCESS);
     pin = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD);
     CHECK(pin != NULL);
-    base = owners_destroyed();
     CHECK(submit(&o, &c, &request, NULL, 0) == AMS_MEL_OK);
     CHECK(submit(&o, &c, &observer, NULL, 0) == AMS_MEL_OK);
+    CHECK(ams_mel_test_completion_boundary(PROTECT_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base + 2U && values[3] == base);
+    CHECK(request_count(&o, &count) && count == 2U);
     CHECK(ams_mel_ir_camera_protect_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_camera_protect_request_wait(observer, 0, &result, NULL, 0, NULL) == AMS_MEL_TIMEOUT);
     CHECK(close_owner(&o) == EXIT_SUCCESS);
@@ -446,6 +465,7 @@ static int test_pending_close(void)
     CHECK(ams_mel_ir_camera_protect_request_wait(observer, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(result.response.command_id == 0xabcU && result.response.response_time_ns == -9);
     CHECK(ams_mel_test_completion_owner(PROTECT_PROBE_FAMILY, base + 2U, &observed));
+    CHECK(observed == base + 2U);
     CHECK(occurrences(log, "c2_channel_destroyed") == 1U);
     CHECK(ams_mel_ir_camera_protect_request_close(&observer, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(dlclose(pin) == 0);

@@ -1,7 +1,10 @@
 # IRMEL-ADA-004 — C2 camera self-protection (CameraProtectCmd / CameraProtectCmdResp)
 
 Feature task. Branched from `origin/main` `5f7ec45dbe4709ee18171047b766a61edb133404`
-(the supplied starting SHA; main had not advanced when fetched).
+(the supplied starting SHA). Before push, main advanced to
+`0bd87efabda62d0afb085722be179a1d1ad03c62` (IR-CAMERA-CI-001, a test-only CameraCommand
+owner-quiescence fix); it was merged normally (no rebase), and the same quiescence
+was applied to the analogous camera-protection owner-count assertions.
 
 ## Upstream mapping
 
@@ -73,15 +76,18 @@ header-probe layouts only; public safe Python/Rust APIs are reserved for later t
 | Command | Result |
 |---|---|
 | `sh native/scripts/build.sh` (production, `-Werror`) | PASS; 248 exports, 0 test symbols |
-| native test tree `ctest` (once) | PASS 447/447 (5 new camera-protection tests) |
+| native test tree `ctest` (once, before and after merging main `0bd87ef`) | PASS 447/447 (5 new camera-protection tests) |
+| Camera-protection CTests `--repeat until-fail:100 -j 8`; camera command + protection `until-fail:20` | PASS |
 | `test_ir_camera_protect` (C11) + isolated post-send allocation/worker-launch, finish-failure and callback-in-flight processes | PASS |
 | Mutation negative control (`Unavailable` collapsed into `OK`) | Detected (FAIL), then restored |
 | GPRbuild `ams_mel_tests.gpr` (GNAT 16.1.0, warnings as errors) and `ams_mel_smoke` | PASS, including the new camera-protection suite and unchanged CameraCommand, C2, C2 metadata and C2 common suites |
 | `make check-ir-api-coverage` | PASS, 29 tests; safe_ada operations 37 → 39 |
 | Camera / CameraProtection type-link regressions (pinned enhancer) | PASS 7/7, including rejection of a private-subtype link |
+| Python `test_abi` + `test_common_channel` / full Python suite (test library + providers) | PASS 93/93 / 271/271 |
+| Rust `cargo test -p ams-mel-sys --test abi` | PASS 42/42 (248-export inventory) |
+| `make test-policy`, `check_doc_source_integrity.py`, `make check-ada-format`, `cargo fmt --check`, `git diff --check` | PASS |
 
-Python/Rust raw ABI results and policy/format checks are recorded in the PR
-handoff. Not run (as directed): GNATdoc regeneration, historical documentation
+Not run (as directed): GNATdoc regeneration, historical documentation
 suites, five-stage campaigns and local FULL_STRESS. Hosted Bootstrap remains
 responsible for full native stress. All positive evidence is mock-provider only;
 no IR camera or Squall was used.
