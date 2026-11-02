@@ -20,14 +20,24 @@ class PolicyTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="ci002-policy-")
         self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = Path(temp.name) / "checkout"
+        self.root.mkdir()
+        self.remote = Path(temp.name) / "origin.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(self.remote)], check=True)
         self.git("init", "-q")
+        self.git("remote", "add", "origin", str(self.remote))
         self.git("config", "user.name", "CI fixture")
         self.git("config", "user.email", "fixture@example.invalid")
         self.write("README.md", "original\n")
         self.write("docs/guide.md", "guide\n")
         self.write("native/source.c", "int value;\n")
         self.base = self.commit()
+        self.trust_main(self.base)
+
+    def trust_main(self, revision):
+        self.git("push", "-q", "--force", "origin", revision + ":refs/heads/main")
+        self.git("fetch", "-q", "--no-tags", "origin",
+                 "+refs/heads/main:refs/remotes/origin/main")
 
     def git(self, *args):
         return policy.git(self.root, *args)
@@ -220,7 +230,8 @@ class PolicyTests(unittest.TestCase):
             self.assertNotIn(forbidden, workflow)
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("github.event.pull_request.base.sha", workflow)
-        self.assertIn("bootstrap_ci_policy.py --fetch --execute", workflow)
+        self.assertIn("bootstrap_ci_policy.py --fetch --verify-only", workflow)
+        self.assertNotIn("bootstrap_ci_policy.py --fetch --execute", workflow)
         for job in ("native", "ada", "rust", "python", "build-tree-isolation"):
             self.assertIn(f"  {job}:\n", workflow)
 
@@ -246,6 +257,7 @@ class PolicyTests(unittest.TestCase):
         self.git("checkout", "-q", "--detach", self.base)
         self.write("native/source.c", "int base_advanced;\n")
         advanced_base = self.commit()
+        self.trust_main(advanced_base)
         self.git("checkout", "-q", "--detach", head)
         build = self.merge(advanced_base, head)
         audit = policy.classify(self.root, "pull_request", head, advanced_base, build)
@@ -296,6 +308,7 @@ class MergeResultTests(unittest.TestCase):
     write = PolicyTests.write
     commit = PolicyTests.commit
     merge = PolicyTests.merge
+    trust_main = PolicyTests.trust_main
 
     def setUp(self):
         PolicyTests.setUp(self)
@@ -309,6 +322,7 @@ class MergeResultTests(unittest.TestCase):
         self.git("checkout", "-q", "--detach", self.initial)
         self.write("native/base.c", "int base_value(void) { return 7; }\n")
         self.base = self.commit()
+        self.trust_main(self.base)
         # Genuine merge through Git's working-tree merge machinery, independent
         # of policy's merge-tree reconstruction and malformed-object fixtures.
         self.git("merge", "--no-ff", "-m", "GitHub-style proposed merge", self.head)
@@ -340,6 +354,8 @@ class MergeResultTests(unittest.TestCase):
         self.assertEqual(audit["mode"], policy.COMPLETE_SMOKE)
         self.assertEqual(audit["paths"], ["docs/guide.md"])
         self.assertEqual(audit["build_parents"], [self.base, self.head])
+        self.assertEqual(audit["event_base"], self.base)
+        self.assertEqual(audit["actual_synthetic_base"], self.base)
         self.assertEqual(audit["build_tree"], audit["reconstructed_merge_tree"])
         self.assertEqual(self.native_output(), "7 2")
 
@@ -351,7 +367,7 @@ class MergeResultTests(unittest.TestCase):
         self.git("checkout", "-q", "--detach", self.base)
         self.git("merge", "--no-ff", "-m", "native-sensitive merge", self.head)
         self.build = self.git("rev-parse", "HEAD").decode().strip()
-        self.assertEqual(self.audit()["mode"], policy.FULL_STRESS)
+        self.assertEqual(self.audit(base=self.initial)["mode"], policy.FULL_STRESS)
         self.assertEqual(self.native_output(), "7 9")
 
     def test_head_checkout_rejected(self):
@@ -369,8 +385,31 @@ class MergeResultTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "parents"):
             self.audit(head=self.initial)
 
-    def test_wrong_base(self):
-        with self.assertRaisesRegex(ValueError, "parents"):
+    def test_advanced_synthetic_base(self):
+        audit = self.audit(base=self.initial)
+        self.assertEqual(audit["event_base"], self.initial)
+        self.assertEqual(audit["actual_synthetic_base"], self.base)
+        self.assertEqual(audit["trusted_main"], self.base)
+        self.assertEqual(audit["mode"], policy.COMPLETE_SMOKE)
+
+    def test_advanced_base_still_reconciles_complete_raw_diff(self):
+        original = policy.git
+        def forged(root, *args):
+            output = original(root, *args)
+            return b"" if args[0] == "diff" else output
+        with mock.patch.object(policy, "git", side_effect=forged):
+            with self.assertRaisesRegex(ValueError, "truncated"):
+                self.audit(base=self.initial)
+
+    def test_ambiguous_merge_base(self):
+        # Real criss-cross history: two incomparable best common ancestors.
+        first = self.merge(self.base, self.head)
+        second = self.merge(self.head, self.base)
+        self.head = second
+        self.trust_main(first)
+        self.build = self.merge(first, second)
+        self.assertEqual(len(self.git("merge-base", "--all", first, second).splitlines()), 2)
+        with self.assertRaisesRegex(ValueError, "ambiguous merge base"):
             self.audit(base=self.initial)
 
     def test_swapped_parents(self):
@@ -405,7 +444,60 @@ class MergeResultTests(unittest.TestCase):
         self.write("native/base.c", "int base_value(void) { return 8; }\n")
         self.base = self.commit()
         self.git("checkout", "-q", "--detach", self.build)
-        with self.assertRaisesRegex(ValueError, "parents"):
+        with self.assertRaisesRegex(ValueError, "event base is not an ancestor"):
+            self.audit()
+
+    def test_main_advances_after_synthetic_merge(self):
+        self.git("checkout", "-q", "--detach", self.base)
+        self.write("native/next-main.c", "int next_main;\n")
+        newer_main = self.commit()
+        self.trust_main(newer_main)
+        self.git("checkout", "-q", "--detach", self.build)
+        audit = self.audit(base=self.initial, fetch=True)
+        self.assertEqual(audit["event_base"], self.initial)
+        self.assertEqual(audit["actual_synthetic_base"], self.base)
+        self.assertEqual(audit["trusted_main"], newer_main)
+        self.assertEqual(audit["build"], self.build)
+        self.assertEqual(audit["build_tree"], audit["reconstructed_merge_tree"])
+
+    def test_unrelated_first_parent(self):
+        unrelated = self.git("commit-tree", self.git("rev-parse", self.initial + "^{tree}").decode().strip(),
+                             "-m", "unrelated main").decode().strip()
+        # Even placing this root on trusted main cannot bypass event ancestry.
+        self.trust_main(unrelated)
+        self.malformed([unrelated, self.head])
+        with self.assertRaisesRegex(ValueError, "event base is not an ancestor"):
+            self.audit()
+
+    def test_clean_merge_from_untrusted_first_parent(self):
+        self.git("checkout", "-q", "--detach", self.base)
+        self.write("native/untrusted.c", "int untrusted;\n")
+        untrusted = self.commit()
+        self.build = self.merge(untrusted, self.head)
+        with self.assertRaisesRegex(ValueError, "not reachable from trusted origin/main"):
+            self.audit(base=self.initial)
+
+    def test_missing_trusted_main(self):
+        self.git("update-ref", "-d", "refs/remotes/origin/main")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.audit()
+
+    def test_fetch_replaces_stale_local_main_with_remote_identity(self):
+        self.git("update-ref", "refs/remotes/origin/main", self.head)
+        with self.assertRaisesRegex(ValueError, "not reachable"):
+            self.audit()
+        self.assertEqual(self.audit(fetch=True)["trusted_main"], self.base)
+
+    def test_missing_main_history(self):
+        self.git("checkout", "-q", "--detach", self.base)
+        self.write("native/later-main.c", "int later_main;\n")
+        later = self.commit()
+        self.write("native/later-main.c", "int later_main_changed;\n")
+        tip = self.commit()
+        self.trust_main(tip)
+        self.git("checkout", "-q", "--detach", self.build)
+        (self.root / ".git/objects" / later[:2] / later[2:]).unlink()
+        with self.assertRaises(subprocess.CalledProcessError):
             self.audit()
 
     def test_forged_tree(self):
@@ -480,6 +572,82 @@ class MergeResultTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.verify_record(self.root, "pull_request", self.head, self.initial, self.build, record)
 
+    def test_record_distinct_base_fields_change(self):
+        for field in ("event_base", "actual_synthetic_base", "trusted_main"):
+            with self.subTest(field=field):
+                record = self.audit(base=self.initial)
+                record[field] = "f" * 40
+                with self.assertRaisesRegex(ValueError, "changed since"):
+                    policy.verify_record(self.root, "pull_request", self.head,
+                                         self.initial, self.build, record)
+
+    def test_record_local_main_change(self):
+        record = self.audit(base=self.initial)
+        self.git("update-ref", "refs/remotes/origin/main", self.build, record["trusted_main"])
+        current = self.audit(base=self.initial)
+        self.assertEqual(current, dict(record, trusted_main=self.build))
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         record["trusted_main"])
+        with self.assertRaisesRegex(ValueError, "changed since"):
+            policy.verify_record(self.root, "pull_request", self.head,
+                                 self.initial, self.build, record)
+
+    def test_execution_uses_sealed_main_snapshot(self):
+        record = self.audit(base=self.initial, fetch=True)
+        sealed_main = record["trusted_main"]
+        self.assertNotEqual(self.build, sealed_main)
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main").decode().strip(),
+                         sealed_main)
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         sealed_main)
+        # Advance main from the independent bare remote, not by pushing from the
+        # checkout: Git 2.56 also updates tracking refs for a matching push URL.
+        policy.git(self.remote, "fetch", "-q", "--no-tags", "--no-write-fetch-head",
+                   str(self.root), self.build)
+        policy.git(self.remote, "update-ref", "refs/heads/main", self.build, sealed_main)
+        self.assertEqual(policy.git(self.remote, "rev-parse", "refs/heads/main").decode().strip(),
+                         self.build)
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main").decode().strip(),
+                         sealed_main)
+        self.assertEqual(self.audit(base=self.initial), record)
+        # No checkout fetch occurs: compare the complete authority record.
+        self.assertEqual(policy.verify_record(self.root, "pull_request", self.head,
+                                             self.initial, self.build, record), record)
+
+    def test_execution_rechecks_changed_base_evidence(self):
+        record = self.audit(base=self.initial)
+        def verify():
+            return policy.verify_record(self.root, "pull_request", self.head,
+                                        self.initial, self.build, record)
+        # Model evidence changed after pre-configuration verification and before
+        # the first build command. Even execution of that command is forbidden.
+        record["actual_synthetic_base"] = self.initial
+        marker = self.root / "must-not-exist"
+        with self.assertRaisesRegex(ValueError, "changed since"):
+            policy.execute([[sys.executable, "-c",
+                             f"from pathlib import Path; Path({str(marker)!r}).touch()"]],
+                           verify=verify)
+        self.assertFalse(marker.exists())
+
+    def test_ancestry_authority_mutations(self):
+        # Removing both ancestry gates would accept these otherwise valid trees.
+        source = (ROOT / "docs/tools/bootstrap_ci_policy.py").read_text()
+        namespace = {"__name__": "mutant"}
+        exec(compile(source, "mutant", "exec"), namespace)
+        namespace["require_ancestor"] = lambda *args: None
+        with self.assertRaisesRegex(ValueError, "event base is not an ancestor"):
+            self.audit(base=self.head)
+        self.assertEqual(namespace["classify"](self.root, "pull_request", self.head,
+                                               self.head, self.build)["mode"], policy.COMPLETE_SMOKE)
+        self.git("checkout", "-q", "--detach", self.base)
+        self.write("native/untrusted.c", "int untrusted;\n")
+        untrusted = self.commit()
+        self.build = self.merge(untrusted, self.head)
+        with self.assertRaisesRegex(ValueError, "not reachable"):
+            self.audit()
+        self.assertEqual(namespace["classify"](self.root, "pull_request", self.head,
+                                               self.base, self.build)["mode"], policy.COMPLETE_SMOKE)
+
     def test_execution_rechecks_source(self):
         record = self.audit()
         def verify():
@@ -494,7 +662,7 @@ class MergeResultTests(unittest.TestCase):
             env = dict(os.environ, GITHUB_EVENT_NAME="pull_request", BOOTSTRAP_HEAD_SHA=self.head,
                        BOOTSTRAP_BASE_SHA=self.base, BOOTSTRAP_BUILD_SHA=self.build)
             command = [sys.executable, str(ROOT / "docs/tools/bootstrap_ci_policy.py"),
-                       "--verify-only", "--audit", str(audit)]
+                       "--fetch", "--verify-only", "--audit", str(audit)]
             subprocess.run(command, cwd=self.root, env=env, check=True)
             self.assertEqual(json.loads(audit.read_bytes()), self.audit())
             # Existing records cannot be silently replaced during preparation.
@@ -508,6 +676,7 @@ class MergeResultTests(unittest.TestCase):
         self.assertIn("BOOTSTRAP_BUILD_SHA: ${{ github.sha }}", native)
         self.assertLess(native.index("--verify-only"), native.index("- name: Configure"))
         self.assertIn('--execute --audit "$RUNNER_TEMP/bootstrap-policy.json"', native)
+        self.assertNotIn('--fetch --execute', native)
 
     def test_cli_requires_preconfiguration_record(self):
         env = dict(os.environ, GITHUB_EVENT_NAME="pull_request", BOOTSTRAP_HEAD_SHA=self.head,
@@ -528,13 +697,15 @@ class MergeResultTests(unittest.TestCase):
 
     def test_merge_authority_mutations(self):
         source = (ROOT / "docs/tools/bootstrap_ci_policy.py").read_text()
-        for old, new in (("parents == [base, head]", "True"),
+        for old, new in (("len(parents) == 2 and parents[1] == head", "True"),
                          ("build_tree == reconstructed", "True")):
             with self.subTest(mutation=old):
                 namespace = {"__name__": "mutant"}
                 exec(compile(source.replace(old, new, 1), "mutant", "exec"), namespace)
-                if old.startswith("parents"):
-                    self.build = self.merge(self.base, self.head, parents=[self.head, self.base])
+                self.assertIn(old, source)
+                if old.startswith("len(parents)"):
+                    self.build = self.merge(self.base, self.head,
+                                            parents=[self.base, self.head, self.initial])
                 else:
                     self.build = self.merge(self.base, self.head,
                                             tree=self.git("rev-parse", self.head + "^{tree}").decode().strip())
