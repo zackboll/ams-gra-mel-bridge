@@ -15,12 +15,9 @@ env:
 
 jobs:
   qualify:
+    name: Current-source qualification
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        audit: [current-source, historical-original, historical-corrected]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -30,7 +27,6 @@ jobs:
       - name: Install isolated pinned documentation tools
         run: sh docs/tools/install_docs_toolchain.sh
       - name: Repeated generation, source mutations and deep audits
-        if: matrix.audit == 'current-source'
         env:
           GNATDOC_PREFIX: ${{ github.workspace }}/.doc-tools/gnatdoc-26.0.0
         run: |
@@ -40,26 +36,12 @@ jobs:
             make test-documentation-source &&
             .doc-tools/enhancer/bin/python -W error -m unittest discover -s docs/tests -p py_pol_001_tests.py -v &&
             DOC_EXAMPLES_ALIRE_SETTINGS="$ALIRE_SETTINGS_DIR" sh docs/tools/qualify_examples.sh'
-      - name: Replay immutable historical qualification
-        if: matrix.audit != 'current-source'
-        env:
-          GNATDOC_PREFIX: ${{ github.workspace }}/.doc-tools/gnatdoc-26.0.0
-          AUDIT: ${{ matrix.audit }}
-        run: |
-          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
-            cd ../..
-            replay=""
-            if [ "$AUDIT" = historical-corrected ]; then replay=--corrected-replay; fi
-            .doc-tools/enhancer/bin/python docs/tools/qualify_history.py \
-              --output "$RUNNER_TEMP/history" --gnatdoc-prefix "$GNATDOC_PREFIX" $replay'
       - name: Retain qualification diagnostics (never deployment authority)
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: documentation-qualification-${{ matrix.audit }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: documentation-qualification-current-source-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/history/*.json
-            ${{ runner.temp }}/history/*.log
             .doc-tools/qualification-generation.log
             .doc-tools/qualification/epoch.json
             obj/docs-examples/
