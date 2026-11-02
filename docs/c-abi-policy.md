@@ -1,5 +1,44 @@
 # Experimental C ABI policy
 
+## IRMEL-ADA-005 — Complete optional C2 CalibrationConfiguration
+
+Both pinned optional operations are implemented independently:
+`C2Channel::send(CalibrationConfigurationCmd)` →
+`AMS.MEL.IR.C2.Submit_Calibration_Configuration`, and
+`C2Channel::registerMetadataCallback(CalibrationConfiguration)` →
+`AMS.MEL.IR.C2.Metadata.Open_Calibration_Configuration` /
+`Receive_Calibration_Configuration`. The latter is never registered by base
+`C2.Metadata.Open`; providers lacking this optional feature retain existing C2
+behavior. Safe Ada operation coverage is 41 (previously 39).
+
+The canonical `AMS.MEL.IR.Calibration_Configuration` package owns the ordered
+collection and every entry: complete UCI UUID bytes and labels, exact meaningful
+accepted-interface alternatives (0/1/2; sentinel 3 and unknowns rejected), and
+three **independent** nested vectors (item names, component IDs, capability IDs).
+The command's two uint32 identifiers remain independent, including zero and
+UINT32_MAX. No response correlation is inferred. Native immutable backing is
+copied before releasing the provider result or returning from a callback; Ada
+copies out without exposing native pointers. UTF-8/NUL and checked-size policy
+apply. No existing v1 record layout or enum value changes.
+
+Submission requires Enabled and reuses Session CompletionPermit,
+claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked provider
+send, one future-consuming worker, cached outcome/diagnostic, deferred teardown,
+and allocation-free retention on post-send allocation/worker-launch failure.
+Closing a request is not cancellation. The separate one-shot Attached/Enabled
+metadata registration runs unlocked, permits synchronous delivery, and reports
+NotSupported separately from Fail/exceptions. Its bounded DROP-INCOMING queue
+copies whole configurations atomically, counts malformed/dropped events, drains
+queued events after shutdown, retains late callback state and waits for in-flight
+callbacks at physical teardown. Callback delivery never completes a request.
+
+Production ABI: **257 AMS_MEL_0.1 exports** (248 baseline + 9), with private
+Python ctypes and Rust ams-mel-sys mirrors/probes only. Mock-provider qualification
+is not real-provider, Squall or hardware qualification. CalibrationStatus,
+SubsystemCompletedCalibration and CalibrationStatusCmd remain unimplemented.
+See [qualification](irmel-ada-005-calibration-configuration.md).
+
+
 ## IRMEL-ADA-004 — C2 camera self-protection (CameraProtectCmd / CameraProtectCmdResp)
 
 The pinned @RequiredIfCameraProtect `C2Channel::send(CameraProtectCmd)` is

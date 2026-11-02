@@ -848,6 +848,38 @@ typedef struct ams_mel_ir_camera_protect_result_v1 {
     ams_mel_ir_camera_protect_response_v1 response;
     ams_mel_error_code_t error_code;
 } ams_mel_ir_camera_protect_result_v1;
+
+/* IRMEL-ADA-005: complete optional CalibrationConfiguration. All spans are
+ * independent ordered collections. Strings are UTF-8 without NUL; counts and
+ * string sizes must fit INT32_MAX and checked pointer arithmetic. MaxExclusive
+ * (3) and unknown accepted-interface values are invalid provider data. */
+typedef struct ams_mel_ir_calibration_configuration_request ams_mel_ir_calibration_configuration_request;
+typedef struct ams_mel_ir_calibration_configuration_metadata ams_mel_ir_calibration_configuration_metadata;
+typedef struct ams_mel_ir_calibration_configuration_event ams_mel_ir_calibration_configuration_event;
+typedef uint32_t ams_mel_ir_calibration_interface_t;
+#define AMS_MEL_IR_CALIBRATION_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_CALIBRATION_COMMAND UINT32_C(1)
+#define AMS_MEL_IR_CALIBRATION_STATE_COMMAND UINT32_C(2)
+typedef struct ams_mel_ir_calibration_configuration_command_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_calibration_configuration_command_v1;
+typedef struct ams_mel_ir_subsystem_calibration_v1 {
+    ams_mel_uci_id_v1 calibration_id;
+    ams_mel_ir_calibration_interface_t accepted_interface;
+    ams_mel_string_view_span_v1 calibration_item_names;
+    ams_mel_uci_id_span_v1 subsystem_component_ids;
+    ams_mel_uci_id_span_v1 capability_ids;
+} ams_mel_ir_subsystem_calibration_v1;
+typedef struct ams_mel_ir_calibration_configuration_v1 {
+    const ams_mel_ir_subsystem_calibration_v1 *data;
+    size_t size;
+} ams_mel_ir_calibration_configuration_v1;
+typedef struct ams_mel_ir_calibration_configuration_result_v1 {
+    ams_mel_ir_calibration_configuration_v1 configuration;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_calibration_configuration_result_v1;
+
 typedef struct ams_mel_ir_image_band_v1 {
     uint32_t band_index;
     ams_mel_ir_band_info_span_v1 bands;
@@ -2331,6 +2363,58 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_close(
     ams_mel_ir_camera_response_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-005: submit requires Enabled, preserves both uint32 fields, and
+ * follows the existing Session admission/claim/single-worker architecture.
+ * Wait caches the terminal outcome; TIMEOUT and Close do not cancel. On OK,
+ * configuration (including empty) and all nested pointers remain valid until
+ * request Close; repeated Wait returns the same immutable view. On rejection
+ * only error_code and diagnostic are valid. Other failure categories match
+ * CameraProtect requests, including safe retention after post-send failure.
+ *
+ * Metadata Open is independent/opt-in, Attached or Enabled, one-shot even on
+ * failure; registration distinguishes NOT_SUPPORTED, FAIL and exceptions.
+ * Provider registration is unlocked and may deliver synchronously. One bounded
+ * DROP-INCOMING queue deep-copies each whole vector before callback return.
+ * Receive drains queued events before STOPPED/failure. Event views and every
+ * nested pointer remain valid until Event Close, independently of every other
+ * owner. Close cannot unregister; C2 teardown drains in-flight callbacks.
+ * Externally serialize operations on each public owner (Wait versus Close too).
+ */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_calibration_configuration(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_calibration_configuration_command_v1 *command,
+    ams_mel_ir_calibration_configuration_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_request_wait(
+    const ams_mel_ir_calibration_configuration_request *request, uint32_t timeout_ms,
+    ams_mel_ir_calibration_configuration_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_request_close(
+    ams_mel_ir_calibration_configuration_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_calibration_configuration_open(
+    ams_mel_ir_c2 *c2, size_t queue_capacity,
+    ams_mel_ir_calibration_configuration_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_receive(
+    ams_mel_ir_calibration_configuration_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_calibration_configuration_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_get_counters(
+    const ams_mel_ir_calibration_configuration_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_close(
+    ams_mel_ir_calibration_configuration_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_event_view(
+    const ams_mel_ir_calibration_configuration_event *event,
+    const ams_mel_ir_calibration_configuration_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_event_close(
+    ams_mel_ir_calibration_configuration_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* IRMEL-ADA-004 C2 CameraProtectCmd. Invokes only the pinned
