@@ -11,6 +11,7 @@
 #include <mutex>
 #include <chrono>
 #include <cstdio>
+#include <new>
 
 namespace ams_mel_test_completion {
 /* IRMEL-ADA-003 appends Camera (6), shared by the C2 and Image CameraCommand
@@ -26,14 +27,37 @@ struct Counters {
 };
 inline std::array<Counters, Count> counters{};
 inline std::array<std::atomic<std::uint64_t>, Count> owners_destroyed{};
-inline std::mutex observation_mutex;
-inline std::condition_variable observation_ready;
+/* IR-CAMERA-CI-002: process-lifetime observation synchronization. Detached
+ * completion workers of every family (FinalOwner, Worker, boundary) may still
+ * be locking or notifying while the process exits, after a test has observed
+ * owners_destroyed. These objects are constructed once in static storage of
+ * this library and never destroyed (no exit-time destructor is registered),
+ * so no worker can reach a destroyed object. They own no provider state and
+ * no heap memory; the storage is released only with the process image. */
+struct Observation {
+    std::mutex mutex;
+    std::condition_variable ready;
+    /* Only FinalOwner notifies these: worker/boundary/admission activity
+     * and other families cannot satisfy a strict notification wait. */
+    std::array<std::condition_variable, Count> owner_ready;
+};
+alignas(Observation) inline unsigned char observation_storage[sizeof(Observation)];
+inline Observation& observation = *::new (static_cast<void *>(observation_storage)) Observation;
+inline std::mutex& observation_mutex = observation.mutex;
+inline std::condition_variable& observation_ready = observation.ready;
 /* Per-thread evidence belongs to one healthy completion invocation. */
 inline thread_local unsigned safety_mask{};
 inline std::array<bool, Count> parked{};
 inline std::array<std::uint64_t, Count> consumed{};
 inline std::array<std::uint64_t, Count> graphs{};
 inline std::array<std::atomic<std::uint64_t>, Count> owners_created{};
+/* Guarded by observation_mutex. Advance only AFTER the dedicated FinalOwner
+ * notification returns, before unlocking. A woken waiter must reacquire this
+ * mutex and check its family generation: a spurious wake before notification
+ * cannot succeed. owners_destroyed still advances earlier and proves only
+ * graph/permit release, not notification return or worker quiescence. */
+inline std::array<std::uint64_t, Count> owner_notifications{};
+inline std::array<bool, Count> owner_waiter_armed{};
 inline void event(Family family, const char *name) noexcept
 {
     ams_mel_test_timeline::record(name, static_cast<int>(family));
@@ -111,7 +135,11 @@ struct FinalOwner {
         if (healthy_finished) event(family, "safe_owner_destroyed");
         event(family, "completion_owner_destroyed");
         owners_destroyed[family].fetch_add(1, std::memory_order_release);
-        { std::lock_guard lock{observation_mutex}; }
+        {
+            std::lock_guard lock{observation_mutex};
+            observation.owner_ready[family].notify_all();
+            ++owner_notifications[family];
+        }
         observation_ready.notify_all();
     }
 };

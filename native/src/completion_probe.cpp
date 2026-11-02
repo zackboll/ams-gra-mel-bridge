@@ -57,4 +57,51 @@ extern "C" __attribute__((visibility("default"))) int ams_mel_test_completion_ow
         std::memory_order_acquire);
     return ready ? 1 : 0;
 }
+
+/* IR-CAMERA-CI-002 FinalOwner notification handshake; *observed always
+ * receives owner_notifications[family].
+ * op 0: bounded wait until all created owners have returned from their
+ *       dedicated notification (not quiescence of the shared notification).
+ * op 1: strict wait. Arms the family's single waiter slot and fails if the
+ *       target is already reached (the waiter must block first). Success
+ *       requires a wake-up that returns before the deadline with the target
+ *       reached; a timeout fails even if the count arrived meanwhile.
+ *       Only FinalOwner notifies this family's dedicated condition variable.
+ *       Its generation advances after notify_all returns, under this mutex;
+ *       spurious wakes before that cannot succeed. No shared probe activity
+ *       or other family can wake this condition variable.
+ * op 2: bounded wait until op 1 is armed. Armed is set and the waiter blocks
+ *       under one hold of observation_mutex, so observing it proves the
+ *       waiter is blocked, or is re-checking after a non-qualifying wake-up. */
+extern "C" __attribute__((visibility("default"))) int ams_mel_test_completion_owner_notify(
+    unsigned family, unsigned operation, std::uint64_t target, std::uint64_t *observed) noexcept
+{
+    using namespace ams_mel_test_completion;
+    if (family >= Count || operation > 2U || !observed) return 0;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{15};
+    std::unique_lock lock{observation_mutex};
+    bool ready = false;
+    if (operation == 0U) {
+        ready = observation_ready.wait_until(lock, deadline, [=] {
+            return owner_notifications[family] == owners_created[family].load();
+        });
+    } else if (operation == 2U) {
+        ready = observation_ready.wait_until(lock, deadline,
+                                             [=] { return owner_waiter_armed[family]; });
+    } else if (!owner_waiter_armed[family] && owner_notifications[family] < target) {
+        owner_waiter_armed[family] = true;
+        observation_ready.notify_all();
+        ready = true;
+        while (owner_notifications[family] < target) {
+            if (observation.owner_ready[family].wait_until(lock, deadline) == std::cv_status::timeout ||
+                std::chrono::steady_clock::now() >= deadline) {
+                ready = false;
+                break;
+            }
+        }
+        owner_waiter_armed[family] = false;
+    }
+    *observed = owner_notifications[family];
+    return ready ? 1 : 0;
+}
 #endif
