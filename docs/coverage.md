@@ -23,6 +23,32 @@ Rust, providers and source policies are unchanged. No NUC, Image/Track/C2/RF
 metadata or out-of-scope placeholders. See
 [Python API, ownership, and six-family mapping](../python/README.md#ir-healthstatus-metadata-py-mel-005).
 
+## RUST-IR-003 — safe Image/Health NUC temperature reception
+
+Safe Rust now exposes independent `ImageStream::open_nuc` and
+`HealthStatusChannel::open_nuc` registrations returning the same unique,
+non-Send/non-Sync `NucStream`. `NucOpenError` preserves native status and an
+optional machine-readable provider Return (including NotSupported versus Fail
+versus an exception with no Return). Zero capacity does not consume registration;
+actual attempts are one-shot and never retried automatically.
+
+Event guards validate the outer record and complete point span, copy fallibly,
+and release native events before returning owned ordered `NucTempData`. Copies
+preserve signed nanoseconds, strict published band/point domains, meter limits,
+the original uint8/16/32 alternative and all Kelvin double bits. The private
+optional upstream `tempError` has no accessor and is not represented or inferred;
+TempPoint remains partial for that upstream reason. Ordinary Image/C2 metadata
+remain outside the safe Rust API; existing Health metadata is unchanged.
+
+Tests cover both mock-provider families, registration, synchronous delivery,
+counters, queue drain, parent/Session ownership, event errors/unwind and callback
+barriers through native teardown/unload. Private Rust-only injected Close
+operations make stream Drop observable without changing the ABI. All seven
+existing NUC exports are reused; native/raw bindings, Ada and Python are unchanged.
+This is mock/source qualification only, not IR hardware or Squall qualification.
+See `rust-ir-003-nuc-temperature.md` for commands, results, mutation evidence and
+the precise upstream and mock-provider limitations.
+
 ## DOC-CI-SIMPLIFY-001 — current-source documentation CI
 
 Normal documentation generation uses one current-Git export and regenerated
