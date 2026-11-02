@@ -30,10 +30,35 @@ class AbiTests(unittest.TestCase):
                          _native.AMS_MEL_IR_CALIBRATION_COMMAND,
                          _native.AMS_MEL_IR_CALIBRATION_STATE_COMMAND])
         self.assertEqual(actual, expected)
-        self.assertEqual(_native.ams_mel_ir_c2_submit_calibration_configuration.argtypes,
-                         [_native.IrC2Handle, ctypes.POINTER(_native.IrCalibrationConfigurationCommandV1),
-                          ctypes.POINTER(_native.IrCalibrationConfigurationRequestHandle),
-                          _native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+        request = _native.IrCalibrationConfigurationRequestHandle
+        metadata = _native.IrCalibrationConfigurationMetadataHandle
+        event = _native.IrCalibrationConfigurationEventHandle
+        pointer = ctypes.POINTER
+        signatures = {
+            "ams_mel_ir_c2_submit_calibration_configuration":
+                [_native.IrC2Handle, pointer(_native.IrCalibrationConfigurationCommandV1), pointer(request)],
+            "ams_mel_ir_calibration_configuration_request_wait":
+                [request, ctypes.c_uint32, pointer(_native.IrCalibrationConfigurationResultV1)],
+            "ams_mel_ir_calibration_configuration_request_close": [pointer(request)],
+            "ams_mel_ir_c2_calibration_configuration_open":
+                [_native.IrC2Handle, ctypes.c_size_t, pointer(metadata), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_calibration_configuration_receive":
+                [metadata, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_calibration_configuration_get_counters":
+                [metadata, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_calibration_configuration_close": [pointer(metadata)],
+            "ams_mel_ir_calibration_configuration_event_view":
+                [event, pointer(pointer(_native.IrCalibrationConfigurationV1))],
+            "ams_mel_ir_calibration_configuration_event_close": [pointer(event)],
+        }
+        self.assertEqual(len(signatures), 9)
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, _native.SizePointer]
+        for name, arguments in signatures.items():
+            with self.subTest(binding=name):
+                function = getattr(_native, name)
+                self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+                self.assertEqual(function.argtypes, arguments + diagnostic)
+                self.assertIs(function.restype, ctypes.c_int32)
 
     def test_private_product_rx_v5_abi(self) -> None:
         self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v5.argtypes,
