@@ -29,7 +29,11 @@
 //! fully Rust-owned [`HealthMetadataEvent`]s for all six HealthStatus metadata
 //! families (MFA Status, BIT Status, Subsystem Status, Discrete Status,
 //! Security Audit, MFA Status Detailed), plus [`HealthMetadataCounters`].
-//! Image and C2 ordinary metadata are not exposed by safe Rust.
+//! IR Image metadata (RUST-IR-004): [`ImageStream::open_metadata`] returns an
+//! independent [`ImageMetadataStream`] with fully owned [`ImageMetadataEvent`]s
+//! for BadPixelList, LineOfSightReport, LineOfSightEuler and NavigationReportResp.
+//! This covers the four currently C-bridged families, not every upstream Image
+//! callback. C2 ordinary metadata is not exposed by safe Rust.
 //!
 //! Optional Image/Health NUC_TempData (RUST-IR-003): [`ImageStream::open_nuc`]
 //! and [`HealthStatusChannel::open_nuc`] return the same [`NucStream`], copying
@@ -62,6 +66,7 @@ use ams_mel_sys as sys;
 
 mod ir_health;
 mod ir_health_metadata;
+mod ir_image_metadata;
 pub mod ir_nuc;
 mod rf_admin;
 mod rf_data;
@@ -76,6 +81,11 @@ pub use ir_health_metadata::{
     SecurityKeyManagementCategory, SecurityOutcome, SecuritySanitizationCategory, SecuritySeverity,
     SecuritySystemCategory, StateTransitionStatus, SubsystemDependency, SubsystemStatus,
     TemperatureState, TemperatureStatus,
+};
+pub use ir_image_metadata::{
+    AzimuthElevation, BadPixel, BadPixelList, BadPixelReason, ImageMetadataCounters,
+    ImageMetadataEvent, ImageMetadataStream, LineOfSightEuler, LineOfSightReport,
+    NavigationResponse,
 };
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
@@ -792,6 +802,28 @@ pub struct ImageStream {
 }
 
 impl ImageStream {
+    /// Registers BadPixelList, LineOfSightReport, LineOfSightEuler and
+    /// NavigationReportResp, in that order, into one native drop-incoming FIFO.
+    /// Valid while Attached or Running; prefer opening before Start to avoid
+    /// missing early events. Callbacks may deliver synchronously during Open.
+    ///
+    /// Capacity is independent of the frame queue. Zero is rejected without
+    /// consuming registration. Every actual attempt is one-shot, even failure;
+    /// partial failure returns no owner. This does not affect NUC registration.
+    /// A closed Image owner returns ProviderFailed before capacity validation.
+    pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<ImageMetadataStream, Error> {
+        if self.raw.is_null() {
+            return Err(Error::new(
+                ErrorKind::ProviderFailed,
+                "image stream is closed",
+            ));
+        }
+        ImageMetadataStream::open_with(queue_capacity, |out, d, c, r| {
+            // SAFETY: exclusively borrowed typed owner and writable output slots.
+            unsafe { sys::ams_mel_ir_image_metadata_open(self.raw, queue_capacity, out, d, c, r) }
+        })
+    }
+
     /// Registers the optional NUC callback independently of ordinary metadata.
     /// Zero capacity is rejected before registration; every actual attempt
     /// consumes the native one-shot, including failure. No automatic retries.
