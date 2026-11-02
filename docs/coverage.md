@@ -1,5 +1,63 @@
 # Implementation coverage
 
+## PY-MEL-006 — safe Python Image/Health optional NUC reception
+
+`ImageStream.open_nuc` and `HealthStatusChannel.open_nuc` return the same independent
+public `NucStream`. The shared `_nuc.py` owns registration, conversion, events and
+counters using exactly seven existing C functions; `_native.py`, production native
+ABI, Ada/Rust sources and provider mock are unchanged. Registration is opt-in,
+one-shot, synchronous-callback-safe, and independent of ordinary metadata. Its
+sentinel-initialized Return preserves NOT_SUPPORTED versus FAIL versus exceptions
+in `NucOpenError.registration`, without diagnostic parsing or implicit enable/start.
+
+Frozen owned values preserve ordered/duplicate/empty points, signed int64 timestamp
+nanoseconds (epoch unspecified), published band types and wavelength meters, exact
+uint8/16/32 pixel alternatives, Kelvin doubles including nonfinite/signed zero, and
+all three classifications. The inaccessible private upstream `tempError` remains
+unrepresented, so upstream TempPoint remains partial for that reason. Strict enum,
+width and span checks precede native storage release; cleanup never masks an earlier
+exception or retries an uncertain Close. Native retention governs provider lifetime;
+Python NUC owners retain no parent or Session. Data survives DSO unload.
+
+The bounded native FIFO remains DROP-INCOMING, with full uint64 counters. Callback
+allocation/copy failure rejects one event and increments malformed, **not** terminal
+Failed (unlike ordinary Health metadata). Image Stop and Health teardown remain
+distinct; queued events drain before STREAM_STOPPED or uncertain cleanup failure.
+Close is neither unregister nor callback quiescence; externally serialize each
+owner. No Python callbacks, threads or queues are introduced.
+
+`python/tests/test_ir_nuc.py` separately qualifies both families against unchanged
+compiled mock scenarios, hostile C boundary outputs, cleanup failures, owned-value
+lifetime and subprocess-isolated deterministic callback barriers. Previous Python
+Health metadata and package compatibility tests remain present. This is mock-only
+evidence, not Squall/hardware qualification. Final PY-MEL-006 qualification requires
+integration of PR #158; containing its reconciled head on a stacked feature branch
+does not satisfy that prerequisite. See
+[Python NUC API and seven-function mapping](../python/README.md#ir-imagehealth-nuc-temperature-metadata-py-mel-006).
+
+## PY-MEL-005 — complete safe Python IR Health/Status metadata
+
+`HealthStatusChannel.open_metadata` now uses only the six existing published C
+metadata functions. `HealthMetadataStream` independently owns public consumption
+of the one native bounded DROP-INCOMING queue. Frozen, typed events deeply copy
+all nested MFA, BIT, subsystem/CSCI, ordered Discrete, Security Audit (all seven
+alternatives with six distinct category domains), and ordered MFA Detailed
+payloads. Provider-reported counts, full-width IDs/counters, signed timestamps,
+Unicode, duplicate/empty pairs and native floating-point values are preserved.
+Native enums, strict Booleans, spans, text and inactive security fields are
+checked before returning a complete Python-owned graph. Registration remains
+one-shot and opt-in, does not enable Health or register NUC, and adds no Python
+callback/worker/queue. Parent-first closure and non-raising finalization follow
+native retention rules; Close is not unregister or callback quiescence.
+
+`python/tests/test_ir_health_metadata.py` qualifies the unchanged compiled mock
+and malformed C boundary injection, including public-wrapper finalization and
+subprocess-isolated deterministic callback barriers. Positive evidence is
+mock-only, not Squall or hardware qualification. Native ABI, `_native.py`, Ada,
+Rust, providers and source policies are unchanged. No NUC, Image/Track/C2/RF
+metadata or out-of-scope placeholders. See
+[Python API, ownership, and six-family mapping](../python/README.md#ir-healthstatus-metadata-py-mel-005).
+
 ## RUST-IR-003 — safe Image/Health NUC temperature reception
 
 Safe Rust now exposes independent `ImageStream::open_nuc` and
