@@ -50,7 +50,7 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_completion_owner_notify;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_rx_observer_from;\n        ams_mel_test_rf_rx_observer_from_last_registration;\n        ams_mel_test_rf_rx_observe;\n        ams_mel_test_rf_rx_waiters;\n        ams_mel_test_rf_rx_drain_waiters;\n        ams_mel_test_rf_rx_preset_counters;\n        ams_mel_test_rf_rx_observer_close;\n        ams_mel_test_rf_rx_failpoint;\n        ams_mel_test_rf_rx_negative_control;\n        ams_mel_test_rf_rx_hold_next;\n        ams_mel_test_rf_rx_permanent_registrations;\n        ams_mel_test_rf_rx_corrupt_view;\n        ams_mel_test_rf_rx_events_closed;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -938,6 +938,9 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_camera_command)
     add_test(NAME ir_camera_command_contract COMMAND test_ir_camera_command)
     set_tests_properties(ir_camera_command_contract PROPERTIES TIMEOUT 120)
+    # IR-CAMERA-CI-002: process exit while detached workers still notify.
+    add_test(NAME ir_camera_command_shutdown COMMAND test_ir_camera_command shutdown)
+    set_tests_properties(ir_camera_command_shutdown PROPERTIES TIMEOUT 30)
     foreach(family IN ITEMS c2 image)
         foreach(failure allocation worker-launch)
             add_test(NAME ir_camera_command_${family}_post_send_${failure}
