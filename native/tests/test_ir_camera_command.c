@@ -497,14 +497,26 @@ static int test_pending_close(int image, int stop_first)
     ams_mel_ir_camera_command_result_v1 result;
     const ams_mel_ir_camera_command_v1 c = command(0xabcU);
     uint64_t base, observed = 0;
+    uint64_t values[4] = {0};
+    size_t count = 0;
     void *pin;
+    /* Earlier Wait calls publish results before their detached workers drop
+     * the final owner. Drain every earlier Camera owner before recording this
+     * scenario: otherwise an unrelated teardown can satisfy base + 2. No other
+     * thread submits requests here, so created is a closed set to quiesce. */
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, values[2], &observed));
+    CHECK(observed == values[2]);
+    base = observed;
     CHECK(make_log(log) == EXIT_SUCCESS);
     CHECK(open_owner(image, "camera-held", 0, &o) == EXIT_SUCCESS);
     pin = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD);
     CHECK(pin != NULL);
-    base = owners_destroyed();
     CHECK(submit(image, &o, &c, &request, NULL, 0) == AMS_MEL_OK);
     CHECK(submit(image, &o, &c, &observer, NULL, 0) == AMS_MEL_OK);
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base + 2U && values[3] == base);
+    CHECK(request_count(image, &o, &count) && count == 2U);
     /* Public request Close before completion is not cancellation. */
     CHECK(ams_mel_ir_camera_command_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     if (image && stop_first) CHECK(ams_mel_ir_stream_stop(o.stream, NULL, 0, NULL) == AMS_MEL_OK);
@@ -517,6 +529,7 @@ static int test_pending_close(int image, int stop_first)
     CHECK(ams_mel_ir_camera_command_request_wait(observer, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(result.response.command_id == 0xabcU);
     CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 2U, &observed));
+    CHECK(observed == base + 2U);
     CHECK(occurrences(log, destroyed) == 1U);
     CHECK(ams_mel_ir_camera_command_request_close(&observer, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(dlclose(pin) == 0);
