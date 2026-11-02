@@ -52,16 +52,17 @@ std::atomic<std::uint64_t> buffers_outstanding{};
 struct C2SendBarrier {
     bool armed{}, entered{}, released{}, throws{};
 };
-/* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends. */
-C2SendBarrier c2_send_barriers[8];
-unsigned send_entries[8]{};
+/* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends;
+ * family 8 is the IRMEL-ADA-004 C2 CameraProtectCmd send. */
+C2SendBarrier c2_send_barriers[9];
+unsigned send_entries[9]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 8U || operation > 3U) return 0;
+    if (family >= 9U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -199,11 +200,12 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 
 /* Release a specified worker family in a controlled wave, without depending
  * on the order in which channels were submitted. 0..5 match the test probe;
- * 6/7 are the mock C2/Image CameraCommand sends (both probe family Camera). */
+ * 6/7 are the mock C2/Image CameraCommand sends (both probe family Camera);
+ * 8 is the mock C2 CameraProtectCmd send (probe family CameraProtect). */
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 8U) return 0;
+    if (family >= 9U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -1357,6 +1359,160 @@ private:
     CameraCallback callback_;
 };
 
+/* IRMEL-ADA-004 deterministic C2 CameraProtectCmd / CameraProtectCmdResp
+ * fixture (send family 8). Scenarios not named "protect-*" model a provider
+ * without camera self-protection: send completes with MEL Unsupported and the
+ * C2 callback answers NotSupported, exactly as before this task. Every
+ * delivered command is recorded so tests can prove complete field fidelity. */
+using ProtectCallback =
+    std::function<void(irmel::Channel&, const irmel::CameraProtectCmdResp *const)>;
+std::mutex protect_mutex;
+std::uint64_t protect_last[3]{};
+bool protect_seen{};
+unsigned protect_sends{};
+
+extern "C" __attribute__((visibility("default"))) int mock_camera_protect_last_command(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{protect_mutex};
+    if (sends) *sends = protect_sends;
+    if (!protect_seen) return 0;
+    if (values) std::copy(std::begin(protect_last), std::end(protect_last), values);
+    return 1;
+}
+
+irmel::CameraProtectCmdResp protect_response(std::uint32_t id, std::int64_t ns,
+                                             std::uint32_t response)
+{
+    irmel::CameraProtectCmdResp value;
+    value.setCommandID(id);
+    value.setResponseTime(std::chrono::nanoseconds{ns});
+    value.setCommandResponse(static_cast<irmel::CmdResp>(response));
+    return value;
+}
+
+class MockCameraProtect {
+public:
+    mel::RequestFor<irmel::CameraProtectCmdResp> send(const std::string& scenario,
+                                                      irmel::Channel& channel,
+                                                      const irmel::CameraProtectCmd& command)
+    {
+        c2_send_boundary(8U);
+        record("c2_camera_protect_sent");
+        {
+            std::lock_guard lock{protect_mutex};
+            protect_last[0] = command.getCommandID();
+            protect_last[1] = static_cast<std::uint64_t>(command.getResponseTime().count());
+            protect_last[2] = command.getProtectFlag() ? 1U : 0U;
+            protect_seen = true;
+            ++protect_sends;
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CameraProtectCmdResp>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("protect-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
+        if (scenario == "protect-send-throw") throw std::runtime_error("mock camera protect send exception");
+        if (scenario == "protect-invalid-future") return {};
+        /* Echo commandID and responseTime; CmdResp selected by the scenario. */
+        std::uint32_t response = 0U;
+        if (scenario == "protect-unavailable") response = 1U;
+        else if (scenario == "protect-unsupported") response = 2U;
+        else if (scenario == "protect-unknown-response") response = 3U;
+        auto value = std::make_shared<irmel::CameraProtectCmdResp>(protect_response(
+            command.getCommandID(), command.getResponseTime().count(), response));
+        if (scenario == "protect-held") return held_request(std::move(value), 8U);
+        if (scenario == "protect-sync" && callback_) {
+            /* Synchronous metadata delivery from inside send, before return. */
+            record("protect_sync_callback_entered");
+            auto event = protect_response(command.getCommandID(), -77, 1U);
+            callback_(channel, &event);
+            record("protect_sync_callback_returned");
+        }
+        if (scenario == "protect-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "camera protect rejected"}});
+        else if (scenario == "protect-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario == "protect-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "protect-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CameraProtectCmdResp>{}});
+        else if (scenario == "protect-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock camera protect future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             ProtectCallback callback)
+    {
+        if (scenario.rfind("protect-", 0U) != 0U) return Return::NotSupported;
+        record("protect_registration_attempted");
+        callback_ = std::move(callback);
+        if (scenario == "protect-register-throw")
+            throw std::runtime_error("CameraProtectCmdResp registration exception");
+        if (scenario == "protect-register-fail") {
+            auto value = protect_response(5U, 5, 0U); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "protect-callback-rich" || scenario == "protect-late") {
+            /* All three alternatives, unsigned/signed boundaries, arrival order. */
+            auto first = protect_response(1U, std::numeric_limits<std::int64_t>::min(), 0U);
+            auto second = protect_response(0xffffffffU, std::numeric_limits<std::int64_t>::max(), 1U);
+            auto third = protect_response(0U, -1, 2U);
+            callback_(channel, &first); callback_(channel, &second); callback_(channel, &third);
+        } else if (scenario == "protect-callback-malformed") {
+            callback_(channel, nullptr);
+            auto unknown = protect_response(8U, 8, 3U); callback_(channel, &unknown);
+            auto maximum = protect_response(8U, 8, 0xffffffffU); callback_(channel, &maximum);
+            auto valid = protect_response(9U, 9, 2U); callback_(channel, &valid);
+        } else if (scenario == "protect-callback-overflow") {
+            for (std::uint32_t i = 0; i < 5U; ++i) {
+                auto value = protect_response(i, i, i % 3U); callback_(channel, &value);
+            }
+        } else if (scenario == "protect-callback-allocation") {
+            auto failed = protect_response(1U, 1, 0U); callback_(channel, &failed);
+            auto valid = protect_response(2U, 2, 1U); callback_(channel, &valid);
+        } else if (scenario == "protect-in-flight") {
+            producer_ = std::thread{[this, &channel] {
+                const char *base = std::getenv("AMS_MEL_TEST_CAMERA_PROTECT_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                record("protect_callback_entered");
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+                auto value = protect_response(12U, 12, 1U); callback_(channel, &value);
+                record("protect_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
+
+    /* From the owning C2 channel destructor: after the bridge owners closed. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if ((scenario == "protect-late" || scenario == "protect-register-fail") && callback_) {
+            record("late_protect_callback_invoked");
+            auto value = protect_response(11U, 11, 2U); callback_(channel, &value);
+            record("late_protect_callback_returned");
+        }
+        if (scenario == "protect-in-flight") {
+            const char *base = std::getenv("AMS_MEL_TEST_CAMERA_PROTECT_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
+        if (producer_.joinable()) producer_.join();
+    }
+
+private:
+    ProtectCallback callback_;
+    std::thread producer_;
+};
+
 #define UNSUPPORTED_CALLBACK(Type) \
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
     { return Return::NotSupported; }
@@ -2232,6 +2388,7 @@ public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
     {
+        protect_.finish(*this, scenario_);
         if (scenario_ == "comms-register-retain-fail" && comms_callback_) {
             irmel::ChannelCommsTestRep report{91U, 92U};
             record("retained_comms_callback_invoked");
@@ -2385,8 +2542,12 @@ public:
             throw std::logic_error("CameraCommand sent before C2 enable");
         return camera_.send(scenario_, 6U, *this, command);
     }
-    mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd) override
-    { return unsupported_request<irmel::CameraProtectCmdResp>(); }
+    mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd command) override
+    {
+        if (!enabled_ && scenario_.rfind("protect-", 0U) == 0U)
+            throw std::logic_error("CameraProtectCmd sent before C2 enable");
+        return protect_.send(scenario_, *this, command);
+    }
     mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand) override
     { return unsupported_request<irmel::EraseCommandType>(); }
     mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
@@ -2621,7 +2782,9 @@ public:
         return Return::Success;
     }
     C2_UNSUPPORTED_CALLBACK(mel::CalibrationConfiguration)
-    C2_UNSUPPORTED_CALLBACK(irmel::CameraProtectCmdResp)
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::CameraProtectCmdResp *const)> callback) override
+    { return protect_.register_callback(scenario_, *this, std::move(callback)); }
     C2_UNSUPPORTED_CALLBACK(mel::CalibrationStatus)
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const mel::BIT_Status *const)> callback) override
     {
@@ -2665,6 +2828,7 @@ private:
     mutable unsigned capability_calls_{};
     /* No C2 CameraCommandResp callback exists upstream; never fabricated. */
     MockCamera camera_;
+    MockCameraProtect protect_;
 };
 #undef C2_UNSUPPORTED_CALLBACK
 
