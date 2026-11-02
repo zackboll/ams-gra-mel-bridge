@@ -1155,6 +1155,33 @@ pub struct AmsMelIrCameraCommandResultV1 {
     pub response: AmsMelIrCameraCommandResponseV1,
     pub error_code: u32,
 }
+/// IRMEL-ADA-004: pinned CmdResp alternatives (raw mirror; no safe Rust API yet).
+pub type AmsMelIrCameraProtectStatus = u32;
+pub const AMS_MEL_IR_CAMERA_PROTECT_OK: AmsMelIrCameraProtectStatus = 0;
+pub const AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE: AmsMelIrCameraProtectStatus = 1;
+pub const AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED: AmsMelIrCameraProtectStatus = 2;
+/// IRMEL-ADA-004: every CameraProtectCmd field; protect_flag is 0 or 1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraProtectCommandV1 {
+    pub command_id: u32,
+    pub response_time_ns: i64,
+    pub protect_flag: u32,
+}
+/// IRMEL-ADA-004: every CameraProtectCmdResp field.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraProtectResponseV1 {
+    pub command_id: u32,
+    pub response_time_ns: i64,
+    pub command_response: AmsMelIrCameraProtectStatus,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCameraProtectResultV1 {
+    pub response: AmsMelIrCameraProtectResponseV1,
+    pub error_code: u32,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrImageBandV1 {
@@ -1924,6 +1951,24 @@ pub struct AmsMelIrCameraResponseMetadata {
 /// IRMEL-ADA-003: opaque copied CameraCommandResp event.
 #[repr(C)]
 pub struct AmsMelIrCameraResponseEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-004: opaque asynchronous C2 CameraProtectCmd request.
+#[repr(C)]
+pub struct AmsMelIrCameraProtectRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-004: opaque opt-in C2 CameraProtectCmdResp owner.
+#[repr(C)]
+pub struct AmsMelIrCameraProtectMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-004: opaque copied CameraProtectCmdResp event.
+#[repr(C)]
+pub struct AmsMelIrCameraProtectEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3287,6 +3332,71 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_camera_response_event_close(
         event: *mut *mut AmsMelIrCameraResponseEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_camera_protect(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrCameraProtectCommandV1,
+        out: *mut *mut AmsMelIrCameraProtectRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_request_wait(
+        request: *const AmsMelIrCameraProtectRequest,
+        timeout_ms: u32,
+        out: *mut AmsMelIrCameraProtectResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_request_close(
+        request: *mut *mut AmsMelIrCameraProtectRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_camera_protect_open(
+        c2: *mut AmsMelIrC2,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrCameraProtectMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_receive(
+        metadata: *mut AmsMelIrCameraProtectMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrCameraProtectEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_get_counters(
+        metadata: *const AmsMelIrCameraProtectMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_close(
+        metadata: *mut *mut AmsMelIrCameraProtectMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_event_view(
+        event: *const AmsMelIrCameraProtectEvent,
+        out: *mut *const AmsMelIrCameraProtectResponseV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_camera_protect_event_close(
+        event: *mut *mut AmsMelIrCameraProtectEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 239);
-    assert_eq!(exported.len(), 239);
+    assert_eq!(declared.len(), 248);
+    assert_eq!(exported.len(), 248);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3392,6 +3392,31 @@ fn declarations_match_the_c_header() {
     expected.extend([
         AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ as usize,
         AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelIrCameraProtectCommandV1,
+        command_id,
+        response_time_ns,
+        protect_flag
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraProtectResponseV1,
+        command_id,
+        response_time_ns,
+        command_response
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraProtectResultV1,
+        response,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_CAMERA_PROTECT_OK as usize,
+        AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE as usize,
+        AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED as usize,
     ]);
     expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
