@@ -26,7 +26,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | API_Manager | 0 | 0 | 0 | 0 | 1 |
 | BaseSecurityEventType | 0 | 0 | 0 | 0 | 1 |
 | Buffer | 0 | 0 | 4 | 0 | 6 |
-| C2Channel | 7 | 0 | 0 | 8 | 1 |
+| C2Channel | 9 | 0 | 0 | 6 | 1 |
 | Channel | 3 | 0 | 4 | 1 | 1 |
 | Control | 2 | 0 | 3 | 0 | 1 |
 | EnumUtilities | 0 | 0 | 0 | 0 | 23 |
@@ -55,7 +55,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 
 ## Outgoing commands/requests
 
-21 unique declarations; 11 safe Ada; 0 partial; 0 native only; 10 missing.
+21 unique declarations; 12 safe Ada; 0 partial; 0 native only; 9 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
@@ -65,7 +65,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | C2Channel | `send(CalibrationConfigurationCmd)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | C2Channel | `send(CalibrationStatusCmd)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | C2Channel | `send(CameraCommand)` | safe_ada | Enabled-only C2Channel::send(CameraCommand) through the shared camera completion engine: lifetime claim under the C2 lock, unlocked provider send, Session admission, deferred C2 teardown on pending Close, cached Wait; all 11 fields exact; CommandSuccess=false is a successful response distinct from MEL rejection. |
-| C2Channel | `send(CameraProtectCmd)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| C2Channel | `send(CameraProtectCmd)` | safe_ada | Enabled-only C2Channel::send(CameraProtectCmd) through the established request architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock, unlocked provider send, single completion worker, deferred C2 teardown on pending Close, allocation-free post-send retention, cached Wait; all three command fields exact (invalid protect_flag rejected before send); every CmdResp alternative is a successful response distinct from MEL rejection. |
 | C2Channel | `send(ConfigSetCommand)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
 | C2Channel | `send(EraseCommand)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | C2Channel | `send(ModeCmd)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
@@ -85,13 +85,13 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 
 ## Metadata registration overloads
 
-38 unique declarations; 21 safe Ada; 1 partial; 0 native only; 16 missing.
+38 unique declarations; 22 safe Ada; 1 partial; 0 native only; 15 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
 | Interface | Overload | Status | Qualification |
 |---|---|---|---|
-| C2Channel | `registerMetadataCallback(std::function<void(Channel&,const CameraProtectCmdResp*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| C2Channel | `registerMetadataCallback(std::function<void(Channel&,const CameraProtectCmdResp*const)>)` | safe_ada | Opt-in C2 CameraProtectCmdResp owner, never registered by the base C2 metadata Open; one shot per C2 channel, NotSupported/Fail/exception distinct, synchronous delivery safe, complete copy before callback return, bounded drop-incoming queue, null/unknown CmdResp counted malformed, in-flight callbacks drained at C2 physical release, no upstream unregister; independent of request futures. |
 | C2Channel | `registerMetadataCallback(std::function<void(Channel&,const CommandStatus*const)>)` | safe_ada | Complete owned CommandStatus event on C2Channel; bounded queue, no upstream unregister, provider callbacks retained safely. |
 | C2Channel | `registerMetadataCallback(std::function<void(Channel&,const ams::iface::mel::BIT_Configuration*const)>)` | safe_ada | Complete owned BIT_Configuration event on C2Channel; bounded queue, no upstream unregister, provider callbacks retained safely. |
 | C2Channel | `registerMetadataCallback(std::function<void(Channel&,const ams::iface::mel::BIT_Status*const)>)` | safe_ada | Complete owned BIT_Status event on C2Channel; bounded queue, no upstream unregister, provider callbacks retained safely. |
@@ -260,8 +260,8 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::CalibrationStatusCmd` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
 | `ams::iface::irmel::CameraCommand` | safe_ada | All 11 fields in ams_mel_ir_camera_command_v1 and the shared Ada AMS.MEL.IR.Camera.Camera_Command: unsigned 32-bit ID/width/height/frame rate/offsets/stages, signed-nanosecond system and integration times, exact Staring/Scanning and both ScanDir values. Reserved13 and unknown discriminators are rejected before send, not treated as modes; no physical limits or normalization. CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence. |
 | `ams::iface::irmel::CameraCommandResp` | safe_ada | All four fields in ams_mel_ir_camera_command_response_v1 and Ada Camera_Command_Response (unsigned 32-bit ID and size, signed-nanosecond timestamp, Boolean CommandSuccess), shared by both request results and the Image callback; CommandSuccess=false stays a successful response. CameraCommand is @RequiredIfCameraCtrl upstream: providers without programmable camera control reject with MEL Unsupported (an explicit Rejected result) and the Image CameraCommandResp owner raises AMS.MEL.IR.Camera.Not_Supported; existing Image/C2 APIs are unaffected. Mock-qualified only; no physical IR camera or Squall evidence. |
-| `ams::iface::irmel::CameraProtectCmd` | missing | Missing command ID, response time and protection flag; no C2 send.  |
-| `ams::iface::irmel::CameraProtectCmdResp` | missing | Missing response ID/time/command-response alternative and C2 callback.  |
+| `ams::iface::irmel::CameraProtectCmd` | safe_ada | All three fields in ams_mel_ir_camera_protect_command_v1 and Ada Camera_Protection.Protection_Command: unsigned 32-bit ID, signed-nanosecond response time passed unconverted, Boolean ProtectFlag as exactly 0/1 (other C values rejected with INVALID_ARGUMENT before any provider call). CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence. |
+| `ams::iface::irmel::CameraProtectCmdResp` | safe_ada | All three fields in ams_mel_ir_camera_protect_response_v1 and Ada Camera_Protection.Protection_Response (unsigned 32-bit ID, signed-nanosecond response time, exact CmdResp alternative), shared by the request result and the C2 callback. CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence. |
 | `ams::iface::irmel::CandidateObject` | safe_ada | Complete Track representations: ordered candidates/hot regions, reported counts, header validity/CFAR/time, per-candidate fields and preproc signed 3-by-3 background array, clutter/quality/SIR delta/edge/sigmas/normalizer plus inertial state. Does not implement Image registrations. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CandidateObjectHeader` | safe_ada | Complete Track representations: ordered candidates/hot regions, reported counts, header validity/CFAR/time, per-candidate fields and preproc signed 3-by-3 background array, clutter/quality/SIR delta/edge/sigmas/normalizer plus inertial state. Does not implement Image registrations. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CandidateObjectMessage` | safe_ada | Complete Track representations: ordered candidates/hot regions, reported counts, header validity/CFAR/time, per-candidate fields and preproc signed 3-by-3 background array, clutter/quality/SIR delta/edge/sigmas/normalizer plus inertial state. Does not implement Image registrations. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
@@ -275,7 +275,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::ChannelCommsTestReq` | safe_ada | Command, channel and request correlation IDs retained; asynchronous error/result distinct from callback availability. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::ChannelMetadataCapabilityType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::ChannelType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
-| `ams::iface::irmel::CmdResp` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
+| `ams::iface::irmel::CmdResp` | safe_ada | All three pinned alternatives as AMS_MEL_IR_CAMERA_PROTECT_OK/UNAVAILABLE/UNSUPPORTED (0/1/2, static_assert-checked against the upstream enum) and Ada Camera_Protection.Protection_Status; unknown provider values are reported as PROVIDER_FAILED (request) or counted malformed (callback), never remapped.  |
 | `ams::iface::irmel::CommandState` | safe_ada | All command ID/state/reason/description fields represented, including all forty-seven CannotComply alternatives; no status semantics inferred from names. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CommandStatus` | safe_ada | All command ID/state/reason/description fields represented, including all forty-seven CannotComply alternatives; no status semantics inferred from names. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::Config` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
@@ -429,7 +429,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 ## Provider qualifications and count derivation
 
 - Verified upstream Git commit/tree objects fetched from the two authoritative repositories; main has not advanced from the supplied reference base. Frozen objects and licenses are audit evidence, not extra native vendor inputs.
-- Source-derived totals confirm 21 outgoing overloads, 11 currently accessible via safe Ada, and 38 metadata registrations, 22 with working paths. The common ChannelCommsTestRep registration is partial overall: C2-only, unlike common outgoing requests across five families. Thus metadata has 21 fully classified safe_ada plus one partial registration with a working C2 path.
+- Source-derived totals confirm 21 outgoing overloads, 12 currently accessible via safe Ada, and 38 metadata registrations, 23 with working paths. The common ChannelCommsTestRep registration is partial overall: C2-only, unlike common outgoing requests across five families. Thus metadata has 22 fully classified safe_ada plus one partial registration with a working C2 path.
 - Unique totals count inherited Channel declarations once; all 56 inherited family exposures are separately classified. Counting inherited outgoing sends repeatedly would inflate the hypothesis totals.
 - Pinned Squall does not positively qualify Track or Instrumentation; rich field/lifetime behavior is mock-qualified. RequiredIf and Optional are upstream declarations, not provider capability promises.
 - The pinned surface is a declaration audit, not normative PDF conformance certification. Upstream inconsistent prose (for example Optional SystemTrackDataResponse wording) is retained as exact tags, not silently reinterpreted.
@@ -438,14 +438,14 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - The checker proves catalog completeness against pinned bytes and validates reviewed source evidence, not C++ semantic correctness or runtime provider conformance. Native/Ada tests remain required. Extraction is limited to the frozen source dialect with explicit tested exceptions documented in the schema.
 - IRMEL-ADA-002 adds opt-in Image and Health NUC_TempData owners. TempPoint stays partial solely because the pinned private tempError has no public accessor; it is neither read nor inferred.
 - IRMEL-ADA-003 implements both independent CameraCommand sends (C2 Enabled, Image Attached/Running) and the opt-in Image CameraCommandResp owner. No C2 CameraCommandResp callback exists upstream and none is fabricated; the Image callback never completes a request future.
+- IRMEL-ADA-004 implements C2Channel::send(CameraProtectCmd) (Enabled only) and the opt-in C2 CameraProtectCmdResp owner. All three CmdResp alternatives are successful responses, kept distinct from MEL rejection, registration NotSupported, registration failure and provider exceptions; the callback never completes a request future.
 
 ## Recommended implementation order
 
-1. C2 camera-protection command/response and callback with complete response alternatives.
-2. C2 calibration configuration request/callback and complete SubsystemCalibration vector.
-3. C2 calibration status request/callback and complete active/completed calibration collections.
-4. C2 EraseCommand and typed EraseCommandType result; no speculative commands.
-5. Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.
-6. Image OpticalDistortionMap and LineOfSightQuaternion callbacks with complete collections.
-7. Scheduling owner, five sends/execs and six callback families as successive vertical slices.
-8. LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices.
+1. C2 calibration configuration request/callback and complete SubsystemCalibration vector.
+2. C2 calibration status request/callback and complete active/completed calibration collections.
+3. C2 EraseCommand and typed EraseCommandType result; no speculative commands.
+4. Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.
+5. Image OpticalDistortionMap and LineOfSightQuaternion callbacks with complete collections.
+6. Scheduling owner, five sends/execs and six callback families as successive vertical slices.
+7. LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices.

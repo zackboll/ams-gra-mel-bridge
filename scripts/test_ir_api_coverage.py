@@ -84,9 +84,46 @@ class CoverageTests(unittest.TestCase):
         self.reject("coverage entry schema")
 
     def test_fake_safe_ada_complete(self):
-        # IRMEL-ADA-003 implemented CameraCommand; CameraProtectCmd remains missing.
-        self.operation("C2Channel", "send(CameraProtectCmd)")["status"] = "safe_ada"
+        # IRMEL-ADA-004 implemented CameraProtectCmd; EraseCommand remains missing.
+        self.operation("C2Channel", "send(EraseCommand)")["status"] = "safe_ada"
         self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_camera_protection_slice_is_exact(self):
+        # IRMEL-ADA-004: exactly the C2 send and the C2 CameraProtectCmdResp callback,
+        # with all three command/response fields and all three CmdResp alternatives.
+        send = self.operation("C2Channel", "send(CameraProtectCmd)")
+        callback = self.operation("C2Channel", "const CameraProtectCmdResp*const")
+        for entry in (send, callback):
+            self.assertEqual(entry["status"], "safe_ada")
+            self.assertIn({"path": "native/tests/test_ir_camera_protect.c", "symbol": "main"},
+                          entry["tests"])
+            self.assertIn({"path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+                           "symbol": "Run"}, entry["tests"])
+        self.assertEqual(send["native"][0]["symbol"], "ams_mel_ir_c2_submit_camera_protect")
+        self.assertEqual(callback["native"][0]["symbol"], "ams_mel_ir_c2_camera_protect_open")
+        types = {e["id"].split(":type:")[1]: e for e in self.coverage["types"]}
+        for name in ("CameraProtectCmd", "CameraProtectCmdResp", "CmdResp"):
+            self.assertEqual(types["ams::iface::irmel::" + name]["status"], "safe_ada")
+        for name, getters in (("CameraProtectCmd", ["getCommandID", "getResponseTime", "getProtectFlag"]),
+                              ("CameraProtectCmdResp", ["getCommandID", "getResponseTime",
+                                                        "getCommandResponse"])):
+            entry = types["ams::iface::irmel::" + name]
+            self.assertEqual([f["upstream"] for f in entry["representation"]], getters)
+            self.assertTrue(all(f["status"] == "represented" for f in entry["representation"]))
+        enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
+        alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
+        self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 39)
+
+    def test_camera_protection_callback_needs_evidence(self):
+        callback = self.operation("C2Channel", "const CameraProtectCmdResp*const")
+        callback["ada"][1]["symbol"] = "Receive_Fictitious_Protection"
+        self.reject("missing ada symbol")
+
+    def test_camera_protection_needs_c_and_ada_tests(self):
+        send = self.operation("C2Channel", "send(CameraProtectCmd)")
+        send["tests"] = [t for t in send["tests"] if not t["path"].endswith(".c")]
+        self.reject("safe Ada claim lacks C/Ada tests")
 
     def test_camera_command_slice_is_exact(self):
         # IRMEL-ADA-003: exactly the two independent sends and the Image callback;
