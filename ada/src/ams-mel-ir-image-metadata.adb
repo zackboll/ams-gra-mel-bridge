@@ -3,6 +3,7 @@ with Interfaces.C;
 with System;
 with System.Storage_Elements;
 with AMS.MEL.IR.NUC_Conversion;
+with AMS.MEL.IR.Camera_Conversion;
 
 package body AMS.MEL.IR.Image.Metadata is
    package C renames AMS.MEL_C_API;
@@ -300,5 +301,118 @@ package body AMS.MEL.IR.Image.Metadata is
    exception
       when others =>
          Stream.Handle := C.Null_NUC_Metadata;
+   end Finalize;
+   type Camera_View_Access is access all C.IR_Camera_Command_Response_V1;
+   function To_Camera_View is new Ada.Unchecked_Conversion (System.Address, Camera_View_Access);
+   use type C.Camera_Response_Metadata_Handle;
+   Not_Supported_Return : constant Interfaces.Unsigned_32 := 3;
+
+   function Open_Camera_Response
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive) return Camera_Response_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Camera_Response_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Image_Camera_Response_Open
+                (Stream.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Success then
+               null;
+            elsif Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise AMS.MEL.IR.Camera.Not_Supported with Message (D);
+            else
+               raise Provider_Error with Message (D);
+            end if;
+         end;
+      end return;
+   end Open_Camera_Response;
+
+   function Receive_Camera_Response
+     (Stream : Camera_Response_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Camera.Camera_Command_Response
+   is
+      Event   : aliased C.Camera_Response_Event_Handle := C.Null_Camera_Response_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.IR_Camera_Response_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Camera_Response_Metadata then
+         raise Provider_Error with "CameraCommandResp metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Camera_Response_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      begin
+         Check
+           (C.IR_Camera_Response_Event_View (Event, Address'Access, D'Address, D'Length, R'Access),
+            D);
+         declare
+            Result : constant AMS.MEL.IR.Camera.Camera_Command_Response :=
+              Camera_Conversion.To_Response (To_Camera_View (Address).all);
+         begin
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Receive_Camera_Response;
+
+   function Camera_Response_Counters (Stream : Camera_Response_Stream) return Metadata_Counters is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      if Stream.Handle = C.Null_Camera_Response_Metadata then
+         raise Provider_Error with "CameraCommandResp metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Camera_Response_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access),
+         D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Camera_Response_Counters;
+
+   procedure Close (Stream : in out Camera_Response_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.IR_Camera_Response_Close (Stream.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Camera_Response_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_Camera_Response_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Camera_Response_Metadata;
    end Finalize;
 end AMS.MEL.IR.Image.Metadata;

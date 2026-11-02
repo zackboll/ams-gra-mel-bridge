@@ -1,4 +1,5 @@
 with Ada.Unchecked_Conversion;
+with AMS.MEL.IR.Camera_Conversion;
 with AMS.MEL.IR.Capability_Conversion;
 with Interfaces.C;
 with System.Storage_Elements;
@@ -608,6 +609,30 @@ package body AMS.MEL.IR.Image is
          raise Provider_Error with Message (D);
       end if;
    end Wait;
+
+   function Submit_Camera_Command
+     (Object : AMS.MEL.IR.Image_Stream; Command : AMS.MEL.IR.Camera.Camera_Command)
+      return AMS.MEL.IR.Camera.Camera_Request
+   is
+      Raw : aliased C.IR_Camera_Command_V1 := Camera_Conversion.To_Raw (Command);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      return Result : AMS.MEL.IR.Camera.Camera_Request do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Stream_Submit_Camera_Command
+                (Object.Handle,
+                 Raw'Access,
+                 Camera_Request_Owner (Result).Handle'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            Check (Code, D);
+         end;
+      end return;
+   end Submit_Camera_Command;
 
    procedure Close (Request : in out Navigation_Request) is
       Ignored : Interfaces.Integer_32;

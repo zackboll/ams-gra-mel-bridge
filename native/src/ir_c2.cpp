@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
 #include "internal/completion_probe.hpp"
+#include "internal/ir_camera_command.hpp"
 
 #include <irmel/library/c2/C2Channel.h>
 
@@ -1166,6 +1167,44 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_mode(
         diagnostic("ModeCmd preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;
     }
+}
+
+/* IRMEL-ADA-003: C2Channel::send(CameraCommand) through the shared camera
+ * completion engine. Same lifecycle rule as ModeCmd (Enabled only), the same
+ * lock-linearized claim and the same erased deferred-cleanup finish as the
+ * other C2 requests; provider send runs unlocked. */
+namespace {
+const ams_mel_camera::CameraFamily c2_camera_family{
+    [](const void *context) noexcept {
+        return static_cast<const ams_mel_ir_c2 *>(context)->state->session->admission;
+    },
+    [](const void *context, std::shared_ptr<void>& channel, CommonRequestClaim& claim) {
+        const auto& state = static_cast<const ams_mel_ir_c2 *>(context)->state;
+        std::shared_ptr<irmel::C2Channel> c2;
+        if (!claim_c2_submission(state, SubmissionRequirement::Enabled, c2)) return false;
+        claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+        channel = std::move(c2);
+        return true;
+    },
+    [](const std::shared_ptr<void>& channel, irmel::CameraCommand command) {
+        /* C2Channel::send(CameraCommand); never routed through Image. */
+        return std::static_pointer_cast<irmel::C2Channel>(channel)->send(std::move(command));
+    },
+    "C2 channel is not enabled"};
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_camera_command(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_camera_command_v1 *command,
+    ams_mel_ir_camera_command_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state) {
+        diagnostic("invalid CameraCommand input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    return ams_mel_camera::submit(c2_camera_family, c2, command, out_request, out, capacity,
+                                  required);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_mode_request_wait(
