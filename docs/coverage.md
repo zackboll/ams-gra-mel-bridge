@@ -1234,3 +1234,16 @@ source, native ABI, provider behavior, or vendored header. Run
 
 Implementation and verification are different. See `bootstrap-validation.md`
 for the commands actually executed when this starter archive was prepared.
+
+## IR-CAMERA-CI-002 — test-only completion-probe shutdown
+
+The shared completion-probe synchronization has process lifetime in aligned
+static storage, without an exit-time destructor or heap allocation. All probe
+families inherit the fix; no production ownership, timeout, admission or ABI
+behavior changes. The compiled-C CameraCommand shutdown regression arms a
+strict per-family notification waiter before releasing held C2/Image futures.
+Its dedicated condition variable excludes unrelated worker/family wakeups and
+its deadline cannot be satisfied by a predicate observed only at timeout.
+PR #161's lifecycle and admission checks remain intact. See
+`ir-camera-ci-002-tsan-shutdown.md` for actual sanitizer results, negative
+controls, lifetime proof and broader TSan qualification limitations.
