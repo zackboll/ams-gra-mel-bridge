@@ -1,7 +1,10 @@
+with AMS.MEL.IR.Calibration_Configuration;
+with AMS.MEL.IR.Calibration_Status;
 private with Ada.Containers.Vectors;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 private with AMS.MEL_C_API;
+with AMS.MEL.IR.Camera_Protection;
 with AMS.MEL.IR.Channel;
 
 package AMS.MEL.IR.C2.Metadata is
@@ -566,6 +569,153 @@ package AMS.MEL.IR.C2.Metadata is
    --  provider error. Serialize against all operations on this same stream.
    --  @param Stream Metadata consumer to close, leaving copied events valid.
 
+   type Camera_Protection_Stream is limited private;
+   --  Limited opt-in owner of C2Channel CameraProtectCmdResp reception (@RequiredIfCameraProtect),
+   --  independent of Open, its Metadata_Stream and every CameraProtectCmd request. Open never
+   --  registers this callback, so providers without camera self-protection keep every existing C2
+   --  operation unchanged. Explicit Close is preferred; finalization attempts non-raising cleanup.
+   --  Serialize operations on the same owner.
+   function Open_Camera_Protection
+     (Channel : Control_Channel; Queue_Capacity : Positive := 16) return Camera_Protection_Stream;
+   --  Registers the upstream C2Channel CameraProtectCmdResp overload once per C2 channel while
+   --  Attached or Enabled, including after failure. Registration may deliver synchronously.
+   --  Failure publishes no owner; the retained callback stays inactive because upstream has no
+   --  unregister. Every response is copied before the callback returns into one bounded
+   --  drop-incoming queue in arrival order; null payloads and unknown CmdResp values are counted
+   --  as malformed and never remapped. The owner stops when the C2 channel is physically
+   --  released, after in-flight callbacks return. Delivery never completes a request.
+   --  @param Channel Open, Attached or Enabled typed C2 owner.
+   --  @param Queue_Capacity Positive maximum queued responses, default sixteen.
+   --  @return Limited CameraProtectCmdResp consumption owner.
+   --  @exception AMS.MEL.IR.Camera_Protection.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible channel, repeated attempt, other registration
+   --  failure, provider exception during registration or native failure.
+   function Is_Open (Stream : Camera_Protection_Stream) return Boolean;
+   --  Test local owner-handle presence, not channel existence or queue health.
+   --  @param Stream Camera-protection owner to inspect.
+   --  @return True for a present public handle, including a stopped queue.
+   function Receive_Camera_Protection
+     (Stream : Camera_Protection_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Camera_Protection.Protection_Response;
+   --  Dequeues one complete response in successful-enqueue order. Queued responses drain after
+   --  the C2 channel stops.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned response independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, C2 cleanup failure, invalid native data or native
+   --  failure.
+   function Camera_Protection_Counters (Stream : Camera_Protection_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming responses.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Camera_Protection_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback, close the
+   --  C2 channel or promise callback quiescence.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
+
+   type Calibration_Configuration_Stream is limited private;
+   --  Limited opt-in owner of C2Channel CalibrationConfiguration reception (@Optional),
+   --  independent of Open, its Metadata_Stream and every CalibrationConfigurationCmd request. Open never
+   --  registers this callback, so providers without calibration configuration keep every existing C2
+   --  operation unchanged. Explicit Close is preferred; finalization attempts non-raising cleanup.
+   --  Serialize operations on the same owner.
+   function Open_Calibration_Configuration
+     (Channel : Control_Channel; Queue_Capacity : Positive := 16)
+      return Calibration_Configuration_Stream;
+   --  Registers the upstream C2Channel CalibrationConfiguration overload once per C2 channel while
+   --  Attached or Enabled, including after failure. Registration may deliver synchronously.
+   --  Failure publishes no owner; the retained callback stays inactive because upstream has no
+   --  unregister. Every complete configuration is copied before the callback returns into one bounded
+   --  drop-incoming queue in arrival order; null payloads and invalid calibration values are counted
+   --  as malformed and never remapped. The owner stops when the C2 channel is physically
+   --  released, after in-flight callbacks return. Delivery never completes a request.
+   --  @param Channel Open, Attached or Enabled typed C2 owner.
+   --  @param Queue_Capacity Positive maximum queued responses, default sixteen.
+   --  @return Limited CalibrationConfiguration consumption owner.
+   --  @exception AMS.MEL.IR.Calibration_Configuration.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible channel, repeated attempt, other registration
+   --  failure, provider exception during registration or native failure.
+   function Is_Open (Stream : Calibration_Configuration_Stream) return Boolean;
+   --  Test local owner-handle presence, not channel existence or queue health.
+   --  @param Stream Calibration-configuration owner to inspect.
+   --  @return True for a present public handle, including a stopped queue.
+   function Receive_Calibration_Configuration
+     (Stream : Calibration_Configuration_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Calibration_Configuration.Calibration_Collection;
+   --  Dequeues one complete response in successful-enqueue order. Queued responses drain after
+   --  the C2 channel stops.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned response independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, C2 cleanup failure, invalid native data or native
+   --  failure.
+   function Calibration_Configuration_Counters
+     (Stream : Calibration_Configuration_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming responses.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Calibration_Configuration_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback, close the
+   --  C2 channel or promise callback quiescence.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
+
+   type Calibration_Status_Stream is limited private;
+   --  Limited opt-in owner of C2Channel CalibrationStatus reception (@Optional), independent of
+   --  Open, its Metadata_Stream, the CalibrationConfiguration owner and every CalibrationStatusCmd
+   --  request. Open never registers this callback, so providers without calibration status keep
+   --  every existing C2 operation unchanged. Explicit Close is preferred; finalization attempts
+   --  non-raising cleanup. Serialize operations on the same owner.
+   function Open_Calibration_Status
+     (Channel : Control_Channel; Queue_Capacity : Positive := 16) return Calibration_Status_Stream;
+   --  Registers the upstream C2Channel CalibrationStatus overload once per C2 channel while
+   --  Attached or Enabled, including after failure. Registration may deliver synchronously.
+   --  Failure publishes no owner; the retained callback stays inactive because upstream has no
+   --  unregister. Every complete status is copied before the callback returns into one bounded
+   --  drop-incoming queue in arrival order; null payloads and invalid status values are counted
+   --  as malformed and never remapped. The owner stops when the C2 channel is physically
+   --  released, after in-flight callbacks return. Delivery never completes or cancels a request.
+   --  @param Channel Open, Attached or Enabled typed C2 owner.
+   --  @param Queue_Capacity Positive maximum queued statuses, default sixteen.
+   --  @return Limited CalibrationStatus consumption owner.
+   --  @exception AMS.MEL.IR.Calibration_Status.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible channel, repeated attempt, other registration
+   --  failure, provider exception during registration or native failure.
+   function Is_Open (Stream : Calibration_Status_Stream) return Boolean;
+   --  Test local owner-handle presence, not channel existence or queue health.
+   --  @param Stream Calibration-status owner to inspect.
+   --  @return True for a present public handle, including a stopped queue.
+   function Receive_Calibration_Status
+     (Stream : Calibration_Status_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Calibration_Status.Status_Value;
+   --  Dequeues one complete status in successful-enqueue order. Queued statuses drain after
+   --  the C2 channel stops.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned status independent of all native owners.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, C2 cleanup failure, invalid native data or native
+   --  failure.
+   function Calibration_Status_Counters
+     (Stream : Calibration_Status_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming statuses.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Calibration_Status_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback, close the
+   --  C2 channel, cancel requests or promise callback quiescence.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
+
 private
    package US renames Ada.Strings.Unbounded;
    use type US.Unbounded_String;
@@ -637,4 +787,22 @@ private
    end record;
    overriding
    procedure Finalize (Stream : in out Metadata_Stream);
+   type Camera_Protection_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Camera_Protect_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Camera_Protect_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Camera_Protection_Stream);
+   type Calibration_Configuration_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Calibration_Configuration_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Calibration_Configuration_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Calibration_Configuration_Stream);
+   type Calibration_Status_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Calibration_Status_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Calibration_Status_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Calibration_Status_Stream);
 end AMS.MEL.IR.C2.Metadata;

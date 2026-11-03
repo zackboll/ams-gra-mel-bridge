@@ -330,4 +330,41 @@ package body AMS.MEL.IR is
       when others =>
          Object.Handle := C.Null_Camera_Command_Request;
    end Finalize;
+
+   overriding
+   procedure Finalize (Object : in out Camera_Protection_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Drops only the public observer; pending native work is not cancelled.
+      Ignored :=
+        C.IR_Camera_Protect_Request_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Camera_Protect_Request;
+   end Finalize;
+
+   overriding
+   procedure Finalize (Object : in out Calibration_Configuration_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Drops only the public observer; pending native work is not cancelled.
+      Ignored :=
+        C.IR_Calibration_Configuration_Request_Close
+          (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Calibration_Configuration_Request;
+   end Finalize;
+
+   overriding
+   procedure Finalize (Object : in out Calibration_Status_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Drops only the public observer; pending native work is not cancelled.
+      Ignored :=
+        C.IR_Calibration_Status_Request_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Calibration_Status_Request;
+   end Finalize;
 end AMS.MEL.IR;

@@ -1,5 +1,52 @@
 # Changelog
 
+## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
+
+Both pinned optional operations are implemented: `C2Channel::send(CalibrationStatusCmd)`
+as `ams_mel_ir_c2_submit_calibration_status` (Ada `C2.Submit_Calibration_Status`,
+Enabled only; `ams_mel_ir_calibration_status_request_wait/close`, Ada
+`AMS.MEL.IR.Calibration_Status.Status_Request`) on the established request
+architecture, and `C2Channel::registerMetadataCallback(CalibrationStatus)` as the
+independent opt-in owner `ams_mel_ir_c2_calibration_status_open` with
+receive/counters/close and event view/close (Ada `C2.Metadata.Open_Calibration_Status`,
+`Receive_Calibration_Status`, `Calibration_Status_Counters`). New records
+`ams_mel_ir_calibration_status_command_v1`, `ams_mel_ir_completed_calibration_item_v1`
+(+span), `ams_mel_ir_completed_calibration_v1` (+span), `ams_mel_ir_calibration_status_v1`
+and `ams_mel_ir_calibration_status_result_v1`, and result values
+`AMS_MEL_IR_CALIBRATION_RESULT_*` 0..4; no existing `*_v1` record changes. Active and
+completed collections and every nested item vector are independent; time tags are exact
+signed int64 nanoseconds without epoch; MaxExclusive and unknown results are
+`PROVIDER_FAILED`/malformed, never remapped. Production inventory: 266 AMS_MEL_0.1
+exports (nine new); Python/Rust receive only private raw mirrors. Evidence is
+mock-provider only; no IR calibration hardware or Squall qualification.
+
+## IRMEL-ADA-004 — C2 camera self-protection (CameraProtectCmd / CameraProtectCmdResp)
+
+The pinned @RequiredIfCameraProtect `C2Channel::send(CameraProtectCmd)` is
+implemented as `ams_mel_ir_c2_submit_camera_protect` (Ada
+`C2.Submit_Camera_Protection`, Enabled only) on the established request
+architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock,
+unlocked provider send, a single completion worker, deferred C2 teardown through
+the erased `CommonRequestClaim`, allocation-free retention on post-send failure,
+and a cached result (`ams_mel_ir_camera_protect_request_wait/close`, Ada
+`AMS.MEL.IR.Camera_Protection.Protection_Request`, derived from a limited
+controlled owner). New records `ams_mel_ir_camera_protect_command_v1` (uint32
+ID, int64 nanosecond response time, 0/1 protect flag; any other flag value is
+`AMS_MEL_INVALID_ARGUMENT` before send), `ams_mel_ir_camera_protect_response_v1`
+and `ams_mel_ir_camera_protect_result_v1`; no existing `*_v1` record changes.
+All three `CmdResp` alternatives (`AMS_MEL_IR_CAMERA_PROTECT_OK/UNAVAILABLE/
+UNSUPPORTED`, Ada `Protection_Status`) are successful responses, kept distinct
+from a MEL rejection (`AMS_MEL_COMMAND_REJECTED`); unknown values are
+`PROVIDER_FAILED`, never remapped. The opt-in C2 CameraProtectCmdResp owner
+(`ams_mel_ir_c2_camera_protect_open`, Ada `C2.Metadata.Open_Camera_Protection`)
+is never registered by the existing C2 metadata Open, reports NotSupported
+distinctly (`AMS.MEL.IR.Camera_Protection.Not_Supported`) from Fail and
+exceptions, copies each response before callback return into a bounded
+DROP-INCOMING queue, tracks in-flight callbacks and is drained and stopped at C2
+physical release, and is independent of request futures. Production inventory:
+248 AMS_MEL_0.1 exports (nine new); Python/Rust receive only private raw
+mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
+
 ## IRMEL-ADA-003 — C2/Image CameraCommand and Image CameraCommandResp
 
 The pinned @RequiredIfCameraCtrl `send(CameraCommand)` is implemented

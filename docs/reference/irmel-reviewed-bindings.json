@@ -268,12 +268,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::registerMetadataCallback(std::function<void(Channel&,const CameraProtectCmdResp*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_camera_protect_open"
+        },
+        {
+          "path": "native/src/ir_camera_protect.cpp",
+          "symbol": "ams_mel_ir_camera_protect_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Open_Camera_Protection"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Receive_Camera_Protection"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_protect.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Opt-in C2 CameraProtectCmdResp owner, never registered by the base C2 metadata Open; one shot per C2 channel, NotSupported/Fail/exception distinct, synchronous delivery safe, complete copy before callback return, bounded drop-incoming queue, null/unknown CmdResp counted malformed, in-flight callbacks drained at C2 physical release, no upstream unregister; independent of request futures.",
+      "limitations": [
+        "CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -365,21 +394,79 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::registerMetadataCallback(std::function<void(Channel&,const ams::iface::mel::CalibrationConfiguration*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_calibration_configuration_open"
+        },
+        {
+          "path": "native/src/ir_calibration_configuration.cpp",
+          "symbol": "ams_mel_ir_calibration_configuration_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Open_Calibration_Configuration"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Receive_Calibration_Configuration"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::registerMetadataCallback(std::function<void(Channel&,const ams::iface::mel::CalibrationStatus*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_calibration_status_open"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Open_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Receive_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Calibration_Status_Counters"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
@@ -414,21 +501,71 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CalibrationConfigurationCmd)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_configuration"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Configuration"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CalibrationStatusCmd)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_status"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
@@ -473,12 +610,41 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CameraProtectCmd)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_protect"
+        },
+        {
+          "path": "native/src/ir_camera_protect.cpp",
+          "symbol": "ams_mel_ir_camera_protect_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Protection"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-camera_protection.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_protect.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Enabled-only C2Channel::send(CameraProtectCmd) through the established request architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock, unlocked provider send, single completion worker, deferred C2 teardown on pending Close, allocation-free post-send retention, cached Wait; all three command fields exact (invalid protect_flag rejected before send); every CmdResp alternative is a successful response distinct from MEL rejection.",
+      "limitations": [
+        "CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": []
     },
     {
@@ -3009,32 +3175,92 @@
     },
     {
       "id": "common:type:ams::iface::mel::CalibrationConfiguration",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing ordered SubsystemCalibration vector and C2 request/callback.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_configuration.cpp",
+          "symbol": "ams_mel_ir_calibration_configuration_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+          "symbol": "Calibration_Collection"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "common:type:ams::iface::mel::CalibrationStatus",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing active UCI calibration IDs and ordered completed calibrations and C2 request/callback.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Status_Value"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getActiveCalibrationIDs",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Active_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Active_ID"
+            }
+          ]
         },
         {
           "upstream": "getCompletedCalibrations",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Completed_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Completed_At"
+            }
+          ]
         }
       ]
     },
@@ -5532,119 +5758,283 @@
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCalibration",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing calibration ID, accepted-interface alternatives, item name, subsystem component ID and capability ID.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_configuration.cpp",
+          "symbol": "ams_mel_ir_calibration_configuration_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+          "symbol": "Subsystem_Calibration"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCalibrationID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+              "symbol": "Subsystem_Calibration"
+            }
+          ]
         },
         {
           "upstream": "getAcceptedInterface",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+              "symbol": "Subsystem_Calibration"
+            }
+          ]
         },
         {
           "upstream": "getCalibrationItemName",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+              "symbol": "Subsystem_Calibration"
+            }
+          ]
         },
         {
           "upstream": "getSubsystemComponentID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+              "symbol": "Subsystem_Calibration"
+            }
+          ]
         },
         {
           "upstream": "getCapabilityID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+              "symbol": "Subsystem_Calibration"
+            }
+          ]
         }
       ]
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCalibrationControlInterfaces",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_configuration.cpp",
+          "symbol": "ams_mel_ir_calibration_configuration_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_configuration.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCalibrationResult",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Calibration_Result"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCompletedCalibration",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing calibration ID, time tag, result, fail reason and completed-item vector.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Completed_Calibration"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCalibrationID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Calibration_ID"
+            }
+          ]
         },
         {
           "upstream": "getTimeTag",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Time_Tag"
+            }
+          ]
         },
         {
           "upstream": "getResult",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Result"
+            }
+          ]
         },
         {
           "upstream": "getFailReason",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Fail_Reason"
+            }
+          ]
         },
         {
           "upstream": "getCalibrationItems",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_At"
+            }
+          ]
         }
       ]
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCompletedCalibrationItemType",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing item name/result/fail-reason representation.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Completed_Item"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getItemName",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_Name"
+            }
+          ]
         },
         {
           "upstream": "getResult",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Result"
+            }
+          ]
         },
         {
           "upstream": "getFailReason",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Fail_Reason"
+            }
+          ]
         }
       ]
     },
@@ -6376,43 +6766,101 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CalibrationConfigurationCmd",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_configuration"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Configuration"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_configuration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_configuration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Configuration"
+            }
+          ]
         },
         {
           "upstream": "getRequestID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Configuration"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::CalibrationStatusCmd",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_status"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Status"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Status"
+            }
+          ]
         },
         {
           "upstream": "getRequestID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Status"
+            }
+          ]
         }
       ]
     },
@@ -6708,53 +7156,145 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraProtectCmd",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing command ID, response time and protection flag; no C2 send.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_camera_protect"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Camera_Protection"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_protect.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All three fields in ams_mel_ir_camera_protect_command_v1 and Ada Camera_Protection.Protection_Command: unsigned 32-bit ID, signed-nanosecond response time passed unconverted, Boolean ProtectFlag as exactly 0/1 (other C values rejected with INVALID_ARGUMENT before any provider call).",
+      "limitations": [
+        "CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Protection"
+            }
+          ]
         },
         {
           "upstream": "getResponseTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Protection"
+            }
+          ]
         },
         {
           "upstream": "getProtectFlag",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Camera_Protection"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::CameraProtectCmdResp",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing response ID/time/command-response alternative and C2 callback.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_protect.cpp",
+          "symbol": "ams_mel_ir_camera_protect_request_wait"
+        },
+        {
+          "path": "native/src/ir_camera_protect.cpp",
+          "symbol": "ams_mel_ir_camera_protect_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-camera_protection.ads",
+          "symbol": "Wait"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Receive_Camera_Protection"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_protect.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All three fields in ams_mel_ir_camera_protect_response_v1 and Ada Camera_Protection.Protection_Response (unsigned 32-bit ID, signed-nanosecond response time, exact CmdResp alternative), shared by the request result and the C2 callback.",
+      "limitations": [
+        "CameraProtectCmd is @RequiredIfCameraProtect upstream: providers without camera self-protection reject the send with MEL Unsupported (an explicit Rejected result, distinct from the CmdResp::Unsupported response) and the C2 CameraProtectCmdResp owner raises AMS.MEL.IR.Camera_Protection.Not_Supported; existing C2 APIs are unaffected. No response deadline, retry or camera behaviour is added. Mock-qualified only; no physical IR camera or Squall evidence."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera_protection.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+              "symbol": "Receive_Camera_Protection"
+            }
+          ]
         },
         {
           "upstream": "getResponseTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera_protection.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+              "symbol": "Receive_Camera_Protection"
+            }
+          ]
         },
         {
           "upstream": "getCommandResponse",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-camera_protection.ads",
+              "symbol": "Wait"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+              "symbol": "Receive_Camera_Protection"
+            }
+          ]
         }
       ]
     },
@@ -7766,11 +8306,30 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CmdResp",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_camera_protect.cpp",
+          "symbol": "ams_mel_ir_camera_protect_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-camera_protection.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_camera_protect.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_camera_protection_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All three pinned alternatives as AMS_MEL_IR_CAMERA_PROTECT_OK/UNAVAILABLE/UNSUPPORTED (0/1/2, static_assert-checked against the upstream enum) and Ada Camera_Protection.Protection_Status; unknown provider values are reported as PROVIDER_FAILED (request) or counted malformed (callback), never remapped.",
       "limitations": [],
       "representation": []
     },
@@ -13189,25 +13748,29 @@
   "source_sha256": {
     "ada/src/ams-mel-ir-c2-common.adb": "0296080144a7fc162f601855f841048f86b3255cc7786098d588bd09d6e6755d",
     "ada/src/ams-mel-ir-c2-common.ads": "bd8177f8da2d5ebc8cd3b870c0dc536cf78732144ffa1dcee89a17ca85c43891",
-    "ada/src/ams-mel-ir-c2-metadata.adb": "425b888f01d45049927366fcaec61354a5bd0531fe517513a7a0fe5f8f7d45f3",
-    "ada/src/ams-mel-ir-c2-metadata.ads": "e04e9b7760ebb7126257526356472239769dba14b99ae123b37ec9bcf64549db",
-    "ada/src/ams-mel-ir-c2.adb": "32d5415830ba2d9447ed6be75ddfff505a7921af3644053639046246187bb150",
-    "ada/src/ams-mel-ir-c2.ads": "c5bfe5d23aa06cfaaf8356831b3c62a6834414dae688180097857bdb2aaa217d",
-    "ada/src/ams-mel-ir-camera.adb": "d2a50ae65e16a8e673057a1ce87269cef91b05b3f0f41c1526824f28ca84224b",
-    "ada/src/ams-mel-ir-camera.ads": "3db98c57bbc03d68fecdf74d5ae771815af30cfe145b278d9791a83d3f631d60",
+    "ada/src/ams-mel-ir-c2-metadata.adb": "f66a32746ff387f0d9290030c66728bf92282bddb39c868c704e126a25077739",
+    "ada/src/ams-mel-ir-c2-metadata.ads": "bf230fb0eca6e3e19d3a4077ff9feb87bd02dc898a1e1554d4a8f6b5cfa6eb4f",
+    "ada/src/ams-mel-ir-c2.adb": "50e19f4552b59fa8fc0101b4d07c028e8a3b0b8a6343bf5e35e2b107d37e5023",
+    "ada/src/ams-mel-ir-c2.ads": "95ff8b57792f651883ab5f5bd7e6e89808ff8bfbbc5d6e389fe5f8afde8d09bc",
+    "ada/src/ams-mel-ir-camera.adb": "b6720749a2b852a47212e6ffeed1b6979d8aadb745e11714448bda70f3e2612d",
+    "ada/src/ams-mel-ir-camera.ads": "af333219c547732f13da8890fd3e671efbaacd1a7e28e9bb652e5484e2468fd6",
     "ada/src/ams-mel-ir-camera_conversion.adb": "da79bc05a194e9be42661985a7db275aa757d761901f8907f5bf2c4db364ced6",
     "ada/src/ams-mel-ir-camera_conversion.ads": "e6102ce7c75dac79b70651013edc8b16c0645eff2390395352255e1c178d3e86",
+    "ada/src/ams-mel-ir-camera_protection.adb": "6712ede7cf28f62c739a2bce57e75acbd0ee17109085277718e1df1dc50539fa",
+    "ada/src/ams-mel-ir-camera_protection.ads": "c89d38225a636c463bfeb35529df21331494a9615821155c20e7e7878751bdeb",
+    "ada/src/ams-mel-ir-camera_protection_conversion.adb": "459f5e98f80f183bdeef705ad224c458075b0bb24c4b2e0e5f695cc294abc063",
+    "ada/src/ams-mel-ir-camera_protection_conversion.ads": "3a3c9d5d536c5d3cfb7cff87e33421f47176d480a6bb3e5e763f4f9f6945a0e1",
     "ada/src/ams-mel-ir-capability_conversion.adb": "d3b5180fc9af805054972a3923344cb30ca1b7cd84d8a8402e260e51073dbced",
     "ada/src/ams-mel-ir-capability_conversion.ads": "26a27f95e177af2ec1a8111f8461152e5e5665ed39e6ec7d1beffeeaaa6c86bc",
     "ada/src/ams-mel-ir-channel.adb": "7992ea2ae8786fe01e735c06f2b93d4cb264f598bc872009dbd3b26dc84814d5",
     "ada/src/ams-mel-ir-channel.ads": "b2237cc64e2f6415f5c23a8452889e97fb9483a5593172a736d0b077433c5487",
     "ada/src/ams-mel-ir-health_status-metadata.adb": "dfbc5defd764489d92e5cb999f1a676100ed961233a87d7950086964a5a8f996",
-    "ada/src/ams-mel-ir-health_status-metadata.ads": "b9b32acf1fb83fb0d050f56e8bd01188c34c4c2150ab8c32182d30b66aca6e71",
+    "ada/src/ams-mel-ir-health_status-metadata.ads": "b10d2858ca35009e9131839023eec9b644006d37fdda14e558324123a179b4bb",
     "ada/src/ams-mel-ir-health_status.adb": "d114a876d51b9912c0e129ba1141ac8dfd8585e6b0cc43c50613b7083a74682b",
     "ada/src/ams-mel-ir-health_status.ads": "5fb3a8d7d08c2330b5b770241c1f724d551958ec8484c57f4736702e23f75b61",
     "ada/src/ams-mel-ir-image-metadata.adb": "5ef6cd78cc92d042cea7dbc71aaa456878eac2c96d88cdb78f4e2d4943b3dc23",
-    "ada/src/ams-mel-ir-image-metadata.ads": "374c3d6b2339a5e6e1f436f9f098b425e9e4ab37ebba448d170f2f62d5aea79b",
-    "ada/src/ams-mel-ir-image.adb": "38171a977785bd1d6cd473e8abdae0331ea0953271baf5692e6b07db4d23fe27",
+    "ada/src/ams-mel-ir-image-metadata.ads": "aa29f6545b0607f48222eddc08047ae4834a0da9a1276e27dcf14358eb172537",
+    "ada/src/ams-mel-ir-image.adb": "de01a0f297803d9269bcc338bb568244dba952dc9c86a31dc0715535506ce784",
     "ada/src/ams-mel-ir-image.ads": "54646122500bc4ba94db73945052e30c2403c36300c5d84243c24afe21d9af5c",
     "ada/src/ams-mel-ir-instrumentation-metadata.adb": "f15f64a5bc9cf852d48b401482e2fdafbcad8b74db3ff9b33f5a197765de087d",
     "ada/src/ams-mel-ir-instrumentation-metadata.ads": "a8d39c78fc3e63d76eb0cd40a5da27ecf915904075b944bff5be2fc88569271f",
@@ -13224,37 +13787,39 @@
     "ada/src/ams-mel-ir-track-updates.ads": "db60fbb65ea04f026d33c353165e29214005378c61aae760d2569a6e33b60051",
     "ada/src/ams-mel-ir-track.adb": "be5ba8477967aeb6e2b8950b68120913427459da83c2220314884c75680bcb4c",
     "ada/src/ams-mel-ir-track.ads": "0a02dbfc84a51ac6fd1de72cfb71a1ba74cb364e9cacb568ca9027254831a856",
-    "ada/src/ams-mel-ir.adb": "5072a38ee8743ad3e8637f118a0cbce9cefba661bd8c3ec6537e3834e205a592",
-    "ada/src/ams-mel-ir.ads": "25b86b3ecee2acbd8ae7f972200d56187264cb28110a004ae74aee4bddc41e9e",
+    "ada/src/ams-mel-ir.adb": "43a0e40e0acdec5b7dfe6b9a36a271be510c5b058cdbe58e5eb008de3e2091c4",
+    "ada/src/ams-mel-ir.ads": "529fff834b485c08bfefa2f9ed47f5fa8bcc80098203f416953b0c4907fa10a9",
     "ada/src/ams-mel-status.adb": "9df708f84c149acb3b01f3decb6501564795108fd6a97d7d31fa1e5a213efbe1",
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "de92f907601f3bed6ba36ca579bf04139b8e217145a58eaae10596f7f82207a1",
-    "native/include/ams_mel/abi.h": "eb75c14445078927b6e725ba9f26af56b76210a8ca588073cdd177974c8c3edc",
+    "ada/src/ams-mel_c_api.ads": "2562fcdd816edc04e03bab944dfe09b0100f98ad5f0616cfc9ca57aa351966fd",
+    "native/include/ams_mel/abi.h": "ba974732a4b5601b1f5ffcf94afce12ca963aee20edd67320f94e4a9a6e8bfd7",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
     "native/src/common_channel_requests.cpp": "025cdf101c2609c5d0eaeadda0e16c3aaabde60c26a307f68c6a93e31a4420e5",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "b8459310c789a2f5dde319f4a08ac82cb170ff1f5c0f43987c36bcaeb6a76e50",
+    "native/src/exports.map": "9c28a6d571b236dcf19a5d97c5827d445211fca42891cde9fdcb6f3cceb97101",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
     "native/src/internal/common_channel_requests.hpp": "5bc7dae97c242c5640a9748b213b345e50835ff19fd3e14103e573212e7eb544",
-    "native/src/internal/completion_probe.hpp": "3457c8c42fe9d7be5c07ba3a112f98323db048a8ac5ca22a7d90cf7100d812e1",
+    "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
     "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
+    "native/src/internal/ir_camera_protect.hpp": "c8486fc23e4d666ef402ee6c28bc8a87827350bde351b804609f64cf41dc09dc",
     "native/src/internal/ir_channel.hpp": "0b276634a2637c34fc997c02ccf0e845eaf0184af991e75b9f2add88d639b1a0",
     "native/src/internal/ir_nuc.hpp": "034369c2cfad4e2c1e2d914fc3e867c23caf05ab5073c53e653fc27d2d10568b",
     "native/src/internal/ir_stream.hpp": "771212fd2f0c21ab48167f21cf8e63cd6854cb93740111a6b8c9dd9d61b872fd",
     "native/src/internal/provider_common.hpp": "c0c16122b30afce07dced9b59b57b1a8bf3d2c4b3b2ffd18d28ecad79fe6c46e",
     "native/src/internal/shared_library.hpp": "d1aaf08fa318e128efdcb9515b4171d953a6e8bb0d320c4506a6aeec96e97dbd",
-    "native/src/ir_c2.cpp": "926f0d468bca91cd14c8f17119076a6357b36a7626f2e2a4f2028e05c5e309e3",
+    "native/src/ir_c2.cpp": "883723643dc097afda69ef1a9c7e1828b13089e38505d652ea10c0a3c1d715db",
     "native/src/ir_camera_command.cpp": "cf7b9d6f47f1311b06f21f2293c2e534c78475fdf3f0d56d28eb843cf1a0b11c",
+    "native/src/ir_camera_protect.cpp": "a6792642d5a3e38af9ffd27641cad844909c70746be3398c7cb28cdb3141799b",
     "native/src/ir_channel.cpp": "d72e0666fa0e6966a6abc766be1ce21a577ec031908851bc09500e2fc970d149",
-    "native/src/ir_health.cpp": "dd84f18b2dc94bb6b3421ae1169b3443c00ac4bb4538b79b77b68a92f28f38fa",
+    "native/src/ir_health.cpp": "a6445da990e219ace3712a08589d5775fbf14912eefda1380ea64d612cd3b0d6",
     "native/src/ir_image.cpp": "51a264c8fd3879b6b8b7b3e41cf8616539a326744d4361c11c3a98bcf2274132",
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
     "native/src/ir_stream.cpp": "b8ab436598dd603e594936dcc8225ce1a31ae31143201429ce835998fa77fd5f",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
-    "native/src/provider.cpp": "3dc1a0478a4f3762fb35a8607efd743001b6faef1a4a668fa2dc0865b821f50d"
+    "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792"
   }
 }

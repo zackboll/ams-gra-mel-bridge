@@ -18,10 +18,127 @@ native retention rules; Close is not unregister or callback quiescence.
 `python/tests/test_ir_health_metadata.py` qualifies the unchanged compiled mock
 and malformed C boundary injection, including public-wrapper finalization and
 subprocess-isolated deterministic callback barriers. Positive evidence is
-mock-only, not Squall or hardware qualification. Native ABI, `_native.py`, Ada,
-Rust, providers and source policies are unchanged. No NUC, Image/Track/C2/RF
-metadata or out-of-scope placeholders. See
+mock-only, not Squall or hardware qualification. This slice adds no Health
+export and does not change the six Health metadata function contracts, the
+compiled mock, Ada, safe Rust, providers, or source policies. Later main
+revisions independently added CameraProtection, CalibrationConfiguration, and
+CalibrationStatus, including their private ctypes mirrors in `_native.py`; the
+current production inventory is recorded with IRMEL-ADA-006 below. No NUC,
+Image/Track/C2/RF metadata or out-of-scope placeholders. See
 [Python API, ownership, and six-family mapping](../python/README.md#ir-healthstatus-metadata-py-mel-005).
+
+## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
+
+Both pinned optional operations are implemented independently:
+`C2Channel::send(CalibrationStatusCmd)` →
+`AMS.MEL.IR.C2.Submit_Calibration_Status` (`Calibration_Status.Status_Request`,
+`Wait`, `Close`), and
+`C2Channel::registerMetadataCallback(CalibrationStatus)` →
+`AMS.MEL.IR.C2.Metadata.Open_Calibration_Status` /
+`Receive_Calibration_Status` / `Calibration_Status_Counters`. Neither requires
+the other, base `C2.Metadata.Open` never registers the callback, and the
+CalibrationConfiguration owner and request are unchanged. Safe Ada operation
+coverage is 43 (previously 41).
+
+The canonical `AMS.MEL.IR.Calibration_Status` package owns two **independent**
+ordered collections: active calibration UCI IDs (all UUID bytes, labels, order
+and duplicates) and completed calibrations. No equal lengths, correspondence,
+uniqueness or ordering relationship is assumed. Each completed calibration owns
+its complete ID, the exact signed `std::chrono::nanoseconds` count as int64
+(no epoch or unit conversion), its result, complete fail reason, and an
+independently sized ordered item vector (name, result, fail reason). Results are
+exactly NotSet/Completed/Failed/Interrupted/NotCalibrated = 0..4, pinned by
+static assertions; MaxExclusive (5) and unknown values are rejected, never
+remapped. Both uint32 command identifiers remain independent, including zero and
+UINT32_MAX, with no inferred response correlation. Native immutable backing is
+fully built before the provider result is released or the callback returns; Ada
+copies out without exposing native pointers. UTF-8/NUL and checked-size policy
+apply. No existing v1 record layout, export signature or enum value changes.
+
+Submission requires Enabled and reuses Session CompletionPermit,
+claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked provider
+send, one future-consuming worker, cached outcome/diagnostic, deferred teardown
+and allocation-free retention. Closing a request is not cancellation. The
+separate one-shot Attached/Enabled registration runs unlocked, permits
+synchronous delivery, and reports NotSupported separately from Fail/exceptions.
+Its bounded DROP-INCOMING queue copies whole statuses atomically, counts
+malformed/dropped events, drains queued events after shutdown, retains late
+callback state and waits for in-flight callbacks at physical teardown. Callback
+delivery and metadata Close never complete or cancel a request. Completion-probe
+family `CalibrationStatus` (9) is appended; existing indices are unchanged.
+
+Production ABI: **266 AMS_MEL_0.1 exports** (257 baseline + 9), with private
+Python ctypes and Rust ams-mel-sys mirrors/probes only. Mock-provider qualification
+is not real-provider, Squall or hardware qualification. Calibration execution,
+EraseCommand, Scheduling and RF remain out of scope.
+See [qualification](irmel-ada-006-calibration-status.md).
+
+
+## IRMEL-ADA-005 — Complete optional C2 CalibrationConfiguration
+
+Both pinned optional operations are implemented independently:
+`C2Channel::send(CalibrationConfigurationCmd)` →
+`AMS.MEL.IR.C2.Submit_Calibration_Configuration`, and
+`C2Channel::registerMetadataCallback(CalibrationConfiguration)` →
+`AMS.MEL.IR.C2.Metadata.Open_Calibration_Configuration` /
+`Receive_Calibration_Configuration`. The latter is never registered by base
+`C2.Metadata.Open`; providers lacking this optional feature retain existing C2
+behavior. Safe Ada operation coverage is 41 (previously 39).
+
+The canonical `AMS.MEL.IR.Calibration_Configuration` package owns the ordered
+collection and every entry: complete UCI UUID bytes and labels, exact meaningful
+accepted-interface alternatives (0/1/2; sentinel 3 and unknowns rejected), and
+three **independent** nested vectors (item names, component IDs, capability IDs).
+The command's two uint32 identifiers remain independent, including zero and
+UINT32_MAX. No response correlation is inferred. Native immutable backing is
+copied before releasing the provider result or returning from a callback; Ada
+copies out without exposing native pointers. UTF-8/NUL and checked-size policy
+apply. No existing v1 record layout or enum value changes.
+
+Submission requires Enabled and reuses Session CompletionPermit,
+claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked provider
+send, one future-consuming worker, cached outcome/diagnostic, deferred teardown,
+and allocation-free retention on post-send allocation/worker-launch failure.
+Closing a request is not cancellation. The separate one-shot Attached/Enabled
+metadata registration runs unlocked, permits synchronous delivery, and reports
+NotSupported separately from Fail/exceptions. Its bounded DROP-INCOMING queue
+copies whole configurations atomically, counts malformed/dropped events, drains
+queued events after shutdown, retains late callback state and waits for in-flight
+callbacks at physical teardown. Callback delivery never completes a request.
+
+Production ABI: **257 AMS_MEL_0.1 exports** (248 baseline + 9), with private
+Python ctypes and Rust ams-mel-sys mirrors/probes only. Mock-provider qualification
+is not real-provider, Squall or hardware qualification. CalibrationStatus,
+SubsystemCompletedCalibration and CalibrationStatusCmd remain unimplemented.
+See [qualification](irmel-ada-005-calibration-configuration.md).
+
+
+## IRMEL-ADA-004 — C2 camera self-protection (CameraProtectCmd / CameraProtectCmdResp)
+
+The pinned @RequiredIfCameraProtect `C2Channel::send(CameraProtectCmd)` is
+implemented as `ams_mel_ir_c2_submit_camera_protect` (Ada
+`C2.Submit_Camera_Protection`, Enabled only) on the established request
+architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock,
+unlocked provider send, a single completion worker, deferred C2 teardown through
+the erased `CommonRequestClaim`, allocation-free retention on post-send failure,
+and a cached result (`ams_mel_ir_camera_protect_request_wait/close`, Ada
+`AMS.MEL.IR.Camera_Protection.Protection_Request`, derived from a limited
+controlled owner). New records `ams_mel_ir_camera_protect_command_v1` (uint32
+ID, int64 nanosecond response time, 0/1 protect flag; any other flag value is
+`AMS_MEL_INVALID_ARGUMENT` before send), `ams_mel_ir_camera_protect_response_v1`
+and `ams_mel_ir_camera_protect_result_v1`; no existing `*_v1` record changes.
+All three `CmdResp` alternatives (`AMS_MEL_IR_CAMERA_PROTECT_OK/UNAVAILABLE/
+UNSUPPORTED`, Ada `Protection_Status`) are successful responses, kept distinct
+from a MEL rejection (`AMS_MEL_COMMAND_REJECTED`); unknown values are
+`PROVIDER_FAILED`, never remapped. The opt-in C2 CameraProtectCmdResp owner
+(`ams_mel_ir_c2_camera_protect_open`, Ada `C2.Metadata.Open_Camera_Protection`)
+is never registered by the existing C2 metadata Open, reports NotSupported
+distinctly (`AMS.MEL.IR.Camera_Protection.Not_Supported`) from Fail and
+exceptions, copies each response before callback return into a bounded
+DROP-INCOMING queue, tracks in-flight callbacks and is drained and stopped at C2
+physical release, and is independent of request futures. Production inventory:
+248 AMS_MEL_0.1 exports (nine new); Python/Rust receive only private raw
+mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
 
 ## IRMEL-ADA-003 — C2/Image CameraCommand and Image CameraCommandResp
 
@@ -1230,3 +1347,16 @@ source, native ABI, provider behavior, or vendored header. Run
 
 Implementation and verification are different. See `bootstrap-validation.md`
 for the commands actually executed when this starter archive was prepared.
+
+## IR-CAMERA-CI-002 — test-only completion-probe shutdown
+
+The shared completion-probe synchronization has process lifetime in aligned
+static storage, without an exit-time destructor or heap allocation. All probe
+families inherit the fix; no production ownership, timeout, admission or ABI
+behavior changes. The compiled-C CameraCommand shutdown regression arms a
+strict per-family notification waiter before releasing held C2/Image futures.
+Its dedicated condition variable excludes unrelated worker/family wakeups and
+its deadline cannot be satisfied by a predicate observed only at timeout.
+PR #161's lifecycle and admission checks remain intact. See
+`ir-camera-ci-002-tsan-shutdown.md` for actual sanitizer results, negative
+controls, lifetime proof and broader TSan qualification limitations.

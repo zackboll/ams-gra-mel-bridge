@@ -1,7 +1,10 @@
+with AMS.MEL.IR.Calibration_Configuration;
+with AMS.MEL.IR.Calibration_Status;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 with Ada.Containers.Indefinite_Vectors;
 with AMS.MEL.IR.Camera;
+with AMS.MEL.IR.Camera_Protection;
 with AMS.MEL.IR.Channel;
 private with AMS.MEL_C_API;
 
@@ -428,6 +431,40 @@ package AMS.MEL.IR.C2 is
    --  @param Channel Enabled typed owner; externally serialize owner operations.
    --  @param Command Complete owned command to copy.
    --  @return Limited request owner whose result may report Command_Success False.
+
+   function Submit_Camera_Protection
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Camera_Protection.Protection_Command)
+      return AMS.MEL.IR.Camera_Protection.Protection_Request;
+   --  Submit a complete CameraProtectCmd through C2Channel::send(CameraProtectCmd) while
+   --  Enabled. Every field is copied exactly; the provider is called without bridge locks and
+   --  may deliver callbacks synchronously. The pending request retains the channel, Session and
+   --  provider after Close of the request, channel or Session; closing the channel defers
+   --  teardown and never cancels the command. No deadline or retry is added. Session admission
+   --  exhaustion raises the resource-exhaustion exception; a closed or non-Enabled channel,
+   --  provider send exception and other failures raise a provider error.
+   --  @param Channel Enabled typed owner; externally serialize owner operations.
+   --  @param Command Complete owned command to copy.
+   --  @return Limited request owner whose result may report any of the three CmdResp values.
+
+   function Submit_Calibration_Configuration
+     (Channel : Control_Channel;
+      Command : AMS.MEL.IR.Calibration_Configuration.Configuration_Command)
+      return AMS.MEL.IR.Calibration_Configuration.Configuration_Request;
+   --  Submit both independent uint32 fields through the optional upstream overload while
+   --  Enabled. Pending work retains C2, Session and provider; Close is not cancellation.
+   --  @param Channel Enabled typed owner; externally serialize owner operations.
+   --  @param Command Both independent command and request identifiers to send.
+   --  @return Limited observer of a complete ordered configuration or MEL rejection.
+
+   function Submit_Calibration_Status
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Calibration_Status.Status_Command)
+      return AMS.MEL.IR.Calibration_Status.Status_Request;
+   --  Submit both independent uint32 fields through the optional upstream overload while
+   --  Enabled. Pending work retains C2, Session and provider; Close is not cancellation.
+   --  Independent of every metadata owner, including Open_Calibration_Status.
+   --  @param Channel Enabled typed owner; externally serialize owner operations.
+   --  @param Command Both independent command and request identifiers to send.
+   --  @return Limited observer of a complete calibration status or MEL rejection.
 
    procedure Close (Request : in out Mode_Request);
    --  Idempotently release the public Mode observer. Pending native work retains

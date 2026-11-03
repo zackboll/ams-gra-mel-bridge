@@ -92,6 +92,11 @@ typedef struct ams_mel_ir_nuc_event ams_mel_ir_nuc_event;
 typedef struct ams_mel_ir_camera_command_request ams_mel_ir_camera_command_request;
 typedef struct ams_mel_ir_camera_response_metadata ams_mel_ir_camera_response_metadata;
 typedef struct ams_mel_ir_camera_response_event ams_mel_ir_camera_response_event;
+/* IRMEL-ADA-004: asynchronous C2 CameraProtectCmd request, plus the opt-in
+ * C2 CameraProtectCmdResp metadata owner and its copied event. */
+typedef struct ams_mel_ir_camera_protect_request ams_mel_ir_camera_protect_request;
+typedef struct ams_mel_ir_camera_protect_metadata ams_mel_ir_camera_protect_metadata;
+typedef struct ams_mel_ir_camera_protect_event ams_mel_ir_camera_protect_event;
 typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
 typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
@@ -806,6 +811,124 @@ typedef struct ams_mel_ir_camera_command_result_v1 {
     ams_mel_ir_camera_command_response_v1 response;
     ams_mel_error_code_t error_code;
 } ams_mel_ir_camera_command_result_v1;
+/* IRMEL-ADA-004: pinned CameraProtectCmd / CmdResp / CameraProtectCmdResp
+ * (@RequiredIfCameraProtect on C2Channel::send(CameraProtectCmd) and the C2
+ * CameraProtectCmdResp callback). New records only; no existing *_v1 record
+ * changes.
+ *
+ * CmdResp: exactly the three pinned alternatives, all successful responses.
+ * UNAVAILABLE and UNSUPPORTED report the MFA's protection capability; they are
+ * never MEL rejections (AMS_MEL_COMMAND_REJECTED) or registration
+ * NOT_SUPPORTED results. Unknown provider values are never remapped. */
+typedef uint32_t ams_mel_ir_camera_protect_status_t;
+#define AMS_MEL_IR_CAMERA_PROTECT_OK UINT32_C(0)
+#define AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE UINT32_C(1)
+#define AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED UINT32_C(2)
+/* Every CameraProtectCmd field. protect_flag accepts only 1 (enable) or 0
+ * (disable); any other value is rejected with AMS_MEL_INVALID_ARGUMENT before
+ * any provider call. response_time_ns is the signed nanosecond count passed
+ * unconverted; the bridge imposes no deadline. */
+typedef struct ams_mel_ir_camera_protect_command_v1 {
+    uint32_t command_id;
+    int64_t response_time_ns;
+    uint32_t protect_flag;
+} ams_mel_ir_camera_protect_command_v1;
+/* Every CameraProtectCmdResp field; command_response is one
+ * AMS_MEL_IR_CAMERA_PROTECT_* value. */
+typedef struct ams_mel_ir_camera_protect_response_v1 {
+    uint32_t command_id;
+    int64_t response_time_ns;
+    ams_mel_ir_camera_protect_status_t command_response;
+} ams_mel_ir_camera_protect_response_v1;
+/* Terminal CameraProtectCmd request outcome. On AMS_MEL_OK, response is valid
+ * (including UNAVAILABLE or UNSUPPORTED) and error_code is AMS_MEL_ERROR_NONE.
+ * On AMS_MEL_COMMAND_REJECTED, error_code is valid, the per-call diagnostic
+ * holds the provider description, and response must be ignored. */
+typedef struct ams_mel_ir_camera_protect_result_v1 {
+    ams_mel_ir_camera_protect_response_v1 response;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_camera_protect_result_v1;
+
+/* IRMEL-ADA-005: complete optional CalibrationConfiguration. All spans are
+ * independent ordered collections. Strings are UTF-8 without NUL; counts and
+ * string sizes must fit INT32_MAX and checked pointer arithmetic. MaxExclusive
+ * (3) and unknown accepted-interface values are invalid provider data. */
+typedef struct ams_mel_ir_calibration_configuration_request ams_mel_ir_calibration_configuration_request;
+typedef struct ams_mel_ir_calibration_configuration_metadata ams_mel_ir_calibration_configuration_metadata;
+typedef struct ams_mel_ir_calibration_configuration_event ams_mel_ir_calibration_configuration_event;
+typedef uint32_t ams_mel_ir_calibration_interface_t;
+#define AMS_MEL_IR_CALIBRATION_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_CALIBRATION_COMMAND UINT32_C(1)
+#define AMS_MEL_IR_CALIBRATION_STATE_COMMAND UINT32_C(2)
+typedef struct ams_mel_ir_calibration_configuration_command_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_calibration_configuration_command_v1;
+typedef struct ams_mel_ir_subsystem_calibration_v1 {
+    ams_mel_uci_id_v1 calibration_id;
+    ams_mel_ir_calibration_interface_t accepted_interface;
+    ams_mel_string_view_span_v1 calibration_item_names;
+    ams_mel_uci_id_span_v1 subsystem_component_ids;
+    ams_mel_uci_id_span_v1 capability_ids;
+} ams_mel_ir_subsystem_calibration_v1;
+typedef struct ams_mel_ir_calibration_configuration_v1 {
+    const ams_mel_ir_subsystem_calibration_v1 *data;
+    size_t size;
+} ams_mel_ir_calibration_configuration_v1;
+typedef struct ams_mel_ir_calibration_configuration_result_v1 {
+    ams_mel_ir_calibration_configuration_v1 configuration;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_calibration_configuration_result_v1;
+
+/* IRMEL-ADA-006: complete optional CalibrationStatus. Both outer spans and every
+ * nested item span are independent ordered collections; no equal lengths,
+ * correspondence, uniqueness or ordering relationship is implied. Strings are
+ * UTF-8 without NUL; counts and string sizes must fit INT32_MAX and checked
+ * pointer arithmetic. time_tag_ns is the exact signed std::chrono::nanoseconds
+ * count with no epoch asserted. Result values 0..4 are meaningful; MaxExclusive
+ * (5) and unknown values are invalid provider data, never remapped. */
+typedef struct ams_mel_ir_calibration_status_request ams_mel_ir_calibration_status_request;
+typedef struct ams_mel_ir_calibration_status_metadata ams_mel_ir_calibration_status_metadata;
+typedef struct ams_mel_ir_calibration_status_event ams_mel_ir_calibration_status_event;
+typedef uint32_t ams_mel_ir_calibration_result_t;
+#define AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET UINT32_C(0)
+#define AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED UINT32_C(1)
+#define AMS_MEL_IR_CALIBRATION_RESULT_FAILED UINT32_C(2)
+#define AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED UINT32_C(3)
+#define AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED UINT32_C(4)
+typedef struct ams_mel_ir_calibration_status_command_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_calibration_status_command_v1;
+typedef struct ams_mel_ir_completed_calibration_item_v1 {
+    ams_mel_string_view_v1 item_name;
+    ams_mel_ir_calibration_result_t result;
+    ams_mel_string_view_v1 fail_reason;
+} ams_mel_ir_completed_calibration_item_v1;
+typedef struct ams_mel_ir_completed_calibration_item_span_v1 {
+    const ams_mel_ir_completed_calibration_item_v1 *data;
+    size_t size;
+} ams_mel_ir_completed_calibration_item_span_v1;
+typedef struct ams_mel_ir_completed_calibration_v1 {
+    ams_mel_uci_id_v1 calibration_id;
+    int64_t time_tag_ns;
+    ams_mel_ir_calibration_result_t result;
+    ams_mel_string_view_v1 fail_reason;
+    ams_mel_ir_completed_calibration_item_span_v1 calibration_items;
+} ams_mel_ir_completed_calibration_v1;
+typedef struct ams_mel_ir_completed_calibration_span_v1 {
+    const ams_mel_ir_completed_calibration_v1 *data;
+    size_t size;
+} ams_mel_ir_completed_calibration_span_v1;
+typedef struct ams_mel_ir_calibration_status_v1 {
+    ams_mel_uci_id_span_v1 active_calibration_ids;
+    ams_mel_ir_completed_calibration_span_v1 completed_calibrations;
+} ams_mel_ir_calibration_status_v1;
+typedef struct ams_mel_ir_calibration_status_result_v1 {
+    ams_mel_ir_calibration_status_v1 status;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_calibration_status_result_v1;
+
 typedef struct ams_mel_ir_image_band_v1 {
     uint32_t band_index;
     ams_mel_ir_band_info_span_v1 bands;
@@ -2289,6 +2412,190 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_close(
     ams_mel_ir_camera_response_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-005: submit requires Enabled, preserves both uint32 fields, and
+ * follows the existing Session admission/claim/single-worker architecture.
+ * Wait caches the terminal outcome; TIMEOUT and Close do not cancel. On OK,
+ * configuration (including empty) and all nested pointers remain valid until
+ * request Close; repeated Wait returns the same immutable view. On rejection
+ * only error_code and diagnostic are valid. Other failure categories match
+ * CameraProtect requests, including safe retention after post-send failure.
+ *
+ * Metadata Open is independent/opt-in, Attached or Enabled, one-shot even on
+ * failure; registration distinguishes NOT_SUPPORTED, FAIL and exceptions.
+ * Provider registration is unlocked and may deliver synchronously. One bounded
+ * DROP-INCOMING queue deep-copies each whole vector before callback return.
+ * Receive drains queued events before STOPPED/failure. Event views and every
+ * nested pointer remain valid until Event Close, independently of every other
+ * owner. Close cannot unregister; C2 teardown drains in-flight callbacks.
+ * Externally serialize operations on each public owner (Wait versus Close too).
+ */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_calibration_configuration(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_calibration_configuration_command_v1 *command,
+    ams_mel_ir_calibration_configuration_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_request_wait(
+    const ams_mel_ir_calibration_configuration_request *request, uint32_t timeout_ms,
+    ams_mel_ir_calibration_configuration_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_request_close(
+    ams_mel_ir_calibration_configuration_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_calibration_configuration_open(
+    ams_mel_ir_c2 *c2, size_t queue_capacity,
+    ams_mel_ir_calibration_configuration_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_receive(
+    ams_mel_ir_calibration_configuration_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_calibration_configuration_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_get_counters(
+    const ams_mel_ir_calibration_configuration_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_close(
+    ams_mel_ir_calibration_configuration_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_event_view(
+    const ams_mel_ir_calibration_configuration_event *event,
+    const ams_mel_ir_calibration_configuration_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_configuration_event_close(
+    ams_mel_ir_calibration_configuration_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-006: C2Channel::send(CalibrationStatusCmd) requires Enabled,
+ * preserves both uint32 fields without correlation, and follows the existing
+ * Session admission/claim/single-worker architecture. Wait caches the terminal
+ * outcome; TIMEOUT and Close do not cancel. On OK, status (including two empty
+ * collections) and every nested pointer remain valid until request Close;
+ * repeated Wait returns the same immutable view. On rejection only error_code
+ * and diagnostic are valid. Other failure categories and post-send retention
+ * match the CalibrationConfiguration request.
+ *
+ * Metadata Open is independent of the request and of CalibrationConfiguration:
+ * opt-in, Attached or Enabled, one-shot even on failure; registration
+ * distinguishes NOT_SUPPORTED, FAIL and exceptions. Provider registration is
+ * unlocked and may deliver synchronously. One bounded DROP-INCOMING queue deep
+ * copies each whole status before callback return. Receive drains queued events
+ * before STOPPED/failure. Event views and every nested pointer remain valid
+ * until Event Close. Close cannot unregister; C2 teardown drains in-flight
+ * callbacks. Externally serialize operations on each public owner. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_calibration_status(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_calibration_status_command_v1 *command,
+    ams_mel_ir_calibration_status_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_request_wait(
+    const ams_mel_ir_calibration_status_request *request, uint32_t timeout_ms,
+    ams_mel_ir_calibration_status_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_request_close(
+    ams_mel_ir_calibration_status_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_calibration_status_open(
+    ams_mel_ir_c2 *c2, size_t queue_capacity,
+    ams_mel_ir_calibration_status_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_receive(
+    ams_mel_ir_calibration_status_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_calibration_status_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_get_counters(
+    const ams_mel_ir_calibration_status_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_close(
+    ams_mel_ir_calibration_status_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_event_view(
+    const ams_mel_ir_calibration_status_event *event,
+    const ams_mel_ir_calibration_status_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_calibration_status_event_close(
+    ams_mel_ir_calibration_status_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-004 C2 CameraProtectCmd. Invokes only the pinned
+ * C2Channel::send(CameraProtectCmd) overload and requires the Enabled
+ * lifecycle (as ModeCmd/CameraCommand). Session admission, the C2 lifetime
+ * claim and the channel copy happen under the C2 lock; provider send runs with
+ * no bridge lock held, so a provider may deliver callbacks synchronously. A
+ * pending request retains its channel, Session and provider library after
+ * public request, channel and Session closure; closing the channel defers its
+ * physical teardown to final completion and never cancels provider work. No
+ * deadline, retry or camera behaviour is added by the bridge.
+ * Statuses: INVALID_ARGUMENT (including protect_flag other than 0/1; nothing
+ * is sent), RESOURCE_EXHAUSTED (Session admission), PROVIDER_FAILED (channel
+ * not Enabled, or an invalid provider future), PROVIDER_EXCEPTION (send
+ * threw), INTERNAL_ERROR (pre-send allocation, or a post-send allocation/
+ * worker-launch failure, in which case the provider future and graph are
+ * retained for process lifetime rather than released). */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_camera_protect(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_camera_protect_command_v1 *command,
+    ams_mel_ir_camera_protect_request **out_request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Finite wait; zero polls. TIMEOUT neither consumes nor cancels. The terminal
+ * result is cached and repeated waits return it. OK (any of the three CmdResp
+ * alternatives) and COMMAND_REJECTED are described by
+ * ams_mel_ir_camera_protect_result_v1. PROVIDER_EXCEPTION: the future threw.
+ * PROVIDER_FAILED: null successful response, unknown CmdResp value, unknown
+ * MEL error code, or deferred channel cleanup failure (never reported as OK).
+ * INTERNAL_ERROR: facade allocation failure. Close must not race Wait. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_request_wait(
+    const ams_mel_ir_camera_protect_request *request, uint32_t timeout_ms,
+    ams_mel_ir_camera_protect_result_v1 *out_result, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent and nonblocking; drops only the public observer, not the work. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_request_close(
+    ams_mel_ir_camera_protect_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-004 opt-in C2 CameraProtectCmdResp reception. Never registered by
+ * ams_mel_ir_c2_metadata_open, so providers without camera self-protection
+ * keep every existing C2 API unchanged. Registers the pinned C2Channel
+ * CameraProtectCmdResp callback once per C2 channel while Attached or Enabled
+ * (a failed attempt also consumes the one shot). out_registration (nullable)
+ * receives the mapped upstream Return whenever one was returned, so
+ * NOT_SUPPORTED is distinguishable from FAIL. Non-Success Return ->
+ * PROVIDER_FAILED, a throw -> PROVIDER_EXCEPTION; failure publishes no owner
+ * and the retained callback stays inactive (no upstream unregister).
+ * Registration may deliver synchronously. Each response is copied before the
+ * callback returns into one bounded drop-incoming queue; null payloads,
+ * unknown CmdResp values and copy/allocation failures are counted as
+ * malformed. The owner stops when the C2 channel is physically released,
+ * after in-flight bridge callbacks have returned. Callback delivery is
+ * independent of, and never completes, a CameraProtectCmd request. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_camera_protect_open(
+    ams_mel_ir_c2 *c2, size_t queue_capacity,
+    ams_mel_ir_camera_protect_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty; STREAM_STOPPED once inactive/stopped and
+ * empty; PROVIDER_FAILED when C2 cleanup could not prove provider release.
+ * Queued events drain first. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_receive(
+    ams_mel_ir_camera_protect_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_camera_protect_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_get_counters(
+    const ams_mel_ir_camera_protect_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the callback. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_close(
+    ams_mel_ir_camera_protect_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view, valid until event close and
+ * independent of the owner, channel, Session and provider library. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_event_view(
+    const ams_mel_ir_camera_protect_event *event,
+    const ams_mel_ir_camera_protect_response_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_protect_event_close(
+    ams_mel_ir_camera_protect_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Instrumentation owner. This façade implements only the Instrumentation-
