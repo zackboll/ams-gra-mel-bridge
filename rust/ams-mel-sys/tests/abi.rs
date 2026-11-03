@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 266);
-    assert_eq!(exported.len(), 266);
+    assert_eq!(declared.len(), 269);
+    assert_eq!(exported.len(), 269);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",

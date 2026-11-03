@@ -12,6 +12,34 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_erase_abi(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/erase_layout_probe.c"), "-o", str(executable)], check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrEraseCommandV1, "command_id", "erase_type")
+        expected += self._layout(_native.IrEraseResultV1, "erase_type", "error_code")
+        self.assertEqual(actual, expected)
+        self.assertEqual([_native.AMS_MEL_IR_ERASE_ZEROIZE,
+                          _native.AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE,
+                          _native.AMS_MEL_IR_ERASE_DISABLE,
+                          _native.AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE], list(range(4)))
+        pointer = ctypes.POINTER
+        request = _native.IrEraseRequestHandle
+        signatures = {
+            "ams_mel_ir_c2_submit_erase": [_native.IrC2Handle, pointer(_native.IrEraseCommandV1), pointer(request)],
+            "ams_mel_ir_erase_request_wait": [request, ctypes.c_uint32, pointer(_native.IrEraseResultV1)],
+            "ams_mel_ir_erase_request_close": [pointer(request)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+
     def test_private_calibration_configuration_abi(self) -> None:
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
@@ -732,6 +760,9 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_c2_submit_erase",
+                "ams_mel_ir_erase_request_wait",
+                "ams_mel_ir_erase_request_close",
                 "ams_mel_ir_c2_submit_calibration_status",
                 "ams_mel_ir_calibration_status_request_wait",
                 "ams_mel_ir_calibration_status_request_close",
@@ -1001,8 +1032,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 266)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 266)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 269)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 269)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1010,7 +1041,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 266)
+        self.assertEqual(len(exported), 269)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

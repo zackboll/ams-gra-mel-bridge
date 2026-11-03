@@ -26,7 +26,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | API_Manager | 0 | 0 | 0 | 0 | 1 |
 | BaseSecurityEventType | 0 | 0 | 0 | 0 | 1 |
 | Buffer | 0 | 0 | 4 | 0 | 6 |
-| C2Channel | 13 | 0 | 0 | 2 | 1 |
+| C2Channel | 14 | 0 | 0 | 1 | 1 |
 | Channel | 3 | 0 | 4 | 1 | 1 |
 | Control | 2 | 0 | 3 | 0 | 1 |
 | EnumUtilities | 0 | 0 | 0 | 0 | 23 |
@@ -55,7 +55,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 
 ## Outgoing commands/requests
 
-21 unique declarations; 14 safe Ada; 0 partial; 0 native only; 7 missing.
+21 unique declarations; 15 safe Ada; 0 partial; 0 native only; 6 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
@@ -67,7 +67,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | C2Channel | `send(CameraCommand)` | safe_ada | Enabled-only C2Channel::send(CameraCommand) through the shared camera completion engine: lifetime claim under the C2 lock, unlocked provider send, Session admission, deferred C2 teardown on pending Close, cached Wait; all 11 fields exact; CommandSuccess=false is a successful response distinct from MEL rejection. |
 | C2Channel | `send(CameraProtectCmd)` | safe_ada | Enabled-only C2Channel::send(CameraProtectCmd) through the established request architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock, unlocked provider send, single completion worker, deferred C2 teardown on pending Close, allocation-free post-send retention, cached Wait; all three command fields exact (invalid protect_flag rejected before send); every CmdResp alternative is a successful response distinct from MEL rejection. |
 | C2Channel | `send(ConfigSetCommand)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
-| C2Channel | `send(EraseCommand)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| C2Channel | `send(EraseCommand)` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. |
 | C2Channel | `send(ModeCmd)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
 | C2Channel | `send(SystemTrackDataResponse)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report for five attached families; absent Scheduling/Stacked owners are not counted. |
@@ -285,8 +285,8 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::CoordFrameRef` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CoordinateSystemType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::DegradationMethod` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
-| `ams::iface::irmel::EraseCommand` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
-| `ams::iface::irmel::EraseCommandType` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
+| `ams::iface::irmel::EraseCommand` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
+| `ams::iface::irmel::EraseCommandType` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
 | `ams::iface::irmel::EventType` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::ExecuteTaskAck` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::Failure` | safe_ada | Every subsystem/CSCI field and complete ordered collections retained independently from reported counts; all known meaningful mode/failure alternatives represented. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
