@@ -12,6 +12,39 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_c2_system_response_abi(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/c2_system_response_layout_probe.c"), "-o", str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrSystemTrackDataResponseV1, "system_time_ns", "command_id",
+                                "request_id", "track_id", "range_m", "range_rate_mps", "range_error_m",
+                                "range_rate_error_mps", "az_el_valid", "range_valid", "inertial_az_el",
+                                "az_el_error")
+        expected += self._layout(_native.IrC2SystemResponseResultV1, "status", "error_code")
+        expected += [ctypes.sizeof(_native.IrCommandStatusV1), _native.IrCommandStatusV1.reason_description.offset]
+        self.assertEqual(actual, expected)
+        # Distinct from the Track overload result type, same generic status.
+        self.assertIsNot(_native.IrC2SystemResponseResultV1, _native.IrTrackSystemResponseResultV1)
+        pointer = ctypes.POINTER
+        request = _native.IrC2SystemResponseRequestHandle
+        signatures = {
+            "ams_mel_ir_c2_submit_system_track_data_response": [
+                _native.IrC2Handle, pointer(_native.IrSystemTrackDataResponseV1), pointer(request)],
+            "ams_mel_ir_c2_system_response_request_wait": [
+                request, ctypes.c_uint32, pointer(_native.IrC2SystemResponseResultV1)],
+            "ams_mel_ir_c2_system_response_request_close": [pointer(request)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+
     def test_private_erase_abi(self) -> None:
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
@@ -760,6 +793,9 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_c2_submit_system_track_data_response",
+                "ams_mel_ir_c2_system_response_request_wait",
+                "ams_mel_ir_c2_system_response_request_close",
                 "ams_mel_ir_c2_submit_erase",
                 "ams_mel_ir_erase_request_wait",
                 "ams_mel_ir_erase_request_close",
@@ -1032,8 +1068,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 269)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 269)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 272)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 272)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1041,7 +1077,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 269)
+        self.assertEqual(len(exported), 272)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

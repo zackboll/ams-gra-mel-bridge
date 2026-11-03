@@ -3603,6 +3603,28 @@ extern "C" {
         capacity: usize,
         required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_system_track_data_response(
+        c2: *mut AmsMelIrC2,
+        response: *const AmsMelIrSystemTrackDataResponseV1,
+        output: *mut *mut AmsMelIrC2SystemResponseRequest,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_system_response_request_wait(
+        request: *const AmsMelIrC2SystemResponseRequest,
+        timeout_ms: u32,
+        result: *mut AmsMelIrC2SystemResponseResultV1,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_system_response_request_close(
+        request: *mut *mut AmsMelIrC2SystemResponseRequest,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_ir_c2_submit_calibration_status(
         c2: *mut AmsMelIrC2,
         command: *const AmsMelIrCalibrationStatusCommandV1,
@@ -5453,6 +5475,21 @@ pub struct AmsMelIrEraseResultV1 {
 }
 #[repr(C)]
 pub struct AmsMelIrEraseRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+// IRMEL-ADA-008: private raw mirror only, no safe Rust C2 SystemTrackDataResponse
+// API. The input reuses AmsMelIrSystemTrackDataResponseV1; this result and
+// opaque request are distinct from the Track overload's types.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrC2SystemResponseResultV1 {
+    pub status: AmsMelIrCommandStatusV1,
+    pub error_code: u32,
+}
+#[repr(C)]
+pub struct AmsMelIrC2SystemResponseRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
