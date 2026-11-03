@@ -1,5 +1,41 @@
 # Architecture decisions
 
+## IRMEL-ADA-008 — Independent optional C2 SystemTrackDataResponse
+
+`C2Channel::send(SystemTrackDataResponse)` is exposed by
+`AMS.MEL.IR.C2.System_Data.Submit_System_Track_Data_Response` with a distinct
+limited-controlled `Response_Request` observer, `Wait`, `Close` and owned
+`Response_Result`. It is the C2 overload, **independent** of the existing
+`TrackChannel::send(SystemTrackDataResponse)`: it requires an Enabled C2 channel
+and uses C2 lifecycle, `claim_c2_submission`/`CommonRequestClaim`/
+`finish_c2_request` C2 request accounting, its own opaque
+`ams_mel_ir_c2_system_response_request` and probe family C2SystemResponse (11,
+appended). It never calls the Track export or touches TrackState. The two
+overloads share only pure value conversion: the existing complete
+`ams_mel_ir_system_track_data_response_v1` input (all twelve fields, 0/1-only
+Booleans, no clamping/normalization/zeroing of inactive fields) and CommandStatus
+validation (state 0–4, CannotComply 0–46, UTF-8 without NUL), now in one
+state-free native unit and one private Ada conversion package.
+
+A successful future returns CommandStatus, including a CommandStatus whose own
+state is Rejected; only an upstream ErrorOr error is a Rejected outcome with its
+complete cached diagnostic. Null/malformed payloads, unknown codes, provider
+exceptions and deferred cleanup failure raise `Provider_Error`. **A successful
+future does not establish that the track data was operationally incorporated.**
+Timeout and observer Close never cancel; pending work retains C2/Session/provider.
+The Ada API reuses the public owned `Track.System_Data.System_Track_Data_Response`
+and the shared `Command_State`/`Cannot_Comply`/outcome/error types; no second
+enumeration mapping exists.
+
+Exactly three `AMS_MEL_0.1` exports extend 269 → 272 with one new record
+`ams_mel_ir_c2_system_response_result_v1`; existing records, signatures, exports
+and enum values are unchanged. Python ctypes and Rust sys gain private mirrors
+only. Coverage changes only this operation from missing to safe_ada; safe Ada
+operations 44 → 45 (SystemTrackDataResponse/CommandStatus were already safe_ada).
+Qualification is mock-provider only. Scheduling, image callbacks and RF remain out
+of scope. See [qualification](irmel-ada-008-c2-system-track-response.md).
+
+
 ## IRMEL-ADA-007 — Optional C2 EraseCommand
 
 `C2Channel::send(EraseCommand)` is exposed by `C2.Submit_Erase_Command` and
