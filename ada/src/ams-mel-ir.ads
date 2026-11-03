@@ -282,6 +282,11 @@ package AMS.MEL.IR is
    --  AMS.MEL.IR.Calibration_Configuration.Configuration_Request. Finalization is
    --  non-raising and never cancels native work or its retained provider graph.
 
+   type Calibration_Status_Request_Owner is tagged limited private;
+   --  Limited controlled implementation owner used through
+   --  AMS.MEL.IR.Calibration_Status.Status_Request. Finalization is non-raising
+   --  and never cancels native work or its retained provider graph.
+
    type Channel_View is limited private;
    --  Limited controlled owner of a weak common-channel view, used through the
    --  channel child package's View subtype. It owns only the view handle and
@@ -343,4 +348,10 @@ private
    end record;
    overriding
    procedure Finalize (Object : in out Calibration_Configuration_Request_Owner);
+   type Calibration_Status_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Calibration_Status_Request_Handle :=
+        AMS.MEL_C_API.Null_Calibration_Status_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Calibration_Status_Request_Owner);
 end AMS.MEL.IR;

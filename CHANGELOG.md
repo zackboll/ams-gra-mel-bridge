@@ -1,5 +1,25 @@
 # Changelog
 
+## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
+
+Both pinned optional operations are implemented: `C2Channel::send(CalibrationStatusCmd)`
+as `ams_mel_ir_c2_submit_calibration_status` (Ada `C2.Submit_Calibration_Status`,
+Enabled only; `ams_mel_ir_calibration_status_request_wait/close`, Ada
+`AMS.MEL.IR.Calibration_Status.Status_Request`) on the established request
+architecture, and `C2Channel::registerMetadataCallback(CalibrationStatus)` as the
+independent opt-in owner `ams_mel_ir_c2_calibration_status_open` with
+receive/counters/close and event view/close (Ada `C2.Metadata.Open_Calibration_Status`,
+`Receive_Calibration_Status`, `Calibration_Status_Counters`). New records
+`ams_mel_ir_calibration_status_command_v1`, `ams_mel_ir_completed_calibration_item_v1`
+(+span), `ams_mel_ir_completed_calibration_v1` (+span), `ams_mel_ir_calibration_status_v1`
+and `ams_mel_ir_calibration_status_result_v1`, and result values
+`AMS_MEL_IR_CALIBRATION_RESULT_*` 0..4; no existing `*_v1` record changes. Active and
+completed collections and every nested item vector are independent; time tags are exact
+signed int64 nanoseconds without epoch; MaxExclusive and unknown results are
+`PROVIDER_FAILED`/malformed, never remapped. Production inventory: 266 AMS_MEL_0.1
+exports (nine new); Python/Rust receive only private raw mirrors. Evidence is
+mock-provider only; no IR calibration hardware or Squall qualification.
+
 ## IRMEL-ADA-004 — C2 camera self-protection (CameraProtectCmd / CameraProtectCmdResp)
 
 The pinned @RequiredIfCameraProtect `C2Channel::send(CameraProtectCmd)` is

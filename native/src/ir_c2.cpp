@@ -6,6 +6,7 @@
 #include "internal/ir_camera_command.hpp"
 #include "internal/ir_camera_protect.hpp"
 #include "internal/ir_calibration_configuration.hpp"
+#include "internal/ir_calibration_status.hpp"
 #include "internal/ir_nuc.hpp"
 
 #include <irmel/library/c2/C2Channel.h>
@@ -403,6 +404,10 @@ struct ChannelState {
     bool camera_protect_attempted{};
     std::shared_ptr<CalibrationConfigurationState> calibration_configuration;
     bool calibration_configuration_attempted{};
+    /* IRMEL-ADA-006 opt-in CalibrationStatus owner, independent of every other
+     * owner and of CalibrationStatusCmd requests. Guarded by mutex. */
+    std::shared_ptr<CalibrationStatusState> calibration_status;
+    bool calibration_status_attempted{};
 };
 
 /* A failed deferred detach cannot safely destroy its graph. Keep it for process
@@ -428,6 +433,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
     std::shared_ptr<MetadataState> metadata;
     std::shared_ptr<CameraProtectState> protect;
     std::shared_ptr<CalibrationConfigurationState> calibration;
+    std::shared_ptr<CalibrationStatusState> calibration_status;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
@@ -437,6 +443,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         metadata = state->metadata;
         protect = state->camera_protect;
         calibration = state->calibration_configuration;
+        calibration_status = state->calibration_status;
         disable = state->enable_attempted;
     }
     if (metadata) {
@@ -446,6 +453,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
     }
     if (protect) protect->deactivate();
     if (calibration) calibration->deactivate();
+    if (calibration_status) calibration_status->deactivate();
     bool ok = true;
     if (channel && disable) {
         try { if (channel->disable() != irmel::Return::Success) ok = false; }
@@ -466,6 +474,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         }
         if (protect) protect->fail();
         if (calibration) calibration->fail();
+        if (calibration_status) calibration_status->fail();
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -492,6 +501,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
      * CameraProtectCmdResp callbacks after the provider channel is released. */
     if (protect) protect->drain_and_stop();
     if (calibration) calibration->drain_and_stop();
+    if (calibration_status) calibration_status->drain_and_stop();
     return ok;
 }
 
@@ -1431,6 +1441,111 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_calibration_configuration_open(
         diagnostic(known && mapped == AMS_MEL_IR_RETURN_NOT_SUPPORTED ?
                        "provider does not support CalibrationConfiguration" :
                        "CalibrationConfiguration callback registration failed",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_FAILED;
+    }
+    *output = owner.release();
+    return AMS_MEL_OK;
+}
+
+/* IRMEL-ADA-006: C2Channel::send(CalibrationStatusCmd). Same Enabled lifecycle
+ * rule, lock-linearized claim and erased deferred-cleanup finish as the other
+ * C2 requests; provider send runs unlocked. */
+namespace {
+const ams_mel_calibration_status::Family c2_calibration_status_family{
+    [](const void *context) noexcept {
+        return static_cast<const ams_mel_ir_c2 *>(context)->state->session->admission;
+    },
+    [](const void *context, std::shared_ptr<void>& channel, CommonRequestClaim& claim) {
+        const auto& state = static_cast<const ams_mel_ir_c2 *>(context)->state;
+        std::shared_ptr<irmel::C2Channel> c2;
+        if (!claim_c2_submission(state, SubmissionRequirement::Enabled, c2)) return false;
+        claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+        channel = std::move(c2);
+        return true;
+    },
+    [](const std::shared_ptr<void>& channel, irmel::CalibrationStatusCmd command) {
+        return std::static_pointer_cast<irmel::C2Channel>(channel)->send(std::move(command));
+    },
+    "C2 channel is not enabled"};
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_calibration_status(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_calibration_status_command_v1 *command,
+    ams_mel_ir_calibration_status_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state) {
+        diagnostic("invalid CalibrationStatusCmd input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    return ams_mel_calibration_status::submit(c2_calibration_status_family, c2, command, out_request,
+                                          out, capacity, required);
+}
+
+/* IRMEL-ADA-006: opt-in C2 CalibrationStatus registration, independent of
+ * ams_mel_ir_c2_metadata_open and of the CalibrationConfiguration owner. The one-shot attempt and the state publication
+ * happen under the C2 lock; registration itself runs with no bridge lock
+ * held, so synchronous delivery during registration cannot deadlock. */
+extern "C" ams_mel_status_t ams_mel_ir_c2_calibration_status_open(
+    ams_mel_ir_c2 *c2, std::size_t queue_capacity,
+    ams_mel_ir_calibration_status_metadata **output, ams_mel_ir_return_t *registration,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state || !queue_capacity || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    std::shared_ptr<CalibrationStatusState> state;
+    std::function<void(irmel::Channel&, const mel::CalibrationStatus *const)> callback;
+    std::unique_ptr<ams_mel_ir_calibration_status_metadata> owner;
+    try {
+        state = std::make_shared<CalibrationStatusState>();
+        state->capacity = queue_capacity;
+        callback = [state](irmel::Channel&, const mel::CalibrationStatus *const value) noexcept {
+            state->receive(value);
+        };
+        owner = std::make_unique<ams_mel_ir_calibration_status_metadata>();
+        owner->state = state;
+    } catch (...) {
+        diagnostic("CalibrationStatus metadata allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    std::shared_ptr<irmel::C2Channel> channel;
+    try {
+        std::lock_guard lock{c2->state->mutex};
+        if ((c2->state->lifecycle != C2Lifecycle::Attached &&
+             c2->state->lifecycle != C2Lifecycle::Enabled) ||
+            c2->state->calibration_status_attempted || !c2->state->c2) {
+            diagnostic("C2 channel is not eligible or CalibrationStatus was already attempted",
+                       out, capacity, required);
+            return AMS_MEL_INVALID_ARGUMENT;
+        }
+        c2->state->calibration_status_attempted = true;
+        c2->state->calibration_status = state;
+        channel = c2->state->c2;
+    } catch (...) {
+        diagnostic("C2 CalibrationStatus lock failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+    irmel::Return result{};
+    try {
+        result = channel->registerMetadataCallback(std::move(callback));
+    } catch (...) {
+        state->deactivate();
+        diagnostic("provider exception during CalibrationStatus registration", out, capacity,
+                   required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+    channel.reset();
+    ams_mel_ir_return_t mapped = AMS_MEL_IR_RETURN_FAIL;
+    const bool known = ams_mel::internal::nuc_map_return(result, mapped);
+    if (known && registration) *registration = mapped;
+    if (!known || mapped != AMS_MEL_IR_RETURN_SUCCESS) {
+        state->deactivate();
+        diagnostic(known && mapped == AMS_MEL_IR_RETURN_NOT_SUPPORTED ?
+                       "provider does not support CalibrationStatus" :
+                       "CalibrationStatus callback registration failed",
                    out, capacity, required);
         return AMS_MEL_PROVIDER_FAILED;
     }

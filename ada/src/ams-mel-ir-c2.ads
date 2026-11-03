@@ -1,4 +1,5 @@
 with AMS.MEL.IR.Calibration_Configuration;
+with AMS.MEL.IR.Calibration_Status;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 with Ada.Containers.Indefinite_Vectors;
@@ -454,6 +455,16 @@ package AMS.MEL.IR.C2 is
    --  @param Channel Enabled typed owner; externally serialize owner operations.
    --  @param Command Both independent command and request identifiers to send.
    --  @return Limited observer of a complete ordered configuration or MEL rejection.
+
+   function Submit_Calibration_Status
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Calibration_Status.Status_Command)
+      return AMS.MEL.IR.Calibration_Status.Status_Request;
+   --  Submit both independent uint32 fields through the optional upstream overload while
+   --  Enabled. Pending work retains C2, Session and provider; Close is not cancellation.
+   --  Independent of every metadata owner, including Open_Calibration_Status.
+   --  @param Channel Enabled typed owner; externally serialize owner operations.
+   --  @param Command Both independent command and request identifiers to send.
+   --  @return Limited observer of a complete calibration status or MEL rejection.
 
    procedure Close (Request : in out Mode_Request);
    --  Idempotently release the public Mode observer. Pending native work retains

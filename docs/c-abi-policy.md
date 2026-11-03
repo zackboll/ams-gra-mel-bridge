@@ -1,5 +1,52 @@
 # Experimental C ABI policy
 
+## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
+
+Both pinned optional operations are implemented independently:
+`C2Channel::send(CalibrationStatusCmd)` →
+`AMS.MEL.IR.C2.Submit_Calibration_Status` (`Calibration_Status.Status_Request`,
+`Wait`, `Close`), and
+`C2Channel::registerMetadataCallback(CalibrationStatus)` →
+`AMS.MEL.IR.C2.Metadata.Open_Calibration_Status` /
+`Receive_Calibration_Status` / `Calibration_Status_Counters`. Neither requires
+the other, base `C2.Metadata.Open` never registers the callback, and the
+CalibrationConfiguration owner and request are unchanged. Safe Ada operation
+coverage is 43 (previously 41).
+
+The canonical `AMS.MEL.IR.Calibration_Status` package owns two **independent**
+ordered collections: active calibration UCI IDs (all UUID bytes, labels, order
+and duplicates) and completed calibrations. No equal lengths, correspondence,
+uniqueness or ordering relationship is assumed. Each completed calibration owns
+its complete ID, the exact signed `std::chrono::nanoseconds` count as int64
+(no epoch or unit conversion), its result, complete fail reason, and an
+independently sized ordered item vector (name, result, fail reason). Results are
+exactly NotSet/Completed/Failed/Interrupted/NotCalibrated = 0..4, pinned by
+static assertions; MaxExclusive (5) and unknown values are rejected, never
+remapped. Both uint32 command identifiers remain independent, including zero and
+UINT32_MAX, with no inferred response correlation. Native immutable backing is
+fully built before the provider result is released or the callback returns; Ada
+copies out without exposing native pointers. UTF-8/NUL and checked-size policy
+apply. No existing v1 record layout, export signature or enum value changes.
+
+Submission requires Enabled and reuses Session CompletionPermit,
+claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked provider
+send, one future-consuming worker, cached outcome/diagnostic, deferred teardown
+and allocation-free retention. Closing a request is not cancellation. The
+separate one-shot Attached/Enabled registration runs unlocked, permits
+synchronous delivery, and reports NotSupported separately from Fail/exceptions.
+Its bounded DROP-INCOMING queue copies whole statuses atomically, counts
+malformed/dropped events, drains queued events after shutdown, retains late
+callback state and waits for in-flight callbacks at physical teardown. Callback
+delivery and metadata Close never complete or cancel a request. Completion-probe
+family `CalibrationStatus` (9) is appended; existing indices are unchanged.
+
+Production ABI: **266 AMS_MEL_0.1 exports** (257 baseline + 9), with private
+Python ctypes and Rust ams-mel-sys mirrors/probes only. Mock-provider qualification
+is not real-provider, Squall or hardware qualification. Calibration execution,
+EraseCommand, Scheduling and RF remain out of scope.
+See [qualification](irmel-ada-006-calibration-status.md).
+
+
 ## IRMEL-ADA-005 — Complete optional C2 CalibrationConfiguration
 
 Both pinned optional operations are implemented independently:

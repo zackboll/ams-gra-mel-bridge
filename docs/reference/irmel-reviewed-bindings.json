@@ -431,11 +431,42 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::registerMetadataCallback(std::function<void(Channel&,const ams::iface::mel::CalibrationStatus*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_calibration_status_open"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Open_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Receive_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-c2-metadata.ads",
+          "symbol": "Calibration_Status_Counters"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
@@ -503,11 +534,38 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(CalibrationStatusCmd)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_status"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Status"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Wait"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
@@ -3146,22 +3204,63 @@
     },
     {
       "id": "common:type:ams::iface::mel::CalibrationStatus",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing active UCI calibration IDs and ordered completed calibrations and C2 request/callback.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        },
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Status_Value"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getActiveCalibrationIDs",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Active_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Active_ID"
+            }
+          ]
         },
         {
           "upstream": "getCompletedCalibrations",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Completed_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Completed_At"
+            }
+          ]
         }
       ]
     },
@@ -5768,73 +5867,174 @@
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCalibrationResult",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_request_wait"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Calibration_Result"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": []
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCompletedCalibration",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing calibration ID, time tag, result, fail reason and completed-item vector.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Completed_Calibration"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCalibrationID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Calibration_ID"
+            }
+          ]
         },
         {
           "upstream": "getTimeTag",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Time_Tag"
+            }
+          ]
         },
         {
           "upstream": "getResult",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Result"
+            }
+          ]
         },
         {
           "upstream": "getFailReason",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Fail_Reason"
+            }
+          ]
         },
         {
           "upstream": "getCalibrationItems",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_Count"
+            },
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_At"
+            }
+          ]
         }
       ]
     },
     {
       "id": "common:type:ams::iface::mel::SubsystemCompletedCalibrationItemType",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing item name/result/fail-reason representation.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_calibration_status.cpp",
+          "symbol": "ams_mel_ir_calibration_status_event_view"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-calibration_status.ads",
+          "symbol": "Completed_Item"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getItemName",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Item_Name"
+            }
+          ]
         },
         {
           "upstream": "getResult",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Result"
+            }
+          ]
         },
         {
           "upstream": "getFailReason",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-calibration_status.ads",
+              "symbol": "Fail_Reason"
+            }
+          ]
         }
       ]
     },
@@ -6616,22 +6816,51 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::CalibrationStatusCmd",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_calibration_status"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Calibration_Status"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_calibration_status.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-006: complete optional CalibrationStatus, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. Both independent ordered collections are preserved with no equal-length, correspondence, uniqueness or ordering assumption: active UCI IDs (all 16 UUID bytes, labels, order and duplicates) and completed calibrations (full ID, exact signed int64 nanosecond time tag with no epoch or unit conversion, result, complete fail reason and an independently sized ordered item vector of name/result/fail reason). Results 0..4 are pinned by static assertions; MaxExclusive (5) and unknown values, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit preserves both uint32 command fields without correlation and reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome, deferred cleanup and allocation-free retention. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.",
       "limitations": [],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Status"
+            }
+          ]
         },
         {
           "upstream": "getRequestID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-c2.ads",
+              "symbol": "Submit_Calibration_Status"
+            }
+          ]
         }
       ]
     },

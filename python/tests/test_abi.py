@@ -60,6 +60,57 @@ class AbiTests(unittest.TestCase):
                 self.assertEqual(function.argtypes, arguments + diagnostic)
                 self.assertIs(function.restype, ctypes.c_int32)
 
+    def test_private_calibration_status_abi(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/calibration_status_layout_probe.c"),
+                            "-o", str(executable)], check=True)
+            actual = [int(value) for value in subprocess.check_output([str(executable)], text=True).split()]
+        expected = []
+        expected.extend(self._layout(_native.IrCalibrationStatusCommandV1, 'command_id', 'request_id'))
+        expected.extend(self._layout(_native.IrCompletedCalibrationItemV1, 'item_name', 'result', 'fail_reason'))
+        expected.extend(self._layout(_native.IrCompletedCalibrationItemSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrCompletedCalibrationV1, 'calibration_id', 'time_tag_ns', 'result',
+                                     'fail_reason', 'calibration_items'))
+        expected.extend(self._layout(_native.IrCompletedCalibrationSpanV1, 'data', 'size'))
+        expected.extend(self._layout(_native.IrCalibrationStatusV1, 'active_calibration_ids', 'completed_calibrations'))
+        expected.extend(self._layout(_native.IrCalibrationStatusResultV1, 'status', 'error_code'))
+        expected.extend([_native.AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET,
+                         _native.AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED,
+                         _native.AMS_MEL_IR_CALIBRATION_RESULT_FAILED,
+                         _native.AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED,
+                         _native.AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED])
+        self.assertEqual(actual, expected)
+        request = _native.IrCalibrationStatusRequestHandle
+        metadata = _native.IrCalibrationStatusMetadataHandle
+        event = _native.IrCalibrationStatusEventHandle
+        pointer = ctypes.POINTER
+        signatures = {
+            "ams_mel_ir_c2_submit_calibration_status":
+                [_native.IrC2Handle, pointer(_native.IrCalibrationStatusCommandV1), pointer(request)],
+            "ams_mel_ir_calibration_status_request_wait":
+                [request, ctypes.c_uint32, pointer(_native.IrCalibrationStatusResultV1)],
+            "ams_mel_ir_calibration_status_request_close": [pointer(request)],
+            "ams_mel_ir_c2_calibration_status_open":
+                [_native.IrC2Handle, ctypes.c_size_t, pointer(metadata), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_calibration_status_receive": [metadata, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_calibration_status_get_counters": [metadata, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_calibration_status_close": [pointer(metadata)],
+            "ams_mel_ir_calibration_status_event_view": [event, pointer(pointer(_native.IrCalibrationStatusV1))],
+            "ams_mel_ir_calibration_status_event_close": [pointer(event)],
+        }
+        self.assertEqual(len(signatures), 9)
+        diagnostic = [_native.CharPointer, ctypes.c_size_t, _native.SizePointer]
+        for name, arguments in signatures.items():
+            with self.subTest(binding=name):
+                function = getattr(_native, name)
+                self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+                self.assertEqual(function.argtypes, arguments + diagnostic)
+                self.assertIs(function.restype, ctypes.c_int32)
+
     def test_private_product_rx_v5_abi(self) -> None:
         self.assertEqual(_native.ams_mel_rf_data_submit_product_rx_v5.argtypes,
                          _native.ams_mel_rf_data_submit_product_rx.argtypes)
@@ -681,6 +732,15 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_c2_submit_calibration_status",
+                "ams_mel_ir_calibration_status_request_wait",
+                "ams_mel_ir_calibration_status_request_close",
+                "ams_mel_ir_c2_calibration_status_open",
+                "ams_mel_ir_calibration_status_receive",
+                "ams_mel_ir_calibration_status_get_counters",
+                "ams_mel_ir_calibration_status_close",
+                "ams_mel_ir_calibration_status_event_view",
+                "ams_mel_ir_calibration_status_event_close",
                 "ams_mel_ir_c2_submit_calibration_configuration",
                 "ams_mel_ir_calibration_configuration_request_wait",
                 "ams_mel_ir_calibration_configuration_request_close",
@@ -941,8 +1001,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 257)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 257)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 266)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 266)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -950,7 +1010,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 257)
+        self.assertEqual(len(exported), 266)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

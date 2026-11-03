@@ -1185,6 +1185,55 @@ pub struct AmsMelIrCalibrationConfigurationResultV1 {
     pub configuration: AmsMelIrCalibrationConfigurationV1,
     pub error_code: u32,
 }
+/// IRMEL-ADA-006 private raw ABI mirrors; no safe Rust API.
+pub type AmsMelIrCalibrationResult = u32;
+pub const AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET: AmsMelIrCalibrationResult = 0;
+pub const AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED: AmsMelIrCalibrationResult = 1;
+pub const AMS_MEL_IR_CALIBRATION_RESULT_FAILED: AmsMelIrCalibrationResult = 2;
+pub const AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED: AmsMelIrCalibrationResult = 3;
+pub const AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED: AmsMelIrCalibrationResult = 4;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrCalibrationStatusCommandV1 {
+    pub command_id: u32,
+    pub request_id: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCompletedCalibrationItemV1 {
+    pub item_name: AmsMelStringViewV1,
+    pub result: AmsMelIrCalibrationResult,
+    pub fail_reason: AmsMelStringViewV1,
+}
+span!(
+    AmsMelIrCompletedCalibrationItemSpanV1,
+    AmsMelIrCompletedCalibrationItemV1
+);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCompletedCalibrationV1 {
+    pub calibration_id: AmsMelUciIdV1,
+    pub time_tag_ns: i64,
+    pub result: AmsMelIrCalibrationResult,
+    pub fail_reason: AmsMelStringViewV1,
+    pub calibration_items: AmsMelIrCompletedCalibrationItemSpanV1,
+}
+span!(
+    AmsMelIrCompletedCalibrationSpanV1,
+    AmsMelIrCompletedCalibrationV1
+);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCalibrationStatusV1 {
+    pub active_calibration_ids: AmsMelUciIdSpanV1,
+    pub completed_calibrations: AmsMelIrCompletedCalibrationSpanV1,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrCalibrationStatusResultV1 {
+    pub status: AmsMelIrCalibrationStatusV1,
+    pub error_code: u32,
+}
 /// IRMEL-ADA-004: pinned CmdResp alternatives (raw mirror; no safe Rust API yet).
 pub type AmsMelIrCameraProtectStatus = u32;
 pub const AMS_MEL_IR_CAMERA_PROTECT_OK: AmsMelIrCameraProtectStatus = 0;
@@ -2017,6 +2066,24 @@ pub struct AmsMelIrCalibrationConfigurationMetadata {
 /// IRMEL-ADA-004: opaque copied CalibrationConfigurationCmdResp event.
 #[repr(C)]
 pub struct AmsMelIrCalibrationConfigurationEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-006: opaque asynchronous C2 CalibrationStatusCmd request.
+#[repr(C)]
+pub struct AmsMelIrCalibrationStatusRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-006: opaque opt-in C2 CalibrationStatus owner.
+#[repr(C)]
+pub struct AmsMelIrCalibrationStatusMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-006: opaque copied CalibrationStatus event.
+#[repr(C)]
+pub struct AmsMelIrCalibrationStatusEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3510,6 +3577,71 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_calibration_configuration_event_close(
         event: *mut *mut AmsMelIrCalibrationConfigurationEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_calibration_status(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrCalibrationStatusCommandV1,
+        out: *mut *mut AmsMelIrCalibrationStatusRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_request_wait(
+        request: *const AmsMelIrCalibrationStatusRequest,
+        timeout_ms: u32,
+        out: *mut AmsMelIrCalibrationStatusResultV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_request_close(
+        request: *mut *mut AmsMelIrCalibrationStatusRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_calibration_status_open(
+        c2: *mut AmsMelIrC2,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrCalibrationStatusMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_receive(
+        metadata: *mut AmsMelIrCalibrationStatusMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrCalibrationStatusEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_get_counters(
+        metadata: *const AmsMelIrCalibrationStatusMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_close(
+        metadata: *mut *mut AmsMelIrCalibrationStatusMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_event_view(
+        event: *const AmsMelIrCalibrationStatusEvent,
+        out: *mut *const AmsMelIrCalibrationStatusV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_calibration_status_event_close(
+        event: *mut *mut AmsMelIrCalibrationStatusEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

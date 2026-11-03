@@ -112,6 +112,15 @@ private package AMS.MEL_C_API is
    type Calibration_Configuration_Event_Handle is new System.Address;
    Null_Calibration_Configuration_Event    : constant Calibration_Configuration_Event_Handle :=
      Calibration_Configuration_Event_Handle (System.Null_Address);
+   type Calibration_Status_Request_Handle is new System.Address;
+   Null_Calibration_Status_Request         : constant Calibration_Status_Request_Handle :=
+     Calibration_Status_Request_Handle (System.Null_Address);
+   type Calibration_Status_Metadata_Handle is new System.Address;
+   Null_Calibration_Status_Metadata        : constant Calibration_Status_Metadata_Handle :=
+     Calibration_Status_Metadata_Handle (System.Null_Address);
+   type Calibration_Status_Event_Handle is new System.Address;
+   Null_Calibration_Status_Event           : constant Calibration_Status_Event_Handle :=
+     Calibration_Status_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
    Null_Navigation_Request                 : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
@@ -933,6 +942,35 @@ private package AMS.MEL_C_API is
    type IR_Calibration_Configuration_Result_V1 is record
       Configuration : IR_Calibration_Configuration_V1;
       Error_Code    : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-006 records; layouts are asserted against C by the Ada tests.
+   type IR_Calibration_Status_Command_V1 is record
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Completed_Calibration_Item_V1 is record
+      Item_Name   : String_View_V1;
+      Result      : Interfaces.Unsigned_32;
+      Fail_Reason : String_View_V1;
+   end record
+   with Convention => C;
+   type IR_Completed_Calibration_V1 is record
+      Calibration_ID    : UCI_ID_V1;
+      Time_Tag_NS       : Interfaces.Integer_64;
+      Result            : Interfaces.Unsigned_32;
+      Fail_Reason       : String_View_V1;
+      Calibration_Items : Span_V1;
+   end record
+   with Convention => C;
+   type IR_Calibration_Status_V1 is record
+      Active_Calibration_IDs : Span_V1;
+      Completed_Calibrations : Span_V1;
+   end record
+   with Convention => C;
+   type IR_Calibration_Status_Result_V1 is record
+      Status     : IR_Calibration_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
 
@@ -1818,6 +1856,71 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_ir_calibration_configuration_event_close";
+   function IR_C2_Submit_Calibration_Status
+     (C2                  : C2_Handle;
+      Command             : access IR_Calibration_Status_Command_V1;
+      Output              : access Calibration_Status_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_calibration_status";
+   function IR_Calibration_Status_Request_Wait
+     (Handle              : Calibration_Status_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Calibration_Status_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_request_wait";
+   function IR_Calibration_Status_Request_Close
+     (Handle              : access Calibration_Status_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_request_close";
+   function IR_C2_Calibration_Status_Open
+     (C2                  : C2_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Calibration_Status_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_calibration_status_open";
+   function IR_Calibration_Status_Receive
+     (Handle              : Calibration_Status_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Calibration_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_receive";
+   function IR_Calibration_Status_Get_Counters
+     (Handle              : Calibration_Status_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_get_counters";
+   function IR_Calibration_Status_Close
+     (Handle              : access Calibration_Status_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_close";
+   function IR_Calibration_Status_Event_View
+     (Handle              : Calibration_Status_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_event_view";
+   function IR_Calibration_Status_Event_Close
+     (Handle              : access Calibration_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_event_close";
    function IR_Instrumentation_Open
      (Parent              : Session_Handle;
       Config              : access constant IR_Instrumentation_Config_V1;

@@ -113,7 +113,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 41)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -127,8 +127,6 @@ class CoverageTests(unittest.TestCase):
         types = {e["id"].split(":type:")[1].split("::")[-1]: e for e in self.coverage["types"]}
         for name in ("CalibrationConfigurationCmd", "CalibrationConfiguration", "SubsystemCalibration", "SubsystemCalibrationControlInterfaces"):
             self.assertEqual(types[name]["status"], "safe_ada")
-        for name in ("CalibrationStatus", "CalibrationStatusCmd", "SubsystemCompletedCalibration"):
-            self.assertEqual(types[name]["status"], "missing")
         for name, getters in (("CalibrationConfigurationCmd", ["getCommandID", "getRequestID"]),
                               ("SubsystemCalibration", ["getCalibrationID", "getAcceptedInterface", "getCalibrationItemName", "getSubsystemComponentID", "getCapabilityID"])):
             self.assertEqual([field["upstream"] for field in types[name]["representation"]], getters)
@@ -136,7 +134,53 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 41)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
+
+    def test_calibration_status_slice_is_complete_and_independent(self):
+        send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
+        callback = self.operation("C2Channel", "CalibrationStatus*const")
+        self.assertEqual(send["native"][0]["symbol"], "ams_mel_ir_c2_submit_calibration_status")
+        self.assertEqual(callback["native"][0]["symbol"], "ams_mel_ir_c2_calibration_status_open")
+        self.assertEqual(send["ada"][0]["symbol"], "Submit_Calibration_Status")
+        self.assertEqual([e["symbol"] for e in callback["ada"]],
+                         ["Open_Calibration_Status", "Receive_Calibration_Status", "Calibration_Status_Counters"])
+        for entry in (send, callback):
+            self.assertEqual(entry["status"], "safe_ada")
+            self.assertIn({"path": "native/tests/test_ir_calibration_status.c", "symbol": "main"}, entry["tests"])
+            self.assertIn({"path": "ada/tests/src/ams_mel_ir_calibration_status_tests.adb", "symbol": "Run"}, entry["tests"])
+        types = {e["id"].split(":type:")[1].split("::")[-1]: e for e in self.coverage["types"]}
+        fields = {
+            "CalibrationStatusCmd": ["getCommandID", "getRequestID"],
+            "CalibrationStatus": ["getActiveCalibrationIDs", "getCompletedCalibrations"],
+            "SubsystemCompletedCalibration": ["getCalibrationID", "getTimeTag", "getResult", "getFailReason",
+                                              "getCalibrationItems"],
+            "SubsystemCompletedCalibrationItemType": ["getItemName", "getResult", "getFailReason"],
+            "SubsystemCalibrationResult": [],
+        }
+        for name, getters in fields.items():
+            self.assertEqual(types[name]["status"], "safe_ada", name)
+            self.assertEqual([field["upstream"] for field in types[name]["representation"]], getters)
+            self.assertTrue(all(field["status"] == "represented" and field["evidence"]
+                                for field in types[name]["representation"]))
+        enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
+        self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
+                         ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
+
+    def test_calibration_status_nested_item_omission_is_detected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))
+        entry["representation"] = [f for f in entry["representation"] if f["upstream"] != "getCalibrationItems"]
+        self.reject("field representation inventory mismatch")
+
+    def test_calibration_status_callback_needs_real_ada_evidence(self):
+        entry = self.operation("C2Channel", "CalibrationStatus*const")
+        entry["ada"][1]["symbol"] = "Receive_Fictitious_Status"
+        self.reject("missing ada symbol")
+
+    def test_calibration_status_needs_c_and_ada_tests(self):
+        send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
+        send["tests"] = [t for t in send["tests"] if not t["path"].endswith(".adb")]
+        self.reject("safe Ada claim lacks C/Ada tests")
 
     def test_calibration_nested_field_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCalibration"))
