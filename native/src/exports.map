@@ -271,6 +271,9 @@ AMS_MEL_0.1 {
         ams_mel_ir_c2_submit_erase;
         ams_mel_ir_erase_request_wait;
         ams_mel_ir_erase_request_close;
+        ams_mel_ir_c2_submit_system_track_data_response;
+        ams_mel_ir_c2_system_response_request_wait;
+        ams_mel_ir_c2_system_response_request_close;
     local:
         *;
 };
