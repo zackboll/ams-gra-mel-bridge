@@ -11,6 +11,7 @@ with AMS_MEL_IR_Image_Navigation_Tests;
 with AMS_MEL_IR_C2_Tests;
 with AMS_MEL_IR_Camera_Command_Tests;
 with AMS_MEL_IR_Erase_Tests;
+with AMS_MEL_IR_C2_System_Data_Tests;
 with AMS_MEL_IR_Camera_Protection_Tests;
 with AMS_MEL_IR_Calibration_Configuration_Tests;
 with AMS_MEL_IR_Calibration_Status_Tests;
@@ -246,6 +247,7 @@ begin
    AMS_MEL_IR_C2_Tests.Run (Provider_Path);
    AMS_MEL_IR_Camera_Command_Tests.Run (Provider_Path);
    AMS_MEL_IR_Erase_Tests.Run (Provider_Path);
+   AMS_MEL_IR_C2_System_Data_Tests.Run (Provider_Path);
    AMS_MEL_IR_Camera_Protection_Tests.Run (Provider_Path);
    AMS_MEL_IR_Calibration_Configuration_Tests.Run (Provider_Path);
    AMS_MEL_IR_Calibration_Status_Tests.Run (Provider_Path);

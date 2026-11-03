@@ -157,6 +157,11 @@ private package AMS.MEL_C_API is
    type Track_System_Response_Request_Handle is new System.Address;
    Null_Track_System_Response_Request      : constant Track_System_Response_Request_Handle :=
      Track_System_Response_Request_Handle (System.Null_Address);
+   --  IRMEL-ADA-008: a deliberately distinct handle for the independent C2
+   --  SystemTrackDataResponse overload; never interchangeable with the Track one.
+   type C2_System_Response_Request_Handle is new System.Address;
+   Null_C2_System_Response_Request         : constant C2_System_Response_Request_Handle :=
+     C2_System_Response_Request_Handle (System.Null_Address);
    --  Private raw RF handles; safe Ada ownership lives in AMS.MEL.RF children.
    type RF_Data_Handle is new System.Address;
    type RF_Admin_Handle is new System.Address;
@@ -1094,6 +1099,12 @@ private package AMS.MEL_C_API is
    --  Semantically distinct from IR_Track_Update_Result_V1 while reusing the
    --  one generic IR_Command_Status_V1 layout.
    type IR_Track_System_Response_Result_V1 is record
+      Status     : IR_Command_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-008: semantically distinct C2 result, same generic status layout.
+   type IR_C2_System_Response_Result_V1 is record
       Status     : IR_Command_Status_V1;
       Error_Code : Interfaces.Unsigned_32;
    end record
@@ -2183,6 +2194,29 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_system_response_request_close";
+   --  IRMEL-ADA-008 independent C2Channel::send(SystemTrackDataResponse).
+   function IR_C2_Submit_System_Track_Data_Response
+     (Handle              : C2_Handle;
+      Response            : access constant IR_System_Track_Data_Response_V1;
+      Output              : access C2_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_system_track_data_response";
+   function IR_C2_System_Response_Request_Wait
+     (Handle              : C2_System_Response_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_C2_System_Response_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_system_response_request_wait";
+   function IR_C2_System_Response_Request_Close
+     (Handle              : access C2_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_system_response_request_close";
 
    --  Task 032B1 public common Channel C ABI (private raw imports only).
    function IR_Channel_From_C2

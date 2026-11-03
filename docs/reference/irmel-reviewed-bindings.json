@@ -738,12 +738,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(SystemTrackDataResponse)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_system_track_data_response"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-system_data.ads",
+          "symbol": "Submit_System_Track_Data_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_c2_system_response.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_c2_system_data_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-008: independent C2 overload of the complete twelve-field SystemTrackDataResponse; Enabled-only single unlocked send with C2 lifecycle and C2 request accounting (never the Track overload or TrackState); cached CommandStatus result or explicit ErrorOr rejection. Shares only pure value conversion with TrackChannel::send.",
+      "limitations": [
+        "Mock provider qualification only; a successful future does not establish operational incorporation of the track data."
+      ],
       "representation": []
     },
     {
