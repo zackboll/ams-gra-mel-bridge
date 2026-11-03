@@ -265,26 +265,31 @@ ams_mel_string_view_v1 text_view(const std::string& text) noexcept
 {
     return {text.data(), text.size()};
 }
-}
-std::shared_ptr<const Snapshot> copy_status(const mel::CalibrationStatus& input)
+bool valid_status(const mel::CalibrationStatus& input) noexcept
 {
-    /* Validate both independent outer collections and every nested item before
-     * allocating/publishing. No equal lengths, correspondence, uniqueness or
-     * ordering relationship between active and completed is assumed. */
+    /* Validate both independent outer collections and every nested item without
+     * allocating. No equal lengths, correspondence, uniqueness or ordering
+     * relationship between active and completed is assumed. */
     const auto& active = input.getActiveCalibrationIDs();
     const auto& completed = input.getCompletedCalibrations();
     if (!checked_count<ams_mel_uci_id_v1>(active.size()) ||
-        !checked_count<ams_mel_ir_completed_calibration_v1>(completed.size())) return {};
-    for (const auto& id : active) if (!valid_id(id)) return {};
+        !checked_count<ams_mel_ir_completed_calibration_v1>(completed.size())) return false;
+    for (const auto& id : active) if (!valid_id(id)) return false;
     for (const auto& entry : completed) {
         if (!valid_id(entry.getCalibrationID()) || !valid_result(entry.getResult()) ||
             !valid_text(entry.getFailReason()) ||
             !checked_count<ams_mel_ir_completed_calibration_item_v1>(entry.getCalibrationItems().size()))
-            return {};
+            return false;
         for (const auto& item : entry.getCalibrationItems())
             if (!valid_text(item.getItemName()) || !valid_result(item.getResult()) ||
-                !valid_text(item.getFailReason())) return {};
+                !valid_text(item.getFailReason())) return false;
     }
+    return true;
+}
+}
+std::shared_ptr<const Snapshot> copy_status(const mel::CalibrationStatus& input)
+{
+    if (!valid_status(input)) return {};
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
     if (const char *value = std::getenv("AMS_MEL_TEST_CALIBRATION_STATUS_COPY_FAILURE");
         value && std::strcmp(value, "allocation") == 0) {
@@ -513,17 +518,21 @@ void CalibrationStatusState::receive(const mel::CalibrationStatus *input) noexce
                 throw std::bad_alloc{};
             }
 #endif
-            /* Complete nested deep copy before the provider callback returns.
-             * Null payloads and sentinel/unknown result values are never remapped. */
-            std::shared_ptr<const ams_mel_calibration_status::Snapshot> copied;
-            if (!input || !(copied = ams_mel_calibration_status::copy_status(*input)))
+            /* A full queue still validates malformed data, but never constructs
+             * a snapshot. With space, copy_status validates exactly once and
+             * completes the deep copy before the provider callback returns. */
+            if (!input)
                 increment(counters.malformed_or_unsupported);
-            else if (queue.size() >= capacity)
-                increment(counters.events_dropped_queue_full);
-            else {
+            else if (queue.size() >= capacity) {
+                if (ams_mel_calibration_status::valid_status(*input))
+                    increment(counters.events_dropped_queue_full);
+                else
+                    increment(counters.malformed_or_unsupported);
+            } else if (auto copied = ams_mel_calibration_status::copy_status(*input)) {
                 queue.push_back(copied);
                 ready.notify_one();
-            }
+            } else
+                increment(counters.malformed_or_unsupported);
         }
         if (--callbacks == 0U) callbacks_done.notify_all();
     } catch (...) {

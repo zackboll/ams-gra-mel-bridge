@@ -2644,6 +2644,18 @@ public:
         if (scenario.rfind("calstatus-", 0U) != 0U) {
             promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}}); return future;
         }
+        if (scenario == "calstatus-callback-capacity") {
+            /* Test-driven synchronous callbacks, with no background timing or new
+             * facade hook. Reject the request so its completion cannot consume the
+             * snapshot-copy failpoint used to observe callback allocation. */
+            auto value = status_values(command.getCommandID());
+            const auto mode = command.getRequestID();
+            if (mode > 0U && mode <= std::size(status_corruptions))
+                status_corrupt(status_corruptions[mode - 1U], value);
+            callback_(channel, mode == std::size(status_corruptions) + 1U ? nullptr : &value);
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
         if (scenario == "calstatus-send-throw") throw std::runtime_error("mock calibration status send exception");
         if (scenario == "calstatus-invalid-future") return {};
         auto value = std::make_shared<mel::CalibrationStatus>(status_values(command.getCommandID()));

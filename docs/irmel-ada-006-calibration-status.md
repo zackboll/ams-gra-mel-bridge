@@ -94,6 +94,34 @@ Predicate controls additionally remove an item, an item result, truncate an item
 reason, remap an overall result, perturb a time tag, and drop either collection or the
 duplicate active ID; each must fail the full fidelity predicate (C and Ada).
 
+## IRMEL-ADA-006R1 — Avoid full-queue snapshot copies
+
+The callback uses the same allocation-free nested validator as `copy_status()`
+when the receive queue is full. Valid incoming statuses increment the queue-full
+counter without constructing a snapshot; malformed and null payloads still
+increment the malformed counter. With capacity available, `copy_status()` validates
+once and deep-copies as before; copy/allocation failures remain malformed events.
+Mutex protection, callback accounting, exception containment and ownership are unchanged.
+
+The C11 capacity regression drives synchronous mock callbacks through rejected
+requests (so request completion cannot consume the snapshot-copy failpoint). It:
+
+- enqueues a rich status in a capacity-one queue;
+- arms the existing copy-allocation failpoint and proves a valid full-queue event
+  leaves it armed while incrementing only the queue-full counter;
+- checks all nine existing malformed fixtures and a null callback while full,
+  asserting each increments only the malformed counter and leaves the failpoint armed;
+- drains and verifies the original complete nested snapshot, then proves the next
+  valid callback consumes the failpoint with space available and counts as malformed;
+- receives the following valid callback normally, checking full nested fidelity
+  and snapshot lifetime after all provider owners close.
+
+This regression failed against the reviewed implementation because the full-queue
+callback consumed the copy failpoint, and passes with the correction. The original
+nested-field fidelity checks and mutation controls are preserved. No public API,
+layout, production export, coverage classification or CalibrationConfiguration
+implementation changes are made by R1.
+
 ## ABI and coverage
 
 Production inventory: **266 AMS_MEL_0.1 exports**, baseline 257 + nine additions, zero

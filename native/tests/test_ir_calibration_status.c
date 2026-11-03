@@ -427,6 +427,69 @@ static int callbacks(void)
     }
     return EXIT_SUCCESS;
 }
+/* Drive a callback synchronously through the mock; the rejected request never
+ * copies a status, so only the callback can consume the copy failpoint. */
+static int emit_capacity_callback(struct owners *o, uint32_t seed, uint32_t mode)
+{
+    ams_mel_ir_calibration_status_request *request = NULL;
+    ams_mel_ir_calibration_status_result_v1 result;
+    CHECK(submit(o,seed,mode,&request)==AMS_MEL_OK);
+    CHECK(ams_mel_ir_calibration_status_request_wait(request,15000,&result,NULL,0,NULL)==AMS_MEL_COMMAND_REJECTED);
+    CHECK(result.error_code==AMS_MEL_ERROR_UNSUPPORTED);
+    CHECK(ams_mel_ir_calibration_status_request_close(&request,NULL,0,NULL)==AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+static int callback_capacity(void)
+{
+    struct owners o;
+    ams_mel_ir_calibration_status_metadata *metadata = NULL;
+    ams_mel_ir_calibration_status_event *event = NULL;
+    const ams_mel_ir_calibration_status_v1 *view = NULL;
+    ams_mel_ir_metadata_counters_v1 counters;
+    const char *failpoint = "AMS_MEL_TEST_CALIBRATION_STATUS_COPY_FAILURE";
+    CHECK(open_owner("calstatus-callback-capacity",0,1,&o)==EXIT_SUCCESS);
+    CHECK(ams_mel_ir_c2_calibration_status_open(o.c2,1,&metadata,NULL,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(emit_capacity_callback(&o,41U,0U)==EXIT_SUCCESS); /* copy and fill queue */
+    CHECK(setenv(failpoint,"allocation",1)==0);
+    CHECK(emit_capacity_callback(&o,42U,0U)==EXIT_SUCCESS); /* valid, full: no copy */
+    CHECK(getenv(failpoint)!=NULL && strcmp(getenv(failpoint),"allocation")==0);
+    CHECK(ams_mel_ir_calibration_status_get_counters(metadata,&counters,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(counters.events_received==2U && counters.events_dropped_queue_full==1U &&
+          counters.malformed_or_unsupported==0U);
+    /* All nine existing corruptions, then null, while the first event fills the
+     * queue. Invalid data must not be misclassified as queue-full or copied. */
+    for(uint32_t mode=1U;mode<=10U;++mode) {
+        CHECK(emit_capacity_callback(&o,43U,mode)==EXIT_SUCCESS);
+        CHECK(getenv(failpoint)!=NULL && strcmp(getenv(failpoint),"allocation")==0);
+        CHECK(ams_mel_ir_calibration_status_get_counters(metadata,&counters,NULL,0,NULL)==AMS_MEL_OK);
+        CHECK(counters.events_received==2U+mode && counters.events_dropped_queue_full==1U &&
+              counters.malformed_or_unsupported==mode);
+    }
+    CHECK(ams_mel_ir_calibration_status_receive(metadata,0,&event,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(ams_mel_ir_calibration_status_event_view(event,&view,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(rich_is(view,41U)); /* original retained; DROP-INCOMING order and full fidelity */
+    CHECK(ams_mel_ir_calibration_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(emit_capacity_callback(&o,44U,0U)==EXIT_SUCCESS); /* space: copy allocation fails */
+    CHECK(getenv(failpoint)==NULL); /* proves the same failpoint is live on the copy path */
+    CHECK(ams_mel_ir_calibration_status_receive(metadata,0,&event,NULL,0,NULL)==AMS_MEL_TIMEOUT && !event);
+    CHECK(ams_mel_ir_calibration_status_get_counters(metadata,&counters,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(counters.events_received==13U && counters.events_dropped_queue_full==1U &&
+          counters.malformed_or_unsupported==11U);
+    CHECK(emit_capacity_callback(&o,45U,0U)==EXIT_SUCCESS); /* recovery after capacity returns */
+    CHECK(ams_mel_ir_calibration_status_receive(metadata,0,&event,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(ams_mel_ir_calibration_status_event_view(event,&view,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(rich_is(view,45U));
+    CHECK(ams_mel_ir_calibration_status_get_counters(metadata,&counters,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(counters.events_received==14U && counters.events_dropped_queue_full==1U &&
+          counters.malformed_or_unsupported==11U);
+    CHECK(ams_mel_ir_calibration_status_close(&metadata,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(close_owner(&o)==EXIT_SUCCESS);
+    CHECK(ams_mel_ir_calibration_status_event_view(event,&view,NULL,0,NULL)==AMS_MEL_OK);
+    CHECK(rich_is(view,45U)); /* snapshot outlives mock payload and all provider owners */
+    CHECK(ams_mel_ir_calibration_status_event_close(&event,NULL,0,NULL)==AMS_MEL_OK);
+    puts("PASS: full CalibrationStatus queue skips copies without changing malformed classification");
+    return EXIT_SUCCESS;
+}
 static int optional_and_independent(void)
 {
     const char *scenarios[]={"no-calstatus","calstatus-register-fail","calstatus-register-throw"};
@@ -623,6 +686,7 @@ int main(int argc,char **argv)
     CHECK(outcomes()==EXIT_SUCCESS);
     CHECK(lifecycle()==EXIT_SUCCESS);
     CHECK(callbacks()==EXIT_SUCCESS);
+    CHECK(callback_capacity()==EXIT_SUCCESS);
     CHECK(optional_and_independent()==EXIT_SUCCESS);
     puts("PASS: CalibrationStatus complete nested C11 contracts and mutation controls");
     return EXIT_SUCCESS;
