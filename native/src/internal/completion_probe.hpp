@@ -16,10 +16,11 @@
 namespace ams_mel_test_completion {
 /* IRMEL-ADA-003 appends Camera (6), shared by the C2 and Image CameraCommand
  * sends; IRMEL-ADA-004 appends CameraProtect (7) for the C2 CameraProtectCmd
- * send. IRMEL-ADA-005 appends CalibrationConfiguration (8); existing family
- * indices are unchanged. */
+ * send. IRMEL-ADA-005 appends CalibrationConfiguration (8) and IRMEL-ADA-006
+ * appends CalibrationStatus (9); existing family indices are unchanged. */
 enum Family : unsigned {
-    Mode, Return, Comms, Navigation, Instrumentation, Track, Camera, CameraProtect, CalibrationConfiguration, Count
+    Mode, Return, Comms, Navigation, Instrumentation, Track, Camera, CameraProtect, CalibrationConfiguration,
+    CalibrationStatus, Count
 };
 struct Counters {
     std::atomic<std::uint64_t> started{}, active{}, peak{}, completed{};

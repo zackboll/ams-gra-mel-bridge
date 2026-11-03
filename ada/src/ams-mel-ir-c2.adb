@@ -1,4 +1,5 @@
 with AMS.MEL.IR.Calibration_Configuration_Conversion;
+with AMS.MEL.IR.Calibration_Status_Conversion;
 with Interfaces.C;
 with System;
 with AMS.MEL.IR.Camera_Conversion;
@@ -606,6 +607,34 @@ package body AMS.MEL.IR.C2 is
          end;
       end return;
    end Submit_Calibration_Configuration;
+
+   function Submit_Calibration_Status
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Calibration_Status.Status_Command)
+      return AMS.MEL.IR.Calibration_Status.Status_Request
+   is
+      Raw        : aliased C.IR_Calibration_Status_Command_V1 :=
+        Calibration_Status_Conversion.To_Raw (Command);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required   : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : AMS.MEL.IR.Calibration_Status.Status_Request do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Submit_Calibration_Status
+                (Channel.Handle,
+                 Raw'Access,
+                 Calibration_Status_Request_Owner (Result).Handle'Access,
+                 Diagnostic'Address,
+                 Diagnostic'Length,
+                 Required'Access);
+         begin
+            Check_Submission (Code, Failure_Message (Diagnostic));
+         end;
+      end return;
+   end Submit_Calibration_Status;
 
    procedure Close (Request : in out Mode_Request) is
       Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
