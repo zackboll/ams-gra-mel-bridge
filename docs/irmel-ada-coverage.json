@@ -1317,12 +1317,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(EraseCommand)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_erase"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Submit_Erase_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_erase.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_erase_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay.",
+      "limitations": [
+        "Mock provider qualification only; no physical erasure verification is defined by upstream."
+      ],
       "representation": []
     },
     {
@@ -9330,33 +9351,85 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::EraseCommand",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_erase"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-erase.ads",
+          "symbol": "Erase_Command"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_erase.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_erase_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay.",
+      "limitations": [
+        "Mock provider qualification only; no physical erasure verification is defined by upstream."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-erase.ads",
+              "symbol": "ID"
+            }
+          ]
         },
         {
           "upstream": "getEraseCommandType",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-erase.ads",
+              "symbol": "Operation"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::EraseCommandType",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_erase"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-erase.ads",
+          "symbol": "Erase_Type"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_erase.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_erase_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay.",
+      "limitations": [
+        "Mock provider qualification only; no physical erasure verification is defined by upstream."
+      ],
       "representation": []
     },
     {

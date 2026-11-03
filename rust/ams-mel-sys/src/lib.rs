@@ -3581,6 +3581,28 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_c2_submit_erase(
+        c2: *mut AmsMelIrC2,
+        command: *const AmsMelIrEraseCommandV1,
+        output: *mut *mut AmsMelIrEraseRequest,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_erase_request_wait(
+        request: *const AmsMelIrEraseRequest,
+        timeout_ms: u32,
+        result: *mut AmsMelIrEraseResultV1,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_erase_request_close(
+        request: *mut *mut AmsMelIrEraseRequest,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_ir_c2_submit_calibration_status(
         c2: *mut AmsMelIrC2,
         command: *const AmsMelIrCalibrationStatusCommandV1,
@@ -5410,4 +5432,27 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+}
+
+// IRMEL-ADA-007: private raw mirror only, no safe Rust erase API.
+pub const AMS_MEL_IR_ERASE_ZEROIZE: u32 = 0;
+pub const AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE: u32 = 1;
+pub const AMS_MEL_IR_ERASE_DISABLE: u32 = 2;
+pub const AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE: u32 = 3;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrEraseCommandV1 {
+    pub command_id: u32,
+    pub erase_type: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrEraseResultV1 {
+    pub erase_type: u32,
+    pub error_code: u32,
+}
+#[repr(C)]
+pub struct AmsMelIrEraseRequest {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }

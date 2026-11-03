@@ -4,6 +4,7 @@ private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
 with Ada.Containers.Indefinite_Vectors;
 with AMS.MEL.IR.Camera;
+with AMS.MEL.IR.Erase;
 with AMS.MEL.IR.Camera_Protection;
 with AMS.MEL.IR.Channel;
 private with AMS.MEL_C_API;
@@ -431,6 +432,16 @@ package AMS.MEL.IR.C2 is
    --  @param Channel Enabled typed owner; externally serialize owner operations.
    --  @param Command Complete owned command to copy.
    --  @return Limited request owner whose result may report Command_Success False.
+
+   function Submit_Erase_Command
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Erase.Erase_Command)
+      return AMS.MEL.IR.Erase.Erase_Request;
+   --  Submit the optional EraseCommand once, Enabled only, without a bridge lock.
+   --  @param Channel Enabled C2 channel.
+   --  @param Command Complete command with explicitly selected operation.
+   --  @return Limited observer; closing it never cancels provider execution.
+   --  @exception Provider_Error Refusal or provider send failure.
+   --  @exception Resource_Exhausted This Session has no free completion permit.
 
    function Submit_Camera_Protection
      (Channel : Control_Channel; Command : AMS.MEL.IR.Camera_Protection.Protection_Command)

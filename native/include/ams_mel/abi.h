@@ -1588,6 +1588,46 @@ typedef struct ams_mel_ir_track_system_response_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_ir_track_system_response_result_v1;
 
+/* Optional C2 EraseCommand. Exact pinned EraseCommandType alternatives;
+ * there is no MaxExclusive sentinel. Unknown values are rejected. */
+typedef uint32_t ams_mel_ir_erase_type_t;
+#define AMS_MEL_IR_ERASE_ZEROIZE UINT32_C(0)
+#define AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE UINT32_C(1)
+#define AMS_MEL_IR_ERASE_DISABLE UINT32_C(2)
+#define AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE UINT32_C(3)
+typedef struct ams_mel_ir_erase_request ams_mel_ir_erase_request;
+typedef struct ams_mel_ir_erase_command_v1 {
+    uint32_t command_id;
+    ams_mel_ir_erase_type_t erase_type;
+} ams_mel_ir_erase_command_v1;
+typedef struct ams_mel_ir_erase_result_v1 {
+    ams_mel_ir_erase_type_t erase_type;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_erase_result_v1;
+
+/* Submission requires Enabled; inputs are copied before the one provider send.
+ * Unknown input alternatives never reach the provider. No automatic retry.
+ * OK Wait means a successful future return, NOT verified physical erasure.
+ * Returned type is independent of the input; unknown/null successful payloads
+ * and unknown MEL error codes fail rather than being remapped. Rejected Wait
+ * returns the known error_code and complete cached UTF-8 diagnostic (required
+ * includes NUL; retry with a larger buffer for the full text).
+ * Timeout leaves result untouched and does not cancel/consume. Terminal Wait
+ * is cached. Close clears only the observer and never cancels execution.
+ * Pending work retains C2/Session/DSO after public owners close. Deferred
+ * cleanup failure overrides success/rejection. Serialize handle use vs Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_erase(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_erase_command_v1 *command,
+    ams_mel_ir_erase_request **output, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_erase_request_wait(
+    const ams_mel_ir_erase_request *request, uint32_t timeout_ms,
+    ams_mel_ir_erase_result_v1 *result, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_erase_request_close(
+    ams_mel_ir_erase_request **request, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
 } ams_mel_foreign_key_v1;

@@ -1,5 +1,33 @@
 # Architecture decisions
 
+## IRMEL-ADA-007 — Optional C2 EraseCommand
+
+`C2Channel::send(EraseCommand)` is exposed by `C2.Submit_Erase_Command` and
+`AMS.MEL.IR.Erase` (`Create_Command`, `Erase_Request`, `Wait`, `Close`). Both
+uint32 command fields are preserved: ID and the exact explicitly selected erase
+type. Zeroize=0, Classified_data_erase=1, Disable=2, CDE_AND_Zeroize=3; upstream
+has no sentinel. Unknown input values are refused before send and unknown/null
+successful payloads fail without remapping. An owned result is either a successful
+returned type (independent of input) or an explicit known MEL rejection with its
+complete diagnostic. Provider/payload/cleanup failures raise `Provider_Error`.
+**A successful future return is not evidence of completed physical erasure.**
+
+Enabled-only, lock-linearized submission reuses Session CompletionPermit,
+CommonRequestClaim/finish_c2_request, unlocked one-shot send, exactly one worker,
+cached terminal Wait, and allocation-free emergency retention. Timeout and observer
+Close never cancel; pending work retains C2/Session/provider through public Close.
+No callback, metadata response, timer, retry or replay is introduced. Probe family
+Erase (10) is appended without altering existing synchronization or numbering.
+
+Exactly three `AMS_MEL_0.1` exports extend 266 → 269; existing ABI records,
+exports and enum values remain unchanged. Python ctypes and Rust sys gain private
+mirrors only. Coverage changes only this operation and EraseCommand/EraseCommandType
+from missing to safe_ada; safe Ada operations 43 → 44. Qualification uses the test
+mock provider exclusively, never Squall or physical hardware. SystemTrackDataResponse,
+Scheduling, calibration execution and RF extensions remain out of scope.
+See [qualification](irmel-ada-007-erase-command.md).
+
+
 ## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
 
 Both pinned optional operations are implemented independently:

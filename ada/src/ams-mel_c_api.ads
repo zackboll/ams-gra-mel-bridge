@@ -93,6 +93,10 @@ private package AMS.MEL_C_API is
    type Camera_Response_Event_Handle is new System.Address;
    Null_Camera_Response_Event              : constant Camera_Response_Event_Handle :=
      Camera_Response_Event_Handle (System.Null_Address);
+   --  IRMEL-ADA-007 EraseCommand request observer.
+   type Erase_Request_Handle is new System.Address;
+   Null_Erase_Request                      : constant Erase_Request_Handle :=
+     Erase_Request_Handle (System.Null_Address);
    --  IRMEL-ADA-004 CameraProtectCmd request and opt-in CameraProtectCmdResp owner/event.
    type Camera_Protect_Request_Handle is new System.Address;
    Null_Camera_Protect_Request             : constant Camera_Protect_Request_Handle :=
@@ -904,6 +908,18 @@ private package AMS.MEL_C_API is
       Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   --  IRMEL-ADA-007 records; layouts are asserted against C by the Ada tests.
+   type IR_Erase_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      Erase_Type : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Erase_Result_V1 is record
+      Erase_Type : Interfaces.Unsigned_32;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
    --  IRMEL-ADA-004 records; layouts are asserted against C by the Ada tests.
    type IR_Camera_Protect_Command_V1 is record
       Command_ID       : Interfaces.Unsigned_32;
@@ -1714,6 +1730,28 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_event_close";
+   function IR_C2_Submit_Erase
+     (C2                  : C2_Handle;
+      Command             : access IR_Erase_Command_V1;
+      Output              : access Erase_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_erase";
+   function IR_Erase_Request_Wait
+     (Handle              : Erase_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Erase_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_erase_request_wait";
+   function IR_Erase_Request_Close
+     (Handle              : access Erase_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_erase_request_close";
    function IR_C2_Submit_Camera_Protect
      (C2                  : C2_Handle;
       Command             : access IR_Camera_Protect_Command_V1;

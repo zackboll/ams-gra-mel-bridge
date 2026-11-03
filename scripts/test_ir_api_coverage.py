@@ -84,9 +84,23 @@ class CoverageTests(unittest.TestCase):
         self.reject("coverage entry schema")
 
     def test_fake_safe_ada_complete(self):
-        # IRMEL-ADA-004 implemented CameraProtectCmd; EraseCommand remains missing.
-        self.operation("C2Channel", "send(EraseCommand)")["status"] = "safe_ada"
+        # EraseCommand now exists: removing its evidence must still fail closed.
+        self.operation("C2Channel", "send(EraseCommand)")["tests"] = []
         self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_erase_slice_is_complete_and_scoped(self):
+        send = self.operation("C2Channel", "send(EraseCommand)")
+        self.assertEqual(send["status"], "safe_ada")
+        self.assertEqual(send["native"][0]["symbol"], "ams_mel_ir_c2_submit_erase")
+        self.assertEqual(send["ada"][0]["symbol"], "Submit_Erase_Command")
+        for name in ("EraseCommand", "EraseCommandType"):
+            entry = next(t for t in self.coverage["types"] if t["id"].endswith("::" + name))
+            self.assertEqual(entry["status"], "safe_ada")
+        command = next(t for t in self.coverage["types"] if t["id"].endswith("::EraseCommand"))
+        self.assertEqual([f["upstream"] for f in command["representation"]],
+                         ["getCommandID", "getEraseCommandType"])
+        self.assertTrue(all(f["status"] == "represented" for f in command["representation"]))
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 44)
 
     def test_camera_protection_slice_is_exact(self):
         # IRMEL-ADA-004: exactly the C2 send and the C2 CameraProtectCmdResp callback,
@@ -113,7 +127,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 44)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -134,7 +148,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 44)
 
     def test_calibration_status_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
@@ -165,7 +179,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 43)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 44)
 
     def test_calibration_status_nested_item_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))

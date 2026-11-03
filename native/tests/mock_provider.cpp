@@ -55,16 +55,16 @@ struct C2SendBarrier {
 /* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends;
  * family 8 is the IRMEL-ADA-004 C2 CameraProtectCmd send, family 9 is the
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
- * IRMEL-ADA-006 CalibrationStatusCmd send. */
-C2SendBarrier c2_send_barriers[11];
-unsigned send_entries[11]{};
+ * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11). */
+C2SendBarrier c2_send_barriers[12];
+unsigned send_entries[12]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 11U || operation > 3U) return 0;
+    if (family >= 12U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -205,11 +205,12 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
  * 6/7 are the mock C2/Image CameraCommand sends (both probe family Camera);
  * 8 is the mock C2 CameraProtectCmd send (probe family CameraProtect);
  * 9 is CalibrationConfigurationCmd (probe family CalibrationConfiguration);
- * 10 is CalibrationStatusCmd (probe family CalibrationStatus). */
+ * 10 is CalibrationStatusCmd (probe family CalibrationStatus);
+ * 11 is EraseCommand (probe family Erase). */
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 11U) return 0;
+    if (family >= 12U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -1362,6 +1363,21 @@ public:
 private:
     CameraCallback callback_;
 };
+
+/* IRMEL-ADA-007: test mock only. No erase calls go to any real provider. */
+std::mutex erase_mutex;
+std::uint64_t erase_last[2]{};
+bool erase_seen{};
+unsigned erase_sends{};
+extern "C" __attribute__((visibility("default"))) int mock_erase_last_command(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{erase_mutex};
+    if (sends) *sends = erase_sends;
+    if (!erase_seen) return 0;
+    if (values) std::copy(std::begin(erase_last), std::end(erase_last), values);
+    return 1;
+}
 
 /* IRMEL-ADA-004 deterministic C2 CameraProtectCmd / CameraProtectCmdResp
  * fixture (send family 8). Scenarios not named "protect-*" model a provider
@@ -2900,8 +2916,46 @@ public:
             throw std::logic_error("CameraProtectCmd sent before C2 enable");
         return protect_.send(scenario_, *this, command);
     }
-    mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand) override
-    { return unsupported_request<irmel::EraseCommandType>(); }
+    mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand command) override
+    {
+        c2_send_boundary(11U);
+        {
+            std::lock_guard lock{erase_mutex};
+            ++erase_sends;
+            erase_seen = true;
+            erase_last[0] = command.getCommandID();
+            erase_last[1] = static_cast<std::uint32_t>(command.getEraseCommandType());
+        }
+        record("c2_erase_sent");
+        if (scenario_ == "erase-send-throw") throw std::runtime_error{"mock erase send exception"};
+        if (scenario_ == "erase-invalid-future") return {};
+        auto response = command.getEraseCommandType();
+        if (scenario_.rfind("erase-response-", 0U) == 0U)
+            response = static_cast<irmel::EraseCommandType>(std::stoul(scenario_.substr(15U)));
+        auto value = std::make_shared<irmel::EraseCommandType>(response);
+        if (scenario_ == "erase-held") return held_request(std::move(value), 11U);
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::EraseCommandType>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "erase-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, "erase rejected"}});
+        else if (scenario_ == "erase-reject-nul")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"a\0b", 3U}}});
+        else if (scenario_ == "erase-reject-utf8")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"\xff"}}});
+        else if (scenario_ == "erase-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources, long_rejection_description()}});
+        else if (scenario_ == "erase-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario_ == "erase-null")
+            promise.set_value(Result{std::shared_ptr<irmel::EraseCommandType>{}});
+        else if (scenario_ == "erase-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock erase future exception"}));
+        else if (scenario_.rfind("erase-", 0U) != 0U)
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
     mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
     { return unsupported_request<irmel::CommandStatus>(); }
     mel::RequestFor<Return> send(irmel::ConfigSetCommand command) override

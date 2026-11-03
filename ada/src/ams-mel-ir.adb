@@ -332,6 +332,17 @@ package body AMS.MEL.IR is
    end Finalize;
 
    overriding
+   procedure Finalize (Object : in out Erase_Request_Owner) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      --  Drops only the public observer; pending native work is not cancelled.
+      Ignored := C.IR_Erase_Request_Close (Object.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Object.Handle := C.Null_Erase_Request;
+   end Finalize;
+
+   overriding
    procedure Finalize (Object : in out Camera_Protection_Request_Owner) is
       Ignored : Interfaces.Integer_32;
    begin
