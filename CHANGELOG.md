@@ -1,5 +1,18 @@
 # Changelog
 
+## IRMEL-ADA-008 — Independent optional C2 SystemTrackDataResponse
+
+The pinned optional `C2Channel::send(SystemTrackDataResponse)` is implemented as
+`ams_mel_ir_c2_submit_system_track_data_response` with
+`ams_mel_ir_c2_system_response_request_wait/close` (Ada
+`AMS.MEL.IR.C2.System_Data.Submit_System_Track_Data_Response`, `Response_Request`,
+`Wait`, `Close`), independent of the Track overload: Enabled C2 only, C2 lifecycle
+and request accounting, a distinct opaque request and the new record
+`ams_mel_ir_c2_system_response_result_v1`. Input and CommandStatus value
+conversion is shared, state-free, with the unchanged Track overload. Production
+inventory: 272 AMS_MEL_0.1 exports (three new); Python/Rust receive private raw
+mirrors only. Evidence is mock-provider only.
+
 ## IRMEL-ADA-006 — Complete optional C2 CalibrationStatus
 
 Both pinned optional operations are implemented: `C2Channel::send(CalibrationStatusCmd)`

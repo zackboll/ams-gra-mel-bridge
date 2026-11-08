@@ -253,6 +253,49 @@ package body AMS_MEL_IR_Camera_Command_Tests is
       Release : constant Release_Function :=
         To_Release (Dlsym (Pin, IC.To_C ("mock_completion_release_family")));
 
+      --  Test-only completion-owner probe, Camera family 6. FinalOwner is the first
+      --  CameraWorkerInput member and is destroyed after its CompletionPermit, so an
+      --  observed owner destruction proves the Session admission slot was released.
+      --  A terminal Wait only proves the result was published, not that the detached
+      --  worker has dropped its permit.
+      use type Interfaces.Unsigned_64;
+      Camera_Probe : constant IC.unsigned := 6;
+      type Counts is array (0 .. 3) of Interfaces.Unsigned_64 with Convention => C;
+      type Boundary_Function is
+        access function
+          (Family, Op : IC.unsigned; Target : Interfaces.Unsigned_64; Values : access Counts)
+           return IC.int
+      with Convention => C;
+      type Owner_Function is
+        access function
+          (Family   : IC.unsigned;
+           Target   : Interfaces.Unsigned_64;
+           Observed : access Interfaces.Unsigned_64) return IC.int
+      with Convention => C;
+      function To_Boundary is new Ada.Unchecked_Conversion (System.Address, Boundary_Function);
+      function To_Owner is new Ada.Unchecked_Conversion (System.Address, Owner_Function);
+      Boundary     : constant Boundary_Function :=
+        To_Boundary (Dlsym (System.Null_Address, IC.To_C ("ams_mel_test_completion_boundary")));
+      Owner        : constant Owner_Function :=
+        To_Owner (Dlsym (System.Null_Address, IC.To_C ("ams_mel_test_completion_owner")));
+      Base         : Interfaces.Unsigned_64;
+
+      procedure Await_Owners (Target : Interfaces.Unsigned_64) is
+         Observed : aliased Interfaces.Unsigned_64 := 0;
+      begin
+         Require (Owner (Camera_Probe, Target, Observed'Access) = 1, "Camera owner quiescence");
+         Require (Observed = Target, "exact Camera owner count");
+      end Await_Owners;
+
+      --  Quiesce every earlier Camera owner and return the created count.
+      function Quiesce return Interfaces.Unsigned_64 is
+         Values : aliased Counts := [others => 0];
+      begin
+         Require (Boundary (Camera_Probe, 3, 0, Values'Access) = 1, "Camera probe snapshot");
+         Await_Owners (Values (2));
+         return Values (2);
+      end Quiesce;
+
       procedure Expect_Timeout (Request : Cam.Camera_Request) is
       begin
          declare
@@ -266,6 +309,7 @@ package body AMS_MEL_IR_Camera_Command_Tests is
       end Expect_Timeout;
    begin
       Require (Pin /= System.Null_Address and then Release /= null, "provider gate");
+      Require (Boundary /= null and then Owner /= null, "test-only probe binding");
       --  C2: timeout, then request Close + channel Close + Session Close while pending.
       declare
          Parent  : AMS.MEL.Session :=
@@ -274,6 +318,7 @@ package body AMS_MEL_IR_Camera_Command_Tests is
          Channel : C2.Control_Channel := C2.Open (Parent, C2_Config);
       begin
          C2.Enable (Channel);
+         Base := Quiesce;
          declare
             Request : Cam.Camera_Request := C2.Submit_Camera_Command (Channel, Ordinary (21));
          begin
@@ -296,6 +341,9 @@ package body AMS_MEL_IR_Camera_Command_Tests is
             Check_Echo (Request, Ordinary (21), True);
             Cam.Close (Request);
          end;
+         --  Request 21 and the refused 22 (a refused submission still creates one owner)
+         --  are both destroyed, so the one-slot Session permit is free before reuse.
+         Await_Owners (Base + 2);
          declare
             Observer : Cam.Camera_Request := C2.Submit_Camera_Command (Channel, Ordinary (23));
          begin

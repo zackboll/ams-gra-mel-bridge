@@ -55,16 +55,17 @@ struct C2SendBarrier {
 /* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends;
  * family 8 is the IRMEL-ADA-004 C2 CameraProtectCmd send, family 9 is the
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
- * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11). */
-C2SendBarrier c2_send_barriers[12];
-unsigned send_entries[12]{};
+ * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
+ * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
+C2SendBarrier c2_send_barriers[13];
+unsigned send_entries[13]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 12U || operation > 3U) return 0;
+    if (family >= 13U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -206,11 +207,12 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
  * 8 is the mock C2 CameraProtectCmd send (probe family CameraProtect);
  * 9 is CalibrationConfigurationCmd (probe family CalibrationConfiguration);
  * 10 is CalibrationStatusCmd (probe family CalibrationStatus);
- * 11 is EraseCommand (probe family Erase). */
+ * 11 is EraseCommand (probe family Erase); 12 is the C2
+ * SystemTrackDataResponse send (probe family C2SystemResponse). */
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 12U) return 0;
+    if (family >= 13U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -1376,6 +1378,56 @@ extern "C" __attribute__((visibility("default"))) int mock_erase_last_command(
     if (sends) *sends = erase_sends;
     if (!erase_seen) return 0;
     if (values) std::copy(std::begin(erase_last), std::end(erase_last), values);
+    return 1;
+}
+
+/* IRMEL-ADA-008: test mock only. Exact observation of the last
+ * C2Channel::send(SystemTrackDataResponse) argument: every published getter is
+ * read once and doubles are recorded as raw IEEE-754 bit patterns so signed
+ * zero, infinities and NaN classification are observable without any
+ * floating-point comparison. Index order: systemTime, commandID, requestId,
+ * trackId, range, rangeRate, rangeError, rangeRateError, AzElValid,
+ * rangeValid, inertialAzEl.az, inertialAzEl.el, AzElError.az, AzElError.el. */
+std::mutex c2_system_response_mutex;
+std::uint64_t c2_system_response_last[14]{};
+bool c2_system_response_seen{};
+unsigned c2_system_response_sends{};
+std::uint64_t double_bits(double value)
+{
+    std::uint64_t bits = 0;
+    static_assert(sizeof bits == sizeof value);
+    std::memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+void record_c2_system_response(const irmel::SystemTrackDataResponse& value)
+{
+    const AzEl inertial = value.getInertialAzEl();
+    const AzEl error = value.getAzElError();
+    std::lock_guard lock{c2_system_response_mutex};
+    ++c2_system_response_sends;
+    c2_system_response_seen = true;
+    c2_system_response_last[0] = static_cast<std::uint64_t>(value.getSystemTime().count());
+    c2_system_response_last[1] = value.getCommandID();
+    c2_system_response_last[2] = value.getRequestId();
+    c2_system_response_last[3] = value.getTrackId();
+    c2_system_response_last[4] = double_bits(value.getRange());
+    c2_system_response_last[5] = double_bits(value.getRangeRate());
+    c2_system_response_last[6] = double_bits(value.getRangeError());
+    c2_system_response_last[7] = double_bits(value.getRangeRateError());
+    c2_system_response_last[8] = value.getAzElValid() ? 1U : 0U;
+    c2_system_response_last[9] = value.getRangeValid() ? 1U : 0U;
+    c2_system_response_last[10] = double_bits(inertial.az);
+    c2_system_response_last[11] = double_bits(inertial.el);
+    c2_system_response_last[12] = double_bits(error.az);
+    c2_system_response_last[13] = double_bits(error.el);
+}
+extern "C" __attribute__((visibility("default"))) int mock_c2_system_response_last(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{c2_system_response_mutex};
+    if (sends) *sends = c2_system_response_sends;
+    if (!c2_system_response_seen) return 0;
+    if (values) std::copy(std::begin(c2_system_response_last), std::end(c2_system_response_last), values);
     return 1;
 }
 
@@ -2956,8 +3008,62 @@ public:
         else promise.set_value(Result{std::move(value)});
         return future;
     }
-    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
-    { return unsupported_request<irmel::CommandStatus>(); }
+    /* IRMEL-ADA-008 deterministic C2 SystemTrackDataResponse fixture (send
+     * family 12). Scenarios not named "c2-sys-*" keep the pre-existing
+     * Unsupported behavior. "c2-sys-derived" derives CommandState from the
+     * input requestId and CannotComply from trackId (raw, including unknown
+     * values) and selects the reason text from the range code. */
+    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse response) override
+    {
+        c2_send_boundary(12U);
+        record_c2_system_response(response);
+        record("c2_system_track_data_response_sent");
+        const bool owned = scenario_.rfind("c2-sys-", 0U) == 0U;
+        if (!owned) return unsupported_request<irmel::CommandStatus>();
+        if (!enabled_) throw std::logic_error("C2 SystemTrackDataResponse sent before C2 enable");
+        if (scenario_ == "c2-sys-send-throw")
+            throw std::runtime_error{"mock C2 system response send exception"};
+        if (scenario_ == "c2-sys-invalid-future") return {};
+        auto status = std::make_shared<irmel::CommandStatus>();
+        status->setCommandID(response.getCommandID());
+        status->setState(irmel::CommandState::Accepted);
+        status->setReasonID(irmel::CannotComply::NotSet);
+        status->setReasonDescription("C2 system response accepted \xC2\xB5");
+        if (scenario_ == "c2-sys-derived") {
+            status->setState(static_cast<irmel::CommandState>(response.getRequestId()));
+            status->setReasonID(static_cast<irmel::CannotComply>(response.getTrackId()));
+            const double code = response.getRange();
+            if (code == 1.0) status->setReasonDescription(long_rejection_description());
+            else if (code == 2.0) status->setReasonDescription(std::string{"bad\xC3\x28"});
+            else if (code == 3.0) status->setReasonDescription(std::string{"a\0b", 3U});
+            else if (code == 4.0) status->setReasonDescription(std::string{});
+            else status->setReasonDescription("C2 derived \xC2\xB5");
+        }
+        if (scenario_ == "c2-sys-held" || scenario_ == "c2-sys-mixed")
+            return held_request(std::move(status), 12U);
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "c2-sys-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "C2 system response rejected \xC2\xB5"}});
+        else if (scenario_ == "c2-sys-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario_ == "c2-sys-reject-utf8")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"\xff"}}});
+        else if (scenario_ == "c2-sys-reject-nul")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"a\0b", 3U}}});
+        else if (scenario_ == "c2-sys-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario_ == "c2-sys-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CommandStatus>{}});
+        else if (scenario_ == "c2-sys-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock C2 system response future exception"}));
+        else promise.set_value(Result{std::move(status)});
+        return future;
+    }
     mel::RequestFor<Return> send(irmel::ConfigSetCommand command) override
     {
         record("config_set_sent");
@@ -4155,7 +4261,9 @@ public:
 
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
         auto future = promise.get_future();
-        if (scenario_ == "completion-scale")
+        /* IRMEL-ADA-008 mixed C2/Track accounting fixture: the Track overload is
+         * held on its own family 5 gate, independently of C2 family 12. */
+        if (scenario_ == "completion-scale" || scenario_ == "c2-sys-mixed")
             return held_request(rich_track_response_command_status(), 5);
         if (scenario_ == "track-response-reject")
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{

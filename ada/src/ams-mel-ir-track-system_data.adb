@@ -1,3 +1,4 @@
+with AMS.MEL.IR.System_Track_Data_Conversion;
 with Interfaces.C;
 with System;
 
@@ -53,14 +54,6 @@ package body AMS.MEL.IR.Track.System_Data is
       end;
    end Owned_Text;
 
-   --  The established Unsigned_8 representation for published bool values.
-   function Flag (Value : Boolean) return Interfaces.Unsigned_8
-   is (if Value then 1 else 0);
-
-   function Raw_Az_El (Value : Azimuth_Elevation) return C.Az_El_V1
-   is (Azimuth_Rad   => Interfaces.C.double (Value.Azimuth_Rad),
-       Elevation_Rad => Interfaces.C.double (Value.Elevation_Rad));
-
    function Command_ID (Status : Command_Status) return Interfaces.Unsigned_32
    is (Status.Status_Command_ID);
    function State (Status : Command_Status) return Command_State
@@ -85,19 +78,9 @@ package body AMS.MEL.IR.Track.System_Data is
    function Submit
      (Channel : Track_Channel; Value : System_Track_Data_Response) return Response_Request
    is
+      --  Shared, state-free value conversion (IRMEL-ADA-008); unchanged fields.
       Raw      : aliased C.IR_System_Track_Data_Response_V1 :=
-        (System_Time_NS       => Interfaces.Integer_64 (Value.System_Time_NS),
-         Command_ID           => Value.Command_ID,
-         Request_ID           => Value.Request_ID,
-         Track_ID             => Value.Track_ID,
-         Range_M              => Interfaces.C.double (Value.Range_M),
-         Range_Rate_MPS       => Interfaces.C.double (Value.Range_Rate_MPS),
-         Range_Error_M        => Interfaces.C.double (Value.Range_Error_M),
-         Range_Rate_Error_MPS => Interfaces.C.double (Value.Range_Rate_Error_MPS),
-         Az_El_Valid          => Flag (Value.Az_El_Valid),
-         Range_Valid          => Flag (Value.Range_Valid),
-         Inertial_Az_El       => Raw_Az_El (Value.Inertial_Az_El),
-         Az_El_Error          => Raw_Az_El (Value.Az_El_Error));
+        AMS.MEL.IR.System_Track_Data_Conversion.To_Raw (Value);
       D        : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       Required : aliased C.Size_T := 0;
    begin

@@ -1377,12 +1377,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::C2Channel::send(SystemTrackDataResponse)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_c2.cpp",
+          "symbol": "ams_mel_ir_c2_submit_system_track_data_response"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-c2-system_data.ads",
+          "symbol": "Submit_System_Track_Data_Response"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_c2_system_response.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_c2_system_data_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-008: independent C2 overload of the complete twelve-field SystemTrackDataResponse; Enabled-only single unlocked send with C2 lifecycle and C2 request accounting (never the Track overload or TrackState); cached CommandStatus result or explicit ErrorOr rejection. Shares only pure value conversion with TrackChannel::send.",
+      "limitations": [
+        "Mock provider qualification only; a successful future does not establish operational incorporation of the track data."
+      ],
       "representation": []
     },
     {
@@ -14477,6 +14498,7 @@
     "IRMEL-ADA-003 implements both independent CameraCommand sends (C2 Enabled, Image Attached/Running) and the opt-in Image CameraCommandResp owner. No C2 CameraCommandResp callback exists upstream and none is fabricated; the Image callback never completes a request future.",
     "IRMEL-ADA-004 implements C2Channel::send(CameraProtectCmd) (Enabled only) and the opt-in C2 CameraProtectCmdResp owner. All three CmdResp alternatives are successful responses, kept distinct from MEL rejection, registration NotSupported, registration failure and provider exceptions; the callback never completes a request future.",
     "IRMEL-ADA-005 implements both optional C2 CalibrationConfiguration operations and all SubsystemCalibration collections/accepted-interface alternatives. The command and request IDs are independent uint32 values, not inferred response correlation. Safe Ada operations increase from 39 to 41. CalibrationStatus, SubsystemCompletedCalibration and CalibrationStatusCmd remain unimplemented. Qualification is mock-provider only.",
-    "IRMEL-ADA-006 implements both optional C2 CalibrationStatus operations and all five missing data declarations (CalibrationStatusCmd, CalibrationStatus, SubsystemCompletedCalibration, SubsystemCompletedCalibrationItemType, SubsystemCalibrationResult). The command and request IDs are independent uint32 values, not inferred response correlation; active and completed collections are independent; time tags are unconverted signed nanoseconds with no epoch. Safe Ada operations increase from 41 to 43. Qualification is mock-provider only."
+    "IRMEL-ADA-006 implements both optional C2 CalibrationStatus operations and all five missing data declarations (CalibrationStatusCmd, CalibrationStatus, SubsystemCompletedCalibration, SubsystemCompletedCalibrationItemType, SubsystemCalibrationResult). The command and request IDs are independent uint32 values, not inferred response correlation; active and completed collections are independent; time tags are unconverted signed nanoseconds with no epoch. Safe Ada operations increase from 41 to 43. Qualification is mock-provider only.",
+    "IRMEL-ADA-008 implements the optional C2Channel::send(SystemTrackDataResponse) as an independent C2 overload: C2 lifecycle, C2 request accounting, distinct C2 request/result owners and probe family, sharing only the pure SystemTrackDataResponse/CommandStatus value conversion with the Track overload. SystemTrackDataResponse and CommandStatus were already safe_ada and are not reclassified. Safe Ada operations increase from 44 to 45. A successful future does not establish operational incorporation. Qualification is mock-provider only."
   ]
 }

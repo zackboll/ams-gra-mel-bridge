@@ -5,6 +5,7 @@
 #include "internal/completion_probe.hpp"
 #include "internal/ir_camera_command.hpp"
 #include "internal/ir_erase.hpp"
+#include "internal/ir_c2_system_response.hpp"
 #include "internal/ir_camera_protect.hpp"
 #include "internal/ir_calibration_configuration.hpp"
 #include "internal/ir_calibration_status.hpp"
@@ -1309,6 +1310,44 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_submit_erase(
     }
     return ams_mel_erase::submit(c2_erase_family, c2, command, out_request,
                                  out, capacity, required);
+}
+
+/* IRMEL-ADA-008: C2Channel::send(SystemTrackDataResponse). Same Enabled
+ * lifecycle rule, lock-linearized claim_c2_submission and erased
+ * finish_c2_request as the other C2 requests; provider send runs unlocked.
+ * This is the C2 overload only: no Track handle, TrackState or Track request
+ * count is reachable from here. */
+namespace {
+const ams_mel_c2_system_response::Family c2_system_response_family{
+    [](const void *context) noexcept {
+        return static_cast<const ams_mel_ir_c2 *>(context)->state->session->admission;
+    },
+    [](const void *context, std::shared_ptr<void>& channel, CommonRequestClaim& claim) {
+        const auto& state = static_cast<const ams_mel_ir_c2 *>(context)->state;
+        std::shared_ptr<irmel::C2Channel> c2;
+        if (!claim_c2_submission(state, SubmissionRequirement::Enabled, c2)) return false;
+        claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+        channel = std::move(c2);
+        return true;
+    },
+    [](const std::shared_ptr<void>& channel, irmel::SystemTrackDataResponse response) {
+        return std::static_pointer_cast<irmel::C2Channel>(channel)->send(std::move(response));
+    },
+    "C2 channel is not enabled"};
+} // namespace
+
+extern "C" ams_mel_status_t ams_mel_ir_c2_submit_system_track_data_response(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_system_track_data_response_v1 *response,
+    ams_mel_ir_c2_system_response_request **out_request, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!c2 || !c2->state) {
+        diagnostic("invalid SystemTrackDataResponse input", out, capacity, required);
+        return AMS_MEL_INVALID_ARGUMENT;
+    }
+    return ams_mel_c2_system_response::submit(c2_system_response_family, c2, response,
+                                              out_request, out, capacity, required);
 }
 
 /* IRMEL-ADA-004: opt-in C2 CameraProtectCmdResp registration, independent of
