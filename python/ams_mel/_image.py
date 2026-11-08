@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._image_metadata import ImageMetadataStream, _open_metadata
 from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
@@ -52,6 +53,10 @@ class ImageStream:
     def open_nuc(self, queue_capacity: int = 16) -> NucStream:
         """Opt into optional one-shot NUC registration, without starting Image."""
         return _open_nuc(self, queue_capacity, _native.ams_mel_ir_image_nuc_open)
+
+    def open_metadata(self, queue_capacity: int = 16) -> ImageMetadataStream:
+        """One-shot ordinary metadata registration; prefer before Image Start."""
+        return _open_metadata(self, queue_capacity)
 
     def start(self) -> None:
         self._require_open()

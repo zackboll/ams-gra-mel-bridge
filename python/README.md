@@ -33,8 +33,11 @@ _health_types -> _types
 _health_convert -> _native, _errors, _types, _ffi, _health_types
 _health_metadata -> _native, _errors, _validation, _common, _ffi, _health_types, _health_convert
 _nuc -> _native, _errors, _validation, _common, _ffi, _types
+_image_types -> _health_types (canonical Euler)
+_image_convert -> _native, _errors, _ffi, _health_types, _image_types
+_image_metadata -> _native, _errors, _validation, _common, _ffi, _image_types, _image_convert
 _health -> shared layers above, _health_metadata, _nuc
-_image -> shared layers above, _nuc
+_image -> shared layers above, _nuc, _image_metadata
 _c2 / _instrumentation -> shared layers above
 _rf_admin -> _native, _errors, _validation, _types
 _session -> _native, _errors, _validation, _types, _ffi, family implementations
@@ -57,12 +60,15 @@ Responsibilities:
   that family; image-frame conversion stays with Image.
 - `_health_types`, `_health_convert`, `_health_metadata`: immutable Health
   metadata models, checked deep copies and independent native consumption.
+- `_image_types`, `_image_convert`, `_image_metadata`: ordinary four-family
+  Image metadata values, active-only conversion and independent consumption.
 - `_session`: Session lifetime, version queries and typed channel factories.
 
 No implementation module imports public names back from `__init__`. `_native.py`
 remains the single, unchanged private ctypes module, not a package. The original
 PY-PKG-001 layout refactor added no API or lifecycle semantics; PY-MEL-005 adds
 Health metadata vertically in separate modules without changing that baseline.
+PY-MEL-007 adds Image metadata through the same modular layering.
 
 `tests/public_api_baseline.json` records the pre-refactor API from main commit
 `d1847d3e8043704352deedfc7f3f680d9752fce3` (tree
@@ -845,3 +851,88 @@ Evidence is **mock-only**, not IR hardware or Squall NUC qualification. PR #158
 The reconciled PY-MEL-006 tree preserves that final Health metadata API alongside
 both optional NUC factories. The production ABI remains unchanged from current
 main at **272 exported C symbols**; the seven mappings above add no C exports.
+
+## Ordinary IR Image metadata (PY-MEL-007)
+
+Image metadata reception is separate from image-frame reception and optional
+Image/Health NUC. Given an attached `ImageStream` named `image`:
+
+```python
+with image.open_metadata() as metadata:
+    image.start()
+    event = metadata.receive(timeout_ms=1000)
+    counters = metadata.counters()
+```
+
+`ImageStream.open_metadata(queue_capacity: int = 16)` returns an independent
+`ImageMetadataStream` with `is_open`, `receive(timeout_ms: int = 0)`, `counters()`
+and `close()`, context management, and non-raising finalization. Registration is
+valid Attached or Running, but **prefer registration before Start** to avoid
+missing early metadata. No implicit Start, frame Receive or NUC registration
+occurs. Positive capacity must fit size_t; Boolean/invalid/zero capacity is
+rejected locally without consuming registration. A real native attempt is
+one-shot, including partial/failing registration. Closing metadata does not allow
+another registration on that Image owner.
+
+`ImageMetadataEvent` is frozen and enforces the exact `ImageMetadataKind`/owned
+payload match. Its four alternatives map directly to the existing ABI:
+
+| Kind / native event field | Python payload and complete fields |
+| --- | --- |
+| `BAD_PIXEL_LIST = 1` / `bad_pixel_list` (`ams_mel_ir_bad_pixel_list_v1`) | `BadPixelList(reported_size, reported_count, pixels)`; ordered tuple of `BadPixel(row, column, reason)`, strict `BadPixelReason.UNKNOWN = 0` |
+| `LINE_OF_SIGHT_REPORT = 2` / `line_of_sight_report` (`ams_mel_ir_line_of_sight_report_v1`) | `LineOfSightReport(system_time_ns, pointing_angle, pointing_angle_rates, at_speed, in_tolerance, platform_attitude, validity_flag_bitfield, image_rotation_rad)` |
+| `LINE_OF_SIGHT_EULER = 3` / `line_of_sight_euler` (`ams_mel_ir_line_of_sight_euler_v1`) | `LineOfSightEuler(system_time_ns, attitude, attitude_rates)` |
+| `NAVIGATION_RESPONSE = 4` / `navigation_response` (`ams_mel_ir_navigation_response_v1`) | `NavigationResponse(system_time_ns, command_id, request_id)` from upstream `NavigationReportResp` |
+
+`AzimuthElevation(azimuth_rad, elevation_rad)` distinguishes pointing angles from
+pointing rates; no undocumented time denominator is invented for rates. All
+attitudes reuse public `Euler(roll, pitch, yaw)`. Booleans require exact native
+0/1. The full uint32 validity bitfield is preserved **without interpreting bits**.
+Bad-pixel reported size/count are independent of tuple length. Coordinates retain
+all uint32 bits, order and duplicates, without sorting, renumbering or inferring a
+coordinate origin. Navigation IDs preserve all uint32 bits; asynchronous
+navigation metadata is **not request completion**, and contains no invented status
+or error code. Signed int64 nanosecond times have no inferred epoch. IEEE doubles,
+including NaN, infinity, subnormal values and signed zero, are not transformed.
+
+Returned data is **owned, not zero-copy**: every active payload is validated and
+deep-copied before its native event is released. No ctypes storage, native pointer
+or memoryview escapes. Copies survive all owners and actual provider library
+unload. Inactive payloads are not inspected. Pointer/span validation checks NULL,
+alignment, representable lengths and address overflow, but cannot prove that an
+arbitrary ABI-violating aligned pointer refers to mapped memory. The native C
+facade remains the trusted storage/provenance boundary.
+
+Native code alone registers callbacks (bad pixels, LOS report, LOS Euler,
+navigation, in that order), owns the bounded DROP-INCOMING FIFO and synchronizes
+callback teardown. Python adds no callbacks, locks, workers, threads or queues.
+`ImageMetadataCounters` is frozen and preserves full uint64 `events_received`,
+`events_dropped_queue_full`, `malformed_or_unsupported`; receives do not reset
+them. Callback allocation/malformed failures reject that event and increment the
+last counter, not automatically fail the stream. The four-mixed mock with capacity
+four reports six callbacks, retains kinds 1/2/3/4 in order, and drops two.
+
+Zero timeout polls; valid timeouts are uint32, excluding Boolean. Receive calls
+native exactly once and preserves TIMEOUT, STREAM_STOPPED, PROVIDER_FAILED,
+PROVIDER_EXCEPTION, INTERNAL_ERROR and RESOURCE_EXHAUSTED. Active-empty is TIMEOUT;
+after Image Stop/Close queued metadata drains before STREAM_STOPPED. Session,
+Image and metadata are independently owned, with no retained Python parents.
+Metadata Close does not stop Image, unregister callbacks or promise callback
+quiescence. Close is idempotent after release. A Close attempt is never retried if
+it could have consumed its handle; unresolved retained ownership remains visible
+as `is_open` and subsequent operations reject (Close reports protocol
+inconsistency). Finalization makes one best-effort attempt. Cleanup never replaces
+the first application/conversion/native exception. Existing diagnostic capacity
+limits apply; side-effecting operations are never repeated to retrieve text.
+
+**External serialization is required** for receive/counters/close on the same
+metadata owner and for registration versus parent Start/Stop/Close. The GIL is not
+a substitute. Native ownership retains provider resources as required.
+
+`python/tests/test_ir_image_metadata.py` qualifies compiled mock scenarios in
+subprocesses, with deterministic provider barriers for callback lifetime/unload.
+Boundary injection covers malformed outputs and special values absent from mock
+fixtures. `_native.py`, native ABI/exports, mocks and Ada/Rust implementations are
+unchanged. Qualification is **compiled mock-only**, not real-provider/Squall or
+hardware qualification. CameraCommandResp, OpticalDistortionMap,
+LineOfSightQuaternion, C2/Track metadata and new navigation commands are not added.
