@@ -199,6 +199,17 @@ class C2MetadataTests(_C2TestCase):
         self.error(m.ErrorKind.TIMEOUT, stream.receive)
         self.assertEqual(stream.counters(), m.C2MetadataCounters(3, 1, 0))
 
+    def test_comms_opt_in_uses_same_bounded_drop_incoming_queue(self):
+        _, channel, stream = self.metadata(capacity=2)
+        stream.enable_comms_test_events()
+        with channel.channel_view() as view:
+            with closing(view.submit_comms_test(m.CommsTestRequest(1, 2, 3))) as request:
+                self.assertEqual(request.wait(1000), m.CommsCompleted(m.CommsTestReport(1, 3)))
+        self.assertEqual(stream.counters(), m.C2MetadataCounters(3, 1, 0))
+        self.assertEqual(stream.receive().kind, m.C2MetadataKind.BIT_CONFIGURATION)
+        self.assertEqual(stream.receive().kind, m.C2MetadataKind.BIT_STATUS)
+        self.error(m.ErrorKind.TIMEOUT, stream.receive)
+
     def test_malformed_native_callbacks_do_not_discard_later_valid_events(self):
         _, _, stream = self.metadata("metadata-malformed", 4)
         self.assertEqual(stream.counters(), m.C2MetadataCounters(6, 0, 4))
@@ -248,8 +259,10 @@ class C2MetadataTests(_C2TestCase):
 
     def test_parent_first_teardown_drain_and_no_python_parent_retention(self):
         for session_first in (True, False):
-            session, channel, stream = self.metadata()
-            # Remove cleanup-bound references so weakrefs observe the API itself.
+            session = m.Session.open(health.provider(), "metadata-rich", "")
+            channel = session.open_control_channel(control.ControlChannelTests.config())
+            stream = channel.open_metadata()
+            self.addCleanup(stream.close)
             sr, cr = weakref.ref(session), weakref.ref(channel)
             with channel.channel_view() as view:
                 if session_first:
@@ -263,9 +276,6 @@ class C2MetadataTests(_C2TestCase):
             self.assertEqual(stream.receive().payload, expected_configuration())
             self.assertEqual(stream.receive().payload, health_metadata.expected_bit())
             self.error(m.ErrorKind.STREAM_STOPPED, stream.receive, n.AMS_MEL_STREAM_STOPPED)
-            self._cleanups = [(f, a, k) for f, a, k in self._cleanups
-                              if getattr(f, "__self__", None) is not session
-                              and getattr(f, "__self__", None) is not channel]
             del session, channel
             gc.collect()
             self.assertIsNone(sr())
@@ -332,7 +342,9 @@ class C2DefensiveTests(_C2TestCase):
 
     def test_null_and_misaligned_outer_event_views(self):
         raw = n.IrC2MetadataEventV1(kind=1)
-        for address in (None, ctypes.addressof(raw) + 1):
+        pointer_max = (1 << (8 * ctypes.sizeof(ctypes.c_void_p))) - 1
+        aligned_max = pointer_max - pointer_max % ctypes.alignment(type(raw))
+        for address in (None, ctypes.addressof(raw) + 1, aligned_max):
             with self.output(address=address) as (stream, close):
                 self.error(PROTOCOL, stream.receive)
                 self.assertEqual(close.call_count, 1)
@@ -351,7 +363,10 @@ class C2DefensiveTests(_C2TestCase):
         for span in (raw.bit_configuration.bit_types, item.bit_item_names,
                      item.subsystem_component_ids):
             pointer, size = span.data, span.size
-            for address, length in ((None, 1), (1, 1), (ctypes.addressof(item), sys.maxsize)):
+            pointer_max = (1 << (ctypes.sizeof(ctypes.c_void_p) * 8)) - 1
+            aligned_max = pointer_max - pointer_max % ctypes.alignment(span.data._type_)
+            for address, length in ((None, 1), (1, 1), (ctypes.addressof(item), sys.maxsize),
+                                    (aligned_max, 2)):
                 span.data = ctypes.cast(address, type(span.data))
                 span.size = length
                 self.malformed(raw)
@@ -567,6 +582,8 @@ class C2DefensiveTests(_C2TestCase):
                 self.assertEqual(stream.is_open, not consume)
                 if not consume:
                     self.error(PROTOCOL, stream.close)
+                    for operation in (stream.receive, stream.counters, stream.enable_comms_test_events):
+                        self.error(m.ErrorKind.INVALID_ARGUMENT, operation)
                 else:
                     stream.close()
                 stream.__del__()
@@ -675,11 +692,141 @@ class C2DefensiveTests(_C2TestCase):
                 self.error(kind, stream.receive)
                 self.assertEqual(close.call_count, 1)
 
+    def test_successful_context_exit_and_idempotent_close(self):
+        _, channel = self.open()
+        with channel.open_metadata() as stream:
+            self.assertTrue(stream.is_open)
+        self.assertFalse(stream.is_open)
+        stream.close()
+
+    def test_all_shared_bit_nested_spans_and_strings_are_validated(self):
+        # Derive every populated nested span/text path from the actual compiled
+        # fixture, then corrupt each separately on a fresh native event.
+        native_view = getattr(n, PREFIX + "event_view")
+        paths = []
+
+        def discover(raw, path=()):
+            if isinstance(raw, ctypes.Structure):
+                if hasattr(raw, "data") and hasattr(raw, "size"):
+                    paths.append((path, isinstance(raw, n.StringViewV1)))
+                    if not isinstance(raw, n.StringViewV1) and raw.size:
+                        discover(raw.data[0], path + ("data", 0))
+                else:
+                    for name, _ in raw._fields_:
+                        discover(getattr(raw, name), path + (name,))
+
+        _, _, initial = self.metadata()
+        initial.receive()
+        def inspect(owner, output, *args):
+            status = native_view(owner, output, *args)
+            raw = ctypes.cast(output, ctypes.POINTER(
+                ctypes.POINTER(n.IrC2MetadataEventV1)))[0].contents
+            discover(raw.bit_status)
+            return status
+        with mock.patch.object(n, PREFIX + "event_view", side_effect=inspect):
+            initial.receive()
+        self.assertEqual(len(paths), 24)  # All populated span/text paths in rich_bit_status.
+        for path, text in paths:
+            for corruption in (("null", "oversized") if text else ("null", "misaligned", "oversized")):
+                with self.subTest(path=path, corruption=corruption):
+                    _, _, stream = self.metadata()
+                    stream.receive()
+                    def corrupt(owner, output, *args):
+                        status = native_view(owner, output, *args)
+                        raw = ctypes.cast(output, ctypes.POINTER(
+                            ctypes.POINTER(n.IrC2MetadataEventV1)))[0].contents.bit_status
+                        for step in path:
+                            raw = raw[step] if isinstance(step, int) else getattr(raw, step)
+                        if corruption == "null":
+                            raw.data, raw.size = None, 1
+                        elif corruption == "misaligned":
+                            raw.data = ctypes.cast(1, type(raw.data))
+                            raw.size = 1
+                        else:
+                            raw.size = (1 << (ctypes.sizeof(ctypes.c_size_t) * 8)) - 1
+                        return status
+                    with mock.patch.object(n, PREFIX + "event_view", side_effect=corrupt), \
+                            mock.patch.object(n, PREFIX + "event_close",
+                                              wraps=getattr(n, PREFIX + "event_close")) as close:
+                        self.error(PROTOCOL, stream.receive)
+                        self.assertEqual(close.call_count, 1)
+
+    def test_corrupt_shared_bit_nested_text_utf8_and_embedded_nul(self):
+        native_view = getattr(n, PREFIX + "event_view")
+        targets = (
+            lambda r: r.active_bits.data[0].bit_id.descriptive_label,
+            lambda r: r.completed_bits.data[0].bit_id.descriptive_label,
+            lambda r: r.completed_bits.data[0].fail_reason,
+            lambda r: r.completed_bits.data[0].bit_items.data[0].bit_item_name,
+            lambda r: r.completed_bits.data[0].bit_items.data[0].fail_reason,
+            lambda r: r.faults.data[0].fault_id.descriptive_label,
+            lambda r: r.faults.data[0].fault_data.data[0].key,
+            lambda r: r.faults.data[0].fault_data.data[0].value,
+            lambda r: r.faults.data[0].fault_data.data[0].format,
+            lambda r: r.faults.data[0].fault_data.data[0].units,
+            lambda r: r.faults.data[0].fault_description,
+            lambda r: r.faults.data[0].fault_code,
+            lambda r: r.faults.data[0].component_ids.data[0].descriptive_label,
+            lambda r: r.faults.data[0].ambiguity_groups.data[0].diagnostic_test_ids.data[0].descriptive_label,
+            lambda r: r.faults.data[0].ambiguity_groups.data[0].component_ids.data[0].descriptive_label,
+        )
+        for target in targets:
+            for text, kind in ((b"\xff", m.ErrorKind.INVALID_UTF8), (b"a\0b", PROTOCOL)):
+                _, _, stream = self.metadata()
+                stream.receive()
+                buffer = ctypes.create_string_buffer(text)
+                def corrupt(owner, output, *args):
+                    status = native_view(owner, output, *args)
+                    raw = ctypes.cast(output, ctypes.POINTER(
+                        ctypes.POINTER(n.IrC2MetadataEventV1)))[0].contents
+                    value = target(raw.bit_status)
+                    value.data, value.size = ctypes.cast(buffer, n.CharPointer), len(text)
+                    return status
+                with mock.patch.object(n, PREFIX + "event_view", side_effect=corrupt), \
+                        mock.patch.object(n, PREFIX + "event_close",
+                                          wraps=getattr(n, PREFIX + "event_close")) as close:
+                    self.error(kind, stream.receive)
+                    self.assertEqual(close.call_count, 1)
+
+    def test_failed_receive_with_owner_and_failed_cleanup_preserves_original(self):
+        _, _, stream = self.metadata()
+        receive, native_close = getattr(n, PREFIX + "receive"), getattr(n, PREFIX + "event_close")
+        def failed_receive(*args):
+            receive(*args)
+            return diagnostic(args, n.AMS_MEL_PROVIDER_EXCEPTION, b"receive original")
+        def failed_close(*args):
+            native_close(*args)
+            raise KeyboardInterrupt("cleanup")
+        with mock.patch.object(n, PREFIX + "receive", side_effect=failed_receive), \
+                mock.patch.object(n, PREFIX + "event_close", side_effect=failed_close) as close:
+            self.error(m.ErrorKind.PROVIDER_EXCEPTION, stream.receive,
+                       n.AMS_MEL_PROVIDER_EXCEPTION, "receive original")
+            self.assertEqual(close.call_count, 1)
+
+    def test_oversized_native_error_diagnostic_is_not_retried_or_truncated(self):
+        _, _, stream = self.metadata()
+        def failed(*args):
+            buffer, _, required = args[-3:]
+            ctypes.memmove(buffer, b"partial\0", 8)
+            ctypes.cast(required, ctypes.POINTER(ctypes.c_size_t))[0] = 9000
+            return n.AMS_MEL_PROVIDER_EXCEPTION
+        with mock.patch.object(n, PREFIX + "receive", side_effect=failed) as receive:
+            error = self.error(m.ErrorKind.PROVIDER_EXCEPTION, stream.receive,
+                               n.AMS_MEL_PROVIDER_EXCEPTION)
+            self.assertIsNone(error.diagnostic)
+            self.assertEqual(error.diagnostic_required, 9000)
+            self.assertEqual(receive.call_count, 1)
+
 
 class C2IsolatedTests(unittest.TestCase):
     def run_child(self, code, environment=None):
+        # unittest discovery adds this directory to sys.path, not PYTHONPATH;
+        # reproduce it explicitly for child interpreters under make test-python.
+        path = os.pathsep.join((str(Path(__file__).resolve().parent),
+                                os.environ.get("PYTHONPATH", "")))
         result = subprocess.run([sys.executable, "-W", "error", "-c", code],
-            env={**os.environ, **(environment or {})}, text=True, capture_output=True, timeout=30)
+            env={**os.environ, "PYTHONPATH": path, **(environment or {})},
+            text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_callback_allocation_failure_drains_then_provider_failed(self):

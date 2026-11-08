@@ -2,7 +2,9 @@
 
 IR C2 provides asynchronous :class:`ModeRequest` and :class:`ReturnRequest`
 owners. BIT support is limited to the empty/no-op profile; payload-bearing BIT
-is not exposed. Request timeout and close do not cancel provider work.
+execution is not exposed. C2 metadata independently receives CommandStatus,
+BIT configuration and canonical Health BitStatus, plus separately opt-in
+CommsTest reports. Request timeout and close do not cancel provider work.
 
 Common Channel: :meth:`ControlChannel.channel_view`,
 :meth:`ImageStream.channel_view`, :meth:`InstrumentationChannel.channel_view`,
@@ -34,6 +36,9 @@ and close on one owner likewise require external serialization, as do receive,
 counters and close on one HealthMetadataStream. Image/Health open_nuc is
 independently opt-in; receive, counters and close on one NucStream likewise
 require external serialization. No Python parent is retained by NucStream.
+C2 metadata operations and Close, and registration versus parent C2 operations,
+likewise require external serialization. C2MetadataStream retains no Python
+parent; Close does not unregister callbacks, cancel requests or promise quiescence.
 """
 
 from __future__ import annotations

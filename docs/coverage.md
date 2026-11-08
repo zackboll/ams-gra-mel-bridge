@@ -1,5 +1,60 @@
 # Implementation coverage
 
+## PY-MEL-008 — complete safe Python IR C2 metadata
+
+`ControlChannel.open_metadata(queue_capacity=16)` now returns an independent
+`C2MetadataStream` over the seven existing published C functions. Native Open
+registers BIT_Configuration, CommandStatus and BIT_Status, in that order, while
+Attached or Enabled. Separate `enable_comms_test_events()` registers
+ChannelCommsTestRep once; success or failure consumes that independent one-shot,
+without undoing the base registrations. No implicit enable or capability gate.
+
+| Native callback / event kind | Safe Python payload |
+| --- | --- |
+| CommandStatus / 1 | `C2CommandStatus`, exact `C2CommandState` 0..4 and all 47 `C2CannotComply` values 0..46, full uint32 ID and complete UTF-8 description |
+| BIT_Configuration / 2 | `C2BitConfiguration` with ordered `C2BitType` values, exact IDs/labels, `C2BitControlInterface`, item names, component IDs and signed int64 duration |
+| BIT_Status / 3 | Canonical Health `BitStatus` and nested models, copied by the existing shared `_health_convert._bit()`; identical `ams_mel_bit_status_v1` layout |
+| ChannelCommsTestRep / 4 | Existing `CommsTestReport(command_id, request_id)`, no invented channel ID |
+
+Frozen `C2MetadataEvent` enforces kind/payload agreement; `C2MetadataCounters`
+preserves full uint64 received/dropped/malformed values. One native bounded FIFO
+and DROP-INCOMING policy serve all four families. Ordered duplicates, empty
+collections, signed times, percentages and IEEE nonfinite values remain intact.
+Unpublished enums, malformed spans/views/UTF-8/NUL and diagnostic buffers fail
+closed; only the active payload is inspected. Native events are closed before
+returning complete Python-owned graphs, including exceptional conversion paths.
+Accepted CommandStatus is message acceptance, not physical completion. Metadata
+is independent of Mode/Return/Comms request Wait results.
+
+Metadata does not retain Python parents, close C2, cancel requests or unregister
+callbacks, and Close does not promise callback quiescence. Parent-first teardown
+permits queued drain under native state rules. An unresolved Close is not
+silently successful or blindly retried; finalization is non-raising and one-attempt.
+Externally serialize metadata operations/Close and registration versus parent
+C2 operations; the GIL is not this contract. No Python callback/thread/lock/queue.
+
+`python/tests/test_ir_c2_metadata.py` qualifies all existing requested compiled
+mock scenarios, exact rich BIT graphs, high IDs, the 613-byte rejection,
+independent CommsTest opt-in and request observations, FIFO/drop counters,
+malformed callbacks, callback allocation failure, teardown, actual provider DSO
+unload and the existing deterministic nonquiescing callback barrier. Defensive
+ABI injection covers otherwise unproducible hostile records, inactive payloads,
+diagnostics, publication inconsistencies and consumed/retained cleanup failures.
+Positive evidence is mock-only, not Squall/hardware qualification.
+
+Started independently from fetched main
+`e746c49fd3ffe57b37064878cdf8225a3745a35e` (tree
+`7b022169714075949ff0604ad79d94238cf532cd`), with 354 discovered Python tests.
+PR #172 merged during implementation and was incorporated by an ordinary merge
+of main `fa91028804f38d3b2bd15ec8e5e2f80cd4a74a7e`; its entire Image implementation,
+exports and tests are preserved. Final exact feature identity and measured
+qualification counts are recorded in the delivery PR to avoid recursive hashes.
+No native ABI/export, `_native.py`, provider/mock, Ada/Rust implementation,
+frozen compatibility baseline, workflow or policy changes. Existing Image,
+Health, NUC and Ada/Rust documentation and tests remain intact. Other C2 command
+and optional callback APIs remain outside this slice. See
+[Python API and seven-function mapping](../python/README.md#ir-c2-metadata-py-mel-008).
+
 ## PY-MEL-007 — Complete safe Python ordinary IR Image metadata
 
 `ImageStream.open_metadata(queue_capacity=16)` now wraps all four ordinary Image

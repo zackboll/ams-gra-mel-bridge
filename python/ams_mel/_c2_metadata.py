@@ -27,6 +27,12 @@ class C2MetadataStream(_NativeOwner):
     def __init__(self) -> None:
         raise TypeError("use ControlChannel.open_metadata")
 
+    def _require_open(self) -> None:
+        super()._require_open()
+        if getattr(self, "_close_attempted", False):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT,
+                               "C2 metadata owner has uncertain closure")
+
     def enable_comms_test_events(self) -> None:
         """Attempt separate one-shot registration, including failed attempts.
 
