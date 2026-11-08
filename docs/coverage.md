@@ -1,5 +1,45 @@
 # Implementation coverage
 
+## RUST-IR-004 — safe Rust coverage of four C-bridged Image metadata families
+
+`ImageStream::open_metadata(&mut self, capacity)` registers BadPixelList,
+LineOfSightReport, LineOfSightEuler and NavigationReportResp over the six existing
+C exports, without native/raw-binding changes. The unique non-Send/non-Sync
+`ImageMetadataStream` has mutable Receive/Counters/Close, idempotent explicit
+Close and non-panicking Drop; it does not borrow the Image or Session lifetime.
+Capacity is independent of frame reception. A closed Image rejects with
+ProviderFailed before capacity validation; live zero capacity preserves the
+one-shot, while every actual attempt, including partial failure, consumes it.
+
+All four event payloads are fully owned. Bad pixels preserve reported size/count
+independently of actual vector length, full coordinates, order and duplicates.
+Pointing angles/rates, strict Booleans, complete Euler components, signed
+nanosecond timestamps, full validity bits, image rotation and Navigation command/
+request IDs are preserved without normalization or inferred completion state.
+Only active payloads are read. Checked spans and fallible copies execute under
+an event guard; native events close before return and on errors/unwind.
+
+Native DROP-INCOMING FIFO, saturating callback counters, one-shot registration,
+queue drain after Stop/Close and status categories are unchanged. Mock tests
+cover every existing recovery/registration scenario, frame/NUC independence,
+all owner orders and callback barriers through channel destruction/DSO unload.
+Ordinary unit tests observe Close-on-Drop; the historical reviewed campaign
+applied and killed 14 compiled mutations, with zero invalid or surviving
+mutations. Its native 435-test suite, Rust workspace, production-facade metadata
+tests and lint/policy qualification are documented in
+`rust-ir-004-image-metadata.md`. That report's 229-export inventory is the
+historical pre-CameraCommand baseline, not the reconciled production inventory.
+
+Scope: these four Image metadata families are now available in safe Rust, not
+all upstream Image callbacks. Optional NUC remains separate. Image
+CameraCommandResp is C-bridged by IRMEL-ADA-003 (PR #150), but remains outside
+RUST-IR-004's safe Rust scope, as does C2 metadata. Quaternion, optical distortion
+and other unbridged callbacks remain out of scope. Evidence is mock/source
+qualification, not hardware or Squall validation. The reconciled production
+inventory is 272 AMS_MEL_0.1 exports, retaining all current-main Camera,
+calibration, Erase and C2 system response operations; RUST-IR-004 adds no C ABI
+exports.
+
 ## PY-MEL-006 — safe Python Image/Health optional NUC reception
 
 `ImageStream.open_nuc` and `HealthStatusChannel.open_nuc` return the same independent
@@ -297,8 +337,9 @@ and release native events before returning owned ordered `NucTempData`. Copies
 preserve signed nanoseconds, strict published band/point domains, meter limits,
 the original uint8/16/32 alternative and all Kelvin double bits. The private
 optional upstream `tempError` has no accessor and is not represented or inferred;
-TempPoint remains partial for that upstream reason. Ordinary Image/C2 metadata
-remain outside the safe Rust API; existing Health metadata is unchanged.
+TempPoint remains partial for that upstream reason. Ordinary Image metadata was
+subsequently added by RUST-IR-004 above; C2 metadata remains outside the safe Rust
+API, and existing Health metadata is unchanged.
 
 Tests cover both mock-provider families, registration, synchronous delivery,
 counters, queue drain, parent/Session ownership, event errors/unwind and callback
@@ -337,9 +378,11 @@ The pinned private optional `tempError` has **no public accessor** and is not
 represented, read or inferred; TempPoint is therefore `partial`. Queues keep
 DROP-INCOMING; null/unknown enum/allocation failures are counted as malformed;
 late callbacks after Close are memory-safe; Health channel destruction drains
-in-flight NUC callbacks. Production inventory: 229 AMS_MEL_0.1 exports
-(seven new); Python/Rust receive only private raw mirrors. Evidence is
-mock-provider only; no IR camera or Squall NUC qualification.
+in-flight NUC callbacks. Historical IRMEL-ADA-002 production inventory:
+229 AMS_MEL_0.1 exports (seven new at that checkpoint); Python/Rust initially
+received only private raw mirrors. Safe Rust NUC is now covered by RUST-IR-003
+above. Current production inventory is 272 exports through IRMEL-ADA-008.
+Evidence is mock-provider only; no IR camera or Squall NUC qualification.
 
 ## PY-POL-001-R2 — historical runner evidence bookkeeping
 
@@ -1383,7 +1426,7 @@ Track; see `task-032a2-common-access-image.md`.
 | Full FrameHeader snapshot | Complete in native C and safe Ada | Owned snapshot, contributing sensor, ordered flags, inertial/nav vectors and independent orientations |
 | High-rate zero-copy Ada frame lease | Implemented in safe Ada (Task 030A) | `AMS.MEL.IR.Image.Frame_Lease` with `Acquire_Frame`/`Is_Open`/`Close`/`Pixel_Count`/`With_Pixels`/`Copy_Pixels` plus lease metadata accessors. Limited `Ada.Finalization.Limited_Controlled` owner of exactly one `ams_mel_ir_frame_snapshot`; idempotent close, harmless finalization after close, no leak on failed acquisition or metadata-conversion exception. `With_Pixels` binds a constrained `Pixel_Array` directly to `view.pixels.data` with an address clause, so there is no payload-sized Ada allocation, no `memcpy` from the snapshot, no per-pixel FFI call, and no `Ada.Containers` pixel Vector on this path; `Acquire_Frame` and `With_Pixels` setup are both O(1) in pixel count. Null-pointer-with-nonzero-size and out-of-Ada-index-range spans fail closed with `Provider_Error`; zero-length payloads are valid. Multiple outstanding leases are supported and each owns distinct storage; a lease survives queue advance, stream Stop, stream Close, Session close, and provider teardown. Deterministic alias evidence: a test-only facade address log plus an Ada comparison requiring the borrowed view's first address to equal the native snapshot pixel address, with a C-side storage-identity test. No C ABI change; ABI version stays `0.1` and `exports.map` is unchanged. No safe Rust or public Python zero-copy API |
 | MEL provider-buffer to Ada zero copy | Implemented in native C and safe Ada (Task 030B) | The bridge performs **zero** bulk payload copies from the MEL callback buffer into Ada. `frame.pixels.assign(...)` and the payload-sized `std::vector<std::uint8_t>` are removed; `QueuedFrame` now owns the callback's `std::shared_ptr<irmel::Buffer>` plus the validated image address and byte count, and the snapshot retains the provider graph so the host storage, Buffer object, and provider library all outlive the borrow. Defining deterministic proof: `Buffer::getImageAddress() == snapshot pixels.data == Ada With_Pixels first-element address`, asserted natively and from Ada through a test-only address log with no production ABI change. A provider buffer accepted by the bridge is released exactly once by bridge logic: the callback releases on malformed, not-accepting, and queue-full rejections and is explicitly disarmed on acceptance; the later release happens in legacy `Receive`, snapshot/lease close, or Close-time queue discard, never via a provider destructor. `CallbackState::retained_frames` counts queued frames plus live snapshots, is guarded by the single teardown mutex, and is not derived from queue length. Physical teardown now requires `navigation requests == 0 AND retained_frames == 0 AND !uncertain_release` through the existing Image cleanup state machine; Stop is logical-now/physical-later and never blocks on an application-held lease, Close discards still-queued frames and releases their buffers while preserving live leases, and a live lease survives public stream and Session close because the actual provider unload is deferred, not because bytes were copied. `Buffer::release()` runs outside the lifecycle mutex (lock to claim, unlock to release, lock to publish); a failed or throwing release moves the exact callback Buffer into its dedicated stream-owned retention slot, never retries, and is reported as `AMS_MEL_PROVIDER_FAILED` / Ada `Provider_Error` from explicit close while `Finalize` stays non-raising. The current PR #43 protocol uses `retention_slots` for HOLD ownership, a single release executor with an exact uncertain-owner slot for the active provider call, and preallocated `deferred_releases` for callback reentry. The old `release_slots` (`2 * buffer_count`) / `begin_release()` model was superseded; see `docs/corrective-provider-buffer-release-handoff.md` for that historical defect and the PR #43 lifecycle correction. Deterministic regressions force the exact release/reuse interleaving with condition variables rather than sleeps -- a release paused after successfully republishing the buffer, and reuse driven from inside the still-executing release call with the provider pool mutex released -- and prove the forced window was reached, the new callback is accepted normally at the returned buffer's address, live siblings keep their addresses and bytes, no false malformed/queue-full/uncertain state appears, each wrapper gets exactly one release attempt, capacity is restored, and channel destruction precedes provider unload; coverage includes legacy `Receive`, Close-time queue discard, concurrent release from distinct snapshot owners, single-executor release admission/backpressure, an Ada `Frame_Lease` regression through the public safe API, and a negative control proving removal of the handoff makes them fail. Uncertain release is handled identically on **every** path including callback-side rejections before queue acceptance: an accepted frame keeps its existing count, a rejected frame gains one, both permanently, so teardown is blocked either way. Deterministic regressions cover the malformed, queue-full, and not-accepting rejection arms plus retention-slot exhaustion, each proving exactly one release attempt, the exact wrapper alive with destructor count 0, host bytes intact, provider channel/`Control` never destroyed, and both public owners closable without freeing the graph; a negative control proves those assertions are non-vacuous, and a 96-buffer/200-cycle test exceeds the old 64-slot assumption. Backpressure is intentional and deterministically tested: with `Buffer_Count = 3`, three retained leases block all reuse, releasing exactly one lease frees exactly one buffer, and a provider-side "no buffer available" event is not counted as a bridge queue-full drop. **Not** end-to-end zero-copy: Squall still copies received UDP bytes into the registered MEL host buffer, and `Receive`/`Full_Frame`/`Copy_Pixels` copy by contract. No C ABI change; ABI stays `0.1`, all 90 exports and `exports.map` unchanged. No safe Rust or public Python zero-copy API; no RF/RDMA/GPU/FPGA/Stacked Image |
-| ImageChannel metadata callbacks | All required callbacks implemented in native C and safe Ada | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp share one bounded DROP-INCOMING queue; owned events, counters, malformed/allocation recovery |
+| ImageChannel metadata callbacks | Four currently bridged families implemented in native C, safe Ada and safe Rust (RUST-IR-004) | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp share one bounded DROP-INCOMING queue; owned events, counters, malformed/allocation recovery. Not complete coverage of all upstream Image callbacks |
 | NavigationReport send | Implemented in native C and safe Ada | Complete published NavigationReport/all 18 covariance terms; async request/future, deferred teardown while pending, allocation-free emergency retention; ABI 0.1 now 59 exports |
 | Real IR provider validation | Implemented and passed | Ada adds required C2-specific metadata with 10/0/0 counters plus general mode/rejection, BIT payload, and ConfigSet; all languages retain BIT no-op, TaskSched, and three 320x200 Mono8 frames |
 | IR Instrumentation conditional surface | Complete in native C and safe Ada | send(InstrumentationLevelCmd) and InstrumentationReport callback plus Enable and ChannelCapability; positive behavior mock-validated; pinned Squall explicitly unsupported |
