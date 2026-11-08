@@ -274,6 +274,12 @@ AMS_MEL_0.1 {
         ams_mel_ir_c2_submit_system_track_data_response;
         ams_mel_ir_c2_system_response_request_wait;
         ams_mel_ir_c2_system_response_request_close;
+        ams_mel_ir_image_odm_open;
+        ams_mel_ir_image_odm_receive;
+        ams_mel_ir_image_odm_get_counters;
+        ams_mel_ir_image_odm_close;
+        ams_mel_ir_image_odm_event_view;
+        ams_mel_ir_image_odm_event_close;
     local:
         *;
 };

@@ -97,6 +97,10 @@ typedef struct ams_mel_ir_camera_response_event ams_mel_ir_camera_response_event
 typedef struct ams_mel_ir_camera_protect_request ams_mel_ir_camera_protect_request;
 typedef struct ams_mel_ir_camera_protect_metadata ams_mel_ir_camera_protect_metadata;
 typedef struct ams_mel_ir_camera_protect_event ams_mel_ir_camera_protect_event;
+/* IRMEL-ADA-009: opt-in @Optional Image OpticalDistortionMap owner, opened
+ * independently from an Image stream, and its deep-copied event. */
+typedef struct ams_mel_ir_image_odm_metadata ams_mel_ir_image_odm_metadata;
+typedef struct ams_mel_ir_image_odm_event ams_mel_ir_image_odm_event;
 typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
 typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
@@ -1164,6 +1168,53 @@ typedef struct ams_mel_ir_row_col_v1 {
     double row;
     double column;
 } ams_mel_ir_row_col_v1;
+
+/* IRMEL-ADA-009: pinned OpticalDistortionMap (@Optional ImageChannel
+ * callback). New records only; no existing *_v1 record changes.
+ *
+ * Complete ForwardRightDown: exactly getForward, getRight and getDown, in that
+ * order. It is a distinct record rather than ams_mel_ir_directional_v1 so the
+ * named FRD components can never be confused with an XYZ axis assignment. */
+typedef struct ams_mel_ir_forward_right_down_v1 {
+    double forward;
+    double right;
+    double down;
+} ams_mel_ir_forward_right_down_v1;
+typedef struct ams_mel_ir_forward_right_down_span_v1 {
+    const ams_mel_ir_forward_right_down_v1 *data;
+    size_t size;
+} ams_mel_ir_forward_right_down_span_v1;
+/* Span of the one canonical ams_mel_ir_row_col_v1 above; no second RowCol
+ * representation exists. */
+typedef struct ams_mel_ir_row_col_span_v1 {
+    const ams_mel_ir_row_col_v1 *data;
+    size_t size;
+} ams_mel_ir_row_col_span_v1;
+/* Complete OpticalDistortionMap: all eleven published getters exactly once.
+ * The five uint32 values are copied without range checks (0 and UINT32_MAX
+ * survive). The four double extrema and every FRD/RowCol component are copied
+ * bit-for-bit through plain double assignment: finite values, negative values
+ * and signed zero are preserved exactly; infinity and NaN are preserved as
+ * IEEE values (NaN payload bits are not promised); nothing is clamped,
+ * normalized or replaced. frd and row_col are the complete getFrd() and
+ * getRowCol() vectors in provider order, duplicates kept. The two vector
+ * lengths are independent of each other and of width/height/right_size/
+ * down_size/pixels_per_odm: no equality or product relation is assumed,
+ * enforced or used to infer, pad or truncate elements. An empty vector is
+ * {NULL, 0}. Storage is event-owned until ams_mel_ir_image_odm_event_close. */
+typedef struct ams_mel_ir_optical_distortion_map_v1 {
+    uint32_t width;
+    uint32_t height;
+    uint32_t right_size;
+    uint32_t down_size;
+    uint32_t pixels_per_odm;
+    double right_min;
+    double right_max;
+    double down_min;
+    double down_max;
+    ams_mel_ir_forward_right_down_span_v1 frd;
+    ams_mel_ir_row_col_span_v1 row_col;
+} ams_mel_ir_optical_distortion_map_v1;
 
 /* Complete HotRegion. Every published getter is represented exactly once:
  * getType, getSize, getTop, getLeft, getRight, and getBottom. The geometry and
@@ -2496,6 +2547,74 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_view(
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_camera_response_event_close(
     ams_mel_ir_camera_response_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-009 opt-in Image OpticalDistortionMap reception. ODM is
+ * @Optional upstream, so ams_mel_ir_image_metadata_open never registers it
+ * and providers without ODM keep every existing Image API unchanged. Each open
+ * registers exactly the pinned ImageChannel OpticalDistortionMap callback once
+ * per stream; the one shot is independent of the four-kind metadata,
+ * NUC_TempData and CameraCommandResp owners, and a failed attempt also
+ * consumes it. Eligible: an Attached or Running stream (not Stopping, Stopped
+ * or Failed); otherwise INVALID_ARGUMENT and nothing is registered. Provider
+ * registration runs without any bridge lock, so synchronous delivery during
+ * registration is safe. out_registration (nullable) receives the mapped
+ * upstream Return whenever registerMetadataCallback returned a known value, so
+ * NOT_SUPPORTED, FAIL, BAD_POINTER and NOT_IMPLEMENTED are distinguishable; it
+ * is unchanged for an unknown Return (PROVIDER_FAILED) or a provider throw
+ * (PROVIDER_EXCEPTION). Failure publishes no owner and leaves the retained
+ * callback state inactive (upstream has no unregister).
+ *
+ * Each valid map is deep-copied before the callback returns into one bounded
+ * DROP-INCOMING queue of queue_capacity events. Validation precedes any
+ * allocation: a null payload, or either vector whose element count exceeds
+ * INT32_MAX or whose byte size would overflow, is counted malformed. When the
+ * queue is full a valid map is counted queue-full WITHOUT constructing a
+ * snapshot, while a malformed map is still counted malformed. A copy
+ * allocation failure rejects the whole event (malformed counter); no partial
+ * event is ever published. No callback exception reaches provider code.
+ *
+ * Image Stop/Close stops the owner and wakes receivers; queued events still
+ * drain. Physical teardown waits for ODM callbacks already inside the bridge
+ * after provider channel destruction. Callbacks after public owner Close,
+ * stream Close or Session Close are memory-safe and never enqueue. A failed
+ * provider detach marks the owner failed: Receive drains queued events and
+ * then reports PROVIDER_FAILED. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_open(
+    ams_mel_ir_stream *stream, size_t queue_capacity,
+    ams_mel_ir_image_odm_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty (timeout_ms 0 polls; timeout is never
+ * cancellation); STREAM_STOPPED once inactive/stopped and empty;
+ * PROVIDER_FAILED once failed and empty. Queued events drain first, in
+ * successful-enqueue order. out_event must be non-null and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_receive(
+    ams_mel_ir_image_odm_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_image_odm_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Saturating events_received, events_dropped_queue_full and
+ * malformed_or_unsupported counts; does not consume events. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_get_counters(
+    const ams_mel_ir_image_odm_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the provider
+ * callback, close the Image stream or wait for callback quiescence. Events
+ * already received remain owned by their event handles. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_close(
+    ams_mel_ir_image_odm_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view; the map and both spans stay valid until
+ * ams_mel_ir_image_odm_event_close, independent of the owner, stream, Session
+ * and provider library lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_event_view(
+    const ams_mel_ir_image_odm_event *event,
+    const ams_mel_ir_optical_distortion_map_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; NULL *event succeeds. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_event_close(
+    ams_mel_ir_image_odm_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* IRMEL-ADA-005: submit requires Enabled, preserves both uint32 fields, and

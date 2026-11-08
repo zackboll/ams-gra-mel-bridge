@@ -8,6 +8,7 @@
 #include <irmel/library/irmel-types/ImageListener.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1366,6 +1367,186 @@ private:
     CameraCallback callback_;
 };
 
+/* IRMEL-ADA-009 deterministic @Optional OpticalDistortionMap fixture for the
+ * Image mock channel. Scenarios not named "odm-*" model a provider without ODM
+ * support and answer NotSupported. Every registration attempt is counted, so a
+ * test can prove that no other owner registers this overload. Maps are built
+ * only through the upstream setters. */
+using OdmCallback = std::function<void(irmel::Channel&, const irmel::OpticalDistortionMap *const)>;
+
+irmel::OpticalDistortionMap odm_map(std::uint32_t width, std::uint32_t height, std::uint32_t right,
+                                    std::uint32_t down, std::uint32_t pixels,
+                                    const std::array<double, 4>& extrema)
+{
+    irmel::OpticalDistortionMap value;
+    value.setWidth(width); value.setHeight(height);
+    value.setRightSize(right); value.setDownSize(down); value.setPixelsPerOdm(pixels);
+    value.setRightMin(extrema[0]); value.setRightMax(extrema[1]);
+    value.setDownMin(extrema[2]); value.setDownMax(extrema[3]);
+    return value;
+}
+
+/* 0 empty; 1 rich (4 FRD incl. duplicate, 3 RowCol, uint32 0/max, signed zero
+ * and double extremes); 2 FRD-only; 3 RowCol-only; 4 non-finite; 5 one FRD and
+ * four RowCol; 6 tagged single element pair. tag identifies events in order. */
+irmel::OpticalDistortionMap odm_fixture(unsigned fixture, std::uint32_t tag)
+{
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    constexpr double big = std::numeric_limits<double>::max();
+    switch (fixture) {
+    case 1U: {
+        auto value = odm_map(0xffffffffU, 0U, 0x80000001U, 1U, 0x7fffffffU,
+                             {-0.0, big, -big, std::numeric_limits<double>::denorm_min()});
+        value.addForwardRightDown(irmel::ForwardRightDown{1.0, 0.0, 0.0});
+        value.addForwardRightDown(irmel::ForwardRightDown{0.5, -0.25, 0.125});
+        value.addForwardRightDown(irmel::ForwardRightDown{0.5, -0.25, 0.125});
+        value.addForwardRightDown(irmel::ForwardRightDown{-0.75, 1.0e-300, -2.5});
+        value.addRowCol(irmel::RowCol{0.0, 639.5});
+        value.addRowCol(irmel::RowCol{479.25, -0.0});
+        value.addRowCol(irmel::RowCol{1.0e300, -1.0e-300});
+        return value;
+    }
+    case 2U: {
+        auto value = odm_map(640U, 480U, 33U, 25U, 20U, {-0.5, 0.5, -0.375, 0.375});
+        value.addForwardRightDown(irmel::ForwardRightDown{0.25, 0.5, 0.75});
+        return value;
+    }
+    case 3U: {
+        auto value = odm_map(1U, 2U, 3U, 4U, 5U, {1.0, 2.0, 3.0, 4.0});
+        value.addRowCol(irmel::RowCol{12.5, 7.25});
+        return value;
+    }
+    case 4U: {
+        auto value = odm_map(0U, 0U, 0U, 0U, 0U, {inf, -inf, nan, -0.0});
+        value.addForwardRightDown(irmel::ForwardRightDown{nan, inf, -inf});
+        value.addRowCol(irmel::RowCol{-inf, nan});
+        value.addRowCol(irmel::RowCol{0.0, -0.0});
+        return value;
+    }
+    case 5U: {
+        auto value = odm_map(5U, 5U, 5U, 5U, tag, {-1.0, 1.0, -2.0, 2.0});
+        value.addForwardRightDown(irmel::ForwardRightDown{static_cast<double>(tag), 0.0, 0.0});
+        for (double r = 1.0; r < 8.0; r += 2.0) value.addRowCol(irmel::RowCol{r, r + 1.0});
+        return value;
+    }
+    case 6U: {
+        auto value = odm_map(tag, 6U, 6U, 6U, 6U, {-6.0, 6.0, -6.5, 6.5});
+        value.addForwardRightDown(irmel::ForwardRightDown{static_cast<double>(tag), 1.0, 2.0});
+        value.addRowCol(irmel::RowCol{static_cast<double>(tag), 3.0});
+        return value;
+    }
+    default:
+        return irmel::OpticalDistortionMap{};
+    }
+}
+
+/* The registered callback of the current ODM-capable channel, for on-demand
+ * delivery from the test thread (no timing involved). */
+std::mutex odm_registry_mutex;
+OdmCallback odm_active_callback;
+irmel::Channel *odm_active_channel{};
+unsigned odm_registrations{};
+/* A non-quiescing provider thread for "odm-in-flight": deliberately NOT joined
+ * by channel destruction, only at provider-library unload (see the joiner
+ * defined after unload_recorder, so it is destroyed, and joins, first). */
+std::thread odm_detached_producer;
+
+class MockOdm {
+public:
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             OdmCallback callback)
+    {
+        {
+            std::lock_guard lock{odm_registry_mutex};
+            ++odm_registrations;
+        }
+        record("odm_registration_attempted");
+        if (scenario.rfind("odm-", 0U) != 0U) return Return::NotSupported;
+        callback_ = std::move(callback);
+        if (scenario == "odm-register-throw") throw std::runtime_error("ODM registration exception");
+        if (scenario == "odm-register-unknown") return static_cast<Return>(77U);
+        if (scenario == "odm-register-not-implemented") return Return::NotImplemented;
+        if (scenario == "odm-register-fail") {
+            auto value = odm_fixture(1U, 0U); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "odm-sync" || scenario == "odm-late" || scenario == "odm-late-closed") {
+            /* Synchronous delivery from inside registration, before return. */
+            for (unsigned fixture = 0U; fixture < 4U; ++fixture) {
+                auto value = odm_fixture(fixture, 0U); callback_(channel, &value);
+            }
+            record("odm_sync_delivered");
+        } else if (scenario == "odm-detach-fail") {
+            auto first = odm_fixture(1U, 0U); callback_(channel, &first);
+            auto second = odm_fixture(2U, 0U); callback_(channel, &second);
+        } else if (scenario == "odm-in-flight") {
+            auto copy = callback_;
+            auto *target = &channel;
+            odm_detached_producer = std::thread{[copy, target] {
+                auto value = odm_fixture(1U, 0U);
+                record("odm_in_flight_callback_entered");
+                copy(*target, &value);
+                record("odm_in_flight_callback_returned");
+            }};
+        }
+        std::lock_guard lock{odm_registry_mutex};
+        odm_active_callback = callback_;
+        odm_active_channel = &channel;
+        return Return::Success;
+    }
+
+    /* From the owning channel destructor: after the bridge closed its owners. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        {
+            std::lock_guard lock{odm_registry_mutex};
+            if (odm_active_channel == &channel) {
+                odm_active_callback = nullptr;
+                odm_active_channel = nullptr;
+            }
+        }
+        if ((scenario == "odm-late" || scenario == "odm-late-closed" ||
+             scenario == "odm-register-fail") && callback_) {
+            record("late_odm_callback_invoked");
+            auto value = odm_fixture(6U, 11U); callback_(channel, &value);
+            record("late_odm_callback_returned");
+        }
+    }
+
+private:
+    OdmCallback callback_;
+};
+
+/* IRMEL-ADA-009 test-only hooks (mock provider, never the bridge).
+ * mock_odm_deliver invokes the active registered callback on the CALLING
+ * thread: mode 0 delivers odm_fixture(fixture, tag), mode 1 a null payload.
+ * Returns 1 when a callback was invoked, 0 when none is registered.
+ * mock_odm_registrations returns the cumulative number of ODM registration
+ * attempts made by any bridge owner. */
+extern "C" __attribute__((visibility("default"))) int mock_odm_deliver(
+    unsigned fixture, std::uint32_t tag, unsigned mode)
+{
+    OdmCallback callback;
+    irmel::Channel *channel{};
+    {
+        std::lock_guard lock{odm_registry_mutex};
+        callback = odm_active_callback;
+        channel = odm_active_channel;
+    }
+    if (!callback || !channel) return 0;
+    if (mode == 1U) { callback(*channel, nullptr); return 1; }
+    auto value = odm_fixture(fixture, tag);
+    callback(*channel, &value);
+    return 1;
+}
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_odm_registrations()
+{
+    std::lock_guard lock{odm_registry_mutex};
+    return odm_registrations;
+}
+
 /* IRMEL-ADA-007: test mock only. No erase calls go to any real provider. */
 std::mutex erase_mutex;
 std::uint64_t erase_last[2]{};
@@ -1603,6 +1784,7 @@ public:
         stopping_ = true;
         nuc_.finish(*this, scenario_);
         camera_.finish(*this, scenario_);
+        odm_.finish(*this, scenario_);
         if (scenario_ == "image-metadata-navigation-register-fail" ||
             scenario_ == "image-metadata-navigation-register-throw") {
             if (!bad_pixel_callback_) std::abort();
@@ -1899,7 +2081,9 @@ public:
         }
         return Return::Success;
     }
-    UNSUPPORTED_CALLBACK(irmel::OpticalDistortionMap)
+    /* IRMEL-ADA-009: the @Optional OpticalDistortionMap overload. */
+    Return registerMetadataCallback(OdmCallback callback) override
+    { return odm_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::LineOfSightReport *const)> callback) override
     {
@@ -2439,6 +2623,7 @@ private:
     std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> navigation_response_callback_;
     MockNuc nuc_;
     MockCamera camera_;
+    MockOdm odm_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -5095,7 +5280,9 @@ public:
              instance_ == "track-detach-fail" ||
              instance_ == "track-update-detach-fail" ||
              instance_ == "track-response-detach-fail" ||
-             instance_ == "track-open-detach-fail") && !detach_failed_) {
+             instance_ == "track-open-detach-fail" ||
+             /* IRMEL-ADA-009: Image ODM owner under a failed provider detach. */
+             instance_ == "odm-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;
@@ -5109,6 +5296,11 @@ private:
     std::vector<irmel::ChannelCapability> capabilities_;
 };
 struct UnloadRecorder { ~UnloadRecorder() { record("library_unloaded"); } } unload_recorder;
+/* IRMEL-ADA-009: constructed after unload_recorder, therefore destroyed before
+ * it: the non-quiescing ODM producer is joined before "library_unloaded". */
+struct OdmProducerJoiner {
+    ~OdmProducerJoiner() { if (odm_detached_producer.joinable()) odm_detached_producer.join(); }
+} odm_producer_joiner;
 } // namespace
 
 /* Test-only deterministic backpressure control surface. These are NOT part of

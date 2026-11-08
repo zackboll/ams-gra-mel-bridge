@@ -10,7 +10,7 @@ option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_image_odm.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
     src/ir_calibration_status.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
@@ -49,7 +49,7 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_calibration_callback;\n        ams_mel_test_calibration_status_callback;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_calibration_callback;\n        ams_mel_test_calibration_status_callback;\n        ams_mel_test_image_odm_probe;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_completion_owner_notify;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -926,6 +926,28 @@ if(AMS_MEL_BUILD_TESTS)
     add_dependencies(test_ir_nuc mock_ir_provider)
     ams_mel_warnings(test_ir_nuc)
     add_test(NAME ir_nuc_contract COMMAND test_ir_nuc)
+
+    # IRMEL-ADA-009: opt-in Image OpticalDistortionMap reception, compiled as C.
+    # The in-flight teardown case runs in its own process because it leaves a
+    # deliberately non-quiescing provider thread joined only at library unload.
+    add_executable(test_ir_image_odm tests/test_ir_image_odm.c)
+    target_compile_features(test_ir_image_odm PRIVATE c_std_11)
+    set_target_properties(test_ir_image_odm PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_image_odm PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_image_odm PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_image_odm mock_ir_provider)
+    ams_mel_warnings(test_ir_image_odm)
+    add_test(NAME ir_image_odm_contract COMMAND test_ir_image_odm)
+    set_tests_properties(ir_image_odm_contract PROPERTIES TIMEOUT 120)
+    add_test(NAME ir_image_odm_callback_in_flight COMMAND test_ir_image_odm callback-in-flight)
+    set_tests_properties(ir_image_odm_callback_in_flight PROPERTIES TIMEOUT 60)
+    add_executable(test_ir_image_odm_layout tests/image_odm_layout_probe.c)
+    target_compile_features(test_ir_image_odm_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_image_odm_layout PROPERTIES C_EXTENSIONS OFF)
+    target_link_libraries(test_ir_image_odm_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_ir_image_odm_layout)
+    add_test(NAME ir_image_odm_layout COMMAND test_ir_image_odm_layout)
 
     # IRMEL-ADA-003: C2/Image CameraCommand and Image CameraCommandResp, compiled as C.
     add_executable(test_ir_camera_command tests/test_ir_camera_command.c)
