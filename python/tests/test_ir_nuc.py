@@ -209,17 +209,8 @@ class _NucCases:
     def test_ordinary_metadata_independent_and_does_not_register_nuc(self):
         _, parent = self.owners(capacity=None)
         with mock.patch.object(n, self.native_open_name) as register:
-            if self.image:
-                # Safe Python ordinary Image metadata is not implemented. Use
-                # its existing C owner just as the native NUC coexistence test.
-                owner = n.IrImageMetadataHandle()
-                self.assertEqual(n.ams_mel_ir_image_metadata_open(
-                    parent._owner, 2, c.byref(owner), None, 0, None), n.AMS_MEL_OK)
-                self.assertEqual(n.ams_mel_ir_image_metadata_close(
-                    c.byref(owner), None, 0, None), n.AMS_MEL_OK)
-            else:
-                with parent.open_metadata() as ordinary:
-                    self.assertEqual(ordinary.counters().events_received, 0)
+            with parent.open_metadata() as ordinary:
+                self.assertEqual(ordinary.counters().events_received, 0)
             register.assert_not_called()
         with parent.open_nuc() as stream:
             self.assertEqual(stream.counters(), m.NucCounters(3, 0, 0))
@@ -242,19 +233,13 @@ class _NucCases:
     def test_nuc_close_does_not_close_parent_or_ordinary_metadata(self):
         _, parent = self.owners(capacity=None)
         if self.image:
-            ordinary = n.IrImageMetadataHandle()
-            self.assertEqual(n.ams_mel_ir_image_metadata_open(
-                parent._owner, 2, c.byref(ordinary), None, 0, None), n.AMS_MEL_OK)
-            try:
+            with parent.open_metadata() as ordinary:
                 with parent.open_nuc() as stream:
                     stream.receive()
-                counters = n.IrC2MetadataCountersV1()
-                self.assertEqual(n.ams_mel_ir_image_metadata_get_counters(
-                    ordinary, c.byref(counters), None, 0, None), n.AMS_MEL_OK)
+                self.assertTrue(ordinary.is_open)
+                self.assertEqual(ordinary.counters().events_received, 0)
                 parent.start()
                 parent.stop()
-            finally:
-                n.ams_mel_ir_image_metadata_close(c.byref(ordinary), None, 0, None)
         else:
             with parent.open_metadata() as ordinary:
                 with parent.open_nuc() as stream:
