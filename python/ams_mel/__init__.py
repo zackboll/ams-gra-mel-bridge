@@ -108,6 +108,18 @@ from ._image import (
 from ._c2 import (
     ControlChannel,
 )
+from ._c2_metadata import C2MetadataStream
+from ._c2_types import (
+    C2MetadataKind,
+    C2MetadataEvent,
+    C2MetadataCounters,
+    C2CommandState,
+    C2CannotComply,
+    C2CommandStatus,
+    C2BitControlInterface,
+    C2BitType,
+    C2BitConfiguration,
+)
 from ._instrumentation import (
     InstrumentationChannel,
     InstrumentationMetadata,
@@ -182,6 +194,16 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    C2MetadataStream,
+    C2MetadataKind,
+    C2MetadataEvent,
+    C2MetadataCounters,
+    C2CommandState,
+    C2CannotComply,
+    C2CommandStatus,
+    C2BitControlInterface,
+    C2BitType,
+    C2BitConfiguration,
     NucPointType,
     NucPixelKind,
     NucPixelValue,
@@ -301,6 +323,16 @@ del _public_symbol
 
 
 __all__ = [
+    "C2MetadataStream",
+    "C2MetadataKind",
+    "C2MetadataEvent",
+    "C2MetadataCounters",
+    "C2CommandState",
+    "C2CannotComply",
+    "C2CommandStatus",
+    "C2BitControlInterface",
+    "C2BitType",
+    "C2BitConfiguration",
     "NucPointType",
     "NucPixelKind",
     "NucPixelValue",
