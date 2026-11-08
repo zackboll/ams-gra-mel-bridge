@@ -1,5 +1,18 @@
 # Changelog
 
+## IRMEL-ADA-009 — Optional Image OpticalDistortionMap metadata
+
+The pinned optional `ImageChannel::registerMetadataCallback(OpticalDistortionMap)` is
+implemented as an independent opt-in owner: `ams_mel_ir_image_odm_open`, `_receive`,
+`_get_counters`, `_close`, `_event_view` and `_event_close` (Ada
+`AMS.MEL.IR.Image.Metadata.Open_Optical_Distortion_Map`, `Receive_Optical_Distortion_Map`,
+`Optical_Distortion_Map_Counters`, `Close`; owned values in the new
+`AMS.MEL.IR.Optical_Distortion_Map`). New records `ams_mel_ir_forward_right_down_v1`,
+`ams_mel_ir_forward_right_down_span_v1`, `ams_mel_ir_row_col_span_v1` and
+`ams_mel_ir_optical_distortion_map_v1`; the base Image metadata owner is unchanged.
+Production inventory: 278 AMS_MEL_0.1 exports (six new); Python/Rust receive private
+raw mirrors only. Evidence is mock-provider only.
+
 ## IRMEL-ADA-008 — Independent optional C2 SystemTrackDataResponse
 
 The pinned optional `C2Channel::send(SystemTrackDataResponse)` is implemented as

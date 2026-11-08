@@ -1,5 +1,41 @@
 # Architecture decisions
 
+## IRMEL-ADA-009 — Optional Image OpticalDistortionMap metadata
+
+The pinned `@Optional` `ImageChannel::registerMetadataCallback(OpticalDistortionMap)`
+is exposed through one independently registered, opt-in owner:
+`AMS.MEL.IR.Image.Metadata.Open_Optical_Distortion_Map`,
+`Receive_Optical_Distortion_Map`, `Optical_Distortion_Map_Counters` and `Close`
+on a limited-controlled `Optical_Distortion_Map_Stream`
+(`ams_mel_ir_image_odm_*` natively). The four-kind `Metadata.Open`, the NUC_TempData
+and CameraCommandResp owners never register this overload, and their one-shots are
+independent of it, so providers without ODM are unaffected. NotSupported raises the
+distinct `AMS.MEL.IR.Optical_Distortion_Map.Not_Supported`.
+
+Every published getter is represented once: five `uint32` values (0 and UINT32_MAX
+kept), four `double` extrema, and the complete ordered `getFrd()`/`getRowCol()`
+collections. They are deep-copied before the callback returns into the new
+`ams_mel_ir_optical_distortion_map_v1`, `ams_mel_ir_forward_right_down_v1` (forward,
+right, down) and spans of the canonical `ams_mel_ir_row_col_v1`, then into an owned Ada
+`Map_Value`. The two collection lengths are independent of each other and of the
+scalar dimensions; nothing is inferred, padded or truncated. IEEE doubles are
+forwarded unchanged: infinity and NaN are never replaced, but they reach Ada as
+non-valid `Long_Float` values that callers must test (NaN payload bits are not
+promised). The queue is bounded and DROP-INCOMING. A shared allocation-free validator
+(each count ≤ INT32_MAX with checked byte size) classifies full-queue input without
+building a snapshot, while still counting malformed maps as malformed. A copy failure
+rejects the whole event.
+
+Registration is one-shot per Attached/Running stream, including failed attempts, and
+runs without bridge locks; synchronous delivery is safe. Image Stop/Close wakes
+receivers and queued maps drain. Physical teardown waits for in-flight ODM callbacks
+after provider channel destruction. A failed detach fails the owner after draining.
+Six `AMS_MEL_0.1` exports extend 272 → 278; existing exports, records, signatures and
+enum values are unchanged. Python ctypes and Rust sys gain private mirrors only.
+Coverage: the registration, OpticalDistortionMap and ForwardRightDown move missing →
+safe_ada (RowCol was already safe_ada); safe Ada operations 45 → 46. Qualification is
+mock-provider only. See [qualification](irmel-ada-009-optical-distortion-map.md).
+
 ## IRMEL-ADA-008 — Independent optional C2 SystemTrackDataResponse
 
 `C2Channel::send(SystemTrackDataResponse)` is exposed by
