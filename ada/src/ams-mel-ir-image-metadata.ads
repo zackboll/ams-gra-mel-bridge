@@ -4,16 +4,18 @@ with Interfaces;
 with AMS.MEL.Status;
 with AMS.MEL.IR.NUC;
 with AMS.MEL.IR.Camera;
+with AMS.MEL.IR.Optical_Distortion_Map;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Image.Metadata is
    --  Owned polling of four image metadata callback families: bad pixels, line-of-sight report,
-   --  line-of-sight Euler and navigation response. Optional LineOfSightQuaternion,
-   --  OpticalDistortionMap and other upstream callbacks are not bound here. Payloads are copied at
-   --  the native callback boundary and again into safe Ada values; no provider pointer is exposed.
-   --  Optional NUC_TempData has a separate opt-in owner, NUC_Stream, so Open is unaffected by
-   --  providers without NUC support. CameraCommandResp (@RequiredIfCameraCtrl) likewise has its
-   --  own opt-in owner, Camera_Response_Stream; Open never registers it.
+   --  line-of-sight Euler and navigation response. Optional LineOfSightQuaternion and other
+   --  upstream callbacks are not bound here. Payloads are copied at the native callback boundary
+   --  and again into safe Ada values; no provider pointer is exposed. Optional NUC_TempData has a
+   --  separate opt-in owner, NUC_Stream, so Open is unaffected by providers without NUC support.
+   --  CameraCommandResp (@RequiredIfCameraCtrl) likewise has its own opt-in owner,
+   --  Camera_Response_Stream, and optional OpticalDistortionMap has its own opt-in owner,
+   --  Optical_Distortion_Map_Stream; Open never registers either.
 
    type Metadata_Kind is
      (Bad_Pixel_List_Event,
@@ -281,7 +283,57 @@ package AMS.MEL.IR.Image.Metadata is
    --  the image stream.
    --  @param Stream Owner to close.
    --  @exception Provider_Error Native close failed.
+   type Optical_Distortion_Map_Stream is limited private;
+   --  Limited opt-in owner of ImageChannel @Optional OpticalDistortionMap reception, independent
+   --  of Metadata_Stream, NUC_Stream and Camera_Response_Stream. Explicit Close is preferred;
+   --  finalization attempts non-raising cleanup. Serialize operations on the same owner.
+   function Open_Optical_Distortion_Map
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive)
+      return Optical_Distortion_Map_Stream;
+   --  Registers the upstream ImageChannel OpticalDistortionMap callback once per image stream,
+   --  including after failure. Registration may deliver synchronously. Failure publishes no
+   --  owner; the retained callback stays inactive because upstream has no unregister. Each map
+   --  is deep-copied before the callback returns into one bounded drop-incoming queue; a full
+   --  queue drops valid maps without copying them. The owner stops with the stream.
+   --  @param Stream Attached or running image stream.
+   --  @param Queue_Capacity Maximum number of queued maps.
+   --  @return Limited OpticalDistortionMap consumption owner.
+   --  @exception AMS.MEL.IR.Optical_Distortion_Map.Not_Supported Provider answered NotSupported.
+   --  @exception Provider_Error Closed/ineligible stream, repeated attempt, other registration
+   --  failure or exception, or native failure.
+   function Receive_Optical_Distortion_Map
+     (Stream : Optical_Distortion_Map_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Optical_Distortion_Map.Map_Value;
+   --  Dequeues one map in successful-enqueue order and copies every scalar and both complete
+   --  collections into Ada ownership before releasing the native event. Queued maps drain after
+   --  the image stream stops.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned map independent of the native event, stream, Session and provider library.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, failed provider cleanup, invalid native data or
+   --  native failure.
+   function Optical_Distortion_Map_Counters
+     (Stream : Optical_Distortion_Map_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming maps.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Optical_Distortion_Map_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback, wait for
+   --  callback quiescence or close the image stream. Maps already received stay owned.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
 private
+   type Optical_Distortion_Map_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Image_ODM_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Image_ODM_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Optical_Distortion_Map_Stream);
+   --  Non-raising fallback that attempts to close the OpticalDistortionMap owner.
+   --  @param Stream OpticalDistortionMap owner being finalized.
    type Camera_Response_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Camera_Response_Metadata_Handle :=
         AMS.MEL_C_API.Null_Camera_Response_Metadata;

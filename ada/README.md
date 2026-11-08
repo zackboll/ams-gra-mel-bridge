@@ -1,5 +1,15 @@
 # Ada binding bootstrap
 
+## Optional Image OpticalDistortionMap
+
+Call `AMS.MEL.IR.Image.Metadata.Open_Optical_Distortion_Map` on an Attached or Running
+image stream (once per stream; `Optical_Distortion_Map.Not_Supported` when the provider
+has no ODM), then `Receive_Optical_Distortion_Map` for owned `Map_Value`s with complete
+scalars and independent one-based FRD/RowCol collections. It never affects
+`Metadata.Open`. Non-finite provider doubles are carried, not replaced; test them with
+`'Valid` before checked arithmetic. See
+[qualification](../docs/irmel-ada-009-optical-distortion-map.md).
+
 ## Optional C2 SystemTrackDataResponse
 
 Build an `AMS.MEL.IR.Track.System_Data.System_Track_Data_Response` value and pass it
