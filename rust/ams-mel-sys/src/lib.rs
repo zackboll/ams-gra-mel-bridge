@@ -1440,6 +1440,17 @@ pub struct AmsMelIrOpticalDistortionMapV1 {
     pub row_col: AmsMelIrRowColSpanV1,
 }
 
+/// IRMEL-ADA-010: complete upstream `LineOfSightQuaternion`. Reuses the one
+/// canonical `AmsMelIrQuaternionV1` (x, y, z, w) and
+/// `AmsMelIrForwardRightDownV1` (forward, right, down rad/s) mirrors.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrLineOfSightQuaternionV1 {
+    pub system_time_ns: i64,
+    pub q_xyzw: AmsMelIrQuaternionV1,
+    pub pqr_rps: AmsMelIrForwardRightDownV1,
+}
+
 /// Complete `HotRegion`. The geometry keeps its upstream `uint16_t` width.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -2073,6 +2084,18 @@ pub struct AmsMelIrImageOdmMetadata {
 /// IRMEL-ADA-009: opaque deep-copied OpticalDistortionMap event.
 #[repr(C)]
 pub struct AmsMelIrImageOdmEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-010: opaque opt-in Image LineOfSightQuaternion owner.
+#[repr(C)]
+pub struct AmsMelIrImageLosQuaternionMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-010: opaque copied LineOfSightQuaternion event.
+#[repr(C)]
+pub struct AmsMelIrImageLosQuaternionEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3533,6 +3556,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_image_odm_event_close(
         event: *mut *mut AmsMelIrImageOdmEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_open(
+        stream: *mut AmsMelIrStream,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrImageLosQuaternionMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_receive(
+        metadata: *mut AmsMelIrImageLosQuaternionMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrImageLosQuaternionEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_get_counters(
+        metadata: *const AmsMelIrImageLosQuaternionMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_close(
+        metadata: *mut *mut AmsMelIrImageLosQuaternionMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_event_view(
+        event: *const AmsMelIrImageLosQuaternionEvent,
+        out: *mut *const AmsMelIrLineOfSightQuaternionV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_los_quaternion_event_close(
+        event: *mut *mut AmsMelIrImageLosQuaternionEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

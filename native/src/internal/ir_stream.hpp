@@ -19,6 +19,7 @@ struct ImageMetadataState;
 struct NucState;
 struct CameraResponseState;
 struct OdmState;
+struct LosQuaternionState;
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -90,6 +91,11 @@ struct ImageStreamState {
      * of all three owners above. Guarded by callback->mutex. */
     std::shared_ptr<OdmState> image_odm;
     bool image_odm_attempted{false};
+    /* IRMEL-ADA-010 opt-in @RequiredIfLOSQuaternion LineOfSightQuaternion
+     * owner, independent of all four owners above. Guarded by
+     * callback->mutex. */
+    std::shared_ptr<LosQuaternionState> image_los_quaternion;
+    bool image_los_quaternion_attempted{false};
     BufferFactory buffer_factory{};
     std::string instance;
     std::size_t buffer_count{};
@@ -165,6 +171,21 @@ void image_odm_stream_failed(const std::shared_ptr<OdmState>& state) noexcept;
 bool claim_image_odm(
     ImageStreamState& stream,
     const std::shared_ptr<OdmState>& state,
+    std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
+/* IRMEL-ADA-010, defined in ir_image_los_quaternion.cpp; never called with
+ * callback->mutex held. Same stopped/drained/failed meaning as the ODM hooks,
+ * for the independent LineOfSightQuaternion owner. */
+void image_los_quaternion_stream_stopped(
+    const std::shared_ptr<LosQuaternionState>& state) noexcept;
+void image_los_quaternion_stream_drained(
+    const std::shared_ptr<LosQuaternionState>& state) noexcept;
+void image_los_quaternion_stream_failed(
+    const std::shared_ptr<LosQuaternionState>& state) noexcept;
+/* Records the independent LineOfSightQuaternion one-shot and publishes state
+ * under callback->mutex; same eligibility as claim_image_nuc. */
+bool claim_image_los_quaternion(
+    ImageStreamState& stream,
+    const std::shared_ptr<LosQuaternionState>& state,
     std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
 /* Records the one-shot and publishes state under callback->mutex; same
  * eligibility as claim_image_nuc. Defined in ir_stream.cpp. */

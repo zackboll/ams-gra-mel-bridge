@@ -1294,6 +1294,23 @@ bool claim_image_odm(
     return true;
 }
 
+bool claim_image_los_quaternion(
+    ImageStreamState& stream,
+    const std::shared_ptr<LosQuaternionState>& state,
+    std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
+{
+    std::lock_guard lock{stream.callback->mutex};
+    if (!stream.image_channel || stream.callback->lifecycle == Lifecycle::Stopping ||
+        stream.callback->lifecycle == Lifecycle::Stopped ||
+        stream.callback->lifecycle == Lifecycle::Failed ||
+        stream.image_los_quaternion_attempted)
+        return false;
+    stream.image_los_quaternion_attempted = true;
+    stream.image_los_quaternion = state;
+    image_channel = stream.image_channel;
+    return true;
+}
+
 bool claim_navigation_submission(
     ImageStreamState& stream,
     std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
@@ -1687,6 +1704,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
     std::shared_ptr<NucState> nuc;
     std::shared_ptr<CameraResponseState> camera;
     std::shared_ptr<OdmState> odm;
+    std::shared_ptr<LosQuaternionState> los_quaternion;
     try {
         {
             std::lock_guard lock{stream.callback->mutex};
@@ -1698,11 +1716,13 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
             nuc = stream.image_nuc;
             camera = stream.image_camera_response;
             odm = stream.image_odm;
+            los_quaternion = stream.image_los_quaternion;
         }
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
         image_camera_response_stream_stopped(camera);
         image_odm_stream_stopped(odm);
+        image_los_quaternion_stream_stopped(los_quaternion);
     } catch (...) {
         /* Logical stop must remain noexcept. */
     }
@@ -1810,6 +1830,7 @@ ImageCleanupOutcome image_stream_cleanup(
     std::shared_ptr<NucState> nuc;
     std::shared_ptr<CameraResponseState> camera;
     std::shared_ptr<OdmState> odm;
+    std::shared_ptr<LosQuaternionState> los_quaternion;
     bool disable_needed = false;
     bool owner_closed = false;
     try {
@@ -1867,6 +1888,7 @@ ImageCleanupOutcome image_stream_cleanup(
             nuc = stream.image_nuc;
             camera = stream.image_camera_response;
             odm = stream.image_odm;
+            los_quaternion = stream.image_los_quaternion;
         }
 
         image_cleanup_barrier("before-detach");
@@ -1912,6 +1934,9 @@ ImageCleanupOutcome image_stream_cleanup(
              * the callback closure and the stream; queued events still drain,
              * then Receive reports PROVIDER_FAILED. */
             image_odm_stream_failed(odm);
+            /* IRMEL-ADA-010: same fail-safe retention for the independent
+             * LineOfSightQuaternion owner and its registered callback. */
+            image_los_quaternion_stream_failed(los_quaternion);
             return ImageCleanupOutcome::Failed;
         }
 
@@ -1930,6 +1955,10 @@ ImageCleanupOutcome image_stream_cleanup(
          * be released. A late callback after this point is still memory-safe
          * through its own shared OdmState. */
         image_odm_stream_drained(odm);
+        /* IRMEL-ADA-010: likewise wait for LineOfSightQuaternion bridge
+         * callbacks already in flight; late callbacks stay memory-safe through
+         * their own shared LosQuaternionState. */
+        image_los_quaternion_stream_drained(los_quaternion);
 
         std::size_t in_flight = stream.callback->callbacks_in_flight.load(
             std::memory_order_acquire);
