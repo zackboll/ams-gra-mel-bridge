@@ -1,5 +1,43 @@
 # Implementation coverage
 
+## PY-MEL-006 — safe Python Image/Health optional NUC reception
+
+`ImageStream.open_nuc` and `HealthStatusChannel.open_nuc` return the same independent
+public `NucStream`. The shared `_nuc.py` owns registration, conversion, events and
+counters using exactly seven existing C functions; `_native.py`, production native
+ABI, Ada/Rust sources and provider mock are unchanged. Registration is opt-in,
+one-shot, synchronous-callback-safe, and independent of ordinary metadata. Its
+sentinel-initialized Return preserves NOT_SUPPORTED versus FAIL versus exceptions
+in `NucOpenError.registration`, without diagnostic parsing or implicit enable/start.
+
+Frozen owned values preserve ordered/duplicate/empty points, signed int64 timestamp
+nanoseconds (epoch unspecified), published band types and wavelength meters, exact
+uint8/16/32 pixel alternatives, Kelvin doubles including nonfinite/signed zero, and
+all three classifications. The inaccessible private upstream `tempError` remains
+unrepresented, so upstream TempPoint remains partial for that reason. Strict enum,
+width and span checks precede native storage release; cleanup never masks an earlier
+exception or retries an uncertain Close. Native retention governs provider lifetime;
+Python NUC owners retain no parent or Session. Data survives DSO unload.
+
+The bounded native FIFO remains DROP-INCOMING, with full uint64 counters. Callback
+allocation/copy failure rejects one event and increments malformed, **not** terminal
+Failed (unlike ordinary Health metadata). Image Stop and Health teardown remain
+distinct; queued events drain before STREAM_STOPPED or uncertain cleanup failure.
+Close is neither unregister nor callback quiescence; externally serialize each
+owner. No Python callbacks, threads or queues are introduced.
+
+`python/tests/test_ir_nuc.py` separately qualifies both families against unchanged
+compiled mock scenarios, hostile C boundary outputs, cleanup failures, owned-value
+lifetime and subprocess-isolated deterministic callback barriers. Previous Python
+Health metadata and package compatibility tests remain present. This is mock-only
+evidence, not Squall/hardware qualification. PR #158 (PY-MEL-005) merged into main
+at `664e86eb4bccf20fb6a6ded36dd31c89e313d505`; PY-MEL-006 is reconciled with that
+integrated prerequisite and the newer Camera, calibration, Erase and C2 system
+response slices. The current production inventory remains **272 AMS_MEL_0.1
+exports**, unchanged from that main commit. Lower task-specific counts describe
+historical checkpoints, not the current ABI. See
+[Python NUC API and seven-function mapping](../python/README.md#ir-imagehealth-nuc-temperature-metadata-py-mel-006).
+
 ## PY-MEL-005 — complete safe Python IR Health/Status metadata
 
 `HealthStatusChannel.open_metadata` now uses only the six existing published C

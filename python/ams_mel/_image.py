@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
     MelError,
@@ -47,6 +48,10 @@ class ImageStream:
     def _require_open(self) -> None:
         if not self.is_open:
             raise _local_error(ErrorKind.INVALID_ARGUMENT, "ImageStream is closed")
+
+    def open_nuc(self, queue_capacity: int = 16) -> NucStream:
+        """Opt into optional one-shot NUC registration, without starting Image."""
+        return _open_nuc(self, queue_capacity, _native.ams_mel_ir_image_nuc_open)
 
     def start(self) -> None:
         self._require_open()

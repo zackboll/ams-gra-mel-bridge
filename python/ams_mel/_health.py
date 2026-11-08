@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._nuc import NucStream, _open_nuc
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
@@ -32,13 +33,17 @@ class HealthStatusChannel(_NativeOwner):
     and close. Native state implements idempotent enable and failed-state rejection. Close may
     defer teardown for common requests; it never cancels them. A failed detach
     retains the handle for explicit retry; consumed owners are never retried.
-    Six-family metadata registration is opt-in; NUC reception is not exposed.
+    Six-family metadata and optional NUC registration are independently opt-in.
     """
 
     _close_function = staticmethod(_native.ams_mel_ir_health_close)
 
     def __init__(self) -> None:
         raise TypeError("use Session.open_health_channel")
+
+    def open_nuc(self, queue_capacity: int = 16) -> NucStream:
+        """Opt into optional one-shot NUC registration, without enabling Health."""
+        return _open_nuc(self, queue_capacity, _native.ams_mel_ir_health_nuc_open)
 
     def enable(self) -> None:
         """Enable explicitly; repeated success does not reach the provider again."""

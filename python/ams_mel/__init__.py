@@ -31,7 +31,9 @@ and close on one InstrumentationRequest. Receive, counters, and close on one
 InstrumentationMetadata require external serialization. No Python lock or worker
 thread is added. Health enable, metadata open, capabilities, view conversion,
 and close on one owner likewise require external serialization, as do receive,
-counters and close on one HealthMetadataStream.
+counters and close on one HealthMetadataStream. Image/Health open_nuc is
+independently opt-in; receive, counters and close on one NucStream likewise
+require external serialization. No Python parent is retained by NucStream.
 """
 
 from __future__ import annotations
@@ -40,6 +42,16 @@ from __future__ import annotations
 from ._errors import (
     ErrorKind,
     MelError,
+)
+from ._nuc import (
+    NucPointType,
+    NucPixelKind,
+    NucPixelValue,
+    NucTempPoint,
+    NucTempData,
+    NucCounters,
+    NucOpenError,
+    NucStream,
 )
 from ._types import (
     AbiVersion,
@@ -170,6 +182,14 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    NucPointType,
+    NucPixelKind,
+    NucPixelValue,
+    NucTempPoint,
+    NucTempData,
+    NucCounters,
+    NucOpenError,
+    NucStream,
     About,
     ActiveBit,
     BitResult,
@@ -281,6 +301,14 @@ del _public_symbol
 
 
 __all__ = [
+    "NucPointType",
+    "NucPixelKind",
+    "NucPixelValue",
+    "NucTempPoint",
+    "NucTempData",
+    "NucCounters",
+    "NucOpenError",
+    "NucStream",
     "About",
     "ActiveBit",
     "BitResult",
