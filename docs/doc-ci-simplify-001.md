@@ -68,17 +68,28 @@ served entity byte-for-byte with bounded retries. It reports failure, not rollba
 ## Explicit qualification
 
 `documentation-qualification.yml` runs weekly or manually, with no deployment
-permissions or Pages actions. Independent matrix jobs perform:
+permissions or Pages actions. Its sole job, **Current-source qualification**,
+performs repeated current-source generation, deterministic equality, deep
+source/native and type-link audits, real source-addition/mutation regressions
+and compiled example qualification. Check failures still fail the job; diagnostic
+artifacts are retained even on failure. The pinned tools and 180-minute timeout
+are unchanged.
 
-- current-source repeated generation, deterministic equality, deep type-link
-  completeness, real source-addition/mutation regressions and compiled examples;
-- immutable original historical replay, preserving original failures;
-- separately identified corrected historical replay.
+DOC-CI-009 removes both historical replay matrix lanes and their replay step from
+scheduled runs and manual dispatch. In scheduled run
+[`41445598551`](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/41445598551),
+current-source qualification passed, but both historical lanes failed with
+`local mode forbidden in hosted CI`: `qualify_history.py` sets
+`DOC_LOCAL_QUALIFICATION=1`, which the immutable historical runner rejects when
+`GITHUB_ACTIONS=true`. Retiring automatic replay does not repair that obsolete
+hosted/local mode conflict or change the normal documentation/Pages workflow.
 
-Historical failures are not waived or promoted into current build requirements.
-Retained historical tooling/tests describe their epochs; their frozen topology
-assertions are not applied to the new normal workflow. Full replay is expensive
-and is not a claim made by a successful normal build.
+Historical scripts remain available for explicit offline investigations; immutable
+historical source identities, checkouts and original evidence are unchanged.
+Neither scheduled nor manually dispatched qualification invokes historical replay.
+Historical failures are not waived or promoted into current build requirements,
+and retained historical bookkeeping tests do not execute full replay. Full replay
+is not a claim made by a successful normal build or current-source qualification.
 
 ## Local commands
 

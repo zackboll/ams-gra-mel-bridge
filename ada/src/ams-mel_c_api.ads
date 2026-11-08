@@ -28,137 +28,177 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
-   Null_Session                       : constant Session_Handle :=
+   Null_Session                            : constant Session_Handle :=
      Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream                        : constant Stream_Handle :=
+   Null_Stream                             : constant Stream_Handle :=
      Stream_Handle (System.Null_Address);
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot                : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot                     : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2                            : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2                                 : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request                  : constant Mode_Request_Handle :=
+   Null_Mode_Request                       : constant Mode_Request_Handle :=
      Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request                : constant Return_Request_Handle :=
+   Null_Return_Request                     : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request                 : constant Comms_Request_Handle :=
+   Null_Comms_Request                      : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
-   Null_Capability                    : constant Capability_Handle :=
+   Null_Capability                         : constant Capability_Handle :=
      Capability_Handle (System.Null_Address);
    --  Task 032B1: raw weak common Channel view. Private FFI only; no safe
    --  Ada Channel operations use it yet (Task 032B2).
    type Channel_Handle is new System.Address;
-   Null_Channel                       : constant Channel_Handle :=
+   Null_Channel                            : constant Channel_Handle :=
      Channel_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
-   Null_Metadata                      : constant Metadata_Handle :=
+   Null_Metadata                           : constant Metadata_Handle :=
      Metadata_Handle (System.Null_Address);
    type Metadata_Event_Handle is new System.Address;
-   Null_Metadata_Event                : constant Metadata_Event_Handle :=
+   Null_Metadata_Event                     : constant Metadata_Event_Handle :=
      Metadata_Event_Handle (System.Null_Address);
    type Health_Handle is new System.Address;
-   Null_Health                        : constant Health_Handle :=
+   Null_Health                             : constant Health_Handle :=
      Health_Handle (System.Null_Address);
    type Health_Metadata_Handle is new System.Address;
-   Null_Health_Metadata               : constant Health_Metadata_Handle :=
+   Null_Health_Metadata                    : constant Health_Metadata_Handle :=
      Health_Metadata_Handle (System.Null_Address);
    type Health_Event_Handle is new System.Address;
-   Null_Health_Event                  : constant Health_Event_Handle :=
+   Null_Health_Event                       : constant Health_Event_Handle :=
      Health_Event_Handle (System.Null_Address);
    type Image_Metadata_Handle is new System.Address;
-   Null_Image_Metadata                : constant Image_Metadata_Handle :=
+   Null_Image_Metadata                     : constant Image_Metadata_Handle :=
      Image_Metadata_Handle (System.Null_Address);
    type Image_Metadata_Event_Handle is new System.Address;
-   Null_Image_Metadata_Event          : constant Image_Metadata_Event_Handle :=
+   Null_Image_Metadata_Event               : constant Image_Metadata_Event_Handle :=
      Image_Metadata_Event_Handle (System.Null_Address);
    --  IRMEL-ADA-002 opt-in NUC_TempData owner and copied event.
    type NUC_Metadata_Handle is new System.Address;
-   Null_NUC_Metadata                  : constant NUC_Metadata_Handle :=
+   Null_NUC_Metadata                       : constant NUC_Metadata_Handle :=
      NUC_Metadata_Handle (System.Null_Address);
    type NUC_Event_Handle is new System.Address;
-   Null_NUC_Event                     : constant NUC_Event_Handle :=
+   Null_NUC_Event                          : constant NUC_Event_Handle :=
      NUC_Event_Handle (System.Null_Address);
    --  IRMEL-ADA-003 CameraCommand request and opt-in CameraCommandResp owner/event.
    type Camera_Command_Request_Handle is new System.Address;
-   Null_Camera_Command_Request        : constant Camera_Command_Request_Handle :=
+   Null_Camera_Command_Request             : constant Camera_Command_Request_Handle :=
      Camera_Command_Request_Handle (System.Null_Address);
    type Camera_Response_Metadata_Handle is new System.Address;
-   Null_Camera_Response_Metadata      : constant Camera_Response_Metadata_Handle :=
+   Null_Camera_Response_Metadata           : constant Camera_Response_Metadata_Handle :=
      Camera_Response_Metadata_Handle (System.Null_Address);
    type Camera_Response_Event_Handle is new System.Address;
-   Null_Camera_Response_Event         : constant Camera_Response_Event_Handle :=
+   Null_Camera_Response_Event              : constant Camera_Response_Event_Handle :=
      Camera_Response_Event_Handle (System.Null_Address);
+   --  IRMEL-ADA-007 EraseCommand request observer.
+   type Erase_Request_Handle is new System.Address;
+   Null_Erase_Request                      : constant Erase_Request_Handle :=
+     Erase_Request_Handle (System.Null_Address);
+   --  IRMEL-ADA-004 CameraProtectCmd request and opt-in CameraProtectCmdResp owner/event.
+   type Camera_Protect_Request_Handle is new System.Address;
+   Null_Camera_Protect_Request             : constant Camera_Protect_Request_Handle :=
+     Camera_Protect_Request_Handle (System.Null_Address);
+   type Camera_Protect_Metadata_Handle is new System.Address;
+   Null_Camera_Protect_Metadata            : constant Camera_Protect_Metadata_Handle :=
+     Camera_Protect_Metadata_Handle (System.Null_Address);
+   type Camera_Protect_Event_Handle is new System.Address;
+   Null_Camera_Protect_Event               : constant Camera_Protect_Event_Handle :=
+     Camera_Protect_Event_Handle (System.Null_Address);
+   type Calibration_Configuration_Request_Handle is new System.Address;
+   Null_Calibration_Configuration_Request  : constant Calibration_Configuration_Request_Handle :=
+     Calibration_Configuration_Request_Handle (System.Null_Address);
+   type Calibration_Configuration_Metadata_Handle is new System.Address;
+   Null_Calibration_Configuration_Metadata : constant Calibration_Configuration_Metadata_Handle :=
+     Calibration_Configuration_Metadata_Handle (System.Null_Address);
+   type Calibration_Configuration_Event_Handle is new System.Address;
+   Null_Calibration_Configuration_Event    : constant Calibration_Configuration_Event_Handle :=
+     Calibration_Configuration_Event_Handle (System.Null_Address);
+   type Calibration_Status_Request_Handle is new System.Address;
+   Null_Calibration_Status_Request         : constant Calibration_Status_Request_Handle :=
+     Calibration_Status_Request_Handle (System.Null_Address);
+   type Calibration_Status_Metadata_Handle is new System.Address;
+   Null_Calibration_Status_Metadata        : constant Calibration_Status_Metadata_Handle :=
+     Calibration_Status_Metadata_Handle (System.Null_Address);
+   type Calibration_Status_Event_Handle is new System.Address;
+   Null_Calibration_Status_Event           : constant Calibration_Status_Event_Handle :=
+     Calibration_Status_Event_Handle (System.Null_Address);
    type Navigation_Request_Handle is new System.Address;
-   Null_Navigation_Request            : constant Navigation_Request_Handle :=
+   Null_Navigation_Request                 : constant Navigation_Request_Handle :=
      Navigation_Request_Handle (System.Null_Address);
    type Instrumentation_Handle is new System.Address;
-   Null_Instrumentation               : constant Instrumentation_Handle :=
+   Null_Instrumentation                    : constant Instrumentation_Handle :=
      Instrumentation_Handle (System.Null_Address);
    type Instrumentation_Request_Handle is new System.Address;
-   Null_Instrumentation_Request       : constant Instrumentation_Request_Handle :=
+   Null_Instrumentation_Request            : constant Instrumentation_Request_Handle :=
      Instrumentation_Request_Handle (System.Null_Address);
    type Instrumentation_Metadata_Handle is new System.Address;
-   Null_Instrumentation_Metadata      : constant Instrumentation_Metadata_Handle :=
+   Null_Instrumentation_Metadata           : constant Instrumentation_Metadata_Handle :=
      Instrumentation_Metadata_Handle (System.Null_Address);
    type Instrumentation_Event_Handle is new System.Address;
-   Null_Instrumentation_Event         : constant Instrumentation_Event_Handle :=
+   Null_Instrumentation_Event              : constant Instrumentation_Event_Handle :=
      Instrumentation_Event_Handle (System.Null_Address);
    type Track_Handle is new System.Address;
-   Null_Track                         : constant Track_Handle := Track_Handle (System.Null_Address);
+   Null_Track                              : constant Track_Handle :=
+     Track_Handle (System.Null_Address);
    type Track_Metadata_Handle is new System.Address;
-   Null_Track_Metadata                : constant Track_Metadata_Handle :=
+   Null_Track_Metadata                     : constant Track_Metadata_Handle :=
      Track_Metadata_Handle (System.Null_Address);
    type Track_Event_Handle is new System.Address;
-   Null_Track_Event                   : constant Track_Event_Handle :=
+   Null_Track_Event                        : constant Track_Event_Handle :=
      Track_Event_Handle (System.Null_Address);
    type Track_Update_Request_Handle is new System.Address;
-   Null_Track_Update_Request          : constant Track_Update_Request_Handle :=
+   Null_Track_Update_Request               : constant Track_Update_Request_Handle :=
      Track_Update_Request_Handle (System.Null_Address);
    --  A deliberately distinct handle type for the @Optional
    --  SystemTrackDataResponse request family.
    type Track_System_Response_Request_Handle is new System.Address;
-   Null_Track_System_Response_Request : constant Track_System_Response_Request_Handle :=
+   Null_Track_System_Response_Request      : constant Track_System_Response_Request_Handle :=
      Track_System_Response_Request_Handle (System.Null_Address);
+   --  IRMEL-ADA-008: a deliberately distinct handle for the independent C2
+   --  SystemTrackDataResponse overload; never interchangeable with the Track one.
+   type C2_System_Response_Request_Handle is new System.Address;
+   Null_C2_System_Response_Request         : constant C2_System_Response_Request_Handle :=
+     C2_System_Response_Request_Handle (System.Null_Address);
    --  Private raw RF handles; safe Ada ownership lives in AMS.MEL.RF children.
    type RF_Data_Handle is new System.Address;
    type RF_Admin_Handle is new System.Address;
    type RF_C2_Handle is new System.Address;
-   Null_RF_C2                         : constant RF_C2_Handle := RF_C2_Handle (System.Null_Address);
+   Null_RF_C2                              : constant RF_C2_Handle :=
+     RF_C2_Handle (System.Null_Address);
    type RF_VA_Request_Handle is new System.Address;
-   Null_RF_VA_Request                 : constant RF_VA_Request_Handle :=
+   Null_RF_VA_Request                      : constant RF_VA_Request_Handle :=
      RF_VA_Request_Handle (System.Null_Address);
    type RF_VA_Handle is new System.Address;
-   Null_RF_VA                         : constant RF_VA_Handle := RF_VA_Handle (System.Null_Address);
+   Null_RF_VA                              : constant RF_VA_Handle :=
+     RF_VA_Handle (System.Null_Address);
    type RF_Job_Request_Handle is new System.Address;
-   Null_RF_Job_Request                : constant RF_Job_Request_Handle :=
+   Null_RF_Job_Request                     : constant RF_Job_Request_Handle :=
      RF_Job_Request_Handle (System.Null_Address);
    type RF_Job_Handle is new System.Address;
-   Null_RF_Job                        : constant RF_Job_Handle :=
+   Null_RF_Job                             : constant RF_Job_Handle :=
      RF_Job_Handle (System.Null_Address);
-   Null_RF_Admin                      : constant RF_Admin_Handle :=
+   Null_RF_Admin                           : constant RF_Admin_Handle :=
      RF_Admin_Handle (System.Null_Address);
-   Null_RF_Data                       : constant RF_Data_Handle :=
+   Null_RF_Data                            : constant RF_Data_Handle :=
      RF_Data_Handle (System.Null_Address);
    type RF_Physical_Data_Handle is new System.Address;
-   Null_RF_Physical_Data              : constant RF_Physical_Data_Handle :=
+   Null_RF_Physical_Data                   : constant RF_Physical_Data_Handle :=
      RF_Physical_Data_Handle (System.Null_Address);
    type RF_MFA_Info_Handle is new System.Address;
-   Null_RF_MFA_Info                   : constant RF_MFA_Info_Handle :=
+   Null_RF_MFA_Info                        : constant RF_MFA_Info_Handle :=
      RF_MFA_Info_Handle (System.Null_Address);
    --  Task 033D: raw RF ProductRxEndpoint owners. Private FFI only.
    type RF_Product_Rx_Request_Handle is new System.Address;
-   Null_RF_Product_Rx_Request         : constant RF_Product_Rx_Request_Handle :=
+   Null_RF_Product_Rx_Request              : constant RF_Product_Rx_Request_Handle :=
      RF_Product_Rx_Request_Handle (System.Null_Address);
    type RF_Product_Rx_Handle is new System.Address;
-   Null_RF_Product_Rx                 : constant RF_Product_Rx_Handle :=
+   Null_RF_Product_Rx                      : constant RF_Product_Rx_Handle :=
      RF_Product_Rx_Handle (System.Null_Address);
    type RF_Product_Rx_Event_Handle is new System.Address;
-   Null_RF_Product_Rx_Event           : constant RF_Product_Rx_Event_Handle :=
+   Null_RF_Product_Rx_Event                : constant RF_Product_Rx_Event_Handle :=
      RF_Product_Rx_Event_Handle (System.Null_Address);
 
    type Byte_Array_16 is array (0 .. 15) of Interfaces.Unsigned_8 with Convention => C;
@@ -873,6 +913,87 @@ private package AMS.MEL_C_API is
       Error_Code : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   --  IRMEL-ADA-007 records; layouts are asserted against C by the Ada tests.
+   type IR_Erase_Command_V1 is record
+      Command_ID : Interfaces.Unsigned_32;
+      Erase_Type : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Erase_Result_V1 is record
+      Erase_Type : Interfaces.Unsigned_32;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+
+   --  IRMEL-ADA-004 records; layouts are asserted against C by the Ada tests.
+   type IR_Camera_Protect_Command_V1 is record
+      Command_ID       : Interfaces.Unsigned_32;
+      Response_Time_NS : Interfaces.Integer_64;
+      Protect_Flag     : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Camera_Protect_Response_V1 is record
+      Command_ID       : Interfaces.Unsigned_32;
+      Response_Time_NS : Interfaces.Integer_64;
+      Command_Response : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Camera_Protect_Result_V1 is record
+      Response   : IR_Camera_Protect_Response_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Calibration_Configuration_Command_V1 is record
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Subsystem_Calibration_V1 is record
+      Calibration_ID          : UCI_ID_V1;
+      Accepted_Interface      : Interfaces.Unsigned_32;
+      Calibration_Item_Names  : String_View_Span_V1;
+      Subsystem_Component_IDs : Span_V1;
+      Capability_IDs          : Span_V1;
+   end record
+   with Convention => C;
+   type IR_Calibration_Configuration_V1 is record
+      Data : System.Address;
+      Size : Size_T;
+   end record
+   with Convention => C;
+   type IR_Calibration_Configuration_Result_V1 is record
+      Configuration : IR_Calibration_Configuration_V1;
+      Error_Code    : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-006 records; layouts are asserted against C by the Ada tests.
+   type IR_Calibration_Status_Command_V1 is record
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   type IR_Completed_Calibration_Item_V1 is record
+      Item_Name   : String_View_V1;
+      Result      : Interfaces.Unsigned_32;
+      Fail_Reason : String_View_V1;
+   end record
+   with Convention => C;
+   type IR_Completed_Calibration_V1 is record
+      Calibration_ID    : UCI_ID_V1;
+      Time_Tag_NS       : Interfaces.Integer_64;
+      Result            : Interfaces.Unsigned_32;
+      Fail_Reason       : String_View_V1;
+      Calibration_Items : Span_V1;
+   end record
+   with Convention => C;
+   type IR_Calibration_Status_V1 is record
+      Active_Calibration_IDs : Span_V1;
+      Completed_Calibrations : Span_V1;
+   end record
+   with Convention => C;
+   type IR_Calibration_Status_Result_V1 is record
+      Status     : IR_Calibration_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
 
    type IR_Config_Set_Command_V1 is record
       Command_ID     : Interfaces.Unsigned_32;
@@ -978,6 +1099,12 @@ private package AMS.MEL_C_API is
    --  Semantically distinct from IR_Track_Update_Result_V1 while reusing the
    --  one generic IR_Command_Status_V1 layout.
    type IR_Track_System_Response_Result_V1 is record
+      Status     : IR_Command_Status_V1;
+      Error_Code : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-008: semantically distinct C2 result, same generic status layout.
+   type IR_C2_System_Response_Result_V1 is record
       Status     : IR_Command_Status_V1;
       Error_Code : Interfaces.Unsigned_32;
    end record
@@ -1614,6 +1741,235 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_event_close";
+   function IR_C2_Submit_Erase
+     (C2                  : C2_Handle;
+      Command             : access IR_Erase_Command_V1;
+      Output              : access Erase_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_erase";
+   function IR_Erase_Request_Wait
+     (Handle              : Erase_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Erase_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_erase_request_wait";
+   function IR_Erase_Request_Close
+     (Handle              : access Erase_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_erase_request_close";
+   function IR_C2_Submit_Camera_Protect
+     (C2                  : C2_Handle;
+      Command             : access IR_Camera_Protect_Command_V1;
+      Output              : access Camera_Protect_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_camera_protect";
+   function IR_Camera_Protect_Request_Wait
+     (Handle              : Camera_Protect_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Camera_Protect_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_request_wait";
+   function IR_Camera_Protect_Request_Close
+     (Handle              : access Camera_Protect_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_request_close";
+   function IR_C2_Camera_Protect_Open
+     (C2                  : C2_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Camera_Protect_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_camera_protect_open";
+   function IR_Camera_Protect_Receive
+     (Handle              : Camera_Protect_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Camera_Protect_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_receive";
+   function IR_Camera_Protect_Get_Counters
+     (Handle              : Camera_Protect_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_get_counters";
+   function IR_Camera_Protect_Close
+     (Handle              : access Camera_Protect_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_close";
+   function IR_Camera_Protect_Event_View
+     (Handle              : Camera_Protect_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_event_view";
+   function IR_Camera_Protect_Event_Close
+     (Handle              : access Camera_Protect_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_camera_protect_event_close";
+   function IR_C2_Submit_Calibration_Configuration
+     (C2                  : C2_Handle;
+      Command             : access IR_Calibration_Configuration_Command_V1;
+      Output              : access Calibration_Configuration_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_calibration_configuration";
+   function IR_Calibration_Configuration_Request_Wait
+     (Handle              : Calibration_Configuration_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Calibration_Configuration_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_calibration_configuration_request_wait";
+   function IR_Calibration_Configuration_Request_Close
+     (Handle              : access Calibration_Configuration_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_calibration_configuration_request_close";
+   function IR_C2_Calibration_Configuration_Open
+     (C2                  : C2_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Calibration_Configuration_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_calibration_configuration_open";
+   function IR_Calibration_Configuration_Receive
+     (Handle              : Calibration_Configuration_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Calibration_Configuration_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_configuration_receive";
+   function IR_Calibration_Configuration_Get_Counters
+     (Handle              : Calibration_Configuration_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_calibration_configuration_get_counters";
+   function IR_Calibration_Configuration_Close
+     (Handle              : access Calibration_Configuration_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_configuration_close";
+   function IR_Calibration_Configuration_Event_View
+     (Handle              : Calibration_Configuration_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_configuration_event_view";
+   function IR_Calibration_Configuration_Event_Close
+     (Handle              : access Calibration_Configuration_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_calibration_configuration_event_close";
+   function IR_C2_Submit_Calibration_Status
+     (C2                  : C2_Handle;
+      Command             : access IR_Calibration_Status_Command_V1;
+      Output              : access Calibration_Status_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_calibration_status";
+   function IR_Calibration_Status_Request_Wait
+     (Handle              : Calibration_Status_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Calibration_Status_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_request_wait";
+   function IR_Calibration_Status_Request_Close
+     (Handle              : access Calibration_Status_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_request_close";
+   function IR_C2_Calibration_Status_Open
+     (C2                  : C2_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Calibration_Status_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_calibration_status_open";
+   function IR_Calibration_Status_Receive
+     (Handle              : Calibration_Status_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Calibration_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_receive";
+   function IR_Calibration_Status_Get_Counters
+     (Handle              : Calibration_Status_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_get_counters";
+   function IR_Calibration_Status_Close
+     (Handle              : access Calibration_Status_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_close";
+   function IR_Calibration_Status_Event_View
+     (Handle              : Calibration_Status_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_event_view";
+   function IR_Calibration_Status_Event_Close
+     (Handle              : access Calibration_Status_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_calibration_status_event_close";
    function IR_Instrumentation_Open
      (Parent              : Session_Handle;
       Config              : access constant IR_Instrumentation_Config_V1;
@@ -1838,6 +2194,29 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_system_response_request_close";
+   --  IRMEL-ADA-008 independent C2Channel::send(SystemTrackDataResponse).
+   function IR_C2_Submit_System_Track_Data_Response
+     (Handle              : C2_Handle;
+      Response            : access constant IR_System_Track_Data_Response_V1;
+      Output              : access C2_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_submit_system_track_data_response";
+   function IR_C2_System_Response_Request_Wait
+     (Handle              : C2_System_Response_Request_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_C2_System_Response_Result_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_system_response_request_wait";
+   function IR_C2_System_Response_Request_Close
+     (Handle              : access C2_System_Response_Request_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_c2_system_response_request_close";
 
    --  Task 032B1 public common Channel C ABI (private raw imports only).
    function IR_Channel_From_C2

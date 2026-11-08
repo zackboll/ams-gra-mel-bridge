@@ -497,14 +497,26 @@ static int test_pending_close(int image, int stop_first)
     ams_mel_ir_camera_command_result_v1 result;
     const ams_mel_ir_camera_command_v1 c = command(0xabcU);
     uint64_t base, observed = 0;
+    uint64_t values[4] = {0};
+    size_t count = 0;
     void *pin;
+    /* Earlier Wait calls publish results before their detached workers drop
+     * the final owner. Drain every earlier Camera owner before recording this
+     * scenario: otherwise an unrelated teardown can satisfy base + 2. No other
+     * thread submits requests here, so created is a closed set to quiesce. */
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, values[2], &observed));
+    CHECK(observed == values[2]);
+    base = observed;
     CHECK(make_log(log) == EXIT_SUCCESS);
     CHECK(open_owner(image, "camera-held", 0, &o) == EXIT_SUCCESS);
     pin = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD);
     CHECK(pin != NULL);
-    base = owners_destroyed();
     CHECK(submit(image, &o, &c, &request, NULL, 0) == AMS_MEL_OK);
     CHECK(submit(image, &o, &c, &observer, NULL, 0) == AMS_MEL_OK);
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base + 2U && values[3] == base);
+    CHECK(request_count(image, &o, &count) && count == 2U);
     /* Public request Close before completion is not cancellation. */
     CHECK(ams_mel_ir_camera_command_request_close(&request, NULL, 0, NULL) == AMS_MEL_OK);
     if (image && stop_first) CHECK(ams_mel_ir_stream_stop(o.stream, NULL, 0, NULL) == AMS_MEL_OK);
@@ -517,6 +529,7 @@ static int test_pending_close(int image, int stop_first)
     CHECK(ams_mel_ir_camera_command_request_wait(observer, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(result.response.command_id == 0xabcU);
     CHECK(ams_mel_test_completion_owner(CAMERA_PROBE_FAMILY, base + 2U, &observed));
+    CHECK(observed == base + 2U);
     CHECK(occurrences(log, destroyed) == 1U);
     CHECK(ams_mel_ir_camera_command_request_close(&observer, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(dlclose(pin) == 0);
@@ -921,12 +934,102 @@ static int test_callback_invalid_arguments(void)
     return EXIT_SUCCESS;
 }
 
+extern int ams_mel_test_completion_owner_notify(unsigned, unsigned, uint64_t, uint64_t *);
+
+struct notification_waiter {
+    uint64_t target, observed;
+    int ok;
+};
+
+static void *wait_owner_notifications(void *argument)
+{
+    struct notification_waiter *w = argument;
+    w->ok = ams_mel_test_completion_owner_notify(CAMERA_PROBE_FAMILY, 1, w->target, &w->observed);
+    return NULL;
+}
+
+/* Fulfils both held futures with only the detached workers owning the graphs:
+ * one C2 request Closed before completion, one Image request Waited. */
+static int complete_detached(const struct owners *c2, const struct owners *image,
+                             ams_mel_ir_camera_command_request **closed,
+                             ams_mel_ir_camera_command_request **waited)
+{
+    ams_mel_ir_camera_command_result_v1 result;
+    struct owners c2_owner = *c2, image_owner = *image;
+    CHECK(ams_mel_ir_camera_command_request_close(closed, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(close_owner(&c2_owner) == EXIT_SUCCESS);
+    CHECK(close_owner(&image_owner) == EXIT_SUCCESS);
+    CHECK(release_family(C2_SEND, 1) == 1);
+    CHECK(release_family(IMAGE_SEND, 1) == 1);
+    CHECK(ams_mel_ir_camera_command_request_wait(*waited, 5000, &result, NULL, 0, NULL) == AMS_MEL_OK);
+    CHECK(result.response.command_id == 0x5eedU && result.error_code == AMS_MEL_ERROR_NONE);
+    CHECK(ams_mel_ir_camera_command_request_close(waited, NULL, 0, NULL) == AMS_MEL_OK);
+    return EXIT_SUCCESS;
+}
+
+/* IR-CAMERA-CI-002 process-shutdown regression, run last by main() and alone
+ * by "shutdown". Each detached worker's final probe action is ~FinalOwner's
+ * shared observation notification follows its dedicated owner notification.
+ * A waiter thread
+ * is proven blocked (armed under the observation mutex) before either future
+ * is released, and must be woken by the FinalOwner notifications before the
+ * bounded deadline; a deadline expiry fails even if the count arrived. The
+ * count it requires advances after the dedicated notify_all returns, under
+ * the observation mutex. Only FinalOwner notifies the dedicated per-family
+ * condition variable: unrelated activity cannot satisfy this wait. Disabling
+ * FinalOwner notifications must fail, not pass at the deadline. The
+ * process then exits while the shared notify_all may still be executing: only
+ * process-lifetime probe synchronization makes that safe, and an
+ * exit-destroyed object is reported by ThreadSanitizer here. */
+static int test_shutdown_notification(void)
+{
+    struct owners c2, image;
+    ams_mel_ir_camera_command_request *closed = NULL, *waited = NULL;
+    const ams_mel_ir_camera_command_v1 c = command(0x5eedU);
+    struct notification_waiter w = {0, 0, 0};
+    uint64_t values[4] = {0}, base, armed = 0;
+    pthread_t thread;
+    int completed;
+    void *pin;
+    /* Every earlier Camera owner has returned from its dedicated notification;
+     * no claim of shared-notification return or worker quiescence is made. */
+    CHECK(ams_mel_test_completion_owner_notify(CAMERA_PROBE_FAMILY, 0, 0, &base));
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base && values[3] == base);
+    CHECK(open_owner(0, "camera-held", 0, &c2) == EXIT_SUCCESS);
+    CHECK(open_owner(1, "camera-held", 0, &image) == EXIT_SUCCESS);
+    pin = dlopen(AMS_MEL_TEST_MOCK_PROVIDER, RTLD_NOW | RTLD_NOLOAD);
+    CHECK(pin != NULL);
+    CHECK(submit(0, &c2, &c, &closed, NULL, 0) == AMS_MEL_OK);
+    CHECK(submit(1, &image, &c, &waited, NULL, 0) == AMS_MEL_OK);
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base + 2U && values[3] == base);
+    w.target = base + 2U;
+    CHECK(pthread_create(&thread, NULL, wait_owner_notifications, &w) == 0);
+    /* Both futures are still held: the armed waiter is blocked first. */
+    completed = ams_mel_test_completion_owner_notify(CAMERA_PROBE_FAMILY, 2, 0, &armed) &&
+                armed == base &&
+                complete_detached(&c2, &image, &closed, &waited) == EXIT_SUCCESS;
+    CHECK(pthread_join(thread, NULL) == 0);
+    CHECK(completed);
+    CHECK(w.ok == 1 && w.observed == base + 2U);
+    CHECK(ams_mel_test_completion_boundary(CAMERA_PROBE_FAMILY, 3, 0, values));
+    CHECK(values[2] == base + 2U && values[3] == base + 2U);
+    CHECK(dlclose(pin) == 0);
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 4 && strcmp(argv[1], "post-send") == 0)
         return isolated_post_send(strcmp(argv[2], "image") == 0, argv[3]);
     if (argc == 3 && strcmp(argv[1], "finish-failure") == 0)
         return isolated_finish_failure(strcmp(argv[2], "image") == 0);
+    if (argc == 2 && strcmp(argv[1], "shutdown") == 0) {
+        if (test_shutdown_notification() != EXIT_SUCCESS) return EXIT_FAILURE;
+        puts("PASS: CameraCommand process-shutdown notification");
+        return EXIT_SUCCESS;
+    }
     for (int image = 0; image < 2; ++image) {
         const char *family = image ? "Image" : "C2";
         if (test_fidelity(image) != EXIT_SUCCESS || test_unsatisfied(image) != EXIT_SUCCESS ||
@@ -948,6 +1051,10 @@ int main(int argc, char **argv)
         test_callback_independent_of_request() != EXIT_SUCCESS ||
         test_callback_invalid_arguments() != EXIT_SUCCESS) {
         fprintf(stderr, "FAIL: Image CameraCommandResp contract\n");
+        return EXIT_FAILURE;
+    }
+    if (test_shutdown_notification() != EXIT_SUCCESS) {
+        fprintf(stderr, "FAIL: CameraCommand process-shutdown notification\n");
         return EXIT_FAILURE;
     }
     puts("PASS: C IR C2/Image CameraCommand and Image CameraCommandResp contract");

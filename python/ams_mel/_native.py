@@ -1000,6 +1000,177 @@ ams_mel_ir_camera_response_event_view.restype = ctypes.c_int32
 ams_mel_ir_camera_response_event_close = _LIBRARY.ams_mel_ir_camera_response_event_close
 ams_mel_ir_camera_response_event_close.argtypes = [ctypes.POINTER(IrCameraResponseEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_camera_response_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-004 private raw mirror of C2 CameraProtectCmd and opt-in C2
+# CameraProtectCmdResp reception; no public Python API.
+AMS_MEL_IR_CAMERA_PROTECT_OK = 0
+AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE = 1
+AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED = 2
+class IrCameraProtectCommandV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("response_time_ns", ctypes.c_int64), ("protect_flag", ctypes.c_uint32)]
+class IrCameraProtectResponseV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("response_time_ns", ctypes.c_int64), ("command_response", ctypes.c_uint32)]
+class IrCameraProtectResultV1(ctypes.Structure): _fields_ = [("response", IrCameraProtectResponseV1), ("error_code", ctypes.c_uint32)]
+IrCameraProtectRequestHandle = ctypes.c_void_p
+IrCameraProtectMetadataHandle = ctypes.c_void_p
+IrCameraProtectEventHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_camera_protect = _LIBRARY.ams_mel_ir_c2_submit_camera_protect
+ams_mel_ir_c2_submit_camera_protect.argtypes = [IrC2Handle, ctypes.POINTER(IrCameraProtectCommandV1), ctypes.POINTER(IrCameraProtectRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_camera_protect.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_request_wait = _LIBRARY.ams_mel_ir_camera_protect_request_wait
+ams_mel_ir_camera_protect_request_wait.argtypes = [IrCameraProtectRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrCameraProtectResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_request_wait.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_request_close = _LIBRARY.ams_mel_ir_camera_protect_request_close
+ams_mel_ir_camera_protect_request_close.argtypes = [ctypes.POINTER(IrCameraProtectRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_request_close.restype = ctypes.c_int32
+ams_mel_ir_c2_camera_protect_open = _LIBRARY.ams_mel_ir_c2_camera_protect_open
+ams_mel_ir_c2_camera_protect_open.argtypes = [IrC2Handle, ctypes.c_size_t, ctypes.POINTER(IrCameraProtectMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_camera_protect_open.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_receive = _LIBRARY.ams_mel_ir_camera_protect_receive
+ams_mel_ir_camera_protect_receive.argtypes = [IrCameraProtectMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrCameraProtectEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_receive.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_get_counters = _LIBRARY.ams_mel_ir_camera_protect_get_counters
+ams_mel_ir_camera_protect_get_counters.argtypes = [IrCameraProtectMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_get_counters.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_close = _LIBRARY.ams_mel_ir_camera_protect_close
+ams_mel_ir_camera_protect_close.argtypes = [ctypes.POINTER(IrCameraProtectMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_close.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_event_view = _LIBRARY.ams_mel_ir_camera_protect_event_view
+ams_mel_ir_camera_protect_event_view.argtypes = [IrCameraProtectEventHandle, ctypes.POINTER(ctypes.POINTER(IrCameraProtectResponseV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_event_view.restype = ctypes.c_int32
+ams_mel_ir_camera_protect_event_close = _LIBRARY.ams_mel_ir_camera_protect_event_close
+ams_mel_ir_camera_protect_event_close.argtypes = [ctypes.POINTER(IrCameraProtectEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_camera_protect_event_close.restype = ctypes.c_int32
+
+# IRMEL-ADA-005 private ABI mirrors only; no new safe Python API.
+AMS_MEL_IR_CALIBRATION_NOT_SET = 0
+AMS_MEL_IR_CALIBRATION_COMMAND = 1
+AMS_MEL_IR_CALIBRATION_STATE_COMMAND = 2
+class IrCalibrationConfigurationCommandV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("request_id", ctypes.c_uint32)]
+class IrSubsystemCalibrationV1(ctypes.Structure):
+    _fields_ = [("calibration_id", UciIdV1), ("accepted_interface", ctypes.c_uint32),
+                ("calibration_item_names", StringViewSpanV1), ("subsystem_component_ids", UciIdSpanV1),
+                ("capability_ids", UciIdSpanV1)]
+class IrCalibrationConfigurationV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(IrSubsystemCalibrationV1)), ("size", ctypes.c_size_t)]
+class IrCalibrationConfigurationResultV1(ctypes.Structure):
+    _fields_ = [("configuration", IrCalibrationConfigurationV1), ("error_code", ctypes.c_uint32)]
+IrCalibrationConfigurationRequestHandle = ctypes.c_void_p
+IrCalibrationConfigurationMetadataHandle = ctypes.c_void_p
+IrCalibrationConfigurationEventHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_calibration_configuration = _LIBRARY.ams_mel_ir_c2_submit_calibration_configuration
+ams_mel_ir_c2_submit_calibration_configuration.argtypes = [IrC2Handle, ctypes.POINTER(IrCalibrationConfigurationCommandV1), ctypes.POINTER(IrCalibrationConfigurationRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_calibration_configuration.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_request_wait = _LIBRARY.ams_mel_ir_calibration_configuration_request_wait
+ams_mel_ir_calibration_configuration_request_wait.argtypes = [IrCalibrationConfigurationRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrCalibrationConfigurationResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_request_wait.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_request_close = _LIBRARY.ams_mel_ir_calibration_configuration_request_close
+ams_mel_ir_calibration_configuration_request_close.argtypes = [ctypes.POINTER(IrCalibrationConfigurationRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_request_close.restype = ctypes.c_int32
+ams_mel_ir_c2_calibration_configuration_open = _LIBRARY.ams_mel_ir_c2_calibration_configuration_open
+ams_mel_ir_c2_calibration_configuration_open.argtypes = [IrC2Handle, ctypes.c_size_t, ctypes.POINTER(IrCalibrationConfigurationMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_calibration_configuration_open.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_receive = _LIBRARY.ams_mel_ir_calibration_configuration_receive
+ams_mel_ir_calibration_configuration_receive.argtypes = [IrCalibrationConfigurationMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrCalibrationConfigurationEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_receive.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_get_counters = _LIBRARY.ams_mel_ir_calibration_configuration_get_counters
+ams_mel_ir_calibration_configuration_get_counters.argtypes = [IrCalibrationConfigurationMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_get_counters.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_close = _LIBRARY.ams_mel_ir_calibration_configuration_close
+ams_mel_ir_calibration_configuration_close.argtypes = [ctypes.POINTER(IrCalibrationConfigurationMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_close.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_event_view = _LIBRARY.ams_mel_ir_calibration_configuration_event_view
+ams_mel_ir_calibration_configuration_event_view.argtypes = [IrCalibrationConfigurationEventHandle, ctypes.POINTER(ctypes.POINTER(IrCalibrationConfigurationV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_event_view.restype = ctypes.c_int32
+ams_mel_ir_calibration_configuration_event_close = _LIBRARY.ams_mel_ir_calibration_configuration_event_close
+ams_mel_ir_calibration_configuration_event_close.argtypes = [ctypes.POINTER(IrCalibrationConfigurationEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_configuration_event_close.restype = ctypes.c_int32
+
+# IRMEL-ADA-007 private ABI only; deliberately no safe Python erase API.
+AMS_MEL_IR_ERASE_ZEROIZE = 0
+AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE = 1
+AMS_MEL_IR_ERASE_DISABLE = 2
+AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE = 3
+class IrEraseCommandV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("erase_type", ctypes.c_uint32)]
+class IrEraseResultV1(ctypes.Structure):
+    _fields_ = [("erase_type", ctypes.c_uint32), ("error_code", ctypes.c_uint32)]
+IrEraseRequestHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_erase = _LIBRARY.ams_mel_ir_c2_submit_erase
+ams_mel_ir_c2_submit_erase.argtypes = [IrC2Handle, ctypes.POINTER(IrEraseCommandV1), ctypes.POINTER(IrEraseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_erase.restype = ctypes.c_int32
+ams_mel_ir_erase_request_wait = _LIBRARY.ams_mel_ir_erase_request_wait
+ams_mel_ir_erase_request_wait.argtypes = [IrEraseRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrEraseResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_erase_request_wait.restype = ctypes.c_int32
+ams_mel_ir_erase_request_close = _LIBRARY.ams_mel_ir_erase_request_close
+ams_mel_ir_erase_request_close.argtypes = [ctypes.POINTER(IrEraseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_erase_request_close.restype = ctypes.c_int32
+
+# IRMEL-ADA-008 private ABI only; deliberately no safe Python C2 SystemTrackDataResponse API.
+# Reuses IrSystemTrackDataResponseV1 and IrCommandStatusV1; the C2 result and
+# request handle are distinct from the Track ones.
+class IrC2SystemResponseResultV1(ctypes.Structure):
+    _fields_ = [("status", IrCommandStatusV1), ("error_code", ctypes.c_uint32)]
+IrC2SystemResponseRequestHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_system_track_data_response = _LIBRARY.ams_mel_ir_c2_submit_system_track_data_response
+ams_mel_ir_c2_submit_system_track_data_response.argtypes = [IrC2Handle, ctypes.POINTER(IrSystemTrackDataResponseV1), ctypes.POINTER(IrC2SystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_system_track_data_response.restype = ctypes.c_int32
+ams_mel_ir_c2_system_response_request_wait = _LIBRARY.ams_mel_ir_c2_system_response_request_wait
+ams_mel_ir_c2_system_response_request_wait.argtypes = [IrC2SystemResponseRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrC2SystemResponseResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_system_response_request_wait.restype = ctypes.c_int32
+ams_mel_ir_c2_system_response_request_close = _LIBRARY.ams_mel_ir_c2_system_response_request_close
+ams_mel_ir_c2_system_response_request_close.argtypes = [ctypes.POINTER(IrC2SystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_system_response_request_close.restype = ctypes.c_int32
+
+# IRMEL-ADA-006 private ABI mirrors only; no new safe Python API.
+AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET = 0
+AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED = 1
+AMS_MEL_IR_CALIBRATION_RESULT_FAILED = 2
+AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED = 3
+AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED = 4
+class IrCalibrationStatusCommandV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("request_id", ctypes.c_uint32)]
+class IrCompletedCalibrationItemV1(ctypes.Structure):
+    _fields_ = [("item_name", StringViewV1), ("result", ctypes.c_uint32), ("fail_reason", StringViewV1)]
+class IrCompletedCalibrationItemSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(IrCompletedCalibrationItemV1)), ("size", ctypes.c_size_t)]
+class IrCompletedCalibrationV1(ctypes.Structure):
+    _fields_ = [("calibration_id", UciIdV1), ("time_tag_ns", ctypes.c_int64), ("result", ctypes.c_uint32),
+                ("fail_reason", StringViewV1), ("calibration_items", IrCompletedCalibrationItemSpanV1)]
+class IrCompletedCalibrationSpanV1(ctypes.Structure):
+    _fields_ = [("data", ctypes.POINTER(IrCompletedCalibrationV1)), ("size", ctypes.c_size_t)]
+class IrCalibrationStatusV1(ctypes.Structure):
+    _fields_ = [("active_calibration_ids", UciIdSpanV1), ("completed_calibrations", IrCompletedCalibrationSpanV1)]
+class IrCalibrationStatusResultV1(ctypes.Structure):
+    _fields_ = [("status", IrCalibrationStatusV1), ("error_code", ctypes.c_uint32)]
+IrCalibrationStatusRequestHandle = ctypes.c_void_p
+IrCalibrationStatusMetadataHandle = ctypes.c_void_p
+IrCalibrationStatusEventHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_calibration_status = _LIBRARY.ams_mel_ir_c2_submit_calibration_status
+ams_mel_ir_c2_submit_calibration_status.argtypes = [IrC2Handle, ctypes.POINTER(IrCalibrationStatusCommandV1), ctypes.POINTER(IrCalibrationStatusRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_calibration_status.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_request_wait = _LIBRARY.ams_mel_ir_calibration_status_request_wait
+ams_mel_ir_calibration_status_request_wait.argtypes = [IrCalibrationStatusRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrCalibrationStatusResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_request_wait.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_request_close = _LIBRARY.ams_mel_ir_calibration_status_request_close
+ams_mel_ir_calibration_status_request_close.argtypes = [ctypes.POINTER(IrCalibrationStatusRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_request_close.restype = ctypes.c_int32
+ams_mel_ir_c2_calibration_status_open = _LIBRARY.ams_mel_ir_c2_calibration_status_open
+ams_mel_ir_c2_calibration_status_open.argtypes = [IrC2Handle, ctypes.c_size_t, ctypes.POINTER(IrCalibrationStatusMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_calibration_status_open.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_receive = _LIBRARY.ams_mel_ir_calibration_status_receive
+ams_mel_ir_calibration_status_receive.argtypes = [IrCalibrationStatusMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrCalibrationStatusEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_receive.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_get_counters = _LIBRARY.ams_mel_ir_calibration_status_get_counters
+ams_mel_ir_calibration_status_get_counters.argtypes = [IrCalibrationStatusMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_get_counters.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_close = _LIBRARY.ams_mel_ir_calibration_status_close
+ams_mel_ir_calibration_status_close.argtypes = [ctypes.POINTER(IrCalibrationStatusMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_close.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_event_view = _LIBRARY.ams_mel_ir_calibration_status_event_view
+ams_mel_ir_calibration_status_event_view.argtypes = [IrCalibrationStatusEventHandle, ctypes.POINTER(ctypes.POINTER(IrCalibrationStatusV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_event_view.restype = ctypes.c_int32
+ams_mel_ir_calibration_status_event_close = _LIBRARY.ams_mel_ir_calibration_status_event_close
+ams_mel_ir_calibration_status_event_close.argtypes = [ctypes.POINTER(IrCalibrationStatusEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_calibration_status_event_close.restype = ctypes.c_int32
 
 ams_mel_ir_instrumentation_open = _LIBRARY.ams_mel_ir_instrumentation_open
 ams_mel_ir_instrumentation_open.argtypes = [SessionHandle, ctypes.POINTER(IrInstrumentationConfigV1), ctypes.POINTER(IrInstrumentationHandle), CharPointer, ctypes.c_size_t, SizePointer]
@@ -2069,6 +2240,32 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_c2_submit_system_track_data_response",
+    "ams_mel_ir_c2_system_response_request_wait",
+    "ams_mel_ir_c2_system_response_request_close",
+    "ams_mel_ir_c2_submit_erase",
+    "ams_mel_ir_erase_request_wait",
+    "ams_mel_ir_erase_request_close",
+    "ams_mel_ir_c2_submit_calibration_status",
+    "ams_mel_ir_calibration_status_request_wait",
+    "ams_mel_ir_calibration_status_request_close",
+    "ams_mel_ir_c2_calibration_status_open",
+    "ams_mel_ir_calibration_status_receive",
+    "ams_mel_ir_calibration_status_get_counters",
+    "ams_mel_ir_calibration_status_close",
+    "ams_mel_ir_calibration_status_event_view",
+    "ams_mel_ir_calibration_status_event_close",
+
+    "ams_mel_ir_c2_submit_calibration_configuration",
+    "ams_mel_ir_calibration_configuration_request_wait",
+    "ams_mel_ir_calibration_configuration_request_close",
+    "ams_mel_ir_c2_calibration_configuration_open",
+    "ams_mel_ir_calibration_configuration_receive",
+    "ams_mel_ir_calibration_configuration_get_counters",
+    "ams_mel_ir_calibration_configuration_close",
+    "ams_mel_ir_calibration_configuration_event_view",
+    "ams_mel_ir_calibration_configuration_event_close",
+
     "ams_mel_rf_virtual_aperture_submit_job_v4",
     "ams_mel_rf_virtual_aperture_submit_job_v3",
     "ams_mel_rf_virtual_aperture_submit_job_v2",
@@ -2174,6 +2371,15 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_camera_response_close",
     "ams_mel_ir_camera_response_event_view",
     "ams_mel_ir_camera_response_event_close",
+    "ams_mel_ir_c2_submit_camera_protect",
+    "ams_mel_ir_camera_protect_request_wait",
+    "ams_mel_ir_camera_protect_request_close",
+    "ams_mel_ir_c2_camera_protect_open",
+    "ams_mel_ir_camera_protect_receive",
+    "ams_mel_ir_camera_protect_get_counters",
+    "ams_mel_ir_camera_protect_close",
+    "ams_mel_ir_camera_protect_event_view",
+    "ams_mel_ir_camera_protect_event_close",
     "ams_mel_ir_instrumentation_open",
     "ams_mel_ir_instrumentation_enable",
     "ams_mel_ir_instrumentation_get_capabilities",

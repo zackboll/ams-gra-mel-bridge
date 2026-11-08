@@ -1,5 +1,22 @@
 # RUST-IR-004 — safe Rust IR Image metadata reception
 
+## Reconciliation with current main
+
+The original implementation and test blobs reviewed at
+`c69d04dbb0dfea6c14673107b5dce7706be5b516` are preserved during ordinary merges
+with main through `4472baed06c1cfd32e798605306be4b4657ad36f`. The source and
+qualification sections below record the **historical original campaign**; their
+435-test and 229-export counts are not current-main acceptance counts. The current
+production baseline is **272 AMS_MEL_0.1 exports**, unchanged by RUST-IR-004.
+The 14 compiled mutation kills remain historical evidence for unchanged targets;
+fresh reconciliation commands, results and source identities are recorded in PR
+#159 and its merge handoff.
+
+The four ordinary Image metadata families remain independent of Image/Health NUC
+reception. Main also bridges the separate Image CameraCommandResp callback in C
+and Ada; that callback is not part of this safe Rust API. Current Python Health
+metadata/NUC and Ada coverage through IRMEL-ADA-008 are retained.
+
 ## Source and boundaries
 
 Implementation and all qualification use the dedicated
