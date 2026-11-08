@@ -986,6 +986,30 @@ ams_mel_ir_image_odm_event_view.restype = ctypes.c_int32
 ams_mel_ir_image_odm_event_close = _LIBRARY.ams_mel_ir_image_odm_event_close
 ams_mel_ir_image_odm_event_close.argtypes = [ctypes.POINTER(IrImageOdmEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_image_odm_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-010 private raw mirror of opt-in Image LineOfSightQuaternion
+# reception; deliberately no safe Python quaternion API. Reuses the canonical
+# IrQuaternionV1 and IrForwardRightDownV1 mirrors.
+class IrLineOfSightQuaternionV1(ctypes.Structure): _fields_ = [("system_time_ns", ctypes.c_int64), ("q_xyzw", IrQuaternionV1), ("pqr_rps", IrForwardRightDownV1)]
+IrImageLosQuaternionMetadataHandle = ctypes.c_void_p
+IrImageLosQuaternionEventHandle = ctypes.c_void_p
+ams_mel_ir_image_los_quaternion_open = _LIBRARY.ams_mel_ir_image_los_quaternion_open
+ams_mel_ir_image_los_quaternion_open.argtypes = [IrStreamHandle, ctypes.c_size_t, ctypes.POINTER(IrImageLosQuaternionMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_open.restype = ctypes.c_int32
+ams_mel_ir_image_los_quaternion_receive = _LIBRARY.ams_mel_ir_image_los_quaternion_receive
+ams_mel_ir_image_los_quaternion_receive.argtypes = [IrImageLosQuaternionMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrImageLosQuaternionEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_receive.restype = ctypes.c_int32
+ams_mel_ir_image_los_quaternion_get_counters = _LIBRARY.ams_mel_ir_image_los_quaternion_get_counters
+ams_mel_ir_image_los_quaternion_get_counters.argtypes = [IrImageLosQuaternionMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_get_counters.restype = ctypes.c_int32
+ams_mel_ir_image_los_quaternion_close = _LIBRARY.ams_mel_ir_image_los_quaternion_close
+ams_mel_ir_image_los_quaternion_close.argtypes = [ctypes.POINTER(IrImageLosQuaternionMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_close.restype = ctypes.c_int32
+ams_mel_ir_image_los_quaternion_event_view = _LIBRARY.ams_mel_ir_image_los_quaternion_event_view
+ams_mel_ir_image_los_quaternion_event_view.argtypes = [IrImageLosQuaternionEventHandle, ctypes.POINTER(ctypes.POINTER(IrLineOfSightQuaternionV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_event_view.restype = ctypes.c_int32
+ams_mel_ir_image_los_quaternion_event_close = _LIBRARY.ams_mel_ir_image_los_quaternion_event_close
+ams_mel_ir_image_los_quaternion_event_close.argtypes = [ctypes.POINTER(IrImageLosQuaternionEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_los_quaternion_event_close.restype = ctypes.c_int32
 # IRMEL-ADA-003 private raw mirror of C2/Image CameraCommand and opt-in Image
 # CameraCommandResp reception; no public Python API.
 AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ = 0
@@ -2266,6 +2290,12 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_image_los_quaternion_open",
+    "ams_mel_ir_image_los_quaternion_receive",
+    "ams_mel_ir_image_los_quaternion_get_counters",
+    "ams_mel_ir_image_los_quaternion_close",
+    "ams_mel_ir_image_los_quaternion_event_view",
+    "ams_mel_ir_image_los_quaternion_event_close",
     "ams_mel_ir_image_odm_open",
     "ams_mel_ir_image_odm_receive",
     "ams_mel_ir_image_odm_get_counters",

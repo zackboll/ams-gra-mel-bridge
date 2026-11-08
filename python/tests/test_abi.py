@@ -12,6 +12,56 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_image_los_quaternion_abi(self) -> None:
+        """IRMEL-ADA-010: private raw Image LineOfSightQuaternion mirror only."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/image_los_quaternion_layout_probe.c"), "-o",
+                            str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrLineOfSightQuaternionV1, "system_time_ns", "q_xyzw", "pqr_rps")
+        expected += [ctypes.sizeof(_native.IrQuaternionV1)]
+        expected += [getattr(_native.IrQuaternionV1, f).offset for f in ("x", "y", "z", "w")]
+        expected += [ctypes.sizeof(_native.IrForwardRightDownV1)]
+        expected += [getattr(_native.IrForwardRightDownV1, f).offset for f in ("forward", "right", "down")]
+        expected += [ctypes.sizeof(_native.IrC2MetadataCountersV1),
+                     _native.IrC2MetadataCountersV1.events_received.offset,
+                     _native.IrC2MetadataCountersV1.events_dropped_queue_full.offset,
+                     _native.IrC2MetadataCountersV1.malformed_or_unsupported.offset,
+                     ctypes.alignment(_native.IrC2MetadataCountersV1)]
+        self.assertEqual(actual, expected)
+        # The record reuses the one canonical quaternion and FRD mirrors.
+        fields = dict(_native.IrLineOfSightQuaternionV1._fields_)
+        self.assertIs(fields["system_time_ns"], ctypes.c_int64)
+        self.assertIs(fields["q_xyzw"], _native.IrQuaternionV1)
+        self.assertIs(fields["pqr_rps"], _native.IrForwardRightDownV1)
+        pointer = ctypes.POINTER
+        owner = _native.IrImageLosQuaternionMetadataHandle
+        event = _native.IrImageLosQuaternionEventHandle
+        signatures = {
+            "ams_mel_ir_image_los_quaternion_open": [_native.IrStreamHandle, ctypes.c_size_t,
+                                                     pointer(owner), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_image_los_quaternion_receive": [owner, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_image_los_quaternion_get_counters": [owner,
+                                                             pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_image_los_quaternion_close": [pointer(owner)],
+            "ams_mel_ir_image_los_quaternion_event_view": [
+                event, pointer(pointer(_native.IrLineOfSightQuaternionV1))],
+            "ams_mel_ir_image_los_quaternion_event_close": [pointer(event)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+        # No safe Python quaternion line-of-sight API is introduced.
+        import ams_mel
+        self.assertFalse([n for n in dir(ams_mel) if "quaternion" in n.lower()])
+
     def test_private_image_odm_abi(self) -> None:
         """IRMEL-ADA-009: private raw Image OpticalDistortionMap mirror only."""
         root = Path(__file__).resolve().parents[2]
@@ -839,6 +889,12 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_image_los_quaternion_open",
+                "ams_mel_ir_image_los_quaternion_receive",
+                "ams_mel_ir_image_los_quaternion_get_counters",
+                "ams_mel_ir_image_los_quaternion_close",
+                "ams_mel_ir_image_los_quaternion_event_view",
+                "ams_mel_ir_image_los_quaternion_event_close",
                 "ams_mel_ir_image_odm_open",
                 "ams_mel_ir_image_odm_receive",
                 "ams_mel_ir_image_odm_get_counters",
@@ -1120,8 +1176,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 278)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 278)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 284)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 284)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1129,7 +1185,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 278)
+        self.assertEqual(len(exported), 284)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

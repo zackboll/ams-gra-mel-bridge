@@ -1547,6 +1547,161 @@ extern "C" __attribute__((visibility("default"))) unsigned mock_odm_registration
     return odm_registrations;
 }
 
+/* IRMEL-ADA-010 deterministic @RequiredIfLOSQuaternion LineOfSightQuaternion
+ * fixture for the Image mock channel. Scenarios not named "losq-*" model a
+ * provider without quaternion LOS and answer NotSupported. Every registration
+ * attempt is counted, so a test can prove that no other owner registers this
+ * overload. Values are built only through the upstream setters; every
+ * component is distinct so a field swap is detectable. */
+using LosQuaternionCallback =
+    std::function<void(irmel::Channel&, const irmel::LineOfSightQuaternion *const)>;
+
+irmel::LineOfSightQuaternion losq_value(std::int64_t time, double x, double y, double z, double w,
+                                        double forward, double right, double down)
+{
+    irmel::LineOfSightQuaternion value;
+    value.setSystemTime(std::chrono::nanoseconds{time});
+    value.setQ_xyzw(irmel::Quaternion{x, y, z, w});
+    value.setPqr_rps(irmel::ForwardRightDown{forward, right, down});
+    return value;
+}
+
+/* 0 default (all zero); 1 asymmetric near-unit quaternion, INT64_MIN time,
+ * small and negative rates; 2 the opposite-sign representation of 1, time -1;
+ * 3 non-unit quaternion, time 0, large rates; 4 signed zero in x and down
+ * only, time 1; 5 non-finite in every slot class, time INT64_MAX;
+ * 6 subnormal/extreme, time = tag; 7 tagged, time = tag. */
+irmel::LineOfSightQuaternion losq_fixture(unsigned fixture, std::uint32_t tag)
+{
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    constexpr double big = std::numeric_limits<double>::max();
+    constexpr double tiny = std::numeric_limits<double>::denorm_min();
+    constexpr auto min64 = std::numeric_limits<std::int64_t>::min();
+    constexpr auto max64 = std::numeric_limits<std::int64_t>::max();
+    switch (fixture) {
+    case 1U: return losq_value(min64, 0.125, -0.25, 0.5, 0.8227241335952167,
+                               1.0e-9, -2.5e-3, 0.0625);
+    case 2U: return losq_value(-1, -0.125, 0.25, -0.5, -0.8227241335952167,
+                               -1.0e-9, 2.5e-3, -0.0625);
+    case 3U: return losq_value(0, 3.0, -7.0, 11.0, -13.0, 6283.185307179586, -1.5e6, 42.0);
+    case 4U: return losq_value(1, -0.0, 0.375, -0.625, 0.75, 0.875, -1.125, -0.0);
+    case 5U: return losq_value(max64, nan, inf, -inf, 0.5, -inf, nan, inf);
+    case 6U: return losq_value(static_cast<std::int64_t>(tag), tiny, -tiny, big, -big,
+                               -tiny, big, -big);
+    case 7U: return losq_value(static_cast<std::int64_t>(tag), static_cast<double>(tag),
+                               0.5, -0.5, 0.25, -4.0, 8.0, -16.0);
+    default: return irmel::LineOfSightQuaternion{};
+    }
+}
+
+std::mutex losq_registry_mutex;
+LosQuaternionCallback losq_active_callback;
+irmel::Channel *losq_active_channel{};
+unsigned losq_registrations{};
+/* A non-quiescing provider thread for "losq-in-flight": deliberately NOT
+ * joined by channel destruction, only at provider-library unload. */
+std::thread losq_detached_producer;
+class MockLosQuaternion {
+public:
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             LosQuaternionCallback callback)
+    {
+        {
+            std::lock_guard lock{losq_registry_mutex};
+            ++losq_registrations;
+        }
+        record("losq_registration_attempted");
+        if (scenario.rfind("losq-", 0U) != 0U) return Return::NotSupported;
+        callback_ = std::move(callback);
+        if (scenario == "losq-register-throw")
+            throw std::runtime_error("LineOfSightQuaternion registration exception");
+        if (scenario == "losq-register-unknown") return static_cast<Return>(77U);
+        if (scenario == "losq-register-not-implemented") return Return::NotImplemented;
+        if (scenario == "losq-register-fail") {
+            auto value = losq_fixture(1U, 0U); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "losq-sync" || scenario == "losq-late" || scenario == "losq-late-closed") {
+            /* Synchronous delivery from inside registration, before return. */
+            for (unsigned fixture = 0U; fixture < 4U; ++fixture) {
+                auto value = losq_fixture(fixture, 0U); callback_(channel, &value);
+            }
+            record("losq_sync_delivered");
+        } else if (scenario == "losq-detach-fail") {
+            auto first = losq_fixture(1U, 0U); callback_(channel, &first);
+            auto second = losq_fixture(3U, 0U); callback_(channel, &second);
+        } else if (scenario == "losq-in-flight") {
+            auto copy = callback_;
+            auto *target = &channel;
+            losq_detached_producer = std::thread{[copy, target] {
+                auto value = losq_fixture(1U, 0U);
+                record("losq_in_flight_callback_entered");
+                copy(*target, &value);
+                record("losq_in_flight_callback_returned");
+            }};
+        }
+        std::lock_guard lock{losq_registry_mutex};
+        losq_active_callback = callback_;
+        losq_active_channel = &channel;
+        return Return::Success;
+    }
+
+    /* From the owning channel destructor: after the bridge closed its owners. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        {
+            std::lock_guard lock{losq_registry_mutex};
+            if (losq_active_channel == &channel) {
+                losq_active_callback = nullptr;
+                losq_active_channel = nullptr;
+            }
+        }
+        if ((scenario == "losq-late" || scenario == "losq-late-closed" ||
+             scenario == "losq-register-fail") && callback_) {
+            record("late_losq_callback_invoked");
+            auto value = losq_fixture(7U, 11U); callback_(channel, &value);
+            record("late_losq_callback_returned");
+        }
+    }
+
+private:
+    LosQuaternionCallback callback_;
+};
+
+/* IRMEL-ADA-010 test-only hooks (mock provider, never the bridge).
+ * mock_losq_deliver invokes the active registered callback on the CALLING
+ * thread: mode 0 delivers losq_fixture(fixture, tag), mode 1 a null payload.
+ * After the callback returns, the provider payload is overwritten with
+ * unrelated values and then destroyed, so a snapshot that retained it would be
+ * observed as corrupt. Returns 1 when a callback was invoked, 0 when none is
+ * registered. mock_losq_registrations returns the cumulative number of
+ * quaternion registration attempts made by any bridge owner. */
+extern "C" __attribute__((visibility("default"))) int mock_losq_deliver(
+    unsigned fixture, std::uint32_t tag, unsigned mode)
+{
+    LosQuaternionCallback callback;
+    irmel::Channel *channel{};
+    {
+        std::lock_guard lock{losq_registry_mutex};
+        callback = losq_active_callback;
+        channel = losq_active_channel;
+    }
+    if (!callback || !channel) return 0;
+    if (mode == 1U) { callback(*channel, nullptr); return 1; }
+    auto value = std::make_unique<irmel::LineOfSightQuaternion>(losq_fixture(fixture, tag));
+    callback(*channel, value.get());
+    *value = losq_value(0x5a5a5a5a, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0);
+    value.reset();
+    return 1;
+}
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_losq_registrations()
+{
+    std::lock_guard lock{losq_registry_mutex};
+    return losq_registrations;
+}
+
 /* IRMEL-ADA-007: test mock only. No erase calls go to any real provider. */
 std::mutex erase_mutex;
 std::uint64_t erase_last[2]{};
@@ -1785,6 +1940,7 @@ public:
         nuc_.finish(*this, scenario_);
         camera_.finish(*this, scenario_);
         odm_.finish(*this, scenario_);
+        los_quaternion_.finish(*this, scenario_);
         if (scenario_ == "image-metadata-navigation-register-fail" ||
             scenario_ == "image-metadata-navigation-register-throw") {
             if (!bad_pixel_callback_) std::abort();
@@ -2107,7 +2263,9 @@ public:
         }
         return Return::Success;
     }
-    UNSUPPORTED_CALLBACK(irmel::LineOfSightQuaternion)
+    /* IRMEL-ADA-010: the @RequiredIfLOSQuaternion LineOfSightQuaternion overload. */
+    Return registerMetadataCallback(LosQuaternionCallback callback) override
+    { return los_quaternion_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::LineOfSightEuler *const)> callback) override
     {
@@ -2624,6 +2782,7 @@ private:
     MockNuc nuc_;
     MockCamera camera_;
     MockOdm odm_;
+    MockLosQuaternion los_quaternion_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -5282,7 +5441,10 @@ public:
              instance_ == "track-response-detach-fail" ||
              instance_ == "track-open-detach-fail" ||
              /* IRMEL-ADA-009: Image ODM owner under a failed provider detach. */
-             instance_ == "odm-detach-fail") && !detach_failed_) {
+             instance_ == "odm-detach-fail" ||
+             /* IRMEL-ADA-010: Image LineOfSightQuaternion owner under a failed
+                provider detach. */
+             instance_ == "losq-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;
@@ -5301,6 +5463,12 @@ struct UnloadRecorder { ~UnloadRecorder() { record("library_unloaded"); } } unlo
 struct OdmProducerJoiner {
     ~OdmProducerJoiner() { if (odm_detached_producer.joinable()) odm_detached_producer.join(); }
 } odm_producer_joiner;
+/* IRMEL-ADA-010: likewise for the non-quiescing LineOfSightQuaternion
+ * producer; joined before "library_unloaded" is recorded. */
+struct LosQuaternionProducerJoiner {
+    ~LosQuaternionProducerJoiner()
+    { if (losq_detached_producer.joinable()) losq_detached_producer.join(); }
+} losq_producer_joiner;
 } // namespace
 
 /* Test-only deterministic backpressure control surface. These are NOT part of

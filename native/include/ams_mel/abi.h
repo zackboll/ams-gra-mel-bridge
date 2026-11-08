@@ -101,6 +101,10 @@ typedef struct ams_mel_ir_camera_protect_event ams_mel_ir_camera_protect_event;
  * independently from an Image stream, and its deep-copied event. */
 typedef struct ams_mel_ir_image_odm_metadata ams_mel_ir_image_odm_metadata;
 typedef struct ams_mel_ir_image_odm_event ams_mel_ir_image_odm_event;
+/* IRMEL-ADA-010: opt-in @RequiredIfLOSQuaternion Image LineOfSightQuaternion
+ * owner, opened independently from an Image stream, and its copied event. */
+typedef struct ams_mel_ir_image_los_quaternion_metadata ams_mel_ir_image_los_quaternion_metadata;
+typedef struct ams_mel_ir_image_los_quaternion_event ams_mel_ir_image_los_quaternion_event;
 typedef struct ams_mel_ir_instrumentation ams_mel_ir_instrumentation;
 typedef struct ams_mel_ir_instrumentation_request ams_mel_ir_instrumentation_request;
 typedef struct ams_mel_ir_instrumentation_metadata ams_mel_ir_instrumentation_metadata;
@@ -1215,6 +1219,27 @@ typedef struct ams_mel_ir_optical_distortion_map_v1 {
     ams_mel_ir_forward_right_down_span_v1 frd;
     ams_mel_ir_row_col_span_v1 row_col;
 } ams_mel_ir_optical_distortion_map_v1;
+
+/* IRMEL-ADA-010: complete pinned LineOfSightQuaternion (@RequiredIfLOSQuaternion
+ * ImageChannel callback). One new record only; it reuses the canonical
+ * ams_mel_ir_quaternion_v1 and ams_mel_ir_forward_right_down_v1 unchanged.
+ *
+ * system_time_ns is getSystemTime().count(): signed nanoseconds, no epoch
+ * inferred. q_xyzw is getQ_xyzw() as getQuaternionX/Y/Z/W in that order, in
+ * the upstream navigation coordinate frame. pqr_rps is getPqr_rps() as
+ * getForward/getRight/getDown: rotation rates about the image coordinate frame
+ * axes in radians per second. Every double is copied by plain IEEE assignment:
+ * no normalization, sign canonicalization, component reordering, coordinate
+ * conversion, Euler conversion or clamping. Non-unit and opposite-sign
+ * quaternions, signed zero, subnormal and extreme values are preserved;
+ * infinity and NaN keep their class (NaN payload bits are not promised).
+ * Receipt is not evidence that the attitude is normalized, accurate or
+ * suitable for an independent pointing calculation. */
+typedef struct ams_mel_ir_line_of_sight_quaternion_v1 {
+    int64_t system_time_ns;
+    ams_mel_ir_quaternion_v1 q_xyzw;
+    ams_mel_ir_forward_right_down_v1 pqr_rps;
+} ams_mel_ir_line_of_sight_quaternion_v1;
 
 /* Complete HotRegion. Every published getter is represented exactly once:
  * getType, getSize, getTop, getLeft, getRight, and getBottom. The geometry and
@@ -2615,6 +2640,75 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_event_view(
 /* Idempotent; NULL *event succeeds. */
 AMS_MEL_API ams_mel_status_t ams_mel_ir_image_odm_event_close(
     ams_mel_ir_image_odm_event **event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-010 opt-in Image LineOfSightQuaternion reception. The callback is
+ * @RequiredIfLOSQuaternion upstream, so ams_mel_ir_image_metadata_open never
+ * registers it and providers without quaternion LOS keep every existing Image
+ * API unchanged. Each open registers exactly the pinned ImageChannel
+ * LineOfSightQuaternion callback once per stream; the one shot is independent
+ * of the four-kind metadata, NUC_TempData, CameraCommandResp and
+ * OpticalDistortionMap owners, and a failed attempt also consumes it.
+ * Eligible: an Attached or Running stream (not Stopping, Stopped or Failed);
+ * otherwise INVALID_ARGUMENT and nothing is registered. Provider registration
+ * runs without any bridge lock, so synchronous delivery during registration is
+ * safe. out_registration (nullable) receives the mapped upstream Return
+ * whenever registerMetadataCallback returned a known value, so NOT_SUPPORTED,
+ * FAIL, BAD_POINTER and NOT_IMPLEMENTED are distinguishable; it is unchanged
+ * for an unknown Return (PROVIDER_FAILED) or a provider throw
+ * (PROVIDER_EXCEPTION). Failure publishes no owner and leaves the retained
+ * callback state inactive (upstream has no unregister).
+ *
+ * Each non-null payload is copied before the callback returns into one bounded
+ * DROP-INCOMING queue of queue_capacity events. A null payload is counted
+ * malformed. The payload has no collections or enumerations, so no other
+ * structural rule exists: in particular a non-unit quaternion is not rejected.
+ * When the queue is full a non-null payload is counted queue-full WITHOUT
+ * allocating a snapshot. A snapshot allocation failure rejects the event
+ * (malformed counter); no partial event is ever published. No callback
+ * exception reaches provider code.
+ *
+ * Image Stop/Close stops the owner and wakes receivers; queued events still
+ * drain. Physical teardown waits for quaternion callbacks already inside the
+ * bridge after provider channel destruction. Callbacks after public owner
+ * Close, stream Close or Session Close are memory-safe and never enqueue. A
+ * failed provider detach marks the owner failed: Receive drains queued events
+ * and then reports PROVIDER_FAILED. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_open(
+    ams_mel_ir_stream *stream, size_t queue_capacity,
+    ams_mel_ir_image_los_quaternion_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty (timeout_ms 0 polls; timeout is never
+ * cancellation); STREAM_STOPPED once inactive/stopped and empty;
+ * PROVIDER_FAILED once failed and empty. Queued events drain first, in
+ * successful-enqueue order. out_event must be non-null and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_receive(
+    ams_mel_ir_image_los_quaternion_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_image_los_quaternion_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Saturating events_received, events_dropped_queue_full and
+ * malformed_or_unsupported counts; does not consume events. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_get_counters(
+    const ams_mel_ir_image_los_quaternion_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the provider
+ * callback, close the Image stream or wait for callback quiescence. Events
+ * already received remain owned by their event handles. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_close(
+    ams_mel_ir_image_los_quaternion_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view, valid until
+ * ams_mel_ir_image_los_quaternion_event_close, independent of the owner,
+ * stream, Session and provider library lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_event_view(
+    const ams_mel_ir_image_los_quaternion_event *event,
+    const ams_mel_ir_line_of_sight_quaternion_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; NULL *event succeeds. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_los_quaternion_event_close(
+    ams_mel_ir_image_los_quaternion_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* IRMEL-ADA-005: submit requires Enabled, preserves both uint32 fields, and

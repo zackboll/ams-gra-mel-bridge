@@ -1,5 +1,17 @@
 # Ada binding bootstrap
 
+## Image LineOfSightQuaternion
+
+Call `AMS.MEL.IR.Image.Metadata.Open_Line_Of_Sight_Quaternion` on an Attached or Running
+image stream (once per stream; `Line_Of_Sight_Quaternion.Not_Supported` when the provider
+has no quaternion LOS), then `Receive_Line_Of_Sight_Quaternion` for owned
+`Line_Of_Sight_Value`s: signed nanosecond time, `Q_XYZW` (X, Y, Z, W, navigation frame)
+and `PQR_RPS` (image-frame forward/right/down rad/s). It never affects `Metadata.Open`.
+Values are not normalized, sign-canonicalized or converted to Euler angles, and receipt is
+not proof of a usable attitude. Non-finite provider doubles are carried, not replaced;
+test them with `'Valid` before checked arithmetic. See
+[qualification](../docs/irmel-ada-010-line-of-sight-quaternion.md).
+
 ## Optional Image OpticalDistortionMap
 
 Call `AMS.MEL.IR.Image.Metadata.Open_Optical_Distortion_Map` on an Attached or Running
@@ -63,8 +75,8 @@ is not cancellation, and a pending request keeps the underlying Image stream
 state (and provider channel) alive independently of the public `Image_Stream`
 and `Session` owners. The canonical `Navigation_Response` lives here too;
 `AMS.MEL.IR.Image.Metadata.Navigation_Response` is now a source-compatible
-subtype. LineOfSightQuaternion and other optional Image metadata are not
-implemented.
+subtype. LineOfSightQuaternion has its own opt-in owner (see above); other
+optional Image metadata such as LOS3D and candidate objects are not implemented.
 `AMS.MEL.IR.Instrumentation` implements the conditionally required
 Instrumentation family: `Instrumentation_Config`/`Open`/`Is_Open`/`Enable`/
 `Capabilities`/`Close`, the idiomatic `Instrumentation_Level_Command` and

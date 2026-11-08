@@ -1,5 +1,18 @@
 # Changelog
 
+## IRMEL-ADA-010 — Image LineOfSightQuaternion metadata
+
+The pinned `@RequiredIfLOSQuaternion` `ImageChannel::registerMetadataCallback(LineOfSightQuaternion)`
+is implemented as an independent opt-in owner: `ams_mel_ir_image_los_quaternion_open`,
+`_receive`, `_get_counters`, `_close`, `_event_view` and `_event_close` (Ada
+`AMS.MEL.IR.Image.Metadata.Open_Line_Of_Sight_Quaternion`, `Receive_Line_Of_Sight_Quaternion`,
+`Line_Of_Sight_Quaternion_Counters`, `Close`; owned values in the new
+`AMS.MEL.IR.Line_Of_Sight_Quaternion`). One new record,
+`ams_mel_ir_line_of_sight_quaternion_v1`, reuses the canonical quaternion and
+ForwardRightDown records; the base Image metadata owner is unchanged. Production inventory:
+284 AMS_MEL_0.1 exports (six new); Python/Rust receive private raw mirrors only. Evidence is
+mock-provider only.
+
 ## IRMEL-ADA-009 — Optional Image OpticalDistortionMap metadata
 
 The pinned optional `ImageChannel::registerMetadataCallback(OpticalDistortionMap)` is

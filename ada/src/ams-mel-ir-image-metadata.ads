@@ -5,17 +5,19 @@ with AMS.MEL.Status;
 with AMS.MEL.IR.NUC;
 with AMS.MEL.IR.Camera;
 with AMS.MEL.IR.Optical_Distortion_Map;
+with AMS.MEL.IR.Line_Of_Sight_Quaternion;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Image.Metadata is
    --  Owned polling of four image metadata callback families: bad pixels, line-of-sight report,
-   --  line-of-sight Euler and navigation response. Optional LineOfSightQuaternion and other
-   --  upstream callbacks are not bound here. Payloads are copied at the native callback boundary
-   --  and again into safe Ada values; no provider pointer is exposed. Optional NUC_TempData has a
-   --  separate opt-in owner, NUC_Stream, so Open is unaffected by providers without NUC support.
-   --  CameraCommandResp (@RequiredIfCameraCtrl) likewise has its own opt-in owner,
-   --  Camera_Response_Stream, and optional OpticalDistortionMap has its own opt-in owner,
-   --  Optical_Distortion_Map_Stream; Open never registers either.
+   --  line-of-sight Euler and navigation response. Other upstream callbacks are not bound by
+   --  Open. Payloads are copied at the native callback boundary and again into safe Ada values;
+   --  no provider pointer is exposed. Optional NUC_TempData has a separate opt-in owner,
+   --  NUC_Stream, so Open is unaffected by providers without NUC support. CameraCommandResp
+   --  (@RequiredIfCameraCtrl) likewise has its own opt-in owner, Camera_Response_Stream,
+   --  optional OpticalDistortionMap has its own opt-in owner, Optical_Distortion_Map_Stream, and
+   --  LineOfSightQuaternion (@RequiredIfLOSQuaternion) has its own opt-in owner,
+   --  Line_Of_Sight_Quaternion_Stream; Open never registers any of them.
 
    type Metadata_Kind is
      (Bad_Pixel_List_Event,
@@ -325,7 +327,60 @@ package AMS.MEL.IR.Image.Metadata is
    --  callback quiescence or close the image stream. Maps already received stay owned.
    --  @param Stream Owner to close.
    --  @exception Provider_Error Native close failed.
+   type Line_Of_Sight_Quaternion_Stream is limited private;
+   --  Limited opt-in owner of ImageChannel @RequiredIfLOSQuaternion LineOfSightQuaternion
+   --  reception, independent of Metadata_Stream, NUC_Stream, Camera_Response_Stream and
+   --  Optical_Distortion_Map_Stream. Explicit Close is preferred; finalization attempts
+   --  non-raising cleanup. Serialize operations on the same owner.
+   function Open_Line_Of_Sight_Quaternion
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive)
+      return Line_Of_Sight_Quaternion_Stream;
+   --  Registers the upstream ImageChannel LineOfSightQuaternion callback once per image stream,
+   --  including after failure. Registration may deliver synchronously. Failure publishes no
+   --  owner; the retained callback stays inactive because upstream has no unregister. Each value
+   --  is copied before the callback returns into one bounded drop-incoming queue; a full queue
+   --  drops values without copying them, and a null payload is counted malformed. No
+   --  normalization or other validity rule is applied. The owner stops with the stream.
+   --  @param Stream Attached or running image stream.
+   --  @param Queue_Capacity Maximum number of queued values.
+   --  @return Limited LineOfSightQuaternion consumption owner.
+   --  @exception AMS.MEL.IR.Line_Of_Sight_Quaternion.Not_Supported Provider answered
+   --  NotSupported.
+   --  @exception Provider_Error Closed/ineligible stream, repeated attempt, other registration
+   --  failure or exception, or native failure.
+   function Receive_Line_Of_Sight_Quaternion
+     (Stream : Line_Of_Sight_Quaternion_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Line_Of_Sight_Quaternion.Line_Of_Sight_Value;
+   --  Dequeues one value in successful-enqueue order and copies the time, quaternion and rates
+   --  into Ada ownership before releasing the native event. Queued values drain after the image
+   --  stream stops. A received value is provider data, not proof of a normalized, accurate or
+   --  independently usable attitude.
+   --  @param Stream Open owner.
+   --  @param Timeout_Milliseconds Maximum queue wait in milliseconds; zero polls.
+   --  @return Owned value independent of the native event, stream, Session and provider library.
+   --  @exception Timeout_Error Active queue remained empty until the wait expired.
+   --  @exception Stream_Stopped Inactive or stopped queue is empty.
+   --  @exception Provider_Error Closed owner, failed provider cleanup or native failure.
+   function Line_Of_Sight_Quaternion_Counters
+     (Stream : Line_Of_Sight_Quaternion_Stream) return Metadata_Counters;
+   --  Copies saturating callback counters without consuming values.
+   --  @param Stream Open owner.
+   --  @return Received, queue-full dropped and malformed counts.
+   --  @exception Provider_Error Closed owner or native query failure.
+   procedure Close (Stream : in out Line_Of_Sight_Quaternion_Stream);
+   --  Idempotently deactivates consumption; does not unregister the provider callback, wait for
+   --  callback quiescence or close the image stream. Values already received stay owned.
+   --  @param Stream Owner to close.
+   --  @exception Provider_Error Native close failed.
 private
+   type Line_Of_Sight_Quaternion_Stream is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Image_LOS_Quaternion_Metadata_Handle :=
+        AMS.MEL_C_API.Null_Image_LOS_Quaternion_Metadata;
+   end record;
+   overriding
+   procedure Finalize (Stream : in out Line_Of_Sight_Quaternion_Stream);
+   --  Non-raising fallback that attempts to close the LineOfSightQuaternion owner.
+   --  @param Stream LineOfSightQuaternion owner being finalized.
    type Optical_Distortion_Map_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Image_ODM_Metadata_Handle :=
         AMS.MEL_C_API.Null_Image_ODM_Metadata;

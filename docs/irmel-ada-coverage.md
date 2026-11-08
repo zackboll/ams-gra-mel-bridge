@@ -35,7 +35,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | IRFactory | 0 | 0 | 0 | 0 | 8 |
 | IRInterfaceBase | 0 | 0 | 0 | 0 | 3 |
 | IRRegistry | 0 | 0 | 0 | 0 | 4 |
-| ImageChannel | 9 | 0 | 0 | 4 | 1 |
+| ImageChannel | 10 | 0 | 0 | 3 | 1 |
 | ImageListener | 0 | 0 | 1 | 0 | 1 |
 | InstrumentationChannel | 2 | 0 | 0 | 0 | 1 |
 | LibraryLoader | 0 | 0 | 0 | 0 | 3 |
@@ -85,7 +85,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 
 ## Metadata registration overloads
 
-38 unique declarations; 25 safe Ada; 1 partial; 0 native only; 12 missing.
+38 unique declarations; 26 safe Ada; 1 partial; 0 native only; 11 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
@@ -112,7 +112,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const CandidateObjectPreProcMessage*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const LOS3D_KinematicsType*const)>const&)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const LineOfSightEuler*const)>)` | safe_ada | Complete owned LineOfSightEuler event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. |
-| ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const LineOfSightQuaternion*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const LineOfSightQuaternion*const)>)` | safe_ada | IRMEL-ADA-010: opt-in ImageChannel LineOfSightQuaternion owner, independent of the four-kind metadata Open, NUC_TempData, CameraCommandResp and OpticalDistortionMap owners; one-shot per stream on Attached or Running streams, unlocked registration with safe synchronous delivery, distinct NotSupported/Fail/NotImplemented/unknown/exception results, complete copy before callback return, null payload malformed, bounded drop-incoming queue without full-queue snapshots, teardown drains in-flight callbacks, no upstream unregister. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const LineOfSightReport*const)>)` | safe_ada | Complete owned LineOfSightReport event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const NUC_TempData*const)>)` | safe_ada | Opt-in ImageChannel NUC_TempData owner, independent of the four-kind metadata Open; copied ordered TempPoints, bounded drop-incoming queue, synchronous delivery and late callbacks safe, no upstream unregister. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const NavigationReportResp*const)>)` | safe_ada | Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. |
@@ -320,7 +320,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::LOS3D_OrientationCovariance` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
 | `ams::iface::irmel::LibraryMap` | provider_only | Provider-side C++ creation, registry, loader, exception or inherited storage infrastructure; no direct safe Ada object-layout equivalent required.  |
 | `ams::iface::irmel::LineOfSightEuler` | safe_ada | Every timestamp, correlation/validity field and angular/attitude component retained without conversion; quaternion callback is independent and missing. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
-| `ams::iface::irmel::LineOfSightQuaternion` | missing | Missing system time, quaternion attitude and attitude-rate data; Euler coverage is not quaternion callback coverage.  |
+| `ams::iface::irmel::LineOfSightQuaternion` | safe_ada | Complete: getSystemTime as exact signed int64 nanoseconds (INT64_MIN/INT64_MAX kept, no epoch inferred), getQ_xyzw as the canonical ams_mel_ir_quaternion_v1 x, y, z, w in the upstream navigation frame, and getPqr_rps as the canonical ams_mel_ir_forward_right_down_v1 image-frame rates in rad/s, copied into ams_mel_ir_line_of_sight_quaternion_v1 and the owned Ada Line_Of_Sight_Value. No normalization, sign canonicalization, reordering, Euler or frame conversion, or clamping; non-unit and opposite-sign quaternions are kept. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.; Opt-in owner: LineOfSightQuaternion is @RequiredIfLOSQuaternion upstream; providers answering NotSupported raise AMS.MEL.IR.Line_Of_Sight_Quaternion.Not_Supported and the four-kind Image metadata, NUC_TempData, CameraCommandResp and OpticalDistortionMap owners are unaffected. Mock-qualified only; no physical IR or Squall quaternion evidence.; IEEE doubles are forwarded unchanged; infinity and NaN reach Ada as non-valid Long_Float values that callers must test before checked arithmetic. NaN payload bits are not promised. Receipt does not establish that an attitude is normalized, accurate or suitable for an independent pointing calculation. |
 | `ams::iface::irmel::LineOfSightReport` | safe_ada | Every timestamp, correlation/validity field and angular/attitude component retained without conversion; quaternion callback is independent and missing. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::MFA_Mode` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::ModeCmd` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
@@ -443,11 +443,11 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - IRMEL-ADA-006 implements both optional C2 CalibrationStatus operations and all five missing data declarations (CalibrationStatusCmd, CalibrationStatus, SubsystemCompletedCalibration, SubsystemCompletedCalibrationItemType, SubsystemCalibrationResult). The command and request IDs are independent uint32 values, not inferred response correlation; active and completed collections are independent; time tags are unconverted signed nanoseconds with no epoch. Safe Ada operations increase from 41 to 43. Qualification is mock-provider only.
 - IRMEL-ADA-008 implements the optional C2Channel::send(SystemTrackDataResponse) as an independent C2 overload: C2 lifecycle, C2 request accounting, distinct C2 request/result owners and probe family, sharing only the pure SystemTrackDataResponse/CommandStatus value conversion with the Track overload. SystemTrackDataResponse and CommandStatus were already safe_ada and are not reclassified. Safe Ada operations increase from 44 to 45. A successful future does not establish operational incorporation. Qualification is mock-provider only.
 - IRMEL-ADA-009 implements the optional ImageChannel::registerMetadataCallback(OpticalDistortionMap) as an independent opt-in owner and completes OpticalDistortionMap and ForwardRightDown; RowCol was already safe_ada and is reused, not reclassified. Safe Ada operations increase from 45 to 46. The two ODM collections are independent; non-finite doubles are forwarded, not replaced. Qualification is mock-provider only.
+- IRMEL-ADA-010 implements the @RequiredIfLOSQuaternion ImageChannel::registerMetadataCallback(LineOfSightQuaternion) as an independent opt-in owner and completes LineOfSightQuaternion, reusing the canonical Quaternion and ForwardRightDown representations, which stay safe_ada and are not reclassified. Safe Ada operations increase from 46 to 47. Values are copied, not normalized or converted; receipt is not proof of a usable attitude. Qualification is mock-provider only.
 
 ## Recommended implementation order
 
 1. C2 EraseCommand and typed EraseCommandType result; no speculative commands.
 2. Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.
-3. Image LineOfSightQuaternion callback with complete values (OpticalDistortionMap done in IRMEL-ADA-009).
-4. Scheduling owner, five sends/execs and six callback families as successive vertical slices.
-5. LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices.
+3. Scheduling owner, five sends/execs and six callback families as successive vertical slices.
+4. LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices.
