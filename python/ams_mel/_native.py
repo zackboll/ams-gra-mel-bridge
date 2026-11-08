@@ -1084,6 +1084,42 @@ ams_mel_ir_calibration_configuration_event_close = _LIBRARY.ams_mel_ir_calibrati
 ams_mel_ir_calibration_configuration_event_close.argtypes = [ctypes.POINTER(IrCalibrationConfigurationEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_calibration_configuration_event_close.restype = ctypes.c_int32
 
+# IRMEL-ADA-007 private ABI only; deliberately no safe Python erase API.
+AMS_MEL_IR_ERASE_ZEROIZE = 0
+AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE = 1
+AMS_MEL_IR_ERASE_DISABLE = 2
+AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE = 3
+class IrEraseCommandV1(ctypes.Structure):
+    _fields_ = [("command_id", ctypes.c_uint32), ("erase_type", ctypes.c_uint32)]
+class IrEraseResultV1(ctypes.Structure):
+    _fields_ = [("erase_type", ctypes.c_uint32), ("error_code", ctypes.c_uint32)]
+IrEraseRequestHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_erase = _LIBRARY.ams_mel_ir_c2_submit_erase
+ams_mel_ir_c2_submit_erase.argtypes = [IrC2Handle, ctypes.POINTER(IrEraseCommandV1), ctypes.POINTER(IrEraseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_erase.restype = ctypes.c_int32
+ams_mel_ir_erase_request_wait = _LIBRARY.ams_mel_ir_erase_request_wait
+ams_mel_ir_erase_request_wait.argtypes = [IrEraseRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrEraseResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_erase_request_wait.restype = ctypes.c_int32
+ams_mel_ir_erase_request_close = _LIBRARY.ams_mel_ir_erase_request_close
+ams_mel_ir_erase_request_close.argtypes = [ctypes.POINTER(IrEraseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_erase_request_close.restype = ctypes.c_int32
+
+# IRMEL-ADA-008 private ABI only; deliberately no safe Python C2 SystemTrackDataResponse API.
+# Reuses IrSystemTrackDataResponseV1 and IrCommandStatusV1; the C2 result and
+# request handle are distinct from the Track ones.
+class IrC2SystemResponseResultV1(ctypes.Structure):
+    _fields_ = [("status", IrCommandStatusV1), ("error_code", ctypes.c_uint32)]
+IrC2SystemResponseRequestHandle = ctypes.c_void_p
+ams_mel_ir_c2_submit_system_track_data_response = _LIBRARY.ams_mel_ir_c2_submit_system_track_data_response
+ams_mel_ir_c2_submit_system_track_data_response.argtypes = [IrC2Handle, ctypes.POINTER(IrSystemTrackDataResponseV1), ctypes.POINTER(IrC2SystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_submit_system_track_data_response.restype = ctypes.c_int32
+ams_mel_ir_c2_system_response_request_wait = _LIBRARY.ams_mel_ir_c2_system_response_request_wait
+ams_mel_ir_c2_system_response_request_wait.argtypes = [IrC2SystemResponseRequestHandle, ctypes.c_uint32, ctypes.POINTER(IrC2SystemResponseResultV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_system_response_request_wait.restype = ctypes.c_int32
+ams_mel_ir_c2_system_response_request_close = _LIBRARY.ams_mel_ir_c2_system_response_request_close
+ams_mel_ir_c2_system_response_request_close.argtypes = [ctypes.POINTER(IrC2SystemResponseRequestHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_c2_system_response_request_close.restype = ctypes.c_int32
+
 # IRMEL-ADA-006 private ABI mirrors only; no new safe Python API.
 AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET = 0
 AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED = 1
@@ -2204,6 +2240,12 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_c2_submit_system_track_data_response",
+    "ams_mel_ir_c2_system_response_request_wait",
+    "ams_mel_ir_c2_system_response_request_close",
+    "ams_mel_ir_c2_submit_erase",
+    "ams_mel_ir_erase_request_wait",
+    "ams_mel_ir_erase_request_close",
     "ams_mel_ir_c2_submit_calibration_status",
     "ams_mel_ir_calibration_status_request_wait",
     "ams_mel_ir_calibration_status_request_close",

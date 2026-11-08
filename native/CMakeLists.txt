@@ -10,7 +10,7 @@ option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_calibration_configuration.cpp
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
     src/ir_calibration_status.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
@@ -952,6 +952,45 @@ if(AMS_MEL_BUILD_TESTS)
             COMMAND test_ir_camera_command finish-failure ${family})
         set_tests_properties(ir_camera_command_${family}_finish_failure PROPERTIES TIMEOUT 30)
     endforeach()
+
+    # IRMEL-ADA-007: optional EraseCommand, mock-only compiled C11 contract.
+    add_executable(test_ir_erase tests/test_ir_erase.c)
+    target_compile_features(test_ir_erase PRIVATE c_std_11)
+    set_target_properties(test_ir_erase PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_erase PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_erase PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_erase mock_ir_provider)
+    ams_mel_warnings(test_ir_erase)
+    add_test(NAME ir_erase_contract COMMAND test_ir_erase)
+    set_tests_properties(ir_erase_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_erase_post_send_${failure}
+            COMMAND test_ir_erase post-send ${failure})
+        set_tests_properties(ir_erase_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_erase_finish_failure COMMAND test_ir_erase finish-failure)
+    set_tests_properties(ir_erase_finish_failure PROPERTIES TIMEOUT 30)
+
+    # IRMEL-ADA-008: optional C2 SystemTrackDataResponse, mock-only compiled C11 contract.
+    add_executable(test_ir_c2_system_response tests/test_ir_c2_system_response.c)
+    target_compile_features(test_ir_c2_system_response PRIVATE c_std_11)
+    set_target_properties(test_ir_c2_system_response PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_c2_system_response PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_c2_system_response PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_c2_system_response mock_ir_provider)
+    ams_mel_warnings(test_ir_c2_system_response)
+    add_test(NAME ir_c2_system_response_contract COMMAND test_ir_c2_system_response)
+    set_tests_properties(ir_c2_system_response_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_c2_system_response_post_send_${failure}
+            COMMAND test_ir_c2_system_response post-send ${failure})
+        set_tests_properties(ir_c2_system_response_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_c2_system_response_finish_failure
+        COMMAND test_ir_c2_system_response finish-failure)
+    set_tests_properties(ir_c2_system_response_finish_failure PROPERTIES TIMEOUT 30)
 
     # IRMEL-ADA-004: C2 CameraProtectCmd and C2 CameraProtectCmdResp, compiled as C.
     add_executable(test_ir_camera_protect tests/test_ir_camera_protect.c)

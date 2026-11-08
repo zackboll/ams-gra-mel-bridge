@@ -270,6 +270,10 @@ package AMS.MEL.IR is
    --  Limited controlled request owner; finalization is non-raising and does not
    --  cancel pending native work, which retains the provider graph independently.
 
+   type Erase_Request_Owner is tagged limited private;
+   --  Limited controlled observer used through AMS.MEL.IR.Erase.Erase_Request.
+   --  Non-raising finalization never cancels pending native provider execution.
+
    --  IRMEL-ADA-004 limited controlled owner of exactly one native CameraProtectCmd
    --  request. Applications use it only through
    --  AMS.MEL.IR.Camera_Protection.Protection_Request; C2 submission fills it.
@@ -335,6 +339,11 @@ private
    overriding
    procedure Finalize (Object : in out Camera_Request_Owner);
 
+   type Erase_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Erase_Request_Handle := AMS.MEL_C_API.Null_Erase_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Erase_Request_Owner);
    type Camera_Protection_Request_Owner is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Camera_Protect_Request_Handle :=
         AMS.MEL_C_API.Null_Camera_Protect_Request;

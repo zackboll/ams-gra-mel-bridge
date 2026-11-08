@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 #include "internal/completion_probe.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/system_track_data.hpp"
 
 #include <irmel/library/irmel-types/CandidateObjectMessage.h>
 #include <irmel/library/irmel-types/CandidateObjectPreProcMessage.h>
@@ -26,6 +27,7 @@
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <stdexcept>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -178,47 +180,11 @@ irmel::TrackDataUpdate build_update(const ams_mel_ir_track_data_update_v1& input
     return value;
 }
 
-/* The repository's established uint8_t representation for published bool
- * values: exactly 0 or 1 is accepted and anything else is malformed input. */
-bool convert_bool(std::uint8_t value, bool& result) noexcept
-{
-    if (value > 1U) return false;
-    result = value != 0U;
-    return true;
-}
-
-AzEl convert_az_el(const ams_mel_ir_az_el_v1& value) noexcept
-{
-    AzEl result;
-    result.az = value.azimuth_rad;
-    result.el = value.elevation_rad;
-    return result;
-}
-
-/* Builds the complete upstream SystemTrackDataResponse (@Optional) through the
- * published setters only; no provider object layout is assumed. Every published
- * setter is called exactly once with the corresponding C field. The system time
- * stays signed nanoseconds and no range, rate, error, or angle value is clamped
- * or normalized, because the upstream setters perform no such validation. */
-irmel::SystemTrackDataResponse build_response(
-    const ams_mel_ir_system_track_data_response_v1& input, bool az_el_valid,
-    bool range_valid)
-{
-    irmel::SystemTrackDataResponse value;
-    value.setCommandID(input.command_id);
-    value.setSystemTime(std::chrono::nanoseconds{input.system_time_ns});
-    value.setRequestId(input.request_id);
-    value.setTrackId(input.track_id);
-    value.setRange(input.range_m);
-    value.setRangeRate(input.range_rate_mps);
-    value.setRangeError(input.range_error_m);
-    value.setRangeRateError(input.range_rate_error_mps);
-    value.setAzElValid(az_el_valid);
-    value.setInertialAzEl(convert_az_el(input.inertial_az_el));
-    value.setAzElError(convert_az_el(input.az_el_error));
-    value.setRangeValid(range_valid);
-    return value;
-}
+/* The complete SystemTrackDataResponse value conversion (all twelve published
+ * setters, 0/1 Boolean validation, no clamping or normalization) and the
+ * CommandStatus validation live in the shared, state-free
+ * ams_mel_system_track_data unit (IRMEL-ADA-008), reused unchanged by the
+ * independent C2 overload. Track state and accounting stay here. */
 
 /* Complete IRSTTrackReport copy. Every upstream getter is read exactly once and
  * every floating-point value is copied verbatim: no clamping, no normalization,
@@ -907,27 +873,9 @@ bool finish_request(const std::shared_ptr<TrackState>& state)
     return !close || cleanup(state, true);
 }
 
-/* Validates a provider CommandStatus completely. Upstream CommandState tops out
- * at Cancelled and CannotComply at Alignment_Maneuver; neither declares a
- * MaxExclusive value, so anything above is malformed. The description is copied
- * into request-owned storage only after it is proven valid UTF-8 without an
- * embedded NUL. */
-bool copy_command_status(const irmel::CommandStatus& source,
-                         ams_mel_ir_command_status_v1& destination,
-                         std::string& owned_text)
-{
-    const auto state = static_cast<std::uint32_t>(source.getState());
-    const auto reason = static_cast<std::uint32_t>(source.getReasonID());
-    if (state > AMS_MEL_IR_COMMAND_CANCELLED) return false;
-    if (reason > AMS_MEL_IR_CANNOT_COMPLY_ALIGNMENT_MANEUVER) return false;
-    const std::string& description = source.getReasonDescription();
-    if (!valid_utf8(description)) return false;
-    owned_text = description;
-    destination.command_id = source.getCommandID();
-    destination.state = state;
-    destination.reason_id = reason;
-    return true;
-}
+/* CommandStatus validation (CommandState 0..4, CannotComply 0..46, UTF-8
+ * without NUL) is the shared ams_mel_system_track_data contract. */
+using ams_mel_system_track_data::copy_command_status;
 
 /* The single future::get() caller. No other thread may call it. */
 void complete(const std::shared_ptr<Completion>& state,
@@ -1842,12 +1790,8 @@ extern "C" ams_mel_status_t ams_mel_ir_track_submit_system_track_data_response(
     std::size_t capacity, std::size_t *required) noexcept
 {
     diagnostic("", out, capacity, required);
-    bool az_el_valid = false;
-    bool range_valid = false;
     if (!track || !track->state || !response || !out_request || *out_request ||
-        (!out && capacity) ||
-        !convert_bool(response->az_el_valid, az_el_valid) ||
-        !convert_bool(response->range_valid, range_valid)) {
+        (!out && capacity) || !ams_mel_system_track_data::valid_flags(*response)) {
         diagnostic("invalid SystemTrackDataResponse input", out, capacity, required);
         return AMS_MEL_INVALID_ARGUMENT;
     }
@@ -1875,7 +1819,8 @@ extern "C" ams_mel_status_t ams_mel_ir_track_submit_system_track_data_response(
      * outlives this call. */
     irmel::SystemTrackDataResponse upstream;
     try {
-        upstream = build_response(*response, az_el_valid, range_valid);
+        if (!ams_mel_system_track_data::build_response(*response, upstream))
+            throw std::logic_error{"validated SystemTrackDataResponse flags changed"};
     } catch (...) {
         diagnostic("SystemTrackDataResponse preparation failed", out, capacity, required);
         return AMS_MEL_INTERNAL_ERROR;

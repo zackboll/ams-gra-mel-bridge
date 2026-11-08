@@ -1,5 +1,27 @@
 # Ada binding bootstrap
 
+## Optional C2 SystemTrackDataResponse
+
+Build an `AMS.MEL.IR.Track.System_Data.System_Track_Data_Response` value and pass it
+to `AMS.MEL.IR.C2.System_Data.Submit_System_Track_Data_Response` on an Enabled C2
+channel. This is independent of `Track.System_Data.Submit`; each uses its own
+channel lifecycle and request accounting. `Wait` returns a successful owned
+CommandStatus (its own state may be Rejected) or an explicit ErrorOr rejection;
+failures raise `Provider_Error`. Timeout/Close never cancel or resend. A successful
+future does **not** mean the track data was incorporated.
+See [qualification](../docs/irmel-ada-008-c2-system-track-response.md).
+
+## Optional C2 EraseCommand
+
+Use `AMS.MEL.IR.Erase.Create_Command (ID, Operation)` to select one of Zeroize,
+Classified_Data_Erase, Disable or CDE_AND_Zeroize explicitly, then
+`C2.Submit_Erase_Command`. `Erase.Wait` returns an owned success type or complete
+MEL rejection; provider/payload/cleanup failures raise `Provider_Error`.
+Timeout/Close never cancel or replay the operation. A successful asynchronous
+return does **not** verify physical erasure. No erase metadata callback exists.
+See [qualification and mock-only tests](../docs/irmel-ada-007-erase-command.md).
+
+
 `alr build` builds the Ada library and its pinned native dependency.
 `alr -C tests run` builds/runs the separate smoke-test crate.
 

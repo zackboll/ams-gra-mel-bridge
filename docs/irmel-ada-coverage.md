@@ -26,7 +26,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | API_Manager | 0 | 0 | 0 | 0 | 1 |
 | BaseSecurityEventType | 0 | 0 | 0 | 0 | 1 |
 | Buffer | 0 | 0 | 4 | 0 | 6 |
-| C2Channel | 13 | 0 | 0 | 2 | 1 |
+| C2Channel | 15 | 0 | 0 | 0 | 1 |
 | Channel | 3 | 0 | 4 | 1 | 1 |
 | Control | 2 | 0 | 3 | 0 | 1 |
 | EnumUtilities | 0 | 0 | 0 | 0 | 23 |
@@ -55,7 +55,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 
 ## Outgoing commands/requests
 
-21 unique declarations; 14 safe Ada; 0 partial; 0 native only; 7 missing.
+21 unique declarations; 16 safe Ada; 0 partial; 0 native only; 5 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
@@ -67,9 +67,9 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | C2Channel | `send(CameraCommand)` | safe_ada | Enabled-only C2Channel::send(CameraCommand) through the shared camera completion engine: lifetime claim under the C2 lock, unlocked provider send, Session admission, deferred C2 teardown on pending Close, cached Wait; all 11 fields exact; CommandSuccess=false is a successful response distinct from MEL rejection. |
 | C2Channel | `send(CameraProtectCmd)` | safe_ada | Enabled-only C2Channel::send(CameraProtectCmd) through the established request architecture: Session CompletionPermit, C2 lifetime claim under the C2 lock, unlocked provider send, single completion worker, deferred C2 teardown on pending Close, allocation-free post-send retention, cached Wait; all three command fields exact (invalid protect_flag rejected before send); every CmdResp alternative is a successful response distinct from MEL rejection. |
 | C2Channel | `send(ConfigSetCommand)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
-| C2Channel | `send(EraseCommand)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| C2Channel | `send(EraseCommand)` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. |
 | C2Channel | `send(ModeCmd)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
-| C2Channel | `send(SystemTrackDataResponse)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| C2Channel | `send(SystemTrackDataResponse)` | safe_ada | IRMEL-ADA-008: independent C2 overload of the complete twelve-field SystemTrackDataResponse; Enabled-only single unlocked send with C2 lifecycle and C2 request accounting (never the Track overload or TrackState); cached CommandStatus result or explicit ErrorOr rejection. Shares only pure value conversion with TrackChannel::send. |
 | Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report for five attached families; absent Scheduling/Stacked owners are not counted. |
 | Channel | `sendKeepAliveRep()` | safe_ada | Common weak view works for C2, Image, Health, Instrumentation and Track; Scheduling/Stacked owners are absent. |
 | ImageChannel | `send(CameraCommand)` | safe_ada | Attached/Running ImageChannel::send(CameraCommand), independent of the C2 send: Image request accounting under the frame-callback lock, unlocked send, deferred Image teardown across Stop/Close, cached Wait; never routed through C2. |
@@ -285,8 +285,8 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::CoordFrameRef` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CoordinateSystemType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::DegradationMethod` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
-| `ams::iface::irmel::EraseCommand` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
-| `ams::iface::irmel::EraseCommandType` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
+| `ams::iface::irmel::EraseCommand` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
+| `ams::iface::irmel::EraseCommandType` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
 | `ams::iface::irmel::EventType` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::ExecuteTaskAck` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::Failure` | safe_ada | Every subsystem/CSCI field and complete ordered collections retained independently from reported counts; all known meaningful mode/failure alternatives represented. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
@@ -441,6 +441,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - IRMEL-ADA-004 implements C2Channel::send(CameraProtectCmd) (Enabled only) and the opt-in C2 CameraProtectCmdResp owner. All three CmdResp alternatives are successful responses, kept distinct from MEL rejection, registration NotSupported, registration failure and provider exceptions; the callback never completes a request future.
 - IRMEL-ADA-005 implements both optional C2 CalibrationConfiguration operations and all SubsystemCalibration collections/accepted-interface alternatives. The command and request IDs are independent uint32 values, not inferred response correlation. Safe Ada operations increase from 39 to 41. CalibrationStatus, SubsystemCompletedCalibration and CalibrationStatusCmd remain unimplemented. Qualification is mock-provider only.
 - IRMEL-ADA-006 implements both optional C2 CalibrationStatus operations and all five missing data declarations (CalibrationStatusCmd, CalibrationStatus, SubsystemCompletedCalibration, SubsystemCompletedCalibrationItemType, SubsystemCalibrationResult). The command and request IDs are independent uint32 values, not inferred response correlation; active and completed collections are independent; time tags are unconverted signed nanoseconds with no epoch. Safe Ada operations increase from 41 to 43. Qualification is mock-provider only.
+- IRMEL-ADA-008 implements the optional C2Channel::send(SystemTrackDataResponse) as an independent C2 overload: C2 lifecycle, C2 request accounting, distinct C2 request/result owners and probe family, sharing only the pure SystemTrackDataResponse/CommandStatus value conversion with the Track overload. SystemTrackDataResponse and CommandStatus were already safe_ada and are not reclassified. Safe Ada operations increase from 44 to 45. A successful future does not establish operational incorporation. Qualification is mock-provider only.
 
 ## Recommended implementation order
 

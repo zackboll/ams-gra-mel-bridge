@@ -1588,6 +1588,90 @@ typedef struct ams_mel_ir_track_system_response_result_v1 {
     ams_mel_error_code_t error_code;
 } ams_mel_ir_track_system_response_result_v1;
 
+/* Optional C2 EraseCommand. Exact pinned EraseCommandType alternatives;
+ * there is no MaxExclusive sentinel. Unknown values are rejected. */
+typedef uint32_t ams_mel_ir_erase_type_t;
+#define AMS_MEL_IR_ERASE_ZEROIZE UINT32_C(0)
+#define AMS_MEL_IR_ERASE_CLASSIFIED_DATA_ERASE UINT32_C(1)
+#define AMS_MEL_IR_ERASE_DISABLE UINT32_C(2)
+#define AMS_MEL_IR_ERASE_CDE_AND_ZEROIZE UINT32_C(3)
+typedef struct ams_mel_ir_erase_request ams_mel_ir_erase_request;
+typedef struct ams_mel_ir_erase_command_v1 {
+    uint32_t command_id;
+    ams_mel_ir_erase_type_t erase_type;
+} ams_mel_ir_erase_command_v1;
+typedef struct ams_mel_ir_erase_result_v1 {
+    ams_mel_ir_erase_type_t erase_type;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_erase_result_v1;
+
+/* Submission requires Enabled; inputs are copied before the one provider send.
+ * Unknown input alternatives never reach the provider. No automatic retry.
+ * OK Wait means a successful future return, NOT verified physical erasure.
+ * Returned type is independent of the input; unknown/null successful payloads
+ * and unknown MEL error codes fail rather than being remapped. Rejected Wait
+ * returns the known error_code and complete cached UTF-8 diagnostic (required
+ * includes NUL; retry with a larger buffer for the full text).
+ * Timeout leaves result untouched and does not cancel/consume. Terminal Wait
+ * is cached. Close clears only the observer and never cancels execution.
+ * Pending work retains C2/Session/DSO after public owners close. Deferred
+ * cleanup failure overrides success/rejection. Serialize handle use vs Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_erase(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_erase_command_v1 *command,
+    ams_mel_ir_erase_request **output, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_erase_request_wait(
+    const ams_mel_ir_erase_request *request, uint32_t timeout_ms,
+    ams_mel_ir_erase_result_v1 *result, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_erase_request_close(
+    ams_mel_ir_erase_request **request, char *diagnostic, size_t capacity,
+    size_t *required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-008: optional C2Channel::send(SystemTrackDataResponse). This is the
+ * C2 overload, independent of ams_mel_ir_track_submit_system_track_data_response:
+ * it uses a distinct opaque request type, the C2 lifecycle and C2 request
+ * accounting, and never touches Track state. The input is the existing complete
+ * ams_mel_ir_system_track_data_response_v1 (same twelve fields, same 0/1 bool
+ * rule, no clamping/normalization/zeroing for false validity flags). */
+typedef struct ams_mel_ir_c2_system_response_request ams_mel_ir_c2_system_response_request;
+/* Semantically distinct C2 terminal outcome reusing the one generic
+ * ams_mel_ir_command_status_v1 layout. A successful CommandStatus whose own
+ * state is AMS_MEL_IR_COMMAND_REJECTED is still AMS_MEL_OK; only an upstream
+ * ErrorOr error is AMS_MEL_COMMAND_REJECTED. status.reason_description points
+ * into immutable request-owned cached storage valid until request Close; a
+ * timeout leaves this record untouched. OK does NOT mean the provider
+ * operationally incorporated the track data. */
+typedef struct ams_mel_ir_c2_system_response_result_v1 {
+    ams_mel_ir_command_status_v1 status;
+    ams_mel_error_code_t error_code;
+} ams_mel_ir_c2_system_response_result_v1;
+
+/* Submission requires the C2 channel to be Enabled (Attached, failed or
+ * closed report AMS_MEL_PROVIDER_FAILED with no provider call). Invalid
+ * Boolean encodings and null/stale arguments are AMS_MEL_INVALID_ARGUMENT
+ * before any admission or provider work. The response is copied before the
+ * one unlocked provider send; no retry. Session admission exhaustion is
+ * AMS_MEL_RESOURCE_EXHAUSTED. Wait semantics: unknown CommandState/CannotComply,
+ * malformed reason text, null successful payloads and unknown MEL error codes
+ * are AMS_MEL_PROVIDER_FAILED; future exceptions AMS_MEL_PROVIDER_EXCEPTION;
+ * a Rejected Wait returns the known error_code and complete cached UTF-8
+ * diagnostic (required includes NUL). Timeout neither cancels nor consumes;
+ * terminal Wait is cached. Close clears only the observer. Pending work
+ * retains C2/Session/DSO after public owners close; deferred cleanup failure
+ * overrides success/rejection. Serialize handle use against Close. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_submit_system_track_data_response(
+    ams_mel_ir_c2 *c2, const ams_mel_ir_system_track_data_response_v1 *response,
+    ams_mel_ir_c2_system_response_request **output, char *diagnostic,
+    size_t capacity, size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_system_response_request_wait(
+    const ams_mel_ir_c2_system_response_request *request, uint32_t timeout_ms,
+    ams_mel_ir_c2_system_response_result_v1 *result, char *diagnostic,
+    size_t capacity, size_t *required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_system_response_request_close(
+    ams_mel_ir_c2_system_response_request **request, char *diagnostic,
+    size_t capacity, size_t *required) AMS_MEL_NOEXCEPT;
+
 typedef struct ams_mel_foreign_key_v1 {
     ams_mel_string_view_v1 key, system_name;
 } ams_mel_foreign_key_v1;

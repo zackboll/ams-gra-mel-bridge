@@ -551,6 +551,35 @@ package body AMS.MEL.IR.C2 is
       end return;
    end Submit_Camera_Command;
 
+   function Submit_Erase_Command
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Erase.Erase_Command)
+      return AMS.MEL.IR.Erase.Erase_Request
+   is
+      Raw        : aliased C.IR_Erase_Command_V1 :=
+        (Command_ID => Interfaces.Unsigned_32 (Erase.ID (Command)),
+         Erase_Type => Erase.Erase_Type'Pos (Erase.Operation (Command)));
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required   : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : AMS.MEL.IR.Erase.Erase_Request do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Submit_Erase
+                (Channel.Handle,
+                 Raw'Access,
+                 Erase_Request_Owner (Result).Handle'Access,
+                 Diagnostic'Address,
+                 Diagnostic'Length,
+                 Required'Access);
+         begin
+            Check_Submission (Code, Failure_Message (Diagnostic));
+         end;
+      end return;
+   end Submit_Erase_Command;
+
    function Submit_Camera_Protection
      (Channel : Control_Channel; Command : AMS.MEL.IR.Camera_Protection.Protection_Command)
       return AMS.MEL.IR.Camera_Protection.Protection_Request
