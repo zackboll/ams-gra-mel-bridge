@@ -33,7 +33,12 @@
 //! independent [`ImageMetadataStream`] with fully owned [`ImageMetadataEvent`]s
 //! for BadPixelList, LineOfSightReport, LineOfSightEuler and NavigationReportResp.
 //! This covers the four currently C-bridged families, not every upstream Image
-//! callback. C2 ordinary metadata is not exposed by safe Rust.
+//! callback.
+//!
+//! IR C2 metadata (RUST-IR-005): [`ControlChannel::open_metadata`] returns an
+//! independent [`C2MetadataStream`] for owned CommandStatus, BIT configuration,
+//! canonical Health BIT status and separately opted-in communications reports.
+//! Accepting a command is not proof of physical completion.
 //!
 //! Optional Image/Health NUC_TempData (RUST-IR-003): [`ImageStream::open_nuc`]
 //! and [`HealthStatusChannel::open_nuc`] return the same [`NucStream`], copying
@@ -64,12 +69,17 @@ use std::slice;
 
 use ams_mel_sys as sys;
 
+mod ir_c2_metadata;
 mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
 pub mod ir_nuc;
 mod rf_admin;
 mod rf_data;
+pub use ir_c2_metadata::{
+    BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
+    C2MetadataStream, CannotComply, CommandState, CommandStatus,
+};
 pub use ir_health::{HealthConfig, HealthStatusChannel};
 pub use ir_health_metadata::{
     About, ActiveBit, BitResult, BitStatus, CompletedBit, CompletedBitItem, ComponentState,

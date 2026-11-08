@@ -1,5 +1,21 @@
 # Implementation coverage
 
+## RUST-IR-005 — complete safe Rust reception of existing C2 metadata
+
+`ControlChannel::open_metadata` now returns a unique non-Send/non-Sync
+`C2MetadataStream` for CommandStatus, BIT_Configuration, BIT_Status and separately
+opted-in ChannelCommsTestRep. Owned conversion preserves the complete 5-state /
+47-reason command domains, four BIT interfaces, nested ordered definitions and
+the canonical Health BIT/fault graph; existing `CommsTestReport` and `UciId` are
+reused. One-shot registrations, bounded DROP-INCOMING FIFO, counters, drain-before-
+stopped/failed behavior and native callback/provider retention remain authoritative.
+Hostile-boundary, allocation/unwind and exact-once cleanup tests accompany existing
+mock lifecycle scenarios. No native ABI, raw bindings, Ada, Python, mocks or build/
+policy changes: production remains 284 exports, ABI 0.1. Earlier safe-Rust C2
+metadata exclusions below describe historical scope superseded by this section.
+See [mapping, ownership and qualification](rust-ir-005-c2-metadata.md); real-provider
+and hardware qualification remain outside this mock-only slice.
+
 ## IRMEL-ADA-010 — Image LineOfSightQuaternion metadata
 
 The pinned `@RequiredIfLOSQuaternion`

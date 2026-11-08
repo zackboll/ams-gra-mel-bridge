@@ -1056,7 +1056,7 @@ fn mfa_component(raw: &sys::AmsMelMfaComponentV1) -> Result<MfaComponent, Error>
     })
 }
 
-fn bit_status(raw: &sys::AmsMelBitStatusV1) -> Result<BitStatus, Error> {
+pub(crate) fn bit_status(raw: &sys::AmsMelBitStatusV1) -> Result<BitStatus, Error> {
     let active = &raw.active_bits;
     let completed = &raw.completed_bits;
     Ok(BitStatus {
