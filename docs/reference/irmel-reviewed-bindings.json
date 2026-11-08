@@ -1659,12 +1659,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::registerMetadataCallback(std::function<void(Channel&,const LineOfSightQuaternion*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image_los_quaternion.cpp",
+          "symbol": "ams_mel_ir_image_los_quaternion_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Open_Line_Of_Sight_Quaternion"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Line_Of_Sight_Quaternion"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_image_los_quaternion.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_los_quaternion_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-010: opt-in ImageChannel LineOfSightQuaternion owner, independent of the four-kind metadata Open, NUC_TempData, CameraCommandResp and OpticalDistortionMap owners; one-shot per stream on Attached or Running streams, unlocked registration with safe synchronous delivery, distinct NotSupported/Fail/NotImplemented/unknown/exception results, complete copy before callback return, null payload malformed, bounded drop-incoming queue without full-queue snapshots, teardown drains in-flight callbacks, no upstream unregister.",
+      "limitations": [
+        "Opt-in owner: LineOfSightQuaternion is @RequiredIfLOSQuaternion upstream; providers answering NotSupported raise AMS.MEL.IR.Line_Of_Sight_Quaternion.Not_Supported and the four-kind Image metadata, NUC_TempData, CameraCommandResp and OpticalDistortionMap owners are unaffected. Mock-qualified only; no physical IR or Squall quaternion evidence."
+      ],
       "representation": []
     },
     {
@@ -10253,27 +10278,69 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::LineOfSightQuaternion",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing system time, quaternion attitude and attitude-rate data; Euler coverage is not quaternion callback coverage.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image_los_quaternion.cpp",
+          "symbol": "ams_mel_ir_image_los_quaternion_open"
+        },
+        {
+          "path": "native/src/ir_image_los_quaternion.cpp",
+          "symbol": "ams_mel_ir_image_los_quaternion_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Line_Of_Sight_Quaternion"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_image_los_quaternion.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_los_quaternion_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete: getSystemTime as exact signed int64 nanoseconds (INT64_MIN/INT64_MAX kept, no epoch inferred), getQ_xyzw as the canonical ams_mel_ir_quaternion_v1 x, y, z, w in the upstream navigation frame, and getPqr_rps as the canonical ams_mel_ir_forward_right_down_v1 image-frame rates in rad/s, copied into ams_mel_ir_line_of_sight_quaternion_v1 and the owned Ada Line_Of_Sight_Value. No normalization, sign canonicalization, reordering, Euler or frame conversion, or clamping; non-unit and opposite-sign quaternions are kept.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: LineOfSightQuaternion is @RequiredIfLOSQuaternion upstream; providers answering NotSupported raise AMS.MEL.IR.Line_Of_Sight_Quaternion.Not_Supported and the four-kind Image metadata, NUC_TempData, CameraCommandResp and OpticalDistortionMap owners are unaffected. Mock-qualified only; no physical IR or Squall quaternion evidence.",
+        "IEEE doubles are forwarded unchanged; infinity and NaN reach Ada as non-valid Long_Float values that callers must test before checked arithmetic. NaN payload bits are not promised. Receipt does not establish that an attitude is normalized, accurate or suitable for an independent pointing calculation."
+      ],
       "representation": [
         {
           "upstream": "getSystemTime",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Line_Of_Sight_Quaternion"
+            }
+          ]
         },
         {
           "upstream": "getQ_xyzw",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Line_Of_Sight_Quaternion"
+            }
+          ]
         },
         {
           "upstream": "getPqr_rps",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-image-metadata.ads",
+              "symbol": "Receive_Line_Of_Sight_Quaternion"
+            }
+          ]
         }
       ]
     },

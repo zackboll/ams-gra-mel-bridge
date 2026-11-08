@@ -100,7 +100,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual([f["upstream"] for f in command["representation"]],
                          ["getCommandID", "getEraseCommandType"])
         self.assertTrue(all(f["status"] == "represented" for f in command["representation"]))
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
 
     def test_c2_system_response_slice_is_independent_and_scoped(self):
         # IRMEL-ADA-008: exactly the C2 overload moves to safe_ada with its own
@@ -123,7 +123,7 @@ class CoverageTests(unittest.TestCase):
         for name in ("SystemTrackDataResponse", "CommandStatus"):
             entry = next(t for t in self.coverage["types"] if t["id"] == "ir:type:ams::iface::irmel::" + name)
             self.assertEqual(entry["status"], "safe_ada")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
 
     def test_c2_system_response_evidence_removal_fails_closed(self):
         self.operation("C2Channel", "send(SystemTrackDataResponse)")["tests"] = []
@@ -159,8 +159,51 @@ class CoverageTests(unittest.TestCase):
             self.assertTrue(all(f["status"] == "represented" for f in types[name]["representation"]))
         self.assertEqual(types["RowCol"]["status"], "safe_ada")
         self.assertEqual(types["RowCol"]["native"][0]["symbol"], "ams_mel_ir_track_metadata_open")
-        self.assertEqual(self.operation("ImageChannel", "LineOfSightQuaternion")["status"], "missing")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+
+    def test_line_of_sight_quaternion_slice_is_exact(self):
+        # IRMEL-ADA-010: exactly the ImageChannel LineOfSightQuaternion registration
+        # and the LineOfSightQuaternion declaration move to safe_ada. The canonical
+        # Quaternion and ForwardRightDown were already safe_ada and keep their evidence.
+        losq = self.operation("ImageChannel", "LineOfSightQuaternion")
+        self.assertEqual(losq["status"], "safe_ada")
+        self.assertEqual(losq["native"], [{"path": "native/src/ir_image_los_quaternion.cpp",
+                                           "symbol": "ams_mel_ir_image_los_quaternion_open"}])
+        self.assertEqual([a["symbol"] for a in losq["ada"]],
+                         ["Open_Line_Of_Sight_Quaternion", "Receive_Line_Of_Sight_Quaternion"])
+        self.assertIn({"path": "native/tests/test_ir_image_los_quaternion.c", "symbol": "main"},
+                      losq["tests"])
+        self.assertIn({"path": "ada/tests/src/ams_mel_ir_image_los_quaternion_tests.adb",
+                       "symbol": "Run"}, losq["tests"])
+        # Independent of the four-kind metadata Open and the other opt-in owners.
+        for payload in ("BadPixelList", "LineOfSightEuler", "LineOfSightReport", "NUC_TempData",
+                        "CameraCommandResp", "OpticalDistortionMap"):
+            other = self.operation("ImageChannel", payload)
+            self.assertEqual(other["status"], "safe_ada")
+            self.assertNotIn("ams_mel_ir_image_los_quaternion_open",
+                             [n["symbol"] for n in other["native"]])
+        types = {t["id"].split("::")[-1]: t for t in self.coverage["types"]}
+        entry = types["LineOfSightQuaternion"]
+        self.assertEqual(entry["status"], "safe_ada")
+        self.assertEqual([f["upstream"] for f in entry["representation"]],
+                         ["getSystemTime", "getQ_xyzw", "getPqr_rps"])
+        self.assertTrue(all(f["status"] == "represented" for f in entry["representation"]))
+        # Canonical component types are reused, not reclassified.
+        self.assertEqual(types["Quaternion"]["status"], "safe_ada")
+        self.assertEqual(types["Quaternion"]["native"][0]["symbol"], "ams_mel_ir_stream_receive_snapshot")
+        self.assertEqual(types["ForwardRightDown"]["status"], "safe_ada")
+        self.assertEqual(types["ForwardRightDown"]["native"][0]["symbol"], "ams_mel_ir_image_odm_open")
+        self.assertEqual(self.operation("ImageChannel", "LOS3D_KinematicsType")["status"], "missing")
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+
+    def test_line_of_sight_quaternion_evidence_removal_fails_closed(self):
+        self.operation("ImageChannel", "LineOfSightQuaternion")["tests"] = []
+        self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_line_of_sight_quaternion_field_omission_is_detected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::LineOfSightQuaternion"))
+        entry["representation"] = [f for f in entry["representation"] if f["upstream"] != "getPqr_rps"]
+        self.reject("field representation inventory mismatch")
 
     def test_optical_distortion_map_evidence_removal_fails_closed(self):
         self.operation("ImageChannel", "OpticalDistortionMap")["tests"] = []
@@ -201,7 +244,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -222,7 +265,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
 
     def test_calibration_status_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
@@ -253,7 +296,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
 
     def test_calibration_status_nested_item_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))
@@ -341,10 +384,10 @@ class CoverageTests(unittest.TestCase):
         self.reject("duplicate coverage operations identity")
 
     def test_optional_callback_not_implemented(self):
-        # IRMEL-ADA-002 implemented NUC_TempData and IRMEL-ADA-009 implemented
-        # OpticalDistortionMap; LineOfSightQuaternion remains an unimplemented
-        # @Optional Image callback for this borrowed-evidence control.
-        target = self.operation("ImageChannel", "LineOfSightQuaternion")
+        # IRMEL-ADA-002 implemented NUC_TempData, IRMEL-ADA-009 OpticalDistortionMap
+        # and IRMEL-ADA-010 LineOfSightQuaternion; LOS3D_KinematicsType remains an
+        # unimplemented @Optional Image callback for this borrowed-evidence control.
+        target = self.operation("ImageChannel", "LOS3D_KinematicsType")
         self.assertEqual(target["status"], "missing")
         source = self.operation("ImageChannel", "BadPixelList")
         for key in ("status", "native", "ada", "tests"):

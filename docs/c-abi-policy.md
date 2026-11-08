@@ -1,5 +1,43 @@
 # Experimental C ABI policy
 
+## IRMEL-ADA-010 — Image LineOfSightQuaternion metadata
+
+The pinned `@RequiredIfLOSQuaternion`
+`ImageChannel::registerMetadataCallback(LineOfSightQuaternion)` is exposed through one
+independently registered, opt-in owner: `AMS.MEL.IR.Image.Metadata.Open_Line_Of_Sight_Quaternion`,
+`Receive_Line_Of_Sight_Quaternion`, `Line_Of_Sight_Quaternion_Counters` and `Close` on a
+limited-controlled `Line_Of_Sight_Quaternion_Stream` (`ams_mel_ir_image_los_quaternion_*`
+natively). The four-kind `Metadata.Open` and the NUC_TempData, CameraCommandResp and
+OpticalDistortionMap owners never register this overload, and their one-shots are
+independent of it, so providers without quaternion LOS are unaffected. NotSupported raises
+the distinct `AMS.MEL.IR.Line_Of_Sight_Quaternion.Not_Supported`.
+
+Every published getter is represented once in the new
+`ams_mel_ir_line_of_sight_quaternion_v1` (64 bytes on LP64): `getSystemTime().count()` as
+signed `int64` nanoseconds with no epoch inferred, `getQ_xyzw()` as the canonical
+`ams_mel_ir_quaternion_v1` (x, y, z, w; upstream navigation frame) and `getPqr_rps()` as the
+canonical `ams_mel_ir_forward_right_down_v1` (image-frame rates, rad/s). Both nested records
+are reused unchanged. Ada `Line_Of_Sight_Value` reuses `AMS.MEL.IR.Image.Quaternion` and
+`AMS.MEL.IR.Optical_Distortion_Map.Forward_Right_Down` through subtypes. The bridge supplies
+data only: it does no normalization, sign canonicalization, component reordering, Euler or
+frame conversion and no rate clamping. Non-unit and opposite-sign quaternions are delivered
+unchanged. IEEE doubles are forwarded as-is; infinity and NaN reach Ada as non-valid
+`Long_Float` values that callers must test. Successful reception does not show that an
+attitude is normalized, accurate or suitable for an independent pointing calculation.
+
+The queue is bounded and DROP-INCOMING. A null payload is malformed even when the queue is
+full. A full queue drops a non-null payload without allocating a snapshot, and an allocation
+failure rejects the whole event. No other structural rule exists. Registration is one-shot
+per Attached/Running stream, including failed attempts, and runs without bridge locks;
+synchronous delivery is safe. Image Stop/Close wakes receivers and queued values drain.
+Physical teardown waits for in-flight quaternion callbacks after provider channel
+destruction. A failed detach fails the owner after draining. Six `AMS_MEL_0.1` exports extend
+278 → 284; existing exports, records, signatures and enum values are unchanged. Python ctypes
+and Rust sys gain private mirrors only. Coverage: the registration and LineOfSightQuaternion
+move missing → safe_ada (Quaternion and ForwardRightDown were already safe_ada); safe Ada
+operations 46 → 47. Qualification is mock-provider only. See
+[qualification](irmel-ada-010-line-of-sight-quaternion.md).
+
 ## IRMEL-ADA-009 — Optional Image OpticalDistortionMap metadata
 
 The pinned `@Optional` `ImageChannel::registerMetadataCallback(OpticalDistortionMap)`
