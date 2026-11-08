@@ -960,6 +960,32 @@ ams_mel_ir_nuc_event_view.restype = ctypes.c_int32
 ams_mel_ir_nuc_event_close = _LIBRARY.ams_mel_ir_nuc_event_close
 ams_mel_ir_nuc_event_close.argtypes = [ctypes.POINTER(IrNucEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_nuc_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-009 private raw mirror of opt-in Image OpticalDistortionMap
+# reception; deliberately no safe Python ODM API. Reuses IrRowColV1.
+class IrForwardRightDownV1(ctypes.Structure): _fields_ = [("forward", ctypes.c_double), ("right", ctypes.c_double), ("down", ctypes.c_double)]
+class IrForwardRightDownSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(IrForwardRightDownV1)), ("size", ctypes.c_size_t)]
+class IrRowColSpanV1(ctypes.Structure): _fields_ = [("data", ctypes.POINTER(IrRowColV1)), ("size", ctypes.c_size_t)]
+class IrOpticalDistortionMapV1(ctypes.Structure): _fields_ = [("width", ctypes.c_uint32), ("height", ctypes.c_uint32), ("right_size", ctypes.c_uint32), ("down_size", ctypes.c_uint32), ("pixels_per_odm", ctypes.c_uint32), ("right_min", ctypes.c_double), ("right_max", ctypes.c_double), ("down_min", ctypes.c_double), ("down_max", ctypes.c_double), ("frd", IrForwardRightDownSpanV1), ("row_col", IrRowColSpanV1)]
+IrImageOdmMetadataHandle = ctypes.c_void_p
+IrImageOdmEventHandle = ctypes.c_void_p
+ams_mel_ir_image_odm_open = _LIBRARY.ams_mel_ir_image_odm_open
+ams_mel_ir_image_odm_open.argtypes = [IrStreamHandle, ctypes.c_size_t, ctypes.POINTER(IrImageOdmMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_open.restype = ctypes.c_int32
+ams_mel_ir_image_odm_receive = _LIBRARY.ams_mel_ir_image_odm_receive
+ams_mel_ir_image_odm_receive.argtypes = [IrImageOdmMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrImageOdmEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_receive.restype = ctypes.c_int32
+ams_mel_ir_image_odm_get_counters = _LIBRARY.ams_mel_ir_image_odm_get_counters
+ams_mel_ir_image_odm_get_counters.argtypes = [IrImageOdmMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_get_counters.restype = ctypes.c_int32
+ams_mel_ir_image_odm_close = _LIBRARY.ams_mel_ir_image_odm_close
+ams_mel_ir_image_odm_close.argtypes = [ctypes.POINTER(IrImageOdmMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_close.restype = ctypes.c_int32
+ams_mel_ir_image_odm_event_view = _LIBRARY.ams_mel_ir_image_odm_event_view
+ams_mel_ir_image_odm_event_view.argtypes = [IrImageOdmEventHandle, ctypes.POINTER(ctypes.POINTER(IrOpticalDistortionMapV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_event_view.restype = ctypes.c_int32
+ams_mel_ir_image_odm_event_close = _LIBRARY.ams_mel_ir_image_odm_event_close
+ams_mel_ir_image_odm_event_close.argtypes = [ctypes.POINTER(IrImageOdmEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_image_odm_event_close.restype = ctypes.c_int32
 # IRMEL-ADA-003 private raw mirror of C2/Image CameraCommand and opt-in Image
 # CameraCommandResp reception; no public Python API.
 AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ = 0
@@ -2240,6 +2266,12 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_image_odm_open",
+    "ams_mel_ir_image_odm_receive",
+    "ams_mel_ir_image_odm_get_counters",
+    "ams_mel_ir_image_odm_close",
+    "ams_mel_ir_image_odm_event_view",
+    "ams_mel_ir_image_odm_event_close",
     "ams_mel_ir_c2_submit_system_track_data_response",
     "ams_mel_ir_c2_system_response_request_wait",
     "ams_mel_ir_c2_system_response_request_close",

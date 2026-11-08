@@ -1409,6 +1409,37 @@ pub struct AmsMelIrRowColV1 {
     pub column: f64,
 }
 
+/// IRMEL-ADA-009: complete upstream `ForwardRightDown`, in getter order. A
+/// distinct record, never an XYZ `AmsMelIrDirectionalV1`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrForwardRightDownV1 {
+    pub forward: f64,
+    pub right: f64,
+    pub down: f64,
+}
+span!(AmsMelIrForwardRightDownSpanV1, AmsMelIrForwardRightDownV1);
+// Span of the one canonical `AmsMelIrRowColV1`; no second RowCol mirror exists.
+span!(AmsMelIrRowColSpanV1, AmsMelIrRowColV1);
+/// IRMEL-ADA-009: complete upstream `OpticalDistortionMap`. The two spans are
+/// independent of each other and of the scalar dimensions; they borrow storage
+/// owned by the native event until `ams_mel_ir_image_odm_event_close`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrOpticalDistortionMapV1 {
+    pub width: u32,
+    pub height: u32,
+    pub right_size: u32,
+    pub down_size: u32,
+    pub pixels_per_odm: u32,
+    pub right_min: f64,
+    pub right_max: f64,
+    pub down_min: f64,
+    pub down_max: f64,
+    pub frd: AmsMelIrForwardRightDownSpanV1,
+    pub row_col: AmsMelIrRowColSpanV1,
+}
+
 /// Complete `HotRegion`. The geometry keeps its upstream `uint16_t` width.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -2030,6 +2061,18 @@ pub struct AmsMelIrCameraResponseMetadata {
 /// IRMEL-ADA-003: opaque copied CameraCommandResp event.
 #[repr(C)]
 pub struct AmsMelIrCameraResponseEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-009: opaque opt-in Image OpticalDistortionMap owner.
+#[repr(C)]
+pub struct AmsMelIrImageOdmMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-009: opaque deep-copied OpticalDistortionMap event.
+#[repr(C)]
+pub struct AmsMelIrImageOdmEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3447,6 +3490,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_camera_response_event_close(
         event: *mut *mut AmsMelIrCameraResponseEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_open(
+        stream: *mut AmsMelIrStream,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrImageOdmMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_receive(
+        metadata: *mut AmsMelIrImageOdmMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrImageOdmEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_get_counters(
+        metadata: *const AmsMelIrImageOdmMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_close(
+        metadata: *mut *mut AmsMelIrImageOdmMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_event_view(
+        event: *const AmsMelIrImageOdmEvent,
+        out: *mut *const AmsMelIrOpticalDistortionMapV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_image_odm_event_close(
+        event: *mut *mut AmsMelIrImageOdmEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

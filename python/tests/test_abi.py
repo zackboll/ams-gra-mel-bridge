@@ -12,6 +12,52 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_image_odm_abi(self) -> None:
+        """IRMEL-ADA-009: private raw Image OpticalDistortionMap mirror only."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/image_odm_layout_probe.c"), "-o", str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrForwardRightDownV1, "forward", "right", "down")
+        expected += [ctypes.sizeof(_native.IrForwardRightDownSpanV1), _native.IrForwardRightDownSpanV1.size.offset]
+        expected += [ctypes.sizeof(_native.IrRowColSpanV1), _native.IrRowColSpanV1.size.offset]
+        expected += self._layout(_native.IrOpticalDistortionMapV1, "width", "height", "right_size",
+                                 "down_size", "pixels_per_odm", "right_min", "right_max", "down_min",
+                                 "down_max", "frd", "row_col")
+        expected += [ctypes.sizeof(_native.IrRowColV1), _native.IrRowColV1.column.offset]
+        expected += [ctypes.sizeof(_native.IrC2MetadataCountersV1),
+                     _native.IrC2MetadataCountersV1.events_dropped_queue_full.offset,
+                     _native.IrC2MetadataCountersV1.malformed_or_unsupported.offset]
+        self.assertEqual(actual, expected)
+        # The RowCol span reuses the one canonical RowCol mirror.
+        self.assertIs(dict(_native.IrRowColSpanV1._fields_)["data"]._type_, _native.IrRowColV1)
+        self.assertIs(dict(_native.IrForwardRightDownSpanV1._fields_)["data"]._type_,
+                      _native.IrForwardRightDownV1)
+        pointer = ctypes.POINTER
+        owner = _native.IrImageOdmMetadataHandle
+        event = _native.IrImageOdmEventHandle
+        signatures = {
+            "ams_mel_ir_image_odm_open": [_native.IrStreamHandle, ctypes.c_size_t, pointer(owner),
+                                          pointer(ctypes.c_uint32)],
+            "ams_mel_ir_image_odm_receive": [owner, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_image_odm_get_counters": [owner, pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_image_odm_close": [pointer(owner)],
+            "ams_mel_ir_image_odm_event_view": [event, pointer(pointer(_native.IrOpticalDistortionMapV1))],
+            "ams_mel_ir_image_odm_event_close": [pointer(event)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+        # No safe Python ODM API is introduced.
+        import ams_mel
+        self.assertFalse([n for n in dir(ams_mel) if "odm" in n.lower() or "distortion" in n.lower()])
+
     def test_private_c2_system_response_abi(self) -> None:
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
@@ -793,6 +839,12 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_image_odm_open",
+                "ams_mel_ir_image_odm_receive",
+                "ams_mel_ir_image_odm_get_counters",
+                "ams_mel_ir_image_odm_close",
+                "ams_mel_ir_image_odm_event_view",
+                "ams_mel_ir_image_odm_event_close",
                 "ams_mel_ir_c2_submit_system_track_data_response",
                 "ams_mel_ir_c2_system_response_request_wait",
                 "ams_mel_ir_c2_system_response_request_close",
@@ -1068,8 +1120,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 272)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 272)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 278)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 278)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1077,7 +1129,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 272)
+        self.assertEqual(len(exported), 278)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
