@@ -1,5 +1,57 @@
 # Implementation coverage
 
+## PY-MEL-007 — Complete safe Python ordinary IR Image metadata
+
+`ImageStream.open_metadata(queue_capacity=16)` now wraps all four ordinary Image
+families already implemented in C, Ada and Rust, without changing their behavior.
+The independent `ImageMetadataStream` provides `is_open`, `receive(timeout_ms=0)`,
+`counters`, `close`, context management and one-attempt non-raising finalization.
+It retains no Python Image/Session. Registration should precede Start, is valid
+Attached/Running and remains one-shot after partial/failing attempts or Close.
+Invalid local capacity does not consume registration. Frames and optional NUC
+remain independently received/registered; no implicit Start or NUC registration.
+
+Frozen `ImageMetadataEvent` enforces exact kind/payload pairing:
+
+| Native kind / record | Safe Python |
+| --- | --- |
+| 1 / `ams_mel_ir_bad_pixel_list_v1` | `BAD_PIXEL_LIST`, `BadPixelList`, tuple of `BadPixel`, strict `BadPixelReason.UNKNOWN=0` |
+| 2 / `ams_mel_ir_line_of_sight_report_v1` | `LINE_OF_SIGHT_REPORT`, `LineOfSightReport`, distinct `AzimuthElevation` angles/rates and reused public `Euler` |
+| 3 / `ams_mel_ir_line_of_sight_euler_v1` | `LINE_OF_SIGHT_EULER`, `LineOfSightEuler`, complete distinct attitude/rate `Euler` triples |
+| 4 / `ams_mel_ir_navigation_response_v1` | `NAVIGATION_RESPONSE`, `NavigationResponse`, asynchronous metadata, not request completion |
+
+All fields are copied, preserving independent reported pixel size/count, full
+uint32 coordinates/validity flags/IDs, signed int64 nanosecond times without epoch
+inference, IEEE doubles and signed zero. No sorting, coordinate-origin convention,
+rate time denominator, validity-bit interpretation or response status is invented.
+Strict enum/Boolean and checked active-only span/view conversion precede release.
+Returned immutable owned graphs survive native owners/provider unload, not
+zero-copy. Frozen `ImageMetadataCounters` preserves full uint64 values.
+
+Only the six existing `ams_mel_ir_image_metadata_{open,receive,get_counters,close,
+event_view,event_close}` functions are used. Native code owns registration order,
+bounded DROP-INCOMING queue, retention and synchronization; Python adds no
+callback/thread/lock/queue. Parent Stop/Close permits queued drain before
+STREAM_STOPPED. Metadata Close neither stops Image nor unregisters callbacks or
+promises quiescence. Uncertain Close is not retried or silently called successful;
+the first failure survives secondary cleanup failures. External serialization is
+required on each metadata owner and registration versus Image Start/Stop/Close.
+
+Qualification uses the existing compiled mock provider and subprocess-isolated
+global scenarios/lifetime barriers, plus malformed ABI output injection. The
+four-mixed capacity-four fixture reports exactly six received/two dropped, keeping
+four events in kind order. Current source baseline is fetched main
+`e746c49fd3ffe57b37064878cdf8225a3745a35e` (tree
+`7b022169714075949ff0604ad79d94238cf532cd`), containing merged PY-MEL-005/006 and
+RUST-IR-004. Baseline Python count: 354. Final measured qualification and exact
+feature commit/tree are recorded in the delivery PR, avoiding recursive hashes.
+The private ctypes module, native headers/exports/implementation/mocks,
+Ada/Rust implementations, frozen API baseline, policy and workflows are unchanged.
+Prior Health/NUC and Ada/Rust coverage remains intact. No CameraCommandResp,
+OpticalDistortionMap, LineOfSightQuaternion, C2/Track metadata, navigation command,
+real-provider or hardware qualification is added. See the
+[Python usage and contract](../python/README.md#ordinary-ir-image-metadata-py-mel-007).
+
 ## IRMEL-ADA-010 — Image LineOfSightQuaternion metadata
 
 The pinned `@RequiredIfLOSQuaternion`
