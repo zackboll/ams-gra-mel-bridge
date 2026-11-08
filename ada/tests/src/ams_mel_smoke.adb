@@ -8,6 +8,7 @@ with AMS_MEL_IR_Image_Tests;
 with AMS_MEL_IR_Image_Lease_Tests;
 with AMS_MEL_IR_Image_Metadata_Tests;
 with AMS_MEL_IR_Image_ODM_Tests;
+with AMS_MEL_IR_Image_LOS_Quaternion_Tests;
 with AMS_MEL_IR_Image_Navigation_Tests;
 with AMS_MEL_IR_C2_Tests;
 with AMS_MEL_IR_Camera_Command_Tests;
@@ -245,6 +246,7 @@ begin
    AMS_MEL_IR_Image_Lease_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Metadata_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_ODM_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Image_LOS_Quaternion_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Navigation_Tests.Run (Provider_Path);
    AMS_MEL_IR_C2_Tests.Run (Provider_Path);
    AMS_MEL_IR_Camera_Command_Tests.Run (Provider_Path);
