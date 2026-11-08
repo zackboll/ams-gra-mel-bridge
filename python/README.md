@@ -708,7 +708,7 @@ PYTHONPATH="$PWD/python:$PWD/python/tests" \
  python3 -W error -m unittest test_ir_health_metadata -v
 ```
 
-No native ABI/provider, Ada, Rust, workflow or policy changes. No Health/Image
+No native ABI/provider, Ada, Rust, workflow or policy changes. No
 Image/Track/C2/RF metadata, processing, or new transport APIs are added by
 PY-MEL-005. Optional NUC is covered separately below.
 
@@ -840,6 +840,8 @@ not arbitrary sleeps, establish ordering. Existing Health metadata and the addit
 package/import compatibility baseline remain tested unchanged. No native ABI,
 provider mock, Ada/Rust source, policy or workflow changes are needed.
 
-Evidence is **mock-only**, not IR hardware or Squall NUC qualification. PY-MEL-006
-final qualification requires PR #158 (PY-MEL-005) integrated into main; a stacked
-branch containing its reconciled head is not itself evidence of that integration.
+Evidence is **mock-only**, not IR hardware or Squall NUC qualification. PR #158
+(PY-MEL-005) merged into main at `664e86eb4bccf20fb6a6ded36dd31c89e313d505`.
+The reconciled PY-MEL-006 tree preserves that final Health metadata API alongside
+both optional NUC factories. The production ABI remains unchanged from current
+main at **272 exported C symbols**; the seven mappings above add no C exports.

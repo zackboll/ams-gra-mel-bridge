@@ -10,7 +10,8 @@ option(AMS_MEL_BUILD_TESTS "Build native facade and mock-provider tests" OFF)
 set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
     "Native build was configured without caller LD_RUN_PATH" FORCE)
 
-add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp
+add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
+    src/ir_calibration_status.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
@@ -48,9 +49,9 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_calibration_callback;\n        ams_mel_test_calibration_status_callback;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_common_from_instrumentation;\n        ams_mel_test_common_from_track;\n        ams_mel_test_common_from_health;\n        ams_mel_test_common_from_c2;\n        ams_mel_test_common_from_stream;\n        ams_mel_test_common_send_keepalive;\n        ams_mel_test_common_submit_comms_test;\n        ams_mel_test_common_close;\n        ams_mel_test_c2_submission;\n        ams_mel_test_completion_snapshot;\n        ams_mel_test_completion_wait;\n        ams_mel_test_completion_owner;\n        ams_mel_test_completion_boundary;\n        ams_mel_test_completion_owner_notify;\n        ams_mel_test_lost_cleanup_inspect;\n        ams_mel_test_lost_cleanup_rescue;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_rx_observer_from;\n        ams_mel_test_rf_rx_observer_from_last_registration;\n        ams_mel_test_rf_rx_observe;\n        ams_mel_test_rf_rx_waiters;\n        ams_mel_test_rf_rx_drain_waiters;\n        ams_mel_test_rf_rx_preset_counters;\n        ams_mel_test_rf_rx_observer_close;\n        ams_mel_test_rf_rx_failpoint;\n        ams_mel_test_rf_rx_negative_control;\n        ams_mel_test_rf_rx_hold_next;\n        ams_mel_test_rf_rx_permanent_registrations;\n        ams_mel_test_rf_rx_corrupt_view;\n        ams_mel_test_rf_rx_events_closed;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -926,6 +927,135 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_nuc)
     add_test(NAME ir_nuc_contract COMMAND test_ir_nuc)
 
+    # IRMEL-ADA-003: C2/Image CameraCommand and Image CameraCommandResp, compiled as C.
+    add_executable(test_ir_camera_command tests/test_ir_camera_command.c)
+    target_compile_features(test_ir_camera_command PRIVATE c_std_11)
+    set_target_properties(test_ir_camera_command PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_camera_command PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    find_package(Threads REQUIRED)
+    target_link_libraries(test_ir_camera_command PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_camera_command mock_ir_provider)
+    ams_mel_warnings(test_ir_camera_command)
+    add_test(NAME ir_camera_command_contract COMMAND test_ir_camera_command)
+    set_tests_properties(ir_camera_command_contract PROPERTIES TIMEOUT 120)
+    # IR-CAMERA-CI-002: process exit while detached workers still notify.
+    add_test(NAME ir_camera_command_shutdown COMMAND test_ir_camera_command shutdown)
+    set_tests_properties(ir_camera_command_shutdown PROPERTIES TIMEOUT 30)
+    foreach(family IN ITEMS c2 image)
+        foreach(failure allocation worker-launch)
+            add_test(NAME ir_camera_command_${family}_post_send_${failure}
+                COMMAND test_ir_camera_command post-send ${family} ${failure})
+            set_tests_properties(ir_camera_command_${family}_post_send_${failure} PROPERTIES TIMEOUT 30)
+        endforeach()
+        add_test(NAME ir_camera_command_${family}_finish_failure
+            COMMAND test_ir_camera_command finish-failure ${family})
+        set_tests_properties(ir_camera_command_${family}_finish_failure PROPERTIES TIMEOUT 30)
+    endforeach()
+
+    # IRMEL-ADA-007: optional EraseCommand, mock-only compiled C11 contract.
+    add_executable(test_ir_erase tests/test_ir_erase.c)
+    target_compile_features(test_ir_erase PRIVATE c_std_11)
+    set_target_properties(test_ir_erase PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_erase PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_erase PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_erase mock_ir_provider)
+    ams_mel_warnings(test_ir_erase)
+    add_test(NAME ir_erase_contract COMMAND test_ir_erase)
+    set_tests_properties(ir_erase_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_erase_post_send_${failure}
+            COMMAND test_ir_erase post-send ${failure})
+        set_tests_properties(ir_erase_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_erase_finish_failure COMMAND test_ir_erase finish-failure)
+    set_tests_properties(ir_erase_finish_failure PROPERTIES TIMEOUT 30)
+
+    # IRMEL-ADA-008: optional C2 SystemTrackDataResponse, mock-only compiled C11 contract.
+    add_executable(test_ir_c2_system_response tests/test_ir_c2_system_response.c)
+    target_compile_features(test_ir_c2_system_response PRIVATE c_std_11)
+    set_target_properties(test_ir_c2_system_response PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_c2_system_response PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_c2_system_response PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_c2_system_response mock_ir_provider)
+    ams_mel_warnings(test_ir_c2_system_response)
+    add_test(NAME ir_c2_system_response_contract COMMAND test_ir_c2_system_response)
+    set_tests_properties(ir_c2_system_response_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_c2_system_response_post_send_${failure}
+            COMMAND test_ir_c2_system_response post-send ${failure})
+        set_tests_properties(ir_c2_system_response_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_c2_system_response_finish_failure
+        COMMAND test_ir_c2_system_response finish-failure)
+    set_tests_properties(ir_c2_system_response_finish_failure PROPERTIES TIMEOUT 30)
+
+    # IRMEL-ADA-004: C2 CameraProtectCmd and C2 CameraProtectCmdResp, compiled as C.
+    add_executable(test_ir_camera_protect tests/test_ir_camera_protect.c)
+    target_compile_features(test_ir_camera_protect PRIVATE c_std_11)
+    set_target_properties(test_ir_camera_protect PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_camera_protect PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_camera_protect PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_camera_protect mock_ir_provider)
+    ams_mel_warnings(test_ir_camera_protect)
+    add_test(NAME ir_camera_protect_contract COMMAND test_ir_camera_protect)
+    set_tests_properties(ir_camera_protect_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_camera_protect_post_send_${failure}
+            COMMAND test_ir_camera_protect post-send ${failure})
+        set_tests_properties(ir_camera_protect_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_camera_protect_finish_failure COMMAND test_ir_camera_protect finish-failure)
+    set_tests_properties(ir_camera_protect_finish_failure PROPERTIES TIMEOUT 30)
+    add_test(NAME ir_camera_protect_callback_in_flight
+        COMMAND test_ir_camera_protect callback-in-flight)
+    set_tests_properties(ir_camera_protect_callback_in_flight PROPERTIES TIMEOUT 30)
+
+    # IRMEL-ADA-005: optional C2 CalibrationConfiguration request/callback, compiled as C.
+    add_executable(test_ir_calibration_configuration tests/test_ir_calibration_configuration.c)
+    target_compile_features(test_ir_calibration_configuration PRIVATE c_std_11)
+    set_target_properties(test_ir_calibration_configuration PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_calibration_configuration PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_calibration_configuration PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_calibration_configuration mock_ir_provider)
+    ams_mel_warnings(test_ir_calibration_configuration)
+    add_test(NAME ir_calibration_configuration_contract COMMAND test_ir_calibration_configuration)
+    set_tests_properties(ir_calibration_configuration_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_calibration_configuration_post_send_${failure}
+            COMMAND test_ir_calibration_configuration post-send ${failure})
+        set_tests_properties(ir_calibration_configuration_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_calibration_configuration_finish_failure COMMAND test_ir_calibration_configuration finish-failure)
+    set_tests_properties(ir_calibration_configuration_finish_failure PROPERTIES TIMEOUT 30)
+    add_test(NAME ir_calibration_configuration_callback_in_flight
+        COMMAND test_ir_calibration_configuration callback-in-flight)
+    set_tests_properties(ir_calibration_configuration_callback_in_flight PROPERTIES TIMEOUT 30)
+    # IRMEL-ADA-006: optional C2 CalibrationStatus request/callback, compiled as C.
+    add_executable(test_ir_calibration_status tests/test_ir_calibration_status.c)
+    target_compile_features(test_ir_calibration_status PRIVATE c_std_11)
+    set_target_properties(test_ir_calibration_status PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_calibration_status PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_calibration_status PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_calibration_status mock_ir_provider)
+    ams_mel_warnings(test_ir_calibration_status)
+    add_test(NAME ir_calibration_status_contract COMMAND test_ir_calibration_status)
+    set_tests_properties(ir_calibration_status_contract PROPERTIES TIMEOUT 120)
+    foreach(failure allocation worker-launch)
+        add_test(NAME ir_calibration_status_post_send_${failure}
+            COMMAND test_ir_calibration_status post-send ${failure})
+        set_tests_properties(ir_calibration_status_post_send_${failure} PROPERTIES TIMEOUT 30)
+    endforeach()
+    add_test(NAME ir_calibration_status_finish_failure COMMAND test_ir_calibration_status finish-failure)
+    set_tests_properties(ir_calibration_status_finish_failure PROPERTIES TIMEOUT 30)
+    add_test(NAME ir_calibration_status_callback_in_flight
+        COMMAND test_ir_calibration_status callback-in-flight)
+    set_tests_properties(ir_calibration_status_callback_in_flight PROPERTIES TIMEOUT 30)
     add_executable(test_ir_c2 tests/test_ir_c2.c)
     target_compile_features(test_ir_c2 PRIVATE c_std_11)
     set_target_properties(test_ir_c2 PROPERTIES C_EXTENSIONS OFF)

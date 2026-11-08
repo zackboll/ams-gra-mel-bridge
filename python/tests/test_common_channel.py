@@ -1191,8 +1191,15 @@ class PublicSurfaceTests(unittest.TestCase):
         for leaked in ("_native", "IrChannelHandle", "IrChannelCapabilityHandle",
                        "IrChannelCapabilityV1"):
             self.assertNotIn(leaked, ams_mel.__all__)
-        # Task 034B1B1 adds two private raw C2 lifecycle bindings; no public RF API.
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 229)
+        # The private raw inventory follows the production C ABI, including
+        # calibration bindings that do not add a safe public Python API.
+        exports = (Path(__file__).resolve().parents[2] / "native/src/exports.map").read_text()
+        exported = [line.strip().rstrip(";") for line in exports.splitlines()
+                    if line.strip().startswith("ams_mel_")]
+        self.assertTrue(exported)
+        self.assertEqual(len(exported), len(set(exported)))
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), len(set(_native.BOUND_FUNCTION_NAMES)))
+        self.assertCountEqual(_native.BOUND_FUNCTION_NAMES, exported)
         for leaked in ("RfAdminHandle", "RfC2Handle", "RfVaRequestHandle", "RfVaHandle",
                        "RfVaConfigV1", "RfVaResultV1", "RfVaInfoV1",
                        "RfDataHandle", "RfMfaInfoHandle", "RfMfaInfoV1",
@@ -1210,6 +1217,19 @@ class PublicSurfaceTests(unittest.TestCase):
             {name for name in dir(CommsRequest) if not name.startswith("_")},
             {"is_open", "wait", "close"},
         )
+
+    def test_public_exports_rejects_missing_binding(self) -> None:
+        with mock.patch.object(_native, "BOUND_FUNCTION_NAMES", _native.BOUND_FUNCTION_NAMES[1:]):
+            with self.assertRaises(AssertionError):
+                self.test_public_exports()
+
+    def test_public_exports_rejects_duplicate_binding(self) -> None:
+        names = _native.BOUND_FUNCTION_NAMES
+        # Same length, but a duplicate replaces a different binding. A count-only
+        # inventory check would miss this corruption.
+        with mock.patch.object(_native, "BOUND_FUNCTION_NAMES", names[:-1] + (names[0],)):
+            with self.assertRaises(AssertionError):
+                self.test_public_exports()
 
     def test_frozen_result_types(self) -> None:
         report = CommsTestReport(1, 2)

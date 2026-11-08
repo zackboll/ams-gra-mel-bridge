@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 229);
-    assert_eq!(exported.len(), 229);
+    assert_eq!(declared.len(), 272);
+    assert_eq!(exported.len(), 272);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -3360,6 +3360,64 @@ fn declarations_match_the_c_header() {
     );
     layout!(expected, AmsMelRfVaDataPipeGroupSpanV1, data, size);
     layout!(expected, AmsMelRfVaDataPipeConnectionsSnapshotV1, groups);
+    layout!(
+        expected,
+        AmsMelIrCameraCommandV1,
+        command_id,
+        system_time_ns,
+        image_type,
+        width,
+        height,
+        frame_rate_hz,
+        integration_time_ns,
+        row_offset,
+        column_offset,
+        direction,
+        number_of_stages
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraCommandResponseV1,
+        command_id,
+        size,
+        timestamp_ns,
+        command_success
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraCommandResultV1,
+        response,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ as usize,
+        AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ as usize,
+    ]);
+    layout!(
+        expected,
+        AmsMelIrCameraProtectCommandV1,
+        command_id,
+        response_time_ns,
+        protect_flag
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraProtectResponseV1,
+        command_id,
+        response_time_ns,
+        command_response
+    );
+    layout!(
+        expected,
+        AmsMelIrCameraProtectResultV1,
+        response,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_CAMERA_PROTECT_OK as usize,
+        AMS_MEL_IR_CAMERA_PROTECT_UNAVAILABLE as usize,
+        AMS_MEL_IR_CAMERA_PROTECT_UNSUPPORTED as usize,
+    ]);
     expected.extend([
         AMS_MEL_ABI_VERSION_MAJOR as usize,
         AMS_MEL_ABI_VERSION_MINOR as usize,
@@ -4305,4 +4363,146 @@ fn user_context_abi() {
         offset_of!(AmsMelRfJobIntervalConfigSpanV16, size),
     ];
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn calibration_configuration_abi() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let temp = env::temp_dir().join(format!("ams-calibration-layout-{}", std::process::id()));
+    std::fs::create_dir_all(&temp).unwrap();
+    let executable = temp.join("layout");
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/calibration_configuration_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    let mut expected = Vec::new();
+    layout!(
+        expected,
+        AmsMelIrCalibrationConfigurationCommandV1,
+        command_id,
+        request_id
+    );
+    layout!(
+        expected,
+        AmsMelIrSubsystemCalibrationV1,
+        calibration_id,
+        accepted_interface,
+        calibration_item_names,
+        subsystem_component_ids,
+        capability_ids
+    );
+    layout!(expected, AmsMelIrCalibrationConfigurationV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCalibrationConfigurationResultV1,
+        configuration,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_CALIBRATION_NOT_SET as usize,
+        AMS_MEL_IR_CALIBRATION_COMMAND as usize,
+        AMS_MEL_IR_CALIBRATION_STATE_COMMAND as usize,
+    ]);
+    assert_eq!(actual, expected);
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn calibration_status_abi() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let temp = env::temp_dir().join(format!(
+        "ams-calibration-status-layout-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&temp).unwrap();
+    let executable = temp.join("layout");
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args(["-std=c11", "-Wall", "-Wextra", "-Werror"])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/calibration_status_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    let mut expected = Vec::new();
+    layout!(
+        expected,
+        AmsMelIrCalibrationStatusCommandV1,
+        command_id,
+        request_id
+    );
+    layout!(
+        expected,
+        AmsMelIrCompletedCalibrationItemV1,
+        item_name,
+        result,
+        fail_reason
+    );
+    layout!(expected, AmsMelIrCompletedCalibrationItemSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCompletedCalibrationV1,
+        calibration_id,
+        time_tag_ns,
+        result,
+        fail_reason,
+        calibration_items
+    );
+    layout!(expected, AmsMelIrCompletedCalibrationSpanV1, data, size);
+    layout!(
+        expected,
+        AmsMelIrCalibrationStatusV1,
+        active_calibration_ids,
+        completed_calibrations
+    );
+    layout!(
+        expected,
+        AmsMelIrCalibrationStatusResultV1,
+        status,
+        error_code
+    );
+    expected.extend([
+        AMS_MEL_IR_CALIBRATION_RESULT_NOT_SET as usize,
+        AMS_MEL_IR_CALIBRATION_RESULT_COMPLETED as usize,
+        AMS_MEL_IR_CALIBRATION_RESULT_FAILED as usize,
+        AMS_MEL_IR_CALIBRATION_RESULT_INTERRUPTED as usize,
+        AMS_MEL_IR_CALIBRATION_RESULT_NOT_CALIBRATED as usize,
+    ]);
+    assert_eq!(actual, expected);
+    let _: unsafe extern "C" fn(
+        *mut AmsMelIrC2,
+        *const AmsMelIrCalibrationStatusCommandV1,
+        *mut *mut AmsMelIrCalibrationStatusRequest,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_c2_submit_calibration_status;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrCalibrationStatusEvent,
+        *mut *const AmsMelIrCalibrationStatusV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_calibration_status_event_view;
+    std::fs::remove_dir_all(temp).unwrap();
 }

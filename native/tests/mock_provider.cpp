@@ -52,15 +52,20 @@ std::atomic<std::uint64_t> buffers_outstanding{};
 struct C2SendBarrier {
     bool armed{}, entered{}, released{}, throws{};
 };
-C2SendBarrier c2_send_barriers[6];
-unsigned send_entries[6]{};
+/* Families 6 and 7 are the IRMEL-ADA-003 C2 and Image CameraCommand sends;
+ * family 8 is the IRMEL-ADA-004 C2 CameraProtectCmd send, family 9 is the
+ * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
+ * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
+ * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
+C2SendBarrier c2_send_barriers[13];
+unsigned send_entries[13]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 6U || operation > 3U) return 0;
+    if (family >= 13U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -197,11 +202,17 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 }
 
 /* Release a specified worker family in a controlled wave, without depending
- * on the order in which channels were submitted. 0..5 match the test probe. */
+ * on the order in which channels were submitted. 0..5 match the test probe;
+ * 6/7 are the mock C2/Image CameraCommand sends (both probe family Camera);
+ * 8 is the mock C2 CameraProtectCmd send (probe family CameraProtect);
+ * 9 is CalibrationConfigurationCmd (probe family CalibrationConfiguration);
+ * 10 is CalibrationStatusCmd (probe family CalibrationStatus);
+ * 11 is EraseCommand (probe family Erase); 12 is the C2
+ * SystemTrackDataResponse send (probe family C2SystemResponse). */
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 6U) return 0;
+    if (family >= 13U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -1215,6 +1226,365 @@ private:
     std::thread producer_;
 };
 
+/* IRMEL-ADA-003 deterministic CameraCommand / CameraCommandResp fixture shared
+ * by the C2 (send family 6) and Image (send family 7) mock channels. Scenarios
+ * not named "camera-*" model a provider without programmable camera control:
+ * send completes with MEL Unsupported and the Image callback answers
+ * NotSupported. Every delivered command is recorded per family so tests can
+ * prove complete field fidelity and correct overload routing. */
+using CameraCallback = std::function<void(irmel::Channel&, const irmel::CameraCommandResp *const)>;
+std::mutex camera_mutex;
+std::uint64_t camera_last[2][11]{};
+bool camera_seen[2]{};
+unsigned camera_sends[2]{};
+
+extern "C" __attribute__((visibility("default"))) int mock_camera_last_command(
+    unsigned family, std::uint64_t *values, unsigned *sends)
+{
+    if (family < 6U || family > 7U) return 0;
+    std::lock_guard lock{camera_mutex};
+    if (sends) *sends = camera_sends[family - 6U];
+    if (!camera_seen[family - 6U]) return 0;
+    if (values) std::copy(std::begin(camera_last[family - 6U]),
+                          std::end(camera_last[family - 6U]), values);
+    return 1;
+}
+
+irmel::CameraCommandResp camera_response(std::uint32_t id, std::uint32_t size, std::int64_t ns,
+                                         bool success)
+{
+    irmel::CameraCommandResp value;
+    value.setCommandID(id); value.setSize(size);
+    value.setTimestamp(std::chrono::nanoseconds{ns}); value.setCommandSuccess(success);
+    return value;
+}
+
+class MockCamera {
+public:
+    mel::RequestFor<irmel::CameraCommandResp> send(const std::string& scenario, unsigned family,
+                                                   irmel::Channel& channel,
+                                                   const irmel::CameraCommand& command)
+    {
+        c2_send_boundary(family);
+        record(family == 6U ? "c2_camera_command_sent" : "image_camera_command_sent");
+        {
+            std::lock_guard lock{camera_mutex};
+            auto& last = camera_last[family - 6U];
+            last[0] = command.getCommandID();
+            last[1] = static_cast<std::uint64_t>(command.getSystemTime().count());
+            last[2] = static_cast<std::uint32_t>(command.getImageType());
+            last[3] = command.getWidth(); last[4] = command.getHeight();
+            last[5] = command.getFrameRate();
+            last[6] = static_cast<std::uint64_t>(command.getIntegrationTime().count());
+            last[7] = command.getRowOffset(); last[8] = command.getColumnOffset();
+            last[9] = static_cast<std::uint32_t>(command.getDirection());
+            last[10] = command.getNumberOfStages();
+            camera_seen[family - 6U] = true;
+            ++camera_sends[family - 6U];
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CameraCommandResp>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("camera-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
+        if (scenario == "camera-send-throw") throw std::runtime_error("mock camera send exception");
+        if (scenario == "camera-invalid-future") return {};
+        /* Echo: commandID, size = width, timestamp = systemTime. */
+        auto value = std::make_shared<irmel::CameraCommandResp>(camera_response(
+            command.getCommandID(), command.getWidth(), command.getSystemTime().count(),
+            scenario != "camera-unsatisfied"));
+        if (scenario == "camera-held") return held_request(std::move(value), family);
+        if (scenario == "camera-sync" && callback_) {
+            /* Synchronous metadata delivery from inside send, before return. */
+            record("camera_sync_callback_entered");
+            auto event = camera_response(command.getCommandID(), 77U, -77, true);
+            callback_(channel, &event);
+            record("camera_sync_callback_returned");
+        }
+        if (scenario == "camera-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "camera command rejected"}});
+        else if (scenario == "camera-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario == "camera-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "camera-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CameraCommandResp>{}});
+        else if (scenario == "camera-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock camera future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             CameraCallback callback)
+    {
+        if (scenario.rfind("camera-", 0U) != 0U) return Return::NotSupported;
+        record("camera_registration_attempted");
+        callback_ = std::move(callback);
+        if (scenario == "camera-register-throw")
+            throw std::runtime_error("CameraCommandResp registration exception");
+        if (scenario == "camera-register-fail") {
+            auto value = camera_response(5U, 5U, 5, true); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "camera-callback-rich" || scenario == "camera-late") {
+            auto first = camera_response(1U, 0U, std::numeric_limits<std::int64_t>::min(), true);
+            auto second = camera_response(0xffffffffU, 0xffffffffU,
+                                          std::numeric_limits<std::int64_t>::max(), false);
+            auto third = camera_response(0U, 7U, -1, true);
+            callback_(channel, &first); callback_(channel, &second); callback_(channel, &third);
+        } else if (scenario == "camera-callback-malformed") {
+            callback_(channel, nullptr);
+            auto valid = camera_response(9U, 9U, 9, true); callback_(channel, &valid);
+        } else if (scenario == "camera-callback-overflow") {
+            for (std::uint32_t i = 0; i < 5U; ++i) {
+                auto value = camera_response(i, i, i, (i % 2U) == 0U); callback_(channel, &value);
+            }
+        } else if (scenario == "camera-callback-allocation") {
+            auto failed = camera_response(1U, 1U, 1, true); callback_(channel, &failed);
+            auto valid = camera_response(2U, 2U, 2, true); callback_(channel, &valid);
+        }
+        return Return::Success;
+    }
+
+    /* From the owning channel destructor: after the bridge owners are closed. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if ((scenario == "camera-late" || scenario == "camera-register-fail") && callback_) {
+            record("late_camera_callback_invoked");
+            auto value = camera_response(11U, 11U, 11, true); callback_(channel, &value);
+            record("late_camera_callback_returned");
+        }
+    }
+
+private:
+    CameraCallback callback_;
+};
+
+/* IRMEL-ADA-007: test mock only. No erase calls go to any real provider. */
+std::mutex erase_mutex;
+std::uint64_t erase_last[2]{};
+bool erase_seen{};
+unsigned erase_sends{};
+extern "C" __attribute__((visibility("default"))) int mock_erase_last_command(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{erase_mutex};
+    if (sends) *sends = erase_sends;
+    if (!erase_seen) return 0;
+    if (values) std::copy(std::begin(erase_last), std::end(erase_last), values);
+    return 1;
+}
+
+/* IRMEL-ADA-008: test mock only. Exact observation of the last
+ * C2Channel::send(SystemTrackDataResponse) argument: every published getter is
+ * read once and doubles are recorded as raw IEEE-754 bit patterns so signed
+ * zero, infinities and NaN classification are observable without any
+ * floating-point comparison. Index order: systemTime, commandID, requestId,
+ * trackId, range, rangeRate, rangeError, rangeRateError, AzElValid,
+ * rangeValid, inertialAzEl.az, inertialAzEl.el, AzElError.az, AzElError.el. */
+std::mutex c2_system_response_mutex;
+std::uint64_t c2_system_response_last[14]{};
+bool c2_system_response_seen{};
+unsigned c2_system_response_sends{};
+std::uint64_t double_bits(double value)
+{
+    std::uint64_t bits = 0;
+    static_assert(sizeof bits == sizeof value);
+    std::memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+void record_c2_system_response(const irmel::SystemTrackDataResponse& value)
+{
+    const AzEl inertial = value.getInertialAzEl();
+    const AzEl error = value.getAzElError();
+    std::lock_guard lock{c2_system_response_mutex};
+    ++c2_system_response_sends;
+    c2_system_response_seen = true;
+    c2_system_response_last[0] = static_cast<std::uint64_t>(value.getSystemTime().count());
+    c2_system_response_last[1] = value.getCommandID();
+    c2_system_response_last[2] = value.getRequestId();
+    c2_system_response_last[3] = value.getTrackId();
+    c2_system_response_last[4] = double_bits(value.getRange());
+    c2_system_response_last[5] = double_bits(value.getRangeRate());
+    c2_system_response_last[6] = double_bits(value.getRangeError());
+    c2_system_response_last[7] = double_bits(value.getRangeRateError());
+    c2_system_response_last[8] = value.getAzElValid() ? 1U : 0U;
+    c2_system_response_last[9] = value.getRangeValid() ? 1U : 0U;
+    c2_system_response_last[10] = double_bits(inertial.az);
+    c2_system_response_last[11] = double_bits(inertial.el);
+    c2_system_response_last[12] = double_bits(error.az);
+    c2_system_response_last[13] = double_bits(error.el);
+}
+extern "C" __attribute__((visibility("default"))) int mock_c2_system_response_last(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{c2_system_response_mutex};
+    if (sends) *sends = c2_system_response_sends;
+    if (!c2_system_response_seen) return 0;
+    if (values) std::copy(std::begin(c2_system_response_last), std::end(c2_system_response_last), values);
+    return 1;
+}
+
+/* IRMEL-ADA-004 deterministic C2 CameraProtectCmd / CameraProtectCmdResp
+ * fixture (send family 8). Scenarios not named "protect-*" model a provider
+ * without camera self-protection: send completes with MEL Unsupported and the
+ * C2 callback answers NotSupported, exactly as before this task. Every
+ * delivered command is recorded so tests can prove complete field fidelity. */
+using ProtectCallback =
+    std::function<void(irmel::Channel&, const irmel::CameraProtectCmdResp *const)>;
+std::mutex protect_mutex;
+std::uint64_t protect_last[3]{};
+bool protect_seen{};
+unsigned protect_sends{};
+
+extern "C" __attribute__((visibility("default"))) int mock_camera_protect_last_command(
+    std::uint64_t *values, unsigned *sends)
+{
+    std::lock_guard lock{protect_mutex};
+    if (sends) *sends = protect_sends;
+    if (!protect_seen) return 0;
+    if (values) std::copy(std::begin(protect_last), std::end(protect_last), values);
+    return 1;
+}
+
+irmel::CameraProtectCmdResp protect_response(std::uint32_t id, std::int64_t ns,
+                                             std::uint32_t response)
+{
+    irmel::CameraProtectCmdResp value;
+    value.setCommandID(id);
+    value.setResponseTime(std::chrono::nanoseconds{ns});
+    value.setCommandResponse(static_cast<irmel::CmdResp>(response));
+    return value;
+}
+
+class MockCameraProtect {
+public:
+    mel::RequestFor<irmel::CameraProtectCmdResp> send(const std::string& scenario,
+                                                      irmel::Channel& channel,
+                                                      const irmel::CameraProtectCmd& command)
+    {
+        c2_send_boundary(8U);
+        record("c2_camera_protect_sent");
+        {
+            std::lock_guard lock{protect_mutex};
+            protect_last[0] = command.getCommandID();
+            protect_last[1] = static_cast<std::uint64_t>(command.getResponseTime().count());
+            protect_last[2] = command.getProtectFlag() ? 1U : 0U;
+            protect_seen = true;
+            ++protect_sends;
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CameraProtectCmdResp>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("protect-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
+        if (scenario == "protect-send-throw") throw std::runtime_error("mock camera protect send exception");
+        if (scenario == "protect-invalid-future") return {};
+        /* Echo commandID and responseTime; CmdResp selected by the scenario. */
+        std::uint32_t response = 0U;
+        if (scenario == "protect-unavailable") response = 1U;
+        else if (scenario == "protect-unsupported") response = 2U;
+        else if (scenario == "protect-unknown-response") response = 3U;
+        auto value = std::make_shared<irmel::CameraProtectCmdResp>(protect_response(
+            command.getCommandID(), command.getResponseTime().count(), response));
+        if (scenario == "protect-held") return held_request(std::move(value), 8U);
+        if (scenario == "protect-sync" && callback_) {
+            /* Synchronous metadata delivery from inside send, before return. */
+            record("protect_sync_callback_entered");
+            auto event = protect_response(command.getCommandID(), -77, 1U);
+            callback_(channel, &event);
+            record("protect_sync_callback_returned");
+        }
+        if (scenario == "protect-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "camera protect rejected"}});
+        else if (scenario == "protect-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario == "protect-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "protect-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CameraProtectCmdResp>{}});
+        else if (scenario == "protect-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock camera protect future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             ProtectCallback callback)
+    {
+        if (scenario.rfind("protect-", 0U) != 0U) return Return::NotSupported;
+        record("protect_registration_attempted");
+        callback_ = std::move(callback);
+        if (scenario == "protect-register-throw")
+            throw std::runtime_error("CameraProtectCmdResp registration exception");
+        if (scenario == "protect-register-fail") {
+            auto value = protect_response(5U, 5, 0U); callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "protect-callback-rich" || scenario == "protect-late") {
+            /* All three alternatives, unsigned/signed boundaries, arrival order. */
+            auto first = protect_response(1U, std::numeric_limits<std::int64_t>::min(), 0U);
+            auto second = protect_response(0xffffffffU, std::numeric_limits<std::int64_t>::max(), 1U);
+            auto third = protect_response(0U, -1, 2U);
+            callback_(channel, &first); callback_(channel, &second); callback_(channel, &third);
+        } else if (scenario == "protect-callback-malformed") {
+            callback_(channel, nullptr);
+            auto unknown = protect_response(8U, 8, 3U); callback_(channel, &unknown);
+            auto maximum = protect_response(8U, 8, 0xffffffffU); callback_(channel, &maximum);
+            auto valid = protect_response(9U, 9, 2U); callback_(channel, &valid);
+        } else if (scenario == "protect-callback-overflow") {
+            for (std::uint32_t i = 0; i < 5U; ++i) {
+                auto value = protect_response(i, i, i % 3U); callback_(channel, &value);
+            }
+        } else if (scenario == "protect-callback-allocation") {
+            auto failed = protect_response(1U, 1, 0U); callback_(channel, &failed);
+            auto valid = protect_response(2U, 2, 1U); callback_(channel, &valid);
+        } else if (scenario == "protect-in-flight") {
+            producer_ = std::thread{[this, &channel] {
+                const char *base = std::getenv("AMS_MEL_TEST_CAMERA_PROTECT_CALLBACK_BARRIER");
+                if (!base) std::abort();
+                wait_for_file(std::string{base} + ".start");
+                record("protect_callback_entered");
+                create_file(std::string{base} + ".entered");
+                wait_for_file(std::string{base} + ".release");
+                auto value = protect_response(12U, 12, 1U); callback_(channel, &value);
+                record("protect_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
+
+    /* From the owning C2 channel destructor: after the bridge owners closed. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if ((scenario == "protect-late" || scenario == "protect-register-fail") && callback_) {
+            record("late_protect_callback_invoked");
+            auto value = protect_response(11U, 11, 2U); callback_(channel, &value);
+            record("late_protect_callback_returned");
+        }
+        if (scenario == "protect-in-flight") {
+            const char *base = std::getenv("AMS_MEL_TEST_CAMERA_PROTECT_CALLBACK_BARRIER");
+            if (!base) std::abort();
+            create_file(std::string{base} + ".release");
+        }
+        if (producer_.joinable()) producer_.join();
+    }
+
+private:
+    ProtectCallback callback_;
+    std::thread producer_;
+};
+
 #define UNSUPPORTED_CALLBACK(Type) \
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
     { return Return::NotSupported; }
@@ -1232,6 +1602,7 @@ public:
     {
         stopping_ = true;
         nuc_.finish(*this, scenario_);
+        camera_.finish(*this, scenario_);
         if (scenario_ == "image-metadata-navigation-register-fail" ||
             scenario_ == "image-metadata-navigation-register-throw") {
             if (!bad_pixel_callback_) std::abort();
@@ -1304,7 +1675,8 @@ public:
         promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>{std::move(result)});
         return future;
     }
-    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override { return {}; }
+    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand command) override
+    { return camera_.send(scenario_, 7U, *this, command); }
     mel::RequestFor<irmel::NavigationReportResp> send(mel::NavigationReport report) override
     {
         c2_send_boundary(3);
@@ -1577,7 +1949,9 @@ public:
         }
         return Return::Success;
     }
-    UNSUPPORTED_CALLBACK(irmel::CameraCommandResp)
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::CameraCommandResp *const)> callback) override
+    { return camera_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> callback) override
     {
@@ -2064,6 +2438,7 @@ private:
     std::function<void(irmel::Channel&, const irmel::LineOfSightEuler *const)> line_of_sight_euler_callback_;
     std::function<void(irmel::Channel&, const irmel::NavigationReportResp *const)> navigation_response_callback_;
     MockNuc nuc_;
+    MockCamera camera_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -2080,11 +2455,356 @@ mel::RequestFor<T> unsupported_request()
     return promise.get_future();
 }
 
+
+/* IRMEL-ADA-005 independent optional calibration fixture. Send family 9;
+ * promises and admission observations are controlled by the test, never sleeps. */
+using CalibrationCallback = std::function<void(irmel::Channel&, const mel::CalibrationConfiguration *const)>;
+std::mutex calibration_mutex;
+std::uint32_t calibration_last[2]{};
+unsigned calibration_sends{};
+extern "C" __attribute__((visibility("default"))) int mock_calibration_last_command(
+    std::uint32_t *values, unsigned *sends)
+{
+    std::lock_guard lock{calibration_mutex};
+    if (values) std::copy(std::begin(calibration_last), std::end(calibration_last), values);
+    if (sends) *sends = calibration_sends;
+    return calibration_sends != 0U;
+}
+mel::UCI_ID calibration_id(std::uint32_t seed, const std::string& label)
+{
+    mel::UCI_ID id;
+    std::array<std::uint8_t, 16> bytes{};
+    for (unsigned i = 0; i < 16U; ++i) bytes[i] = static_cast<std::uint8_t>(seed + i);
+    id.setUUID(bytes); id.setDescriptiveLabel(label);
+    return id;
+}
+mel::CalibrationConfiguration calibration_values(std::uint32_t seed)
+{
+    mel::CalibrationConfiguration result;
+    for (unsigned i = 0; i < 3U; ++i) {
+        mel::SubsystemCalibration entry;
+        entry.setCalibrationID(calibration_id(seed + i, i == 0U ? "" : "calibration-" + std::to_string(i)));
+        entry.setAcceptedInterface(static_cast<mel::SubsystemCalibrationControlInterfaces>(i));
+        if (i == 1U) {
+            entry.setCalibrationItemName({"", "one", std::string(700U, 'z')});
+            entry.setSubsystemComponentID({calibration_id(32U, "component")});
+            entry.setCapabilityID({calibration_id(64U, "capability-a"), calibration_id(96U, "")});
+        } else if (i == 2U) {
+            entry.setCalibrationItemName({"last"});
+            entry.setSubsystemComponentID({calibration_id(128U, ""), calibration_id(160U, "component-b")});
+        }
+        result.push_back(std::move(entry));
+    }
+    return result;
+}
+class MockCalibrationConfiguration {
+    CalibrationCallback callback_;
+    std::thread producer_;
+public:
+    mel::RequestFor<mel::CalibrationConfiguration> send(const std::string& scenario,
+        irmel::Channel& channel, const irmel::CalibrationConfigurationCmd& command)
+    {
+        c2_send_boundary(9U);
+        {
+            std::lock_guard lock{calibration_mutex};
+            calibration_last[0] = command.getCommandID();
+            calibration_last[1] = command.getRequestID();
+            ++calibration_sends;
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<mel::CalibrationConfiguration>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("calibration-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}}); return future;
+        }
+        if (scenario == "calibration-send-throw") throw std::runtime_error("mock calibration send exception");
+        if (scenario == "calibration-invalid-future") return {};
+        auto value = std::make_shared<mel::CalibrationConfiguration>(calibration_values(command.getCommandID()));
+        if (scenario == "calibration-empty") value->clear();
+        if (scenario == "calibration-one") value->resize(1U);
+        if (scenario == "calibration-sentinel" || scenario == "calibration-unknown")
+            (*value)[0].setAcceptedInterface(static_cast<mel::SubsystemCalibrationControlInterfaces>(
+                scenario == "calibration-sentinel" ? 3U : 0xffffffffU));
+        if (scenario == "calibration-nul") (*value)[1].setCalibrationItemName({std::string{"bad\0name", 8U}});
+        if (scenario == "calibration-utf8") (*value)[1].setCapabilityID({calibration_id(1U, "\xff")});
+        if (scenario == "calibration-held" || scenario == "calibration-sync-held") {
+            if (callback_) { auto event = calibration_values(77U); callback_(channel, &event); }
+            return held_request(std::move(value), 9U);
+        }
+        if (scenario == "calibration-sync" && callback_) {
+            auto event = calibration_values(77U); callback_(channel, &event);
+            /* Destroy/overwrite provider data before the bridge consumer runs. */
+            event.clear(); event.shrink_to_fit();
+        }
+        if (scenario == "calibration-reject" || scenario == "calibration-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                scenario == "calibration-reject-long" ? std::string(700U, 'r') : "calibration rejected"}});
+        else if (scenario == "calibration-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "calibration-null") promise.set_value(Result{std::shared_ptr<mel::CalibrationConfiguration>{}});
+        else if (scenario == "calibration-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock calibration future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+    Return register_callback(const std::string& scenario, irmel::Channel& channel, CalibrationCallback callback)
+    {
+        if (scenario.rfind("calibration-", 0U) != 0U) return Return::NotSupported;
+        callback_ = std::move(callback);
+        if (scenario == "calibration-register-throw") throw std::runtime_error("mock calibration registration exception");
+        if (scenario == "calibration-register-fail") {
+            auto value = calibration_values(1U); callback_(channel, &value); return Return::Fail;
+        }
+        if (scenario == "calibration-callback-rich" || scenario == "calibration-late") {
+            auto value = calibration_values(10U); callback_(channel, &value);
+            value.clear(); callback_(channel, &value);
+            value = calibration_values(20U); callback_(channel, &value);
+        } else if (scenario == "calibration-callback-overflow") {
+            for (unsigned i = 0; i < 5U; ++i) { auto value = calibration_values(i); callback_(channel, &value); }
+        } else if (scenario == "calibration-callback-malformed") {
+            callback_(channel, nullptr);
+            auto value = calibration_values(1U);
+            value[0].setAcceptedInterface(static_cast<mel::SubsystemCalibrationControlInterfaces>(3U)); callback_(channel, &value);
+            value[0].setAcceptedInterface(static_cast<mel::SubsystemCalibrationControlInterfaces>(99U)); callback_(channel, &value);
+            value = calibration_values(1U); value[1].setCalibrationItemName({"\xff"}); callback_(channel, &value);
+            value = calibration_values(1U); value[1].setCapabilityID({calibration_id(1U, std::string{"a\0b",3U})}); callback_(channel, &value);
+            value = calibration_values(10U); callback_(channel, &value);
+        } else if (scenario == "calibration-callback-allocation") {
+            auto value = calibration_values(1U); callback_(channel, &value); callback_(channel, &value);
+        }
+        if (scenario == "calibration-in-flight") {
+            producer_ = std::thread{[this, &channel] {
+                auto value = calibration_values(12U);
+                callback_(channel, &value);
+                record("calibration_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if (producer_.joinable()) producer_.join();
+        if ((scenario == "calibration-late" || scenario == "calibration-register-fail") && callback_) {
+            auto value = calibration_values(99U); callback_(channel, &value);
+            record("late_calibration_callback_returned");
+        }
+    }
+};
+
+/* IRMEL-ADA-006 independent optional CalibrationStatus fixture ("calstatus-"
+ * scenarios). Send family 10; promises are released by the test, never sleeps.
+ * Deterministic rich data: three active IDs (with a duplicate) and five
+ * completed calibrations, so the two collections differ in length and have no
+ * correspondence. Overall and item results each cover all five meaningful
+ * values; time tags cover 0, -1, INT64_MIN, INT64_MAX and a positive value. */
+using CalibrationStatusCallback = std::function<void(irmel::Channel&, const mel::CalibrationStatus *const)>;
+std::mutex calibration_status_mutex;
+std::uint32_t calibration_status_last[2]{};
+unsigned calibration_status_sends{};
+unsigned calibration_status_registrations{};
+extern "C" __attribute__((visibility("default"))) int mock_calibration_status_observe(
+    std::uint32_t *values, unsigned *sends, unsigned *registrations)
+{
+    std::lock_guard lock{calibration_status_mutex};
+    if (values) std::copy(std::begin(calibration_status_last), std::end(calibration_status_last), values);
+    if (sends) *sends = calibration_status_sends;
+    if (registrations) *registrations = calibration_status_registrations;
+    return calibration_status_sends != 0U;
+}
+mel::SubsystemCompletedCalibrationItemType status_item(
+    const std::string& name, mel::SubsystemCalibrationResult result, const std::string& why)
+{
+    mel::SubsystemCompletedCalibrationItemType item{name, why};
+    item.setResult(result);
+    return item;
+}
+mel::CalibrationStatus status_values(std::uint32_t seed)
+{
+    using R = mel::SubsystemCalibrationResult;
+    mel::CalibrationStatus result;
+    result.addActiveCalibrationID(calibration_id(seed, ""));
+    result.addActiveCalibrationID(calibration_id(seed + 40U, "active-b"));
+    result.addActiveCalibrationID(calibration_id(seed, "")); // duplicate kept in order
+    const std::int64_t times[5] = {0, -1, std::numeric_limits<std::int64_t>::min(),
+                                   std::numeric_limits<std::int64_t>::max(), 1700000000123456789LL};
+    const std::string reasons[5] = {"", "", std::string(700U, 'f'), "interrupted by operator",
+                                    "\xc3\xbcnicode not calibrated"};
+    for (unsigned i = 0; i < 5U; ++i) {
+        mel::SubsystemCompletedCalibration entry;
+        entry.setCalibrationID(calibration_id(seed + 100U + i, i == 0U ? "" : "completed-" + std::to_string(i)));
+        entry.setTimeTag(std::chrono::nanoseconds{times[i]});
+        entry.setResult(static_cast<R>(i));
+        entry.setFailReason(reasons[i]);
+        if (i == 1U) entry.addCalibrationItem(status_item("alpha", R::Completed, ""));
+        if (i == 2U) {
+            entry.addCalibrationItem(status_item("", R::Failed, "item failure"));
+            entry.addCalibrationItem(status_item("beta", R::Interrupted, std::string(600U, 'q')));
+            entry.addCalibrationItem(status_item("gamma", R::NotSet, ""));
+        }
+        if (i == 3U) {
+            entry.addCalibrationItem(status_item("delta", R::NotCalibrated, "not calibrated"));
+            entry.addCalibrationItem(status_item("delta", R::NotCalibrated, "not calibrated"));
+        }
+        result.addCompletedCalibration(entry);
+    }
+    return result;
+}
+/* Shape variants for zero/one/multiple and unequal collection lengths. */
+void status_shape(const std::string& scenario, mel::CalibrationStatus& value)
+{
+    if (scenario == "calstatus-empty") value = mel::CalibrationStatus{};
+    if (scenario == "calstatus-active-only") value.setCompletedCalibrations({});
+    if (scenario == "calstatus-completed-only") value.setActiveCalibrationIDs({});
+    if (scenario == "calstatus-one") {
+        value.setActiveCalibrationIDs({value.getActiveCalibrationIDs()[1]});
+        value.setCompletedCalibrations({value.getCompletedCalibrations()[2]});
+    }
+}
+/* Exactly one malformed field per scenario; never remapped by the bridge. */
+void status_corrupt(const std::string& scenario, mel::CalibrationStatus& value)
+{
+    using R = mel::SubsystemCalibrationResult;
+    auto completed = value.getCompletedCalibrations();
+    auto active = value.getActiveCalibrationIDs();
+    if (scenario == "calstatus-sentinel") completed[0].setResult(R::MaxExclusive);
+    else if (scenario == "calstatus-unknown") completed[1].setResult(static_cast<R>(0xffffffffU));
+    else if (scenario == "calstatus-item-sentinel") {
+        auto items = completed[2].getCalibrationItems(); items[0].setResult(R::MaxExclusive);
+        completed[2].setCalibrationItems(items);
+    } else if (scenario == "calstatus-item-unknown") {
+        auto items = completed[3].getCalibrationItems(); items[1].setResult(static_cast<R>(99U));
+        completed[3].setCalibrationItems(items);
+    } else if (scenario == "calstatus-nul") completed[3].setFailReason(std::string{"bad\0reason", 10U});
+    else if (scenario == "calstatus-item-nul") {
+        auto items = completed[2].getCalibrationItems(); items[1].setItemName(std::string{"be\0ta", 5U});
+        completed[2].setCalibrationItems(items);
+    } else if (scenario == "calstatus-utf8") active[1] = calibration_id(1U, "\xff");
+    else if (scenario == "calstatus-item-utf8") {
+        auto items = completed[1].getCalibrationItems(); items[0].setFailReason("\xc0\x80");
+        completed[1].setCalibrationItems(items);
+    } else if (scenario == "calstatus-completed-utf8")
+        completed[4].setCalibrationID(calibration_id(3U, "\xed\xa0\x80"));
+    else return;
+    value.setCompletedCalibrations(completed);
+    value.setActiveCalibrationIDs(active);
+}
+const char *const status_corruptions[] = {
+    "calstatus-sentinel", "calstatus-unknown", "calstatus-item-sentinel", "calstatus-item-unknown",
+    "calstatus-nul", "calstatus-item-nul", "calstatus-utf8", "calstatus-item-utf8",
+    "calstatus-completed-utf8"};
+class MockCalibrationStatus {
+    CalibrationStatusCallback callback_;
+    std::thread producer_;
+public:
+    mel::RequestFor<mel::CalibrationStatus> send(const std::string& scenario,
+        irmel::Channel& channel, const irmel::CalibrationStatusCmd& command)
+    {
+        c2_send_boundary(10U);
+        {
+            std::lock_guard lock{calibration_status_mutex};
+            calibration_status_last[0] = command.getCommandID();
+            calibration_status_last[1] = command.getRequestID();
+            ++calibration_status_sends;
+        }
+        using Result = mel::ErrorOr<std::shared_ptr<mel::CalibrationStatus>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario.rfind("calstatus-", 0U) != 0U) {
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}}); return future;
+        }
+        if (scenario == "calstatus-callback-capacity") {
+            /* Test-driven synchronous callbacks, with no background timing or new
+             * facade hook. Reject the request so its completion cannot consume the
+             * snapshot-copy failpoint used to observe callback allocation. */
+            auto value = status_values(command.getCommandID());
+            const auto mode = command.getRequestID();
+            if (mode > 0U && mode <= std::size(status_corruptions))
+                status_corrupt(status_corruptions[mode - 1U], value);
+            callback_(channel, mode == std::size(status_corruptions) + 1U ? nullptr : &value);
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+            return future;
+        }
+        if (scenario == "calstatus-send-throw") throw std::runtime_error("mock calibration status send exception");
+        if (scenario == "calstatus-invalid-future") return {};
+        auto value = std::make_shared<mel::CalibrationStatus>(status_values(command.getCommandID()));
+        status_shape(scenario, *value);
+        status_corrupt(scenario, *value);
+        if (scenario == "calstatus-held" || scenario == "calstatus-sync-held") {
+            if (callback_) { auto event = status_values(77U); callback_(channel, &event); }
+            return held_request(std::move(value), 10U);
+        }
+        if (scenario == "calstatus-reject" || scenario == "calstatus-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidState,
+                scenario == "calstatus-reject-long" ? std::string(700U, 'r') : "calibration status rejected"}});
+        else if (scenario == "calstatus-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario == "calstatus-null") promise.set_value(Result{std::shared_ptr<mel::CalibrationStatus>{}});
+        else if (scenario == "calstatus-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock calibration status future exception"}));
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             CalibrationStatusCallback callback)
+    {
+        {
+            std::lock_guard lock{calibration_status_mutex};
+            ++calibration_status_registrations;
+        }
+        if (scenario.rfind("calstatus-", 0U) != 0U) return Return::NotSupported;
+        callback_ = std::move(callback);
+        if (scenario == "calstatus-register-throw")
+            throw std::runtime_error("mock calibration status registration exception");
+        if (scenario == "calstatus-register-fail") {
+            auto value = status_values(1U); callback_(channel, &value); return Return::Fail;
+        }
+        if (scenario == "calstatus-callback-rich" || scenario == "calstatus-late") {
+            auto value = status_values(10U); callback_(channel, &value);
+            value = mel::CalibrationStatus{}; callback_(channel, &value);
+            value = status_values(20U); callback_(channel, &value);
+        } else if (scenario == "calstatus-callback-overflow") {
+            for (unsigned i = 0; i < 5U; ++i) { auto value = status_values(i); callback_(channel, &value); }
+        } else if (scenario == "calstatus-callback-malformed") {
+            callback_(channel, nullptr);
+            for (const char *corruption : status_corruptions) {
+                auto value = status_values(1U); status_corrupt(corruption, value); callback_(channel, &value);
+            }
+            auto value = status_values(10U); callback_(channel, &value);
+        } else if (scenario == "calstatus-callback-allocation") {
+            auto value = status_values(1U); callback_(channel, &value); callback_(channel, &value);
+        } else if (scenario == "calstatus-callback-shapes") {
+            for (const char *shape : {"calstatus-empty", "calstatus-active-only", "calstatus-completed-only",
+                                      "calstatus-one"}) {
+                auto value = status_values(30U); status_shape(shape, value); callback_(channel, &value);
+            }
+        }
+        if (scenario == "calstatus-in-flight") {
+            producer_ = std::thread{[this, &channel] {
+                auto value = status_values(12U);
+                callback_(channel, &value);
+                record("calibration_status_callback_returned");
+            }};
+        }
+        return Return::Success;
+    }
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        if (producer_.joinable()) producer_.join();
+        if ((scenario == "calstatus-late" || scenario == "calstatus-register-fail") && callback_) {
+            auto value = status_values(99U); callback_(channel, &value);
+            record("late_calibration_status_callback_returned");
+        }
+    }
+};
+
 class MockC2Channel final : public irmel::C2Channel {
 public:
     explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockC2Channel() override
     {
+        protect_.finish(*this, scenario_);
+        calibration_.finish(*this, scenario_);
+        calibration_status_.finish(*this, scenario_);
         if (scenario_ == "comms-register-retain-fail" && comms_callback_) {
             irmel::ChannelCommsTestRep report{91U, 92U};
             record("retained_comms_callback_invoked");
@@ -2228,18 +2948,122 @@ public:
         }
         return future;
     }
-    mel::RequestFor<mel::CalibrationConfiguration> send(irmel::CalibrationConfigurationCmd) override
-    { return unsupported_request<mel::CalibrationConfiguration>(); }
-    mel::RequestFor<mel::CalibrationStatus> send(irmel::CalibrationStatusCmd) override
-    { return unsupported_request<mel::CalibrationStatus>(); }
-    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand) override
-    { return unsupported_request<irmel::CameraCommandResp>(); }
-    mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd) override
-    { return unsupported_request<irmel::CameraProtectCmdResp>(); }
-    mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand) override
-    { return unsupported_request<irmel::EraseCommandType>(); }
-    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse) override
-    { return unsupported_request<irmel::CommandStatus>(); }
+    mel::RequestFor<mel::CalibrationConfiguration> send(irmel::CalibrationConfigurationCmd command) override
+    { return calibration_.send(scenario_, *this, command); }
+    mel::RequestFor<mel::CalibrationStatus> send(irmel::CalibrationStatusCmd command) override
+    {
+        if (!enabled_ && scenario_.rfind("calstatus-", 0U) == 0U)
+            throw std::logic_error("CalibrationStatusCmd sent before C2 enable");
+        return calibration_status_.send(scenario_, *this, command);
+    }
+    mel::RequestFor<irmel::CameraCommandResp> send(irmel::CameraCommand command) override
+    {
+        if (!enabled_ && scenario_.rfind("camera-", 0U) == 0U)
+            throw std::logic_error("CameraCommand sent before C2 enable");
+        return camera_.send(scenario_, 6U, *this, command);
+    }
+    mel::RequestFor<irmel::CameraProtectCmdResp> send(irmel::CameraProtectCmd command) override
+    {
+        if (!enabled_ && scenario_.rfind("protect-", 0U) == 0U)
+            throw std::logic_error("CameraProtectCmd sent before C2 enable");
+        return protect_.send(scenario_, *this, command);
+    }
+    mel::RequestFor<irmel::EraseCommandType> send(irmel::EraseCommand command) override
+    {
+        c2_send_boundary(11U);
+        {
+            std::lock_guard lock{erase_mutex};
+            ++erase_sends;
+            erase_seen = true;
+            erase_last[0] = command.getCommandID();
+            erase_last[1] = static_cast<std::uint32_t>(command.getEraseCommandType());
+        }
+        record("c2_erase_sent");
+        if (scenario_ == "erase-send-throw") throw std::runtime_error{"mock erase send exception"};
+        if (scenario_ == "erase-invalid-future") return {};
+        auto response = command.getEraseCommandType();
+        if (scenario_.rfind("erase-response-", 0U) == 0U)
+            response = static_cast<irmel::EraseCommandType>(std::stoul(scenario_.substr(15U)));
+        auto value = std::make_shared<irmel::EraseCommandType>(response);
+        if (scenario_ == "erase-held") return held_request(std::move(value), 11U);
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::EraseCommandType>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "erase-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, "erase rejected"}});
+        else if (scenario_ == "erase-reject-nul")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"a\0b", 3U}}});
+        else if (scenario_ == "erase-reject-utf8")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"\xff"}}});
+        else if (scenario_ == "erase-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources, long_rejection_description()}});
+        else if (scenario_ == "erase-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario_ == "erase-null")
+            promise.set_value(Result{std::shared_ptr<irmel::EraseCommandType>{}});
+        else if (scenario_ == "erase-future-throw")
+            promise.set_exception(std::make_exception_ptr(std::runtime_error{"mock erase future exception"}));
+        else if (scenario_.rfind("erase-", 0U) != 0U)
+            promise.set_value(Result{mel::Error{mel::ErrorCode::Unsupported}});
+        else promise.set_value(Result{std::move(value)});
+        return future;
+    }
+    /* IRMEL-ADA-008 deterministic C2 SystemTrackDataResponse fixture (send
+     * family 12). Scenarios not named "c2-sys-*" keep the pre-existing
+     * Unsupported behavior. "c2-sys-derived" derives CommandState from the
+     * input requestId and CannotComply from trackId (raw, including unknown
+     * values) and selects the reason text from the range code. */
+    mel::RequestFor<irmel::CommandStatus> send(irmel::SystemTrackDataResponse response) override
+    {
+        c2_send_boundary(12U);
+        record_c2_system_response(response);
+        record("c2_system_track_data_response_sent");
+        const bool owned = scenario_.rfind("c2-sys-", 0U) == 0U;
+        if (!owned) return unsupported_request<irmel::CommandStatus>();
+        if (!enabled_) throw std::logic_error("C2 SystemTrackDataResponse sent before C2 enable");
+        if (scenario_ == "c2-sys-send-throw")
+            throw std::runtime_error{"mock C2 system response send exception"};
+        if (scenario_ == "c2-sys-invalid-future") return {};
+        auto status = std::make_shared<irmel::CommandStatus>();
+        status->setCommandID(response.getCommandID());
+        status->setState(irmel::CommandState::Accepted);
+        status->setReasonID(irmel::CannotComply::NotSet);
+        status->setReasonDescription("C2 system response accepted \xC2\xB5");
+        if (scenario_ == "c2-sys-derived") {
+            status->setState(static_cast<irmel::CommandState>(response.getRequestId()));
+            status->setReasonID(static_cast<irmel::CannotComply>(response.getTrackId()));
+            const double code = response.getRange();
+            if (code == 1.0) status->setReasonDescription(long_rejection_description());
+            else if (code == 2.0) status->setReasonDescription(std::string{"bad\xC3\x28"});
+            else if (code == 3.0) status->setReasonDescription(std::string{"a\0b", 3U});
+            else if (code == 4.0) status->setReasonDescription(std::string{});
+            else status->setReasonDescription("C2 derived \xC2\xB5");
+        }
+        if (scenario_ == "c2-sys-held" || scenario_ == "c2-sys-mixed")
+            return held_request(std::move(status), 12U);
+        using Result = mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>;
+        std::promise<Result> promise;
+        auto future = promise.get_future();
+        if (scenario_ == "c2-sys-reject")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters,
+                                                "C2 system response rejected \xC2\xB5"}});
+        else if (scenario_ == "c2-sys-reject-long")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InsufficientResources,
+                                                long_rejection_description()}});
+        else if (scenario_ == "c2-sys-reject-utf8")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"\xff"}}});
+        else if (scenario_ == "c2-sys-reject-nul")
+            promise.set_value(Result{mel::Error{mel::ErrorCode::InvalidParameters, std::string{"a\0b", 3U}}});
+        else if (scenario_ == "c2-sys-unknown-error")
+            promise.set_value(Result{mel::Error{static_cast<mel::ErrorCode>(99)}});
+        else if (scenario_ == "c2-sys-null")
+            promise.set_value(Result{std::shared_ptr<irmel::CommandStatus>{}});
+        else if (scenario_ == "c2-sys-future-throw")
+            promise.set_exception(std::make_exception_ptr(
+                std::runtime_error{"mock C2 system response future exception"}));
+        else promise.set_value(Result{std::move(status)});
+        return future;
+    }
     mel::RequestFor<Return> send(irmel::ConfigSetCommand command) override
     {
         record("config_set_sent");
@@ -2469,9 +3293,13 @@ public:
         }
         return Return::Success;
     }
-    C2_UNSUPPORTED_CALLBACK(mel::CalibrationConfiguration)
-    C2_UNSUPPORTED_CALLBACK(irmel::CameraProtectCmdResp)
-    C2_UNSUPPORTED_CALLBACK(mel::CalibrationStatus)
+    Return registerMetadataCallback(CalibrationCallback callback) override
+    { return calibration_.register_callback(scenario_, *this, std::move(callback)); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::CameraProtectCmdResp *const)> callback) override
+    { return protect_.register_callback(scenario_, *this, std::move(callback)); }
+    Return registerMetadataCallback(CalibrationStatusCallback callback) override
+    { return calibration_status_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const mel::BIT_Status *const)> callback) override
     {
         bit_status_callback_ = std::move(callback);
@@ -2512,6 +3340,11 @@ private:
     std::function<void(irmel::Channel&, const mel::BIT_Status *const)> bit_status_callback_;
     std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> comms_callback_;
     mutable unsigned capability_calls_{};
+    /* No C2 CameraCommandResp callback exists upstream; never fabricated. */
+    MockCamera camera_;
+    MockCameraProtect protect_;
+    MockCalibrationConfiguration calibration_;
+    MockCalibrationStatus calibration_status_;
 };
 #undef C2_UNSUPPORTED_CALLBACK
 
@@ -3428,7 +4261,9 @@ public:
 
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>> promise;
         auto future = promise.get_future();
-        if (scenario_ == "completion-scale")
+        /* IRMEL-ADA-008 mixed C2/Track accounting fixture: the Track overload is
+         * held on its own family 5 gate, independently of C2 family 12. */
+        if (scenario_ == "completion-scale" || scenario_ == "c2-sys-mixed")
             return held_request(rich_track_response_command_status(), 5);
         if (scenario_ == "track-response-reject")
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::CommandStatus>>{

@@ -263,6 +263,34 @@ package AMS.MEL.IR is
    --  AMS.MEL.IR.Channel.View; its operations live in AMS.MEL.IR.Channel and
    --  the typed-family As_Channel conversions. It never owns the typed family
    --  state, Session, provider Channel, Control, or provider library.
+   --  IRMEL-ADA-003 limited controlled owner of exactly one native CameraCommand
+   --  request. Applications use it only through AMS.MEL.IR.Camera.Camera_Request;
+   --  C2 and Image submissions fill it from their own private handles.
+   type Camera_Request_Owner is tagged limited private;
+   --  Limited controlled request owner; finalization is non-raising and does not
+   --  cancel pending native work, which retains the provider graph independently.
+
+   type Erase_Request_Owner is tagged limited private;
+   --  Limited controlled observer used through AMS.MEL.IR.Erase.Erase_Request.
+   --  Non-raising finalization never cancels pending native provider execution.
+
+   --  IRMEL-ADA-004 limited controlled owner of exactly one native CameraProtectCmd
+   --  request. Applications use it only through
+   --  AMS.MEL.IR.Camera_Protection.Protection_Request; C2 submission fills it.
+   type Camera_Protection_Request_Owner is tagged limited private;
+   --  Limited controlled request owner; finalization is non-raising and does not
+   --  cancel pending native work, which retains the provider graph independently.
+
+   type Calibration_Configuration_Request_Owner is tagged limited private;
+   --  Limited controlled implementation owner used through
+   --  AMS.MEL.IR.Calibration_Configuration.Configuration_Request. Finalization is
+   --  non-raising and never cancels native work or its retained provider graph.
+
+   type Calibration_Status_Request_Owner is tagged limited private;
+   --  Limited controlled implementation owner used through
+   --  AMS.MEL.IR.Calibration_Status.Status_Request. Finalization is non-raising
+   --  and never cancels native work or its retained provider graph.
+
    type Channel_View is limited private;
    --  Limited controlled owner of a weak common-channel view, used through the
    --  channel child package's View subtype. It owns only the view handle and
@@ -303,4 +331,36 @@ private
    end record;
    overriding
    procedure Finalize (Object : in out Channel_View);
+
+   type Camera_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Camera_Command_Request_Handle :=
+        AMS.MEL_C_API.Null_Camera_Command_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Camera_Request_Owner);
+
+   type Erase_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Erase_Request_Handle := AMS.MEL_C_API.Null_Erase_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Erase_Request_Owner);
+   type Camera_Protection_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Camera_Protect_Request_Handle :=
+        AMS.MEL_C_API.Null_Camera_Protect_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Camera_Protection_Request_Owner);
+   type Calibration_Configuration_Request_Owner is new Ada.Finalization.Limited_Controlled
+   with record
+      Handle : aliased AMS.MEL_C_API.Calibration_Configuration_Request_Handle :=
+        AMS.MEL_C_API.Null_Calibration_Configuration_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Calibration_Configuration_Request_Owner);
+   type Calibration_Status_Request_Owner is new Ada.Finalization.Limited_Controlled with record
+      Handle : aliased AMS.MEL_C_API.Calibration_Status_Request_Handle :=
+        AMS.MEL_C_API.Null_Calibration_Status_Request;
+   end record;
+   overriding
+   procedure Finalize (Object : in out Calibration_Status_Request_Owner);
 end AMS.MEL.IR;

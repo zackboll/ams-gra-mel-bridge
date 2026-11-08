@@ -3,7 +3,11 @@
 
 #include <ams_mel/abi.h>
 
-/* Test facade only. No declarations are installed with the public API. */
+/* Test facade only. No declarations are installed with the public API.
+ * ams_mel_test_admission operations: 0 bind token to a Session's admission,
+ * 1 snapshot active/maximum, 2 release token, 3 wait (bounded, 15 s) until
+ * that Session's active count is <= *active on entry; on return *active is
+ * the observed count and the result is 0 on timeout. */
 typedef struct ams_mel_test_admission_token ams_mel_test_admission_token;
 extern int ams_mel_test_admission(
     const ams_mel_session *, unsigned, ams_mel_test_admission_token **,
