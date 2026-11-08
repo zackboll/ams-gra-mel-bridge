@@ -1,5 +1,6 @@
 with Interfaces.C;
 with System;
+with AMS.MEL.IR.Camera_Conversion;
 
 package body AMS.MEL.IR.C2 is
    use type Interfaces.Integer_32;
@@ -519,6 +520,33 @@ package body AMS.MEL.IR.C2 is
          raise Provider_Error with Failure_Message (Diagnostic);
       end if;
    end Wait;
+
+   function Submit_Camera_Command
+     (Channel : Control_Channel; Command : AMS.MEL.IR.Camera.Camera_Command)
+      return AMS.MEL.IR.Camera.Camera_Request
+   is
+      Raw        : aliased C.IR_Camera_Command_V1 := Camera_Conversion.To_Raw (Command);
+      Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
+      Required   : aliased C.Size_T := 0;
+   begin
+      if Channel.Handle = C.Null_C2 then
+         raise Provider_Error with "IR C2 channel is closed";
+      end if;
+      return Result : AMS.MEL.IR.Camera.Camera_Request do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_C2_Submit_Camera_Command
+                (Channel.Handle,
+                 Raw'Access,
+                 Camera_Request_Owner (Result).Handle'Access,
+                 Diagnostic'Address,
+                 Diagnostic'Length,
+                 Required'Access);
+         begin
+            Check_Submission (Code, Failure_Message (Diagnostic));
+         end;
+      end return;
+   end Submit_Camera_Command;
 
    procedure Close (Request : in out Mode_Request) is
       Diagnostic : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];

@@ -1260,6 +1260,23 @@ bool claim_image_nuc(
     return true;
 }
 
+bool claim_image_camera_response(
+    ImageStreamState& stream,
+    const std::shared_ptr<CameraResponseState>& state,
+    std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
+{
+    std::lock_guard lock{stream.callback->mutex};
+    if (!stream.image_channel || stream.callback->lifecycle == Lifecycle::Stopping ||
+        stream.callback->lifecycle == Lifecycle::Stopped ||
+        stream.callback->lifecycle == Lifecycle::Failed ||
+        stream.image_camera_response_attempted)
+        return false;
+    stream.image_camera_response_attempted = true;
+    stream.image_camera_response = state;
+    image_channel = stream.image_channel;
+    return true;
+}
+
 bool claim_navigation_submission(
     ImageStreamState& stream,
     std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
@@ -1651,6 +1668,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
 {
     std::shared_ptr<ImageMetadataState> metadata;
     std::shared_ptr<NucState> nuc;
+    std::shared_ptr<CameraResponseState> camera;
     try {
         {
             std::lock_guard lock{stream.callback->mutex};
@@ -1660,9 +1678,11 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
             stream.callback->ready.notify_all();
             metadata = stream.image_metadata;
             nuc = stream.image_nuc;
+            camera = stream.image_camera_response;
         }
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
+        image_camera_response_stream_stopped(camera);
     } catch (...) {
         /* Logical stop must remain noexcept. */
     }
@@ -1768,6 +1788,7 @@ ImageCleanupOutcome image_stream_cleanup(
     std::shared_ptr<irmel::ImageChannel> image_channel;
     std::shared_ptr<ImageMetadataState> metadata;
     std::shared_ptr<NucState> nuc;
+    std::shared_ptr<CameraResponseState> camera;
     bool disable_needed = false;
     bool owner_closed = false;
     try {
@@ -1823,6 +1844,7 @@ ImageCleanupOutcome image_stream_cleanup(
             stream.image_channel.reset();
             metadata = stream.image_metadata;
             nuc = stream.image_nuc;
+            camera = stream.image_camera_response;
         }
 
         image_cleanup_barrier("before-detach");
@@ -1874,6 +1896,7 @@ ImageCleanupOutcome image_stream_cleanup(
 
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
+        image_camera_response_stream_stopped(camera);
 
         std::size_t in_flight = stream.callback->callbacks_in_flight.load(
             std::memory_order_acquire);

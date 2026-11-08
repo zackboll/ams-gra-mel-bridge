@@ -17,6 +17,7 @@ struct CallbackState;
 class Listener;
 struct ImageMetadataState;
 struct NucState;
+struct CameraResponseState;
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -80,6 +81,10 @@ struct ImageStreamState {
      * four-kind metadata owner above. Guarded by callback->mutex. */
     std::shared_ptr<NucState> image_nuc;
     bool image_nuc_attempted{false};
+    /* IRMEL-ADA-003 opt-in @RequiredIfCameraCtrl CameraCommandResp owner,
+     * independent of both owners above. Guarded by callback->mutex. */
+    std::shared_ptr<CameraResponseState> image_camera_response;
+    bool image_camera_response_attempted{false};
     BufferFactory buffer_factory{};
     std::string instance;
     std::size_t buffer_count{};
@@ -140,6 +145,15 @@ struct ams_mel_ir_stream {
 
 void image_metadata_stream_stopped(const std::shared_ptr<ImageMetadataState>& state) noexcept;
 void image_nuc_stream_stopped(const std::shared_ptr<NucState>& state) noexcept;
+/* IRMEL-ADA-003. Never called with callback->mutex held. */
+void image_camera_response_stream_stopped(
+    const std::shared_ptr<CameraResponseState>& state) noexcept;
+/* Records the one-shot and publishes state under callback->mutex; same
+ * eligibility as claim_image_nuc. Defined in ir_stream.cpp. */
+bool claim_image_camera_response(
+    ImageStreamState& stream,
+    const std::shared_ptr<CameraResponseState>& state,
+    std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
 bool claim_image_nuc(
     ImageStreamState& stream,
     const std::shared_ptr<NucState>& state,

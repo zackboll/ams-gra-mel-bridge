@@ -1,6 +1,7 @@
 with Ada.Containers.Vectors;
 private with Ada.Finalization;
 private with Ada.Strings.Unbounded;
+with AMS.MEL.IR.Camera;
 with AMS.MEL.IR.Channel;
 with AMS.MEL.Status;
 with Interfaces;
@@ -804,6 +805,20 @@ package AMS.MEL.IR.Image is
    --  pending.
    --  @exception Provider_Error Closed request, provider exception, invalid result, or
    --  native/deferred-cleanup failure.
+   function Submit_Camera_Command
+     (Object : AMS.MEL.IR.Image_Stream; Command : AMS.MEL.IR.Camera.Camera_Command)
+      return AMS.MEL.IR.Camera.Camera_Request;
+   --  Submit a complete CameraCommand through ImageChannel::send(CameraCommand) while the stream
+   --  is Attached or Running, never through C2. Every field is copied exactly; the provider is
+   --  called without bridge locks. A pending request retains the stream's provider graph after
+   --  request, stream Stop/Close and Session closure; stream teardown is deferred and the command
+   --  is not cancelled. The opt-in Image CameraCommandResp callback is an independent source and
+   --  never completes this request. Admission exhaustion raises the resource-exhaustion
+   --  exception; a closed/stopped stream and other failures raise a provider error.
+   --  @param Object Attached or running image stream.
+   --  @param Command Complete owned command to copy.
+   --  @return Limited request owner whose result may report Command_Success False.
+
    procedure Close (Request : in out Navigation_Request);
    --  Idempotently closes the public request handle without cancelling provider work. Pending
    --  completion independently retains the native graph, possibly beyond stream and Session

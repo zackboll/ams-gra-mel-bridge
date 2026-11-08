@@ -11,11 +11,21 @@
 #include <string_view>
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
+#include "internal/completion_probe.hpp"
+
+#include <chrono>
+
 /* This token deliberately owns no provider-dependent state. */
 struct ams_mel_test_admission_token {
     std::shared_ptr<CompletionAdmission> admission;
 };
 
+/* op 0 binds a token to one Session's admission, 1 snapshots it, 2 releases
+ * the token, and 3 waits (bounded) until that Session's active count is at
+ * most *active, then reports the observed count. Op 3 is Session-specific:
+ * every CompletionPermit lives in a WorkerInput whose FinalOwner (declared
+ * first, destroyed last) notifies observation_ready after the permit has been
+ * released, so no release can be missed. */
 extern "C" __attribute__((visibility("default"))) int ams_mel_test_admission(
     const ams_mel_session *session, unsigned operation,
     ams_mel_test_admission_token **token, std::uint32_t *active,
@@ -29,10 +39,20 @@ extern "C" __attribute__((visibility("default"))) int ams_mel_test_admission(
             return 1;
         }
         if (operation == 2U) { delete *token; *token = nullptr; return 1; }
-        if (operation != 1U || !*token || !active || !maximum) return 0;
-        *active = (*token)->admission->active.load(std::memory_order_acquire);
-        *maximum = (*token)->admission->maximum;
-        return 1;
+        if ((operation != 1U && operation != 3U) || !*token || !active || !maximum) return 0;
+        const auto& admission = *(*token)->admission;
+        bool ready = true;
+        if (operation == 3U) {
+            const std::uint32_t target = *active;
+            std::unique_lock lock{ams_mel_test_completion::observation_mutex};
+            ready = ams_mel_test_completion::observation_ready.wait_for(
+                lock, std::chrono::seconds{15}, [&] {
+                    return admission.active.load(std::memory_order_acquire) <= target;
+                });
+        }
+        *active = admission.active.load(std::memory_order_acquire);
+        *maximum = admission.maximum;
+        return ready ? 1 : 0;
     } catch (...) { return 0; }
 }
 #endif

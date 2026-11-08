@@ -1307,6 +1307,33 @@ int main(void)
         ams_mel_status_t (*many)(ams_mel_rf_virtual_aperture *, ams_mel_string_view_v1, ams_mel_string_view_v1, ams_mel_u64_span_v1, uint32_t *, char *, size_t, size_t *) = ams_mel_rf_virtual_aperture_associate_data_pipe_endpoints;
         (void)create; (void)view; (void)close; (void)single; (void)many;
     }
+    RECORD(ams_mel_ir_camera_command_v1,
+        FIELD(ams_mel_ir_camera_command_v1,command_id); FIELD(ams_mel_ir_camera_command_v1,system_time_ns);
+        FIELD(ams_mel_ir_camera_command_v1,image_type); FIELD(ams_mel_ir_camera_command_v1,width);
+        FIELD(ams_mel_ir_camera_command_v1,height); FIELD(ams_mel_ir_camera_command_v1,frame_rate_hz);
+        FIELD(ams_mel_ir_camera_command_v1,integration_time_ns); FIELD(ams_mel_ir_camera_command_v1,row_offset);
+        FIELD(ams_mel_ir_camera_command_v1,column_offset); FIELD(ams_mel_ir_camera_command_v1,direction);
+        FIELD(ams_mel_ir_camera_command_v1,number_of_stages));
+    RECORD(ams_mel_ir_camera_command_response_v1,
+        FIELD(ams_mel_ir_camera_command_response_v1,command_id); FIELD(ams_mel_ir_camera_command_response_v1,size);
+        FIELD(ams_mel_ir_camera_command_response_v1,timestamp_ns); FIELD(ams_mel_ir_camera_command_response_v1,command_success));
+    RECORD(ams_mel_ir_camera_command_result_v1,
+        FIELD(ams_mel_ir_camera_command_result_v1,response); FIELD(ams_mel_ir_camera_command_result_v1,error_code));
+    VALUE(AMS_MEL_IR_SCAN_DIR_NEG_TO_POS_AZ); VALUE(AMS_MEL_IR_SCAN_DIR_POS_TO_NEG_AZ);
+    {
+        ams_mel_status_t (*c2_submit)(ams_mel_ir_c2 *, const ams_mel_ir_camera_command_v1 *, ams_mel_ir_camera_command_request **, char *, size_t, size_t *) = ams_mel_ir_c2_submit_camera_command;
+        ams_mel_status_t (*stream_submit)(ams_mel_ir_stream *, const ams_mel_ir_camera_command_v1 *, ams_mel_ir_camera_command_request **, char *, size_t, size_t *) = ams_mel_ir_stream_submit_camera_command;
+        ams_mel_status_t (*wait)(const ams_mel_ir_camera_command_request *, uint32_t, ams_mel_ir_camera_command_result_v1 *, char *, size_t, size_t *) = ams_mel_ir_camera_command_request_wait;
+        ams_mel_status_t (*close)(ams_mel_ir_camera_command_request **, char *, size_t, size_t *) = ams_mel_ir_camera_command_request_close;
+        ams_mel_status_t (*open)(ams_mel_ir_stream *, size_t, ams_mel_ir_camera_response_metadata **, ams_mel_ir_return_t *, char *, size_t, size_t *) = ams_mel_ir_image_camera_response_open;
+        ams_mel_status_t (*receive)(ams_mel_ir_camera_response_metadata *, uint32_t, ams_mel_ir_camera_response_event **, char *, size_t, size_t *) = ams_mel_ir_camera_response_receive;
+        ams_mel_status_t (*counters)(const ams_mel_ir_camera_response_metadata *, ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) = ams_mel_ir_camera_response_get_counters;
+        ams_mel_status_t (*owner_close)(ams_mel_ir_camera_response_metadata **, char *, size_t, size_t *) = ams_mel_ir_camera_response_close;
+        ams_mel_status_t (*view)(const ams_mel_ir_camera_response_event *, const ams_mel_ir_camera_command_response_v1 **, char *, size_t, size_t *) = ams_mel_ir_camera_response_event_view;
+        ams_mel_status_t (*event_close)(ams_mel_ir_camera_response_event **, char *, size_t, size_t *) = ams_mel_ir_camera_response_event_close;
+        (void)c2_submit; (void)stream_submit; (void)wait; (void)close; (void)open; (void)receive;
+        (void)counters; (void)owner_close; (void)view; (void)event_close;
+    }
     VALUE(AMS_MEL_ABI_VERSION_MAJOR);
     VALUE(AMS_MEL_ABI_VERSION_MINOR);
     VALUE(version.major);

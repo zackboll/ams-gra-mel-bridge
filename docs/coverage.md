@@ -1,6 +1,6 @@
 # Implementation coverage
 
-## RUST-IR-004 — complete safe Rust coverage of C-bridged Image metadata
+## RUST-IR-004 — safe Rust coverage of four C-bridged Image metadata families
 
 `ImageStream::open_metadata(&mut self, capacity)` registers BadPixelList,
 LineOfSightReport, LineOfSightEuler and NavigationReportResp over the six existing
@@ -23,15 +23,60 @@ Native DROP-INCOMING FIFO, saturating callback counters, one-shot registration,
 queue drain after Stop/Close and status categories are unchanged. Mock tests
 cover every existing recovery/registration scenario, frame/NUC independence,
 all owner orders and callback barriers through channel destruction/DSO unload.
-Ordinary unit tests observe Close-on-Drop; 14 compiled mutations were applied
-and killed, with zero invalid or surviving mutations. Native 435-test suite,
-Rust workspace, production-facade metadata tests and lint/policy qualification
-are documented in `rust-ir-004-image-metadata.md`.
+Ordinary unit tests observe Close-on-Drop; the historical reviewed campaign
+applied and killed 14 compiled mutations, with zero invalid or surviving
+mutations. Its native 435-test suite, Rust workspace, production-facade metadata
+tests and lint/policy qualification are documented in
+`rust-ir-004-image-metadata.md`. That report's 229-export inventory is the
+historical pre-CameraCommand baseline, not the reconciled production inventory.
 
-Scope: these are the four currently C-bridged Image metadata families, not all
-upstream Image callbacks. Optional NUC remains separate; Quaternion, optical
-distortion, camera-command response and other unbridged callbacks remain out of
-scope. Evidence is mock/source qualification, not hardware or Squall validation.
+Scope: these four Image metadata families are now available in safe Rust, not
+all upstream Image callbacks. Optional NUC remains separate. Image
+CameraCommandResp is C-bridged by IRMEL-ADA-003 (PR #150), but remains outside
+RUST-IR-004's safe Rust scope, as does C2 metadata. Quaternion, optical distortion
+and other unbridged callbacks remain out of scope. Evidence is mock/source
+qualification, not hardware or Squall validation. The reconciled production
+inventory is 239 AMS_MEL_0.1 exports, including the ten CameraCommand exports
+from main; RUST-IR-004 adds no C ABI exports.
+
+## IRMEL-ADA-003 — C2/Image CameraCommand and Image CameraCommandResp
+
+The pinned @RequiredIfCameraCtrl `send(CameraCommand)` is implemented
+independently on C2Channel (`ams_mel_ir_c2_submit_camera_command`, Ada
+`C2.Submit_Camera_Command`, Enabled only) and ImageChannel
+(`ams_mel_ir_stream_submit_camera_command`, Ada `Image.Submit_Camera_Command`,
+Attached/Running); each calls only its own channel's overload. Both share one
+native completion engine (`ir_camera_command.cpp`) built from the established
+pieces: Session CompletionPermit, family lifetime claim under the family lock,
+unlocked provider send, a single completion worker, deferred C2/Image teardown
+through the erased `CommonRequestClaim`, allocation-free retention on post-send
+failure, and a cached result (`ams_mel_ir_camera_command_request_wait/close`,
+Ada `AMS.MEL.IR.Camera.Camera_Request`). The new records
+`ams_mel_ir_camera_command_v1` (all 11 fields: uint32 ID/width/height/frame
+rate/offsets/stages, int64 nanosecond system and integration times, exact
+Staring/Scanning, both ScanDir values), `ams_mel_ir_camera_command_response_v1`
+(uint32 ID and size, int64 nanosecond timestamp, 0/1 CommandSuccess) and
+`ams_mel_ir_camera_command_result_v1` are new; no existing `*_v1` record
+changes. `Reserved13` and unknown discriminators are rejected with
+`AMS_MEL_INVALID_ARGUMENT` before any provider call. `CommandSuccess = false`
+is an ordinary successful result, distinct from a MEL rejection. Null
+responses, unknown MEL codes, provider exceptions and deferred-cleanup failure
+are reported distinctly. The opt-in Image CameraCommandResp owner
+(`ams_mel_ir_image_camera_response_open`, Ada
+`Image.Metadata.Open_Camera_Response`) is never registered by the existing
+metadata Open, reports NotSupported distinctly (`AMS.MEL.IR.Camera.Not_Supported`),
+copies each response before callback return into a bounded DROP-INCOMING
+queue, stops with the stream and is independent of request futures. No C2
+CameraCommandResp callback exists upstream and none is fabricated. Production
+inventory: 239 AMS_MEL_0.1 exports (ten new); Python/Rust receive only private
+raw mirrors. Evidence is mock-provider only; no IR camera or Squall qualification.
+
+R3 makes `Camera.Camera_Request` a type derived from the existing limited-private
+controlled request owner, rather than an ordinary subtype. Limited ownership,
+hidden representation, Wait, Close and inherited non-raising finalization retain
+their existing semantics. A focused documentation regression checks the derived
+parent link and five operation links, and retains rejection of the original
+private-base subtype link. No documentation security rule or native ABI changes.
 
 ## RUST-IR-003 — safe Image/Health NUC temperature reception
 
@@ -88,9 +133,11 @@ The pinned private optional `tempError` has **no public accessor** and is not
 represented, read or inferred; TempPoint is therefore `partial`. Queues keep
 DROP-INCOMING; null/unknown enum/allocation failures are counted as malformed;
 late callbacks after Close are memory-safe; Health channel destruction drains
-in-flight NUC callbacks. Production inventory: 229 AMS_MEL_0.1 exports
-(seven new); Python/Rust receive only private raw mirrors. Evidence is
-mock-provider only; no IR camera or Squall NUC qualification.
+in-flight NUC callbacks. Historical IRMEL-ADA-002 production inventory:
+229 AMS_MEL_0.1 exports (seven new at that checkpoint); Python/Rust initially
+received only private raw mirrors. Safe Rust NUC is now covered by RUST-IR-003
+above. Current production inventory is 239 exports after IRMEL-ADA-003.
+Evidence is mock-provider only; no IR camera or Squall NUC qualification.
 
 ## PY-POL-001-R2 — historical runner evidence bookkeeping
 
@@ -1186,12 +1233,13 @@ source, native ABI, provider behavior, or vendored header. Run
 
 | Feature family | Ada status |
 |---|---|
-| C2 required sends | Complete |
+| C2 required sends | Complete; @RequiredIfCameraCtrl `send(CameraCommand)` via `C2.Submit_Camera_Command` (IRMEL-ADA-003) |
 | C2-specific required metadata callbacks | Complete: BIT_Configuration, CommandStatus, BIT_Status |
 | Common inherited Channel services | Complete for all five families through `AMS.MEL.IR.Channel.View` (Task 032B2): KeepAlive, CommsTest, ChannelCapability, weak view Close. Legacy C2-specific `AMS.MEL.IR.C2.Common` (including the CommsTest callback via C2.Metadata) is preserved unchanged |
 | Explicit generic buffer management | Not application-exposed |
 | Image receive | Partial: host-memory Mono8 |
-| Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete |
+| Image metadata | BadPixelList, LineOfSightReport, LineOfSightEuler, and NavigationReportResp complete; opt-in NUC_TempData (IRMEL-ADA-002) and CameraCommandResp (IRMEL-ADA-003) owners |
+| Image CameraCommand | `send(CameraCommand)` via `Image.Submit_Camera_Command`, independent of C2 (IRMEL-ADA-003) |
 | Scheduling | Not implemented |
 | Track | `@RequiredIfTrack` core complete: channel foundation (`Open`/`Is_Open`/`Enable`/`Capabilities`/`Close`) plus the complete `IRST_Track_Report` and `AMS.MEL.IR.Track.Metadata` bounded DROP-INCOMING queue for the `IRSTTrackReport` callback with a blocking receive/wait (timeout zero is the nonblocking poll case). `@RequiredIfTrackUpdate` `TrackDataUpdate` complete via `AMS.MEL.IR.Track.Updates`. Optional `SystemTrackDataResponse` complete via `AMS.MEL.IR.Track.System_Data`. Optional inbound `RequestSystemTrackData` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares the one bounded queue with `IRSTTrackReport`. Positive behavior/payload evidence is mock-only; pinned Squall is validated only as a clean unsupported provider (`Provider_Error: attachChannel returned null`). `@RequiredIfDetectCandidateObjects` `CandidateObjectMessage` complete via `AMS.MEL.IR.Track.Metadata.Receive_Event`, which shares that one bounded queue; its owned `Candidate_Object_Message` copies every hot region, every candidate object, and every scalar into Ada storage before the native event is closed, and its Track-facing value types are deliberately independent of `AMS.MEL.IR.Image`. The `@Optional` `CandidateObjectPreProcMessage` is likewise complete via `AMS.MEL.IR.Track.Metadata.Receive_Event` on that same queue; its owned `Candidate_Object_PreProc_Message` copies the header, the message-level inertial state, every hot region, every PreProc entry with all nine background samples and its own nested inertial state, and a safe `Edge : Boolean`, all into Ada storage before the native event is closed. Every published TrackChannel-specific surface is therefore represented and the safe Ada Track API is complete |
 | Health/Status | Complete: required channel plus six required callbacks; opt-in @Optional NUC_TempData owner (IRMEL-ADA-002); LFStatus excluded |
