@@ -18,6 +18,7 @@ class Listener;
 struct ImageMetadataState;
 struct NucState;
 struct CameraResponseState;
+struct OdmState;
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -85,6 +86,10 @@ struct ImageStreamState {
      * independent of both owners above. Guarded by callback->mutex. */
     std::shared_ptr<CameraResponseState> image_camera_response;
     bool image_camera_response_attempted{false};
+    /* IRMEL-ADA-009 opt-in @Optional OpticalDistortionMap owner, independent
+     * of all three owners above. Guarded by callback->mutex. */
+    std::shared_ptr<OdmState> image_odm;
+    bool image_odm_attempted{false};
     BufferFactory buffer_factory{};
     std::string instance;
     std::size_t buffer_count{};
@@ -148,6 +153,19 @@ void image_nuc_stream_stopped(const std::shared_ptr<NucState>& state) noexcept;
 /* IRMEL-ADA-003. Never called with callback->mutex held. */
 void image_camera_response_stream_stopped(
     const std::shared_ptr<CameraResponseState>& state) noexcept;
+/* IRMEL-ADA-009, defined in ir_image_odm.cpp; never called with
+ * callback->mutex held. stopped: logical Stop/Close. drained: after provider
+ * channel destruction, waits for in-flight ODM bridge callbacks, then stops.
+ * failed: provider detach failed, ownership uncertain. */
+void image_odm_stream_stopped(const std::shared_ptr<OdmState>& state) noexcept;
+void image_odm_stream_drained(const std::shared_ptr<OdmState>& state) noexcept;
+void image_odm_stream_failed(const std::shared_ptr<OdmState>& state) noexcept;
+/* Records the independent ODM one-shot and publishes state under
+ * callback->mutex; same eligibility as claim_image_nuc. */
+bool claim_image_odm(
+    ImageStreamState& stream,
+    const std::shared_ptr<OdmState>& state,
+    std::shared_ptr<ams::iface::irmel::ImageChannel>& image_channel) noexcept;
 /* Records the one-shot and publishes state under callback->mutex; same
  * eligibility as claim_image_nuc. Defined in ir_stream.cpp. */
 bool claim_image_camera_response(

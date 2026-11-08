@@ -1277,6 +1277,23 @@ bool claim_image_camera_response(
     return true;
 }
 
+bool claim_image_odm(
+    ImageStreamState& stream,
+    const std::shared_ptr<OdmState>& state,
+    std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
+{
+    std::lock_guard lock{stream.callback->mutex};
+    if (!stream.image_channel || stream.callback->lifecycle == Lifecycle::Stopping ||
+        stream.callback->lifecycle == Lifecycle::Stopped ||
+        stream.callback->lifecycle == Lifecycle::Failed ||
+        stream.image_odm_attempted)
+        return false;
+    stream.image_odm_attempted = true;
+    stream.image_odm = state;
+    image_channel = stream.image_channel;
+    return true;
+}
+
 bool claim_navigation_submission(
     ImageStreamState& stream,
     std::shared_ptr<irmel::ImageChannel>& image_channel) noexcept
@@ -1669,6 +1686,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
     std::shared_ptr<ImageMetadataState> metadata;
     std::shared_ptr<NucState> nuc;
     std::shared_ptr<CameraResponseState> camera;
+    std::shared_ptr<OdmState> odm;
     try {
         {
             std::lock_guard lock{stream.callback->mutex};
@@ -1679,10 +1697,12 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
             metadata = stream.image_metadata;
             nuc = stream.image_nuc;
             camera = stream.image_camera_response;
+            odm = stream.image_odm;
         }
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
         image_camera_response_stream_stopped(camera);
+        image_odm_stream_stopped(odm);
     } catch (...) {
         /* Logical stop must remain noexcept. */
     }
@@ -1789,6 +1809,7 @@ ImageCleanupOutcome image_stream_cleanup(
     std::shared_ptr<ImageMetadataState> metadata;
     std::shared_ptr<NucState> nuc;
     std::shared_ptr<CameraResponseState> camera;
+    std::shared_ptr<OdmState> odm;
     bool disable_needed = false;
     bool owner_closed = false;
     try {
@@ -1845,6 +1866,7 @@ ImageCleanupOutcome image_stream_cleanup(
             metadata = stream.image_metadata;
             nuc = stream.image_nuc;
             camera = stream.image_camera_response;
+            odm = stream.image_odm;
         }
 
         image_cleanup_barrier("before-detach");
@@ -1885,6 +1907,11 @@ ImageCleanupOutcome image_stream_cleanup(
              * retain the whole graph rather than unload provider code that may
              * still own the channel. */
             if (owner_closed) image_stream_retain_failed(state_ptr);
+            /* IRMEL-ADA-009: the provider may still own the channel and its
+             * registered ODM callback. The ODM state stays retained by both
+             * the callback closure and the stream; queued events still drain,
+             * then Receive reports PROVIDER_FAILED. */
+            image_odm_stream_failed(odm);
             return ImageCleanupOutcome::Failed;
         }
 
@@ -1897,6 +1924,12 @@ ImageCleanupOutcome image_stream_cleanup(
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
         image_camera_response_stream_stopped(camera);
+        /* IRMEL-ADA-009: provider channel destruction has completed; wait for
+         * OpticalDistortionMap bridge callbacks already in flight before the
+         * stream graph (and through it the Session and provider library) can
+         * be released. A late callback after this point is still memory-safe
+         * through its own shared OdmState. */
+        image_odm_stream_drained(odm);
 
         std::size_t in_flight = stream.callback->callbacks_in_flight.load(
             std::memory_order_acquire);

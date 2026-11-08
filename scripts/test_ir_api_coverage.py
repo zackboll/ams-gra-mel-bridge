@@ -100,7 +100,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual([f["upstream"] for f in command["representation"]],
                          ["getCommandID", "getEraseCommandType"])
         self.assertTrue(all(f["status"] == "represented" for f in command["representation"]))
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 45)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
 
     def test_c2_system_response_slice_is_independent_and_scoped(self):
         # IRMEL-ADA-008: exactly the C2 overload moves to safe_ada with its own
@@ -123,11 +123,58 @@ class CoverageTests(unittest.TestCase):
         for name in ("SystemTrackDataResponse", "CommandStatus"):
             entry = next(t for t in self.coverage["types"] if t["id"] == "ir:type:ams::iface::irmel::" + name)
             self.assertEqual(entry["status"], "safe_ada")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 45)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
 
     def test_c2_system_response_evidence_removal_fails_closed(self):
         self.operation("C2Channel", "send(SystemTrackDataResponse)")["tests"] = []
         self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_optical_distortion_map_slice_is_exact(self):
+        # IRMEL-ADA-009: exactly the ImageChannel ODM registration plus the
+        # OpticalDistortionMap and ForwardRightDown data declarations move to
+        # safe_ada. RowCol was already safe_ada and keeps its Track evidence.
+        odm = self.operation("ImageChannel", "OpticalDistortionMap")
+        self.assertEqual(odm["status"], "safe_ada")
+        self.assertEqual(odm["native"], [{"path": "native/src/ir_image_odm.cpp",
+                                          "symbol": "ams_mel_ir_image_odm_open"}])
+        self.assertEqual([a["symbol"] for a in odm["ada"]],
+                         ["Open_Optical_Distortion_Map", "Receive_Optical_Distortion_Map"])
+        self.assertIn({"path": "native/tests/test_ir_image_odm.c", "symbol": "main"}, odm["tests"])
+        self.assertIn({"path": "ada/tests/src/ams_mel_ir_image_odm_tests.adb", "symbol": "Run"},
+                      odm["tests"])
+        # Independent of the four-kind metadata Open and the other opt-in owners.
+        for payload in ("BadPixelList", "NUC_TempData", "CameraCommandResp"):
+            other = self.operation("ImageChannel", payload)
+            self.assertEqual(other["status"], "safe_ada")
+            self.assertNotIn("ams_mel_ir_image_odm_open", [n["symbol"] for n in other["native"]])
+        types = {t["id"].split("::")[-1]: t for t in self.coverage["types"]}
+        self.assertEqual(types["OpticalDistortionMap"]["status"], "safe_ada")
+        self.assertEqual([f["upstream"] for f in types["OpticalDistortionMap"]["representation"]],
+                         ["getWidth", "getHeight", "getRightSize", "getDownSize", "getPixelsPerOdm",
+                          "getRightMin", "getRightMax", "getDownMin", "getDownMax", "getFrd", "getRowCol"])
+        self.assertEqual(types["ForwardRightDown"]["status"], "safe_ada")
+        self.assertEqual([f["upstream"] for f in types["ForwardRightDown"]["representation"]],
+                         ["getForward", "getRight", "getDown"])
+        for name in ("OpticalDistortionMap", "ForwardRightDown"):
+            self.assertTrue(all(f["status"] == "represented" for f in types[name]["representation"]))
+        self.assertEqual(types["RowCol"]["status"], "safe_ada")
+        self.assertEqual(types["RowCol"]["native"][0]["symbol"], "ams_mel_ir_track_metadata_open")
+        self.assertEqual(self.operation("ImageChannel", "LineOfSightQuaternion")["status"], "missing")
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
+
+    def test_optical_distortion_map_evidence_removal_fails_closed(self):
+        self.operation("ImageChannel", "OpticalDistortionMap")["tests"] = []
+        self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_optical_distortion_map_field_omission_is_detected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::OpticalDistortionMap"))
+        entry["representation"] = [f for f in entry["representation"] if f["upstream"] != "getRowCol"]
+        self.reject("field representation inventory mismatch")
+
+    def test_forward_right_down_component_omission_is_detected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::ForwardRightDown"))
+        entry["representation"].pop()
+        self.reject("field representation inventory mismatch")
 
     def test_camera_protection_slice_is_exact(self):
         # IRMEL-ADA-004: exactly the C2 send and the C2 CameraProtectCmdResp callback,
@@ -154,7 +201,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 45)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -175,7 +222,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 45)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
 
     def test_calibration_status_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
@@ -206,7 +253,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 45)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 46)
 
     def test_calibration_status_nested_item_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))
@@ -294,9 +341,11 @@ class CoverageTests(unittest.TestCase):
         self.reject("duplicate coverage operations identity")
 
     def test_optional_callback_not_implemented(self):
-        # IRMEL-ADA-002 implemented NUC_TempData; OpticalDistortionMap remains an
-        # unimplemented @Optional Image callback for this borrowed-evidence control.
-        target = self.operation("ImageChannel", "OpticalDistortionMap")
+        # IRMEL-ADA-002 implemented NUC_TempData and IRMEL-ADA-009 implemented
+        # OpticalDistortionMap; LineOfSightQuaternion remains an unimplemented
+        # @Optional Image callback for this borrowed-evidence control.
+        target = self.operation("ImageChannel", "LineOfSightQuaternion")
+        self.assertEqual(target["status"], "missing")
         source = self.operation("ImageChannel", "BadPixelList")
         for key in ("status", "native", "ada", "tests"):
             target[key] = copy.deepcopy(source[key])

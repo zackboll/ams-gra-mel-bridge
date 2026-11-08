@@ -93,6 +93,13 @@ private package AMS.MEL_C_API is
    type Camera_Response_Event_Handle is new System.Address;
    Null_Camera_Response_Event              : constant Camera_Response_Event_Handle :=
      Camera_Response_Event_Handle (System.Null_Address);
+   --  IRMEL-ADA-009 opt-in Image OpticalDistortionMap owner and copied event.
+   type Image_ODM_Metadata_Handle is new System.Address;
+   Null_Image_ODM_Metadata                 : constant Image_ODM_Metadata_Handle :=
+     Image_ODM_Metadata_Handle (System.Null_Address);
+   type Image_ODM_Event_Handle is new System.Address;
+   Null_Image_ODM_Event                    : constant Image_ODM_Event_Handle :=
+     Image_ODM_Event_Handle (System.Null_Address);
    --  IRMEL-ADA-007 EraseCommand request observer.
    type Erase_Request_Handle is new System.Address;
    Null_Erase_Request                      : constant Erase_Request_Handle :=
@@ -561,6 +568,20 @@ private package AMS.MEL_C_API is
    --  The one canonical row/column import, matching upstream RowCol.
    type IR_Row_Col_V1 is record
       Row, Column : Interfaces.C.double;
+   end record
+   with Convention => C;
+
+   --  IRMEL-ADA-009 complete ForwardRightDown and OpticalDistortionMap. Both
+   --  spans are imported as the generic address/size span; the private
+   --  conversion validates and strides them with the element records below.
+   type IR_Forward_Right_Down_V1 is record
+      Forward, Right, Down : Interfaces.C.double;
+   end record
+   with Convention => C;
+   type IR_Optical_Distortion_Map_V1 is record
+      Width, Height, Right_Size, Down_Size, Pixels_Per_ODM : Interfaces.Unsigned_32;
+      Right_Min, Right_Max, Down_Min, Down_Max             : Interfaces.C.double;
+      FRD, Row_Col                                         : Span_V1;
    end record
    with Convention => C;
 
@@ -1741,6 +1762,49 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_camera_response_event_close";
+   function IR_Image_ODM_Open
+     (Stream              : Stream_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Image_ODM_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_open";
+   function IR_Image_ODM_Receive
+     (Handle              : Image_ODM_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Image_ODM_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_receive";
+   function IR_Image_ODM_Get_Counters
+     (Handle              : Image_ODM_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_get_counters";
+   function IR_Image_ODM_Close
+     (Handle              : access Image_ODM_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_close";
+   function IR_Image_ODM_Event_View
+     (Handle              : Image_ODM_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_event_view";
+   function IR_Image_ODM_Event_Close
+     (Handle              : access Image_ODM_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_odm_event_close";
    function IR_C2_Submit_Erase
      (C2                  : C2_Handle;
       Command             : access IR_Erase_Command_V1;

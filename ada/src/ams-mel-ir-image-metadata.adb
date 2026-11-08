@@ -4,6 +4,7 @@ with System;
 with System.Storage_Elements;
 with AMS.MEL.IR.NUC_Conversion;
 with AMS.MEL.IR.Camera_Conversion;
+with AMS.MEL.IR.Optical_Distortion_Map_Conversion;
 
 package body AMS.MEL.IR.Image.Metadata is
    package C renames AMS.MEL_C_API;
@@ -414,5 +415,120 @@ package body AMS.MEL.IR.Image.Metadata is
    exception
       when others =>
          Stream.Handle := C.Null_Camera_Response_Metadata;
+   end Finalize;
+
+   --  IRMEL-ADA-009 opt-in OpticalDistortionMap owner.
+   type ODM_View_Access is access all C.IR_Optical_Distortion_Map_V1;
+   function To_ODM_View is new Ada.Unchecked_Conversion (System.Address, ODM_View_Access);
+   use type C.Image_ODM_Metadata_Handle;
+
+   function Open_Optical_Distortion_Map
+     (Stream : AMS.MEL.IR.Image_Stream; Queue_Capacity : Positive)
+      return Optical_Distortion_Map_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Optical_Distortion_Map_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Image_ODM_Open
+                (Stream.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Success then
+               null;
+            elsif Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise AMS.MEL.IR.Optical_Distortion_Map.Not_Supported with Message (D);
+            else
+               raise Provider_Error with Message (D);
+            end if;
+         end;
+      end return;
+   end Open_Optical_Distortion_Map;
+
+   function Receive_Optical_Distortion_Map
+     (Stream : Optical_Distortion_Map_Stream; Timeout_Milliseconds : Natural := 0)
+      return AMS.MEL.IR.Optical_Distortion_Map.Map_Value
+   is
+      Event   : aliased C.Image_ODM_Event_Handle := C.Null_Image_ODM_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.IR_Image_ODM_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Image_ODM_Metadata then
+         raise Provider_Error with "OpticalDistortionMap metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Image_ODM_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      begin
+         Check
+           (C.IR_Image_ODM_Event_View (Event, Address'Access, D'Address, D'Length, R'Access), D);
+         declare
+            Result : constant AMS.MEL.IR.Optical_Distortion_Map.Map_Value :=
+              Optical_Distortion_Map_Conversion.To_Value (To_ODM_View (Address).all);
+         begin
+            --  The owned Ada copy is complete before the native event is released.
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Receive_Optical_Distortion_Map;
+
+   function Optical_Distortion_Map_Counters
+     (Stream : Optical_Distortion_Map_Stream) return Metadata_Counters
+   is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      if Stream.Handle = C.Null_Image_ODM_Metadata then
+         raise Provider_Error with "OpticalDistortionMap metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Image_ODM_Get_Counters (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access), D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Optical_Distortion_Map_Counters;
+
+   procedure Close (Stream : in out Optical_Distortion_Map_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.IR_Image_ODM_Close (Stream.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Optical_Distortion_Map_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_Image_ODM_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Image_ODM_Metadata;
    end Finalize;
 end AMS.MEL.IR.Image.Metadata;

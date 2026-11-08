@@ -1762,12 +1762,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::ImageChannel::registerMetadataCallback(std::function<void(Channel&,const OpticalDistortionMap*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image_odm.cpp",
+          "symbol": "ams_mel_ir_image_odm_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Open_Optical_Distortion_Map"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Optical_Distortion_Map"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_image_odm.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_odm_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-009: opt-in ImageChannel OpticalDistortionMap owner, independent of the four-kind metadata Open, NUC_TempData and CameraCommandResp owners; one-shot per stream on Attached or Running streams, unlocked registration with safe synchronous delivery, distinct NotSupported/Fail/unknown/exception results, complete deep copy before callback return, bounded drop-incoming queue without full-queue snapshots, teardown drains in-flight callbacks, no upstream unregister.",
+      "limitations": [
+        "Opt-in owner: OpticalDistortionMap is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.Optical_Distortion_Map.Not_Supported and the four-kind Image metadata, NUC_TempData and CameraCommandResp owners are unaffected. Mock-qualified only; no physical IR or Squall ODM evidence."
+      ],
       "representation": []
     },
     {
@@ -8888,27 +8913,73 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ForwardRightDown",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image_odm.cpp",
+          "symbol": "ams_mel_ir_image_odm_open"
+        },
+        {
+          "path": "native/src/ir_image_odm.cpp",
+          "symbol": "ams_mel_ir_image_odm_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Optical_Distortion_Map"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+          "symbol": "Forward_Right_Down"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_image_odm.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_odm_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete ForwardRightDown: getForward, getRight and getDown in that order, copied without normalization into ams_mel_ir_forward_right_down_v1 and the public Ada Forward_Right_Down record; a distinct record, never an XYZ Directional.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: OpticalDistortionMap is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.Optical_Distortion_Map.Not_Supported and the four-kind Image metadata, NUC_TempData and CameraCommandResp owners are unaffected. Mock-qualified only; no physical IR or Squall ODM evidence.",
+        "IEEE doubles are forwarded unchanged; infinity and NaN reach Ada as non-valid Long_Float values that callers must test before checked arithmetic. NaN payload bits are not promised."
+      ],
       "representation": [
         {
           "upstream": "getForward",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Forward_Right_Down"
+            }
+          ]
         },
         {
           "upstream": "getRight",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Forward_Right_Down"
+            }
+          ]
         },
         {
           "upstream": "getDown",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Forward_Right_Down"
+            }
+          ]
         }
       ]
     },
@@ -10616,67 +10687,153 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::OpticalDistortionMap",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Missing width/height/grid sizes, pixelsPerOdm, four extrema and complete FRD/RowCol vector collections.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_image_odm.cpp",
+          "symbol": "ams_mel_ir_image_odm_open"
+        },
+        {
+          "path": "native/src/ir_image_odm.cpp",
+          "symbol": "ams_mel_ir_image_odm_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-image-metadata.ads",
+          "symbol": "Receive_Optical_Distortion_Map"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+          "symbol": "Map_Value"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_image_odm.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_odm_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete: width, height, rightSize, downSize and pixelsPerOdm as exact uint32 (0 and UINT32_MAX kept), four double extrema and the complete ordered getFrd()/getRowCol() collections with duplicates, deep-copied into event-owned C spans and an owned Ada Map_Value. The two collection lengths are independent of each other and of every scalar; none is inferred, padded or truncated.",
+      "limitations": [
+        "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.",
+        "Opt-in owner: OpticalDistortionMap is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.Optical_Distortion_Map.Not_Supported and the four-kind Image metadata, NUC_TempData and CameraCommandResp owners are unaffected. Mock-qualified only; no physical IR or Squall ODM evidence.",
+        "IEEE doubles are forwarded unchanged; infinity and NaN reach Ada as non-valid Long_Float values that callers must test before checked arithmetic. NaN payload bits are not promised."
+      ],
       "representation": [
         {
           "upstream": "getWidth",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Width"
+            }
+          ]
         },
         {
           "upstream": "getHeight",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Height"
+            }
+          ]
         },
         {
           "upstream": "getRightSize",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Right_Size"
+            }
+          ]
         },
         {
           "upstream": "getDownSize",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Down_Size"
+            }
+          ]
         },
         {
           "upstream": "getPixelsPerOdm",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Pixels_Per_ODM"
+            }
+          ]
         },
         {
           "upstream": "getRightMin",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Right_Min"
+            }
+          ]
         },
         {
           "upstream": "getRightMax",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Right_Max"
+            }
+          ]
         },
         {
           "upstream": "getDownMin",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Down_Min"
+            }
+          ]
         },
         {
           "upstream": "getDownMax",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "Down_Max"
+            }
+          ]
         },
         {
           "upstream": "getFrd",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "FRD_At"
+            }
+          ]
         },
         {
           "upstream": "getRowCol",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-optical_distortion_map.ads",
+              "symbol": "RowCol_At"
+            }
+          ]
         }
       ]
     },
