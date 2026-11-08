@@ -109,7 +109,39 @@ Run from this worktree; production (`native/build`) and contract-test
 (`native/build-tests`) trees stay independent, built sequentially; mutation and
 baseline-export builds use isolated `/tmp` trees.
 
-TBD_RESULTS
+| Check | Command / evidence | Result |
+|---|---|---|
+| Production native | `make native` (`-Wall -Wextra -Wpedantic -Werror`) | PASS, 0 warnings |
+| Focused ODM C11 | `ctest -R ir_image_odm` (contract, isolated in-flight teardown, layout probe) | PASS, 3/3 |
+| Existing Image owners | `ctest -R 'ir_image_metadata\|ir_nuc\|ir_camera_command\|ir_stream\|ir_navigation'` | PASS, unchanged tests |
+| Full native | `make test-native` | PASS, 469/469 (466 baseline + 3) |
+| Focused Ada ODM | `ada/tests/bin/ams_mel_ir_image_odm_focused <mock>` | PASS |
+| Full Ada | `make test-ada` (`gprbuild -P ada/tests/ams_mel_tests.gpr`; `ams_mel_smoke`) | PASS, 43 suites (incl. new ODM and existing Image metadata) |
+| Python | `make test-python` (full suite incl. `test_private_image_odm_abi`) | PASS, 278 tests |
+| Rust | `make test-rust` (workspace incl. `image_odm_abi`, `abi` inventory 278) | PASS, 260 tests, 0 failed |
+| Exports | isolated baseline `nm -D --defined-only` vs head | PASS, 272 → 278; 0 removed; 6 added, all `@@AMS_MEL_0.1`; no test hooks |
+| Policy | `make test-policy` | PASS, all suites OK |
+| Coverage | `make check-ir-api-coverage` | PASS, 43 tests; safe_ada 45 → 46 |
+| Formatting | `make check-ada-format`; `cargo fmt --check`; `git diff --check` | PASS |
+| Documentation | `check_doc_source_integrity.py`; pinned enhancer `test_*links.py` (26 incl. 3 new); local `docs_ci.py build` | PASS; new packages 115/115 documented elements, no new gap |
+| Native mutations | `python3 scripts/test_image_odm_mutations.py` | PASS, 9/9 detected; baseline restored; checkout unchanged |
+| Ada mutations | isolated copy of `ada/`, focused Ada contract | PASS, 5/5 detected; baseline restored |
+
+Native mutants (each builds and fails a named release-active C11 assertion):
+final FRD element dropped and final RowCol element dropped (`v->frd.size == 4U &&
+v->row_col.size == 3U`); forward/right swapped (`same(v->frd.data[index].forward, f)`);
+row/column swapped (`same(v->row_col.data[index].row, row)`); `down_max` replaced by
+`down_min` (`same(v->down_max, dmax)`); ODM registered through the base four-kind owner
+(`registrations() == before`); malformed full-queue input counted as queue-full and a
+snapshot built before dropping (capacity counters); teardown without the in-flight
+drain (`ams_mel_test_image_odm_probe(3U, 0U) == 1`, isolated process). Ada conversion
+mutants: final FRD and final RowCol dropped (`rich lengths`), forward/right swapped
+(`FRD forward 1`), row/column swapped (`RowCol row 1`), `Down_Max` replaced
+(`smallest subnormal down maximum`).
+
+`docs/rust-ir-003-nuc-temperature.md` lacks a final newline on `main` already; this
+branch does not touch it. `feature_source.py` requires a clean checkout and is
+re-run on the final committed head.
 
 Not run: historical documentation replay, GNATdoc site regeneration and stress
 campaigns (out of scope). No physical IR camera or Squall was used; all positive
