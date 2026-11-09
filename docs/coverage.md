@@ -1,5 +1,22 @@
 # Implementation coverage
 
+## RUST-IR-006 — Complete safe Rust OpticalDistortionMap reception
+
+`ImageStream::open_optical_distortion_map` adds an independent, uniquely owned,
+non-Send/non-Sync `OpticalDistortionMapStream` over the existing six ODM exports.
+Complete owned maps retain all eleven getters, full u32 scalars, untransformed
+IEEE doubles and independent ordered FRD/RowCol vectors. Structured optional
+registration errors preserve known Returns without inventing unknown/exception
+results. Checked spans, fallible copies and event guards cover malformed output,
+allocation failure and unwind; uncertain releases are attempted only once.
+Existing Image counters, native queues, one-shots and physical teardown semantics
+are reused. Mock subprocess lifecycle/barrier tests, hostile FFI unit tests,
+compile-fail ownership docs and a 10/10 killed compiled mutation campaign provide
+boundary evidence. No native ABI/raw Rust, provider, Ada, Python, policy or CI
+change; no Squall/hardware qualification. See
+[contract and qualification](rust-ir-006-optical-distortion-map.md); final source
+identities and measured local/hosted acceptance are recorded in the delivery PR.
+
 ## PY-MEL-007 — Complete safe Python ordinary IR Image metadata
 
 `ImageStream.open_metadata(queue_capacity=16)` now wraps all four ordinary Image
