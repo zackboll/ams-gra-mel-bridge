@@ -242,7 +242,37 @@ the source was restored byte-identically.
 
 ## Qualification
 
-<!--@@RESULTS@@-->
+One sequential `nohup` campaign (`/tmp/irmel-ada-011-qual/run.sh`) ran every stage against
+the committed implementation `04381822db45ab80746db4bdf864f7520b4b36af` (tree
+`081dd397ccb82d8bca16889462fc2549e148630a`). It recorded each exit code and stopped on the
+first failure. A first attempt on `6b62e5f` passed stages 1–11. It then stopped at
+`make test-policy` because `test_doc_source_integrity.py` pins the vendored-file count at 804.
+That anchor was updated to 824, the 20 verified closure headers, and the campaign was rerun
+from stage 1. After that run, only this results section changed.
+
+| # | Stage | Command(s) | Result |
+|---|---|---|---|
+| 1 | Production C++ build | `native/scripts/build.sh` (`-Wall -Wextra -Wpedantic -Werror`) | PASS, 0 warnings |
+| 2 | Vendor integrity / closure | `check_doc_source_integrity.py`; 20 blob + SHA-256 checks; evidence/catalog unchanged; GCC and Clang closure probe | PASS (824 vendor files) |
+| 3 | Test-tree build | `configure-build.sh tests`; `cmake --build native/build-tests` | PASS, 0 warnings |
+| 4 | Focused C11 Scheduling | `ctest -R ^ir_scheduling_` | PASS, 20/20 |
+| 5 | Track/C2 typed regression | `ir_track_foundation_contract`, `ir_c2_contract`, C2 system-response/submission, `c_abi`, `cpp_header` | PASS, 15/15 |
+| 6 | Common Channel | `ctest -R '^(public_channel_\|common_)'` | PASS, 147/147 |
+| 7 | Full native | `ctest --test-dir native/build-tests` | PASS, 500/500 (472 baseline + 28) |
+| 8 | Ada build + smoke | `alr -C ada/tests exec -- sh scripts/test_ada.sh`; focused `ams_mel_ir_scheduling_focused` | PASS: 46 suite PASS lines incl. Scheduling and six-family common Channel; coverage 49 tests |
+| 9 | Python | `make test-python` | PASS, 355 tests (354 + 1) |
+| 10 | Rust | `make test-rust` | PASS, 282 passed (281 + 1), 0 failed, 6 ignored |
+| 11 | Exports | isolated `e746c49` production build vs head, `nm -D --defined-only` | PASS, 284 → 289; 5 added, 0 removed; all `@@AMS_MEL_0.1`; no `ams_mel_test_*` |
+| 12 | Policy | `make test-policy` | PASS |
+| 13 | Coverage | `make check-ir-api-coverage` | PASS, 49 tests; safe_ada 47, missing 19, partial 13 |
+| 14 | Formatting | `make check-ada-format`; `cargo fmt --all -- --check` | PASS |
+| 15 | Docs | `check_doc_source_integrity.py`; pinned enhancer `docs/tests/test_*links.py` (9 files, incl. new Scheduling) | PASS |
+| 16 | Whitespace | `git diff --check` (vs base and worktree); `check_final_newlines.py` | PASS |
+
+The policy log contains two "The following tests FAILED" lines. They come from bootstrap-policy
+negative fixtures, synthetic CTest checkouts that are asserted to fail. The enclosing unit test
+reports `ok`, and the stage exits 0. Python and Rust baselines are unchanged by PR #171, which
+touches neither tree.
 
 No real provider, Squall or hardware task scheduling ran. All positive evidence is
 deterministic mock-provider evidence.
