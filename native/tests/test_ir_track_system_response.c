@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,12 +130,67 @@ static int read_log(const char *path, char *buffer, size_t capacity)
 {
     FILE *file = fopen(path, "rb");
     size_t size;
+    int extra, failed;
     CHECK(file != NULL);
     size = fread(buffer, 1, capacity - 1U, file);
-    CHECK(!ferror(file));
-    CHECK(fclose(file) == 0);
+    extra = size == capacity - 1U ? fgetc(file) : EOF;
+    failed = ferror(file);
+    if (fclose(file) != 0) failed = 1;
     buffer[size] = '\0';
+    if (failed || extra != EOF || memchr(buffer, '\0', size) != NULL) {
+        fprintf(stderr, "Invalid lifetime log (read error, truncation or NUL): %s\n"
+                        "Latest log (%zu bytes):\n", path, size);
+        (void)fwrite(buffer, 1, size, stderr);
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
+}
+
+static int has_log_record(const char *log, const char *record)
+{
+    const size_t length = strlen(record);
+    const char *line = log;
+    while ((line = strstr(line, record)) != NULL) {
+        if ((line == log || line[-1] == '\n') && line[length] == '\n')
+            return 1;
+        ++line;
+    }
+    return 0;
+}
+
+/* A terminal request result is not a join of the detached completion worker:
+ * its final local Track/session reference may still be releasing the DSO.
+ * Observe real unload, not elapsed sleep or a cached snapshot. Only complete
+ * newline-delimited records count; malformed/oversized logs fail closed. */
+static int wait_for_library_unloaded(const char *path, char *log, size_t capacity)
+{
+    struct timespec deadline, now;
+    CHECK(clock_gettime(CLOCK_MONOTONIC, &deadline) == 0);
+    deadline.tv_sec += 5;
+    for (;;) {
+        struct timespec next;
+        int status;
+        CHECK(read_log(path, log, capacity) == EXIT_SUCCESS);
+        CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+        if (now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
+            fprintf(stderr, "Timed out waiting for library_unloaded: %s\n"
+                            "Latest log:\n%s\n", path, log);
+            return EXIT_FAILURE;
+        }
+        if (has_log_record(log, "library_unloaded")) return EXIT_SUCCESS;
+        next = now;
+        next.tv_nsec += 10000000L;
+        if (next.tv_nsec >= 1000000000L) {
+            ++next.tv_sec;
+            next.tv_nsec -= 1000000000L;
+        }
+        if (next.tv_sec > deadline.tv_sec ||
+            (next.tv_sec == deadline.tv_sec && next.tv_nsec > deadline.tv_nsec))
+            next = deadline;
+        status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+        CHECK(status == 0 || status == EINTR);
+    }
 }
 
 static int touch(const char *path)
@@ -505,12 +561,12 @@ static int test_pending_response_lifetime(void)
     CHECK(ams_mel_ir_track_system_response_request_close(&request,
           NULL, 0, NULL) == AMS_MEL_OK);
     /* Physical teardown follows the completion. */
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
-    CHECK(strstr(log, "track_response_completed") != NULL);
-    CHECK(strstr(log, "track_disabled") != NULL);
-    CHECK(strstr(log, "channel_detached") != NULL);
-    CHECK(strstr(log, "track_channel_destroyed") != NULL);
-    CHECK(strstr(log, "library_unloaded") != NULL);
+    CHECK(wait_for_library_unloaded(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(has_log_record(log, "track_response_completed"));
+    CHECK(has_log_record(log, "track_disabled"));
+    CHECK(has_log_record(log, "channel_detached"));
+    CHECK(has_log_record(log, "track_channel_destroyed"));
+    CHECK(has_log_record(log, "library_unloaded"));
     CHECK(unsetenv("AMS_MEL_TEST_TRACK_RESPONSE_BARRIER") == 0);
     CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
     CHECK(unlink(barrier) == 0);
@@ -627,12 +683,12 @@ static int test_mixed_request_accounting(void)
           NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(ams_mel_ir_track_system_response_request_close(&response_request,
           NULL, 0, NULL) == AMS_MEL_OK);
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
-    CHECK(strstr(log, "track_response_completed") != NULL);
-    CHECK(strstr(log, "track_disabled") != NULL);
-    CHECK(strstr(log, "channel_detached") != NULL);
-    CHECK(strstr(log, "track_channel_destroyed") != NULL);
-    CHECK(strstr(log, "library_unloaded") != NULL);
+    CHECK(wait_for_library_unloaded(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(has_log_record(log, "track_response_completed"));
+    CHECK(has_log_record(log, "track_disabled"));
+    CHECK(has_log_record(log, "channel_detached"));
+    CHECK(has_log_record(log, "track_channel_destroyed"));
+    CHECK(has_log_record(log, "library_unloaded"));
 
     CHECK(unsetenv("AMS_MEL_TEST_TRACK_UPDATE_BARRIER") == 0);
     CHECK(unsetenv("AMS_MEL_TEST_TRACK_RESPONSE_BARRIER") == 0);
@@ -739,15 +795,11 @@ static int test_request_close_is_not_cancel(void)
     CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
     CHECK(strstr(log, "track_channel_destroyed") == NULL);
     CHECK(touch(barrier) == EXIT_SUCCESS);
-    {
-        const struct timespec delay = {0, 500000000L};
-        CHECK(nanosleep(&delay, NULL) == 0);
-    }
-    CHECK(read_log(path, log, sizeof log) == EXIT_SUCCESS);
+    CHECK(wait_for_library_unloaded(path, log, sizeof log) == EXIT_SUCCESS);
     /* The provider work was NOT cancelled; deferred cleanup then completed. */
-    CHECK(strstr(log, "track_response_completed") != NULL);
-    CHECK(strstr(log, "track_channel_destroyed") != NULL);
-    CHECK(strstr(log, "library_unloaded") != NULL);
+    CHECK(has_log_record(log, "track_response_completed"));
+    CHECK(has_log_record(log, "track_channel_destroyed"));
+    CHECK(has_log_record(log, "library_unloaded"));
     CHECK(unsetenv("AMS_MEL_TEST_TRACK_RESPONSE_BARRIER") == 0);
     CHECK(unsetenv("AMS_MEL_TEST_LIFETIME_LOG") == 0);
     CHECK(unlink(barrier) == 0);
