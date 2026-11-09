@@ -1,10 +1,5 @@
 # Ada binding bootstrap
 
-IRMEL-ADA-012 adds `AMS.MEL.IR.Scheduling.Metadata`: an opt-in limited stream and a
-fully owned two-identifier `Execute_Task_Ack` value. Reception is independent of execution;
-no task-execution API or acknowledgement/request matching is provided. See
-[qualification](../docs/irmel-ada-012-scheduling-execute-task-ack.md).
-
 ## Image LineOfSightQuaternion
 
 Call `AMS.MEL.IR.Image.Metadata.Open_Line_Of_Sight_Quaternion` on an Attached or Running
@@ -106,7 +101,7 @@ limited controlled `Scheduling_Channel` with `Open`/`Is_Open`/`Enable`/`Capabili
 Scheduling category; the Session stays usable. Close performs the inherited disable, and
 no standalone Disable exists. `Task_Schedule_Depth` zero is a valid
 application-managed mode. No Scheduling task `exec`, `PrioritizedTrackListCmd` send or
-Scheduling metadata callback other than the opt-in ExecuteTaskAck is bound.
+Scheduling metadata callback is bound.
 
 `AMS.MEL.IR.Track` implements only the conditionally required Track family's
 (`@RequiredIfTrack`) channel ownership/lifecycle foundation:

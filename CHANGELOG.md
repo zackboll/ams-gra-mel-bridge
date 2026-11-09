@@ -1,42 +1,5 @@
 # Changelog
 
-## IRMEL-ADA-012 — complete Scheduling ExecuteTaskAck reception
-
-`AMS.MEL.IR.Scheduling.Metadata` adds an explicit opt-in limited-controlled
-`Execute_Task_Ack_Stream`, `Open_Execute_Task_Ack`, `Receive_Execute_Task_Ack`,
-`Execute_Task_Ack_Counters` and `Close`, with distinct `Not_Supported`. The complete owned
-`Execute_Task_Ack` contains `Command_ID` and `Request_ID` (`Interfaces.Unsigned_32`), mapped
-from pinned `getCommandID()` and `getReqId()` respectively. The C payload is the fixed 8-byte
-`ams_mel_ir_execute_task_ack_v1`. All 32 bits, zero, unequal and duplicate identifiers survive.
-An acknowledgement is provider-delivered data, **not** task completion or success; there is no
-local-request matching. No Scheduling `exec` or `send` operation is implemented or invoked.
-
-Exactly six additive `ams_mel_ir_scheduling_execute_task_ack_` exports (`open`, `receive`,
-`get_counters`, `close`, `event_view`, `event_close`) preserve `AMS_MEL_0.1` (289 → 295).
-Registration is one-shot, including unsuccessful attempts that reach registration, on Attached
-or Enabled owners only. Invalid local arguments consume nothing. Registration invokes the
-actual pinned callback overload without either bridge lock; synchronous delivery is safe.
-The Scheduling foundation never registers it implicitly. Return values and provider exceptions
-remain distinguishable; no exception escapes the callback boundary.
-
-The independent bounded DROP-INCOMING queue copies both identifiers before callback return;
-full-queue valid input allocates no snapshot, null input is malformed even while full, counters
-saturate, and allocation failure rejects one event atomically with subsequent recovery.
-Scheduling Close stops consumption and wakes receivers, while queued events drain before any
-terminal cleanup failure. Pending inherited common requests still defer physical teardown.
-The provider channel is destroyed with the Session/library retained; physical teardown then
-drains in-flight bridge callbacks before releasing that graph. Late callbacks retain shared
-callback state and never enqueue. Failed detach preserves the foundation retention policy.
-There is no invented unregister operation.
-
-Only `SchedulingChannel::registerMetadataCallback(ExecuteTaskAck)` and `ExecuteTaskAck`
-(both getters) move missing → safe_ada. Unique safe Ada operations: 47 → 48.
-`SchedulingChannel` remains partial; four exec, one prioritized-track-list send and five other
-Scheduling callbacks remain missing. Python ctypes and Rust sys mirrors are private ABI only;
-no safe reception in those languages. Existing pinned upstream evidence, catalog hashes,
-licenses and all 824 vendored files are unchanged. Qualification uses only the separate mock
-provider. See [qualification](irmel-ada-012-scheduling-execute-task-ack.md).
-
 ## IRMEL-ADA-011 — SchedulingChannel foundation
 
 The conditionally required `SchedulingChannel` gains a typed owner foundation only:
