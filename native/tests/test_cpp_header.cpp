@@ -59,6 +59,26 @@ static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_health), channel_
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_instrumentation),
                              channel_from_instrumentation_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_track), channel_from_track_fn>);
+/* IRMEL-ADA-011 SchedulingChannel foundation: exact C++ shapes, noexcept. */
+using channel_from_scheduling_fn = ams_mel_status_t (*)(const ams_mel_ir_scheduling *,
+    ams_mel_ir_channel **, char *, size_t, size_t *) noexcept;
+using scheduling_open_fn = ams_mel_status_t (*)(const ams_mel_session *,
+    const ams_mel_ir_scheduling_config_v1 *, ams_mel_ir_scheduling **, char *, size_t,
+    size_t *) noexcept;
+using scheduling_enable_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling *, char *, size_t,
+    size_t *) noexcept;
+using scheduling_caps_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling *,
+    ams_mel_ir_channel_capability **, char *, size_t, size_t *) noexcept;
+using scheduling_close_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling **, char *, size_t,
+    size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_from_scheduling),
+                             channel_from_scheduling_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_open), scheduling_open_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_enable), scheduling_enable_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_get_capabilities),
+                             scheduling_caps_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_close), scheduling_close_fn>);
+static_assert(std::is_standard_layout_v<ams_mel_ir_scheduling_config_v1>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_send_keepalive), channel_keepalive_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_submit_comms_test), channel_comms_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_get_capabilities),

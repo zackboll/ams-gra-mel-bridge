@@ -19,10 +19,14 @@ extern int ams_mel_test_completion_owner(unsigned, uint64_t, uint64_t *);
 typedef int (*release_fn)(unsigned, unsigned);
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "%d: %s\n", __LINE__, #x); exit(1); } } while (0)
 
-enum family { C2, IMAGE, HEALTH, INSTRUMENTATION, TRACK };
-static const char *const family_names[] = {"c2", "image", "health", "instrumentation", "track"};
+/* IRMEL-ADA-011 appends the Scheduling family, which reuses every generic
+ * scenario below through ams_mel_ir_channel_from_scheduling. */
+enum family { C2, IMAGE, HEALTH, INSTRUMENTATION, TRACK, SCHEDULING };
+static const char *const family_names[] = {"c2", "image", "health", "instrumentation", "track",
+    "scheduling"};
 static const char *const destroyed_events[] = {"c2_channel_destroyed\n", "channel_destroyed\n",
-    "health_channel_destroyed\n", "instrumentation_channel_destroyed\n", "track_channel_destroyed\n"};
+    "health_channel_destroyed\n", "instrumentation_channel_destroyed\n", "track_channel_destroyed\n",
+    "scheduling_channel_destroyed\n"};
 static const ams_mel_ir_channel_comms_test_request_v1 high_ids = {0x80000001U, 0xf0000002U, 0xe0000003U};
 
 typedef struct {
@@ -36,6 +40,7 @@ typedef struct {
     ams_mel_ir_health *health;
     ams_mel_ir_instrumentation *instrumentation;
     ams_mel_ir_track *track;
+    ams_mel_ir_scheduling *scheduling;
 } fixture;
 
 static ams_mel_string_view_v1 text(const char *s)
@@ -107,6 +112,14 @@ static void open_fixture(fixture *f, enum family family, const char *scenario, u
         CHECK(ams_mel_ir_track_open(f->session, &c, &f->track, NULL, 0, NULL) == AMS_MEL_OK);
         break;
     }
+    case SCHEDULING: {
+        ams_mel_ir_scheduling_config_v1 c = {0};
+        c.channel_type = AMS_MEL_IR_CHANNEL_SCHEDULING;
+        c.channel_id = channel_id; c.platform_id = platform_id; c.sensor_location = location;
+        CHECK(ams_mel_ir_scheduling_open(f->session, &c, &f->scheduling, NULL, 0, NULL) ==
+              AMS_MEL_OK);
+        break;
+    }
     }
 }
 
@@ -130,6 +143,7 @@ static ams_mel_status_t view_from(const fixture *f, ams_mel_ir_channel **out)
     case INSTRUMENTATION:
         return ams_mel_ir_channel_from_instrumentation(f->instrumentation, out, NULL, 0, NULL);
     case TRACK: return ams_mel_ir_channel_from_track(f->track, out, NULL, 0, NULL);
+    case SCHEDULING: return ams_mel_ir_channel_from_scheduling(f->scheduling, out, NULL, 0, NULL);
     }
     return AMS_MEL_INTERNAL_ERROR;
 }
@@ -144,6 +158,8 @@ static ams_mel_status_t typed_capability(const fixture *f, ams_mel_ir_channel_ca
     case INSTRUMENTATION: return ams_mel_ir_instrumentation_get_capabilities(
         f->instrumentation, out, diagnostic, capacity, NULL);
     case TRACK: return ams_mel_ir_track_get_capabilities(f->track, out, diagnostic, capacity, NULL);
+    case SCHEDULING: return ams_mel_ir_scheduling_get_capabilities(f->scheduling, out, diagnostic,
+        capacity, NULL);
     }
     return AMS_MEL_INTERNAL_ERROR;
 }
@@ -159,6 +175,9 @@ static void typed_enable(const fixture *f)
         CHECK(ams_mel_ir_instrumentation_enable(f->instrumentation, NULL, 0, NULL) == AMS_MEL_OK);
         break;
     case TRACK: CHECK(ams_mel_ir_track_enable(f->track, NULL, 0, NULL) == AMS_MEL_OK); break;
+    case SCHEDULING:
+        CHECK(ams_mel_ir_scheduling_enable(f->scheduling, NULL, 0, NULL) == AMS_MEL_OK);
+        break;
     }
 }
 
@@ -173,6 +192,10 @@ static void typed_close(fixture *f)
         CHECK(!f->instrumentation);
         break;
     case TRACK: CHECK(ams_mel_ir_track_close(&f->track, NULL, 0, NULL) == AMS_MEL_OK && !f->track); break;
+    case SCHEDULING:
+        CHECK(ams_mel_ir_scheduling_close(&f->scheduling, NULL, 0, NULL) == AMS_MEL_OK);
+        CHECK(!f->scheduling);
+        break;
     }
 }
 
@@ -181,7 +204,8 @@ static void typed_close(fixture *f)
 static void teardown(fixture *f)
 {
     drain();
-    if (f->c2 || f->stream || f->health || f->instrumentation || f->track) typed_close(f);
+    if (f->c2 || f->stream || f->health || f->instrumentation || f->track || f->scheduling)
+        typed_close(f);
     CHECK(ams_mel_session_close(&f->session, NULL, 0, NULL) == AMS_MEL_OK);
     CHECK(dlclose(f->pin) == 0);
     f->pin = NULL;
@@ -491,7 +515,8 @@ static void scenario_invalid(enum family family)
      family == HEALTH ? ams_mel_ir_channel_from_health((src) ? f.health : NULL, out, d, c, r) : \
      family == INSTRUMENTATION ? ams_mel_ir_channel_from_instrumentation( \
          (src) ? f.instrumentation : NULL, out, d, c, r) : \
-     ams_mel_ir_channel_from_track((src) ? f.track : NULL, out, d, c, r))
+     family == TRACK ? ams_mel_ir_channel_from_track((src) ? f.track : NULL, out, d, c, r) : \
+     ams_mel_ir_channel_from_scheduling((src) ? f.scheduling : NULL, out, d, c, r))
     CHECK(CONVERT(0, &view, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT && !view);
     CHECK(CONVERT(1, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
     view = sentinel;
@@ -556,6 +581,8 @@ static void scenario_allocation(enum family family)
     case INSTRUMENTATION: status = ams_mel_ir_channel_from_instrumentation(f.instrumentation, &view,
         diagnostic, sizeof diagnostic, NULL); break;
     case TRACK: status = ams_mel_ir_channel_from_track(f.track, &view, diagnostic, sizeof diagnostic, NULL); break;
+    case SCHEDULING: status = ams_mel_ir_channel_from_scheduling(f.scheduling, &view, diagnostic,
+        sizeof diagnostic, NULL); break;
     }
     CHECK(unsetenv("AMS_MEL_TEST_CHANNEL_VIEW_FAILURE") == 0);
     CHECK(status == AMS_MEL_INTERNAL_ERROR && !view);
@@ -653,7 +680,7 @@ static void compare_c2_refusals(void)
 
 static enum family family_of(const char *name, const char **rest)
 {
-    for (unsigned i = 0; i < 5U; ++i) {
+    for (unsigned i = 0; i < 6U; ++i) {
         const size_t n = strlen(family_names[i]);
         if (!strncmp(name, family_names[i], n) && name[n] == '-') {
             *rest = name + n + 1;

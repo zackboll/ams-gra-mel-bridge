@@ -12,6 +12,46 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_scheduling_foundation_abi(self) -> None:
+        """IRMEL-ADA-011: private raw SchedulingChannel foundation mirror only."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_layout_probe.c"), "-o",
+                            str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrSchedulingConfigV1, "channel_id", "channel_type",
+                                "platform_id", "sensor_location")
+        expected += [ctypes.sizeof(_native.IrSchedulingHandle), _native.AMS_MEL_IR_CHANNEL_SCHEDULING]
+        self.assertEqual(actual, expected)
+        self.assertEqual(_native.AMS_MEL_IR_CHANNEL_SCHEDULING, 3)
+        # Same reused record members as every other typed channel configuration.
+        self.assertEqual(_native.IrSchedulingConfigV1._fields_, _native.IrTrackConfigV1._fields_)
+        pointer = ctypes.POINTER
+        owner = _native.IrSchedulingHandle
+        signatures = {
+            "ams_mel_ir_scheduling_open": [_native.SessionHandle,
+                                           pointer(_native.IrSchedulingConfigV1), pointer(owner)],
+            "ams_mel_ir_scheduling_enable": [owner],
+            "ams_mel_ir_scheduling_get_capabilities": [owner,
+                                                       pointer(_native.IrChannelCapabilityHandle)],
+            "ams_mel_ir_scheduling_close": [pointer(owner)],
+            "ams_mel_ir_channel_from_scheduling": [owner, pointer(_native.IrChannelHandle)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+        # No Scheduling task surface exists at all, raw or safe.
+        self.assertFalse([n for n in _native.BOUND_FUNCTION_NAMES
+                          if "scheduling" in n and any(w in n for w in ("exec", "task", "track_list", "metadata"))])
+        import ams_mel
+        self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
+
     def test_private_image_los_quaternion_abi(self) -> None:
         """IRMEL-ADA-010: private raw Image LineOfSightQuaternion mirror only."""
         root = Path(__file__).resolve().parents[2]
@@ -1056,6 +1096,10 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_enable",
                 "ams_mel_ir_track_get_capabilities",
                 "ams_mel_ir_track_close",
+                "ams_mel_ir_scheduling_open",
+                "ams_mel_ir_scheduling_enable",
+                "ams_mel_ir_scheduling_get_capabilities",
+                "ams_mel_ir_scheduling_close",
                 "ams_mel_ir_track_metadata_open",
                 "ams_mel_ir_track_metadata_receive",
                 "ams_mel_ir_track_metadata_get_counters",
@@ -1075,6 +1119,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_from_health",
                 "ams_mel_ir_channel_from_instrumentation",
                 "ams_mel_ir_channel_from_track",
+                "ams_mel_ir_channel_from_scheduling",
                 "ams_mel_ir_channel_send_keepalive",
                 "ams_mel_ir_channel_submit_comms_test",
                 "ams_mel_ir_channel_get_capabilities",
@@ -1176,8 +1221,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 284)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 284)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 289)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 289)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1185,7 +1230,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 284)
+        self.assertEqual(len(exported), 289)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1206,6 +1251,7 @@ class AbiTests(unittest.TestCase):
                 _native.IrInstrumentationHandle
             ],
             "ams_mel_ir_channel_from_track": [_native.IrTrackHandle],
+            "ams_mel_ir_channel_from_scheduling": [_native.IrSchedulingHandle],
         }
         for name, source in expected.items():
             function = getattr(_native, name)

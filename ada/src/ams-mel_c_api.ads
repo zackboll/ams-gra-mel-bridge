@@ -157,6 +157,10 @@ private package AMS.MEL_C_API is
    type Track_Handle is new System.Address;
    Null_Track                              : constant Track_Handle :=
      Track_Handle (System.Null_Address);
+   --  IRMEL-ADA-011: opaque SchedulingChannel foundation owner.
+   type Scheduling_Handle is new System.Address;
+   Null_Scheduling                         : constant Scheduling_Handle :=
+     Scheduling_Handle (System.Null_Address);
    type Track_Metadata_Handle is new System.Address;
    Null_Track_Metadata                     : constant Track_Metadata_Handle :=
      Track_Metadata_Handle (System.Null_Address);
@@ -254,6 +258,14 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type IR_Track_Config_V1 is record
+      Channel_ID      : UCI_ID_V1;
+      Channel_Type    : Interfaces.Unsigned_32;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-011: ams_mel_ir_scheduling_config_v1.
+   type IR_Scheduling_Config_V1 is record
       Channel_ID      : UCI_ID_V1;
       Channel_Type    : Interfaces.Unsigned_32;
       Platform_ID     : UCI_ID_V1;
@@ -2214,6 +2226,34 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_close";
+   --  IRMEL-ADA-011 SchedulingChannel foundation (private raw imports only).
+   function IR_Scheduling_Open
+     (Session             : Session_Handle;
+      Config              : access constant IR_Scheduling_Config_V1;
+      Output              : access Scheduling_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_open";
+   function IR_Scheduling_Enable
+     (Handle              : Scheduling_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_enable";
+   function IR_Scheduling_Get_Capabilities
+     (Handle              : Scheduling_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_get_capabilities";
+   function IR_Scheduling_Close
+     (Handle              : access Scheduling_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_close";
    function IR_Track_Metadata_Open
      (Handle              : Track_Handle;
       Queue_Capacity      : Size_T;
@@ -2377,6 +2417,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_track";
+   function IR_Channel_From_Scheduling
+     (Source              : Scheduling_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_scheduling";
    function IR_Channel_Send_Keepalive
      (Handle              : Channel_Handle;
       Output              : access Return_Request_Handle;
