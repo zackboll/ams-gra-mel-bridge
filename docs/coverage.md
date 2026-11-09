@@ -1,5 +1,15 @@
 # Implementation coverage
 
+> **Historical archive.** Existing entries are preserved as historical evidence,
+> not a current authoritative inventory. Do not prepend new feature sections or
+> add new feature status here. Each feature must record its coverage delta,
+> implementation boundaries, tests and limitations in a uniquely named task
+> document under `docs/` (for example, `py-mel-009-<feature>.md`). Continue updating
+> applicable authoritative structured coverage/API inventories and generated
+> reports when implementation changes require it. See
+> [Contributing](../CONTRIBUTING.md#conflict-resistant-parallel-language-development)
+> and the [IR Ada inventory procedure](reference/irmel-api-schema.md#reproduction-and-updates).
+
 ## RUST-IR-005 — complete safe Rust reception of existing C2 metadata
 
 `ControlChannel::open_metadata` now returns a unique non-Send/non-Sync
