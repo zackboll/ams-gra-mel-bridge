@@ -243,7 +243,7 @@ the source was restored byte-identically.
 ## Qualification
 
 One sequential `nohup` campaign (`/tmp/irmel-ada-011-qual/run.sh`) ran every stage, recorded
-each exit code and stopped on the first failure. Three runs were made:
+each exit code and stopped on the first failure. Four runs were made:
 
 1. `6b62e5f` passed stages 1–11. It then stopped at `make test-policy` because
    `test_doc_source_integrity.py` pins the vendored-file count at 804. That anchor was moved to
@@ -252,8 +252,18 @@ each exit code and stopped on the first failure. Three runs were made:
 3. Main then advanced to `fa91028` (PR #172, PY-MEL-007, Python-only). It was merged and the
    only conflict was the prepended `docs/coverage.md` sections. The full campaign was rerun on
    the merged head `5a9d91cc6c2301cd81aa5c9def9f6e4394b38490` (tree
-   `d6ba579161a91c6750b34b6b4090438cbbefbeae`) and passed all 16 stages. The table reports this
-   run; only this results section changed after it.
+   `d6ba579161a91c6750b34b6b4090438cbbefbeae`) and passed all 16 stages.
+4. Main then advanced to `240c299ca3630c243ed64bc3e1c0692a562316e6` through PR #176
+   (IR-CI-TRACK-001, `a9afb75`) and PR #173 (RUST-IR-005, safe-Rust C2 metadata). Both were
+   merged with an ordinary merge commit. The only conflict was again the prepended
+   `docs/coverage.md` sections. Resolution keeps IRMEL-ADA-011 first, followed verbatim by
+   main's RUST-IR-005 and IR-CI-TRACK-001 sections, with all historical sections untouched.
+   `native/tests/test_ir_track_system_response.c` and
+   `ir-ci-track-001-teardown-observation.md` are byte-identical to main. The same campaign
+   (`/tmp/irmel-ada-011r1-qual/run.sh`, base `240c299`) ran on merge
+   `71331f32a9c0ab8ac26bb1a8e5b40cdc98893aaa` (tree `df9645b9be2319bf6fc62a01192200dec91115e2`).
+   It added a stage, 6b, for PR #176's `ir_track_system_response_contract`, and all 17 stages
+   passed. The table reports this run; only this results section changed after it.
 
 | # | Stage | Command(s) | Result |
 |---|---|---|---|
@@ -263,11 +273,12 @@ each exit code and stopped on the first failure. Three runs were made:
 | 4 | Focused C11 Scheduling | `ctest -R ^ir_scheduling_` | PASS, 20/20 |
 | 5 | Track/C2 typed regression | `ir_track_foundation_contract`, `ir_c2_contract`, C2 system-response/submission, `c_abi`, `cpp_header` | PASS, 15/15 |
 | 6 | Common Channel | `ctest -R '^(public_channel_\|common_)'` | PASS, 147/147 |
+| 6b | PR #176 Track teardown observer | `ctest -R '^ir_track_system_response_contract$'` | PASS, 1/1 |
 | 7 | Full native | `ctest --test-dir native/build-tests` | PASS, 500/500 (472 baseline + 28) |
 | 8 | Ada build + smoke | `alr -C ada/tests exec -- sh scripts/test_ada.sh`; focused `ams_mel_ir_scheduling_focused` | PASS: 46 suite PASS lines incl. Scheduling and six-family common Channel; coverage 49 tests |
-| 9 | Python | `make test-python` | PASS, 407 tests (406 on merged main `fa91028` + 1) |
-| 10 | Rust | `make test-rust` | PASS, 282 passed (281 + 1), 0 failed, 6 ignored |
-| 11 | Exports | isolated `e746c49` production build vs head, `nm -D --defined-only` | PASS, 284 → 289; 5 added, 0 removed; all `@@AMS_MEL_0.1`; no `ams_mel_test_*` |
+| 9 | Python | `make test-python` | PASS, 407 tests (406 on main + 1; #173/#176 change no Python) |
+| 10 | Rust | `make test-rust` | PASS, 305 passed (304 on main + 1), 0 failed, 7 ignored |
+| 11 | Exports | isolated `240c299` production build vs head, `nm -D --defined-only` | PASS, 284 → 289; 5 added, 0 removed; all `@@AMS_MEL_0.1`; no `ams_mel_test_*` |
 | 12 | Policy | `make test-policy` | PASS |
 | 13 | Coverage | `make check-ir-api-coverage` | PASS, 49 tests; safe_ada 47, missing 19, partial 13 |
 | 14 | Formatting | `make check-ada-format`; `cargo fmt --all -- --check` | PASS |
@@ -276,9 +287,12 @@ each exit code and stopped on the first failure. Three runs were made:
 
 The policy log contains two "The following tests FAILED" lines. They come from bootstrap-policy
 negative fixtures, synthetic CTest checkouts that are asserted to fail. The enclosing unit test
-reports `ok`, and the stage exits 0. The Rust baseline (281) is unchanged by #171 and #172. The Python
-baseline is 354 on `e746c49` and 406 on `fa91028`, the latter measured directly against the
-same native library; this slice adds exactly one Python test.
+reports `ok`, and the stage exits 0. The Python baseline is 354 on `e746c49` and 406 on
+`fa91028`, the latter measured directly against the same native library; this slice adds
+exactly one Python test. The Rust baseline was 281 through #171 and #172. #173 raised it to the
+304 workspace passes (7 ignored outer child entries) recorded in `rust-ir-005-c2-metadata.md`.
+That figure is taken from #173's note, not remeasured here. This slice adds exactly one Rust
+test (`scheduling_abi`).
 
 No real provider, Squall or hardware task scheduling ran. All positive evidence is
 deterministic mock-provider evidence.
