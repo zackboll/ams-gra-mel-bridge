@@ -16,6 +16,17 @@ metadata exclusions below describe historical scope superseded by this section.
 See [mapping, ownership and qualification](rust-ir-005-c2-metadata.md); real-provider
 and hardware qualification remain outside this mock-only slice.
 
+## IR-CI-TRACK-001 — asynchronous Track teardown observation
+
+Three compiled-C Track SystemTrackDataResponse lifetime tests now observe the
+final unload record using a bounded monotonic-deadline fresh-log observer rather
+than an immediate snapshot or fixed sleep. Complete newline-delimited records,
+NUL/overflow rejection, delayed-unload positive controls and missing-unload
+negative controls retain the final unload requirement and all original ownership,
+accounting and release-barrier checks. No production, provider, ABI or binding
+behavior changes. See `ir-ci-track-001-teardown-observation.md` for diagnosis,
+both preserved CI failures, experiments and qualification.
+
 ## PY-MEL-007 — Complete safe Python ordinary IR Image metadata
 
 `ImageStream.open_metadata(queue_capacity=16)` now wraps all four ordinary Image
