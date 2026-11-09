@@ -242,13 +242,18 @@ the source was restored byte-identically.
 
 ## Qualification
 
-One sequential `nohup` campaign (`/tmp/irmel-ada-011-qual/run.sh`) ran every stage against
-the committed implementation `04381822db45ab80746db4bdf864f7520b4b36af` (tree
-`081dd397ccb82d8bca16889462fc2549e148630a`). It recorded each exit code and stopped on the
-first failure. A first attempt on `6b62e5f` passed stages 1–11. It then stopped at
-`make test-policy` because `test_doc_source_integrity.py` pins the vendored-file count at 804.
-That anchor was updated to 824, the 20 verified closure headers, and the campaign was rerun
-from stage 1. After that run, only this results section changed.
+One sequential `nohup` campaign (`/tmp/irmel-ada-011-qual/run.sh`) ran every stage, recorded
+each exit code and stopped on the first failure. Three runs were made:
+
+1. `6b62e5f` passed stages 1–11. It then stopped at `make test-policy` because
+   `test_doc_source_integrity.py` pins the vendored-file count at 804. That anchor was moved to
+   824 for the 20 verified closure headers (`0438182`).
+2. `0438182` (tree `081dd39`) passed all 16 stages.
+3. Main then advanced to `fa91028` (PR #172, PY-MEL-007, Python-only). It was merged and the
+   only conflict was the prepended `docs/coverage.md` sections. The full campaign was rerun on
+   the merged head `5a9d91cc6c2301cd81aa5c9def9f6e4394b38490` (tree
+   `d6ba579161a91c6750b34b6b4090438cbbefbeae`) and passed all 16 stages. The table reports this
+   run; only this results section changed after it.
 
 | # | Stage | Command(s) | Result |
 |---|---|---|---|
@@ -260,7 +265,7 @@ from stage 1. After that run, only this results section changed.
 | 6 | Common Channel | `ctest -R '^(public_channel_\|common_)'` | PASS, 147/147 |
 | 7 | Full native | `ctest --test-dir native/build-tests` | PASS, 500/500 (472 baseline + 28) |
 | 8 | Ada build + smoke | `alr -C ada/tests exec -- sh scripts/test_ada.sh`; focused `ams_mel_ir_scheduling_focused` | PASS: 46 suite PASS lines incl. Scheduling and six-family common Channel; coverage 49 tests |
-| 9 | Python | `make test-python` | PASS, 355 tests (354 + 1) |
+| 9 | Python | `make test-python` | PASS, 407 tests (406 on merged main `fa91028` + 1) |
 | 10 | Rust | `make test-rust` | PASS, 282 passed (281 + 1), 0 failed, 6 ignored |
 | 11 | Exports | isolated `e746c49` production build vs head, `nm -D --defined-only` | PASS, 284 → 289; 5 added, 0 removed; all `@@AMS_MEL_0.1`; no `ams_mel_test_*` |
 | 12 | Policy | `make test-policy` | PASS |
@@ -271,8 +276,9 @@ from stage 1. After that run, only this results section changed.
 
 The policy log contains two "The following tests FAILED" lines. They come from bootstrap-policy
 negative fixtures, synthetic CTest checkouts that are asserted to fail. The enclosing unit test
-reports `ok`, and the stage exits 0. Python and Rust baselines are unchanged by PR #171, which
-touches neither tree.
+reports `ok`, and the stage exits 0. The Rust baseline (281) is unchanged by #171 and #172. The Python
+baseline is 354 on `e746c49` and 406 on `fa91028`, the latter measured directly against the
+same native library; this slice adds exactly one Python test.
 
 No real provider, Squall or hardware task scheduling ran. All positive evidence is
 deterministic mock-provider evidence.
