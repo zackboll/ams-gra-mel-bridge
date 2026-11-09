@@ -4,6 +4,7 @@
 #include <irmel/library/health-status/HealthStatusChannel.h>
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
 #include <irmel/library/track/TrackChannel.h>
+#include <irmel/library/scheduling/SchedulingChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -5253,6 +5254,144 @@ private:
         preproc_callback_;
 };
 
+/* IRMEL-ADA-011: concrete mock derived from the pinned SchedulingChannel.
+ *
+ * Every pure virtual is defined so the class is instantiable. Only the
+ * inherited Channel surface the foundation needs (enable, disable,
+ * getCapabilities, KeepAlive, CommsTest) has scenario behavior. The eleven
+ * Scheduling-specific methods are deliberately UNIMPLEMENTED for consumer
+ * purposes: each increments a process-wide counter, records a distinct
+ * lifetime event, and answers Return::NotSupported (registrations) or a
+ * ready ErrorCode::Unsupported rejection (exec/send). Answering Unsupported is
+ * not an implementation of any upstream operation; the native tests prove the
+ * bridge never reaches any of them. */
+std::atomic<unsigned> scheduling_specific_calls{};
+
+class MockSchedulingChannel final : public irmel::SchedulingChannel {
+public:
+    explicit MockSchedulingChannel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockSchedulingChannel() override { record("scheduling_channel_destroyed"); }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "sched-keepalive-throw")
+            throw std::runtime_error("mock Scheduling keepalive send exception");
+        if (scenario_ == "sched-ada-common")
+            return ready_request(std::make_shared<Return>(Return::Success));
+        return held_request(std::make_shared<Return>(Return::Success), 1);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
+            request.getRequestID() != 0xe0000003U)
+            throw std::runtime_error("Scheduling CommsTest IDs changed");
+        if (scenario_ == "sched-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 2);
+    }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return enable() override
+    {
+        record("scheduling_enabled");
+        if (scenario_ == "sched-enable-throw")
+            throw std::runtime_error("mock Scheduling enable exception");
+        if (scenario_ == "sched-enable-fail") return Return::Fail;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        record("scheduling_disabled");
+        if (scenario_ == "sched-disable-throw")
+            throw std::runtime_error("mock Scheduling disable exception");
+        return scenario_ == "sched-disable-fail" ? Return::Fail : Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        if (scenario_.rfind("sched-capability-throw", 0) == 0)
+            throw std::runtime_error("mock Scheduling capability exception");
+        auto value = rich_channel_capability();
+        if (scenario_ == "sched-capability-wrong")
+            value.setChannelTypes({irmel::ChannelType::IRSTTrack});
+        else
+            value.setChannelTypes({irmel::ChannelType::Scheduling,
+                                   irmel::ChannelType::Reserved1});
+        /* TaskScheduleDepth 0 is a valid application-managed priority mode. */
+        value.setTaskScheduleDepth(scenario_ == "sched-depth-zero" ? 0U :
+                                   scenario_ == "sched-depth-max" ? UINT32_MAX : 23U);
+        value.setChannelMetadataCapabilities({
+            irmel::ChannelMetadataCapabilityType::TaskExecutingRep,
+            irmel::ChannelMetadataCapabilityType::ExecuteTaskAck,
+            irmel::ChannelMetadataCapabilityType::SchedCreatedRep,
+            irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep,
+            irmel::ChannelMetadataCapabilityType::UpdateTrackListResponse,
+            irmel::ChannelMetadataCapabilityType::TaskEvents,
+            irmel::ChannelMetadataCapabilityType::ScanPerformanceReport});
+        return value;
+    }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { return Return::NotSupported; }
+    /* ---- Scheduling-specific surface: explicitly unsupported. ---- */
+    mel::RequestFor<irmel::TrackListResponse> send(irmel::PrioritizedTrackListCmd) override
+    { return unsupported<irmel::TrackListResponse>("scheduling_prioritized_track_list_sent"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::TaskExecutingRep *const)>) override
+    { return unsupported_registration("scheduling_task_executing_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ExecuteTaskAck *const)>) override
+    { return unsupported_registration("scheduling_execute_task_ack_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::SchedCreatedRep *const)>) override
+    { return unsupported_registration("scheduling_sched_created_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::UpdateTrackListResponse *const)>) override
+    { return unsupported_registration("scheduling_update_track_list_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::TaskEvents *const)>) override
+    { return unsupported_registration("scheduling_task_events_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ScanPerformanceReport *const)>) override
+    { return unsupported_registration("scheduling_scan_performance_registered"); }
+    mel::RequestFor<Return> exec(irmel::AbortTask) override
+    { return unsupported<Return>("scheduling_abort_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTScanTask) override
+    { return unsupported<Return>("scheduling_scan_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTStareTask) override
+    { return unsupported<Return>("scheduling_stare_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTTrackTask) override
+    { return unsupported<Return>("scheduling_track_task_exec"); }
+private:
+    static Return unsupported_registration(const char *event)
+    {
+        ++scheduling_specific_calls;
+        record(event);
+        return Return::NotSupported;
+    }
+    template<class T>
+    static mel::RequestFor<T> unsupported(const char *event)
+    {
+        ++scheduling_specific_calls;
+        record(event);
+        std::promise<mel::ErrorOr<std::shared_ptr<T>>> promise;
+        auto future = promise.get_future();
+        promise.set_value(mel::ErrorOr<std::shared_ptr<T>>{mel::Error{
+            mel::ErrorCode::Unsupported, "mock Scheduling operation is not implemented"}});
+        return future;
+    }
+    std::string scenario_;
+};
+
+/* Test-only negative-control probe: the number of Scheduling-specific
+ * exec/send/registration calls observed in this process. */
+extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_specific_calls(void)
+{ return scheduling_specific_calls.load(); }
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
@@ -5264,6 +5403,14 @@ public:
             capability.setChannelTypes({irmel::ChannelType::Instrumentation});
         else if (instance_.rfind("track-",0)==0)
             capability.setChannelTypes({irmel::ChannelType::IRSTTrack});
+        /* IRMEL-ADA-011: "sched-" providers publish Scheduling alongside C2;
+         * "sched-not-advertised" is the conditional-absence negative control. */
+        else if ((instance_.rfind("sched-",0)==0 && instance_ != "sched-not-advertised") ||
+                 /* The shared public common-Channel scenario; only C2 reads
+                    Control capabilities and it still finds CommandAndControl. */
+                 instance_ == "completion-scale")
+            capability.setChannelTypes({irmel::ChannelType::CommandAndControl,
+                                        irmel::ChannelType::Scheduling});
         else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
@@ -5349,6 +5496,35 @@ public:
             }
             return std::make_shared<MockTrackChannel>(instance_);
         }
+        if (config.getChannelType() == irmel::ChannelType::Scheduling) {
+            record("scheduling_attach_requested");
+            if (instance_ == "sched-attach-throw")
+                throw std::runtime_error("mock Scheduling attach exception");
+            if (instance_ == "sched-attach-null") return {};
+            if (instance_ == "sched-wrong-concrete" || instance_ == "sched-open-detach-fail")
+                return std::make_shared<MockHealthStatusChannel>(instance_);
+            if (instance_ == "sched-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != static_cast<std::uint8_t>(0xa0U + i) ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock Scheduling ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR scheduling \xCE\xBC channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    static_cast<std::uint32_t>(config.getChannelType()) != 3U ||
+                    config.getImgLstnr() || config.getSupportsSystemTrackData() ||
+                    config.getSupportsTrackDataUpdates())
+                    throw std::runtime_error("mock Scheduling configuration conversion mismatch");
+                record("scheduling_config_verified");
+            }
+            return std::make_shared<MockSchedulingChannel>(instance_);
+        }
         if (config.getChannelType() == irmel::ChannelType::Instrumentation) {
             if (instance_ == "instr-attach-null") return {};
             if (instance_ == "instr-wrong-type")
@@ -5427,7 +5603,8 @@ public:
             !std::dynamic_pointer_cast<MockC2Channel>(channel) &&
             !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
             !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel) &&
-            !std::dynamic_pointer_cast<MockTrackChannel>(channel)) std::abort();
+            !std::dynamic_pointer_cast<MockTrackChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockSchedulingChannel>(channel)) std::abort();
         if ((instance_ == "detach-fail" ||
              /* Deterministic Image Navigation completion-vs-Close corrective
                 regression: the first detach fails exactly once, a later Close
@@ -5444,7 +5621,13 @@ public:
              instance_ == "odm-detach-fail" ||
              /* IRMEL-ADA-010: Image LineOfSightQuaternion owner under a failed
                 provider detach. */
-             instance_ == "losq-detach-fail") && !detach_failed_) {
+             instance_ == "losq-detach-fail" ||
+             /* IRMEL-ADA-011: Scheduling owner and open-time rollback detach
+                failures. */
+             instance_ == "sched-detach-fail" ||
+             instance_ == "sched-enabled-detach-fail" ||
+             instance_ == "sched-open-detach-fail" ||
+             instance_ == "sched-capability-throw-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;
