@@ -46,11 +46,58 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
-        # No Scheduling task surface exists at all, raw or safe.
-        self.assertFalse([n for n in _native.BOUND_FUNCTION_NAMES
-                          if "scheduling" in n and any(w in n for w in ("exec", "task", "track_list", "metadata"))])
+        # IRMEL-ADA-012 allows exactly the six raw acknowledgement exports;
+        # no task execution, track-list send or additional callback is admitted.
+        self.assertEqual(sorted(n for n in _native.BOUND_FUNCTION_NAMES
+                                if "scheduling" in n and n not in signatures),
+                         sorted("ams_mel_ir_scheduling_execute_task_ack_" + suffix for suffix in
+                                ("open", "receive", "get_counters", "close", "event_view", "event_close")))
         import ams_mel
         self.assertFalse([n for n in dir(ams_mel) if "schedul" in n.lower()])
+
+    def test_private_scheduling_ack_abi(self) -> None:
+        """IRMEL-ADA-012: private raw Scheduling ExecuteTaskAck mirror only."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/scheduling_execute_task_ack_layout_probe.c"), "-o",
+                            str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrExecuteTaskAckV1, "command_id", "request_id")
+        expected += [ctypes.sizeof(_native.IrC2MetadataCountersV1),
+                     _native.IrC2MetadataCountersV1.events_received.offset,
+                     _native.IrC2MetadataCountersV1.events_dropped_queue_full.offset,
+                     _native.IrC2MetadataCountersV1.malformed_or_unsupported.offset,
+                     ctypes.alignment(_native.IrC2MetadataCountersV1), 14]
+        self.assertEqual(actual, expected)
+        self.assertEqual(ctypes.sizeof(_native.IrExecuteTaskAckV1), 8)
+        self.assertEqual(dict(_native.IrExecuteTaskAckV1._fields_),
+                         {"command_id": ctypes.c_uint32, "request_id": ctypes.c_uint32})
+        pointer = ctypes.POINTER
+        owner = _native.IrSchedulingAckMetadataHandle
+        event = _native.IrSchedulingAckEventHandle
+        signatures = {
+            "ams_mel_ir_scheduling_execute_task_ack_open": [_native.IrSchedulingHandle, ctypes.c_size_t,
+                                                     pointer(owner), pointer(ctypes.c_uint32)],
+            "ams_mel_ir_scheduling_execute_task_ack_receive": [owner, ctypes.c_uint32, pointer(event)],
+            "ams_mel_ir_scheduling_execute_task_ack_get_counters": [owner,
+                                                             pointer(_native.IrC2MetadataCountersV1)],
+            "ams_mel_ir_scheduling_execute_task_ack_close": [pointer(owner)],
+            "ams_mel_ir_scheduling_execute_task_ack_event_view": [
+                event, pointer(pointer(_native.IrExecuteTaskAckV1))],
+            "ams_mel_ir_scheduling_execute_task_ack_event_close": [pointer(event)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+        # No safe Python quaternion line-of-sight API is introduced.
+        import ams_mel
+        self.assertFalse([n for n in dir(ams_mel) if "execute_task_ack" in n.lower()])
 
     def test_private_image_los_quaternion_abi(self) -> None:
         """IRMEL-ADA-010: private raw Image LineOfSightQuaternion mirror only."""
@@ -929,6 +976,12 @@ class AbiTests(unittest.TestCase):
         self.assertEqual(
             _native.BOUND_FUNCTION_NAMES,
             (
+                "ams_mel_ir_scheduling_execute_task_ack_open",
+                "ams_mel_ir_scheduling_execute_task_ack_receive",
+                "ams_mel_ir_scheduling_execute_task_ack_get_counters",
+                "ams_mel_ir_scheduling_execute_task_ack_close",
+                "ams_mel_ir_scheduling_execute_task_ack_event_view",
+                "ams_mel_ir_scheduling_execute_task_ack_event_close",
                 "ams_mel_ir_image_los_quaternion_open",
                 "ams_mel_ir_image_los_quaternion_receive",
                 "ams_mel_ir_image_los_quaternion_get_counters",
@@ -1221,8 +1274,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 289)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 289)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 295)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 295)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1230,7 +1283,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 289)
+        self.assertEqual(len(exported), 295)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

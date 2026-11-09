@@ -242,6 +242,39 @@ int main(void)
         char *, size_t, size_t *) = ams_mel_ir_scheduling_get_capabilities;
     ams_mel_status_t (*scheduling_close)(ams_mel_ir_scheduling **, char *, size_t, size_t *) =
         ams_mel_ir_scheduling_close;
+    /* IRMEL-ADA-012: exact Scheduling ExecuteTaskAck declarations and layout. */
+    ams_mel_status_t (*ack_open)(ams_mel_ir_scheduling *, size_t,
+        ams_mel_ir_scheduling_execute_task_ack_metadata **, ams_mel_ir_return_t *, char *, size_t,
+        size_t *) = ams_mel_ir_scheduling_execute_task_ack_open;
+    ams_mel_status_t (*ack_receive)(ams_mel_ir_scheduling_execute_task_ack_metadata *, uint32_t,
+        ams_mel_ir_scheduling_execute_task_ack_event **, char *, size_t, size_t *) =
+        ams_mel_ir_scheduling_execute_task_ack_receive;
+    ams_mel_status_t (*ack_counters)(const ams_mel_ir_scheduling_execute_task_ack_metadata *,
+        ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) =
+        ams_mel_ir_scheduling_execute_task_ack_get_counters;
+    ams_mel_status_t (*ack_close)(ams_mel_ir_scheduling_execute_task_ack_metadata **, char *,
+        size_t, size_t *) = ams_mel_ir_scheduling_execute_task_ack_close;
+    ams_mel_status_t (*ack_view)(const ams_mel_ir_scheduling_execute_task_ack_event *,
+        const ams_mel_ir_execute_task_ack_v1 **, char *, size_t, size_t *) =
+        ams_mel_ir_scheduling_execute_task_ack_event_view;
+    ams_mel_status_t (*ack_event_close)(ams_mel_ir_scheduling_execute_task_ack_event **, char *,
+        size_t, size_t *) = ams_mel_ir_scheduling_execute_task_ack_event_close;
+    CHECK(sizeof(ams_mel_ir_execute_task_ack_v1) == 8U);
+    CHECK(offsetof(ams_mel_ir_execute_task_ack_v1, command_id) == 0U);
+    CHECK(offsetof(ams_mel_ir_execute_task_ack_v1, request_id) == 4U);
+    CHECK(AMS_MEL_IR_METADATA_EXECUTE_TASK_ACK == 14U);
+    {
+        ams_mel_ir_scheduling_execute_task_ack_metadata *ack = NULL;
+        ams_mel_ir_scheduling_execute_task_ack_event *ack_event = NULL;
+        const ams_mel_ir_execute_task_ack_v1 *ack_value = NULL;
+        ams_mel_ir_metadata_counters_v1 ack_counts;
+        CHECK(ack_open(NULL, 1U, &ack, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT && !ack);
+        CHECK(ack_receive(NULL, 0U, &ack_event, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(ack_counters(NULL, &ack_counts, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(ack_close(&ack, NULL, 0, NULL) == AMS_MEL_OK && !ack);
+        CHECK(ack_view(NULL, &ack_value, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(ack_event_close(&ack_event, NULL, 0, NULL) == AMS_MEL_OK && !ack_event);
+    }
     CHECK(AMS_MEL_IR_CHANNEL_SCHEDULING == 3U);
     CHECK(offsetof(ams_mel_ir_scheduling_config_v1, channel_id) == 0U);
     CHECK(sizeof(ams_mel_ir_scheduling_config_v1) == sizeof(ams_mel_ir_track_config_v1));
