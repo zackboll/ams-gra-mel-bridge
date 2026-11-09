@@ -1576,8 +1576,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 284);
-    assert_eq!(exported.len(), 284);
+    assert_eq!(declared.len(), 289);
+    assert_eq!(exported.len(), 289);
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",
@@ -1605,6 +1605,7 @@ fn raw_inventory_matches_production_exports() {
         "ams_mel_ir_channel_from_health",
         "ams_mel_ir_channel_from_instrumentation",
         "ams_mel_ir_channel_from_track",
+        "ams_mel_ir_channel_from_scheduling",
         "ams_mel_ir_channel_send_keepalive",
         "ams_mel_ir_channel_submit_comms_test",
         "ams_mel_ir_channel_get_capabilities",
