@@ -9,7 +9,12 @@ PR #177 was merged before this task. Fresh remote refs selected `origin/main` at
 `/home/zboll/git/ams-mel-irmel-ada-012`, branch
 `feature/irmel-ada-012-scheduling-execute-task-ack`; target is `main`, not stacked.
 The prerequisite branch/worktree is unchanged. No rebase, amend, force push, self-approval,
-auto-merge or merge is performed by this feature.
+auto-merge or PR merge is performed by this feature. A later fetch found PR #178 merged as
+`a885d7730dd1b988ca4c4a95ce4864d5c325df68`. An ordinary merge brought that documentation-only
+main advance into this branch (`410202b81d612ca930428503b4eb01cd27efb14c`, tree
+`a0f3f97dcdd0705c8c789a1de916d5957fabf0ec`). Shared status-only prose additions were removed
+in accordance with the new policy; this task-owned document retains their information.
+All compiled implementation/test inputs are identical across that reconciliation.
 
 This slice adds only owned reception of
 `SchedulingChannel::registerMetadataCallback(ExecuteTaskAck)` through one explicit opt-in
@@ -122,3 +127,47 @@ safe Ada 47, vendored files 824. Baseline and feature qualification use sequenti
 runners with per-stage exit codes and a final success/failure marker. All positive execution
 evidence is from the separate mock provider; no real provider, hardware, credentials or
 Scheduling task execution was used.
+
+## Recorded qualification commands and results
+
+Implementation commit `4de1ba49c7293b677e90940dc2918d90b9614540`, tree
+`7ad52fd076fa9b0705614b24f7e0b542267da29b`, was qualified using the sequential runner
+`/tmp/irmel012-qual/qualify.sh` and corrected continuation
+`/tmp/irmel012-qual/resume.sh`. The baseline runner was
+`/tmp/irmel012-qual/baseline.sh`. Logs and individual exit codes are under
+`/tmp/irmel012-qual/{baseline,final,resumed2}`; these are local execution artifacts, not
+release dependencies. The final committed-head runner is
+`/tmp/irmel012-qual/exact-head.sh`, with results under `/tmp/irmel012-qual/exact-head`.
+
+| Stage | Actual command(s) | Result / exit code |
+|---|---|---|
+| Production | `sh native/scripts/build.sh` | 0; no compiler warnings |
+| Test build | `sh native/scripts/configure-build.sh tests`; `cmake --build native/build-tests --parallel 8` | 0; no compiler warnings |
+| ExecuteTaskAck C11 | `ctest --test-dir native/build-tests -R '^ir_scheduling_execute_task_ack_' --output-on-failure` | 0; 23/23 |
+| Foundation | CTest `^ir_scheduling_foundation_` and `^ir_scheduling_layout$` | 0; 20/20 |
+| Common/header/deferred regressions | CTest public Channel, common requests, C/C++ headers and Track deferred cleanup | 0; 150/150 |
+| Full native | `ctest --test-dir native/build-tests --output-on-failure` | 0; 523/523 |
+| Ada formatting | `make format-ada`; `make check-ada-format` | 0 |
+| Ada full and focused | `alr -C ada/tests exec -- sh /home/zboll/git/ams-mel-irmel-ada-012/scripts/test_ada.sh`; `ada/tests/bin/ams_mel_ir_scheduling_ack_focused` with mock provider and test-facade `LD_LIBRARY_PATH` | 0; full smoke and focused PASS |
+| Alire | `alr -C ada build`; `alr -C ada/tests run` | 0; full smoke PASS |
+| Python | `make test-python` | 0; 408 tests, including 56 private ABI tests |
+| Rust | `make test-rust`; `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | 0; 306 tests |
+| Exports | `nm -D --defined-only`, sorted comparison with baseline, version-map inventory | 0; 289 → 295, exactly six additions, zero removals, all AMS_MEL_0.1; no production test exports |
+| Policy | `make test-policy` | 0; intentional failing-CTest fixtures verify failure propagation, not feature failures |
+| Coverage | `make check-ir-api-coverage` | 0; 52 audit tests; safe Ada 48 |
+| Documentation | `python3 scripts/check_doc_source_integrity.py`; all `docs/tests/test_*links.py` with pinned enhancer Python | 0; 824 vendored files; all type-link tests PASS |
+| Documentation regeneration | `GNATDOC_PREFIX=/home/zboll/git/ams-mel/.doc-tools/gnatdoc-26.0.0 alr -C ada/tests exec -- make -C /home/zboll/git/ams-mel-irmel-ada-012 test-documentation-source DOC_PYTHON=/home/zboll/git/ams-mel/.doc-tools/enhancer/bin/python` | 0; 6 tests |
+| Mutations | `python3 scripts/test_scheduling_execute_task_ack_mutations.py` | 0; 9 compiled mutants detected, source restored, all focused baseline scenarios rerun |
+
+The documentation stage initially stopped with exit 2 because the runner omitted
+`GNATDOC_PREFIX`, then exit 1 because `alr exec` changed the working directory for `make`.
+Both runner invocations were corrected without changing tests or repository contracts; the
+full documentation stage then passed. The original failed markers remain in the local logs.
+The initial native warning scan also used a log as both input and output for grep; a separate
+read verified zero warning lines in both build logs and the runner was corrected to `grep -q`.
+
+The formatter reports the existing externally-built GPR project warning that language C has
+no sources. Compiled first-party sources remain warning-clean with warnings treated as errors.
+GNATdoc emits informational pre-existing undocumented-entity warnings; these are not suppressed
+or misrepresented as first-party compiler warnings. No unavailable provider/hardware test is
+claimed passed. Exact-head generated documentation validation is non-deploying.
