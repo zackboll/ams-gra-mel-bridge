@@ -158,6 +158,8 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *);
 CommonChannelAccess common_from_health(const ams_mel_ir_health *);
 CommonChannelAccess common_from_instrumentation(const ams_mel_ir_instrumentation *);
 CommonChannelAccess common_from_track(const ams_mel_ir_track *);
+/* IRMEL-ADA-011: Scheduling adapter; defined in ir_scheduling.cpp. */
+CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *);
 ams_mel_status_t submit_common_keepalive(const CommonChannelAccess&,
     ams_mel_ir_return_request **, char *, std::size_t, std::size_t *) noexcept;
 ams_mel_status_t submit_common_comms(const CommonChannelAccess&,

@@ -10,8 +10,8 @@
   embed its own containing commit identity.
 
 Coverage delta: documentation/workflow conventions only; no API implementation
-or coverage classification changes. Historical coverage remains intact. Current
-structured IR Ada coverage remains 127 headers / 148 operations: 47 safe Ada,
+or coverage classification changes. Historical coverage remains intact. At the
+original source above, structured IR Ada coverage was 127 headers / 148 operations: 47 safe Ada,
 13 partial, 19 missing, 69 provider-only and zero native-only.
 
 This change requires uniquely named, task-owned feature documents instead of
@@ -191,3 +191,82 @@ retroactively remove overlaps from existing heads. Shared native work remains
 coordinated work, not a promise of conflict-free merging. No existing feature PR
 was modified, approved, merged or given auto-merge. The new PR remains open for
 independent review.
+
+## DEV-PARALLEL-001R1 — reconcile PR #178 with current main
+
+### Source identities and ordinary merge
+
+The original source measurements, fixture identities, validation results and
+migration observations above are historical evidence, not measurements of the
+updated main. In particular, PR #177 has since merged; its Scheduling foundation
+is preserved, not migrated or removed by this reconciliation. PRs #174 and #175
+are not modified.
+
+- Existing PR: #178; existing branch: `docs/dev-parallel-001`.
+- Original feature head / first merge parent:
+  `cbb54d250a669b7c4ac296575790ccdff5241757` (tree
+  `32d5dca1dba314ca5ad97b1bd7e76a90c7acebcb`).
+- Freshly fetched main / second merge parent:
+  `2596c1cd31b5e974a7306b4a5a5041a9902b91ef` (tree
+  `5fb47bba874109dc311e8dd40eac0098ec4c6a35`).
+- Before changing tracked files, the existing feature worktree was clean and
+  local HEAD equalled the fetched remote branch and GitHub PR head. The worktree
+  already owning this branch was used; no replacement branch/worktree was made.
+- Executed `git fetch origin main`, then `git merge --no-ff origin/main`.
+  No rebase, amend, reset, strategy override, replacement PR or force-push.
+
+### Exact conflict resolution and scope preservation
+
+The only unmerged path was `docs/coverage.md`. Both sides inserted text after
+`# Implementation coverage`: the feature's archive notice and main's complete
+`IRMEL-ADA-011 — SchedulingChannel foundation` section. Resolution retains the
+title, unchanged notice, complete Scheduling section and every remaining main
+section in its original order. No coverage entry was rewritten or combined.
+
+The resolution was checked as bytes, not merely by comparing headings:
+
+| Bytes | Length | SHA-256 |
+| --- | ---: | --- |
+| Fetched main archive | 131402 | `e2a076351f231698b9765560acd30095fee8a249c8441b9f44625f4a47650490` |
+| Original archive notice, including separating blank line | 712 | `1a1d5f342d359fa7db4e1df17883891545994bfe1babb0ea408a9a60fd49f90f` |
+| Resolved archive | 132114 | `c12df73b6c9ec3605704594aad09a7780cb5b16d8dea615231b6af65ad412884` |
+
+Removing only that exact notice yields the entire fetched main archive
+byte-for-byte, preserving all 47 `##` sections. The original-source archive
+comparison also still passes. All three instruction files are byte-identical to
+the original feature head. Relative to updated main, exactly the original five
+files in the changed-file inventory differ. All other main content, including
+shared implementation, bindings, vendored dependencies and authoritative coverage
+inventories/reports, is retained without feature modifications. No merge driver,
+union attribute, workflow or dependency pin was introduced or changed.
+
+### Merged-source local validation
+
+| Command/check | Actual R1 result |
+| --- | --- |
+| `python3 scripts/check_doc_source_integrity.py` | PASS: 824 vendor files and three workflows (original source had 804 vendor files). |
+| `make test-policy` | PASS: 234 tests, with the same seven suite counts recorded above; includes `make test-docs-ci`. Intentional failing CTest fixtures remain negative controls. |
+| `make check-ir-api-coverage` | PASS: offline audit and 49 regression tests (original source had 46). Current-main totals remain 127 headers / 148 operations: 47 safe Ada, 13 partial, 19 missing, 69 provider-only, zero native-only. Scheduling foundation classification and inherited exposures are retained. |
+| `python3 -W error -m unittest discover -s scripts -p test_compare_gnatdoc_warnings.py -v` | PASS: 42 parser/comparison regression tests; not a warning-baseline gate on feature development. |
+| Documented reproduction snippet, unchanged original source | PASS: all six orders in both directions; original final tree `16e39f800896f4d321de7ed58ad084ffd2cb3b71` reproduced. |
+| Same proof using fetched main as the disposable fixture's input | PASS: all six orders in both directions; all final trees equal `e28bce796956c71b17cf2e5ee35f0e978a1a6e6a`. This is a new current-main measurement, not a replacement for the historical tree. No branch was rebased. Shared-archive-prepend negative control still conflicts under ordinary merge. |
+| Local Markdown destinations/anchors | PASS: all 15 local links across the five-file feature diff resolve, including unchanged historical links. |
+| Archive/instruction preservation and scope | PASS: exact comparisons above; exactly five feature files. |
+| `git diff --check`; staged whitespace check | PASS. No conflict markers or unmerged index entries remain. Merge attributes are unspecified for the affected documents; no custom merge configuration is present. |
+
+Full local `make docs` and `make test-documentation-source` remain unavailable:
+the pinned enhancer interpreter and GNATdoc installation are absent and GPRbuild
+is not on PATH. The additional Scheduling link test
+(`python3 -W error -m unittest discover -s docs/tests -p test_scheduling_foundation_links.py -v`)
+cannot import `ada_gnatdoc_enhancer` in this environment; it is not reported as
+passed. No documentation dependencies were installed, and an unpinned GNATdoc on
+PATH is not a substitute. No new first-party Ada edits were made by R1; inherited
+main changes remain unchanged. Full local runtime suites and `make check` were
+not run for this documentation-only feature diff.
+
+The PR handoff records the final merge commit/tree, both parents, normal push,
+exact-head hosted Bootstrap and Documentation results and final disposition.
+Existing CI requirements remain unchanged. Hosted results must be complete before
+claiming `READY_FOR_INDEPENDENT_REVIEW`; local checks do not imply hosted success.
+Leave PR #178 open, non-draft, unmerged and with auto-merge disabled for independent
+review; no self-approval or merge is authorized.

@@ -854,3 +854,30 @@ cf19703875b8aa1f51884947e48a772b921237eae9a41bcf1f116ccdfc9ded2e  native/vendor/
 ```text
 d4918d8077ed7f43db09b7c4fa952d0950aaefa5966fb494f129f230eb765361  native/vendor/rf-mel/include/rfmel/mfa/PhysicalData.h
 ```
+
+## IRMEL-ADA-011 SchedulingChannel declaration closure
+
+IRMEL-ADA-011 adds exactly the 20 previously unvendored IR MEL headers in the compile closure of pinned `include/irmel/library/scheduling/SchedulingChannel.h` (IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0`), byte-identical to the frozen Git blobs. Zero Common MEL, AMS Math or Boost files are added and no existing entry changes:
+
+```text
+8eedb701561ef1daaf37c9ded72cd6eb41fb54bad786412072fd1c8ce4b0e7f6  native/vendor/ir-mel/include/irmel/library/irmel-types/AbortTask.h
+9793e3135dc3c032c83bb393a8f6e6d04d1bbc60d3481aab8fff64dd41242400  native/vendor/ir-mel/include/irmel/library/irmel-types/IRSTScanTask.h
+7383731eaf3879acb9935e4090968f5eb0f43f64d8de9f0704dd719e50b7e3db  native/vendor/ir-mel/include/irmel/library/irmel-types/IRSTStareTask.h
+1db6720244d23a9859cd7553a85ddba65f534ea04bd93ae533093de7d505af3b  native/vendor/ir-mel/include/irmel/library/irmel-types/IRSTTrackTask.h
+c0a67ef2d21c2a5ef05390e307565ef748fc54c2d1f4217c06551b7410ebf926  native/vendor/ir-mel/include/irmel/library/irmel-types/PrioritizedTrackListCmd.h
+91284108a1d920c125b66e8010cae0acc8f19bbfb6289e03dd5cf6fb4efa0b6f  native/vendor/ir-mel/include/irmel/library/irmel-types/StareTaskParam.h
+28951d487d3211ad393b01b5bd8557be7f2ae8753a65706e98cd23fcce49b878  native/vendor/ir-mel/include/irmel/library/irmel-types/TaskInfo.h
+a20c1a609b4369e70fd1adbfd1d062004cbdcf83ebf1c335c044bbf691ac2220  native/vendor/ir-mel/include/irmel/library/irmel-types/TrackData.h
+281634d8ad8d646f6dc90b7924fced9538709b459016da1b5fad648b795f308d  native/vendor/ir-mel/include/irmel/library/irmel-types/TrackListResponse.h
+6095b9b45a4011fb1ada1ab316161f8ff8f91fb8fafa97168c7bb761b69253e6  native/vendor/ir-mel/include/irmel/library/irmel-types/TrackTaskData.h
+1adbbac97817aac09203fb3ffc20f1f68e7adea21d58f83e79c1b09a88aab757  native/vendor/ir-mel/include/irmel/library/irmel-types/TrackTaskParam.h
+57d1f489aeca4aa7e7d95346cfe0c72045228f99ae69b6f6bc0a06d4e499de96  native/vendor/ir-mel/include/irmel/library/irmel-types/UpdateTrackListResponse.h
+3a9cd51e8558b14d4001c6d29bb67f3e74b9ebdc5d9ecdbff0485299a382bcbc  native/vendor/ir-mel/include/irmel/library/scheduling/ActivityRecord.h
+b7a75ecd1db411faf74f663dde109d86a6aee01615af063473fb003c571339cc  native/vendor/ir-mel/include/irmel/library/scheduling/EventType.h
+0372fa68dcfbf698e478425b959151f4dea9cc3905a2a543a8417b58700ea708  native/vendor/ir-mel/include/irmel/library/scheduling/ExecuteTaskAck.h
+291787d4e5ae4fe8409f4a8b2bfa4718b5051622e13d2d7f233f56593a3884a8  native/vendor/ir-mel/include/irmel/library/scheduling/ScanPerformanceReport.h
+74b3f5fac331fd5352cc36295075e464407abc6f3dc547492775d5ef81ab5492  native/vendor/ir-mel/include/irmel/library/scheduling/SchedCreatedRep.h
+9e90fcd4066d82bf67d001283c1e07d8efb32077d1b62938a98bde910af13191  native/vendor/ir-mel/include/irmel/library/scheduling/SchedulingChannel.h
+a935607a508bf2b17c8c34380a6d8e73206790ffbeab2590e121d01351c4d0c4  native/vendor/ir-mel/include/irmel/library/scheduling/TaskEvents.h
+c1c1372a3b2922f49f81c6c11534bd9e874c21da021fb81276b688461b47bba8  native/vendor/ir-mel/include/irmel/library/scheduling/TaskExecutingRep.h
+```
