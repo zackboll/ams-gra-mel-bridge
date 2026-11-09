@@ -43,6 +43,19 @@ from ._errors import (
     ErrorKind,
     MelError,
 )
+from ._image_types import (
+    AzimuthElevation,
+    BadPixel,
+    BadPixelList,
+    BadPixelReason,
+    ImageMetadataCounters,
+    ImageMetadataEvent,
+    ImageMetadataKind,
+    LineOfSightEuler,
+    LineOfSightReport,
+    NavigationResponse,
+)
+from ._image_metadata import ImageMetadataStream
 from ._nuc import (
     NucPointType,
     NucPixelKind,
@@ -182,6 +195,17 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    AzimuthElevation,
+    BadPixel,
+    BadPixelList,
+    BadPixelReason,
+    ImageMetadataCounters,
+    ImageMetadataEvent,
+    ImageMetadataKind,
+    ImageMetadataStream,
+    LineOfSightEuler,
+    LineOfSightReport,
+    NavigationResponse,
     NucPointType,
     NucPixelKind,
     NucPixelValue,
@@ -301,6 +325,17 @@ del _public_symbol
 
 
 __all__ = [
+    "AzimuthElevation",
+    "BadPixel",
+    "BadPixelList",
+    "BadPixelReason",
+    "ImageMetadataCounters",
+    "ImageMetadataEvent",
+    "ImageMetadataKind",
+    "ImageMetadataStream",
+    "LineOfSightEuler",
+    "LineOfSightReport",
+    "NavigationResponse",
     "NucPointType",
     "NucPixelKind",
     "NucPixelValue",
