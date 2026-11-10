@@ -189,13 +189,13 @@ previous Python Image/Health/NUC work. No tests or exports were deleted.
 8. `python/ams_mel/_ffi.py`
 9. `python/tests/test_ir_c2_metadata.py`
 
-### Fresh merged-source local qualification
+### First reconciled-head local qualification (superseded)
 
-These are new measurements on the reconciled source, not the historical counts
-above. Builds run sequentially to avoid concurrent native relinking. The final
-report-only commit is followed by the same qualification at the final committed
-HEAD; the delivery PR records that exact HEAD/tree and rerun results, avoiding
-recursive hashes in this document.
+These were measured and repeated at first reconciled head
+`6cf2be74bb0237585b70f772eefe250f90e51f5e`, tree
+`5384f3940d9932989836d61a66569fb2a7394466`. They are superseded by the
+latest-main integration below, not claimed as final current-main counts.
+Builds run sequentially to avoid concurrent native relinking.
 
 | Command/check | Actual R1 result |
 | --- | --- |
@@ -231,6 +231,50 @@ main's sources remain untouched. Full local pinned `make docs` and
 `make test-documentation-source` were not run: the worktree lacks the pinned
 enhancer/GNATdoc environment. Fast documentation checks pass in `test-policy`;
 fresh hosted Ada API Documentation build remains separately required.
+
+### Latest-main integration after concurrent PR #179 merge
+
+Main advanced during the first qualification/push. R1 inspected the complete
+37-file PR #179 delta and integrated it with another ordinary no-ff merge:
+
+- Latest integrated main: `1dc48caf1811051738cba472c09c6515b60645d4`;
+  tree: `6e05ef035a593a38588c3b45a120d77a0e4f51fc`.
+- Latest merge: `25b99196891a64d2300286bc54acc452f984eea7`;
+  tree: `e627507037604f3d549243d1e662ede8504ca417`.
+- First parent: `6cf2be74bb0237585b70f772eefe250f90e51f5e`.
+- Second parent: `1dc48caf1811051738cba472c09c6515b60645d4`.
+
+The merge was conflict-free. The exact nine-file feature inventory above remains
+unchanged. All Python C2 implementation/test bytes still match the original PR;
+all native, Ada, Rust, workflow and policy paths match this latest main. In
+particular, Scheduling ExecuteTaskAck exports, ABI declarations, Python private
+ctypes mirrors and native/Ada/Rust tests are preserved. The archive remains
+byte-identical to latest main with the same SHA-256 above.
+
+Fresh sequential qualification on this latest merged source measured:
+
+| Command/check | Latest-main actual result |
+| --- | --- |
+| `make test-native` | **523/523 PASS**, including Scheduling foundation and all 23 ExecuteTaskAck scenarios/layout checks. |
+| `make test-python` | **456 PASS**, warnings as errors; native prerequisite **523/523 PASS**. |
+| `make test-policy` | **234 PASS**, same seven-suite breakdown above. |
+| `make check-ir-api-coverage` | Audit and **52 regressions PASS**; 127 headers / 148 operations, 48 safe Ada, 13 partial, 18 missing, 69 provider-only, zero native-only. |
+| Source integrity / final newlines / warnings-as-errors compileall / whitespace | All PASS; integrity still **824 vendor files / three workflows**. Exact commands are listed above. |
+| Explicit nine-module warnings-as-errors Python regression command above | **312 PASS**. |
+| `make test-rust` | Native prerequisite **523/523 PASS**; workspace **306 passed, zero failed, seven ignored subprocess entry points**, including C2 metadata and both Scheduling ABI suites. |
+| `make test-ada`, same installed toolchain PATH above | **46 smoke PASS lines**, including Scheduling foundation, ExecuteTaskAck and six-family common Channel; audit and **52 regressions PASS**. |
+| Feature preservation / scope / archive and protected-file equality | PASS against latest integrated main; no test or export deletion, unmerged entry or conflict marker. |
+
+The final report-only commit is followed by another full sequential qualification
+at its exact committed HEAD. The delivery PR records that final HEAD/tree and
+actual rerun results; no older counts substitute for those measurements.
+
+The first reconciled head's fresh Documentation run
+[42754906035](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/42754906035)
+completed SUCCESS, while Bootstrap run
+[42754906278](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/42754906278)
+was still running when the second integration began. These runs do not qualify
+the latest source and are explicitly superseded.
 
 ### Hosted handoff
 
