@@ -459,51 +459,11 @@ fn event_from_raw(raw: &sys::AmsMelIrC2MetadataEventV1) -> Result<C2MetadataEven
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_allocator::ALLOCATIONS_UNTIL_FAILURE;
     use std::{
-        alloc::{GlobalAlloc, Layout, System},
         cell::Cell,
         panic::{catch_unwind, AssertUnwindSafe},
     };
-
-    thread_local! {
-        // -1 disables injection. Failure disarms before error construction.
-        static ALLOCATIONS_UNTIL_FAILURE: Cell<isize> = const { Cell::new(-1) };
-    }
-    struct TestAllocator;
-    #[global_allocator]
-    static TEST_ALLOCATOR: TestAllocator = TestAllocator;
-    fn fail_allocation() -> bool {
-        ALLOCATIONS_UNTIL_FAILURE.with(|remaining| {
-            let count = remaining.get();
-            if count < 0 {
-                return false;
-            }
-            remaining.set(count - 1);
-            count == 0
-        })
-    }
-    // SAFETY: forwards every allocation unchanged to System except an explicit
-    // thread-local null failure, which is permitted by GlobalAlloc's contract.
-    unsafe impl GlobalAlloc for TestAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            if fail_allocation() {
-                return ptr::null_mut();
-            }
-            // SAFETY: exact caller-provided layout.
-            unsafe { System.alloc(layout) }
-        }
-        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-            // SAFETY: all successful allocations originate from System.
-            unsafe { System.dealloc(pointer, layout) }
-        }
-        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
-            if fail_allocation() {
-                return ptr::null_mut();
-            }
-            // SAFETY: exact System allocation and caller-provided layout/size.
-            unsafe { System.realloc(pointer, layout, size) }
-        }
-    }
 
     #[test]
     fn nested_allocation_failures_return_no_partial_event_and_release_once() {
