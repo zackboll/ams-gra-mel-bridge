@@ -46,6 +46,12 @@
 //! upstream optional `tempError` is not represented or inferred. Optional
 //! registration returns are available through [`NucOpenError::registration`].
 //!
+//! Optional Image OpticalDistortionMap (RUST-IR-006):
+//! [`ImageStream::open_optical_distortion_map`] returns an independent
+//! [`OpticalDistortionMapStream`] with complete owned [`OpticalDistortionMap`]
+//! values, reusable [`ForwardRightDown`] and [`RowCol`] components, and structured
+//! optional-registration failures via [`OpticalDistortionMapOpenError`].
+//!
 //! RF Admin state control (RUST-MEL-001): [`RfAdmin`] is an independent RF
 //! `createAdminMEL` owner (not a Session, RF DataMEL, or RF C2 owner) that
 //! commands a published [`RfMfaState`]. Its Boolean result is provider
@@ -74,6 +80,13 @@ mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
 pub mod ir_nuc;
+mod ir_optical_distortion_map;
+#[cfg(test)]
+mod test_allocator;
+pub use ir_optical_distortion_map::{
+    ForwardRightDown, OpticalDistortionMap, OpticalDistortionMapOpenError,
+    OpticalDistortionMapStream, RowCol,
+};
 mod rf_admin;
 mod rf_data;
 pub use ir_c2_metadata::{
@@ -843,6 +856,28 @@ impl ImageStream {
             // SAFETY: exclusively borrowed typed owner, writable output slots.
             unsafe {
                 sys::ams_mel_ir_image_nuc_open(self.raw, queue_capacity, out, registration, d, c, r)
+            }
+        })
+    }
+
+    /// Registers optional OpticalDistortionMap independently of other metadata.
+    /// Zero capacity fails locally without consuming registration. Every actual
+    /// attempt is one-shot, including failure. Does not start acquisition.
+    /// Closed owners fail locally with ProviderFailed before capacity validation.
+    pub fn open_optical_distortion_map(
+        &mut self,
+        queue_capacity: usize,
+    ) -> Result<OpticalDistortionMapStream, OpticalDistortionMapOpenError> {
+        if self.raw.is_null() {
+            return Err(OpticalDistortionMapOpenError::preflight(Error::new(
+                ErrorKind::ProviderFailed,
+                "image stream is closed",
+            )));
+        }
+        OpticalDistortionMapStream::open_with(queue_capacity, |out, registration, d, c, r| {
+            // SAFETY: exclusively borrowed Image owner and writable output slots.
+            unsafe {
+                sys::ams_mel_ir_image_odm_open(self.raw, queue_capacity, out, registration, d, c, r)
             }
         })
     }
