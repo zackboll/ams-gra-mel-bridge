@@ -3,14 +3,19 @@
  *
  * Implemented: Open (attach + validation), explicit Enable, owned
  * ChannelCapability snapshots, Close (inherited disable + detach), and the
- * inherited common Channel view adapter. NOT implemented: the four
- * SchedulingChannel::exec overloads, send(PrioritizedTrackListCmd) and the six
- * Scheduling registerMetadataCallback overloads. No translation unit in the
- * bridge calls any of them. */
+ * inherited common Channel view adapter. IRMEL-ADA-012 adds only the
+ * lifecycle integration of the opt-in ExecuteTaskAck owner
+ * (ir_scheduling_execute_task_ack.cpp): a one-shot claim and the stop / fail /
+ * drain hooks below. Nothing in this file registers any Scheduling callback.
+ * NOT implemented: the four SchedulingChannel::exec overloads,
+ * send(PrioritizedTrackListCmd) and the five other Scheduling
+ * registerMetadataCallback overloads. No translation unit in the bridge calls
+ * any of them. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/ir_scheduling_execute_task_ack.hpp"
 
 #include <irmel/library/scheduling/SchedulingChannel.h>
 
@@ -104,6 +109,12 @@ struct SchedulingState {
     std::size_t requests{};
     bool enable_attempted{};
     bool cleanup_started{};
+    /* IRMEL-ADA-012: the ExecuteTaskAck one shot (recorded for every attempt
+     * that reaches provider registration) and its callback-accessible state.
+     * The state has its own leaf mutex; it is only stopped, failed or drained
+     * after this mutex has been released. */
+    bool execute_task_ack_attempted{};
+    std::shared_ptr<ExecuteTaskAckState> execute_task_ack;
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
     std::shared_ptr<SchedulingState> emergency_self;
@@ -146,6 +157,7 @@ bool detach(const std::shared_ptr<SchedulingState>& state,
 bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;
+    std::shared_ptr<ExecuteTaskAckState> ack;
     bool disable = false;
     {
         std::lock_guard lock{state->mutex};
@@ -153,6 +165,7 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
         if (state->requests != 0U) return true;
         state->cleanup_started = true;
         channel = state->channel;
+        ack = state->execute_task_ack;
         disable = state->enable_attempted;
         /* disable() is attempted at most once: a Close retried after an
          * unproven detach only retries the detach. */
@@ -173,6 +186,10 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
             state->cleanup_started = false;
         }
         if (retain_orphan) retain_failed(state);
+        /* IRMEL-ADA-012: the provider may still hold and invoke the retained
+         * ExecuteTaskAck callback. Queued events still drain, then Receive
+         * reports PROVIDER_FAILED. */
+        ams_mel::internal::scheduling_execute_task_ack_failed(ack);
         return false;
     }
     {
@@ -184,6 +201,12 @@ bool cleanup(const std::shared_ptr<SchedulingState>& state, bool retain_orphan)
     /* The provider channel is destroyed here while this state still holds the
      * Session graph, so provider code stays loaded until the graph is gone. */
     channel.reset();
+    /* IRMEL-ADA-012: after channel destruction, and still before the Session
+     * graph (provider library) can be released, wait for ExecuteTaskAck
+     * callbacks already inside the bridge. A later callback stays memory-safe
+     * through its own shared ExecuteTaskAckState and never enqueues. */
+    ams_mel::internal::scheduling_execute_task_ack_drained(ack);
+    if (!ok) ams_mel::internal::scheduling_execute_task_ack_failed(ack);
     return ok;
 }
 
@@ -256,6 +279,32 @@ CommonChannelAccess common_from_scheduling(const ams_mel_ir_scheduling *owner)
         }};
 }
 } // namespace ams_mel_common
+
+namespace ams_mel::internal {
+bool claim_scheduling_execute_task_ack(
+    ams_mel_ir_scheduling& owner, const std::shared_ptr<ExecuteTaskAckState>& state,
+    std::shared_ptr<irmel::SchedulingChannel>& channel, std::shared_ptr<void>& graph) noexcept
+{
+    try {
+        const auto& scheduling = owner.state;
+        if (!scheduling) return false;
+        std::lock_guard lock{scheduling->mutex};
+        if ((scheduling->lifecycle != Lifecycle::Attached &&
+             scheduling->lifecycle != Lifecycle::Enabled) ||
+            !scheduling->scheduling || scheduling->execute_task_ack_attempted)
+            return false;
+        /* The one shot is consumed here, before the provider is entered, so a
+         * failed, throwing or unknown-result registration also consumes it. */
+        scheduling->execute_task_ack_attempted = true;
+        scheduling->execute_task_ack = state;
+        channel = scheduling->scheduling;
+        graph = scheduling;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+} // namespace ams_mel::internal
 
 #if defined(AMS_MEL_ENABLE_TEST_FAILPOINTS)
 /* Test-facade-only observation of the Scheduling request accounting. The
@@ -436,6 +485,7 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
     if (!owner) return AMS_MEL_OK;
     try {
         auto state = owner->state;
+        std::shared_ptr<ExecuteTaskAckState> ack;
         bool now = false;
         {
             std::lock_guard lock{state->mutex};
@@ -443,7 +493,12 @@ extern "C" ams_mel_status_t ams_mel_ir_scheduling_close(
              * keep their claim and own the graph until completion. */
             state->lifecycle = Lifecycle::Closed;
             now = state->requests == 0U;
+            ack = state->execute_task_ack;
         }
+        /* IRMEL-ADA-012: logical Close stops ExecuteTaskAck consumption and
+         * wakes receivers immediately, even while admitted common requests
+         * defer physical teardown; queued events still drain. */
+        ams_mel::internal::scheduling_execute_task_ack_stopped(ack);
         const bool ok = !now || cleanup(state, false);
         if (now && state->channel) {
             /* Detach could not be proven: the graph and the caller's owner are

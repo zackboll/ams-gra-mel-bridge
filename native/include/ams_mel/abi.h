@@ -117,11 +117,18 @@ typedef struct ams_mel_ir_instrumentation_metadata_event
  * is not implemented. */
 typedef struct ams_mel_ir_track ams_mel_ir_track;
 /* IRMEL-ADA-011: conditionally required (@RequiredIfIRSTTrackTasking)
- * SchedulingChannel owner. This release implements ONLY the channel
- * ownership/lifecycle foundation (Open, Enable, ChannelCapability, Close) and
- * the inherited common Channel view. No Scheduling-specific exec, send or
- * metadata registration exists; no task payload, queue or request owner. */
+ * SchedulingChannel owner. This release implements the channel
+ * ownership/lifecycle foundation (Open, Enable, ChannelCapability, Close), the
+ * inherited common Channel view and (IRMEL-ADA-012) the opt-in ExecuteTaskAck
+ * metadata callback only. No Scheduling exec or send and no other Scheduling
+ * metadata registration exists; no task payload or task request owner. */
 typedef struct ams_mel_ir_scheduling ams_mel_ir_scheduling;
+/* IRMEL-ADA-012: opt-in Scheduling ExecuteTaskAck owner, opened independently
+ * from a Scheduling owner, and its copied event. */
+typedef struct ams_mel_ir_scheduling_execute_task_ack_metadata
+    ams_mel_ir_scheduling_execute_task_ack_metadata;
+typedef struct ams_mel_ir_scheduling_execute_task_ack_event
+    ams_mel_ir_scheduling_execute_task_ack_event;
 /* Owns public consumption of the retained IRSTTrackReport callback queue. The
  * callback-accessible state itself belongs to the Track channel, not to this
  * wrapper, because upstream provides no unregister operation. */
@@ -1102,6 +1109,17 @@ typedef struct ams_mel_ir_scheduling_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_scheduling_config_v1;
+
+/* IRMEL-ADA-012 complete ExecuteTaskAck: upstream getCommandID() and getReqId(),
+ * both std::uint32_t, copied in that order with all 32 bits. Neither value is
+ * a completion status: a received acknowledgement does not prove that task
+ * execution completed or succeeded. The bridge does not correlate either
+ * identifier with a local request, reorder them, or require them to be
+ * nonzero, unique or equal to each other. Fixed size, no indirection. */
+typedef struct ams_mel_ir_execute_task_ack_v1 {
+    uint32_t command_id;
+    uint32_t request_id;
+} ams_mel_ir_execute_task_ack_v1;
 
 /* Upstream IrstTrackState defines exactly Idle=0, Detected=1, Coast=2, and
  * Dropped=3 and declares no MaxExclusive value. Provider values greater than
@@ -3112,6 +3130,81 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_get_capabilities(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_close(
     ams_mel_ir_scheduling **scheduling, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-012 opt-in Scheduling ExecuteTaskAck reception. The callback is
+ * @RequiredIfIRSTTrackTasking upstream, so ams_mel_ir_scheduling_open,
+ * _enable, _get_capabilities, _close and ams_mel_ir_channel_from_scheduling
+ * never register it. Each open registers exactly the pinned
+ * SchedulingChannel ExecuteTaskAck overload once per Scheduling owner; a
+ * failed attempt also consumes the one shot. Invalid arguments (including a
+ * zero queue_capacity) are rejected before the one shot is consumed.
+ * Eligible: an Attached or Enabled owner; Failed or Closed (including a
+ * retained detach-failed owner) returns INVALID_ARGUMENT and nothing is
+ * registered. Provider registration runs without any bridge lock, so
+ * synchronous delivery during registration is safe. out_registration
+ * (nullable) receives the mapped upstream Return whenever
+ * registerMetadataCallback returned a known value, so NOT_SUPPORTED, FAIL,
+ * BAD_POINTER and NOT_IMPLEMENTED are distinguishable; it is unchanged for an
+ * unknown Return (PROVIDER_FAILED) or a provider throw (PROVIDER_EXCEPTION).
+ * Failure publishes no owner and leaves the retained callback state inactive
+ * (upstream has no unregister). Registration never invokes any Scheduling
+ * exec or send.
+ *
+ * Each non-null payload is copied before the callback returns into one bounded
+ * DROP-INCOMING queue of queue_capacity events. A null payload is counted
+ * malformed, even when the queue is full. When the queue is full a non-null
+ * payload is counted queue-full WITHOUT allocating a snapshot. A snapshot
+ * allocation failure rejects that event (malformed counter); no partial event
+ * is ever published. No callback exception reaches provider code. A received
+ * acknowledgement is not a task completion or success report.
+ *
+ * Scheduling Close stops the owner and wakes receivers; queued events still
+ * drain. While admitted common requests defer physical teardown, the provider
+ * channel and callback stay alive but nothing more is queued. Physical
+ * teardown destroys the provider channel while the Session graph is still
+ * retained and then waits for ExecuteTaskAck callbacks already inside the
+ * bridge. Callbacks after metadata owner Close or Scheduling Close are
+ * memory-safe and never enqueue. Session Close alone leaves a live Scheduling
+ * owner and its reception usable through the retained provider graph. A failed
+ * provider detach marks the
+ * owner failed: Receive drains queued events and then reports
+ * PROVIDER_FAILED. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_open(
+    ams_mel_ir_scheduling *scheduling, size_t queue_capacity,
+    ams_mel_ir_scheduling_execute_task_ack_metadata **out_metadata,
+    ams_mel_ir_return_t *out_registration, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* TIMEOUT while active and empty (timeout_ms 0 polls; timeout is never
+ * cancellation); STREAM_STOPPED once inactive/stopped and empty;
+ * PROVIDER_FAILED once failed and empty. Queued events drain first, in
+ * successful-enqueue order. out_event must be non-null and initially NULL. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_receive(
+    ams_mel_ir_scheduling_execute_task_ack_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_scheduling_execute_task_ack_event **out_event, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Saturating events_received, events_dropped_queue_full and
+ * malformed_or_unsupported counts; does not consume events. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_get_counters(
+    const ams_mel_ir_scheduling_execute_task_ack_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; deactivates consumption, does not unregister the provider
+ * callback, close the Scheduling owner or wait for callback quiescence. Events
+ * already received remain owned by their event handles. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_close(
+    ams_mel_ir_scheduling_execute_task_ack_metadata **metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Borrowed immutable event-owned view, valid until
+ * ams_mel_ir_scheduling_execute_task_ack_event_close, independent of the
+ * owner, Scheduling owner, Session and provider library lifetime. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_event_view(
+    const ams_mel_ir_scheduling_execute_task_ack_event *event,
+    const ams_mel_ir_execute_task_ack_v1 **out_view, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Idempotent; NULL *event succeeds. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_scheduling_execute_task_ack_event_close(
+    ams_mel_ir_scheduling_execute_task_ack_event **event, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Registers the @RequiredIfTrack IRSTTrackReport callback and opens bounded

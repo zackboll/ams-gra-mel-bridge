@@ -79,6 +79,36 @@ static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_get_capabilities),
                              scheduling_caps_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_close), scheduling_close_fn>);
 static_assert(std::is_standard_layout_v<ams_mel_ir_scheduling_config_v1>);
+/* IRMEL-ADA-012 Scheduling ExecuteTaskAck: exact C++ shapes, noexcept. */
+using ack_open_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling *, size_t,
+    ams_mel_ir_scheduling_execute_task_ack_metadata **, ams_mel_ir_return_t *, char *, size_t,
+    size_t *) noexcept;
+using ack_receive_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling_execute_task_ack_metadata *,
+    uint32_t, ams_mel_ir_scheduling_execute_task_ack_event **, char *, size_t, size_t *) noexcept;
+using ack_counters_fn = ams_mel_status_t (*)(const ams_mel_ir_scheduling_execute_task_ack_metadata *,
+    ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) noexcept;
+using ack_close_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling_execute_task_ack_metadata **,
+    char *, size_t, size_t *) noexcept;
+using ack_view_fn = ams_mel_status_t (*)(const ams_mel_ir_scheduling_execute_task_ack_event *,
+    const ams_mel_ir_execute_task_ack_v1 **, char *, size_t, size_t *) noexcept;
+using ack_event_close_fn = ams_mel_status_t (*)(ams_mel_ir_scheduling_execute_task_ack_event **,
+    char *, size_t, size_t *) noexcept;
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_open), ack_open_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_receive),
+                             ack_receive_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_get_counters),
+                             ack_counters_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_close),
+                             ack_close_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_event_view),
+                             ack_view_fn>);
+static_assert(std::is_same_v<decltype(&ams_mel_ir_scheduling_execute_task_ack_event_close),
+                             ack_event_close_fn>);
+static_assert(std::is_standard_layout_v<ams_mel_ir_execute_task_ack_v1>);
+static_assert(std::is_trivially_copyable_v<ams_mel_ir_execute_task_ack_v1>);
+static_assert(sizeof(ams_mel_ir_execute_task_ack_v1) == 8U);
+static_assert(std::is_same_v<decltype(ams_mel_ir_execute_task_ack_v1::command_id), uint32_t>);
+static_assert(std::is_same_v<decltype(ams_mel_ir_execute_task_ack_v1::request_id), uint32_t>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_send_keepalive), channel_keepalive_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_submit_comms_test), channel_comms_fn>);
 static_assert(std::is_same_v<decltype(&ams_mel_ir_channel_get_capabilities),

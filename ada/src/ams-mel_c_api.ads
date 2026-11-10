@@ -161,6 +161,17 @@ private package AMS.MEL_C_API is
    type Scheduling_Handle is new System.Address;
    Null_Scheduling                         : constant Scheduling_Handle :=
      Scheduling_Handle (System.Null_Address);
+   --  IRMEL-ADA-012: private Scheduling ExecuteTaskAck owners and complete payload.
+   type Scheduling_Ack_Metadata_Handle is new System.Address;
+   Null_Scheduling_Ack_Metadata            : constant Scheduling_Ack_Metadata_Handle :=
+     Scheduling_Ack_Metadata_Handle (System.Null_Address);
+   type Scheduling_Ack_Event_Handle is new System.Address;
+   Null_Scheduling_Ack_Event               : constant Scheduling_Ack_Event_Handle :=
+     Scheduling_Ack_Event_Handle (System.Null_Address);
+   type IR_Execute_Task_Ack_V1 is record
+      Command_ID, Request_ID : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
    type Track_Metadata_Handle is new System.Address;
    Null_Track_Metadata                     : constant Track_Metadata_Handle :=
      Track_Metadata_Handle (System.Null_Address);
@@ -2254,6 +2265,58 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_close";
+   function IR_Scheduling_Ack_Open
+     (Stream              : Scheduling_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Scheduling_Ack_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_execute_task_ack_open";
+   function IR_Scheduling_Ack_Receive
+     (Handle              : Scheduling_Ack_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Scheduling_Ack_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_execute_task_ack_receive";
+   function IR_Scheduling_Ack_Get_Counters
+     (Handle              : Scheduling_Ack_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_execute_task_ack_get_counters";
+   function IR_Scheduling_Ack_Close
+     (Handle              : access Scheduling_Ack_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_execute_task_ack_close";
+   function IR_Scheduling_Ack_Event_View
+     (Handle              : Scheduling_Ack_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_execute_task_ack_event_view";
+   function IR_Scheduling_Ack_Event_Close
+     (Handle              : access Scheduling_Ack_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_execute_task_ack_event_close";
    function IR_Track_Metadata_Open
      (Handle              : Track_Handle;
       Queue_Capacity      : Size_T;

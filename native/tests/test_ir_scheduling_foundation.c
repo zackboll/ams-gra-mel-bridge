@@ -4,7 +4,8 @@
  * gates and permanently retained provider graphs never leak between cases.
  * Only the separate mock provider is used. Every scenario ends with the
  * negative control that no Scheduling-specific exec, send or metadata
- * registration was reached. */
+ * registration was reached, including (IRMEL-ADA-012) no implicit
+ * ExecuteTaskAck registration by the foundation. */
 #define _POSIX_C_SOURCE 200809L
 #include <ams_mel/abi.h>
 #include "admission_observation.h"
@@ -40,6 +41,7 @@ static char log_path[64];
 static void *pin;
 static release_fn release_family;
 static calls_fn specific_calls;
+static calls_fn ack_registrations;
 static const ams_mel_ir_channel_comms_test_request_v1 high_ids = {
     0x80000001U, 0xf0000002U, 0xe0000003U};
 
@@ -103,20 +105,29 @@ static int before(const char *first, const char *second)
     CHECK(fclose(file) == 0);
     return a >= 0 && b >= 0 && a < b;
 }
+/* The ten Scheduling-specific methods that remain unimplemented after
+ * IRMEL-ADA-012: four exec, the PrioritizedTrackListCmd send and the five
+ * other registrations. */
 static const char *const specific_events[] = {
     "scheduling_prioritized_track_list_sent", "scheduling_task_executing_registered",
-    "scheduling_execute_task_ack_registered", "scheduling_sched_created_registered",
+    "scheduling_sched_created_registered",
     "scheduling_update_track_list_registered", "scheduling_task_events_registered",
     "scheduling_scan_performance_registered", "scheduling_abort_task_exec",
     "scheduling_scan_task_exec", "scheduling_stare_task_exec", "scheduling_track_task_exec"};
+_Static_assert(sizeof specific_events / sizeof *specific_events == 10U,
+               "ten unimplemented Scheduling-specific methods");
 
-/* Negative control: the foundation never reaches any of the eleven
- * Scheduling-specific exec/send/registration methods. The counter lives in
- * the mock and is read through the pin before the pin is dropped. */
+/* Negative control: the foundation never reaches any of the ten unimplemented
+ * Scheduling-specific exec/send/registration methods AND (IRMEL-ADA-012)
+ * never registers ExecuteTaskAck implicitly: Open, Enable, capabilities, the
+ * common view and Close make zero ExecuteTaskAck registration attempts. The
+ * counters live in the mock and are read through the pin before it drops. */
 static void no_scheduling_specific_calls(void)
 {
     size_t index;
     CHECK(specific_calls() == 0U);
+    CHECK(ack_registrations() == 0U);
+    CHECK(count("scheduling_execute_task_ack_registration_attempted") == 0U);
     for (index = 0; index < sizeof specific_events / sizeof *specific_events; ++index)
         CHECK(count(specific_events[index]) == 0U);
 }
@@ -136,7 +147,8 @@ static ams_mel_session *open_session(const char *scenario, uint32_t limit)
     CHECK(pin != NULL);
     *(void **)(&release_family) = dlsym(pin, "mock_completion_release_family");
     *(void **)(&specific_calls) = dlsym(pin, "mock_scheduling_specific_calls");
-    CHECK(release_family != NULL && specific_calls != NULL);
+    *(void **)(&ack_registrations) = dlsym(pin, "mock_scheduling_ack_registrations");
+    CHECK(release_family != NULL && specific_calls != NULL && ack_registrations != NULL);
     return session;
 }
 
