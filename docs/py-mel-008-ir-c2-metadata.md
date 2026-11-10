@@ -147,6 +147,98 @@ No older archive entry was rewritten. Only the C2 qualification/status paragraph
 moved from the README; all public examples, return types, mappings and semantics
 remain there. No implementation change is intended by R1.
 
-Fresh merged-source qualification and integrated-main identities are recorded
-below after integration. The delivery PR records the containing final HEAD/tree
-and hosted outcomes to avoid recursive source hashes.
+### Integration identities and preservation evidence
+
+- Original PR head: `c3d0505a1f4093d343ba56a15b706768a38e3815`;
+  tree: `8c39b1c389354c01c7306aae666f9bc9b498227e`.
+- Documentation migration commit: `8f8794c3b50fab6fba198e5c80bf145f2d489713`.
+- Ordinary merge commit: `d56e0352a356a68a490a0bb829491d1ca275de16`;
+  tree: `ce2257812da17e84649fb86c5714dd1149fad781`.
+- First merge parent: `8f8794c3b50fab6fba198e5c80bf145f2d489713`.
+- Second merge parent / freshly fetched integrated main:
+  `a885d7730dd1b988ca4c4a95ce4864d5c325df68`;
+  main tree: `067d90db02dc67d9dcc85f715e68e3bc72653eb8`.
+
+The ordinary `git fetch origin` / `git merge --no-ff --no-edit origin/main`
+completed without conflicts after migration. No strategy override, union merge,
+custom driver, rebase, amend or forced update was used.
+
+The seven Python implementation/test files below are byte-identical to the
+original PR head. All 48 added C2 test methods remain present. AST comparison
+preserves every current-main Python test class/method identity. All four kinds,
+independent CommsTest opt-in, canonical Health BIT conversion, exact 47-category
+domain, ownership/cleanup, public identity and pickle behavior remain intact.
+
+The archive is byte-identical to integrated main, including the PR #178 notice:
+SHA-256 `c12df73b6c9ec3605704594aad09a7780cb5b16d8dea615231b6af65ad412884`.
+The private `python/ams_mel/_native.py`, native ABI header and export map are
+also byte-identical to integrated main, not restored to the obsolete feature
+base. All native, Ada, Rust, workflow and policy paths match integrated main.
+This preserves Scheduling, Rust C2 metadata, Track CI corrections and all
+previous Python Image/Health/NUC work. No tests or exports were deleted.
+
+### Exact feature diff against integrated main
+
+1. `docs/py-mel-008-ir-c2-metadata.md`
+2. `python/README.md`
+3. `python/ams_mel/__init__.py`
+4. `python/ams_mel/_c2.py`
+5. `python/ams_mel/_c2_convert.py`
+6. `python/ams_mel/_c2_metadata.py`
+7. `python/ams_mel/_c2_types.py`
+8. `python/ams_mel/_ffi.py`
+9. `python/tests/test_ir_c2_metadata.py`
+
+### Fresh merged-source local qualification
+
+These are new measurements on the reconciled source, not the historical counts
+above. Builds run sequentially to avoid concurrent native relinking. The final
+report-only commit is followed by the same qualification at the final committed
+HEAD; the delivery PR records that exact HEAD/tree and rerun results, avoiding
+recursive hashes in this document.
+
+| Command/check | Actual R1 result |
+| --- | --- |
+| `make test-native` | PASS: **500/500**, including Scheduling foundation and C11 layout/ABI tests. |
+| `make test-python` | PASS: **455 tests**, warnings as errors; native prerequisite **500/500**. Includes all 48 C2 tests and all current-main Python regressions. |
+| `make test-policy` | PASS: **234 tests** (18 + 18 + 28 + 64 + 75 + 18 + 13), including documentation/security policy tests and negative controls. |
+| `make check-ir-api-coverage` | PASS: offline audit and **49 regression tests**; 127 headers / 148 operations, 47 safe Ada, 13 partial, 19 missing, 69 provider-only, zero native-only. |
+| `python3 scripts/check_doc_source_integrity.py` | PASS: **824 vendor files**, **three workflows**. |
+| `python3 scripts/check_final_newlines.py` | PASS. |
+| `python3 -W error -m compileall -q python/ams_mel python/tests` | PASS. |
+| `git diff --check` | PASS. |
+| Explicit warnings-as-errors Python regressions below | PASS: **311 tests**. |
+| `make test-rust` | PASS: native prerequisite **500/500**; Rust workspace **305 passed, zero failed, seven ignored subprocess entry points**. C2 metadata integration: six passed, one ignored child entry; Scheduling ABI test passes. |
+| `make test-ada` with installed GPRbuild/GNAT on PATH | PASS: **45 smoke PASS lines**, including Scheduling foundation and six-family common Channel; its API audit also passes all 49 regressions. |
+| Preservation, scope and documentation | PASS: complete original section retained verbatim; README usage retained; exactly nine feature paths; protected/shared source equality; no unmerged index entries or conflict markers; local Markdown destinations resolve. |
+
+Explicit Python regression command (with the worktree's `python` and
+`python/tests` on `PYTHONPATH`, test facade in `AMS_MEL_NATIVE_LIB` and compiled
+mock directory in `AMS_MEL_TEST_PROVIDER_DIR`):
+
+```sh
+python3 -W error -m unittest \
+  test_ir_c2_metadata test_control_channel test_common_channel \
+  test_ir_health_metadata test_ir_image_metadata test_ir_nuc \
+  test_abi test_import_identity test_package_layout -v
+```
+
+For the direct Ada command, PATH was prefixed with the existing local
+`/home/zboll/.local/share/alire/toolchains/gprbuild_26.0.1_e3f27f25/bin` and
+`/home/zboll/.local/share/alire/toolchains/gnat_native_15.3.1_a6af58cb/bin`.
+No toolchain or dependency was downloaded. R1 authors no Ada edits; integrated
+main's sources remain untouched. Full local pinned `make docs` and
+`make test-documentation-source` were not run: the worktree lacks the pinned
+enhancer/GNATdoc environment. Fast documentation checks pass in `test-policy`;
+fresh hosted Ada API Documentation build remains separately required.
+
+### Hosted handoff
+
+The delivery PR records final commit/tree identities, the normal push, exact-head
+Bootstrap and Ada API Documentation run links and observed conclusions. Historical
+green checks above do not qualify the reconciled head. If fresh checks are still
+running, disposition is `HOSTED_CI_PENDING`, not merge-ready. Readiness requires
+all applicable Bootstrap jobs and the documentation build SUCCESS, unchanged source
+identities, no unresolved blocking review issue and GitHub mergeability.
+PR #174 remains open and non-draft; no self-approval, auto-merge or PR merge is
+authorized or performed.
