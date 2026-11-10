@@ -44,12 +44,19 @@ class SchedulingAckLinks(unittest.TestCase):
                     'Receive_Execute_Task_Ack': [STREAM, VALUE],
                     'Execute_Task_Ack_Counters': [STREAM, COUNTERS], 'Close': [STREAM]}
         actual = {}
+        closes = []
         for declaration in self.package.declarations:
             if declaration.name in expected:
                 marked, _ = linked(html.escape(declaration.signature), self.package,
                                    self.source, None, self.targets, self.config)
-                actual[declaration.name] = [m[2] for m in LINK.finditer(marked)
-                                            if m[2] in self.coordinates]
+                links = [m[2] for m in LINK.finditer(marked) if m[2] in self.coordinates]
+                # IRMEL-ADA-013 adds an independent Close overload for the TaskExecutingRep
+                # stream in the same package; collect every overload instead of the last one.
+                if declaration.name == 'Close':
+                    closes.append(links)
+                else:
+                    actual[declaration.name] = links
+        actual['Close'] = [STREAM] if [STREAM] in closes else closes
         self.assertEqual(actual, expected)
         names = {d.name.lower() for d in self.package.declarations}
         self.assertFalse(names & {'exec', 'send', 'abort_task', 'match_request'})

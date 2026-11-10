@@ -14,7 +14,8 @@ add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/
     src/ir_calibration_status.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp
-    src/ir_scheduling_execute_task_ack.cpp src/completion_probe.cpp
+    src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
+    src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
     src/rf_job.cpp src/rf_job_interval_status.cpp src/rf_va_status.cpp)
 add_library(ams_mel::ams_mel_c ALIAS ams_mel_c)
@@ -48,7 +49,7 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_status_hold;\n        ams_mel_test_rf_status_waiters;\n        ams_mel_test_rf_status_preset;\n        ams_mel_test_rf_status_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;\n        ams_mel_test_scheduling_requests;\n        ams_mel_test_scheduling_observer_from;\n        ams_mel_test_scheduling_observer_state;\n        ams_mel_test_scheduling_observer_close;\n        ams_mel_test_scheduling_execute_task_ack_probe;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;\n        ams_mel_test_scheduling_requests;\n        ams_mel_test_scheduling_observer_from;\n        ams_mel_test_scheduling_observer_state;\n        ams_mel_test_scheduling_observer_close;\n        ams_mel_test_scheduling_execute_task_ack_probe;\n        ams_mel_test_scheduling_task_executing_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_calibration_callback;\n        ams_mel_test_calibration_status_callback;\n        ams_mel_test_image_odm_probe;\n        ams_mel_test_image_los_quaternion_probe;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -1220,6 +1221,39 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_scheduling_execute_task_ack_layout)
     add_test(NAME ir_scheduling_execute_task_ack_layout
         COMMAND test_ir_scheduling_execute_task_ack_layout)
+
+    # IRMEL-ADA-013 opt-in Scheduling TaskExecutingRep reception, alone and
+    # together with ExecuteTaskAck, compiled as C; one process per scenario.
+    # The in-flight cases leave deliberately non-quiescing provider threads
+    # joined only at library unload.
+    add_executable(test_ir_scheduling_task_executing
+        tests/test_ir_scheduling_task_executing.c)
+    target_compile_features(test_ir_scheduling_task_executing PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_task_executing PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_scheduling_task_executing PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_scheduling_task_executing PRIVATE ams_mel::ams_mel_c
+        ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_ir_scheduling_task_executing mock_ir_provider)
+    ams_mel_warnings(test_ir_scheduling_task_executing)
+    foreach(case IN ITEMS fidelity enums invalid-enums attached-sync enabled
+            register-not-supported register-fail register-not-implemented register-unknown
+            register-throw failed-owner invalid capacity-one fifo close-wakes drain-after-close
+            owner-closed-first parent-first late common pending pending-detach-fail detach-fail
+            in-flight both-report-first both-ack-first both-sync both-close-wakes both-late
+            both-in-flight both-detach-fail)
+        add_test(NAME ir_scheduling_task_executing_${case}
+            COMMAND test_ir_scheduling_task_executing ${case})
+        set_tests_properties(ir_scheduling_task_executing_${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_executable(test_ir_scheduling_task_executing_layout
+        tests/scheduling_task_executing_layout_probe.c)
+    target_compile_features(test_ir_scheduling_task_executing_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_scheduling_task_executing_layout PROPERTIES C_EXTENSIONS OFF)
+    target_link_libraries(test_ir_scheduling_task_executing_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_ir_scheduling_task_executing_layout)
+    add_test(NAME ir_scheduling_task_executing_layout
+        COMMAND test_ir_scheduling_task_executing_layout)
 
     add_executable(test_ir_track_metadata tests/test_ir_track_metadata.c)
     target_compile_features(test_ir_track_metadata PRIVATE c_std_11)

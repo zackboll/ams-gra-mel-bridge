@@ -297,7 +297,7 @@ package body AMS_MEL_IR_Scheduling_Ack_Tests is
       Queue_Recovery (Provider_Path);
       Common_Independence (Provider_Path);
       Detach_Failure (Provider_Path);
-      Require (Specific_Calls.all = Before, "ten unsupported Scheduling methods uninvoked");
+      Require (Specific_Calls.all = Before, "nine unsupported Scheduling methods uninvoked");
       Require (Dlclose (Pin) = 0, "provider unpin");
       Ada.Text_IO.Put_Line ("PASS: Ada Scheduling ExecuteTaskAck contract");
    end Run;

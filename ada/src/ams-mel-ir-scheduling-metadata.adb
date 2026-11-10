@@ -151,4 +151,150 @@ package body AMS.MEL.IR.Scheduling.Metadata is
       when others =>
          Stream.Handle := C.Null_Scheduling_Ack_Metadata;
    end Finalize;
+
+   --  IRMEL-ADA-013 independent Scheduling TaskExecutingRep owner.
+   type Rep_View_Access is access all C.IR_Task_Executing_Rep_V1;
+   function To_Rep_View is new Ada.Unchecked_Conversion (System.Address, Rep_View_Access);
+   use type C.Scheduling_Rep_Metadata_Handle;
+
+   --  Checked native-to-Ada conversions. The native owner already rejects these values; a
+   --  value outside the pinned domain is never reinterpreted, it fails the whole report.
+   function To_Task (Raw : Interfaces.Unsigned_32) return Task_Kind is
+   begin
+      if Raw > Interfaces.Unsigned_32 (Task_Kind'Enum_Rep (Task_Kind'Last)) then
+         raise Provider_Error with "native Scheduling returned unknown Task";
+      end if;
+      return Task_Kind'Enum_Val (Raw);
+   end To_Task;
+
+   function To_Status (Raw : Interfaces.Unsigned_32) return Task_Completion_Status is
+   begin
+      if Raw
+        > Interfaces.Unsigned_32 (Task_Completion_Status'Enum_Rep (Task_Completion_Status'Last))
+      then
+         raise Provider_Error with "native Scheduling returned unknown TaskCompStatus";
+      end if;
+      return Task_Completion_Status'Enum_Val (Raw);
+   end To_Status;
+
+   function To_Report (Raw : C.IR_Task_Executing_Rep_V1) return Task_Executing_Report
+   is ((Command_ID            => Raw.Command_ID,
+        Activity_ID           => Raw.Activity_ID,
+        Request_ID            => Raw.Request_ID,
+        Current_Task          => To_Task (Raw.Task_Value),
+        Estimated_Duration_NS => Raw.Estimated_Duration_NS,
+        Track_ID              => Raw.Track_ID,
+        Previous_Activity_ID  => Raw.Previous_Activity_ID,
+        Previous_Request_ID   => Raw.Previous_Request_ID,
+        Previous_Task         => To_Task (Raw.Previous_Task),
+        Previous_Task_Status  => To_Status (Raw.Previous_Task_Status)));
+
+   function Open_Task_Executing
+     (Channel : Scheduling_Channel; Queue_Capacity : Positive) return Task_Executing_Stream
+   is
+      D            : aliased Diagnostic := [others => Interfaces.C.nul];
+      R            : aliased C.Size_T := 0;
+      Registration : aliased Interfaces.Unsigned_32 := 16#FFFF_FFFF#;
+   begin
+      return Result : Task_Executing_Stream do
+         declare
+            Code : constant Interfaces.Integer_32 :=
+              C.IR_Scheduling_Rep_Open
+                (Channel.Handle,
+                 C.Size_T (Queue_Capacity),
+                 Result.Handle'Access,
+                 Registration'Access,
+                 D'Address,
+                 D'Length,
+                 R'Access);
+         begin
+            if Code = C.Success then
+               null;
+            elsif Code = C.Provider_Failed and then Registration = Not_Supported_Return then
+               raise Not_Supported with Message (D);
+            else
+               raise Provider_Error with Message (D);
+            end if;
+         end;
+      end return;
+   end Open_Task_Executing;
+
+   function Receive_Task_Executing
+     (Stream : Task_Executing_Stream; Timeout_Milliseconds : Natural := 0)
+      return Task_Executing_Report
+   is
+      Event   : aliased C.Scheduling_Rep_Event_Handle := C.Null_Scheduling_Rep_Event;
+      Address : aliased System.Address := System.Null_Address;
+      D       : aliased Diagnostic := [others => Interfaces.C.nul];
+      R       : aliased C.Size_T := 0;
+      procedure Release is
+         Ignored : Interfaces.Integer_32;
+      begin
+         Ignored := C.IR_Scheduling_Rep_Event_Close (Event'Access, System.Null_Address, 0, null);
+      end Release;
+   begin
+      if Stream.Handle = C.Null_Scheduling_Rep_Metadata then
+         raise Provider_Error with "TaskExecutingRep metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Scheduling_Rep_Receive
+           (Stream.Handle,
+            Interfaces.Unsigned_32 (Timeout_Milliseconds),
+            Event'Access,
+            D'Address,
+            D'Length,
+            R'Access),
+         D);
+      begin
+         Check
+           (C.IR_Scheduling_Rep_Event_View (Event, Address'Access, D'Address, D'Length, R'Access),
+            D);
+         declare
+            Result : constant Task_Executing_Report := To_Report (To_Rep_View (Address).all);
+         begin
+            --  The owned Ada copy is complete before the native event is released.
+            Release;
+            return Result;
+         end;
+      exception
+         when others =>
+            Release;
+            raise;
+      end;
+   end Receive_Task_Executing;
+
+   function Task_Executing_Counters (Stream : Task_Executing_Stream) return Metadata_Counters is
+      Raw : aliased C.Metadata_Counters_V1 := (others => 0);
+      D   : aliased Diagnostic := [others => Interfaces.C.nul];
+      R   : aliased C.Size_T := 0;
+   begin
+      if Stream.Handle = C.Null_Scheduling_Rep_Metadata then
+         raise Provider_Error with "TaskExecutingRep metadata owner is closed";
+      end if;
+      Check
+        (C.IR_Scheduling_Rep_Get_Counters
+           (Stream.Handle, Raw'Access, D'Address, D'Length, R'Access),
+         D);
+      return
+        (AMS.MEL.IR.Counter (Raw.Events_Received),
+         AMS.MEL.IR.Counter (Raw.Events_Dropped_Queue_Full),
+         AMS.MEL.IR.Counter (Raw.Malformed_Or_Unsupported));
+   end Task_Executing_Counters;
+
+   procedure Close (Stream : in out Task_Executing_Stream) is
+      D : aliased Diagnostic := [others => Interfaces.C.nul];
+      R : aliased C.Size_T := 0;
+   begin
+      Check (C.IR_Scheduling_Rep_Close (Stream.Handle'Access, D'Address, D'Length, R'Access), D);
+   end Close;
+
+   overriding
+   procedure Finalize (Stream : in out Task_Executing_Stream) is
+      Ignored : Interfaces.Integer_32;
+   begin
+      Ignored := C.IR_Scheduling_Rep_Close (Stream.Handle'Access, System.Null_Address, 0, null);
+   exception
+      when others =>
+         Stream.Handle := C.Null_Scheduling_Rep_Metadata;
+   end Finalize;
 end AMS.MEL.IR.Scheduling.Metadata;

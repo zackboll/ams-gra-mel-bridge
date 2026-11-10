@@ -275,6 +275,44 @@ int main(void)
         CHECK(ack_view(NULL, &ack_value, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
         CHECK(ack_event_close(&ack_event, NULL, 0, NULL) == AMS_MEL_OK && !ack_event);
     }
+    /* IRMEL-ADA-013: exact Scheduling TaskExecutingRep declarations, layout
+     * and Task/TaskCompStatus constants. */
+    {
+        ams_mel_status_t (*rep_open)(ams_mel_ir_scheduling *, size_t,
+            ams_mel_ir_scheduling_task_executing_metadata **, ams_mel_ir_return_t *, char *,
+            size_t, size_t *) = ams_mel_ir_scheduling_task_executing_open;
+        ams_mel_status_t (*rep_receive)(ams_mel_ir_scheduling_task_executing_metadata *,
+            uint32_t, ams_mel_ir_scheduling_task_executing_event **, char *, size_t, size_t *) =
+            ams_mel_ir_scheduling_task_executing_receive;
+        ams_mel_status_t (*rep_counters)(const ams_mel_ir_scheduling_task_executing_metadata *,
+            ams_mel_ir_metadata_counters_v1 *, char *, size_t, size_t *) =
+            ams_mel_ir_scheduling_task_executing_get_counters;
+        ams_mel_status_t (*rep_close)(ams_mel_ir_scheduling_task_executing_metadata **, char *,
+            size_t, size_t *) = ams_mel_ir_scheduling_task_executing_close;
+        ams_mel_status_t (*rep_view)(const ams_mel_ir_scheduling_task_executing_event *,
+            const ams_mel_ir_task_executing_rep_v1 **, char *, size_t, size_t *) =
+            ams_mel_ir_scheduling_task_executing_event_view;
+        ams_mel_status_t (*rep_event_close)(ams_mel_ir_scheduling_task_executing_event **,
+            char *, size_t, size_t *) = ams_mel_ir_scheduling_task_executing_event_close;
+        ams_mel_ir_scheduling_task_executing_metadata *rep = NULL;
+        ams_mel_ir_scheduling_task_executing_event *rep_event = NULL;
+        const ams_mel_ir_task_executing_rep_v1 *rep_value = NULL;
+        ams_mel_ir_metadata_counters_v1 rep_counts;
+        CHECK(sizeof(ams_mel_ir_task_executing_rep_v1) == 48U);
+        CHECK(offsetof(ams_mel_ir_task_executing_rep_v1, estimated_duration_ns) == 16U);
+        CHECK(offsetof(ams_mel_ir_task_executing_rep_v1, previous_task_status) == 40U);
+        CHECK(AMS_MEL_IR_TASK_NO_TASK == 0U && AMS_MEL_IR_TASK_IRST_UPDATE == 10U);
+        CHECK(AMS_MEL_IR_TASK_RESERVED_1 == 11U && AMS_MEL_IR_TASK_RESERVED_6 == 16U);
+        CHECK(AMS_MEL_IR_TASK_COMP_STATUS_NO_TASK == 0U);
+        CHECK(AMS_MEL_IR_TASK_COMP_STATUS_SKIPPED == 4U);
+        CHECK(AMS_MEL_IR_METADATA_TASK_EXECUTING_REP == 12U);
+        CHECK(rep_open(NULL, 1U, &rep, NULL, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT && !rep);
+        CHECK(rep_receive(NULL, 0U, &rep_event, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rep_counters(NULL, &rep_counts, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rep_close(&rep, NULL, 0, NULL) == AMS_MEL_OK && !rep);
+        CHECK(rep_view(NULL, &rep_value, NULL, 0, NULL) == AMS_MEL_INVALID_ARGUMENT);
+        CHECK(rep_event_close(&rep_event, NULL, 0, NULL) == AMS_MEL_OK && !rep_event);
+    }
     CHECK(AMS_MEL_IR_CHANNEL_SCHEDULING == 3U);
     CHECK(offsetof(ams_mel_ir_scheduling_config_v1, channel_id) == 0U);
     CHECK(sizeof(ams_mel_ir_scheduling_config_v1) == sizeof(ams_mel_ir_track_config_v1));
