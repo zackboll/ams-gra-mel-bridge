@@ -79,10 +79,14 @@ mod ir_c2_metadata;
 mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
+mod ir_los_quaternion;
 pub mod ir_nuc;
 mod ir_optical_distortion_map;
 #[cfg(test)]
 mod test_allocator;
+pub use ir_los_quaternion::{
+    LineOfSightQuaternion, LineOfSightQuaternionOpenError, LineOfSightQuaternionStream, Quaternion,
+};
 pub use ir_optical_distortion_map::{
     ForwardRightDown, OpticalDistortionMap, OpticalDistortionMapOpenError,
     OpticalDistortionMapStream, RowCol,
@@ -878,6 +882,37 @@ impl ImageStream {
             // SAFETY: exclusively borrowed Image owner and writable output slots.
             unsafe {
                 sys::ams_mel_ir_image_odm_open(self.raw, queue_capacity, out, registration, d, c, r)
+            }
+        })
+    }
+
+    /// Registers conditional LineOfSightQuaternion independently of other metadata.
+    /// Attached and Running streams are eligible; this does not start acquisition.
+    /// Zero capacity fails locally without consuming the native one-shot. Every
+    /// actual registration attempt consumes it, including failure. Closed owners
+    /// fail locally with ProviderFailed before capacity validation.
+    pub fn open_line_of_sight_quaternion(
+        &mut self,
+        queue_capacity: usize,
+    ) -> Result<LineOfSightQuaternionStream, LineOfSightQuaternionOpenError> {
+        if self.raw.is_null() {
+            return Err(LineOfSightQuaternionOpenError::preflight(Error::new(
+                ErrorKind::ProviderFailed,
+                "image stream is closed",
+            )));
+        }
+        LineOfSightQuaternionStream::open_with(queue_capacity, |out, registration, d, c, r| {
+            // SAFETY: exclusively borrowed Image owner and writable output slots.
+            unsafe {
+                sys::ams_mel_ir_image_los_quaternion_open(
+                    self.raw,
+                    queue_capacity,
+                    out,
+                    registration,
+                    d,
+                    c,
+                    r,
+                )
             }
         })
     }
