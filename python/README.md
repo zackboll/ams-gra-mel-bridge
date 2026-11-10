@@ -214,14 +214,8 @@ Context management preserves a body exception even if cleanup also fails.
 owner, and metadata registration with parent C2 operations.** The GIL is not this
 contract. No Python worker, callback, lock or queue is added.
 
-Qualification is **compiled-mock only**, not real-provider/hardware qualification.
-`tests/test_ir_c2_metadata.py` covers rich nested values, all four families,
-independent registration and request results, FIFO/overflow/malformed callbacks,
-allocation failure, teardown/unload and deterministic nonquiescing callback
-barriers. Hostile C outputs cover malformed active records and diagnostics,
-poisoned inactive records, and consumed/retained cleanup failures. No native ABI,
-private ctypes, provider/mock, Ada/Rust implementation, workflow or policy change
-is needed; Image, Health and NUC remain independently supported.
+For implementation coverage, compiled-mock qualification, source identities and
+limitations, see the [PY-MEL-008 feature report](../docs/py-mel-008-ir-c2-metadata.md).
 
 ## RF Admin (PY-MEL-001)
 
