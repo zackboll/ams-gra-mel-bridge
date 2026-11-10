@@ -61,6 +61,12 @@ from ._image_types import (
     NavigationResponse,
 )
 from ._image_metadata import ImageMetadataStream
+from ._camera_response import (
+    CameraCommandResponse,
+    CameraResponseCounters,
+    CameraResponseOpenError,
+    CameraResponseStream,
+)
 from ._nuc import (
     NucPointType,
     NucPixelKind,
@@ -222,6 +228,10 @@ for _public_symbol in (
     C2BitControlInterface,
     C2BitType,
     C2BitConfiguration,
+    CameraCommandResponse,
+    CameraResponseCounters,
+    CameraResponseOpenError,
+    CameraResponseStream,
     AzimuthElevation,
     BadPixel,
     BadPixelList,
@@ -352,6 +362,10 @@ del _public_symbol
 
 
 __all__ = [
+    "CameraCommandResponse",
+    "CameraResponseCounters",
+    "CameraResponseOpenError",
+    "CameraResponseStream",
     "C2MetadataStream",
     "C2MetadataKind",
     "C2MetadataEvent",

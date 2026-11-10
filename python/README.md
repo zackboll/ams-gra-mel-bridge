@@ -33,6 +33,7 @@ _health_types -> _types
 _health_convert -> _native, _errors, _types, _ffi, _health_types
 _health_metadata -> _native, _errors, _validation, _common, _ffi, _health_types, _health_convert
 _nuc -> _native, _errors, _validation, _common, _ffi, _types
+_camera_response -> _native, _errors, _validation, _common, _ffi, _types
 _image_types -> _health_types (canonical Euler)
 _image_convert -> _native, _errors, _ffi, _health_types, _image_types
 _image_metadata -> _native, _errors, _validation, _common, _ffi, _image_types, _image_convert
@@ -40,7 +41,7 @@ _c2_types -> _types, _health_types (canonical BitStatus)
 _c2_convert -> _native, _ffi, _health_convert, _c2_types, _types
 _c2_metadata -> _native, _errors, _validation, _common, _ffi, _c2_types, _c2_convert
 _health -> shared layers above, _health_metadata, _nuc
-_image -> shared layers above, _nuc, _image_metadata
+_image -> shared layers above, _nuc, _image_metadata, _camera_response
 _c2 -> shared layers above, _c2_metadata
 _instrumentation -> shared layers above
 _rf_admin -> _native, _errors, _validation, _types
@@ -89,6 +90,67 @@ Existing native-backed lifecycle tests remain unchanged except for four private
 failure-injection patch targets, now patched in their implementation modules.
 
 ## Supported behavior
+
+### Optional Image CameraCommandResp reception
+
+`ImageStream.open_camera_response(queue_capacity=16)` explicitly registers the
+`@RequiredIfCameraCtrl` callback and returns a `CameraResponseStream`. It does
+not start Image, register ordinary metadata/NUC, or submit a CameraCommand:
+
+```python
+from ams_mel import CameraResponseOpenError, CommandReturn, ErrorKind, MelError
+
+try:
+    with image.open_camera_response(queue_capacity=16) as responses:
+        try:
+            response = responses.receive(timeout_ms=100)
+            print(response.command_id, response.size, response.timestamp_ns,
+                  response.command_success)
+        except MelError as error:
+            if error.kind not in (ErrorKind.TIMEOUT, ErrorKind.STREAM_STOPPED):
+                raise
+        print(responses.counters())
+except CameraResponseOpenError as error:
+    if error.registration is not CommandReturn.NOT_SUPPORTED:
+        raise
+```
+
+Here `image` is an open `ImageStream`. `receive(timeout_ms=0)` polls exactly
+once; it returns a frozen, Python-owned `CameraCommandResponse(command_id,
+size, timestamp_ns, command_success)`. Both unsigned fields retain all uint32
+bits; size is not reinterpreted. Timestamp is signed int64 nanoseconds without
+an inferred epoch. False success is a normal event, not a native error or MEL
+rejection. No event proves that a request future completed. Public CameraCommand
+submission and request Wait remain unsupported.
+
+`CameraResponseOpenError` preserves `MelError` fields plus `registration`:
+`NOT_SUPPORTED` and `FAIL` are distinct provider Returns with `PROVIDER_FAILED`;
+a registration exception is `PROVIDER_EXCEPTION` with no published Return
+(`None`). Local validation failures also have `registration=None`. Valid
+registration attempts are one-shot, even on failure; invalid capacity does not
+consume the attempt. Ordinary metadata and NUC have independent registrations.
+
+`CameraResponseStream.is_open` reports local handle presence.
+`counters()` returns frozen `CameraResponseCounters(events_received,
+events_dropped_queue_full, malformed_or_unsupported)` with full uint64 counts
+of callbacks, not receive calls. The native bounded FIFO drops incoming events
+when full. Malformed callbacks are counted without failing valid retained events.
+Image Stop drains queued responses before `STREAM_STOPPED`; active-empty is
+`TIMEOUT`. There is no Python buffer, retry, correlation or replay service.
+
+`close()` releases only the public response handle, not Image/Session, requests
+or callback registration, and promises no immediate callback quiescence. It is
+idempotent after successful release. A failed/uncertain Close is not retried or
+silently treated as success; subsequent explicit Close re-raises its failure.
+Finalization is non-raising and makes at most one best-effort native Close
+attempt. No Python parent is retained; native callback state manages provider
+lifetime. Returned values remain valid after actual provider-library unload.
+Externally serialize operations/Close on one owner and registration versus
+Image Start/Stop/Close; the GIL is not an ownership lock.
+
+See [the focused contract and mock qualification](../docs/py-mel-009-image-camera-response.md).
+
+### Existing streams and channels
 
 The current API supports RF Admin state commands (see below), façade ABI/version
 queries, provider `Session` open/version/close, host-memory Mono8 `ImageStream`
