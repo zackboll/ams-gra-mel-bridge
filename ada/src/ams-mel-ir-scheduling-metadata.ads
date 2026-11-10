@@ -144,8 +144,7 @@ package AMS.MEL.IR.Scheduling.Metadata is
    subtype Operational_Task_Kind is Task_Kind range No_Task .. IRST_Update;
    --  The eleven meaningful pinned Task values 0..10. A reserved value is never a member.
 
-   function Is_Operational (Kind : Task_Kind) return Boolean
-   is (Kind in Operational_Task_Kind);
+   function Is_Operational (Kind : Task_Kind) return Boolean;
    --  Whether a reported task kind is one of the meaningful pinned values.
    --  @param Kind Reported current or previous task kind.
    --  @return False exactly for Reserved_1 .. Reserved_6.

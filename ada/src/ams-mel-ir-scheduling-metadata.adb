@@ -153,6 +153,9 @@ package body AMS.MEL.IR.Scheduling.Metadata is
    end Finalize;
 
    --  IRMEL-ADA-013 independent Scheduling TaskExecutingRep owner.
+   function Is_Operational (Kind : Task_Kind) return Boolean
+   is (Kind in Operational_Task_Kind);
+
    type Rep_View_Access is access all C.IR_Task_Executing_Rep_V1;
    function To_Rep_View is new Ada.Unchecked_Conversion (System.Address, Rep_View_Access);
    use type C.Scheduling_Rep_Metadata_Handle;
