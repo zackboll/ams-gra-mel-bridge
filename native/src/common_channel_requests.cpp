@@ -300,6 +300,16 @@ extern "C" ams_mel_status_t ams_mel_ir_channel_from_track(
     std::size_t capacity, std::size_t *required) noexcept
 { return channel_from(source, ams_mel_common::common_from_track, out_channel, out, capacity, required); }
 
+/* IRMEL-ADA-011: the same generic weak-view conversion; no Scheduling-specific
+ * request engine exists. */
+extern "C" ams_mel_status_t ams_mel_ir_channel_from_scheduling(
+    const ams_mel_ir_scheduling *source, ams_mel_ir_channel **out_channel, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    return channel_from(source, ams_mel_common::common_from_scheduling,
+                        out_channel, out, capacity, required);
+}
+
 /* Delegates directly to the one 032A Return engine: preallocation, weak lock,
  * Session CompletionPermit, family claim, provider send, shared worker. */
 extern "C" ams_mel_status_t ams_mel_ir_channel_send_keepalive(

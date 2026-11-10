@@ -160,6 +160,16 @@ AMS_MEL_0.1 {
         ams_mel_ir_track_enable;
         ams_mel_ir_track_get_capabilities;
         ams_mel_ir_track_close;
+        ams_mel_ir_scheduling_open;
+        ams_mel_ir_scheduling_enable;
+        ams_mel_ir_scheduling_get_capabilities;
+        ams_mel_ir_scheduling_close;
+        ams_mel_ir_scheduling_execute_task_ack_open;
+        ams_mel_ir_scheduling_execute_task_ack_receive;
+        ams_mel_ir_scheduling_execute_task_ack_get_counters;
+        ams_mel_ir_scheduling_execute_task_ack_close;
+        ams_mel_ir_scheduling_execute_task_ack_event_view;
+        ams_mel_ir_scheduling_execute_task_ack_event_close;
         ams_mel_ir_track_metadata_open;
         ams_mel_ir_track_metadata_receive;
         ams_mel_ir_track_metadata_get_counters;
@@ -179,6 +189,7 @@ AMS_MEL_0.1 {
         ams_mel_ir_channel_from_health;
         ams_mel_ir_channel_from_instrumentation;
         ams_mel_ir_channel_from_track;
+        ams_mel_ir_channel_from_scheduling;
         ams_mel_ir_channel_send_keepalive;
         ams_mel_ir_channel_submit_comms_test;
         ams_mel_ir_channel_get_capabilities;

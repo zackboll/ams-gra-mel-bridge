@@ -269,8 +269,8 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/AbortTask.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/AbsoluteReferencePoint.h",
@@ -394,18 +394,18 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/IRSTScanTask.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/IRSTStareTask.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/IRSTTrackTask.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/IR_Directional.h",
@@ -459,8 +459,8 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/PrioritizedTrackListCmd.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/RelativeSlantRangeLOS3D.h",
@@ -494,8 +494,8 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/StareTaskParam.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/SystemTrackDataResponse.h",
@@ -504,8 +504,8 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TaskInfo.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TempPoint.h",
@@ -514,23 +514,23 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TrackData.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TrackListResponse.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TrackTaskData.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/TrackTaskParam.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/Uncertainty.h",
@@ -539,8 +539,8 @@
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/UpdateTrackListResponse.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/irmel-types/mel_export.h",
@@ -549,43 +549,43 @@
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/ActivityRecord.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/EventType.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/ExecuteTaskAck.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/ScanPerformanceReport.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/SchedCreatedRep.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/SchedulingChannel.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/TaskEvents.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/scheduling/TaskExecutingRep.h",
-      "vendored": false,
-      "reason": "Missing consumer declaration dependency; do not vendor without a vertical implementation slice."
+      "vendored": true,
+      "reason": "Verified byte-identical to pinned upstream blob; IRMEL-ADA-011 SchedulingChannel.h compile closure only. Header presence is not an implemented Scheduling operation or task representation."
     },
     {
       "id": "ir:header:include/irmel/library/stacked-image/StackFrameHeader.h",
@@ -1470,7 +1470,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed Enable/Start exists for five families; no Scheduling/Stacked owner.",
+      "notes": "Typed Enable/Start exists for six families (C2, Image Start, Health, Instrumentation, Track, Scheduling); no StackedImage owner.",
       "limitations": [],
       "representation": []
     },
@@ -1499,7 +1499,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Complete owned ChannelCapability snapshot through common view of five bound families.",
+      "notes": "Complete owned ChannelCapability snapshot through common view of six bound families, including Scheduling.",
       "limitations": [],
       "representation": []
     },
@@ -1586,7 +1586,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Complete common request/report for five attached families; absent Scheduling/Stacked owners are not counted.",
+      "notes": "Complete common request/report for six attached families, including Scheduling; the absent StackedImage owner is not counted.",
       "limitations": [],
       "representation": []
     },
@@ -1615,7 +1615,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Common weak view works for C2, Image, Health, Instrumentation and Track; Scheduling/Stacked owners are absent.",
+      "notes": "Common weak view works for C2, Image, Health, Instrumentation, Track and Scheduling; the StackedImage owner is absent.",
       "limitations": [],
       "representation": []
     },
@@ -1664,7 +1664,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
       "limitations": [],
       "representation": []
     },
@@ -1693,7 +1693,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
       "limitations": [],
       "representation": []
     },
@@ -2688,12 +2688,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const ExecuteTaskAck*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Execute_Task_Ack"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Execute_Task_Ack"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_execute_task_ack.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_ack_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-012: independent opt-in ExecuteTaskAck callback on Attached or Enabled Scheduling; one-shot including failed registration, unlocked registration with safe synchronous delivery, distinct provider outcomes, full-width owned identifiers, bounded drop-incoming queue without full-queue snapshots, null input malformed, allocation recovery and in-flight teardown drain. No task execution or request correlation.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. An acknowledgement proves neither completion nor task success."
+      ],
       "representation": []
     },
     {
@@ -9515,22 +9540,57 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ExecuteTaskAck",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_open"
+        },
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Execute_Task_Ack"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_execute_task_ack.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_ack_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete getCommandID() -> command_id -> Command_ID and getReqId() -> request_id -> Request_ID, each uint32_t / Interfaces.Unsigned_32, all 32 bits retained. Fixed 8-byte C record and fully Ada-owned Execute_Task_Ack value. Zero, high-bit, unequal and duplicate identifiers are valid; no local-request matching or completion-status interpretation.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. An acknowledgement proves neither completion nor task success."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Execute_Task_Ack"
+            }
+          ]
         },
         {
           "upstream": "getReqId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Execute_Task_Ack"
+            }
+          ]
         }
       ]
     },
@@ -12262,12 +12322,17 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::SchedulingChannel",
-      "status": "missing",
+      "status": "partial",
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.",
-      "limitations": [],
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial.",
+      "limitations": [
+        "Ten Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the five TaskExecutingRep, SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck reception is independent of execution; no task is submitted, queued or reported as scheduled.",
+        "Disable is performed only inside Close; there is no standalone Disable.",
+        "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
+        "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
+      ],
       "representation": []
     },
     {
@@ -14560,51 +14625,51 @@
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "missing",
+      "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "No typed owner for this family."
+      "notes": "Scheduling invokes the inherited disable() only inside Close, and only after Enable was attempted; no standalone Disable is exposed."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::enable()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::enable()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14705,7 +14770,7 @@
   "priorities": [
     "C2 EraseCommand and typed EraseCommandType result; no speculative commands.",
     "Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.",
-    "Scheduling owner, five sends/execs and six callback families as successive vertical slices.",
+    "Scheduling exec(AbortTask/IRSTScanTask/IRSTStareTask/IRSTTrackTask), send(PrioritizedTrackListCmd) and five remaining callback families as successive vertical slices on the IRMEL-ADA-011 owner foundation.",
     "LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices."
   ],
   "qualifications": [
@@ -14724,6 +14789,8 @@
     "IRMEL-ADA-006 implements both optional C2 CalibrationStatus operations and all five missing data declarations (CalibrationStatusCmd, CalibrationStatus, SubsystemCompletedCalibration, SubsystemCompletedCalibrationItemType, SubsystemCalibrationResult). The command and request IDs are independent uint32 values, not inferred response correlation; active and completed collections are independent; time tags are unconverted signed nanoseconds with no epoch. Safe Ada operations increase from 41 to 43. Qualification is mock-provider only.",
     "IRMEL-ADA-008 implements the optional C2Channel::send(SystemTrackDataResponse) as an independent C2 overload: C2 lifecycle, C2 request accounting, distinct C2 request/result owners and probe family, sharing only the pure SystemTrackDataResponse/CommandStatus value conversion with the Track overload. SystemTrackDataResponse and CommandStatus were already safe_ada and are not reclassified. Safe Ada operations increase from 44 to 45. A successful future does not establish operational incorporation. Qualification is mock-provider only.",
     "IRMEL-ADA-009 implements the optional ImageChannel::registerMetadataCallback(OpticalDistortionMap) as an independent opt-in owner and completes OpticalDistortionMap and ForwardRightDown; RowCol was already safe_ada and is reused, not reclassified. Safe Ada operations increase from 45 to 46. The two ODM collections are independent; non-finite doubles are forwarded, not replaced. Qualification is mock-provider only.",
-    "IRMEL-ADA-010 implements the @RequiredIfLOSQuaternion ImageChannel::registerMetadataCallback(LineOfSightQuaternion) as an independent opt-in owner and completes LineOfSightQuaternion, reusing the canonical Quaternion and ForwardRightDown representations, which stay safe_ada and are not reclassified. Safe Ada operations increase from 46 to 47. Values are copied, not normalized or converted; receipt is not proof of a usable attitude. Qualification is mock-provider only."
+    "IRMEL-ADA-010 implements the @RequiredIfLOSQuaternion ImageChannel::registerMetadataCallback(LineOfSightQuaternion) as an independent opt-in owner and completes LineOfSightQuaternion, reusing the canonical Quaternion and ForwardRightDown representations, which stay safe_ada and are not reclassified. Safe Ada operations increase from 46 to 47. Values are copied, not normalized or converted; receipt is not proof of a usable attitude. Qualification is mock-provider only.",
+    "IRMEL-ADA-011 adds the conditionally required SchedulingChannel ownership/lifecycle foundation only: the exact 20-header pinned SchedulingChannel.h closure is vendored (compilation dependencies, not implemented operations), five AMS_MEL_0.1 exports (284 -> 289) and AMS.MEL.IR.Scheduling. SchedulingChannel moves missing -> partial; Scheduling inherited Enable, capabilities, KeepAlive and CommsTest move to safe_ada and inherited Disable to partial (Close only). All 11 Scheduling-specific operations and the AbortTask/IRSTScanTask/IRSTStareTask/IRSTTrackTask types stay missing. Safe Ada operations stay at 47. TaskScheduleDepth 0 is a valid application-managed mode, not absence. Qualification is mock-provider only.",
+    "IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only."
   ]
 }

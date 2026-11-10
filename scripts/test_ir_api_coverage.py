@@ -100,7 +100,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual([f["upstream"] for f in command["representation"]],
                          ["getCommandID", "getEraseCommandType"])
         self.assertTrue(all(f["status"] == "represented" for f in command["representation"]))
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_c2_system_response_slice_is_independent_and_scoped(self):
         # IRMEL-ADA-008: exactly the C2 overload moves to safe_ada with its own
@@ -123,7 +123,7 @@ class CoverageTests(unittest.TestCase):
         for name in ("SystemTrackDataResponse", "CommandStatus"):
             entry = next(t for t in self.coverage["types"] if t["id"] == "ir:type:ams::iface::irmel::" + name)
             self.assertEqual(entry["status"], "safe_ada")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_c2_system_response_evidence_removal_fails_closed(self):
         self.operation("C2Channel", "send(SystemTrackDataResponse)")["tests"] = []
@@ -159,7 +159,7 @@ class CoverageTests(unittest.TestCase):
             self.assertTrue(all(f["status"] == "represented" for f in types[name]["representation"]))
         self.assertEqual(types["RowCol"]["status"], "safe_ada")
         self.assertEqual(types["RowCol"]["native"][0]["symbol"], "ams_mel_ir_track_metadata_open")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_line_of_sight_quaternion_slice_is_exact(self):
         # IRMEL-ADA-010: exactly the ImageChannel LineOfSightQuaternion registration
@@ -194,7 +194,98 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(types["ForwardRightDown"]["status"], "safe_ada")
         self.assertEqual(types["ForwardRightDown"]["native"][0]["symbol"], "ams_mel_ir_image_odm_open")
         self.assertEqual(self.operation("ImageChannel", "LOS3D_KinematicsType")["status"], "missing")
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
+
+    def test_scheduling_foundation_is_owner_only(self):
+        # IRMEL-ADA-011 foundation remains unchanged. IRMEL-ADA-012 permits only the
+        # ExecuteTaskAck delta: ten other methods and task types stay missing; safe Ada is 48.
+        types = {t["id"].split("::")[-1]: t for t in self.coverage["types"]}
+        self.assertEqual(types["SchedulingChannel"]["status"], "partial")
+        self.assertTrue(any("Ten Scheduling-specific" in x
+                            for x in types["SchedulingChannel"]["limitations"]))
+        for name in ("AbortTask", "IRSTScanTask", "IRSTStareTask", "IRSTTrackTask",
+                     "PrioritizedTrackListCmd", "TaskExecutingRep",
+                     "SchedCreatedRep", "TaskEvents", "ScanPerformanceReport"):
+            self.assertEqual(types[name]["status"], "missing", name)
+        specific = [o for o in self.upstream["operations"]
+                    if o["interface"] == "SchedulingChannel" and o["category"] != "destructor"]
+        self.assertEqual(sorted(o["overload"].split("(")[0] for o in specific),
+                         ["exec"] * 4 + ["registerMetadataCallback"] * 6 + ["send"])
+        entries = {e["id"]: e for e in self.coverage["operations"]}
+        for operation in specific:
+            self.assertEqual(entries[operation["id"]]["status"],
+                             "safe_ada" if "ExecuteTaskAck" in operation["id"] else "missing",
+                             operation["id"])
+        inherited = {e["id"].split("Channel::")[-1]: e["status"] for e in self.coverage["inherited"]
+                     if e["id"].startswith("SchedulingChannel|")}
+        self.assertEqual(inherited, {
+            "disable()": "partial", "enable()": "safe_ada",
+            "getCapabilities() const": "safe_ada", "send(ChannelCommsTestReq)": "safe_ada",
+            "sendKeepAliveRep()": "safe_ada",
+            "registerBuffer(std::shared_ptr<Buffer>)": "missing",
+            "unregisterBuffer(std::shared_ptr<Buffer>)": "missing",
+            "registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)":
+                "missing"})
+        headers = {h["id"]: h for h in self.coverage["headers"]}
+        types_closure = {"AbortTask.h", "IRSTScanTask.h", "IRSTStareTask.h", "IRSTTrackTask.h",
+                         "PrioritizedTrackListCmd.h", "UpdateTrackListResponse.h", "TaskInfo.h",
+                         "StareTaskParam.h", "TrackTaskParam.h", "TrackTaskData.h",
+                         "TrackData.h", "TrackListResponse.h"}
+        closure = [h for h in self.upstream["headers"]
+                   if "/scheduling/" in h["path"]
+                   or ("/irmel-types/" in h["path"] and h["path"].rsplit("/", 1)[1] in types_closure)]
+        self.assertEqual(len(closure), 20)
+        self.assertTrue(all(headers[h["id"]]["vendored"] for h in closure))
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
+
+    def test_execute_task_ack_complete_and_only_scheduling_callback(self):
+        operation = self.operation("SchedulingChannel", "ExecuteTaskAck")
+        self.assertEqual(operation["status"], "safe_ada")
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::ExecuteTaskAck"))
+        self.assertEqual(entry["status"], "safe_ada")
+        self.assertEqual([(f["upstream"], f["status"]) for f in entry["representation"]],
+                         [("getCommandID", "represented"), ("getReqId", "represented")])
+        self.assertTrue(all(f["evidence"] for f in entry["representation"]))
+        operations = [e for e in self.coverage["operations"] if "SchedulingChannel::" in e["id"]]
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in operations), 1)
+        self.assertEqual(sum(e["status"] == "missing" for e in operations), 10)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
+
+    def test_execute_task_ack_needs_c_and_ada_evidence(self):
+        self.operation("SchedulingChannel", "ExecuteTaskAck")["tests"] = []
+        self.reject("safe Ada claim lacks native/Ada/test evidence")
+
+    def test_execute_task_ack_getter_omission_is_rejected(self):
+        entry = next(t for t in self.coverage["types"] if t["id"].endswith("::ExecuteTaskAck"))
+        entry["representation"].pop()
+        self.reject("field representation inventory mismatch")
+
+    def test_scheduling_exec_claim_is_rejected(self):
+        # A Scheduling exec cannot be claimed safe Ada by borrowing the foundation evidence;
+        # the borrowed sources exist, so only the independently hashed review rejects it.
+        for relative in ("native/src/ir_scheduling.cpp", "ada/src/ams-mel-ir-scheduling.ads",
+                         "ada/src/ams-mel-ir-scheduling.adb",
+                         "native/tests/test_ir_scheduling_foundation.c",
+                         "ada/tests/src/ams_mel_ir_scheduling_tests.adb"):
+            target_path = self.root / relative
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(audit.ROOT / relative, target_path)
+        target = self.operation("SchedulingChannel", "exec(IRSTScanTask)")
+        target.update(status="safe_ada",
+                      native=[{"path": "native/src/ir_scheduling.cpp",
+                               "symbol": "ams_mel_ir_scheduling_open"}],
+                      ada=[{"path": "ada/src/ams-mel-ir-scheduling.ads", "symbol": "Open"}],
+                      tests=[{"path": "native/tests/test_ir_scheduling_foundation.c",
+                              "symbol": "main"},
+                             {"path": "ada/tests/src/ams_mel_ir_scheduling_tests.adb",
+                              "symbol": "Run"}])
+        self.reject("unreviewed binding/classification claim")
+
+    def test_scheduling_vendored_header_presence_is_enforced(self):
+        entry = next(h for h in self.coverage["headers"]
+                     if h["id"].endswith("scheduling/SchedulingChannel.h"))
+        entry["vendored"] = False
+        self.reject("vendor presence")
 
     def test_line_of_sight_quaternion_evidence_removal_fails_closed(self):
         self.operation("ImageChannel", "LineOfSightQuaternion")["tests"] = []
@@ -244,7 +335,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"] == "ir:type:ams::iface::irmel::CmdResp")
         alternatives = [a.strip() for m in enum["members"] for a in m["declaration"].split(",")]
         self.assertEqual(alternatives, ["OK", "Unavailable", "Unsupported"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_calibration_configuration_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationConfigurationCmd)")
@@ -265,7 +356,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationControlInterfaces"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "SubsystemCalibrationCommand", "SubsystemStateCommand", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_calibration_status_slice_is_complete_and_independent(self):
         send = self.operation("C2Channel", "send(CalibrationStatusCmd)")
@@ -296,7 +387,7 @@ class CoverageTests(unittest.TestCase):
         enum = next(t for t in self.upstream["types"] if t["id"].endswith("::SubsystemCalibrationResult"))
         self.assertEqual([a.strip() for m in enum["members"] for a in m["declaration"].split(",")],
                          ["NotSet", "Completed", "Failed", "Interrupted", "NotCalibrated", "MaxExclusive"])
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 47)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 48)
 
     def test_calibration_status_nested_item_omission_is_detected(self):
         entry = next(t for t in self.coverage["types"] if t["id"].endswith("::SubsystemCompletedCalibration"))

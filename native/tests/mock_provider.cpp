@@ -4,6 +4,7 @@
 #include <irmel/library/health-status/HealthStatusChannel.h>
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
 #include <irmel/library/track/TrackChannel.h>
+#include <irmel/library/scheduling/SchedulingChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -5253,6 +5254,285 @@ private:
         preproc_callback_;
 };
 
+/* IRMEL-ADA-012 deterministic @RequiredIfIRSTTrackTasking ExecuteTaskAck
+ * fixture for the Scheduling mock channel. Scenarios not named "sched-ack-*"
+ * model a provider without the conditional callback and answer NotSupported.
+ * Every registration attempt is counted separately from the ten remaining
+ * unimplemented Scheduling-specific methods, so a test can prove both that the
+ * foundation never registers ExecuteTaskAck implicitly and that no exec/send
+ * or other Scheduling registration is ever reached. Values are built only
+ * through the upstream constructor/setters. */
+using ExecuteTaskAckCallback =
+    std::function<void(irmel::Channel&, const irmel::ExecuteTaskAck *const)>;
+
+std::mutex ack_registry_mutex;
+ExecuteTaskAckCallback ack_active_callback;
+irmel::Channel *ack_active_channel{};
+unsigned ack_registrations{};
+/* A non-quiescing provider thread for "sched-ack-in-flight": deliberately NOT
+ * joined by channel destruction, only at provider-library unload. */
+std::thread ack_detached_producer;
+
+class MockExecuteTaskAck {
+public:
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             ExecuteTaskAckCallback callback)
+    {
+        {
+            std::lock_guard lock{ack_registry_mutex};
+            ++ack_registrations;
+        }
+        record("scheduling_execute_task_ack_registration_attempted");
+        if (scenario.rfind("sched-ack-", 0U) != 0U) return Return::NotSupported;
+        callback_ = std::move(callback);
+        if (scenario == "sched-ack-register-throw")
+            throw std::runtime_error("ExecuteTaskAck registration exception");
+        if (scenario == "sched-ack-register-unknown") return static_cast<Return>(77U);
+        if (scenario == "sched-ack-register-not-implemented") return Return::NotImplemented;
+        if (scenario == "sched-ack-register-not-supported") return Return::NotSupported;
+        if (scenario == "sched-ack-register-fail") {
+            /* A failed registration that still delivers: never queued. */
+            irmel::ExecuteTaskAck value{1U, 2U}; callback_(channel, &value);
+            return Return::Fail;
+        }
+        if (scenario == "sched-ack-sync" || scenario == "sched-ack-late" ||
+            scenario == "sched-ack-late-closed") {
+            /* Synchronous delivery from inside registration, before return:
+             * default (both zero), both UINT32_MAX, high bits, then unequal. */
+            irmel::ExecuteTaskAck first; callback_(channel, &first);
+            irmel::ExecuteTaskAck all{UINT32_MAX, UINT32_MAX}; callback_(channel, &all);
+            irmel::ExecuteTaskAck high{0x80000000U, 0x80000001U}; callback_(channel, &high);
+            irmel::ExecuteTaskAck unequal{0x00000007U, 0xfffffff0U}; callback_(channel, &unequal);
+            record("scheduling_execute_task_ack_sync_delivered");
+        } else if (scenario == "sched-ack-detach-fail") {
+            irmel::ExecuteTaskAck first{0x11111111U, 0x22222222U}; callback_(channel, &first);
+            irmel::ExecuteTaskAck second{0x33333333U, 0x44444444U}; callback_(channel, &second);
+        } else if (scenario == "sched-ack-in-flight") {
+            auto copy = callback_;
+            auto *target = &channel;
+            ack_detached_producer = std::thread{[copy, target] {
+                irmel::ExecuteTaskAck value{0xa5a5a5a5U, 0x5a5a5a5aU};
+                record("ack_in_flight_callback_entered");
+                copy(*target, &value);
+                record("ack_in_flight_callback_returned");
+            }};
+        }
+        std::lock_guard lock{ack_registry_mutex};
+        ack_active_callback = callback_;
+        ack_active_channel = &channel;
+        return Return::Success;
+    }
+
+    /* From the owning channel destructor: after the bridge closed its owners. */
+    void finish(irmel::Channel& channel, const std::string& scenario)
+    {
+        {
+            std::lock_guard lock{ack_registry_mutex};
+            if (ack_active_channel == &channel) {
+                ack_active_callback = nullptr;
+                ack_active_channel = nullptr;
+            }
+        }
+        if ((scenario == "sched-ack-late" || scenario == "sched-ack-late-closed" ||
+             scenario == "sched-ack-register-fail") && callback_) {
+            record("late_ack_callback_invoked");
+            irmel::ExecuteTaskAck value{0x0badf00dU, 0xfeedfaceU}; callback_(channel, &value);
+            record("late_ack_callback_returned");
+        }
+    }
+
+private:
+    ExecuteTaskAckCallback callback_;
+};
+
+/* IRMEL-ADA-012 test-only hooks (mock provider, never the bridge).
+ * mock_scheduling_ack_deliver invokes the active registered callback on the
+ * CALLING thread: mode 0 delivers ExecuteTaskAck{command_id, request_id},
+ * mode 1 a null payload. After the callback returns, the provider payload is
+ * overwritten with unrelated values and then destroyed, so a snapshot that
+ * retained it would be observed as corrupt. Returns 1 when a callback was
+ * invoked, 0 when none is registered. mock_scheduling_ack_registrations
+ * returns the cumulative number of ExecuteTaskAck registration attempts made
+ * by any bridge owner in this process. */
+extern "C" __attribute__((visibility("default"))) int mock_scheduling_ack_deliver(
+    std::uint32_t command_id, std::uint32_t request_id, unsigned mode)
+{
+    ExecuteTaskAckCallback callback;
+    irmel::Channel *channel{};
+    {
+        std::lock_guard lock{ack_registry_mutex};
+        callback = ack_active_callback;
+        channel = ack_active_channel;
+    }
+    if (!callback || !channel) return 0;
+    if (mode == 1U) { callback(*channel, nullptr); return 1; }
+    auto value = std::make_unique<irmel::ExecuteTaskAck>(command_id, request_id);
+    callback(*channel, value.get());
+    value->setCommandID(0x5a5a5a5aU);
+    value->setReqId(0xa5a5a5a5U);
+    value.reset();
+    return 1;
+}
+
+extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_ack_registrations()
+{
+    std::lock_guard lock{ack_registry_mutex};
+    return ack_registrations;
+}
+
+/* IRMEL-ADA-011: concrete mock derived from the pinned SchedulingChannel.
+ *
+ * Every pure virtual is defined so the class is instantiable. Only the
+ * inherited Channel surface the foundation needs (enable, disable,
+ * getCapabilities, KeepAlive, CommsTest) has scenario behavior. IRMEL-ADA-012
+ * implements exactly the ExecuteTaskAck registration (MockExecuteTaskAck
+ * above, counted on its own). The ten remaining Scheduling-specific methods
+ * are deliberately UNIMPLEMENTED for consumer purposes: each increments a
+ * process-wide counter, records a distinct lifetime event, and answers
+ * Return::NotSupported (registrations) or a ready ErrorCode::Unsupported
+ * rejection (exec/send). Answering Unsupported is not an implementation of any
+ * upstream operation; the native tests prove the bridge never reaches any of
+ * them. */
+std::atomic<unsigned> scheduling_specific_calls{};
+
+class MockSchedulingChannel final : public irmel::SchedulingChannel {
+public:
+    explicit MockSchedulingChannel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockSchedulingChannel() override
+    {
+        /* IRMEL-ADA-012: deactivate the hook and, for the late-callback
+         * scenarios, invoke the retained ExecuteTaskAck callback during
+         * channel destruction (after the bridge closed its owners). */
+        execute_task_ack_.finish(*this, scenario_);
+        record("scheduling_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(1);
+        record("keepalive_sent");
+        if (scenario_ == "sched-keepalive-throw")
+            throw std::runtime_error("mock Scheduling keepalive send exception");
+        if (scenario_ == "sched-ada-common")
+            return ready_request(std::make_shared<Return>(Return::Success));
+        return held_request(std::make_shared<Return>(Return::Success), 1);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(2);
+        record("comms_sent");
+        if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
+            request.getRequestID() != 0xe0000003U)
+            throw std::runtime_error("Scheduling CommsTest IDs changed");
+        if (scenario_ == "sched-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 2);
+    }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { return Return::NotSupported; }
+    Return enable() override
+    {
+        record("scheduling_enabled");
+        if (scenario_ == "sched-enable-throw")
+            throw std::runtime_error("mock Scheduling enable exception");
+        if (scenario_ == "sched-enable-fail") return Return::Fail;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        record("scheduling_disabled");
+        if (scenario_ == "sched-disable-throw")
+            throw std::runtime_error("mock Scheduling disable exception");
+        return scenario_ == "sched-disable-fail" ? Return::Fail : Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        if (scenario_.rfind("sched-capability-throw", 0) == 0)
+            throw std::runtime_error("mock Scheduling capability exception");
+        auto value = rich_channel_capability();
+        if (scenario_ == "sched-capability-wrong")
+            value.setChannelTypes({irmel::ChannelType::IRSTTrack});
+        else
+            value.setChannelTypes({irmel::ChannelType::Scheduling,
+                                   irmel::ChannelType::Reserved1});
+        /* TaskScheduleDepth 0 is a valid application-managed priority mode. */
+        value.setTaskScheduleDepth(scenario_ == "sched-depth-zero" ? 0U :
+                                   scenario_ == "sched-depth-max" ? UINT32_MAX : 23U);
+        value.setChannelMetadataCapabilities({
+            irmel::ChannelMetadataCapabilityType::TaskExecutingRep,
+            irmel::ChannelMetadataCapabilityType::ExecuteTaskAck,
+            irmel::ChannelMetadataCapabilityType::SchedCreatedRep,
+            irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep,
+            irmel::ChannelMetadataCapabilityType::UpdateTrackListResponse,
+            irmel::ChannelMetadataCapabilityType::TaskEvents,
+            irmel::ChannelMetadataCapabilityType::ScanPerformanceReport});
+        return value;
+    }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { return Return::NotSupported; }
+    /* IRMEL-ADA-012: the one implemented Scheduling-specific method. It is
+     * counted by mock_scheduling_ack_registrations, never by
+     * scheduling_specific_calls. */
+    Return registerMetadataCallback(ExecuteTaskAckCallback callback) override
+    { return execute_task_ack_.register_callback(scenario_, *this, std::move(callback)); }
+    /* ---- Remaining Scheduling-specific surface: explicitly unsupported. ---- */
+    mel::RequestFor<irmel::TrackListResponse> send(irmel::PrioritizedTrackListCmd) override
+    { return unsupported<irmel::TrackListResponse>("scheduling_prioritized_track_list_sent"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::TaskExecutingRep *const)>) override
+    { return unsupported_registration("scheduling_task_executing_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::SchedCreatedRep *const)>) override
+    { return unsupported_registration("scheduling_sched_created_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::UpdateTrackListResponse *const)>) override
+    { return unsupported_registration("scheduling_update_track_list_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::TaskEvents *const)>) override
+    { return unsupported_registration("scheduling_task_events_registered"); }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ScanPerformanceReport *const)>) override
+    { return unsupported_registration("scheduling_scan_performance_registered"); }
+    mel::RequestFor<Return> exec(irmel::AbortTask) override
+    { return unsupported<Return>("scheduling_abort_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTScanTask) override
+    { return unsupported<Return>("scheduling_scan_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTStareTask) override
+    { return unsupported<Return>("scheduling_stare_task_exec"); }
+    mel::RequestFor<Return> exec(irmel::IRSTTrackTask) override
+    { return unsupported<Return>("scheduling_track_task_exec"); }
+private:
+    static Return unsupported_registration(const char *event)
+    {
+        ++scheduling_specific_calls;
+        record(event);
+        return Return::NotSupported;
+    }
+    template<class T>
+    static mel::RequestFor<T> unsupported(const char *event)
+    {
+        ++scheduling_specific_calls;
+        record(event);
+        std::promise<mel::ErrorOr<std::shared_ptr<T>>> promise;
+        auto future = promise.get_future();
+        promise.set_value(mel::ErrorOr<std::shared_ptr<T>>{mel::Error{
+            mel::ErrorCode::Unsupported, "mock Scheduling operation is not implemented"}});
+        return future;
+    }
+    std::string scenario_;
+    MockExecuteTaskAck execute_task_ack_;
+};
+
+/* Test-only negative-control probe: the number of calls to the TEN remaining
+ * unimplemented Scheduling-specific methods (four exec, the
+ * PrioritizedTrackListCmd send and five registrations) observed in this
+ * process. ExecuteTaskAck registration attempts are counted separately by
+ * mock_scheduling_ack_registrations. */
+extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_specific_calls(void)
+{ return scheduling_specific_calls.load(); }
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
@@ -5264,6 +5544,14 @@ public:
             capability.setChannelTypes({irmel::ChannelType::Instrumentation});
         else if (instance_.rfind("track-",0)==0)
             capability.setChannelTypes({irmel::ChannelType::IRSTTrack});
+        /* IRMEL-ADA-011: "sched-" providers publish Scheduling alongside C2;
+         * "sched-not-advertised" is the conditional-absence negative control. */
+        else if ((instance_.rfind("sched-",0)==0 && instance_ != "sched-not-advertised") ||
+                 /* The shared public common-Channel scenario; only C2 reads
+                    Control capabilities and it still finds CommandAndControl. */
+                 instance_ == "completion-scale")
+            capability.setChannelTypes({irmel::ChannelType::CommandAndControl,
+                                        irmel::ChannelType::Scheduling});
         else if (instance_ != "c2-control-capability-wrong")
             capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
         capabilities_.push_back(std::move(capability));
@@ -5349,6 +5637,35 @@ public:
             }
             return std::make_shared<MockTrackChannel>(instance_);
         }
+        if (config.getChannelType() == irmel::ChannelType::Scheduling) {
+            record("scheduling_attach_requested");
+            if (instance_ == "sched-attach-throw")
+                throw std::runtime_error("mock Scheduling attach exception");
+            if (instance_ == "sched-attach-null") return {};
+            if (instance_ == "sched-wrong-concrete" || instance_ == "sched-open-detach-fail")
+                return std::make_shared<MockHealthStatusChannel>(instance_);
+            if (instance_ == "sched-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != static_cast<std::uint8_t>(0xa0U + i) ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock Scheduling ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR scheduling \xCE\xBC channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    static_cast<std::uint32_t>(config.getChannelType()) != 3U ||
+                    config.getImgLstnr() || config.getSupportsSystemTrackData() ||
+                    config.getSupportsTrackDataUpdates())
+                    throw std::runtime_error("mock Scheduling configuration conversion mismatch");
+                record("scheduling_config_verified");
+            }
+            return std::make_shared<MockSchedulingChannel>(instance_);
+        }
         if (config.getChannelType() == irmel::ChannelType::Instrumentation) {
             if (instance_ == "instr-attach-null") return {};
             if (instance_ == "instr-wrong-type")
@@ -5427,7 +5744,8 @@ public:
             !std::dynamic_pointer_cast<MockC2Channel>(channel) &&
             !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
             !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel) &&
-            !std::dynamic_pointer_cast<MockTrackChannel>(channel)) std::abort();
+            !std::dynamic_pointer_cast<MockTrackChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockSchedulingChannel>(channel)) std::abort();
         if ((instance_ == "detach-fail" ||
              /* Deterministic Image Navigation completion-vs-Close corrective
                 regression: the first detach fails exactly once, a later Close
@@ -5444,7 +5762,16 @@ public:
              instance_ == "odm-detach-fail" ||
              /* IRMEL-ADA-010: Image LineOfSightQuaternion owner under a failed
                 provider detach. */
-             instance_ == "losq-detach-fail") && !detach_failed_) {
+             instance_ == "losq-detach-fail" ||
+             /* IRMEL-ADA-011: Scheduling owner and open-time rollback detach
+                failures. */
+             instance_ == "sched-detach-fail" ||
+             instance_ == "sched-enabled-detach-fail" ||
+             instance_ == "sched-open-detach-fail" ||
+             instance_ == "sched-capability-throw-detach-fail" ||
+             /* IRMEL-ADA-012: ExecuteTaskAck owner under a failed detach. */
+             instance_ == "sched-ack-detach-fail" ||
+             instance_ == "sched-ack-deferred-detach-fail") && !detach_failed_) {
             detach_failed_ = true;
             record("channel_detach_failed");
             return Return::Fail;
@@ -5469,6 +5796,12 @@ struct LosQuaternionProducerJoiner {
     ~LosQuaternionProducerJoiner()
     { if (losq_detached_producer.joinable()) losq_detached_producer.join(); }
 } losq_producer_joiner;
+/* IRMEL-ADA-012: likewise for the non-quiescing ExecuteTaskAck producer;
+ * joined before "library_unloaded" is recorded. */
+struct ExecuteTaskAckProducerJoiner {
+    ~ExecuteTaskAckProducerJoiner()
+    { if (ack_detached_producer.joinable()) ack_detached_producer.join(); }
+} ack_producer_joiner;
 } // namespace
 
 /* Test-only deterministic backpressure control surface. These are NOT part of

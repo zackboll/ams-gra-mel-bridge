@@ -1,21 +1,75 @@
 # Implementation coverage
 
-## RUST-IR-006 — Complete safe Rust OpticalDistortionMap reception
+> **Historical archive.** Existing entries are preserved as historical evidence,
+> not a current authoritative inventory. Do not prepend new feature sections or
+> add new feature status here. Each feature must record its coverage delta,
+> implementation boundaries, tests and limitations in a uniquely named task
+> document under `docs/` (for example, `py-mel-009-<feature>.md`). Continue updating
+> applicable authoritative structured coverage/API inventories and generated
+> reports when implementation changes require it. See
+> [Contributing](../CONTRIBUTING.md#conflict-resistant-parallel-language-development)
+> and the [IR Ada inventory procedure](reference/irmel-api-schema.md#reproduction-and-updates).
 
-`ImageStream::open_optical_distortion_map` adds an independent, uniquely owned,
-non-Send/non-Sync `OpticalDistortionMapStream` over the existing six ODM exports.
-Complete owned maps retain all eleven getters, full u32 scalars, untransformed
-IEEE doubles and independent ordered FRD/RowCol vectors. Structured optional
-registration errors preserve known Returns without inventing unknown/exception
-results. Checked spans, fallible copies and event guards cover malformed output,
-allocation failure and unwind; uncertain releases are attempted only once.
-Existing Image counters, native queues, one-shots and physical teardown semantics
-are reused. Mock subprocess lifecycle/barrier tests, hostile FFI unit tests,
-compile-fail ownership docs and a 10/10 killed compiled mutation campaign provide
-boundary evidence. No native ABI/raw Rust, provider, Ada, Python, policy or CI
-change; no Squall/hardware qualification. See
-[contract and qualification](rust-ir-006-optical-distortion-map.md); final source
-identities and measured local/hosted acceptance are recorded in the delivery PR.
+## IRMEL-ADA-011 — SchedulingChannel foundation
+
+The conditionally required (`@RequiredIfIRSTTrackTasking`) pinned `SchedulingChannel`, which
+virtually inherits `Channel`, gains a typed owner foundation only: `ams_mel_ir_scheduling_open`,
+`_enable`, `_get_capabilities`, `_close` and `ams_mel_ir_channel_from_scheduling`, with the
+configuration record `ams_mel_ir_scheduling_config_v1` (the same channel/platform UCI ID,
+channel type and canonical component location layout as Track, Health and Instrumentation;
+`channel_type` must be `AMS_MEL_IR_CHANNEL_SCHEDULING` = 3). Safe Ada: `AMS.MEL.IR.Scheduling`
+(`Scheduling_Config`, `Create_Config`, limited-controlled `Scheduling_Channel`, `Open`,
+`Is_Open`, `Enable`, `Capabilities`, `As_Channel`, `Close`).
+
+Open first requires `Control::getCapabilities()` to publish Scheduling. A provider without
+tasking support is refused before any attachment with `AMS_MEL_INITIALIZATION_FAILED`; that
+result is not fatal and the Session stays usable. Open then calls `attachChannel` exactly once
+with `ChannelType::Scheduling` and publishes the owner only after a non-null result, a
+successful `dynamic_pointer_cast<SchedulingChannel>` and a channel capability that lists
+Scheduling. An incompatible channel is detached; an ownership-uncertain one is permanently
+retained. Open returns Attached. Enable is explicit and idempotent, and refusal or an exception
+fails the owner without retry. Close calls the inherited `disable()` only if Enable was
+attempted, then `detachChannel`. There is no standalone Disable. Close is deferred while
+admitted common requests are pending. A failed detach keeps the owner and graph for a Close
+retry. The weak view reuses the generic KeepAlive/CommsTest/capability engines and Session
+admission, with Scheduling-only request accounting. `TaskScheduleDepth` is copied verbatim; 0
+is a valid application-managed priority mode, not absence.
+
+The 20 headers of the exact pinned `SchedulingChannel.h` closure are vendored byte-identically
+as compilation dependencies only. None of the four `exec` overloads, `send(PrioritizedTrackListCmd)`
+or the six Scheduling metadata registrations is implemented, called or represented, and no
+task payload, queue or request owner exists. Exports 284 → 289 (`AMS_MEL_0.1`); Python ctypes
+and Rust sys gain private mirrors only. Coverage: `SchedulingChannel` missing → partial;
+Scheduling inherited Enable/capabilities/KeepAlive/CommsTest → safe_ada and Disable → partial;
+safe Ada operations stay at 47. Qualification is mock-provider only. See
+[qualification](irmel-ada-011-scheduling-foundation.md).
+
+## RUST-IR-005 — complete safe Rust reception of existing C2 metadata
+
+`ControlChannel::open_metadata` now returns a unique non-Send/non-Sync
+`C2MetadataStream` for CommandStatus, BIT_Configuration, BIT_Status and separately
+opted-in ChannelCommsTestRep. Owned conversion preserves the complete 5-state /
+47-reason command domains, four BIT interfaces, nested ordered definitions and
+the canonical Health BIT/fault graph; existing `CommsTestReport` and `UciId` are
+reused. One-shot registrations, bounded DROP-INCOMING FIFO, counters, drain-before-
+stopped/failed behavior and native callback/provider retention remain authoritative.
+Hostile-boundary, allocation/unwind and exact-once cleanup tests accompany existing
+mock lifecycle scenarios. No native ABI, raw bindings, Ada, Python, mocks or build/
+policy changes: production remains 284 exports, ABI 0.1. Earlier safe-Rust C2
+metadata exclusions below describe historical scope superseded by this section.
+See [mapping, ownership and qualification](rust-ir-005-c2-metadata.md); real-provider
+and hardware qualification remain outside this mock-only slice.
+
+## IR-CI-TRACK-001 — asynchronous Track teardown observation
+
+Three compiled-C Track SystemTrackDataResponse lifetime tests now observe the
+final unload record using a bounded monotonic-deadline fresh-log observer rather
+than an immediate snapshot or fixed sleep. Complete newline-delimited records,
+NUL/overflow rejection, delayed-unload positive controls and missing-unload
+negative controls retain the final unload requirement and all original ownership,
+accounting and release-barrier checks. No production, provider, ABI or binding
+behavior changes. See `ir-ci-track-001-teardown-observation.md` for diagnosis,
+both preserved CI failures, experiments and qualification.
 
 ## PY-MEL-007 — Complete safe Python ordinary IR Image metadata
 

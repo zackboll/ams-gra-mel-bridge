@@ -227,8 +227,8 @@ def _checked_span_address(
 
     Returns ``None`` for a zero-length span (the pointer is not inspected).
     A non-empty span requires a non-NULL pointer aligned for ``element_type``
-    and a total byte size representable in ``Py_ssize_t``; malformed metadata
-    is ``PROTOCOL_INCONSISTENCY``.
+    and a total byte size representable in ``Py_ssize_t`` without overflowing
+    the native address space; malformed metadata is ``PROTOCOL_INCONSISTENCY``.
 
     Limit: only pointer/size/alignment metadata is validated. This cannot prove
     that an arbitrary non-NULL, aligned address from a violated C ABI points to
@@ -254,6 +254,12 @@ def _checked_span_address(
             ErrorKind.PROTOCOL_INCONSISTENCY,
             f"native {field} span size is not representable",
         )
+    if size * _ctypes.sizeof(element_type) > (
+            (1 << (8 * _ctypes.sizeof(_ctypes.c_void_p))) - address):
+        raise _local_error(
+            ErrorKind.PROTOCOL_INCONSISTENCY,
+            f"native {field} span address overflows the native address space",
+        )
     return address
 
 
@@ -269,6 +275,11 @@ def _checked_span(
     address = _checked_span_address(data, size, element_type, field)
     if address is None:
         return ()
+    if int(size) > _sys.maxsize // _ctypes.sizeof(_ctypes.py_object):
+        raise _local_error(
+            ErrorKind.PROTOCOL_INCONSISTENCY,
+            f"native {field} tuple size is not representable",
+        )
     try:
         elements = _ctypes.cast(address, _ctypes.POINTER(element_type))
         return tuple(convert(elements[index]) for index in range(int(size)))

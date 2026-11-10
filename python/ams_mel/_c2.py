@@ -5,12 +5,14 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._c2_metadata import C2MetadataStream
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
     _local_error,
 )
 from ._validation import (
+    _validate_size_t,
     _validate_uint32,
 )
 from ._requests import (
@@ -59,6 +61,32 @@ class ControlChannel:
                 _ctypes.byref(required),
             )
         )
+
+    def open_metadata(self, queue_capacity: int = 16) -> C2MetadataStream:
+        """Register BIT configuration, CommandStatus, BIT status once in order.
+
+        Attached or Enabled; never implicitly enables C2 or registers CommsTest.
+        Synchronous callbacks are allowed. Failed/partial attempts consume the
+        native one-shot; closing metadata does not permit reopening.
+        Externally serialize registration with other parent C2 operations.
+        """
+        self._require_open()
+        _validate_size_t(queue_capacity, "queue_capacity")
+        if queue_capacity == 0:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "queue_capacity must be positive")
+        metadata = C2MetadataStream._from_owner(_native.IrC2MetadataHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_metadata_open(
+                    self._owner, queue_capacity, metadata._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if not metadata.is_open:
+                raise _local_error(ErrorKind.PROTOCOL_INCONSISTENCY,
+                                   "C2 metadata open succeeded without an owner")
+        except BaseException:
+            metadata.__del__()
+            raise
+        return metadata
 
     def submit_operate(self, command_id: int) -> ModeRequest:
         """Submit exactly Operate/TaskSched and return its asynchronous request."""

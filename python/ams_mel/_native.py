@@ -1273,6 +1273,45 @@ ams_mel_ir_track_get_capabilities.restype = ctypes.c_int32
 ams_mel_ir_track_close = _LIBRARY.ams_mel_ir_track_close
 ams_mel_ir_track_close.argtypes = [ctypes.POINTER(IrTrackHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_close.restype = ctypes.c_int32
+# IRMEL-ADA-011 private raw mirror of the SchedulingChannel foundation only;
+# deliberately no safe Python Scheduling API and no task/exec surface.
+class IrSchedulingConfigV1(ctypes.Structure):
+    _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+IrSchedulingHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_open = _LIBRARY.ams_mel_ir_scheduling_open
+ams_mel_ir_scheduling_open.argtypes = [SessionHandle, ctypes.POINTER(IrSchedulingConfigV1), ctypes.POINTER(IrSchedulingHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_enable = _LIBRARY.ams_mel_ir_scheduling_enable
+ams_mel_ir_scheduling_enable.argtypes = [IrSchedulingHandle, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_enable.restype = ctypes.c_int32
+ams_mel_ir_scheduling_get_capabilities = _LIBRARY.ams_mel_ir_scheduling_get_capabilities
+ams_mel_ir_scheduling_get_capabilities.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_scheduling_close = _LIBRARY.ams_mel_ir_scheduling_close
+ams_mel_ir_scheduling_close.argtypes = [ctypes.POINTER(IrSchedulingHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_close.restype = ctypes.c_int32
+# IRMEL-ADA-012 private ABI mirrors only, no safe Python reception.
+class IrExecuteTaskAckV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("request_id", ctypes.c_uint32)]
+IrSchedulingAckMetadataHandle = ctypes.c_void_p
+IrSchedulingAckEventHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_execute_task_ack_open = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_open
+ams_mel_ir_scheduling_execute_task_ack_open.argtypes = [IrSchedulingHandle, ctypes.c_size_t, ctypes.POINTER(IrSchedulingAckMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_execute_task_ack_receive = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_receive
+ams_mel_ir_scheduling_execute_task_ack_receive.argtypes = [IrSchedulingAckMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrSchedulingAckEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_receive.restype = ctypes.c_int32
+ams_mel_ir_scheduling_execute_task_ack_get_counters = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_get_counters
+ams_mel_ir_scheduling_execute_task_ack_get_counters.argtypes = [IrSchedulingAckMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_get_counters.restype = ctypes.c_int32
+ams_mel_ir_scheduling_execute_task_ack_close = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_close
+ams_mel_ir_scheduling_execute_task_ack_close.argtypes = [ctypes.POINTER(IrSchedulingAckMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_close.restype = ctypes.c_int32
+ams_mel_ir_scheduling_execute_task_ack_event_view = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_event_view
+ams_mel_ir_scheduling_execute_task_ack_event_view.argtypes = [IrSchedulingAckEventHandle, ctypes.POINTER(ctypes.POINTER(IrExecuteTaskAckV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_event_view.restype = ctypes.c_int32
+ams_mel_ir_scheduling_execute_task_ack_event_close = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_event_close
+ams_mel_ir_scheduling_execute_task_ack_event_close.argtypes = [ctypes.POINTER(IrSchedulingAckEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_execute_task_ack_event_close.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
 ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
@@ -1333,6 +1372,9 @@ ams_mel_ir_channel_from_instrumentation.restype = ctypes.c_int32
 ams_mel_ir_channel_from_track = _LIBRARY.ams_mel_ir_channel_from_track
 ams_mel_ir_channel_from_track.argtypes = [IrTrackHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_from_track.restype = ctypes.c_int32
+ams_mel_ir_channel_from_scheduling = _LIBRARY.ams_mel_ir_channel_from_scheduling
+ams_mel_ir_channel_from_scheduling.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_scheduling.restype = ctypes.c_int32
 ams_mel_ir_channel_send_keepalive = _LIBRARY.ams_mel_ir_channel_send_keepalive
 ams_mel_ir_channel_send_keepalive.argtypes = [IrChannelHandle, ctypes.POINTER(IrReturnRequestHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_send_keepalive.restype = ctypes.c_int32
@@ -2290,6 +2332,12 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_scheduling_execute_task_ack_open",
+    "ams_mel_ir_scheduling_execute_task_ack_receive",
+    "ams_mel_ir_scheduling_execute_task_ack_get_counters",
+    "ams_mel_ir_scheduling_execute_task_ack_close",
+    "ams_mel_ir_scheduling_execute_task_ack_event_view",
+    "ams_mel_ir_scheduling_execute_task_ack_event_close",
     "ams_mel_ir_image_los_quaternion_open",
     "ams_mel_ir_image_los_quaternion_receive",
     "ams_mel_ir_image_los_quaternion_get_counters",
@@ -2459,6 +2507,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_enable",
     "ams_mel_ir_track_get_capabilities",
     "ams_mel_ir_track_close",
+    "ams_mel_ir_scheduling_open",
+    "ams_mel_ir_scheduling_enable",
+    "ams_mel_ir_scheduling_get_capabilities",
+    "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",
     "ams_mel_ir_track_metadata_get_counters",
@@ -2478,6 +2530,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_from_health",
     "ams_mel_ir_channel_from_instrumentation",
     "ams_mel_ir_channel_from_track",
+    "ams_mel_ir_channel_from_scheduling",
     "ams_mel_ir_channel_send_keepalive",
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",

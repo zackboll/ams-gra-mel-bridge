@@ -358,42 +358,11 @@ fn map_from_raw(raw: &sys::AmsMelIrOpticalDistortionMapV1) -> Result<OpticalDist
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_allocator::FAIL_SIZE;
     use std::{
-        alloc::{GlobalAlloc, Layout, System},
         cell::Cell,
         panic::{catch_unwind, AssertUnwindSafe},
     };
-
-    thread_local! { static FAIL_SIZE: Cell<usize> = const { Cell::new(0) }; }
-    struct Allocator;
-    // SAFETY: all successful allocations and every deallocation use System.
-    // The thread-local one-shot rejects only the deliberately selected layout.
-    unsafe impl GlobalAlloc for Allocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let fail = FAIL_SIZE
-                .try_with(|v| {
-                    if v.get() == layout.size() {
-                        v.set(0);
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .unwrap_or(false);
-            if fail {
-                ptr::null_mut()
-            } else {
-                // SAFETY: forward the unchanged allocator contract.
-                unsafe { System.alloc(layout) }
-            }
-        }
-        unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
-            // SAFETY: every non-null allocation came from System.
-            unsafe { System.dealloc(p, layout) }
-        }
-    }
-    #[global_allocator]
-    static ALLOCATOR: Allocator = Allocator;
 
     fn empty_record() -> sys::AmsMelIrOpticalDistortionMapV1 {
         // SAFETY: this C record contains only scalars and nullable raw-pointer spans.

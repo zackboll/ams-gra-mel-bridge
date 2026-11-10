@@ -13,7 +13,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 
 ## Header and declaration totals
 
-- ir library: 95 upstream; 68 vendored; 27 not vendored.
+- ir library: 95 upstream; 88 vendored; 7 not vendored.
 - ir utility: 3 upstream; 0 vendored; 3 not vendored.
 - common library: 29 upstream; 28 vendored; 1 not vendored.
 - 213 type/alias declarations (including nested types); 148 operation declarations (virtual methods/overrides, destructors, factory functions and public helper methods).
@@ -39,7 +39,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | ImageListener | 0 | 0 | 1 | 0 | 1 |
 | InstrumentationChannel | 2 | 0 | 0 | 0 | 1 |
 | LibraryLoader | 0 | 0 | 0 | 0 | 3 |
-| SchedulingChannel | 0 | 0 | 0 | 11 | 1 |
+| SchedulingChannel | 1 | 0 | 0 | 10 | 1 |
 | SecurityAuthenticationType | 0 | 0 | 0 | 0 | 1 |
 | SecurityFileManagementType | 0 | 0 | 0 | 0 | 1 |
 | SecurityIntegrityType | 0 | 0 | 0 | 0 | 1 |
@@ -70,8 +70,8 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | C2Channel | `send(EraseCommand)` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. |
 | C2Channel | `send(ModeCmd)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
 | C2Channel | `send(SystemTrackDataResponse)` | safe_ada | IRMEL-ADA-008: independent C2 overload of the complete twelve-field SystemTrackDataResponse; Enabled-only single unlocked send with C2 lifecycle and C2 request accounting (never the Track overload or TrackState); cached CommandStatus result or explicit ErrorOr rejection. Shares only pure value conversion with TrackChannel::send. |
-| Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report for five attached families; absent Scheduling/Stacked owners are not counted. |
-| Channel | `sendKeepAliveRep()` | safe_ada | Common weak view works for C2, Image, Health, Instrumentation and Track; Scheduling/Stacked owners are absent. |
+| Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report for six attached families, including Scheduling; the absent StackedImage owner is not counted. |
+| Channel | `sendKeepAliveRep()` | safe_ada | Common weak view works for C2, Image, Health, Instrumentation, Track and Scheduling; the StackedImage owner is absent. |
 | ImageChannel | `send(CameraCommand)` | safe_ada | Attached/Running ImageChannel::send(CameraCommand), independent of the C2 send: Image request accounting under the frame-callback lock, unlocked send, deferred Image teardown across Stop/Close, cached Wait; never routed through C2. |
 | ImageChannel | `send(NavigationReport)` | safe_ada | All NavigationReport fields including eighteen covariance terms; full response and cached errors. |
 | InstrumentationChannel | `send(InstrumentationLevelCmd)` | safe_ada | Complete command/report; conditional provider feature. Positive qualification mock-only; pinned Squall unsupported. |
@@ -85,7 +85,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 
 ## Metadata registration overloads
 
-38 unique declarations; 26 safe Ada; 1 partial; 0 native only; 11 missing.
+38 unique declarations; 27 safe Ada; 1 partial; 0 native only; 10 missing.
 
 Counted once at the declaring interface; channel-specific overloads remain distinct. Destructors, buffers and image delivery are excluded.
 
@@ -118,7 +118,7 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const NavigationReportResp*const)>)` | safe_ada | Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. |
 | ImageChannel | `registerMetadataCallback(std::function<void(Channel&,const OpticalDistortionMap*const)>)` | safe_ada | IRMEL-ADA-009: opt-in ImageChannel OpticalDistortionMap owner, independent of the four-kind metadata Open, NUC_TempData and CameraCommandResp owners; one-shot per stream on Attached or Running streams, unlocked registration with safe synchronous delivery, distinct NotSupported/Fail/unknown/exception results, complete deep copy before callback return, bounded drop-incoming queue without full-queue snapshots, teardown drains in-flight callbacks, no upstream unregister. |
 | InstrumentationChannel | `registerMetadataCallback(std::function<void(Channel&,const InstrumentationReport*const)>)` | safe_ada | Complete owned InstrumentationReport event on InstrumentationChannel; bounded queue, no upstream unregister, provider callbacks retained safely. |
-| SchedulingChannel | `registerMetadataCallback(std::function<void(Channel&,const ExecuteTaskAck*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
+| SchedulingChannel | `registerMetadataCallback(std::function<void(Channel&,const ExecuteTaskAck*const)>)` | safe_ada | IRMEL-ADA-012: independent opt-in ExecuteTaskAck callback on Attached or Enabled Scheduling; one-shot including failed registration, unlocked registration with safe synchronous delivery, distinct provider outcomes, full-width owned identifiers, bounded drop-incoming queue without full-queue snapshots, null input malformed, allocation recovery and in-flight teardown drain. No task execution or request correlation. |
 | SchedulingChannel | `registerMetadataCallback(std::function<void(Channel&,const ScanPerformanceReport*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | SchedulingChannel | `registerMetadataCallback(std::function<void(Channel&,const SchedCreatedRep*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
 | SchedulingChannel | `registerMetadataCallback(std::function<void(Channel&,const TaskEvents*const)>)` | missing | No native consumer path or safe Ada binding exists for this declaration. |
@@ -139,26 +139,6 @@ Not vendoring a header is not itself a missing consumer operation.
 - `ir:include/irmel/library/factory/IRFactory.h` — blob `fc74f1b8f1c4e208823fa5934e07ffb940666948` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
 - `ir:include/irmel/library/factory/IRInterfaceBase.hpp` — blob `33b40344cf1e38b45667eda64c7c5998b2cc3eda` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
 - `ir:include/irmel/library/factory/IRRegistry.h` — blob `a1fc642358c58f38fdcbde4d4901cc235481f223` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
-- `ir:include/irmel/library/irmel-types/AbortTask.h` — blob `2223fa50d3a78bd03621a2f910b09dcc69b534a6` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/IRSTScanTask.h` — blob `469c5755f52c0b43cbe507ff22cbbd5bc0099a0c` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/IRSTStareTask.h` — blob `23b3a8695abdaf68d072ac4498d9040914e24b83` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/IRSTTrackTask.h` — blob `2d4735bc31bb8fbae32109d3a284667cf4643506` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/PrioritizedTrackListCmd.h` — blob `d8ff82d65f0beca36c8d468cc6cde64175d886ae` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/StareTaskParam.h` — blob `021364909e907bd17a565ec89475dae3d11d4001` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/TaskInfo.h` — blob `b2590330f32ffb56cab07c9f2ef20c78c53f57c1` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/TrackData.h` — blob `d019a525a56b62b820bdc61729c3e3e10be3d6a8` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/TrackListResponse.h` — blob `39172d49d3dbbeb85cdb330d792e87b3c563b8d5` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/TrackTaskData.h` — blob `d2aa159a954553b71e470edf161b48727e358c2e` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/TrackTaskParam.h` — blob `8f84eae3192e651f78e7e62831bc2ac34e1203d0` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/irmel-types/UpdateTrackListResponse.h` — blob `ac4c7f5be4444192e0330d26f685b5713ad0939b` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/ActivityRecord.h` — blob `b82978db90b0d23600c23cb6395fb97228d2d1f2` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/EventType.h` — blob `6670b2bc45fe1db337abdc32f204446f4ce4643b` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/ExecuteTaskAck.h` — blob `4593cb1357038f157f77df11a022e706d3cbcd21` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/ScanPerformanceReport.h` — blob `210e304bf710083340e77e7c5befe5867810cdef` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/SchedCreatedRep.h` — blob `240b7b7a0d4e7daa75de45ad83c1c96b3d8f0fed` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/SchedulingChannel.h` — blob `f11932ac09f2644aa47b00ed7623bb3b8ca9ddf2` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/TaskEvents.h` — blob `06ddc86196fb16ce95531c11531ac1ca82b7ecf7` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/scheduling/TaskExecutingRep.h` — blob `31ac02721e3a11bc1f107086efc311e6f2caf9ef` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
 - `ir:include/irmel/library/stacked-image/StackFrameHeader.h` — blob `16447c1a5ef663bab978b37aeb33baa6588642d0` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
 - `ir:include/irmel/library/stacked-image/StackedImageChannel.h` — blob `7e675aac4d2e7efd15fbdff90ba77d03795b3378` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
 - `ir:include/irmel/library/stacked-image/StackedImageListener.h` — blob `04e06b2a1a4355a79b7b637cbd80ba21348222e6` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
@@ -288,7 +268,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::EraseCommand` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
 | `ams::iface::irmel::EraseCommandType` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. Mock provider qualification only; no physical erasure verification is defined by upstream. |
 | `ams::iface::irmel::EventType` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
-| `ams::iface::irmel::ExecuteTaskAck` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
+| `ams::iface::irmel::ExecuteTaskAck` | safe_ada | Complete getCommandID() -> command_id -> Command_ID and getReqId() -> request_id -> Request_ID, each uint32_t / Interfaces.Unsigned_32, all 32 bits retained. Fixed 8-byte C record and fully Ada-owned Execute_Task_Ack value. Zero, high-bit, unequal and duplicate identifiers are valid; no local-request matching or completion-status interpretation. Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. An acknowledgement proves neither completion nor task success. |
 | `ams::iface::irmel::Failure` | safe_ada | Every subsystem/CSCI field and complete ordered collections retained independently from reported counts; all known meaningful mode/failure alternatives represented. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::FaultEnum` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
 | `ams::iface::irmel::ForwardRightDown` | safe_ada | Complete ForwardRightDown: getForward, getRight and getDown in that order, copied without normalization into ams_mel_ir_forward_right_down_v1 and the public Ada Forward_Right_Down record; a distinct record, never an XYZ Directional. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.; Opt-in owner: OpticalDistortionMap is @Optional upstream; providers answering NotSupported raise AMS.MEL.IR.Optical_Distortion_Map.Not_Supported and the four-kind Image metadata, NUC_TempData and CameraCommandResp owners are unaffected. Mock-qualified only; no physical IR or Squall ODM evidence.; IEEE doubles are forwarded unchanged; infinity and NaN reach Ada as non-valid Long_Float values that callers must test before checked arithmetic. NaN payload bits are not promised. |
@@ -343,7 +323,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::ScanPerformanceReport` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::ScanType` | safe_ada | All Mode/Scan fields represented, including raw integer scan controls and all meaningful enum alternatives; no provider support inferred. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::SchedCreatedRep` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
-| `ams::iface::irmel::SchedulingChannel` | missing | Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.  |
+| `ams::iface::irmel::SchedulingChannel` | partial | Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. Ten Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the five TaskExecutingRep, SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck reception is independent of execution; no task is submitted, queued or reported as scheduled.; Disable is performed only inside Close; there is no standalone Disable.; Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.; Positive evidence is mock-provider only; no real provider or hardware tasking ran. |
 | `ams::iface::irmel::SensorIDType` | safe_ada | Full FrameHeader representation includes all twenty-three fields, sensor identity, image flags and ordered inertial/navigation vectors; navigation orientation alternatives and uncertainties retained. Legacy Frame subset is not the full snapshot. Raster domain is limited separately. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::SensorInertialState` | safe_ada | Full FrameHeader representation includes all twenty-three fields, sensor identity, image flags and ordered inertial/navigation vectors; navigation orientation alternatives and uncertainties retained. Legacy Frame subset is not the full snapshot. Raster domain is limited separately. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::SensorNavState` | safe_ada | Full FrameHeader representation includes all twenty-three fields, sensor identity, image flags and ordered inertial/navigation vectors; navigation orientation alternatives and uncertainties retained. Legacy Frame subset is not the full snapshot. Raster domain is limited separately. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.; Full data schema does not relax Mono8 single-band stream acceptance; RGB/Bayer/higher-depth/multiband pixels unavailable. |
@@ -393,11 +373,11 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - `Buffer::getSize() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
 - `Buffer::release()`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
 - `Channel::disable()`: Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable.
-- `Channel::enable()`: Typed Enable/Start exists for five families; no Scheduling/Stacked owner.
+- `Channel::enable()`: Typed Enable/Start exists for six families (C2, Image Start, Health, Instrumentation, Track, Scheduling); no StackedImage owner.
 - `Channel::registerBuffer(std::shared_ptr<Buffer>)`: Internal Image Open registers provider buffers backed by bridge host storage; application buffer registration is not exposed.
 - `Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)`: Only C2 metadata owner exposes this common callback registration. Common requests on other families do not register this callback.
-- `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.
-- `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.
+- `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.
+- `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.
 - `Control::getCapabilities() const`: Control capability list is consumed privately to select supported owners; safe Ada exposes attached-channel snapshots, not the complete Control list.
 - `ImageListener::onImage(const Channel&,const FrameHeader&,std::shared_ptr<Buffer>)`: Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.
 - `FactoryFunctions::getBuffer(std::string_view,std::shared_ptr<::API_Manager>)`: Privately loads provider buffers for the bridge-managed Mono8 host pool only; no generic buffer factory exposed.
@@ -410,7 +390,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | HealthStatusChannel | 4 | 1 | 3 | 0 |
 | ImageChannel | 5 | 1 | 2 | 0 |
 | InstrumentationChannel | 4 | 1 | 3 | 0 |
-| SchedulingChannel | 0 | 0 | 8 | 0 |
+| SchedulingChannel | 4 | 1 | 3 | 0 |
 | StackedImageChannel | 0 | 0 | 8 | 0 |
 | TrackChannel | 4 | 1 | 3 | 0 |
 
@@ -444,10 +424,12 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - IRMEL-ADA-008 implements the optional C2Channel::send(SystemTrackDataResponse) as an independent C2 overload: C2 lifecycle, C2 request accounting, distinct C2 request/result owners and probe family, sharing only the pure SystemTrackDataResponse/CommandStatus value conversion with the Track overload. SystemTrackDataResponse and CommandStatus were already safe_ada and are not reclassified. Safe Ada operations increase from 44 to 45. A successful future does not establish operational incorporation. Qualification is mock-provider only.
 - IRMEL-ADA-009 implements the optional ImageChannel::registerMetadataCallback(OpticalDistortionMap) as an independent opt-in owner and completes OpticalDistortionMap and ForwardRightDown; RowCol was already safe_ada and is reused, not reclassified. Safe Ada operations increase from 45 to 46. The two ODM collections are independent; non-finite doubles are forwarded, not replaced. Qualification is mock-provider only.
 - IRMEL-ADA-010 implements the @RequiredIfLOSQuaternion ImageChannel::registerMetadataCallback(LineOfSightQuaternion) as an independent opt-in owner and completes LineOfSightQuaternion, reusing the canonical Quaternion and ForwardRightDown representations, which stay safe_ada and are not reclassified. Safe Ada operations increase from 46 to 47. Values are copied, not normalized or converted; receipt is not proof of a usable attitude. Qualification is mock-provider only.
+- IRMEL-ADA-011 adds the conditionally required SchedulingChannel ownership/lifecycle foundation only: the exact 20-header pinned SchedulingChannel.h closure is vendored (compilation dependencies, not implemented operations), five AMS_MEL_0.1 exports (284 -> 289) and AMS.MEL.IR.Scheduling. SchedulingChannel moves missing -> partial; Scheduling inherited Enable, capabilities, KeepAlive and CommsTest move to safe_ada and inherited Disable to partial (Close only). All 11 Scheduling-specific operations and the AbortTask/IRSTScanTask/IRSTStareTask/IRSTTrackTask types stay missing. Safe Ada operations stay at 47. TaskScheduleDepth 0 is a valid application-managed mode, not absence. Qualification is mock-provider only.
+- IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.
 
 ## Recommended implementation order
 
 1. C2 EraseCommand and typed EraseCommandType result; no speculative commands.
 2. Independent C2 SystemTrackDataResponse send; reuse value conversion, not Track request accounting.
-3. Scheduling owner, five sends/execs and six callback families as successive vertical slices.
+3. Scheduling exec(AbortTask/IRSTScanTask/IRSTStareTask/IRSTTrackTask), send(PrioritizedTrackListCmd) and five remaining callback families as successive vertical slices on the IRMEL-ADA-011 owner foundation.
 4. LOS3D dependency closure, StackedImage reception and image-format/buffer extensions as separately qualified slices.

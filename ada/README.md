@@ -94,6 +94,15 @@ consumption only, since upstream has no unregister operation and channel
 destruction remains the callback-quiescence boundary. Instrumentation-specific
 copies of the inherited generic Channel services are deliberately absent.
 
+`AMS.MEL.IR.Scheduling` (IRMEL-ADA-011) implements only the conditionally required
+SchedulingChannel ownership/lifecycle foundation: `Scheduling_Config`/`Create_Config` and the
+limited controlled `Scheduling_Channel` with `Open`/`Is_Open`/`Enable`/`Capabilities`/
+`As_Channel`/`Close`. Open raises `Provider_Error` when the provider does not publish the
+Scheduling category; the Session stays usable. Close performs the inherited disable, and
+no standalone Disable exists. `Task_Schedule_Depth` zero is a valid
+application-managed mode. No Scheduling task `exec`, `PrioritizedTrackListCmd` send or
+Scheduling metadata callback is bound.
+
 `AMS.MEL.IR.Track` implements only the conditionally required Track family's
 (`@RequiredIfTrack`) channel ownership/lifecycle foundation:
 `Track_Config`/`Create_Config`, and the limited controlled `Track_Channel` with

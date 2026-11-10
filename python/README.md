@@ -36,9 +36,13 @@ _nuc -> _native, _errors, _validation, _common, _ffi, _types
 _image_types -> _health_types (canonical Euler)
 _image_convert -> _native, _errors, _ffi, _health_types, _image_types
 _image_metadata -> _native, _errors, _validation, _common, _ffi, _image_types, _image_convert
+_c2_types -> _types, _health_types (canonical BitStatus)
+_c2_convert -> _native, _ffi, _health_convert, _c2_types, _types
+_c2_metadata -> _native, _errors, _validation, _common, _ffi, _c2_types, _c2_convert
 _health -> shared layers above, _health_metadata, _nuc
 _image -> shared layers above, _nuc, _image_metadata
-_c2 / _instrumentation -> shared layers above
+_c2 -> shared layers above, _c2_metadata
+_instrumentation -> shared layers above
 _rf_admin -> _native, _errors, _validation, _types
 _session -> _native, _errors, _validation, _types, _ffi, family implementations
 __init__ -> explicit public exports from implementation modules
@@ -62,6 +66,8 @@ Responsibilities:
   metadata models, checked deep copies and independent native consumption.
 - `_image_types`, `_image_convert`, `_image_metadata`: ordinary four-family
   Image metadata values, active-only conversion and independent consumption.
+- `_c2_types`, `_c2_convert`, `_c2_metadata`: command/BIT configuration models,
+  canonical Health BIT conversion reuse, and independent native C2 consumption.
 - `_session`: Session lifetime, version queries and typed channel factories.
 
 No implementation module imports public names back from `__init__`. `_native.py`
@@ -123,8 +129,93 @@ This is not a native extension or a zero-copy interface. The current Session +
 IR Mono8 + C2 Operate/TaskSched + BIT no-op slice is also validated by the opt-in real Squall
 client in `integration/squall`; that client adds no binding API and uses no
 external Python dependency. Payload-bearing BIT, additional C2 commands and
-callbacks, RF beyond the Admin slice below, NumPy/zero-copy image
+callbacks beyond the four metadata families below, RF beyond the Admin slice,
+NumPy/zero-copy image
 views, wheels, and PyPI publication are not included.
+
+## IR C2 metadata (PY-MEL-008)
+
+`ControlChannel.open_metadata(queue_capacity=16)` returns an independent
+`C2MetadataStream`. It registers exactly three base families, in native order:
+**BIT_Configuration, CommandStatus, BIT_Status**. It works while C2 is Attached
+or Enabled, never implicitly enables C2, and applies no capability-advertisement
+gate. Callbacks can arrive synchronously during registration. Base registration
+is one-shot per native C2 channel, including partial/failed attempts; closing the
+consumer is not rollback and does not permit reopening.
+
+CommsTest is **separately opt-in**, with its own one-shot registration, also
+consumed on failure. Failure does not undo the base three registrations:
+
+```python
+with control.open_metadata() as metadata:
+    metadata.enable_comms_test_events()
+    event = metadata.receive(timeout_ms=1000)
+    counts = metadata.counters()
+```
+
+The provider must actually emit an event; registration does not submit a command.
+All four families share **one native bounded FIFO and the same counters**. Order
+is successful enqueue order, not timestamp order. The native policy is
+**DROP-INCOMING** when full; existing queued values are not replaced. Malformed
+callbacks are counted separately. `C2MetadataCounters(events_received,
+events_dropped_queue_full, malformed_or_unsupported)` preserves full uint64
+values, and receiving never resets the counters. Zero timeout polls; an active
+empty queue reports `TIMEOUT`. Queued values drain before `STREAM_STOPPED` or
+`PROVIDER_FAILED`, according to the native lifecycle contract.
+
+| Native family / kind | Frozen owned Python payload |
+| --- | --- |
+| `CommandStatus` / `COMMAND_STATUS = 1` | `C2CommandStatus(command_id, state, reason, reason_description)`; full uint32 ID, exact `C2CommandState` (0..4), exact 47-value `C2CannotComply` (0..46), complete UTF-8 text |
+| `BIT_Configuration` / `BIT_CONFIGURATION = 2` | `C2BitConfiguration(bit_types)`; tuple of `C2BitType(bit_id, accepted_interface, bit_item_names, subsystem_component_ids, expected_duration_ns)` |
+| `BIT_Status` / `BIT_STATUS = 3` | Existing canonical `BitStatus`, `ActiveBit`, `CompletedBit`, `CompletedBitItem`, `Fault`, `FaultData`, `FaultAmbiguityGroup`, `BitResult`, `FaultSeverity`, `FaultState` |
+| `ChannelCommsTestRep` / `CHANNEL_COMMS_TEST = 4` | Existing `CommsTestReport(command_id, request_id)`; no channel ID is present |
+
+`C2MetadataEvent(kind, payload)` enforces exact `C2MetadataKind`/payload agreement.
+Enums reject unpublished raw values with `PROTOCOL_INCONSISTENCY`; the published
+`C2CannotComply.UNKNOWN = 44` remains a valid, distinct category. BIT control
+mapping is exactly `NOT_SET=0`, `SUBSYSTEM_BIT_COMMAND=1`,
+`SUBSYSTEM_STATE_COMMAND=2`, `SUBSYSTEM_INITIATED=3`. The pinned prose for 2/3 is
+contradictory; Python does not swap or reinterpret them. IDs include exact UUID
+bytes and descriptive labels. Ordered/duplicate/empty values, signed int64
+nanosecond durations/timestamps, out-of-range percentages and nonfinite doubles
+are copied unchanged, without epoch inference or normalization. This metadata
+does not synthesize supported tests from capabilities or add BIT execution APIs.
+
+**ACCEPTED means command-message acceptance, not completion of physical activity.**
+CommandStatus events are independent of `ModeRequest`/`ReturnRequest.wait()`;
+CommsTest metadata and `CommsRequest.wait()` are separate native observations.
+Metadata receipt neither completes nor replaces any request result.
+
+| Python operation | Existing native C mapping (`ams_mel_ir_c2_` prefix) |
+| --- | --- |
+| `control.open_metadata(queue_capacity=16)` | `metadata_open` |
+| `metadata.is_open` | Local owner presence, not C2 state or callback health |
+| `metadata.enable_comms_test_events()` | `metadata_register_comms_test` |
+| `metadata.receive(timeout_ms=0)` | `metadata_receive`, `metadata_event_view`, `metadata_event_close` |
+| `metadata.counters()` | `metadata_get_counters` |
+| `metadata.close()`, context management, finalizer | `metadata_close` |
+
+Each event is deeply copied and its native event owner released **before return**.
+No ctypes objects, native pointers or borrowed memory escape; copied values
+survive actual provider unload. Pointer/alignment/span/text checks fail closed,
+but cannot prove that arbitrary nonnull addresses supplied by a violated C ABI
+refer to mapped memory. Native code remains responsible for valid memory.
+
+The metadata owner retains no Python ControlChannel or Session. C2/Session may
+close first; queued events remain drainable. Metadata Close does not close C2,
+cancel pending Mode/Return/Comms requests, unregister provider callbacks, or
+guarantee immediate callback quiescence. Native code alone retains provider
+resources as needed. Successful Close is idempotent. A failed Close preserves
+the native error; an uncertain retained handle is not blindly retried or reported
+as successfully closed. Finalization is one non-raising best-effort attempt.
+Context management preserves a body exception even if cleanup also fails.
+
+**Externally serialize receive, counters, registration and Close on a metadata
+owner, and metadata registration with parent C2 operations.** The GIL is not this
+contract. No Python worker, callback, lock or queue is added.
+
+For implementation coverage, compiled-mock qualification, source identities and
+limitations, see the [PY-MEL-008 feature report](../docs/py-mel-008-ir-c2-metadata.md).
 
 ## RF Admin (PY-MEL-001)
 

@@ -1,3 +1,28 @@
+# IRMEL-ADA-011 SchedulingChannel declaration closure
+
+Pinned IR MEL `8d9224519f12b44e0b28815755c56a32a28d24a0` (tree
+`bfc72a6a2e1929db9a90c0af78328085fb0ae3ec`). The exact include closure of
+`include/irmel/library/scheduling/SchedulingChannel.h` was computed from the
+frozen `docs/reference/irmel-upstream-git-evidence.json` objects (66 IR/Common
+headers plus AMS Math `RangeAzEl.h`/`Quaternion.h`) and confirmed with the
+compiler: GCC 14.2 observes 68 vendored headers (IR 38, Common 28, Math 2) and
+Clang 19 the same set plus one alternative spelling of `UCI_ID.h`; no Boost
+header is reached. Exactly 20 IR headers were absent and were copied from the
+frozen blobs after verifying each Git blob id and SHA-256: eight under
+`scheduling/` (`SchedulingChannel.h`, `ExecuteTaskAck.h`,
+`ScanPerformanceReport.h`, `SchedCreatedRep.h`, `TaskEvents.h`,
+`TaskExecutingRep.h`, `ActivityRecord.h`, `EventType.h`) and twelve under
+`irmel-types/` (`AbortTask.h`, `IRSTScanTask.h`, `IRSTStareTask.h`,
+`IRSTTrackTask.h`, `PrioritizedTrackListCmd.h`, `UpdateTrackListResponse.h`,
+`TaskInfo.h`, `StareTaskParam.h`, `TrackTaskParam.h`, `TrackTaskData.h`,
+`TrackData.h`, `TrackListResponse.h`). The existing IR MEL `LICENSE` and
+`INTENT.md` govern them unchanged. No existing vendored byte, the pinned Git
+evidence, the API catalog or its anchor changed.
+
+Header presence is a compilation dependency only. IRMEL-ADA-011 implements the
+Scheduling owner foundation; no task, track-list or Scheduling metadata
+declaration is represented or called.
+
 # Task 034C2 RF PhysicalData declaration closure
 
 Starting main: `be78151b7da016fde9b62057a1cca96540c9a997` (merged PR #63).

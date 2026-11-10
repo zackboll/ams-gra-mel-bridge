@@ -831,7 +831,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed Enable/Start exists for five families; no Scheduling/Stacked owner.",
+      "notes": "Typed Enable/Start exists for six families (C2, Image Start, Health, Instrumentation, Track, Scheduling); no StackedImage owner.",
       "limitations": [],
       "representation": []
     },
@@ -860,7 +860,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Complete owned ChannelCapability snapshot through common view of five bound families.",
+      "notes": "Complete owned ChannelCapability snapshot through common view of six bound families, including Scheduling.",
       "limitations": [],
       "representation": []
     },
@@ -947,7 +947,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Complete common request/report for five attached families; absent Scheduling/Stacked owners are not counted.",
+      "notes": "Complete common request/report for six attached families, including Scheduling; the absent StackedImage owner is not counted.",
       "limitations": [],
       "representation": []
     },
@@ -976,7 +976,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Common weak view works for C2, Image, Health, Instrumentation and Track; Scheduling/Stacked owners are absent.",
+      "notes": "Common weak view works for C2, Image, Health, Instrumentation, Track and Scheduling; the StackedImage owner is absent.",
       "limitations": [],
       "representation": []
     },
@@ -1025,7 +1025,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
       "limitations": [],
       "representation": []
     },
@@ -1054,7 +1054,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track only; no generic Scheduling or Stacked attachment.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
       "limitations": [],
       "representation": []
     },
@@ -2049,12 +2049,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const ExecuteTaskAck*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Execute_Task_Ack"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Execute_Task_Ack"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_execute_task_ack.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_ack_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-012: independent opt-in ExecuteTaskAck callback on Attached or Enabled Scheduling; one-shot including failed registration, unlocked registration with safe synchronous delivery, distinct provider outcomes, full-width owned identifiers, bounded drop-incoming queue without full-queue snapshots, null input malformed, allocation recovery and in-flight teardown drain. No task execution or request correlation.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. An acknowledgement proves neither completion nor task success."
+      ],
       "representation": []
     },
     {
@@ -8876,22 +8901,57 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::ExecuteTaskAck",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_open"
+        },
+        {
+          "path": "native/src/ir_scheduling_execute_task_ack.cpp",
+          "symbol": "ams_mel_ir_scheduling_execute_task_ack_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Execute_Task_Ack"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_execute_task_ack.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_ack_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete getCommandID() -> command_id -> Command_ID and getReqId() -> request_id -> Request_ID, each uint32_t / Interfaces.Unsigned_32, all 32 bits retained. Fixed 8-byte C record and fully Ada-owned Execute_Task_Ack value. Zero, high-bit, unequal and duplicate identifiers are valid; no local-request matching or completion-status interpretation.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. An acknowledgement proves neither completion nor task success."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Execute_Task_Ack"
+            }
+          ]
         },
         {
           "upstream": "getReqId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Execute_Task_Ack"
+            }
+          ]
         }
       ]
     },
@@ -11623,12 +11683,17 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::SchedulingChannel",
-      "status": "missing",
+      "status": "partial",
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.",
-      "limitations": [],
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial.",
+      "limitations": [
+        "Ten Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the five TaskExecutingRep, SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck reception is independent of execution; no task is submitted, queued or reported as scheduled.",
+        "Disable is performed only inside Close; there is no standalone Disable.",
+        "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
+        "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
+      ],
       "representation": []
     },
     {
@@ -13921,51 +13986,51 @@
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "missing",
+      "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "No typed owner for this family."
+      "notes": "Scheduling invokes the inherited disable() only inside Close, and only after Enable was attempted; no standalone Disable is exposed."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::enable()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::enable()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-011 typed Scheduling owner and weak common view implement this inherited operation (mock-qualified)."
     },
     {
       "id": "SchedulingChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "No exposed registration path on the Scheduling owner; the foundation registers no buffers or callbacks."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",

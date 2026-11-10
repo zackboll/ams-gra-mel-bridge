@@ -4,16 +4,18 @@
 
 Started from fetched main `fa91028804f38d3b2bd15ec8e5e2f80cd4a74a7e`, tree
 `d48eb8238e18443bd0ad8f668fa11984ddf915b6`. PR #159 (RUST-IR-004) is merged;
-RUST-IR-003 NUC remains present. PR #173 is separate C2 work, not incorporated or
-modified. Preflight found no competing open ODM PR or existing safe implementation.
+RUST-IR-003 NUC remains present. At original implementation time, PR #173 was
+separate C2 work, not incorporated or modified. Preflight found no competing open
+ODM PR or existing safe implementation.
 The final feature commit/tree and exact-head hosted results belong in the delivery
 PR, avoiding a recursive source hash in this document.
 
 Only the safe Rust layer and documentation change. The existing IRMEL-ADA-009
 native implementation, C ABI, version script, raw Rust bindings, Ada, Python,
-mock providers, build scripts and CI policies are unchanged. The production ABI
-continues to have 284 function exports. No hardware, Squall or real-provider
-qualification is claimed.
+mock providers, build scripts and CI policies are unchanged relative to the
+incorporated main. The original baseline had 284 function exports; that historical
+count is not the current production inventory. See the reconciliation record
+below. No hardware, Squall or real-provider qualification is claimed.
 
 ## Public API
 
@@ -176,7 +178,7 @@ production helpers or native code. Native C11 contracts independently qualify
 the CameraCommandResp/quaternion registration independence and counter saturation
 implementation that safe Rust only observes.
 
-## Local qualification
+## Original measured local qualification
 
 Commands are run from the dedicated worktree. Detailed results and source
 identities are also recorded in the delivery PR. The existing native contracts
@@ -201,9 +203,10 @@ Running with `LD_LIBRARY_PATH` naming the production directory succeeds; `ldd`
 confirms that DSO, and `nm -D` shows all six ODM imports with no ams_mel_test_ import.
 The consumer initially needed this explicit runtime library search path: a
 dependency crate's link arguments do not give the downstream binary an RPATH.
-No build-script change was made. The production symbol inventory is identical
-before/after (284 function exports), and native/raw/Ada/Python sources are
-byte-unchanged. Integrity, newline and whitespace checks pass. Hosted exact-head
+No build-script change was made. At the original baseline, the production symbol
+inventory was identical before/after (284 function exports), and
+native/raw/Ada/Python sources were byte-unchanged. Integrity, newline and
+whitespace checks pass. Hosted exact-head
 acceptance and final source identities are recorded in the PR; a passing earlier
 source is not a substitute for final qualification.
 
@@ -229,6 +232,66 @@ restored after each experiment. Compilation failures never count as kills.
 Measured campaign: **10 applied, 10 compiled, 10 executed, 10 killed, 0 invalid,
 0 surviving**. None is credited solely for compiler rejection. No mutation is
 left in production source.
+
+## RUST-IR-006R1 reconciliation
+
+An ordinary merge incorporates main `c1f916cb09eafd27a939ccbba4ee478d7aa34597`
+into the existing feature branch, retaining original feature commit
+`d3be5368f04f2483ef11c6bc8b61bf1cc28d88cf` as an ancestor. The original starting
+main/tree above remain historical source identifiers. Main now includes PR #173's
+safe Rust C2 metadata, Python C2 metadata and the native Scheduling slices.
+The C2 module/reexports, ordinary Image metadata, NUC and ODM APIs coexist.
+
+`docs/coverage.md` is retained byte-for-byte from incorporated main: its historical
+archive policy prohibits the feature section originally prepended by this PR.
+This task document retains the ODM coverage delta and implementation boundaries.
+The current production library has **295 function exports**, verified with
+`nm -D --defined-only native/build/lib/libams_mel_c.so.0` against every function
+in main's `native/src/exports.map`. All six ODM functions remain present; this
+reconciliation adds no native ABI exports or raw bindings.
+
+The first merged Rust unit-test build exposed two `#[global_allocator]`
+declarations: C2's allocation-count injector and ODM's allocation-size injector.
+The corrective change moves both thread-local controls into one private
+`#[cfg(test)]` allocator module, retaining the existing allocation-failure
+assertions in both modules. Three additional tests check selective/one-shot size
+failure, one-shot countdown failure and thread-local isolation. Production ODM
+code is byte-identical to the original feature; production C2 code is
+byte-identical to incorporated main. Native, raw Rust, provider, Ada, Python and
+workflow files have no feature delta against incorporated main.
+
+Reconciled qualification completed before the merge commit:
+
+- `make native` and `make test-native`: production build and **523/523** native
+  tests pass. Explicit `ctest --test-dir native/build-tests -R '^ir_image_odm'
+  --output-on-failure` passes **3/3**; the same selection with `--parallel 3
+  --repeat until-fail:50` passes every repetition.
+- Focused Cargo tests at `--test-threads=1`, `4` and `16`: **11 ODM unit tests**,
+  **22 ODM scenarios**, **15 C2 unit tests** and **3 allocator tests** pass each
+  time. The ignored subprocess entry is executed by its parent scenarios.
+- `cargo test --manifest-path rust/Cargo.toml --workspace`: **344 passed**,
+  including **22 doctests**; eight ignored subprocess entry functions are
+  exercised by parent tests. `cargo check --manifest-path rust/Cargo.toml
+  --workspace`, `cargo clippy --manifest-path rust/Cargo.toml --workspace
+  --all-targets -- -D warnings`, `RUSTDOCFLAGS='-D warnings' cargo doc
+  --manifest-path rust/Cargo.toml --workspace --no-deps` and `cargo fmt
+  --manifest-path rust/Cargo.toml --all -- --check` pass.
+- Python regression discovery with `PYTHONPATH=python`, the explicit test facade
+  and provider directory, and `python3 -W error -m unittest discover -s
+  python/tests -v`: **456 passed**. Package compileall passes.
+- `make test-policy`: **234 passed**. Dependency integrity verifies **824 vendor
+  files / 3 workflows**. IR API coverage reproduction and **52 audit tests** pass.
+- `make format-ada`, `alr -n -C ada build` and `alr -n -C ada/tests run` pass;
+  the smoke executable emits **46 PASS reports**, including ODM and Scheduling.
+  Formatting changes no Ada source bytes relative to incorporated main.
+
+Build-isolation/final validation, the allocator-sensitive compiled mutation
+rerun, the downstream production consumer and current-head hosted acceptance
+are recorded in the delivery PR. Original qualification and mutation evidence above are not
+substitutes for the new qualification. The allocator correction requires
+independent review; a local review-client attempt failed authentication with
+`OAuth session expired and could not be refreshed`. No independent review or
+approval is claimed on that basis, and merge remains gated on obtaining one.
 
 ## Remaining gates and limitations
 
