@@ -7,6 +7,7 @@ with AMS.MEL.IR.Channel;
 with AMS.MEL.IR.Health_Status;
 with AMS.MEL.IR.Image;
 with AMS.MEL.IR.Instrumentation;
+with AMS.MEL.IR.Scheduling;
 with AMS.MEL.IR.Track;
 with AMS.MEL.IR.Track.System_Data;
 with AMS.MEL.IR.Track.Updates;
@@ -18,6 +19,7 @@ package body AMS_MEL_IR_Channel_Tests is
    package H renames AMS.MEL.IR.Health_Status;
    package Instr renames AMS.MEL.IR.Instrumentation;
    package Trk renames AMS.MEL.IR.Track;
+   package Sch renames AMS.MEL.IR.Scheduling;
    package Upd renames AMS.MEL.IR.Track.Updates;
    package Sys renames AMS.MEL.IR.Track.System_Data;
    use type V.Command_ID;
@@ -55,6 +57,7 @@ package body AMS_MEL_IR_Channel_Tests is
    Instr_Config  : constant Instr.Instrumentation_Config :=
      Instr.Create_Config (Chan_ID, Plat_ID, Location);
    Track_Config  : constant Trk.Track_Config := Trk.Create_Config (Chan_ID, Plat_ID, Location);
+   Sched_Config  : constant Sch.Scheduling_Config := Sch.Create_Config (Chan_ID, Plat_ID, Location);
 
    procedure Require (Condition : Boolean; Message : String) is
    begin
@@ -294,6 +297,11 @@ package body AMS_MEL_IR_Channel_Tests is
    procedure No_Check (Object : C2.Control_Channel) is null;
    procedure No_Check (Object : AMS.MEL.IR.Image_Stream) is null;
    procedure No_Check (Object : H.Health_Channel) is null;
+   procedure No_Check (Object : Sch.Scheduling_Channel) is null;
+   --  IRMEL-ADA-011 Scheduling adapter. No Scheduling-specific typed operation
+   --  exists, so neither the Attached nor the active check has anything to do.
+   function Open_Scheduling (Parent : AMS.MEL.Session) return Sch.Scheduling_Channel
+   is (Sch.Open (Parent, Sched_Config));
 
    --  C2 adapters.
    function Open_C2 (Parent : AMS.MEL.Session) return C2.Control_Channel
@@ -787,12 +795,27 @@ package body AMS_MEL_IR_Channel_Tests is
            Check_Attached => Track_Attached,
            Check_Active   => No_Check,
            Close          => Trk.Close);
+      package Scheduling_Family is new
+        Family_Tests
+          (Owner          => Sch.Scheduling_Channel,
+           Library        => Provider_Path,
+           Label          => "Scheduling",
+           Scenario       => "sched-ada-common",
+           Open           => Open_Scheduling,
+           Is_Open        => Sch.Is_Open,
+           As_Channel     => Sch.As_Channel,
+           Capabilities   => Sch.Capabilities,
+           Activate       => Sch.Enable,
+           Check_Attached => No_Check,
+           Check_Active   => No_Check,
+           Close          => Sch.Close);
    begin
       C2_Family.Run_All;
       Image_Family.Run_All;
       Health_Family.Run_All;
       Instr_Family.Run_All;
       Track_Family.Run_All;
+      Scheduling_Family.Run_All;
       Test_Return_Fail (Provider_Path);
       Test_Rejections (Provider_Path);
       Test_Timeout (Provider_Path);
@@ -800,6 +823,6 @@ package body AMS_MEL_IR_Channel_Tests is
       Test_Capability_Snapshot (Provider_Path);
       Test_Finalization (Provider_Path);
       Test_Command_ID_Compatibility (Provider_Path);
-      Ada.Text_IO.Put_Line ("PASS: Ada safe common Channel facade contract (five families)");
+      Ada.Text_IO.Put_Line ("PASS: Ada safe common Channel facade contract (six families)");
    end Run;
 end AMS_MEL_IR_Channel_Tests;

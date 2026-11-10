@@ -1,9 +1,34 @@
 # Repository instructions
 
-Read `docs/architecture.md`, `docs/c-abi-policy.md`, and `docs/coverage.md`
-before changing a public interface. `.clinerules/` carries the same key rules
-for Cline. The original design review is reference material, not an assertion
-that its proposed APIs have already been implemented.
+Read `docs/architecture.md`, `docs/c-abi-policy.md`, relevant task documents,
+and the applicable structured coverage inventories before changing a public
+interface. `docs/coverage.md` is a historical archive, not current coverage
+authority; preserve its existing information and do not prepend new feature
+sections or add new feature status there. `.clinerules/` carries the same key
+rules for Cline. The original design review is reference material, not an
+assertion that its proposed APIs have already been implemented.
+
+## Parallel language development
+
+- Require one uniquely named, task-owned Markdown document per feature, such as
+  `docs/py-mel-009-<feature>.md`, `docs/irmel-ada-012-<feature>.md`, or
+  `docs/rust-ir-007-<feature>.md`. Record the coverage delta, implementation
+  boundaries, tests with actual commands/results, limitations and unresolved
+  semantics there. Do not create a shared feature-status index to update per PR.
+- Ada, Python and Rust tasks should change only their own implementation/test
+  files and uniquely owned feature documentation wherever practical. Avoid shared
+  `CHANGELOG.md`, generic README sections, `docs/architecture.md`,
+  `docs/c-abi-policy.md` and `docs/coverage.md` edits merely for feature status prose.
+- This separation is not a correctness exemption: update the native ABI, actual
+  shared interfaces, security contracts and authoritative structured coverage/API
+  inventories (and their generated reports) whenever the implementation requires
+  it. For IR Ada, follow `docs/reference/irmel-api-schema.md`; task prose must not
+  replace or leave stale the reviewed coverage evidence.
+- Keep ordinary Git merge behavior. Do not use blanket `merge=union` attributes
+  or custom conflict resolvers. Disjoint task documents remove a routine conflict
+  source; genuine shared-code or contract conflicts still require review.
+
+## Implementation and validation
 
 - Keep one consumer-side C ABI, implemented privately in C++20. Public headers
   must compile as C11 and must never expose STL, C++ references, or exceptions.

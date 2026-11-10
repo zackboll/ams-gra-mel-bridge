@@ -35,7 +35,8 @@ class IntegrityTests(unittest.TestCase):
             workflow_security(self.root)
 
     def test_current_repository_integrity(self):
-        self.assertEqual(check(ROOT)['vendor_files'], 804)
+        # IRMEL-ADA-011 adds the exact 20-header pinned SchedulingChannel.h closure.
+        self.assertEqual(check(ROOT)['vendor_files'], 824)
 
     def test_ordinary_source_and_test_changes_are_not_frozen(self):
         for name in ('native/src/new.cpp', 'ada/src/new.ads', 'rust/src/new.rs',

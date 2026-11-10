@@ -1,5 +1,17 @@
 # Changelog
 
+## IRMEL-ADA-011 — SchedulingChannel foundation
+
+The conditionally required `SchedulingChannel` gains a typed owner foundation only:
+`ams_mel_ir_scheduling_open`, `_enable`, `_get_capabilities`, `_close` and the weak common view
+`ams_mel_ir_channel_from_scheduling` (Ada `AMS.MEL.IR.Scheduling`), with
+`ams_mel_ir_scheduling_config_v1`. Open refuses providers that do not publish Scheduling
+without affecting the Session; Disable happens only inside Close. The exact 20-header pinned
+`SchedulingChannel.h` closure is vendored byte-identically as a compilation dependency. No
+Scheduling task execution, track-list send or Scheduling metadata registration is implemented.
+Production inventory: 289 AMS_MEL_0.1 exports (five new); Python/Rust receive private raw
+mirrors only. Evidence is mock-provider only.
+
 ## IRMEL-ADA-010 — Image LineOfSightQuaternion metadata
 
 The pinned `@RequiredIfLOSQuaternion` `ImageChannel::registerMetadataCallback(LineOfSightQuaternion)`
