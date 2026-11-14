@@ -12,10 +12,25 @@ PR #185 (Python C2 ConfigSet) and PR #186 (Rust NavigationReport); these are par
 of this reconciliation as well as Scheduling TaskExecutingRep, Python Image
 CameraResponse, and Rust LineOfSightQuaternion.
 
-The ordinary merge has exactly these ordered parents:
+The first ordinary merge, `d87c7571872aeba9edc720b03f441ae3296ac7dc`, has
+tree `6f401101692183c9e3acdf26ecdb931fd9596dad` and these ordered parents:
 
 1. `c95330cd99a47651742f3fb53803934af0c58898` — existing feature history.
 2. `c4490a9ce509512e0de6a79d42a61a12c00a7b9a` — freshly fetched main.
+
+During qualification main advanced again to
+`eb64b3f5a071d8784a1da04b25afd661bba25bdd` through PR #187. A second ordinary
+merge incorporates that tip, with ordered parents
+`d87c7571872aeba9edc720b03f441ae3296ac7dc` and
+`eb64b3f5a071d8784a1da04b25afd661bba25bdd`. It has no textual conflicts and
+preserves the executable fixture correction byte-for-byte: automatic maintenance is
+disabled only in the temporary event-test clone, with a trace-based regression
+test. No production policy or workflow changes. The latest main still has 301
+production exports, so the combined count remains 305. Its new task document
+lacked a final newline; this integration adds only that newline so the existing
+repository-wide newline gate remains enforced. Final qualification is
+repeated sequentially after this second merge; its post-commit evidence is
+recorded on PR #183.
 
 No rebase, amend, reset, squash, or force push is used. The complete resulting
 tree is recorded as `Integration-tree` in the merge commit message and in the
@@ -96,8 +111,9 @@ from their respective parents. The semantic reconciliation is confined to the
 
 ## Local qualification
 
-Qualification results are recorded below after sequential execution against the
-resolved source. Logs are retained locally under `/tmp/irmel-014-r2`. Make targets
+Qualification results below describe the first reconciled source; the identical
+production/language source plus PR #187 is requalified sequentially for the final
+merge. Logs are retained locally under `/tmp/irmel-014-r2`. Make targets
 run through `alr -n -C /home/zboll/git/ams-gra-mel-bridge/ada/tests exec -- make -C
 /home/zboll/git/ams-gra-mel-bridge TARGET`, using the existing pinned environment
 without changing global configuration or repository pins.
