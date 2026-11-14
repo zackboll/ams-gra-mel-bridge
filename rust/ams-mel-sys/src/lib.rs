@@ -1338,6 +1338,16 @@ pub struct AmsMelIrInstrumentationConfigV1 {
     pub platform_id: AmsMelUciIdV1,
     pub sensor_location: AmsMelComponentLocationV1,
 }
+/// IRMEL-ADA-016 ownership configuration, channel type StackedImage (6).
+/// No buffer counts, sizes, layouts, or reception queues.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrStackedConfigV1 {
+    pub channel_id: AmsMelUciIdV1,
+    pub channel_type: u32,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
 /// IRMEL-ADA-011 Scheduling channel configuration. `channel_type` must be
 /// `AMS_MEL_IR_CHANNEL_SCHEDULING` (3). No task, queue or priority field.
 #[repr(C)]
@@ -2222,6 +2232,12 @@ pub struct AmsMelIrInstrumentationMetadataEvent {
 /// @RequiredIfTrackUpdate TrackDataUpdate send.
 #[repr(C)]
 pub struct AmsMelIrTrack {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-016: opaque StackedImage owner, not an acquisition interface.
+#[repr(C)]
+pub struct AmsMelIrStacked {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -4187,6 +4203,33 @@ extern "C" {
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stacked_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrStackedConfigV1,
+        out_stacked: *mut *mut AmsMelIrStacked,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stacked_enable(
+        stacked: *mut AmsMelIrStacked,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stacked_get_capabilities(
+        stacked: *mut AmsMelIrStacked,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_stacked_close(
+        stacked: *mut *mut AmsMelIrStacked,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_open(
         session: *const AmsMelSession,
         config: *const AmsMelIrSchedulingConfigV1,
@@ -4344,6 +4387,13 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_channel_from_track(
         source: *const AmsMelIrTrack,
+        out_channel: *mut *mut AmsMelIrChannel,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_from_stacked(
+        source: *const AmsMelIrStacked,
         out_channel: *mut *mut AmsMelIrChannel,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

@@ -186,6 +186,10 @@ private package AMS.MEL_C_API is
    type Track_Handle is new System.Address;
    Null_Track                              : constant Track_Handle :=
      Track_Handle (System.Null_Address);
+   --  IRMEL-ADA-016: opaque StackedImage foundation owner.
+   type Stacked_Handle is new System.Address;
+   Null_Stacked                            : constant Stacked_Handle :=
+     Stacked_Handle (System.Null_Address);
    --  IRMEL-ADA-011: opaque SchedulingChannel foundation owner.
    type Scheduling_Handle is new System.Address;
    Null_Scheduling                         : constant Scheduling_Handle :=
@@ -318,6 +322,14 @@ private package AMS.MEL_C_API is
    end record
    with Convention => C;
    type IR_Track_Config_V1 is record
+      Channel_ID      : UCI_ID_V1;
+      Channel_Type    : Interfaces.Unsigned_32;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+   --  IRMEL-ADA-016: ams_mel_ir_stacked_config_v1.
+   type IR_Stacked_Config_V1 is record
       Channel_ID      : UCI_ID_V1;
       Channel_Type    : Interfaces.Unsigned_32;
       Platform_ID     : UCI_ID_V1;
@@ -2303,6 +2315,34 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_track_close";
+   --  IRMEL-ADA-016 StackedImage ownership (private raw imports only).
+   function IR_Stacked_Open
+     (Session             : Session_Handle;
+      Config              : access constant IR_Stacked_Config_V1;
+      Output              : access Stacked_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stacked_open";
+   function IR_Stacked_Enable
+     (Handle              : Stacked_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stacked_enable";
+   function IR_Stacked_Get_Capabilities
+     (Handle              : Stacked_Handle;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stacked_get_capabilities";
+   function IR_Stacked_Close
+     (Handle              : access Stacked_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_stacked_close";
    --  IRMEL-ADA-011 SchedulingChannel foundation (private raw imports only).
    function IR_Scheduling_Open
      (Session             : Session_Handle;
@@ -2595,6 +2635,13 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_track";
+   function IR_Channel_From_Stacked
+     (Source              : Stacked_Handle;
+      Output              : access Channel_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_from_stacked";
    function IR_Channel_From_Scheduling
      (Source              : Scheduling_Handle;
       Output              : access Channel_Handle;

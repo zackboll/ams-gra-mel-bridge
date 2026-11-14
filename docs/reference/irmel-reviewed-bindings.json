@@ -784,12 +784,20 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_stop"
+        },
+        {
+          "path": "native/src/ir_stacked.cpp",
+          "symbol": "ams_mel_ir_stacked_close"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir.ads",
           "symbol": "Stop"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-stacked_image.ads",
+          "symbol": "Close"
         }
       ],
       "tests": [
@@ -800,9 +808,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable.",
+      "notes": "Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
       "limitations": [],
       "representation": []
     },
@@ -813,11 +829,19 @@
         {
           "path": "native/src/ir_c2.cpp",
           "symbol": "ams_mel_ir_c2_enable"
+        },
+        {
+          "path": "native/src/ir_stacked.cpp",
+          "symbol": "ams_mel_ir_stacked_enable"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-c2.ads",
+          "symbol": "Enable"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-stacked_image.ads",
           "symbol": "Enable"
         }
       ],
@@ -829,9 +853,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_c2_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Typed Enable/Start exists for six families (C2, Image Start, Health, Instrumentation, Track, Scheduling); no StackedImage owner.",
+      "notes": "Typed Enable/Start exists for all seven families; StackedImage is ownership-only, without acquisition.",
       "limitations": [],
       "representation": []
     },
@@ -842,11 +874,19 @@
         {
           "path": "native/src/common_channel_requests.cpp",
           "symbol": "ams_mel_ir_channel_get_capabilities"
+        },
+        {
+          "path": "native/src/ir_stacked.cpp",
+          "symbol": "ams_mel_ir_stacked_get_capabilities"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Capabilities"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-stacked_image.ads",
           "symbol": "Capabilities"
         }
       ],
@@ -858,9 +898,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_channel_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned ChannelCapability snapshot through common view of six bound families, including Scheduling.",
+      "notes": "Complete owned ChannelCapability snapshot through weak common views of all seven families, including ownership-only StackedImage; no acquisition inferred.",
       "limitations": [],
       "representation": []
     },
@@ -945,9 +993,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_channel_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete common request/report for six attached families, including Scheduling; the absent StackedImage owner is not counted.",
+      "notes": "Complete common request/report through all seven attached families, including StackedImage using the unchanged common engine; preserves correlation identifiers.",
       "limitations": [],
       "representation": []
     },
@@ -974,9 +1030,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_channel_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Common weak view works for C2, Image, Health, Instrumentation, Track and Scheduling; the StackedImage owner is absent.",
+      "notes": "Common weak view works for all seven families: C2, Image, Health, Instrumentation, Track, Scheduling and ownership-only StackedImage; one shared completion engine, independent family accounting.",
       "limitations": [],
       "representation": []
     },
@@ -1011,6 +1075,10 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_image_control_open"
+        },
+        {
+          "path": "native/src/ir_stacked.cpp",
+          "symbol": "ams_mel_ir_stacked_open"
         }
       ],
       "ada": [
@@ -1021,6 +1089,10 @@
         {
           "path": "ada/src/ams-mel-ir.ads",
           "symbol": "Open_Image_Control"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-stacked_image.ads",
+          "symbol": "Open"
         }
       ],
       "tests": [
@@ -1039,9 +1111,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
       "limitations": [
         "Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats."
       ],
@@ -1054,11 +1134,19 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_close"
+        },
+        {
+          "path": "native/src/ir_stacked.cpp",
+          "symbol": "ams_mel_ir_stacked_close"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir.ads",
+          "symbol": "Close"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-stacked_image.ads",
           "symbol": "Close"
         }
       ],
@@ -1070,9 +1158,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_stacked_foundation.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_stacked_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
       "limitations": [],
       "representation": []
     },
@@ -12201,12 +12297,16 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::StackedImageChannel",
-      "status": "missing",
+      "status": "partial",
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-016 adds only AMS.MEL.IR.Stacked_Image ownership/lifecycle and weak common requests, not a stacked-image receiver.",
+      "limitations": [
+        "Standalone Disable, application buffers and common communications metadata registration remain unbound.",
+        "Optional LOS3D registration, image-stack callbacks and StackFrameHeader conversion remain missing.",
+        "Qualification is separate mock-provider only."
+      ],
       "representation": []
     },
     {
@@ -14243,51 +14343,51 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
-      "status": "missing",
+      "status": "partial",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::disable()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016: inherited disable is attempted during Close iff Enable was attempted; no standalone public Disable. Disable success does not imply callback quiescence."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::enable()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::enable()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016: typed StackedImage owner and weak common view; native/src/ir_stacked.cpp, AMS.MEL.IR.Stacked_Image, compiled C11 and Ada foundation contracts. Mock-qualified, no acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::getCapabilities() const",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016: typed StackedImage owner and weak common view; native/src/ir_stacked.cpp, AMS.MEL.IR.Stacked_Image, compiled C11 and Ada foundation contracts. Mock-qualified, no acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016: typed StackedImage owner and weak common view; native/src/ir_stacked.cpp, AMS.MEL.IR.Stacked_Image, compiled C11 and Ada foundation contracts. Mock-qualified, no acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::sendKeepAliveRep()",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016: typed StackedImage owner and weak common view; native/src/ir_stacked.cpp, AMS.MEL.IR.Stacked_Image, compiled C11 and Ada foundation contracts. Mock-qualified, no acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
       "status": "missing",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No typed owner for this family."
+      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
     }
   ],
   "image_capabilities": [
@@ -14338,8 +14438,8 @@
     },
     {
       "name": "StackedImage",
-      "status": "missing",
-      "notes": "No StackedImage owner/listener, StackFrameHeader representation, or LOS3D callback path."
+      "status": "partial",
+      "notes": "IRMEL-ADA-016 required channel ownership/common communications only. No image-stack listener, StackFrameHeader conversion, buffers or optional LOS3D reception."
     }
   ],
   "source_sha256": {
@@ -14417,6 +14517,9 @@
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
     "native/src/ir_stream.cpp": "b8ab436598dd603e594936dcc8225ce1a31ae31143201429ce835998fa77fd5f",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
-    "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792"
+    "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792",
+    "native/src/ir_stacked.cpp": "d8fe79ab18cfa0b926f2ab4f9e091b878d0727d45134cf5b5ce93ab56bdd6fe3",
+    "ada/src/ams-mel-ir-stacked_image.ads": "d1b3ccfbf60259b9702ebd6a8fa5cc844eb32fff95e29a4bc493b2a4252ec00f",
+    "ada/src/ams-mel-ir-stacked_image.adb": "6c2f0805ccfe4fdbb457397e8478c80c051dd14c228fee73d2a791c1a98b6ef2"
   }
 }

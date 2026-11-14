@@ -117,6 +117,8 @@ typedef struct ams_mel_ir_instrumentation_metadata_event
  * and the @RequiredIfTrackUpdate TrackDataUpdate send. SystemTrackDataResponse
  * is not implemented. */
 typedef struct ams_mel_ir_track ams_mel_ir_track;
+/* Required StackedImage channel ownership only, without stack acquisition. */
+typedef struct ams_mel_ir_stacked ams_mel_ir_stacked;
 /* IRMEL-ADA-011: conditionally required (@RequiredIfIRSTTrackTasking)
  * SchedulingChannel owner. This release implements the channel
  * ownership/lifecycle foundation (Open, Enable, ChannelCapability, Close), the
@@ -1113,6 +1115,15 @@ typedef struct ams_mel_ir_track_config_v1 {
     ams_mel_uci_id_v1 platform_id;
     ams_mel_component_location_v1 sensor_location;
 } ams_mel_ir_track_config_v1;
+
+/* IRMEL-ADA-016: copied UTF-8 identity/location configuration. channel_type
+ * must be AMS_MEL_IR_CHANNEL_STACKED_IMAGE = 6. No buffer or layout fields. */
+typedef struct ams_mel_ir_stacked_config_v1 {
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_stacked_config_v1;
 
 /* IRMEL-ADA-011 Scheduling channel configuration. Same field order and layout
  * convention as the Health, Instrumentation and Track configurations.
@@ -3195,6 +3206,42 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_track_get_capabilities(
 AMS_MEL_API ams_mel_status_t ams_mel_ir_track_close(
     ams_mel_ir_track **track, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* IRMEL-ADA-016: ownership-only StackedImage foundation (type 6).
+ * Discovery must advertise StackedImage; absence is INITIALIZATION_FAILED and
+ * leaves the Session usable. Attach once, validate concrete StackedImageChannel
+ * and its category before publication. Null returns FACTORY_FAILED; a throwing
+ * provider returns PROVIDER_EXCEPTION (INITIALIZATION_FAILED after successful
+ * rollback). Uncertain rollback retains the exact graph and returns PROVIDER_FAILED.
+ * Config contains no image layout or buffer settings; zero capability layout is valid.
+ * Enable is explicit/idempotent; refusal/exception fails the lifecycle, without
+ * retry. Capabilities are independent owned snapshots. Common views are weak.
+ * Close stops admission, defers physical teardown for admitted operations, and
+ * disables iff Enable was attempted, then detaches. No standalone Disable or
+ * buffer/metadata registration exists. Failed detach keeps the handle for retry;
+ * deferred failure permanently retains the graph. A cleared handle is logical
+ * closure, not proof of physical cleanup or callback quiescence. Disable failure
+ * is reported even if detach succeeds. Serialize typed owner operations/Close.
+ */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stacked_open(
+    const ams_mel_session *session, const ams_mel_ir_stacked_config_v1 *config,
+    ams_mel_ir_stacked **out_stacked, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stacked_enable(
+    ams_mel_ir_stacked *stacked, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stacked_get_capabilities(
+    ams_mel_ir_stacked *stacked, ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_stacked_close(
+    ams_mel_ir_stacked **stacked, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_from_stacked(
+    const ams_mel_ir_stacked *source, ams_mel_ir_channel **out_channel,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* IRMEL-ADA-011 SchedulingChannel foundation.
  *
