@@ -6,6 +6,7 @@ import ctypes as _ctypes
 import os
 
 from . import _native
+from ._discovery import _capabilities
 from ._errors import (
     ErrorKind,
     MelError,
@@ -20,6 +21,7 @@ from ._validation import (
 )
 from ._types import (
     AbiVersion,
+    ChannelCapability,
     ControlConfig,
     HealthConfig,
     ImageConfig,
@@ -136,6 +138,19 @@ class Session:
     def _require_open(self) -> None:
         if not self.is_open:
             raise _local_error(ErrorKind.INVALID_ARGUMENT, "Session is closed")
+
+    def capabilities(self) -> tuple[ChannelCapability, ...]:
+        """Copy the complete advertised Control list in provider order.
+
+        Empty and unconfigured advertisements are valid; discovery attaches
+        nothing and does not establish hardware readiness. Results are immutable
+        Python-owned values and survive provider unload. Externally serialize
+        this call against Session closure and conflicting provider operations;
+        the GIL is not sufficient synchronization.
+        """
+
+        self._require_open()
+        return _capabilities(self._owner)
 
     def provider_version(self) -> ProviderVersion:
         """Return the provider's complete version information."""
