@@ -83,6 +83,7 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod ir_c2_metadata;
+mod ir_discovery;
 mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
@@ -1573,33 +1574,86 @@ impl Drop for CommsRequest {
     }
 }
 
-/// Private RAII owner of one native capability snapshot. Drop closes the
-/// native owner on every early return, including conversion/UTF-8 failures.
-struct CapabilityOwner {
-    raw: *mut sys::AmsMelIrChannelCapability,
+// Private call seam for deterministic hostile-output qualification. Production
+// uses the existing ABI; tests use live, independently controlled owner tokens.
+trait CapabilityCalls {
+    fn view(
+        &self,
+        owner: *mut sys::AmsMelIrChannelCapability,
+        view: *mut *const sys::AmsMelIrChannelCapabilityV1,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> i32;
+    fn close(
+        &self,
+        owner: *mut *mut sys::AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> i32;
 }
 
-impl CapabilityOwner {
-    fn close(&mut self) -> Result<(), Error> {
-        call_with_diagnostic(|diagnostic, capacity, required| {
-            // SAFETY: `raw` is this guard's unique capability owner; no borrowed
-            // record from it is used after this call.
-            unsafe {
-                sys::ams_mel_ir_channel_capability_close(
-                    &mut self.raw,
-                    diagnostic,
-                    capacity,
-                    required,
-                )
-            }
-        })
+struct NativeCapabilityCalls;
+
+impl CapabilityCalls for NativeCapabilityCalls {
+    fn view(
+        &self,
+        owner: *mut sys::AmsMelIrChannelCapability,
+        view: *mut *const sys::AmsMelIrChannelCapabilityV1,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> i32 {
+        // SAFETY: private callers supply a live owner and exact output storage.
+        unsafe {
+            sys::ams_mel_ir_channel_capability_view(owner, view, diagnostic, capacity, required)
+        }
+    }
+
+    fn close(
+        &self,
+        owner: *mut *mut sys::AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        capacity: usize,
+        required: *mut usize,
+    ) -> i32 {
+        // SAFETY: private callers transfer their unique owner exactly once.
+        unsafe { sys::ams_mel_ir_channel_capability_close(owner, diagnostic, capacity, required) }
     }
 }
 
-impl Drop for CapabilityOwner {
+/// Private RAII owner of one native capability snapshot. Drop closes the
+/// native owner on every early return, including conversion/UTF-8 failures.
+struct CapabilityOwner<'a, C: CapabilityCalls> {
+    raw: *mut sys::AmsMelIrChannelCapability,
+    calls: &'a C,
+}
+
+impl<C: CapabilityCalls> CapabilityOwner<'_, C> {
+    fn close(&mut self) -> Result<(), Error> {
+        // Disarm before release: even an error or malformed diagnostic may
+        // follow consumption without clearing the output. Never retry it.
+        let mut raw = mem::replace(&mut self.raw, ptr::null_mut());
+        call_with_diagnostic(|diagnostic, capacity, required| {
+            self.calls.close(&mut raw, diagnostic, capacity, required)
+        })?;
+        if !raw.is_null() {
+            return Err(protocol(
+                "capability close succeeded without clearing the owner",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl<C: CapabilityCalls> Drop for CapabilityOwner<'_, C> {
     fn drop(&mut self) {
         if !self.raw.is_null() {
-            best_effort_close_capability(&mut self.raw);
+            let mut raw = mem::replace(&mut self.raw, ptr::null_mut());
+            // Diagnostic-free secondary cleanup cannot replace the primary error.
+            self.calls
+                .close(&mut raw, ptr::null_mut(), 0, ptr::null_mut());
         }
     }
 }
@@ -1615,8 +1669,16 @@ impl Drop for CapabilityOwner {
 fn capability_snapshot(
     query: impl FnOnce(*mut *mut sys::AmsMelIrChannelCapability, *mut c_char, usize, *mut usize) -> i32,
 ) -> Result<ChannelCapability, Error> {
+    capability_snapshot_with(query, &NativeCapabilityCalls)
+}
+
+fn capability_snapshot_with(
+    query: impl FnOnce(*mut *mut sys::AmsMelIrChannelCapability, *mut c_char, usize, *mut usize) -> i32,
+    calls: &impl CapabilityCalls,
+) -> Result<ChannelCapability, Error> {
     let mut owner = CapabilityOwner {
         raw: ptr::null_mut(),
+        calls,
     };
     call_with_diagnostic(|diagnostic, capacity, required| {
         query(&mut owner.raw, diagnostic, capacity, required)
@@ -1628,18 +1690,15 @@ fn capability_snapshot(
     }
     let mut view: *const sys::AmsMelIrChannelCapabilityV1 = ptr::null();
     call_with_diagnostic(|diagnostic, capacity, required| {
-        // SAFETY: `owner.raw` is a live capability owner and `view` is
-        // writable storage for the borrowed record pointer.
-        unsafe {
-            sys::ams_mel_ir_channel_capability_view(
-                owner.raw, &mut view, diagnostic, capacity, required,
-            )
-        }
+        calls.view(owner.raw, &mut view, diagnostic, capacity, required)
     })?;
     if view.is_null() {
         return Err(protocol(
             "capability view succeeded without a capability record",
         ));
+    }
+    if !(view as usize).is_multiple_of(mem::align_of::<sys::AmsMelIrChannelCapabilityV1>()) {
+        return Err(protocol("capability view returned a misaligned record"));
     }
     // SAFETY: `view` is non-null and points to a record owned by the live
     // `owner`; it is copied before `owner` is closed.
@@ -2747,14 +2806,6 @@ fn best_effort_close_comms_request(raw: &mut *mut sys::AmsMelIrChannelCommsReque
     // close is nonblocking and does not cancel pending provider work.
     let _ = unsafe {
         sys::ams_mel_ir_channel_comms_request_close(raw, ptr::null_mut(), 0, ptr::null_mut())
-    };
-}
-
-fn best_effort_close_capability(raw: &mut *mut sys::AmsMelIrChannelCapability) {
-    // SAFETY: called only for a unique capability snapshot owner. Null
-    // diagnostics are supported and the result cannot be reported here.
-    let _ = unsafe {
-        sys::ams_mel_ir_channel_capability_close(raw, ptr::null_mut(), 0, ptr::null_mut())
     };
 }
 
