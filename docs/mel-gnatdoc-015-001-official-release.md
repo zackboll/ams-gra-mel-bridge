@@ -78,8 +78,63 @@ pinned GNAT 16.1.0 / GPRbuild 26.0.1 / GNATdoc 26.0.0 environment:
   independent consumer restoration and deep audit pass for 312 bookmarks and
   1,736 type-link occurrences derived from current source.
 
-Final qualification, browser, example and exact-HEAD hosted results are recorded
-below when available. This evidence is diagnostic, not deployment authority.
+Additional completed validation:
+
+* `make docs DOC_PYTHON=.../official-env/bin/python`: passes from clean committed
+  source; the existing native/portal generation and sealed artifact verification
+  succeed with the official release. No source-count baseline is introduced.
+* `docs/tools/docs_ci.py qualify --directory .../release-qualified --gnatdoc-prefix ...`:
+  passes, including separate deterministic generations, idempotence, 1,484 source
+  declarations / 1,483 native sections and the single documented exception.
+  The baseline and release deep records are equal for every native anchor,
+  all 312 source-derived bookmarks and all 1,736 type occurrences.
+* `make test-documentation-source DOC_PYTHON=.../official-env/bin/python`:
+  all 10 tests pass, including actual source addition, independent regeneration,
+  resealed corruption, removed/duplicated/wrong type links, old filter wording
+  and forged release version. No rejection assertion is removed or weakened.
+* Explicit `test_enhancer_release.py`: 5 tests pass, covering installed contents,
+  CLI/distribution version, wrong digest/URL, missing origin and shadowed imports.
+  These run in the existing non-deploying scheduled/manual qualification job;
+  no new workflow, approval gate or required status is added.
+* `make test-policy`: passes, including `make test-docs-ci` and existing artifact,
+  source, privilege and workflow mutation controls.
+* `test_compare_gnatdoc_warnings.py`: all 42 tests pass.
+* `DOC_EXAMPLES_ALIRE_SETTINGS=... sh docs/tools/qualify_examples.sh`: passes
+  formatting, compilation, production-library loader checks and all 13 semantic
+  run cases across nine example programs with separate mock providers.
+* Fresh Chromium matrix on both old and release publications: **640 checks in
+  16 contexts** pass (1280/390 pixels × light/dark × JavaScript on/off × old/new).
+  It checks every authored page, responsive layout, native fallback, default
+  package, Shared/Core/IR/RF navigation, filter/clear, symbol destinations,
+  history, example links and absence of browser script errors. Screenshots and
+  the executable harness are retained with the external evidence.
+
+Complete current-source SHA-256 fingerprints use sorted relative-path → file
+SHA-256 JSON with compact separators (the existing consumer algorithm):
+
+| Identity | SHA-256 |
+| --- | --- |
+| Pristine, both environments | `8cd94e2672392bf17273d811b0a34bc48bfe4fa006c9e779d8b154adaac9b304` |
+| Old publication | `7451a80681b941c768cff2880213870629448dc1a81638611a9d0196b00962a1` |
+| Release publication | `41617de5cc22c4e8b857bb1e24eaa1c08f5e655bf2a01fc7f2450d8a61cdeb01` |
+
+Of 55 published files, 53 are byte-identical. `coverage.json`, `warnings.json`,
+`native-anchors.json` and raw `gnatdoc.log` are also byte-identical. Coverage
+remains 4,967/4,991 and warnings remain 113; these are observations, not frozen
+requirements for evolving APIs. Exact final commit/tree identities, independent
+hosted-artifact comparison and exact-HEAD hosted conclusions belong in the PR
+handoff (embedding the final commit's own identity here is circular).
+
+Qualification setup failures were corrected without changing production guards:
+the first provenance mock needed an explicit string `version` property because
+`importlib.metadata.version()` reads the mocked distribution; an initial browser
+harness selected a nonexistent RF symbol and was corrected to a source-inventoried
+one; a foreground historical verification exceeded the command-runner timeout
+and was rerun in the background. The fresh historical generation recovered its
+exact original pristine fingerprint before any hash changes were accepted.
+External historical checks use their original source and tests, with the current
+presentation verifier and its already-qualified performance-only symbol scanner.
+This diagnostic replay is not a new CI governance requirement.
 
 ## Deployment boundaries and limitations
 
