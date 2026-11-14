@@ -17,6 +17,7 @@ from ._validation import (
     _INT64_MAX,
     _UINT32_MAX,
     _utf8_input,
+    _validate_int64,
     _validate_size_t,
     _validate_uint32,
 )
@@ -26,6 +27,20 @@ from ._validation import (
 class AbiVersion:
     major: int
     minor: int
+
+
+@dataclass(frozen=True)
+class ConfigSetCommand:
+    """Opaque configuration text and exact ID/time; no clock domain is inferred."""
+
+    command_id: int
+    system_time_ns: int = 0
+    config: str = ""
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.command_id, "command_id")
+        _validate_int64(self.system_time_ns, "system_time_ns")
+        _utf8_input(self.config, "config")
 
 
 @dataclass(frozen=True)
