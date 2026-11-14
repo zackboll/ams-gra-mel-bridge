@@ -103,6 +103,7 @@ pub use ir_optical_distortion_map::{
     ForwardRightDown, OpticalDistortionMap, OpticalDistortionMapOpenError,
     OpticalDistortionMapStream, RowCol,
 };
+mod ir_mode;
 mod rf_admin;
 mod rf_data;
 pub use ir_c2_metadata::{
@@ -125,6 +126,9 @@ pub use ir_image_metadata::{
     AzimuthElevation, BadPixel, BadPixelList, BadPixelReason, ImageMetadataCounters,
     ImageMetadataEvent, ImageMetadataStream, LineOfSightEuler, LineOfSightReport,
     NavigationResponse,
+};
+pub use ir_mode::{
+    CoordinateFrameReference, DegradationMethod, MfaState, ModeCommand, ScanParameters, ScanType,
 };
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
@@ -1762,21 +1766,34 @@ fn wait_for_mode(
     request: *mut sys::AmsMelIrModeRequest,
     timeout_ms: u32,
 ) -> Result<ModeResult, Error> {
+    wait_for_mode_with(
+        timeout_ms,
+        |timeout, result, diagnostic, capacity, required| {
+            // SAFETY: the unique request is borrowed for this call; all output
+            // storage is initialized and valid for the advertised capacity.
+            unsafe {
+                sys::ams_mel_ir_mode_request_wait(
+                    request, timeout, result, diagnostic, capacity, required,
+                )
+            }
+        },
+    )
+}
+
+fn wait_for_mode_with(
+    timeout_ms: u32,
+    mut wait: impl FnMut(u32, &mut sys::AmsMelIrModeResultV1, *mut c_char, usize, &mut usize) -> i32,
+) -> Result<ModeResult, Error> {
     let mut result = sys::AmsMelIrModeResultV1::default();
     let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
     let mut required = 0_usize;
-    // SAFETY: the request is live and exclusively accessed through `&mut self`;
-    // result and diagnostic storage are writable for their advertised sizes.
-    let status = unsafe {
-        sys::ams_mel_ir_mode_request_wait(
-            request,
-            timeout_ms,
-            &mut result,
-            diagnostic.as_mut_ptr().cast::<c_char>(),
-            diagnostic.len(),
-            &mut required,
-        )
-    };
+    let status = wait(
+        timeout_ms,
+        &mut result,
+        diagnostic.as_mut_ptr().cast::<c_char>(),
+        diagnostic.len(),
+        &mut required,
+    );
     if required == 0 {
         return Err(protocol("native wait returned an invalid diagnostic size"));
     }
@@ -1804,18 +1821,14 @@ fn wait_for_mode(
         complete.resize(first_required, 0);
         let mut retry_result = sys::AmsMelIrModeResultV1::default();
         let mut retry_required = 0_usize;
-        // SAFETY: terminal request results are cached and repeatable. The same
-        // live request is polled with exact writable diagnostic storage.
-        let retry_status = unsafe {
-            sys::ams_mel_ir_mode_request_wait(
-                request,
-                0,
-                &mut retry_result,
-                complete.as_mut_ptr().cast::<c_char>(),
-                complete.len(),
-                &mut retry_required,
-            )
-        };
+        // Terminal request results are cached and repeatable.
+        let retry_status = wait(
+            0,
+            &mut retry_result,
+            complete.as_mut_ptr().cast::<c_char>(),
+            complete.len(),
+            &mut retry_required,
+        );
         if retry_status != status
             || retry_result != first_result
             || retry_required != first_required

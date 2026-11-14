@@ -159,6 +159,23 @@ canonical-JSON hash before qualification. Historical source hashes were left
 unchanged after checking their documented baseline meaning. The new report's
 initial missing newline was corrected and the final-newline gate rerun.
 
+## Final main movement during delivery
+
+After pushing the second merge, main was found to have advanced to
+`76ade6cd6d4b0fa51c04947c040dfac3633d8886` through PR #188, safe Rust C2 ModeCmd.
+The final ordinary merge has ordered parents
+`8d473d9b8cd804aeda2c4a48108d27f54f73f9ff` and
+`76ade6cd6d4b0fa51c04947c040dfac3633d8886`, without textual conflicts. The
+second merge's tree is `ca99ce568f79f6c59d6d7a63c4ba733dfacd9d49`.
+All five incoming Rust feature files are retained exactly. This introduces no
+native exports, so 301 mainline and 305 combined exports still hold. The
+partially started second-merge requalification is superseded by the final
+sequential run; no partial run is reported as a complete final qualification.
+The final commit's `Integration-tree` trailer and PR record identify this last
+tree, and PR evidence records tests against that exact commit. The initial
+parent-specific 9/51 byte comparison above describes the first merge, not a
+claim that later mainline additions were absent.
+
 ## Limitations and delivery rules
 
 This remains provider-independent consumer-binding qualification using separate
