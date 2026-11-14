@@ -5,6 +5,29 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 
+// The identity-only record is exactly the acquisition configuration prefix,
+// without any acquisition sizing fields. These checks run during compilation.
+const _: () = {
+    assert!(
+        size_of::<AmsMelIrImageControlConfigV1>()
+            == offset_of!(AmsMelIrStreamConfigV1, buffer_count)
+    );
+    assert!(align_of::<AmsMelIrImageControlConfigV1>() == align_of::<AmsMelIrStreamConfigV1>());
+    assert!(offset_of!(AmsMelIrImageControlConfigV1, channel_type) == 0);
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, channel_id)
+            == offset_of!(AmsMelIrStreamConfigV1, channel_id)
+    );
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, platform_id)
+            == offset_of!(AmsMelIrStreamConfigV1, platform_id)
+    );
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, sensor_location)
+            == offset_of!(AmsMelIrStreamConfigV1, sensor_location)
+    );
+};
+
 #[test]
 fn image_control_abi() {
     let _: unsafe extern "C" fn(
