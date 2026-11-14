@@ -131,8 +131,9 @@ the full suite.
 | `check_doc_source_integrity.py`; `check_final_newlines.py`; `git diff --check` | PASS. |
 
 Ada builds use GNAT 16.1.0 / GPRbuild 26.0.1 through the existing local Alire
-pins. The sequential campaign's `make check` and final Alire command results
-are recorded below when complete; no simultaneous commands modify its build
+pins. The sequential campaign's `make check` passed (build isolation in both
+orders, 587/587 native, formatter, 61 coverage controls, full Ada suite and
+newline/whitespace checks). Final Alire command results are recorded below; no simultaneous commands modify its build
 trees. Logs are local `/tmp/stacked-final-*.log`, with separate Release,
 symbol/layout and pinned documentation checks.
 
@@ -180,3 +181,30 @@ coverage archive or dependency pin is changed. Later open PRs #195 (Python
 Control discovery), #196 (authored HTML) and #197 (Rust control-only Image) were
 inspected during qualification; none implements StackedImage. Main remained at
 the exact selected base during those checks.
+
+## Local qualification completion
+
+`alr -C ada build` passed (exit 0), reporting a successful package build.
+`make check` passed before that command; the sequence did not overlap mutable
+build trees. Native system compilation used GNU 14.2.0. The separately configured
+Release tree passed all 29 StackedImage cases on each of 20 repetitions (580
+executions). Policy sub-suites totalled 244 checks. A final formatter check on
+committed Ada sources also passed.
+
+Implementation commit: `1f7b6bb7320d52731fc5b0ea8ac7017a5d01a0f8`, tree
+`8fb957f9a0b434c2cb08909eb000c41058c928f1`. The follow-up qualification record
+changes only this Markdown file; final delivery reports its exact HEAD/tree
+without attempting a self-referential commit identity inside the file.
+
+PR #198 is non-draft against main, left open/unmerged with auto-merge disabled.
+Hosted qualification must bind to the final exact feature HEAD and applicable
+PR merge result; local results are not substituted for those checks.
+**HOSTED_CI_PENDING** until that evidence is available. No self-approval,
+merge, release, tag or global Git setting change is authorized or performed.
+
+`alr -C ada/tests run` also passed (exit 0), including the new StackedImage
+contract and the entire Ada suite. The complete sequential campaign exited 0:
+format → format check → native → Python → Rust → Ada → coverage → make check →
+Alire package build → Alire test-crate run. No validation command remains pending
+locally. A final coverage rerun passed all 61 controls after the documentation
+scope corrections. The final follow-up record is documentation-only.
