@@ -3,10 +3,11 @@
  * reception. Each scenario runs in its own process (argv[1]) so lifetime
  * logs, provider gates and retained provider graphs never leak between cases.
  * Every ordering is established by mock hooks or test-facade probes, never by
- * sleeping. Every scenario ends with the negative control that none of the ten
+ * sleeping. Every scenario ends with the negative control that none of the nine
  * remaining Scheduling-specific methods (four exec, PrioritizedTrackListCmd
- * send, five other registrations) was reached, and with an exact count of
- * ExecuteTaskAck registration attempts. */
+ * send, four other registrations) was reached, with an exact count of
+ * ExecuteTaskAck registration attempts and (IRMEL-ADA-013) with zero
+ * TaskExecutingRep registration attempts: ExecuteTaskAck never implies it. */
 #include <ams_mel/abi.h>
 
 #include <dlfcn.h>
@@ -66,18 +67,18 @@ static void *pin;
 static deliver_fn deliver;
 static calls_fn specific_calls;
 static calls_fn ack_registrations;
+static calls_fn rep_registrations;
 static release_fn release_family;
 static const ams_mel_ir_channel_comms_test_request_v1 high_ids = {
     0x80000001U, 0xf0000002U, 0xe0000003U};
 
-/* The ten Scheduling-specific methods that stay unimplemented. */
+/* The nine Scheduling-specific methods that stay unimplemented. */
 static const char *const specific_events[] = {
-    "scheduling_prioritized_track_list_sent", "scheduling_task_executing_registered",
-    "scheduling_sched_created_registered", "scheduling_update_track_list_registered",
+    "scheduling_prioritized_track_list_sent", "scheduling_sched_created_registered", "scheduling_update_track_list_registered",
     "scheduling_task_events_registered", "scheduling_scan_performance_registered",
     "scheduling_abort_task_exec", "scheduling_scan_task_exec", "scheduling_stare_task_exec",
     "scheduling_track_task_exec"};
-_Static_assert(sizeof specific_events / sizeof *specific_events == 10U, "ten methods");
+_Static_assert(sizeof specific_events / sizeof *specific_events == 9U, "nine methods");
 
 static ams_mel_string_view_v1 text(const char *value)
 { ams_mel_string_view_v1 result = {value, strlen(value)}; return result; }
@@ -152,7 +153,8 @@ static ams_mel_session *open_session(const char *scenario, uint32_t limit)
     *(void **)(&specific_calls) = dlsym(pin, "mock_scheduling_specific_calls");
     *(void **)(&ack_registrations) = dlsym(pin, "mock_scheduling_ack_registrations");
     *(void **)(&release_family) = dlsym(pin, "mock_completion_release_family");
-    CHECK(deliver && specific_calls && ack_registrations && release_family);
+    *(void **)(&rep_registrations) = dlsym(pin, "mock_scheduling_rep_registrations");
+    CHECK(deliver && specific_calls && ack_registrations && release_family && rep_registrations);
     return session;
 }
 
@@ -177,6 +179,8 @@ static void release_pin(unsigned attempts, int expect_unload)
         CHECK(count(specific_events[index]) == 0U);
     CHECK(ack_registrations() == attempts);
     CHECK(count("scheduling_execute_task_ack_registration_attempted") == attempts);
+    CHECK(rep_registrations() == 0U);
+    CHECK(count("scheduling_task_executing_registration_attempted") == 0U);
     CHECK(dlclose(pin) == 0);
     pin = NULL;
     CHECK(count("library_unloaded") == (expect_unload ? 1U : 0U));

@@ -368,7 +368,9 @@ package body AMS_MEL_IR_Scheduling_Tests is
       Pin                : constant System.Address := Dlopen (IC.To_C (Provider_Path), 2);
       Calls              : Calls_Function;
       Acks               : Calls_Function;
+      Reps               : Calls_Function;
       Before, Ack_Before : IC.unsigned;
+      Rep_Before         : IC.unsigned;
    begin
       Require (Pin /= System.Null_Address, "mock pin");
       Calls := To_Calls (Dlsym (Pin, IC.To_C ("mock_scheduling_specific_calls")));
@@ -376,6 +378,9 @@ package body AMS_MEL_IR_Scheduling_Tests is
       Acks := To_Calls (Dlsym (Pin, IC.To_C ("mock_scheduling_ack_registrations")));
       Require (Acks /= null, "independent ExecuteTaskAck registration counter");
       Ack_Before := Acks.all;
+      Reps := To_Calls (Dlsym (Pin, IC.To_C ("mock_scheduling_rep_registrations")));
+      Require (Reps /= null, "independent TaskExecutingRep registration counter");
+      Rep_Before := Reps.all;
       Before := Calls.all;
       Test_Open_Enable_Close (Provider_Path);
       Test_Depth (Provider_Path, "sched-depth-zero", 0);
@@ -400,6 +405,7 @@ package body AMS_MEL_IR_Scheduling_Tests is
       --  Negative control: no Scheduling-specific exec, send or registration.
       Require (Calls.all = Before, "unimplemented Scheduling-specific call observed");
       Require (Acks.all = Ack_Before, "foundation implicitly registered ExecuteTaskAck");
+      Require (Reps.all = Rep_Before, "foundation implicitly registered TaskExecutingRep");
       Require (Dlclose (Pin) = 0, "mock pin release");
       Ada.Text_IO.Put_Line ("PASS: Ada IR Scheduling channel foundation contract");
    end Run;
