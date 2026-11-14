@@ -20,6 +20,7 @@ with AMS_MEL_IR_Calibration_Status_Tests;
 with AMS_MEL_IR_C2_Metadata_Tests;
 with AMS_MEL_IR_C2_Common_Tests;
 with AMS_MEL_IR_Channel_Tests;
+with AMS_MEL_IR_Discovery_Tests;
 with AMS_MEL_IR_Health_Status_Tests;
 with AMS_MEL_IR_Instrumentation_Tests;
 with AMS_MEL_IR_Track_Tests;
@@ -243,6 +244,9 @@ begin
       when AMS.MEL.Provider_Error =>
          null;
    end;
+   --  Verify actual unload before failure suites deliberately retain provider
+   --  graphs whose callback/detach safety cannot be established.
+   AMS_MEL_IR_Discovery_Tests.Run (Provider_Path);
    AMS_MEL_IR_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Tests.Run (Provider_Path);
    AMS_MEL_IR_Image_Lease_Tests.Run (Provider_Path);

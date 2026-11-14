@@ -1,5 +1,6 @@
 #include <ams_mel/abi.h>
 #include "internal/ir_channel.hpp"
+#include "internal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -146,7 +147,12 @@ bool copy_capability(const irmel::ChannelCapability& input, CapabilityData& outp
 }
 } // namespace
 
-struct ams_mel_ir_channel_capability { std::unique_ptr<CapabilityData> data; };
+// Immutable shared data keeps the borrowed C view stable while list entries
+// gain independent owners. No provider object or executable code is retained.
+struct ams_mel_ir_channel_capability { std::shared_ptr<const CapabilityData> data; };
+struct ams_mel_ir_capability_list {
+    std::vector<std::shared_ptr<const CapabilityData>> entries;
+};
 
 ams_mel_status_t ams_mel::internal::snapshot_capability(
     const irmel::Channel& channel, ams_mel_ir_channel_capability **output,
@@ -156,12 +162,13 @@ ams_mel_status_t ams_mel::internal::snapshot_capability(
     if (!output || *output || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     try {
         auto owner = std::make_unique<ams_mel_ir_channel_capability>();
-        owner->data = std::make_unique<CapabilityData>();
+        auto data = std::make_shared<CapabilityData>();
         const auto value = channel.getCapabilities();
-        if (!copy_capability(value, *owner->data)) {
+        if (!copy_capability(value, *data)) {
             diagnostic("provider returned malformed ChannelCapability", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
+        owner->data = std::move(data);
         *output = owner.release();
         return AMS_MEL_OK;
     } catch (const std::bad_alloc&) {
@@ -177,6 +184,89 @@ ams_mel_status_t ams_mel::internal::snapshot_capability(
         diagnostic("unknown provider capability exception", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_capability_list_create(
+    ams_mel_session *session, ams_mel_ir_capability_list **output,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("invalid capability discovery arguments", out, capacity, required);
+    if (!output || *output || !session || !session->state ||
+        !session->state->control || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        auto owner = std::make_unique<ams_mel_ir_capability_list>();
+        const auto& values = session->state->control->getCapabilities();
+        owner->entries.reserve(values.size());
+        // Enumerate without attachment or callbacks. Zero image fields describe
+        // an unconfigured sensor, not malformed data or an inferred Mono8 stream.
+        for (const auto& value : values) {
+            auto data = std::make_shared<CapabilityData>();
+            if (!copy_capability(value, *data)) {
+                diagnostic("provider returned malformed ChannelCapability", out, capacity, required);
+                return AMS_MEL_PROVIDER_FAILED;
+            }
+            owner->entries.push_back(std::move(data));
+        }
+        // Publication is last: RAII destroys every copied prefix on failure.
+        *output = owner.release();
+        diagnostic("", out, capacity, required);
+        return AMS_MEL_OK;
+    } catch (const std::bad_alloc&) {
+        diagnostic("capability list allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    } catch (const std::exception& error) {
+        const char *what = error.what();
+        const std::string_view text = what ? std::string_view{what} : std::string_view{};
+        diagnostic(!text.empty() && valid_utf8(text) ? text : "provider capability exception",
+                   out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    } catch (...) {
+        diagnostic("unknown provider capability exception", out, capacity, required);
+        return AMS_MEL_PROVIDER_EXCEPTION;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_capability_list_count(
+    const ams_mel_ir_capability_list *list, std::size_t *output,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    if (output) *output = 0U;
+    diagnostic("invalid capability list count arguments", out, capacity, required);
+    if (!list || !output || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    *output = list->entries.size();
+    diagnostic("", out, capacity, required);
+    return AMS_MEL_OK;
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_capability_list_get(
+    const ams_mel_ir_capability_list *list, std::size_t index,
+    ams_mel_ir_channel_capability **output, char *out,
+    std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("invalid capability list entry arguments or index", out, capacity, required);
+    if (!list || !output || *output || index >= list->entries.size() ||
+        (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    try {
+        auto owner = std::make_unique<ams_mel_ir_channel_capability>();
+        owner->data = list->entries[index];
+        *output = owner.release();
+        diagnostic("", out, capacity, required);
+        return AMS_MEL_OK;
+    } catch (...) {
+        diagnostic("capability entry allocation failed", out, capacity, required);
+        return AMS_MEL_INTERNAL_ERROR;
+    }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_capability_list_close(
+    ams_mel_ir_capability_list **list, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("invalid capability list close arguments", out, capacity, required);
+    if (!list || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    delete std::exchange(*list, nullptr);
+    diagnostic("", out, capacity, required);
+    return AMS_MEL_OK;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_channel_capability_view(

@@ -1060,31 +1060,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::Control::getCapabilities() const",
-      "status": "partial",
+      "status": "safe_ada",
       "native": [
         {
-          "path": "native/src/common_channel_requests.cpp",
-          "symbol": "ams_mel_ir_channel_get_capabilities"
+          "path": "native/src/ir_channel.cpp",
+          "symbol": "ams_mel_ir_capability_list_create"
         }
       ],
       "ada": [
         {
-          "path": "ada/src/ams-mel-ir-channel.ads",
+          "path": "ada/src/ams-mel-ir-discovery.ads",
           "symbol": "Capabilities"
         }
       ],
       "tests": [
         {
-          "path": "native/tests/test_public_common_channel.c",
+          "path": "native/tests/test_ir_discovery.c",
           "symbol": "main"
         },
         {
-          "path": "ada/tests/src/ams_mel_ir_channel_tests.adb",
+          "path": "ada/tests/src/ams_mel_ir_discovery_tests.adb",
           "symbol": "Run"
         }
       ],
-      "notes": "Control capability list is consumed privately to select supported owners; safe Ada exposes attached-channel snapshots, not the complete Control list.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-014: complete ordered Control capability list copied before attachment, including empty lists, unconfigured zero image fields and all nested ChannelCapability values. Safe Ada owns independent values after Session closure/provider unload.",
+      "limitations": [
+        "Serialize discovery against Session closure and other provider operations. Advertisement is not proof of functional sensor operations."
+      ],
       "representation": []
     },
     {
@@ -8703,8 +8705,13 @@
       "representation": [
         {
           "upstream": "getCapabilities",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-discovery.ads",
+              "symbol": "Capabilities"
+            }
+          ]
         },
         {
           "upstream": "getVersionInfo",

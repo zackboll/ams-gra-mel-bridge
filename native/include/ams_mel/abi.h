@@ -72,6 +72,7 @@ typedef struct ams_mel_ir_mode_request ams_mel_ir_mode_request;
 typedef struct ams_mel_ir_return_request ams_mel_ir_return_request;
 typedef struct ams_mel_ir_channel_comms_request ams_mel_ir_channel_comms_request;
 typedef struct ams_mel_ir_channel_capability ams_mel_ir_channel_capability;
+typedef struct ams_mel_ir_capability_list ams_mel_ir_capability_list;
 /* Task 032B1: a WEAK common Channel view of an existing typed family owner
  * (C2, Image stream, Health, Instrumentation, Track, or Scheduling). It is not a provider
  * Channel attachment, not a strong owner, and not a replacement for the typed
@@ -2358,6 +2359,33 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_get_capabilities(
     ams_mel_ir_c2 *c2, ams_mel_ir_channel_capability **out_capability,
     char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Discover before attachment: advertised identities select channels, but do
+ * not prove that any sensor operation works. Copies the complete Control list
+ * in provider order, including empty lists and unconfigured zero image fields.
+ * Serialize creation against Session closure and other provider operations.
+ * Lists and retrieved entries own immutable bridge data, not provider objects;
+ * either may outlive the Session and each other. Indices are zero-based.
+ * Output owner slots must initially be NULL and remain NULL on failure.
+ * Close accepts a NULL owner value and clears the slot. As with other opaque
+ * owners, handles must be live, of the correct type, and closed exactly once;
+ * serialize access against closing the same handle. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_capability_list_create(
+    ams_mel_session *session, ams_mel_ir_capability_list **out_list,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_capability_list_count(
+    const ams_mel_ir_capability_list *list, size_t *out_count,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_capability_list_get(
+    const ams_mel_ir_capability_list *list, size_t index,
+    ams_mel_ir_channel_capability **out_capability,
+    char *diagnostic, size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_capability_list_close(
+    ams_mel_ir_capability_list **list, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
 AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_capability_view(
     const ams_mel_ir_channel_capability *capability,
     const ams_mel_ir_channel_capability_v1 **out_view,
