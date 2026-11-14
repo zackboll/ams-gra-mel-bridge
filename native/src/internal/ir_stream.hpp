@@ -74,6 +74,8 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  *   channel members or spinning, and adopts the published cleanup result
  *   instead of an earlier, now stale, Stop status. */
 struct ImageStreamState {
+    /* Immutable operating mode; enabling control is not acquisition. */
+    bool control_only{false};
     std::shared_ptr<SessionState> session;
     std::shared_ptr<CallbackState> callback;
     std::shared_ptr<Listener> listener;

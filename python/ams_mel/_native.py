@@ -273,6 +273,15 @@ class IrStreamConfigV1(ctypes.Structure):
     ]
 
 
+class IrImageControlConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("channel_type", ctypes.c_uint32),
+        ("channel_id", UciIdV1),
+        ("platform_id", UciIdV1),
+        ("sensor_location", ComponentLocationV1),
+    ]
+
+
 class IrC2ConfigV1(ctypes.Structure):
     _fields_ = [
         ("channel_type", ctypes.c_uint32),
@@ -663,6 +672,18 @@ ams_mel_ir_stream_open.argtypes = [
     SizePointer,
 ]
 ams_mel_ir_stream_open.restype = ctypes.c_int32
+
+# ctypes has no const-qualified pointer type; both inputs are borrowed/read-only.
+ams_mel_ir_image_control_open = _LIBRARY.ams_mel_ir_image_control_open
+ams_mel_ir_image_control_open.argtypes = [
+    SessionHandle,
+    ctypes.POINTER(IrImageControlConfigV1),
+    ctypes.POINTER(IrStreamHandle),
+    CharPointer,
+    ctypes.c_size_t,
+    SizePointer,
+]
+ams_mel_ir_image_control_open.restype = ctypes.c_int32
 
 ams_mel_ir_stream_start = _LIBRARY.ams_mel_ir_stream_start
 ams_mel_ir_stream_start.argtypes = [
@@ -2453,6 +2474,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_session_get_provider_version",
     "ams_mel_session_close",
     "ams_mel_ir_stream_open",
+    "ams_mel_ir_image_control_open",
     "ams_mel_ir_stream_start",
     "ams_mel_ir_stream_receive",
     "ams_mel_ir_stream_get_capabilities",
