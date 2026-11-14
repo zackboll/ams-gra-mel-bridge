@@ -26,6 +26,7 @@ from ._types import (
     HealthConfig,
     ImageBand,
     ImageConfig,
+    ImageControlConfig,
     InstrumentationConfig,
     MetadataCapability,
     PixelFormat,
@@ -69,6 +70,25 @@ class _RawImageConfig:
         return _native.UciIdV1(
             (_ctypes.c_uint8 * 16).from_buffer_copy(value.uuid),
             self._view(value.descriptive_label, "descriptive_label"),
+        )
+
+
+class _RawImageControlConfig(_RawImageConfig):
+    """Control-only C record and storage borrowed for exactly one Open call."""
+
+    def __init__(self, config: ImageControlConfig) -> None:
+        self.buffers = []
+        self.raw = _native.IrImageControlConfigV1(
+            channel_type=_native.AMS_MEL_IR_CHANNEL_IRST_IMAGE,
+            channel_id=self._id(config.channel_id),
+            platform_id=self._id(config.platform_id),
+            sensor_location=_native.ComponentLocationV1(
+                offset_x_m=float(config.sensor_location.offset_x_m),
+                offset_y_m=float(config.sensor_location.offset_y_m),
+                offset_z_m=float(config.sensor_location.offset_z_m),
+                key=self._view(config.sensor_location.key, "key"),
+                system_name=self._view(config.sensor_location.system_name, "system_name"),
+            ),
         )
 
 
