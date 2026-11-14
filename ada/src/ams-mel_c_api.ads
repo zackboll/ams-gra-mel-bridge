@@ -82,6 +82,9 @@ private package AMS.MEL_C_API is
    --  Task 032B1: raw weak common Channel view. Private FFI only; no safe
    --  Ada Channel operations use it yet (Task 032B2).
    type Channel_Handle is new System.Address;
+   type Comms_Metadata_Handle is new System.Address;
+   Null_Comms_Metadata                     : constant Comms_Metadata_Handle :=
+     Comms_Metadata_Handle (System.Null_Address);
    Null_Channel                            : constant Channel_Handle :=
      Channel_Handle (System.Null_Address);
    type Metadata_Handle is new System.Address;
@@ -2656,6 +2659,36 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_channel_send_keepalive";
+   function IR_Channel_Comms_Metadata_Open
+     (Handle              : Channel_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Comms_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_comms_metadata_open";
+   function IR_Channel_Comms_Metadata_Receive
+     (Handle              : Comms_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access IR_Channel_Comms_Test_Report_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_comms_metadata_receive";
+   function IR_Channel_Comms_Metadata_Get_Counters
+     (Handle              : Comms_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_comms_metadata_get_counters";
+   function IR_Channel_Comms_Metadata_Close
+     (Handle              : access Comms_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_channel_comms_metadata_close";
    function IR_Channel_Submit_Comms_Test
      (Handle              : Channel_Handle;
       Request             : access IR_Channel_Comms_Test_Request_V1;

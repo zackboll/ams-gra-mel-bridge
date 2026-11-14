@@ -1587,12 +1587,20 @@
         {
           "path": "native/src/ir_c2.cpp",
           "symbol": "ams_mel_ir_c2_metadata_register_comms_test"
+        },
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_comms_metadata_open"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-c2-metadata.ads",
           "symbol": "Enable_Comms_Test_Events"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-channel-metadata.ads",
+          "symbol": "Open"
         }
       ],
       "tests": [
@@ -1603,10 +1611,20 @@
         {
           "path": "ada/tests/src/ams_mel_ir_c2_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_channel_comms_metadata.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_comms_metadata_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Only C2 metadata owner exposes this common callback registration. Common requests on other families do not register this callback.",
-      "limitations": [],
+      "notes": "Explicit actual-provider callback reception on C2 (existing shared C2 queue), HealthAndStatus, Image including control-only, and StackedImage (shared common receiver). Future completion never manufactures metadata. Partial overall: Instrumentation, Track and Scheduling remain missing.",
+      "limitations": [
+        "No unregister; one attempt per typed channel including failure. Close deactivates admission, not provider callback registration. Mock qualification is not real communications transport qualification."
+      ],
       "representation": []
     },
     {
@@ -9090,7 +9108,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Command, channel and request correlation IDs retained; asynchronous error/result distinct from callback availability.",
+      "notes": "Both uint32 command/request identifiers are preserved. The report has no channel-ID or UUID field; association belongs to its metadata stream. Asynchronous future results remain independent.",
       "limitations": [
         "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support."
       ],
@@ -14720,7 +14738,7 @@
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
       "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "Explicit C2 Metadata.Register_Comms_Test path; no equivalent on other owners."
+      "notes": "Existing C2.Metadata.Enable_Comms_Test_Events only, preserving its queue and one-shot. The shared receiver rejects C2."
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -14766,9 +14784,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-017: AMS.MEL.IR.Channel.Metadata.Open through the weak family view; explicit one-shot actual callback registration and independent copied FIFO. Image includes ordinary and control-only owners."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -14814,9 +14832,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-017: AMS.MEL.IR.Channel.Metadata.Open through the weak family view; explicit one-shot actual callback registration and independent copied FIFO. Image includes ordinary and control-only owners."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -15006,9 +15024,9 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IRMEL-ADA-017: AMS.MEL.IR.Channel.Metadata.Open through the weak family view; explicit one-shot actual callback registration and independent copied FIFO. Image includes ordinary and control-only owners."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",

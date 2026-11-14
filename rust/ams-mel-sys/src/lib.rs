@@ -5956,3 +5956,42 @@ pub struct AmsMelIrC2SystemResponseRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+
+#[repr(C)]
+pub struct AmsMelIrChannelCommsMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+
+extern "C" {
+    pub fn ams_mel_ir_channel_comms_metadata_open(
+        channel: *const AmsMelIrChannel,
+        queue_capacity: usize,
+        output: *mut *mut AmsMelIrChannelCommsMetadata,
+        registration: *mut AmsMelIrReturn,
+        diagnostic: *mut ::std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_receive(
+        metadata: *const AmsMelIrChannelCommsMetadata,
+        timeout_ms: u32,
+        output: *mut AmsMelIrChannelCommsTestReportV1,
+        diagnostic: *mut ::std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_get_counters(
+        metadata: *const AmsMelIrChannelCommsMetadata,
+        output: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut ::std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_close(
+        metadata: *mut *mut AmsMelIrChannelCommsMetadata,
+        diagnostic: *mut ::std::ffi::c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

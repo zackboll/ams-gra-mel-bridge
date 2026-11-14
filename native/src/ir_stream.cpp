@@ -3,6 +3,7 @@
 #include "internal/ir_channel.hpp"
 #include "internal/ir_stream.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_comms_metadata.hpp"
 
 #include <irmel/library/image/ImageChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
@@ -1437,6 +1438,16 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return image_capability(std::static_pointer_cast<ImageStreamState>(erased),
                                     output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue) {
+            auto state = std::static_pointer_cast<ImageStreamState>(erased);
+            std::lock_guard lock{state->callback->mutex};
+            const auto lifecycle = state->callback->lifecycle;
+            if (state->comms_metadata_attempted ||
+                (lifecycle != Lifecycle::Attached && lifecycle != Lifecycle::Running)) return false;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            return true;
         }};
 }
 } // namespace ams_mel_common
@@ -1719,6 +1730,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
         {
             std::lock_guard lock{stream.callback->mutex};
             stream.callback->accepting = false;
+            if (stream.comms_metadata) stream.comms_metadata->deactivate(failed);
             if (stream.callback->lifecycle != Lifecycle::Failed)
                 stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
             stream.callback->ready.notify_all();
@@ -1947,6 +1959,7 @@ ImageCleanupOutcome image_stream_cleanup(
             /* IRMEL-ADA-010: same fail-safe retention for the independent
              * LineOfSightQuaternion owner and its registered callback. */
             image_los_quaternion_stream_failed(los_quaternion);
+            if (stream.comms_metadata) stream.comms_metadata->deactivate(true);
             return ImageCleanupOutcome::Failed;
         }
 
@@ -1955,6 +1968,11 @@ ImageCleanupOutcome image_stream_cleanup(
          * host byte remains retained by stream. */
         image_channel.reset();
         channel.reset();
+
+        if (stream.comms_metadata) {
+            if (failed) stream.comms_metadata->deactivate(true);
+            stream.comms_metadata->drain();
+        }
 
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
