@@ -75,7 +75,10 @@ class LineOfSightEuler:
 
 @dataclass(frozen=True)
 class NavigationResponse:
-    """Asynchronous NavigationReportResp, NOT request completion or status."""
+    """Owned NavigationReportResp payload, not itself a completion status.
+
+    Received independently in Image metadata or inside NavigationCompleted.
+    """
 
     system_time_ns: int
     command_id: int

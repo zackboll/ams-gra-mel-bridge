@@ -61,6 +61,16 @@ from ._image_types import (
     NavigationResponse,
 )
 from ._image_metadata import ImageMetadataStream
+from ._navigation import NavigationRequest
+from ._navigation_types import (
+    AttitudeRate,
+    NavigationCompleted,
+    NavigationRejected,
+    NavigationReport,
+    NorthEastDown,
+    PositionSolutionState,
+    PositionVelocityCovariance,
+)
 from ._camera_response import (
     CameraCommandResponse,
     CameraResponseCounters,
@@ -224,6 +234,14 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    AttitudeRate,
+    NavigationCompleted,
+    NavigationRejected,
+    NavigationReport,
+    NavigationRequest,
+    NorthEastDown,
+    PositionSolutionState,
+    PositionVelocityCovariance,
     C2MetadataStream,
     C2MetadataKind,
     C2MetadataEvent,
@@ -374,6 +392,14 @@ del _public_symbol
 
 
 __all__ = [
+    "AttitudeRate",
+    "NavigationCompleted",
+    "NavigationRejected",
+    "NavigationReport",
+    "NavigationRequest",
+    "NorthEastDown",
+    "PositionSolutionState",
+    "PositionVelocityCovariance",
     "CameraCommandResponse",
     "CameraResponseCounters",
     "CameraResponseOpenError",
