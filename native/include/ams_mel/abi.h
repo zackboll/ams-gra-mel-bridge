@@ -998,6 +998,14 @@ typedef struct ams_mel_ir_stream_config_v1 {
     size_t queue_capacity;
 } ams_mel_ir_stream_config_v1;
 
+/* Command/metadata attachment has no acquisition storage configuration. */
+typedef struct ams_mel_ir_image_control_config_v1 {
+    ams_mel_ir_channel_type_t channel_type;
+    ams_mel_uci_id_v1 channel_id;
+    ams_mel_uci_id_v1 platform_id;
+    ams_mel_component_location_v1 sensor_location;
+} ams_mel_ir_image_control_config_v1;
+
 /* Command-and-control configuration. No image listener or image-buffer fields
  * belong to this channel. String views are copied during open and use the same
  * UTF-8/no-embedded-NUL contract as the image configuration. */
@@ -2166,6 +2174,22 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_stream_start(
     ams_mel_ir_stream *stream,
     char *diagnostic,
     size_t diagnostic_capacity,
+    size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Attach an ImageChannel independently of its image layout. No getBuffer,
+ * image storage, init or registerBuffer calls occur, including at stream_start:
+ * Start only enables this channel, not acquisition. The existing Image command,
+ * metadata, capability and weak common-channel APIs use the returned owner.
+ * stream_receive and stream_receive_snapshot return INITIALIZATION_FAILED with
+ * a diagnostic in this mode, even after Start. Stop/Close and pending-request,
+ * callback, uncertain-release/detach retention rules are those of stream_open.
+ * Lifecycle calls must be externally serialized as for acquisition owners.
+ */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_image_control_open(
+    const ams_mel_session *session,
+    const ams_mel_ir_image_control_config_v1 *config,
+    ams_mel_ir_stream **out_stream,
+    char *diagnostic, size_t diagnostic_capacity,
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 
 /* Waits at most timeout_ms for a copied frame. A zero timeout polls. Timeout is

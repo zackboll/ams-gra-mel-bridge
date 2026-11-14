@@ -1007,12 +1007,20 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_open"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_control_open"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir.ads",
           "symbol": "Open_Image_Stream"
+        },
+        {
+          "path": "ada/src/ams-mel-ir.ads",
+          "symbol": "Open_Image_Control"
         }
       ],
       "tests": [
@@ -1023,10 +1031,20 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
-      "limitations": [],
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
+      "limitations": [
+        "Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats."
+      ],
       "representation": []
     },
     {
@@ -1559,9 +1577,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned BadPixelList event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned BadPixelList event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -1653,9 +1679,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned LineOfSightEuler event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned LineOfSightEuler event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -1717,9 +1751,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned LineOfSightReport event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned LineOfSightReport event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -1781,9 +1823,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -1884,9 +1934,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_navigation_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "All NavigationReport fields including eighteen covariance terms; full response and cached errors.",
+      "notes": "All NavigationReport fields including eighteen covariance terms; full response and cached errors. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -14234,6 +14292,11 @@
   ],
   "image_capabilities": [
     {
+      "name": "Control-only Image attachment",
+      "status": "safe_ada",
+      "notes": "Open_Image_Control uses the same limited Image_Stream owner for capabilities, common KeepAlive/CommsTest, navigation and four required metadata registrations with zero image-layout fields. Start only enables; Receive/frame leases fail explicitly. No image buffers are created, initialized or registered; unexpected callbacks are released without querying sample bytes, with existing uncertainty retention."
+    },
+    {
       "name": "Mono8 single-band",
       "status": "safe_ada",
       "notes": "Implemented host pool and retained leases; supported() checks capability Mono/8/1, callback separately checks Mono/8/1, nonzero dimensions, known enums and buffer containment."
@@ -14241,7 +14304,7 @@
     {
       "name": "Higher-bit-depth monochrome",
       "status": "missing",
-      "notes": "Rejected by capability bitDepth == 8 and frame bitsPerPixel == 8 checks in native/src/ir_stream.cpp."
+      "notes": "Rejected by capability bitDepth == 8 and frame bitsPerPixel == 8 checks in native/src/ir_stream.cpp. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Packed pixel formats",
@@ -14251,17 +14314,17 @@
     {
       "name": "RGB",
       "status": "missing",
-      "notes": "Enum represented, but capability/frame format must equal Mono."
+      "notes": "Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Bayer",
       "status": "missing",
-      "notes": "Enum represented, but capability/frame format must equal Mono."
+      "notes": "Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Multiband",
       "status": "missing",
-      "notes": "Capability numberOfBands and frame numBands must both equal one."
+      "notes": "Capability numberOfBands and frame numBands must both equal one. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Generic application-managed buffers",

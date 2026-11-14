@@ -598,6 +598,7 @@ struct CallbackState {
     std::deque<QueuedFrame> queue;
     std::size_t capacity{};
     bool accepting{false};
+    bool control_only{false};
     Lifecycle lifecycle{Lifecycle::Attached};
     ams_mel_ir_stream_counters_v1 counters{};
     std::vector<HostRange> registered_ranges;
@@ -938,6 +939,15 @@ struct CallbackState {
                     increment(counters.malformed_or_unsupported_frames);
                 }
                 retain_uncertain_buffer(std::move(unattempted), no_retention_slot, false);
+                return;
+            }
+            /* Control and metadata do not establish a sample layout. Return an
+             * unsolicited checkout through the same reentry-safe release engine,
+             * without even querying its address or reading its FrameHeader.
+             * Exhaustion/uncertain release retains the graph as for acquisition. */
+            if (control_only) {
+                std::lock_guard lock{mutex};
+                increment(counters.malformed_or_unsupported_frames);
                 return;
             }
             if (header.getWidth() == 0U || header.getHeight() == 0U ||
@@ -2150,21 +2160,21 @@ ams_mel_status_t teardown(const std::shared_ptr<ImageStreamState>& state_ptr, bo
 }
 } // namespace
 
-extern "C" ams_mel_status_t ams_mel_ir_stream_open(
+static ams_mel_status_t open_image(
     const ams_mel_session *session, const ams_mel_ir_stream_config_v1 *config,
     ams_mel_ir_stream **out_stream, char *out, std::size_t capacity,
-    std::size_t *required) noexcept
+    std::size_t *required, bool control_only) noexcept
 {
     diagnostic("", out, capacity, required);
     if (!session || !session->state || !config || !out_stream || *out_stream ||
         (!out && capacity != 0U) ||
         config->channel_type != AMS_MEL_IR_CHANNEL_IRST_IMAGE ||
-        config->buffer_count == 0U || config->buffer_size == 0U ||
-        config->queue_capacity == 0U ||
+        (!control_only && (config->buffer_count == 0U || config->buffer_size == 0U ||
+        config->queue_capacity == 0U)) ||
         config->buffer_size > static_cast<std::size_t>(
             std::numeric_limits<std::int64_t>::max()) ||
-        config->buffer_count - 1U > static_cast<std::size_t>(
-            std::numeric_limits<std::int64_t>::max()) ||
+        (!control_only && config->buffer_count - 1U > static_cast<std::size_t>(
+            std::numeric_limits<std::int64_t>::max())) ||
         !valid_view(config->channel_id.descriptive_label) ||
         !valid_view(config->platform_id.descriptive_label) ||
         !valid_view(config->sensor_location.key) ||
@@ -2178,6 +2188,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
         stream->state = state;
         state->session = session->state;
         state->callback = std::make_shared<CallbackState>();
+        state->control_only = control_only;
+        state->callback->control_only = control_only;
         state->callback->capacity = config->queue_capacity;
         /* Corrective (PR #42 second review): established during stream
          * construction, before any provider callback can exist, so a
@@ -2189,7 +2201,21 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
         state->buffer_count = config->buffer_count;
         state->buffer_size = config->buffer_size;
         state->instance = state->session->instance;
-        state->buffer_factory = state->session->library->symbol<BufferFactory>("getBuffer");
+        if (!control_only)
+            state->buffer_factory = state->session->library->symbol<BufferFactory>("getBuffer");
+        else {
+            /* These are empty callback ownership slots, NOT image buffers or
+             * sample storage. Install before attach, which may call the listener
+             * synchronously. Two slots allow release() to reenter the listener;
+             * arbitrary excess delivery falls back to fail-safe retention. */
+            state->callback->retention_slots.resize(2U);
+            state->callback->free_retention_slots = {1U, 0U};
+            state->callback->deferred_releases.resize(2U);
+            state->callback->free_deferred_releases = {1U, 0U};
+            state->callback->pending_deferred_releases.reserve(2U);
+            state->callback->uncertain_slots.resize(2U);
+            state->callback->free_uncertain_slots = {1U, 0U};
+        }
         mel::ForeignKey key{copy_view(config->sensor_location.key),
                             copy_view(config->sensor_location.system_name)};
         mel::ComponentLocation location{config->sensor_location.offset_x_m,
@@ -2198,8 +2224,16 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
         irmel::Config upstream{convert_id(config->channel_id),
             irmel::ChannelType::IRSTImage, convert_id(config->platform_id),
             std::move(location), state->listener, false, false};
-        state->channel = state->session->control->attachChannel(upstream);
+        try {
+            state->channel = state->session->control->attachChannel(upstream);
+        } catch (...) {
+            /* An exception cannot prove the provider discarded its listener.
+             * Keep code and callback graph alive even without a channel handle. */
+            if (control_only) image_stream_retain_failed(state);
+            throw;
+        }
         if (!state->channel) {
+            if (control_only) image_stream_retain_failed(state);
             diagnostic("attachChannel returned null", out, capacity, required);
             return AMS_MEL_FACTORY_FAILED;
         }
@@ -2207,8 +2241,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
             std::dynamic_pointer_cast<irmel::ImageChannel>(state->channel);
         bool compatible = false;
         try {
-            compatible = state->image_channel &&
-                         supported(state->channel->getCapabilities());
+            if (state->image_channel) {
+                const auto capability = state->channel->getCapabilities();
+                compatible = control_only || supported(capability);
+            }
         } catch (...) {
             bool detached = false;
             try {
@@ -2251,6 +2287,25 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_open(
         diagnostic("provider exception during stream open", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_stream_open(
+    const ams_mel_session *session, const ams_mel_ir_stream_config_v1 *config,
+    ams_mel_ir_stream **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    return open_image(session, config, output, out, capacity, required, false);
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_image_control_open(
+    const ams_mel_session *session, const ams_mel_ir_image_control_config_v1 *config,
+    ams_mel_ir_stream **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    if (!config) return open_image(session, nullptr, output, out, capacity, required, true);
+    const ams_mel_ir_stream_config_v1 attachment{config->channel_type,
+        config->channel_id, config->platform_id, config->sensor_location, 0U, 0U, 0U};
+    return open_image(session, &attachment, output, out, capacity, required, true);
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_stream_start(
@@ -2304,68 +2359,76 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             channel = state.channel;
         }
         if (!channel) throw std::runtime_error("stream has no provider channel");
-        state.storage.reserve(state.buffer_count);
-        state.buffers.reserve(state.buffer_count);
-        for (std::size_t i = 0; i < state.buffer_count; ++i) {
-            auto buffer = state.buffer_factory(state.instance, state.session->manager);
-            if (!buffer) throw std::runtime_error("getBuffer returned null");
-            state.storage.emplace_back(state.buffer_size);
-            if (buffer->init(state.storage.back().data(), state.buffer_size,
-                             static_cast<std::int64_t>(i)) != irmel::Return::Success ||
-                channel->registerBuffer(buffer) != irmel::Return::Success) {
-                throw std::runtime_error("buffer initialization or registration failed");
+        /* Control callbacks may already be in flight from attach. Their empty
+         * ownership slots were installed before attachment and must not be
+         * rebuilt here. Acquisition alone constructs registered host storage. */
+        if (!state.control_only) {
+            state.storage.reserve(state.buffer_count);
+            state.buffers.reserve(state.buffer_count);
+            for (std::size_t i = 0; i < state.buffer_count; ++i) {
+                auto buffer = state.buffer_factory(state.instance, state.session->manager);
+                if (!buffer) throw std::runtime_error("getBuffer returned null");
+                state.storage.emplace_back(state.buffer_size);
+                if (buffer->init(state.storage.back().data(), state.buffer_size,
+                                 static_cast<std::int64_t>(i)) != irmel::Return::Success ||
+                    channel->registerBuffer(buffer) != irmel::Return::Success) {
+                    throw std::runtime_error("buffer initialization or registration failed");
+                }
+                state.buffers.push_back(std::move(buffer));
             }
-            state.buffers.push_back(std::move(buffer));
+            {
+                std::lock_guard lock{state.callback->mutex};
+                state.callback->registered_ranges.clear();
+                state.callback->registered_ranges.reserve(state.storage.size());
+                for (const auto& bytes : state.storage) {
+                    state.callback->registered_ranges.push_back(
+                        {reinterpret_cast<std::uintptr_t>(bytes.data()), bytes.size()});
+                }
+                /* Corrective (PR #42 second review): build this stream's
+                 * emergency failed-buffer ownership BEFORE channel->enable(),
+                 * i.e. strictly before any provider callback can occur, and size
+                 * it from the configured buffer_count rather than a process-global
+                 * constant. Every simultaneously registered provider buffer can
+                 * therefore be owned permanently without allocating anything after
+                 * a release() has failed.
+                 *
+                 * Restart-safe: a slot already holding an uncertain buffer is
+                 * never reset or freed. Slots are only appended, and only indices
+                 * whose slot is currently empty go back on the free list. */
+                if (state.callback->retention_slots.size() < state.buffer_count)
+                    state.callback->retention_slots.resize(state.buffer_count);
+                state.callback->free_retention_slots.clear();
+                state.callback->free_retention_slots.reserve(
+                    state.callback->retention_slots.size());
+                for (std::size_t i = state.callback->retention_slots.size(); i-- > 0U;) {
+                    if (!state.callback->retention_slots[i])
+                        state.callback->free_retention_slots.push_back(i);
+                }
+                /* One active execution slot enforces the provider-call bound.
+                 * Callback reentry cannot wait for that slot, so buffer_count
+                 * preallocated deferred owners cover every distinct checkout that
+                 * can be returned by a reentrant rejection. */
+                if (state.callback->deferred_releases.size() < state.buffer_count)
+                    state.callback->deferred_releases.resize(state.buffer_count);
+                if (state.callback->uncertain_slots.size() < state.buffer_count)
+                    state.callback->uncertain_slots.resize(state.buffer_count);
+                state.callback->free_uncertain_slots.clear();
+                state.callback->free_uncertain_slots.reserve(state.buffer_count);
+                for (std::size_t i = state.callback->uncertain_slots.size(); i-- > 0U;)
+                    if (!state.callback->uncertain_slots[i])
+                        state.callback->free_uncertain_slots.push_back(i);
+                state.callback->free_deferred_releases.clear();
+                state.callback->free_deferred_releases.reserve(state.buffer_count);
+                state.callback->pending_deferred_releases.clear();
+                state.callback->pending_deferred_releases.reserve(state.buffer_count);
+                for (std::size_t i = state.callback->deferred_releases.size(); i-- > 0U;)
+                    if (!state.callback->deferred_releases[i].buffer)
+                        state.callback->free_deferred_releases.push_back(i);
+            }
         }
         {
             std::lock_guard lock{state.callback->mutex};
-            state.callback->registered_ranges.clear();
-            state.callback->registered_ranges.reserve(state.storage.size());
-            for (const auto& bytes : state.storage) {
-                state.callback->registered_ranges.push_back(
-                    {reinterpret_cast<std::uintptr_t>(bytes.data()), bytes.size()});
-            }
-            /* Corrective (PR #42 second review): build this stream's
-             * emergency failed-buffer ownership BEFORE channel->enable(),
-             * i.e. strictly before any provider callback can occur, and size
-             * it from the configured buffer_count rather than a process-global
-             * constant. Every simultaneously registered provider buffer can
-             * therefore be owned permanently without allocating anything after
-             * a release() has failed.
-             *
-             * Restart-safe: a slot already holding an uncertain buffer is
-             * never reset or freed. Slots are only appended, and only indices
-             * whose slot is currently empty go back on the free list. */
-            if (state.callback->retention_slots.size() < state.buffer_count)
-                state.callback->retention_slots.resize(state.buffer_count);
-            state.callback->free_retention_slots.clear();
-            state.callback->free_retention_slots.reserve(
-                state.callback->retention_slots.size());
-            for (std::size_t i = state.callback->retention_slots.size(); i-- > 0U;) {
-                if (!state.callback->retention_slots[i])
-                    state.callback->free_retention_slots.push_back(i);
-            }
-            /* One active execution slot enforces the provider-call bound.
-             * Callback reentry cannot wait for that slot, so buffer_count
-             * preallocated deferred owners cover every distinct checkout that
-             * can be returned by a reentrant rejection. */
-            if (state.callback->deferred_releases.size() < state.buffer_count)
-                state.callback->deferred_releases.resize(state.buffer_count);
-            if (state.callback->uncertain_slots.size() < state.buffer_count)
-                state.callback->uncertain_slots.resize(state.buffer_count);
-            state.callback->free_uncertain_slots.clear();
-            state.callback->free_uncertain_slots.reserve(state.buffer_count);
-            for (std::size_t i = state.callback->uncertain_slots.size(); i-- > 0U;)
-                if (!state.callback->uncertain_slots[i])
-                    state.callback->free_uncertain_slots.push_back(i);
-            state.callback->free_deferred_releases.clear();
-            state.callback->free_deferred_releases.reserve(state.buffer_count);
-            state.callback->pending_deferred_releases.clear();
-            state.callback->pending_deferred_releases.reserve(state.buffer_count);
-            for (std::size_t i = state.callback->deferred_releases.size(); i-- > 0U;)
-                if (!state.callback->deferred_releases[i].buffer)
-                    state.callback->free_deferred_releases.push_back(i);
-            state.callback->accepting = true;
+            state.callback->accepting = !state.control_only;
             /* Teardown-participating state: record under the teardown lock
                that disable() is now owed to the provider. The lifecycle is
                Starting here, so no deferred cleanup can be claiming ownership,
@@ -2404,6 +2467,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive(
     diagnostic("", out, capacity, required);
     if (!stream || !frame || (!frame->pixels && frame->pixel_capacity != 0U) ||
         (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
+    if (stream->state->control_only) {
+        diagnostic("image receive unavailable on control-only attachment", out, capacity, required);
+        return AMS_MEL_INITIALIZATION_FAILED;
+    }
     /* Owned-copy compatibility path, unchanged externally: the caller's bytes
      * are filled from the retained provider buffer and the provider buffer is
      * then released, so the returned frame keeps no provider dependency. The
@@ -2497,6 +2564,10 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_receive_snapshot(
     diagnostic("", out, capacity, required);
     if (!stream || !snapshot || *snapshot || (!out && capacity != 0U))
         return AMS_MEL_INVALID_ARGUMENT;
+    if (stream->state->control_only) {
+        diagnostic("image receive unavailable on control-only attachment", out, capacity, required);
+        return AMS_MEL_INITIALIZATION_FAILED;
+    }
     try {
         const auto& state = *stream->state;
         std::unique_lock lock{state.callback->mutex};

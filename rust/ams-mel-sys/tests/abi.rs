@@ -4,6 +4,83 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ams_mel_sys::*;
+
+// The identity-only record is exactly the acquisition configuration prefix,
+// without any acquisition sizing fields. These checks run during compilation.
+const _: () = {
+    assert!(
+        size_of::<AmsMelIrImageControlConfigV1>()
+            == offset_of!(AmsMelIrStreamConfigV1, buffer_count)
+    );
+    assert!(align_of::<AmsMelIrImageControlConfigV1>() == align_of::<AmsMelIrStreamConfigV1>());
+    assert!(offset_of!(AmsMelIrImageControlConfigV1, channel_type) == 0);
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, channel_id)
+            == offset_of!(AmsMelIrStreamConfigV1, channel_id)
+    );
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, platform_id)
+            == offset_of!(AmsMelIrStreamConfigV1, platform_id)
+    );
+    assert!(
+        offset_of!(AmsMelIrImageControlConfigV1, sensor_location)
+            == offset_of!(AmsMelIrStreamConfigV1, sensor_location)
+    );
+};
+
+#[test]
+fn image_control_abi() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *const AmsMelIrImageControlConfigV1,
+        *mut *mut AmsMelIrStream,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_control_open;
+    // Type-check each field independently, not merely its size/offset.
+    let _: fn(AmsMelIrImageControlConfigV1) -> u32 = |v| v.channel_type;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelUciIdV1 = |v| v.channel_id;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelUciIdV1 = |v| v.platform_id;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelComponentLocationV1 = |v| v.sensor_location;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!("ams-mel-image-control-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args([
+            "-std=c11",
+            "-pedantic-errors",
+            "-Wall",
+            "-Wextra",
+            "-Werror"
+        ])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/image_control_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert_eq!(
+        actual,
+        vec![
+            size_of::<AmsMelIrImageControlConfigV1>(),
+            align_of::<AmsMelIrImageControlConfigV1>(),
+            offset_of!(AmsMelIrImageControlConfigV1, channel_type),
+            offset_of!(AmsMelIrImageControlConfigV1, channel_id),
+            offset_of!(AmsMelIrImageControlConfigV1, platform_id),
+            offset_of!(AmsMelIrImageControlConfigV1, sensor_location),
+        ]
+    );
+}
+
 #[test]
 fn product_rx_v5_abi() {
     let _: unsafe extern "C" fn(
@@ -1609,8 +1686,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 305);
-    assert_eq!(exported.len(), 305);
+    assert_eq!(declared.len(), 306);
+    assert_eq!(exported.len(), 306);
     assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
     assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);

@@ -132,8 +132,29 @@ package AMS.MEL.IR is
    --  @return True if a native handle is held, not a guarantee of enabled or
    --  healthy provider reception.
 
+   type Image_Control_Config is private;
+   --  Command/metadata attachment identity, with no image-storage settings.
+
+   function Create_Image_Control_Config
+     (Channel_ID : UCI_ID; Platform_ID : UCI_ID; Sensor_Location : Component_Location)
+      return Image_Control_Config;
+   --  Copy normal attachment metadata without inventing an acquisition layout.
+
+   function Open_Image_Control
+     (Parent : Session; Config : Image_Control_Config) return Image_Stream;
+   --  Attach for Image commands, capabilities, common Channel operations and
+   --  metadata, even when all advertised layout values are zero. Reuses the
+   --  limited Image_Stream owner and its Stop/Close, pending-request and callback
+   --  retention rules. Explicit Close is preferred to non-raising finalization.
+   --  Start enables the channel only: no buffer factory, sample allocation or
+   --  registration occurs. Enable is not evidence that acquisition has begun.
+   --  Both Receive APIs (including frame leases) raise Provider_Error with a
+   --  control-only diagnostic; no pixel view can be obtained from this owner.
+   --  @exception Provider_Error Closed parent, invalid metadata or failed attach.
+
    procedure Start (Object : in out Image_Stream);
-   --  Initialize/register host buffers and enable the attached image channel.
+   --  Initialize/register host buffers and enable an acquisition attachment.
+   --  For Open_Image_Control owners, only enable the channel (no acquisition).
    --  @param Object Open stream to start; serialize lifecycle operations on it.
    --  @exception Provider_Error Native registration, enable or state check fails.
 
@@ -316,6 +337,11 @@ private
       Buffers  : Positive;
       Size     : Positive;
       Queue    : Positive;
+   end record;
+   type Image_Control_Config is record
+      Channel  : UCI_ID;
+      Platform : UCI_ID;
+      Location : Component_Location;
    end record;
    type Image_Stream is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Stream_Handle := AMS.MEL_C_API.Null_Stream;

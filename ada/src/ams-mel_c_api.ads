@@ -1346,6 +1346,23 @@ private package AMS.MEL_C_API is
       Diagnostic_Capacity : Size_T;
       Diagnostic_Required : access Size_T) return Interfaces.Integer_32
    with Import, Convention => C, External_Name => "ams_mel_ir_stream_open";
+
+   type IR_Image_Control_Config_V1 is record
+      Channel_Type    : Interfaces.Unsigned_32;
+      Channel_ID      : UCI_ID_V1;
+      Platform_ID     : UCI_ID_V1;
+      Sensor_Location : Component_Location_V1;
+   end record
+   with Convention => C;
+
+   function IR_Image_Control_Open
+     (Session             : Session_Handle;
+      Config              : access IR_Image_Control_Config_V1;
+      Output              : access Stream_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_control_open";
    function IR_Stream_Start
      (Stream              : Stream_Handle;
       Diagnostic          : System.Address;

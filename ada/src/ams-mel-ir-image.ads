@@ -173,6 +173,8 @@ package AMS.MEL.IR.Image is
    --  @return New weak common channel view.
    function Receive
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Full_Frame;
+   --  A control-only attachment raises Provider_Error with a control-only
+   --  diagnostic; enabling that channel never makes sample access available.
    --  Receives a complete frame by copying header metadata and the entire pixel payload into
    --  Ada-owned storage, then closing the temporary native snapshot before return. The result
    --  survives stream, Session and provider closure. Pixels makes another independent copy. This
@@ -337,6 +339,7 @@ package AMS.MEL.IR.Image is
 
    function Acquire_Frame
      (Object : AMS.MEL.IR.Image_Stream; Timeout_Milliseconds : Natural := 0) return Frame_Lease;
+   --  A control-only attachment raises Provider_Error; it has no image leases.
    --  Dequeues and owns one native snapshot, copying only small metadata and retaining the
    --  provider payload by address and length. Uses the same Mono8 single-band validated queue as
    --  owned Receive. At most one receive/acquire consumer may operate on a stream at once;

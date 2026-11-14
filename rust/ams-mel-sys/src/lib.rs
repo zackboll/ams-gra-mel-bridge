@@ -1306,6 +1306,15 @@ pub struct AmsMelIrStreamConfigV1 {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrImageControlConfigV1 {
+    pub channel_type: u32,
+    pub channel_id: AmsMelUciIdV1,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrC2ConfigV1 {
     pub channel_type: u32,
     pub channel_id: AmsMelUciIdV1,
@@ -3085,6 +3094,15 @@ extern "C" {
     pub fn ams_mel_ir_stream_open(
         session: *const AmsMelSession,
         config: *const AmsMelIrStreamConfigV1,
+        out_stream: *mut *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
+    pub fn ams_mel_ir_image_control_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrImageControlConfigV1,
         out_stream: *mut *mut AmsMelIrStream,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,

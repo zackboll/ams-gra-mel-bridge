@@ -20,7 +20,7 @@ REPORT = "docs/irmel-ada-coverage.md"
 REVIEW = "docs/reference/irmel-reviewed-bindings.json"
 # Independently reviewed baseline anchors; changing these requires a new audit.
 CATALOG_SHA256 = "00f29cb4c523d251f5ca78f829bc2cac7b723b0144754f9bcfdd9a922caab9ac"
-REVIEW_SHA256 = "4d4fbbd24af263c3d4c1e660059b90d5a4b36ffe3413338a22bcb10a81b1b8c4"
+REVIEW_SHA256 = "8053bdcd7499d9b04410bd69979e31b036ca01183c3de1f0a13a1d1237e93677"
 PINS = {
     "ir": ("https://github.com/open-arsenal/ams-gra-hello-world-sk-interfaces-ir-mel",
            "8d9224519f12b44e0b28815755c56a32a28d24a0",

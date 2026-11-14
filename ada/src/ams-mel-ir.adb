@@ -148,6 +148,55 @@ package body AMS.MEL.IR is
       end return;
    end Open_Image_Stream;
 
+   function Create_Image_Control_Config
+     (Channel_ID : UCI_ID; Platform_ID : UCI_ID; Sensor_Location : Component_Location)
+      return Image_Control_Config
+   is ((Channel_ID, Platform_ID, Sensor_Location));
+
+   function Open_Image_Control (Parent : Session; Config : Image_Control_Config) return Image_Stream
+   is
+      Channel_Label  : aliased constant String := US.To_String (Config.Channel.Label);
+      Platform_Label : aliased constant String := US.To_String (Config.Platform.Label);
+      Key            : aliased constant String := US.To_String (Config.Location.Key_Value);
+      System_Name    : aliased constant String := US.To_String (Config.Location.System_Value);
+      Raw            : aliased C.IR_Image_Control_Config_V1 :=
+        (Channel_Type    => 1,
+         Channel_ID      =>
+           (UUID              => C.Byte_Array_16 (Config.Channel.Value),
+            Descriptive_Label => String_View (Channel_Label)),
+         Platform_ID     =>
+           (UUID              => C.Byte_Array_16 (Config.Platform.Value),
+            Descriptive_Label => String_View (Platform_Label)),
+         Sensor_Location =>
+           (Offset_X_M  => Interfaces.C.double (Config.Location.X),
+            Offset_Y_M  => Interfaces.C.double (Config.Location.Y),
+            Offset_Z_M  => Interfaces.C.double (Config.Location.Z),
+            Key         => String_View (Key),
+            System_Name => String_View (System_Name)));
+      Diagnostic     : aliased Diagnostic_Array := [others => Interfaces.C.nul];
+      Required       : aliased C.Size_T := 0;
+   begin
+      if not AMS.MEL.Is_Open (Parent) then
+         raise Provider_Error with "provider session is closed";
+      end if;
+      return Result : Image_Stream do
+         declare
+            Status : constant Interfaces.Integer_32 :=
+              C.IR_Image_Control_Open
+                (Parent.Handle,
+                 Raw'Access,
+                 Result.Handle'Access,
+                 Diagnostic'Address,
+                 Diagnostic'Length,
+                 Required'Access);
+         begin
+            if Status /= C.Success then
+               raise Provider_Error with Message (Diagnostic);
+            end if;
+         end;
+      end return;
+   end Open_Image_Control;
+
    function Is_Open (Object : Image_Stream) return Boolean
    is (Object.Handle /= C.Null_Stream);
 
