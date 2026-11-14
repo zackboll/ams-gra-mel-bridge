@@ -79,6 +79,35 @@ class ComponentLocation:
 
 
 @dataclass(frozen=True)
+class ImageControlConfig:
+    """Image command/metadata attachment, without acquisition geometry or storage."""
+
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        try:
+            for name in ("channel_id", "platform_id"):
+                value = getattr(self, name)
+                if not isinstance(value, UciId):
+                    raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be UciId")
+                UciId.__post_init__(value)
+            location = self.sensor_location
+            if not isinstance(location, ComponentLocation):
+                raise _local_error(
+                    ErrorKind.INVALID_ARGUMENT, "sensor_location must be ComponentLocation"
+                )
+            ComponentLocation.__post_init__(location)
+            for name in ("offset_x_m", "offset_y_m", "offset_z_m"):
+                _validate_double(getattr(location, name), name)
+        except AttributeError as error:
+            raise _local_error(
+                ErrorKind.INVALID_ARGUMENT, "incomplete ImageControlConfig"
+            ) from error
+
+
+@dataclass(frozen=True)
 class ImageConfig:
     channel_id: UciId
     platform_id: UciId
