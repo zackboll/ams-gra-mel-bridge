@@ -6,8 +6,8 @@
 //! [`ModeRequest`], [`ReturnRequest`], [`ChannelView`], and [`CommsRequest`]
 //! are intentionally neither `Send` nor `Sync`. A zero receive or request
 //! timeout polls. Request timeout and request close or drop do not cancel
-//! provider work. BIT support is limited to the empty/no-op profile;
-//! payload-bearing BIT is not exposed.
+//! provider work. [`BitCommand`] supports one-choice NoOp, initiate, cancel and
+//! clear-fault payloads, retaining numeric IDs and opaque UTF-8 bytes.
 //!
 //! Common Channel coverage (Task 032B3, RUST-IR-001):
 //!
@@ -103,10 +103,12 @@ pub use ir_optical_distortion_map::{
     ForwardRightDown, OpticalDistortionMap, OpticalDistortionMapOpenError,
     OpticalDistortionMapStream, RowCol,
 };
+mod ir_bit;
 mod ir_config_set;
 mod ir_mode;
 mod rf_admin;
 mod rf_data;
+pub use ir_bit::{BitAction, BitCommand};
 pub use ir_c2_metadata::{
     BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
     C2MetadataStream, CannotComply, CommandState, CommandStatus,
@@ -1098,7 +1100,8 @@ impl ControlChannel {
         })
     }
 
-    /// Submits only the empty/no-op BIT profile; payload-bearing BIT is not exposed.
+    /// Submits the empty/no-op BIT profile. For one-choice payloads use
+    /// [`Self::submit_bit`]. This source-compatible convenience API is unchanged.
     pub fn submit_bit_noop(&mut self, command_id: u32) -> Result<ReturnRequest, Error> {
         let mut raw = ptr::null_mut();
         let result = call_with_diagnostic(|diagnostic, capacity, required| {
@@ -1210,7 +1213,8 @@ impl Drop for ModeRequest {
 ///
 /// It currently owns requests produced by:
 ///
-/// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op profile), and
+/// - [`ControlChannel::submit_bit`] (one-choice C2 BIT),
+/// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op convenience), and
 /// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text), and
 /// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2 or Image).
 ///
