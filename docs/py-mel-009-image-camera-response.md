@@ -104,8 +104,10 @@ and bools, never ctypes values or native pointers. Diagnostics use the existing
 strict helper, retaining structured categories and complete diagnostic metadata.
 
 Open succeeds only with native OK, a nonnull owner, and published SUCCESS Return.
-OK without both required outputs is PROTOCOL_INCONSISTENCY. NOT_SUPPORTED and
-FAIL are independently preserved Returns with native PROVIDER_FAILED. A provider
+OK without both required outputs is PROTOCOL_INCONSISTENCY. All five defined
+Returns (SUCCESS, BAD_POINTER, FAIL, NOT_SUPPORTED and NOT_IMPLEMENTED) are
+preserved independently of native status; non-SUCCESS registration Returns
+carry native PROVIDER_FAILED. A provider
 registration throw yields PROVIDER_EXCEPTION and no published Return (`None`).
 Unwritten/invalid Return is `None`, never inferred from text. Local invalid
 capacity or closed Image yields INVALID_ARGUMENT, no native status, and
@@ -223,6 +225,46 @@ No real provider, Squall, credentials, hardware or provider code changes were
 used. No Ada source was edited, so no Ada formatting/build claim is made.
 Full local GNATdoc generation is not claimed; exact-head hosted Bootstrap and
 Ada API Documentation checks are reported separately at delivery.
+
+## PY-MEL-009-R1 — Registration Return correction
+
+The clean existing feature worktree and open PR #180 both started at reviewed
+HEAD `dae74094c2df281eec7c350379b6b093db1e102d`, with no intervening commits.
+The three-member whitelist incorrectly discarded published BAD_POINTER and
+NOT_IMPLEMENTED results. Error conversion now follows `_open_nuc`: construct
+`CommandReturn` directly, catching `ValueError` for unwritten/unknown values.
+All five defined members retain their exact enum identity. No API, native ABI,
+ctypes, provider, ownership, queue, counter, Image Start/Stop, Ada or Rust changes
+are introduced; the coverage classification and implementation scope are unchanged.
+
+The added boundary-injection regression exercises all five members, an unwritten
+`0xFFFFFFFF` sentinel and unknown numeric value `12345`, each with no owner and
+with an unexpectedly published real fixture owner (14 subcases). It checks
+PROVIDER_FAILED status/classification, exact diagnostic and required length,
+original MelError cause fields, one registration call, local one-shot rejection
+and zero/one owner releases with a consumed handle. No provider scenario was added.
+Against the original production implementation, the new test failed in exactly
+four subcases: BAD_POINTER and NOT_IMPLEMENTED with/without the unexpected owner.
+With the correction, all 14 subcases and all 27 focused test methods passed.
+
+Sequential local qualification of the corrected implementation:
+
+| Command | Actual result |
+| --- | --- |
+| `make test-native` | PASS: 523/523 CTest cases. |
+| `make test-python` | PASS: 483 tests, warnings-as-errors; prerequisite native 523/523 passed. |
+| `make test-policy` | PASS: 234 tests across seven suites (18 + 18 + 28 + 64 + 75 + 18 + 13). |
+| `make check-ir-api-coverage` | PASS: offline audit and 52 regression tests; inventories unchanged. |
+| `PYTHONPATH="$PWD/python:$PWD/python/tests" AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0" AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers" python3 -W error -m unittest -v test_ir_camera_response` | PASS: 27 tests. |
+| `python3 scripts/check_doc_source_integrity.py` | PASS: 824 vendor files, three workflows. |
+| `python3 scripts/check_final_newlines.py` | PASS. |
+| `python3 -W error -m compileall -q python/ams_mel python/tests` | PASS. |
+| `git diff --check` | PASS. |
+
+No native rebuild/relink overlapped test execution. Exact-head hosted results
+are recorded separately in the PR handoff; local results are not hosted evidence.
+Qualification remains compiled-mock/boundary-injection only, not hardware or
+real-provider interoperability qualification. No new unresolved upstream semantics.
 
 ## Limitations
 

@@ -81,10 +81,10 @@ def _open_camera_response(parent, queue_capacity: int) -> CameraResponseStream:
             stream.__del__()
         if isinstance(error, MelError):
             # Never infer Return from a status or diagnostic, including exceptions.
-            result = (CommandReturn(registration.value)
-                      if registration.value in (int(CommandReturn.SUCCESS),
-                                                int(CommandReturn.NOT_SUPPORTED),
-                                                int(CommandReturn.FAIL)) else None)
+            try:
+                result = CommandReturn(registration.value)
+            except ValueError:
+                result = None
             raise CameraResponseOpenError(error.kind, error.diagnostic,
                                           error.diagnostic_required, error.native_status,
                                           result) from error

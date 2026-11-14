@@ -141,6 +141,64 @@ class CameraResponseTests(unittest.TestCase):
                     self.assertIsNone(repeated.registration)
                     self.assertEqual(opened.call_count, 1)
 
+    def test_registration_failure_preserves_all_returns_and_cleans_unexpected_owner_once(self):
+        native_open = getattr(n, OPEN)
+        native_close = m.CameraResponseStream._close_function
+        for registration in (*m.CommandReturn, None, 12345):
+            for publish_owner in (False, True):
+                with self.subTest(registration=registration, publish_owner=publish_owner):
+                    _, parent = self.owners(capacity=None)
+                    outputs = []
+                    statuses = []
+                    message = b"injected CameraCommandResp registration failure"
+
+                    def register(owner, capacity, output, result, diag, size, required):
+                        outputs.append(output)
+                        self.assertFalse(output[0])
+                        self.assertEqual(c.cast(result, c.POINTER(c.c_uint32))[0], 0xFFFFFFFF)
+                        if publish_owner:
+                            native_result = c.c_uint32()
+                            self.assertEqual(native_open(
+                                owner, capacity, output, c.byref(native_result), diag, size,
+                                required), n.AMS_MEL_OK)
+                            self.assertTrue(output[0])
+                        if registration is not None:
+                            c.cast(result, c.POINTER(c.c_uint32))[0] = int(registration)
+                        diagnostic(diag, size, required, message)
+                        statuses.append(n.AMS_MEL_PROVIDER_FAILED)
+                        return n.AMS_MEL_PROVIDER_FAILED
+
+                    closed = mock.Mock(wraps=native_close)
+                    try:
+                        with mock.patch.object(n, OPEN, side_effect=register) as opened, \
+                                mock.patch.object(m.CameraResponseStream, "_close_function",
+                                                  staticmethod(closed)):
+                            error = self.error(m.ErrorKind.PROVIDER_FAILED,
+                                               parent.open_camera_response,
+                                               n.AMS_MEL_PROVIDER_FAILED)
+                            self.assertIsInstance(error, m.CameraResponseOpenError)
+                            self.assertEqual(statuses, [n.AMS_MEL_PROVIDER_FAILED])
+                            self.assertEqual(error.diagnostic, message.decode())
+                            self.assertEqual(error.diagnostic_required, len(message) + 1)
+                            self.assertIsInstance(error.__cause__, m.MelError)
+                            for field in ("kind", "native_status", "diagnostic", "diagnostic_required"):
+                                self.assertEqual(getattr(error, field), getattr(error.__cause__, field))
+                            repeated = self.error(m.ErrorKind.INVALID_ARGUMENT,
+                                                  parent.open_camera_response)
+                            self.assertIsInstance(repeated, m.CameraResponseOpenError)
+                            self.assertIsNone(repeated.registration)
+                            opened.assert_called_once()
+                            self.assertFalse(outputs[0][0])
+                            gc.collect()
+                            self.assertEqual(closed.call_count, int(publish_owner))
+                            expected = registration if isinstance(registration, m.CommandReturn) else None
+                            self.assertIs(error.registration, expected)
+                    finally:
+                        # Reclaim a real fixture owner if a wrapper regression leaves it behind.
+                        for output in outputs:
+                            if output[0]:
+                                native_close(output, None, 0, None)
+
     def test_unsupported_registration_leaves_ordinary_metadata_and_image_usable(self):
         _, parent = self.owners("image-metadata-sync", None)
         with parent.open_metadata() as ordinary:
