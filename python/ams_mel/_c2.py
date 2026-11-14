@@ -13,6 +13,7 @@ from ._errors import (
 )
 from ._validation import (
     _utf8_input,
+    _validate_double,
     _validate_int64,
     _validate_size_t,
     _validate_uint32,
@@ -21,7 +22,7 @@ from ._requests import (
     ModeRequest,
     ReturnRequest,
 )
-from ._types import ConfigSetCommand
+from ._types import ConfigSetCommand, ModeCommand
 from ._common import (
     ChannelView,
     _open_channel_view,
@@ -90,6 +91,58 @@ class ControlChannel:
             metadata.__del__()
             raise
         return metadata
+
+    def submit_mode(self, command: ModeCommand) -> ModeRequest:
+        """Submit one complete ModeCmd while Enabled; completion is not a physical transition.
+
+        Reuses ModeRequest: timeout/close do not cancel provider work. Externally
+        serialize with enable, other submissions and close on this C2 owner.
+        """
+        self._require_open()
+        if not isinstance(command, ModeCommand):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "command must be ModeCommand")
+        # Validate the entire graph again, even after object.__setattr__ mutation.
+        ModeCommand.__post_init__(command)
+        scan = command.scan_parameters
+        raw = _native.IrModeCommandV1(
+            command.command_id, command.state, command.mode,
+            _native.IrScanParamV1(
+                int(scan.elevation_defined_with_range_and_altitude),
+                _validate_double(scan.center_az_rad, "center_az_rad"),
+                _validate_double(scan.center_el_rad, "center_el_rad"),
+                scan.center_frame_ref_el, scan.center_frame_ref_az,
+                _validate_double(scan.scan_width_rad, "scan_width_rad"),
+                _validate_double(scan.scan_height_rad, "scan_height_rad"),
+                _native.IrScanTypeV1(scan.scan_type.continuous_scan,
+                                     scan.scan_type.returning, scan.scan_type.agile_scan),
+                scan.scan_id,
+                _validate_double(scan.scan_rate_rad_per_second, "scan_rate_rad_per_second"),
+                _validate_double(scan.preferred_revisit_interval_seconds,
+                                 "preferred_revisit_interval_seconds"),
+                _validate_double(scan.required_revisit_interval_seconds,
+                                 "required_revisit_interval_seconds"),
+                scan.max_range_of_interest_m, scan.min_range_of_interest_m,
+                scan.elevation_scan_center_altitude_m, scan.elevation_scan_center_range_m,
+                scan.degradation_method,
+            ),
+        )
+        request = ModeRequest._from_owner(_native.IrModeRequestHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_submit_mode(
+                    self._owner, _ctypes.byref(raw), request._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if not request.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Mode submission succeeded without returning a request owner",
+                )
+        except BaseException:
+            # Preserve the first failure; never retry ownership-uncertain cleanup.
+            request.__del__()
+            request._owner.value = None
+            raise
+        return request
 
     def submit_operate(self, command_id: int) -> ModeRequest:
         """Submit exactly Operate/TaskSched and return its asynchronous request."""

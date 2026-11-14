@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes as _ctypes
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from enum import IntEnum
 from typing import Any
@@ -17,6 +17,7 @@ from ._validation import (
     _INT64_MAX,
     _UINT32_MAX,
     _utf8_input,
+    _validate_double,
     _validate_int64,
     _validate_size_t,
     _validate_uint32,
@@ -319,6 +320,96 @@ class MfaMode(IntEnum):
     TASK_SCHED = _native.AMS_MEL_IR_MFA_MODE_TASK_SCHED
     SCAN_VOLUME_SCHED = _native.AMS_MEL_IR_MFA_MODE_SCAN_VOLUME_SCHED
     SCAN_BAR_SCHED = _native.AMS_MEL_IR_MFA_MODE_SCAN_BAR_SCHED
+
+
+class CoordinateFrameReference(IntEnum):
+    INERTIAL = _native.AMS_MEL_IR_COORD_FRAME_INERTIAL
+    AIRCRAFT = _native.AMS_MEL_IR_COORD_FRAME_AIRCRAFT
+
+
+class DegradationMethod(IntEnum):
+    CAPACITY = _native.AMS_MEL_IR_DEGRADATION_CAPACITY
+    VOLUME = _native.AMS_MEL_IR_DEGRADATION_VOLUME
+    RANGE = _native.AMS_MEL_IR_DEGRADATION_RANGE
+    REVISIT = _native.AMS_MEL_IR_DEGRADATION_REVISIT
+
+
+def _validate_mode_enum(value: IntEnum, enum: type[IntEnum], name: str) -> None:
+    if type(value) is not enum or value.value not in enum._value2member_map_:
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be a published {enum.__name__}")
+
+
+@dataclass(frozen=True)
+class ScanType:
+    """Exact uint32 scan controls, not Boolean flags."""
+
+    continuous_scan: int = 0
+    returning: int = 0
+    agile_scan: int = 0
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.continuous_scan, "continuous_scan")
+        _validate_uint32(self.returning, "returning")
+        _validate_uint32(self.agile_scan, "agile_scan")
+
+
+@dataclass(frozen=True)
+class ScanParameters:
+    """Complete ScanParam values; units are explicit, physical feasibility is not checked."""
+
+    elevation_defined_with_range_and_altitude: bool = False
+    center_az_rad: float = 0.0
+    center_el_rad: float = 0.0
+    center_frame_ref_el: CoordinateFrameReference = CoordinateFrameReference.INERTIAL
+    center_frame_ref_az: CoordinateFrameReference = CoordinateFrameReference.AIRCRAFT
+    scan_width_rad: float = 0.0
+    scan_height_rad: float = 0.0
+    scan_type: ScanType = field(default_factory=ScanType)
+    scan_id: int = 0
+    scan_rate_rad_per_second: float = 0.0
+    preferred_revisit_interval_seconds: float = 0.0
+    required_revisit_interval_seconds: float = 0.0
+    max_range_of_interest_m: int = 0
+    min_range_of_interest_m: int = 0
+    elevation_scan_center_altitude_m: int = 0
+    elevation_scan_center_range_m: int = 0
+    degradation_method: DegradationMethod = DegradationMethod.CAPACITY
+
+    def __post_init__(self) -> None:
+        if type(self.elevation_defined_with_range_and_altitude) is not bool:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT,
+                               "elevation_defined_with_range_and_altitude must be bool")
+        _validate_mode_enum(self.center_frame_ref_el, CoordinateFrameReference, "center_frame_ref_el")
+        _validate_mode_enum(self.center_frame_ref_az, CoordinateFrameReference, "center_frame_ref_az")
+        _validate_mode_enum(self.degradation_method, DegradationMethod, "degradation_method")
+        if not isinstance(self.scan_type, ScanType):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "scan_type must be ScanType")
+        ScanType.__post_init__(self.scan_type)
+        for name in ("scan_id", "max_range_of_interest_m", "min_range_of_interest_m",
+                     "elevation_scan_center_altitude_m", "elevation_scan_center_range_m"):
+            _validate_uint32(getattr(self, name), name)
+        for name in ("center_az_rad", "center_el_rad", "scan_width_rad", "scan_height_rad",
+                     "scan_rate_rad_per_second", "preferred_revisit_interval_seconds",
+                     "required_revisit_interval_seconds"):
+            _validate_double(getattr(self, name), name)
+
+
+@dataclass(frozen=True)
+class ModeCommand:
+    """Published MFA state/mode and complete scan payload, without compatibility inference."""
+
+    command_id: int
+    state: MFAState
+    mode: MfaMode
+    scan_parameters: ScanParameters = field(default_factory=ScanParameters)
+
+    def __post_init__(self) -> None:
+        _validate_uint32(self.command_id, "command_id")
+        _validate_mode_enum(self.state, MFAState, "state")
+        _validate_mode_enum(self.mode, MfaMode, "mode")
+        if not isinstance(self.scan_parameters, ScanParameters):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "scan_parameters must be ScanParameters")
+        ScanParameters.__post_init__(self.scan_parameters)
 
 
 class CommandReturn(IntEnum):
