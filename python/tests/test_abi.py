@@ -12,6 +12,31 @@ from ams_mel import _native
 
 
 class AbiTests(unittest.TestCase):
+    def test_private_capability_list_signatures_are_exact(self) -> None:
+        """IRMEL-ADA-014-R1: private discovery mirror, not a public API."""
+        pointer = ctypes.POINTER
+        owner = _native.IrCapabilityListHandle
+        self.assertIs(owner, ctypes.c_void_p)
+        signatures = {
+            "ams_mel_ir_capability_list_create": [_native.SessionHandle, pointer(owner)],
+            "ams_mel_ir_capability_list_count": [owner, pointer(ctypes.c_size_t)],
+            "ams_mel_ir_capability_list_get": [
+                owner, ctypes.c_size_t, pointer(_native.IrChannelCapabilityHandle)
+            ],
+            "ams_mel_ir_capability_list_close": [pointer(owner)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [
+                _native.CharPointer, ctypes.c_size_t, _native.SizePointer
+            ])
+            self.assertIs(function.restype, ctypes.c_int32)
+        import ams_mel
+        self.assertFalse(hasattr(ams_mel, "IrCapabilityListHandle"))
+        for name in signatures:
+            self.assertFalse(hasattr(ams_mel, name))
+
     def test_private_scheduling_foundation_abi(self) -> None:
         """IRMEL-ADA-011: private raw SchedulingChannel foundation mirror only."""
         root = Path(__file__).resolve().parents[2]
@@ -1141,6 +1166,10 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_comms_request_close",
                 "ams_mel_ir_c2_get_capabilities",
                 "ams_mel_ir_channel_capability_view",
+                "ams_mel_ir_capability_list_create",
+                "ams_mel_ir_capability_list_count",
+                "ams_mel_ir_capability_list_get",
+                "ams_mel_ir_capability_list_close",
                 "ams_mel_ir_channel_capability_close",
                 "ams_mel_ir_return_request_wait",
                 "ams_mel_ir_return_request_close",
@@ -1330,8 +1359,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 301)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 301)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 305)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 305)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1339,7 +1368,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 301)
+        self.assertEqual(len(exported), 305)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)

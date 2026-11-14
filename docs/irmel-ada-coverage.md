@@ -28,7 +28,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 | Buffer | 0 | 0 | 4 | 0 | 6 |
 | C2Channel | 15 | 0 | 0 | 0 | 1 |
 | Channel | 3 | 0 | 4 | 1 | 1 |
-| Control | 2 | 0 | 3 | 0 | 1 |
+| Control | 3 | 0 | 2 | 0 | 1 |
 | EnumUtilities | 0 | 0 | 0 | 0 | 23 |
 | FactoryFunctions | 2 | 0 | 1 | 0 | 0 |
 | HealthStatusChannel | 7 | 0 | 0 | 1 | 1 |
@@ -378,7 +378,6 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - `Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)`: Only C2 metadata owner exposes this common callback registration. Common requests on other families do not register this callback.
 - `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.
 - `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.
-- `Control::getCapabilities() const`: Control capability list is consumed privately to select supported owners; safe Ada exposes attached-channel snapshots, not the complete Control list.
 - `ImageListener::onImage(const Channel&,const FrameHeader&,std::shared_ptr<Buffer>)`: Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.
 - `FactoryFunctions::getBuffer(std::string_view,std::shared_ptr<::API_Manager>)`: Privately loads provider buffers for the bridge-managed Mono8 host pool only; no generic buffer factory exposed.
 

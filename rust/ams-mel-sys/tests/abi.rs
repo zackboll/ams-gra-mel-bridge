@@ -1555,6 +1555,39 @@ fn rf_data_signatures_match_the_c_header() {
     assert!(data.is_null() && info.is_null());
 }
 
+/// IRMEL-ADA-014-R1: preserve discovery pointer constness, depth and size_t widths.
+#[test]
+fn capability_list_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelSession,
+        *mut *mut AmsMelIrCapabilityList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_create;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrCapabilityList,
+        *mut usize,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_count;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrCapabilityList,
+        usize,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_get;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrCapabilityList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_close;
+}
+
 /// The raw declaration inventory equals the production export map exactly.
 #[test]
 fn raw_inventory_matches_production_exports() {
@@ -1576,8 +1609,10 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 301);
-    assert_eq!(exported.len(), 301);
+    assert_eq!(declared.len(), 305);
+    assert_eq!(exported.len(), 305);
+    assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
+    assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",

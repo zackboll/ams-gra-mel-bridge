@@ -1168,6 +1168,23 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_track_foundation)
     add_test(NAME ir_track_foundation_contract COMMAND test_ir_track_foundation)
 
+    foreach(discovery_test IN ITEMS test_ir_discovery test_ir_discovery_allocation)
+        if(discovery_test STREQUAL "test_ir_discovery")
+            add_executable(${discovery_test} tests/${discovery_test}.c)
+            target_compile_features(${discovery_test} PRIVATE c_std_11)
+        else()
+            add_executable(${discovery_test} tests/${discovery_test}.cpp)
+            target_compile_features(${discovery_test} PRIVATE cxx_std_20)
+        endif()
+        set_target_properties(${discovery_test} PROPERTIES C_EXTENSIONS OFF CXX_EXTENSIONS OFF)
+        target_compile_definitions(${discovery_test} PRIVATE
+            AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+        target_link_libraries(${discovery_test} PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+        add_dependencies(${discovery_test} mock_ir_provider)
+        ams_mel_warnings(${discovery_test})
+        add_test(NAME ${discovery_test} COMMAND ${discovery_test})
+    endforeach()
+
     # IRMEL-ADA-011 SchedulingChannel foundation; one process per scenario.
     add_executable(test_ir_scheduling_foundation tests/test_ir_scheduling_foundation.c)
     target_compile_features(test_ir_scheduling_foundation PRIVATE c_std_11)

@@ -561,6 +561,7 @@ IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
 IrChannelCommsRequestHandle = ctypes.c_void_p
 IrChannelCapabilityHandle = ctypes.c_void_p
+IrCapabilityListHandle = ctypes.c_void_p
 # Task 032B1: private raw weak common Channel view (ams_mel_ir_channel *).
 # No public Python Channel API uses it yet.
 IrChannelHandle = ctypes.c_void_p
@@ -844,6 +845,18 @@ ams_mel_ir_channel_comms_request_close.restype = ctypes.c_int32
 ams_mel_ir_c2_get_capabilities = _LIBRARY.ams_mel_ir_c2_get_capabilities
 ams_mel_ir_c2_get_capabilities.argtypes = [IrC2Handle,ctypes.POINTER(IrChannelCapabilityHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_c2_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_capability_list_create = _LIBRARY.ams_mel_ir_capability_list_create
+ams_mel_ir_capability_list_create.argtypes = [SessionHandle, ctypes.POINTER(IrCapabilityListHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_capability_list_create.restype = ctypes.c_int32
+ams_mel_ir_capability_list_count = _LIBRARY.ams_mel_ir_capability_list_count
+ams_mel_ir_capability_list_count.argtypes = [IrCapabilityListHandle, SizePointer, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_capability_list_count.restype = ctypes.c_int32
+ams_mel_ir_capability_list_get = _LIBRARY.ams_mel_ir_capability_list_get
+ams_mel_ir_capability_list_get.argtypes = [IrCapabilityListHandle, ctypes.c_size_t, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_capability_list_get.restype = ctypes.c_int32
+ams_mel_ir_capability_list_close = _LIBRARY.ams_mel_ir_capability_list_close
+ams_mel_ir_capability_list_close.argtypes = [ctypes.POINTER(IrCapabilityListHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_capability_list_close.restype = ctypes.c_int32
 ams_mel_ir_channel_capability_view = _LIBRARY.ams_mel_ir_channel_capability_view
 ams_mel_ir_channel_capability_view.argtypes = [IrChannelCapabilityHandle,ctypes.POINTER(ctypes.POINTER(IrChannelCapabilityV1)),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_channel_capability_view.restype = ctypes.c_int32
@@ -2473,6 +2486,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_comms_request_close",
     "ams_mel_ir_c2_get_capabilities",
     "ams_mel_ir_channel_capability_view",
+    "ams_mel_ir_capability_list_create",
+    "ams_mel_ir_capability_list_count",
+    "ams_mel_ir_capability_list_get",
+    "ams_mel_ir_capability_list_close",
     "ams_mel_ir_channel_capability_close",
     "ams_mel_ir_return_request_wait",
     "ams_mel_ir_return_request_close",

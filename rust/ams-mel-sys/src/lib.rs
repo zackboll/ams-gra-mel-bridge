@@ -2028,6 +2028,11 @@ pub struct AmsMelIrChannelCapability {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelIrCapabilityList {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 /// Opaque weak common Channel view (`ams_mel_ir_channel`, Task 032B1). Raw
 /// declarations only; no safe Rust common Channel API is provided yet.
 #[repr(C)]
@@ -3325,6 +3330,34 @@ extern "C" {
     pub fn ams_mel_ir_c2_get_capabilities(
         c2: *mut AmsMelIrC2,
         out: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_create(
+        session: *mut AmsMelSession,
+        out_list: *mut *mut AmsMelIrCapabilityList,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_count(
+        list: *const AmsMelIrCapabilityList,
+        out_count: *mut usize,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_get(
+        list: *const AmsMelIrCapabilityList,
+        index: usize,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_close(
+        list: *mut *mut AmsMelIrCapabilityList,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

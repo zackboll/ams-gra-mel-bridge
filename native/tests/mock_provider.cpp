@@ -5726,6 +5726,31 @@ class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
+        if (instance_.rfind("discovery-", 0U) == 0U) {
+            if (instance_ == "discovery-empty") return;
+            const std::array types{irmel::ChannelType::CommandAndControl,
+                irmel::ChannelType::HealthAndStatus, irmel::ChannelType::IRSTImage,
+                irmel::ChannelType::StackedImage};
+            for (std::size_t i = 0; i < types.size(); ++i) {
+                // Four required detector identities with unconfigured images.
+                // Rich mode additionally exercises every nested collection.
+                auto value = instance_ == "discovery-rich" ?
+                    rich_channel_capability() : irmel::ChannelCapability{};
+                value.setChanID(metadata_id(static_cast<std::uint8_t>(0x10U + i),
+                    "discovery-" + std::to_string(i) + "-\xCE\xB1"));
+                value.setChannelTypes(instance_ == "discovery-rich" ?
+                    std::vector<irmel::ChannelType>{types[i],
+                        irmel::ChannelType::Instrumentation, irmel::ChannelType::Reserved2} :
+                    std::vector<irmel::ChannelType>{types[i]});
+                capabilities_.push_back(std::move(value));
+            }
+            if (instance_ == "discovery-malformed")
+                capabilities_.back().setChannelMetadataCapabilities(
+                    {static_cast<irmel::ChannelMetadataCapabilityType>(99U)});
+            if (instance_ == "discovery-bad-label")
+                capabilities_.back().setChanID(metadata_id(1U, std::string{"bad\0label", 9}));
+            return;
+        }
         irmel::ChannelCapability capability;
         if (instance_.rfind("health-",0)==0)
             capability.setChannelTypes({irmel::ChannelType::HealthAndStatus});
@@ -5783,7 +5808,16 @@ public:
         initialized_ = true; return Return::Success;
     }
     const std::vector<irmel::ChannelCapability>& getCapabilities() const override
-    { return capabilities_; }
+    {
+        if (instance_.rfind("discovery-", 0U) == 0U) {
+            if (!initialized_) throw std::logic_error("discovery before init");
+            if (instance_ == "discovery-throw") throw std::runtime_error("mock discovery exception");
+            if (instance_ == "discovery-unknown-throw") throw 42;
+            if (instance_ == "discovery-bad-alloc") throw std::bad_alloc{};
+            record("discovery_called");
+        }
+        return capabilities_;
+    }
     mel::VersionInfo getVersionInfo() const override
     {
         if (!initialized_) throw std::logic_error("mock not initialized");
@@ -5799,6 +5833,8 @@ public:
     }
     std::shared_ptr<irmel::Channel> attachChannel(const irmel::Config& config) override
     {
+        // Discovery scenarios must never mutate channel or callback state.
+        if (instance_.rfind("discovery-", 0U) == 0U) std::abort();
         record("channel_attached");
         if (instance_ == "attach-throw") throw std::runtime_error("mock attach exception");
         if (instance_ == "attach-null" || instance_ == "c2-attach-null") return {};

@@ -28,26 +28,55 @@ private package AMS.MEL_C_API is
 
    subtype Size_T is Interfaces.C.size_t;
    type Session_Handle is new System.Address;
-   Null_Session                            : constant Session_Handle :=
-     Session_Handle (System.Null_Address);
+   Null_Session         : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
-   Null_Stream                             : constant Stream_Handle :=
-     Stream_Handle (System.Null_Address);
+   Null_Stream          : constant Stream_Handle := Stream_Handle (System.Null_Address);
    type Frame_Snapshot_Handle is new System.Address;
-   Null_Frame_Snapshot                     : constant Frame_Snapshot_Handle :=
+   Null_Frame_Snapshot  : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
    type C2_Handle is new System.Address;
-   Null_C2                                 : constant C2_Handle := C2_Handle (System.Null_Address);
+   Null_C2              : constant C2_Handle := C2_Handle (System.Null_Address);
    type Mode_Request_Handle is new System.Address;
-   Null_Mode_Request                       : constant Mode_Request_Handle :=
-     Mode_Request_Handle (System.Null_Address);
+   Null_Mode_Request    : constant Mode_Request_Handle := Mode_Request_Handle (System.Null_Address);
    type Return_Request_Handle is new System.Address;
-   Null_Return_Request                     : constant Return_Request_Handle :=
+   Null_Return_Request  : constant Return_Request_Handle :=
      Return_Request_Handle (System.Null_Address);
    type Comms_Request_Handle is new System.Address;
-   Null_Comms_Request                      : constant Comms_Request_Handle :=
+   Null_Comms_Request   : constant Comms_Request_Handle :=
      Comms_Request_Handle (System.Null_Address);
    type Capability_Handle is new System.Address;
+   type Capability_List_Handle is new System.Address;
+   Null_Capability_List : constant Capability_List_Handle :=
+     Capability_List_Handle (System.Null_Address);
+
+   function IR_Capability_List_Create
+     (Session             : Session_Handle;
+      Output              : access Capability_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_capability_list_create";
+   function IR_Capability_List_Count
+     (Handle              : Capability_List_Handle;
+      Count               : access Size_T;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_capability_list_count";
+   function IR_Capability_List_Get
+     (Handle              : Capability_List_Handle;
+      Index               : Size_T;
+      Output              : access Capability_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_capability_list_get";
+   function IR_Capability_List_Close
+     (Handle              : access Capability_List_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_capability_list_close";
    Null_Capability                         : constant Capability_Handle :=
      Capability_Handle (System.Null_Address);
    --  Task 032B1: raw weak common Channel view. Private FFI only; no safe
