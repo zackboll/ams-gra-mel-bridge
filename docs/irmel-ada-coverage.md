@@ -13,7 +13,7 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 
 ## Header and declaration totals
 
-- ir library: 95 upstream; 88 vendored; 7 not vendored.
+- ir library: 95 upstream; 89 vendored; 6 not vendored.
 - ir utility: 3 upstream; 0 vendored; 3 not vendored.
 - common library: 29 upstream; 28 vendored; 1 not vendored.
 - 213 type/alias declarations (including nested types); 148 operation declarations (virtual methods/overrides, destructors, factory functions and public helper methods).
@@ -70,8 +70,8 @@ Counted once at the declaring interface; channel-specific overloads remain disti
 | C2Channel | `send(EraseCommand)` | safe_ada | IRMEL-ADA-007: complete command ID and four exact erase types; Enabled-only single send, cached owned future result or explicit MEL rejection. No physical erasure verification, metadata registration, retry or replay. |
 | C2Channel | `send(ModeCmd)` | safe_ada | Complete command fields and cached asynchronous result; payload validation is explicit, timeout is not cancellation. |
 | C2Channel | `send(SystemTrackDataResponse)` | safe_ada | IRMEL-ADA-008: independent C2 overload of the complete twelve-field SystemTrackDataResponse; Enabled-only single unlocked send with C2 lifecycle and C2 request accounting (never the Track overload or TrackState); cached CommandStatus result or explicit ErrorOr rejection. Shares only pure value conversion with TrackChannel::send. |
-| Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report for six attached families, including Scheduling; the absent StackedImage owner is not counted. |
-| Channel | `sendKeepAliveRep()` | safe_ada | Common weak view works for C2, Image, Health, Instrumentation, Track and Scheduling; the StackedImage owner is absent. |
+| Channel | `send(ChannelCommsTestReq)` | safe_ada | Complete common request/report through all seven attached families, including StackedImage using the unchanged common engine; preserves correlation identifiers. |
+| Channel | `sendKeepAliveRep()` | safe_ada | Common weak view works for all seven families: C2, Image, Health, Instrumentation, Track, Scheduling and ownership-only StackedImage; one shared completion engine, independent family accounting. |
 | ImageChannel | `send(CameraCommand)` | safe_ada | Attached/Running ImageChannel::send(CameraCommand), independent of the C2 send: Image request accounting under the frame-callback lock, unlocked send, deferred Image teardown across Stop/Close, cached Wait; never routed through C2. |
 | ImageChannel | `send(NavigationReport)` | safe_ada | All NavigationReport fields including eighteen covariance terms; full response and cached errors. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. |
 | InstrumentationChannel | `send(InstrumentationLevelCmd)` | safe_ada | Complete command/report; conditional provider feature. Positive qualification mock-only; pinned Squall unsupported. |
@@ -140,7 +140,6 @@ Not vendoring a header is not itself a missing consumer operation.
 - `ir:include/irmel/library/factory/IRInterfaceBase.hpp` — blob `33b40344cf1e38b45667eda64c7c5998b2cc3eda` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
 - `ir:include/irmel/library/factory/IRRegistry.h` — blob `a1fc642358c58f38fdcbde4d4901cc235481f223` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
 - `ir:include/irmel/library/stacked-image/StackFrameHeader.h` — blob `16447c1a5ef663bab978b37aeb33baa6588642d0` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
-- `ir:include/irmel/library/stacked-image/StackedImageChannel.h` — blob `7e675aac4d2e7efd15fbdff90ba77d03795b3378` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
 - `ir:include/irmel/library/stacked-image/StackedImageListener.h` — blob `04e06b2a1a4355a79b7b637cbd80ba21348222e6` — Missing consumer declaration dependency; do not vendor without a vertical implementation slice.
 - `ir:include/irmel/utils/EnumToString.hpp` — blob `4501c07235d3e1862f6b1f1e8d1bcc8fe0105919` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
 - `ir:include/irmel/utils/EnumTranslations.hpp` — blob `a473c89595242bf3c13b4ec3d0c45cc766271710` — Provider/factory/utility infrastructure; not required as a direct consumer binding.
@@ -329,7 +328,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::SensorNavState` | safe_ada | Full FrameHeader representation includes all twenty-three fields, sensor identity, image flags and ordered inertial/navigation vectors; navigation orientation alternatives and uncertainties retained. Legacy Frame subset is not the full snapshot. Raster domain is limited separately. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support.; Full data schema does not relax Mono8 single-band stream acceptance; RGB/Bayer/higher-depth/multiband pixels unavailable. |
 | `ams::iface::irmel::SensorType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::StackFrameHeader` | missing | Missing platform ID, TXA FOM, stack depth, capability/activity IDs, stack ID, packed size, dimensions, bit/pixel depths and dead-pixel mask. Upstream getters expose uint32 dimensions over uint16 storage; no widening semantics invented.  |
-| `ams::iface::irmel::StackedImageChannel` | missing | Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.  |
+| `ams::iface::irmel::StackedImageChannel` | partial | IRMEL-ADA-016 adds only AMS.MEL.IR.Stacked_Image ownership/lifecycle and weak common requests, not a stacked-image receiver. Standalone Disable, application buffers and common communications metadata registration remain unbound.; Optional LOS3D registration, image-stack callbacks and StackFrameHeader conversion remain missing.; Qualification is separate mock-provider only. |
 | `ams::iface::irmel::StackedImageListener` | missing | Interface operations classified individually; representation of this C++ class is deliberately not exported. No consumer owner/registration/delivery path exists.  |
 | `ams::iface::irmel::StareTaskParam` | missing | No native/Ada data representation for this Scheduling task/response dependency.  |
 | `ams::iface::irmel::SubsystemCSCIInfo` | safe_ada | Every subsystem/CSCI field and complete ordered collections retained independently from reported counts; all known meaningful mode/failure alternatives represented. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
@@ -372,12 +371,12 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - `Buffer::getImageAddress() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
 - `Buffer::getSize() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
 - `Buffer::release()`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
-- `Channel::disable()`: Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable.
-- `Channel::enable()`: Typed Enable/Start exists for six families (C2, Image Start, Health, Instrumentation, Track, Scheduling); no StackedImage owner.
+- `Channel::disable()`: Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.
+- `Channel::enable()`: Typed Enable/Start exists for all seven families; StackedImage is ownership-only, without acquisition.
 - `Channel::registerBuffer(std::shared_ptr<Buffer>)`: Internal Image Open registers provider buffers backed by bridge host storage; application buffer registration is not exposed.
 - `Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)`: Only C2 metadata owner exposes this common callback registration. Common requests on other families do not register this callback.
-- `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats.
-- `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.
+- `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only. Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats.
+- `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.
 - `ImageListener::onImage(const Channel&,const FrameHeader&,std::shared_ptr<Buffer>)`: Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.
 - `FactoryFunctions::getBuffer(std::string_view,std::shared_ptr<::API_Manager>)`: Privately loads provider buffers for the bridge-managed Mono8 host pool only; no generic buffer factory exposed.
 
@@ -390,7 +389,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | ImageChannel | 5 | 1 | 2 | 0 |
 | InstrumentationChannel | 4 | 1 | 3 | 0 |
 | SchedulingChannel | 4 | 1 | 3 | 0 |
-| StackedImageChannel | 0 | 0 | 8 | 0 |
+| StackedImageChannel | 4 | 1 | 3 | 0 |
 | TrackChannel | 4 | 1 | 3 | 0 |
 
 ## Image capability gaps
@@ -404,7 +403,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - **Multiband** — missing: Capability numberOfBands and frame numBands must both equal one. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout.
 - **Generic application-managed buffers** — missing: Internal bridge host storage only; public registerBuffer/unregisterBuffer equivalents absent.
 - **GPU/RDMA buffers** — missing: Not exposed as supported public paths. CPU host address containment/borrowing is not GPU or RDMA qualification.
-- **StackedImage** — missing: No StackedImage owner/listener, StackFrameHeader representation, or LOS3D callback path.
+- **StackedImage** — partial: IRMEL-ADA-016 required channel ownership/common communications only. No image-stack listener, StackFrameHeader conversion, buffers or optional LOS3D reception.
 
 ## Provider qualifications and count derivation
 
@@ -428,6 +427,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.
 - IRMEL-ADA-013 completes only SchedulingChannel::registerMetadataCallback(TaskExecutingRep), TaskExecutingRep (all ten getters), Task (seventeen defined values; reserved preserved as non-operational, NumTaskTypes rejected) and TaskCompStatus (five values), missing -> safe_ada. SchedulingChannel stays partial and the nine remaining Scheduling-specific operations stay missing. Unique safe Ada operations 48 -> 49; exports 295 -> 301, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.
 - IRMEL-ADA-015 separates Image command/metadata attachment from acquisition. No unique upstream operations are newly classified: 50 remain safe_ada; the existing Image lifecycle gains an identity-only attachment profile. Qualification is mock-backed; no minimal-mel-example provider integration was available locally.
+- IRMEL-ADA-016: StackedImage ownership/common operations only; four inherited exposures safe_ada, Close-only disable partial, three required registrations and optional LOS3D missing. No acquisition or complete required-interface parity. See docs/irmel-ada-016-stacked-channel-foundation.md for actual qualification.
 
 ## Recommended implementation order
 

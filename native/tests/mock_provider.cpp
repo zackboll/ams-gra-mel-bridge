@@ -5,6 +5,7 @@
 #include <irmel/library/instrumentation/InstrumentationChannel.h>
 #include <irmel/library/track/TrackChannel.h>
 #include <irmel/library/scheduling/SchedulingChannel.h>
+#include <irmel/library/stacked-image/StackedImageChannel.h>
 #include <irmel/library/irmel-types/FrameHeader.h>
 #include <irmel/library/irmel-types/ImageListener.h>
 
@@ -59,15 +60,15 @@ struct C2SendBarrier {
  * IRMEL-ADA-005 CalibrationConfigurationCmd send, and family 10 is the
  * IRMEL-ADA-006 CalibrationStatusCmd send. IRMEL-ADA-007 appends EraseCommand (11).
  * IRMEL-ADA-008 appends C2 SystemTrackDataResponse (12). */
-C2SendBarrier c2_send_barriers[13];
-unsigned send_entries[13]{};
+C2SendBarrier c2_send_barriers[15];
+unsigned send_entries[15]{};
 std::mutex c2_send_mutex;
 std::condition_variable c2_send_ready;
 
 extern "C" __attribute__((visibility("default"))) int mock_c2_send_barrier(
     unsigned family, unsigned operation, unsigned throws)
 {
-    if (family >= 13U || operation > 3U) return 0;
+    if (family >= 15U || operation > 3U) return 0;
     std::unique_lock lock{c2_send_mutex};
     if (operation == 3U) return static_cast<int>(send_entries[family]);
     auto& barrier = c2_send_barriers[family];
@@ -214,7 +215,7 @@ extern "C" __attribute__((visibility("default"))) int mock_completion_gate(
 extern "C" __attribute__((visibility("default"))) int mock_completion_release_family(
     unsigned family, unsigned amount)
 {
-    if (family >= 13U) return 0;
+    if (family >= 15U) return 0;
     for (unsigned index = 0; index < amount; ++index) {
         std::function<void()> complete;
         {
@@ -5805,10 +5806,119 @@ private:
 extern "C" __attribute__((visibility("default"))) unsigned mock_scheduling_specific_calls(void)
 { return scheduling_specific_calls.load(); }
 
+irmel::ChannelCapability stacked_capability(const std::string& scenario)
+{
+    auto value = rich_channel_capability();
+    value.setChannelTypes({irmel::ChannelType::StackedImage, irmel::ChannelType::Reserved1});
+    value.setTaskScheduleDepth(scenario == "stacked-depth-zero" ? 0U :
+                               scenario == "stacked-depth-max" ? UINT32_MAX : 23U);
+    value.setChannelMetadataCapabilities({irmel::ChannelMetadataCapabilityType::ChannelCommsTestRep});
+    if (scenario == "stacked-zero") {
+        value.setHeight(0); value.setWidth(0); value.setBitDepth(0);
+        value.setRowPitch(0); value.setBufferSize(0); value.setImageSize(0);
+        value.setNumberOfBands(0); value.setImageBands({}); value.setNavFrames({});
+    }
+    return value;
+}
+
+/* Test-only synchronous reentry hook; never part of the production ABI.
+ * The hook is consumed before invocation so recursive queries do not loop. */
+unsigned stacked_reentry_operation{};
+void (*stacked_reentry_callback)(){};
+extern "C" __attribute__((visibility("default"))) void mock_stacked_reentry(
+    unsigned operation, void (*callback)())
+{ stacked_reentry_operation = operation; stacked_reentry_callback = callback; }
+void stacked_reenter(unsigned operation)
+{
+    if (stacked_reentry_operation != operation) return;
+    auto callback = std::exchange(stacked_reentry_callback, nullptr);
+    if (callback) callback();
+}
+
+class MockStackedImageChannel final : public irmel::StackedImageChannel {
+public:
+    explicit MockStackedImageChannel(std::string scenario) : scenario_{std::move(scenario)} {}
+    ~MockStackedImageChannel() override
+    {
+        record("stacked_channel_destroyed");
+    }
+    mel::RequestFor<Return> sendKeepAliveRep() override
+    {
+        c2_send_boundary(13);
+        record("keepalive_sent");
+        if (scenario_ == "stacked-keepalive-throw")
+            throw std::runtime_error("mock Stacked keepalive send exception");
+        if (scenario_ == "stacked-ada-common")
+            return ready_request(std::make_shared<Return>(scenario_ == "stacked-return-fail" ? Return::Fail : Return::Success));
+        return held_request(std::make_shared<Return>(scenario_ == "stacked-return-fail" ? Return::Fail : Return::Success), 13);
+    }
+    mel::RequestFor<irmel::ChannelCommsTestRep> send(irmel::ChannelCommsTestReq request) override
+    {
+        c2_send_boundary(14);
+        record("comms_sent");
+        if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
+            request.getRequestID() != 0xe0000003U)
+            throw std::runtime_error("Stacked CommsTest IDs changed");
+        if (scenario_ == "stacked-ada-common")
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
+        return held_request(std::make_shared<irmel::ChannelCommsTestRep>(
+            request.getCommandID(), request.getRequestID()), 14);
+    }
+    Return registerBuffer(std::shared_ptr<irmel::Buffer>) override { record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return unregisterBuffer(std::shared_ptr<irmel::Buffer>) override { record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return enable() override
+    {
+        record("stacked_enabled");
+        stacked_reenter(1U);
+        if (scenario_ == "stacked-enable-throw")
+            throw std::runtime_error("mock Stacked enable exception");
+        if (scenario_ == "stacked-enable-fail") return Return::Fail;
+        return Return::Success;
+    }
+    Return disable() override
+    {
+        record("stacked_disabled");
+        if (scenario_ == "stacked-disable-throw")
+            throw std::runtime_error("mock Stacked disable exception");
+        return scenario_ == "stacked-disable-fail" ? Return::Fail : Return::Success;
+    }
+    irmel::ChannelCapability getCapabilities() const override
+    {
+        stacked_reenter(2U);
+        if (scenario_.rfind("stacked-capability-throw", 0) == 0)
+            throw std::runtime_error("mock Stacked capability exception");
+        auto value = stacked_capability(scenario_);
+        if (scenario_ == "stacked-capability-wrong")
+            value.setChannelTypes({irmel::ChannelType::IRSTImage});
+        return value;
+    }
+    Return registerMetadataCallback(
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
+    { record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return registerMetadataCallback(
+        const std::function<void(irmel::Channel&, const irmel::LOS3D_KinematicsType *const)>&) override
+    { record("stacked_forbidden_registration"); return Return::NotSupported; }
+private:
+    std::string scenario_;
+};
+
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
+        if (instance_.rfind("stacked-", 0U) == 0U) {
+            if (instance_ != "stacked-empty") {
+                auto capability = stacked_capability(instance_);
+                if (instance_ == "stacked-not-advertised")
+                    capability.setChannelTypes({irmel::ChannelType::CommandAndControl});
+                capabilities_.push_back(std::move(capability));
+            }
+            irmel::ChannelCapability c2;
+            c2.setChannelTypes({irmel::ChannelType::CommandAndControl});
+            if (instance_ != "stacked-empty") capabilities_.push_back(std::move(c2));
+            return;
+        }
         if (instance_.rfind("image-control-", 0U) == 0U) {
             capabilities_.push_back(control_image_capability());
             return;
@@ -5903,6 +6013,8 @@ public:
             if (instance_ == "discovery-bad-alloc") throw std::bad_alloc{};
             record("discovery_called");
         }
+        if (instance_ == "stacked-discovery-throw")
+            throw std::runtime_error("mock Stacked discovery exception");
         return capabilities_;
     }
     mel::VersionInfo getVersionInfo() const override
@@ -5948,6 +6060,35 @@ public:
                     throw std::runtime_error("mock Track configuration conversion mismatch");
             }
             return std::make_shared<MockTrackChannel>(instance_);
+        }
+        if (config.getChannelType() == irmel::ChannelType::StackedImage) {
+            record("stacked_attach_requested");
+            if (instance_ == "stacked-attach-throw")
+                throw std::runtime_error("mock Stacked attach exception");
+            if (instance_ == "stacked-attach-null") return {};
+            if (instance_ == "stacked-wrong-concrete" || instance_ == "stacked-open-detach-fail")
+                return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
+            if (instance_ == "stacked-config") {
+                const auto& channel_id = config.getChanID();
+                const auto& platform = config.getPlatform();
+                const auto& location = config.getSensorLocation();
+                for (std::size_t i = 0; i < mel::UUID_SIZE; ++i)
+                    if (channel_id.getUUID()[i] != static_cast<std::uint8_t>(0xa0U + i) ||
+                        platform.getUUID()[i] != static_cast<std::uint8_t>(0xf0U + i))
+                        throw std::runtime_error("mock Stacked ID conversion mismatch");
+                if (channel_id.getDescriptiveLabel() != "IR stacked \xCE\xBC channel" ||
+                    platform.getDescriptiveLabel() != "test platform" ||
+                    location.getOffsetX() != 1.25 || location.getOffsetY() != -2.5 ||
+                    location.getOffsetZ() != 3.75 ||
+                    location.getLocationId().getKey() != "station-1" ||
+                    location.getLocationId().getSystemName() != "mock-aircraft" ||
+                    static_cast<std::uint32_t>(config.getChannelType()) != 6U ||
+                    config.getImgLstnr() || config.getSupportsSystemTrackData() ||
+                    config.getSupportsTrackDataUpdates())
+                    throw std::runtime_error("mock Stacked configuration conversion mismatch");
+                record("stacked_config_verified");
+            }
+            return std::make_shared<MockStackedImageChannel>(instance_);
         }
         if (config.getChannelType() == irmel::ChannelType::Scheduling) {
             record("scheduling_attach_requested");
@@ -6070,8 +6211,19 @@ public:
             !std::dynamic_pointer_cast<MockHealthStatusChannel>(channel) &&
             !std::dynamic_pointer_cast<MockInstrumentationChannel>(channel) &&
             !std::dynamic_pointer_cast<MockTrackChannel>(channel) &&
-            !std::dynamic_pointer_cast<MockSchedulingChannel>(channel)) std::abort();
-        if ((instance_ == "detach-fail" ||
+            !std::dynamic_pointer_cast<MockSchedulingChannel>(channel) &&
+            !std::dynamic_pointer_cast<MockStackedImageChannel>(channel)) std::abort();
+        if (instance_ == "stacked-detach-throw" && !detach_failed_) {
+            detach_failed_ = true;
+            record("channel_detach_failed");
+            throw std::runtime_error("mock detach exception");
+        }
+        if ((instance_ == "stacked-detach-fail" ||
+             instance_ == "stacked-enabled-detach-fail" ||
+             instance_ == "stacked-open-detach-fail" ||
+             instance_ == "stacked-capability-throw-detach-fail" ||
+             instance_ == "stacked-deferred-detach-fail" ||
+             instance_ == "detach-fail" ||
              instance_ == "image-control-detach-fail" ||
              instance_ == "image-control-open-detach-fail" ||
              /* Deterministic Image Navigation completion-vs-Close corrective

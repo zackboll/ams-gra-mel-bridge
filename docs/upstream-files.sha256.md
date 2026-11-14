@@ -880,4 +880,5 @@ b7a75ecd1db411faf74f663dde109d86a6aee01615af063473fb003c571339cc  native/vendor/
 9e90fcd4066d82bf67d001283c1e07d8efb32077d1b62938a98bde910af13191  native/vendor/ir-mel/include/irmel/library/scheduling/SchedulingChannel.h
 a935607a508bf2b17c8c34380a6d8e73206790ffbeab2590e121d01351c4d0c4  native/vendor/ir-mel/include/irmel/library/scheduling/TaskEvents.h
 c1c1372a3b2922f49f81c6c11534bd9e874c21da021fb81276b688461b47bba8  native/vendor/ir-mel/include/irmel/library/scheduling/TaskExecutingRep.h
+e333f66d597ae337912ec5d1af975e5addac68d1ca1098a0584a94047197124b  native/vendor/ir-mel/include/irmel/library/stacked-image/StackedImageChannel.h
 ```

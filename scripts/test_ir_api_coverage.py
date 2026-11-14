@@ -80,11 +80,22 @@ class CoverageTests(unittest.TestCase):
         profiles = {e["name"]: e["status"] for e in self.coverage["image_capabilities"]}
         self.assertEqual(profiles["Control-only Image attachment"], "safe_ada")
         self.assertEqual(profiles["Mono8 single-band"], "safe_ada")
-        for name in ("Higher-bit-depth monochrome", "RGB", "Bayer", "Multiband", "StackedImage",
+        for name in ("Higher-bit-depth monochrome", "RGB", "Bayer", "Multiband",
                      "Generic application-managed buffers"):
             self.assertEqual(profiles[name], "missing")
         for payload in ("attachChannel(", "detachChannel("):
             self.assertEqual(self.operation("Control", payload)["status"], "partial")
+
+    def test_stacked_foundation_not_acquisition(self):
+        upstream, coverage = audit.validate(self.root)
+        exposures = [e for e in coverage["inherited"] if e["id"].startswith("StackedImageChannel|")]
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in exposures), 4)
+        self.assertEqual(sum(e["status"] == "partial" for e in exposures), 1)
+        self.assertEqual(sum(e["status"] == "missing" for e in exposures), 3)
+        self.assertEqual(next(e for e in coverage["types"] if e["id"].endswith("::StackedImageChannel"))["status"], "partial")
+        self.assertEqual(next(e for e in coverage["image_capabilities"] if e["name"] == "StackedImage")["status"], "partial")
+        self.assertEqual(self.operation("StackedImageChannel", "registerMetadataCallback(")["status"], "missing")
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in coverage["operations"]), 50)
 
     def test_control_discovery_needs_c_and_ada_tests(self):
         entry = self.operation("Control", "getCapabilities()")

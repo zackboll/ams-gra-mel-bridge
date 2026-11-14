@@ -70,6 +70,44 @@ class AbiTests(unittest.TestCase):
         for name in signatures:
             self.assertFalse(hasattr(ams_mel, name))
 
+    def test_private_stacked_foundation_abi(self) -> None:
+        """IRMEL-ADA-016: private raw StackedChannel foundation mirror only."""
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "layout"
+            subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+                            "-I" + str(root / "native/include"),
+                            str(root / "native/tests/stacked_layout_probe.c"), "-o",
+                            str(executable)],
+                           check=True)
+            actual = [int(v) for v in subprocess.check_output([str(executable)], text=True).split()]
+        expected = self._layout(_native.IrStackedConfigV1, "channel_id", "channel_type",
+                                "platform_id", "sensor_location")
+        expected += [ctypes.sizeof(_native.IrStackedHandle), _native.AMS_MEL_IR_CHANNEL_STACKED_IMAGE]
+        self.assertEqual(actual, expected)
+        self.assertEqual(_native.AMS_MEL_IR_CHANNEL_STACKED_IMAGE, 6)
+        # Same reused record members as every other typed channel configuration.
+        self.assertEqual(_native.IrStackedConfigV1._fields_, _native.IrTrackConfigV1._fields_)
+        pointer = ctypes.POINTER
+        owner = _native.IrStackedHandle
+        signatures = {
+            "ams_mel_ir_stacked_open": [_native.SessionHandle,
+                                           pointer(_native.IrStackedConfigV1), pointer(owner)],
+            "ams_mel_ir_stacked_enable": [owner],
+            "ams_mel_ir_stacked_get_capabilities": [owner,
+                                                       pointer(_native.IrChannelCapabilityHandle)],
+            "ams_mel_ir_stacked_close": [pointer(owner)],
+            "ams_mel_ir_channel_from_stacked": [owner, pointer(_native.IrChannelHandle)],
+        }
+        for name, arguments in signatures.items():
+            function = getattr(_native, name)
+            self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
+            self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
+            self.assertIs(function.restype, ctypes.c_int32)
+        import ams_mel
+        for name in signatures:
+            self.assertFalse(hasattr(ams_mel, name))
+
     def test_private_scheduling_foundation_abi(self) -> None:
         """IRMEL-ADA-011: private raw SchedulingChannel foundation mirror only."""
         root = Path(__file__).resolve().parents[2]
@@ -1268,9 +1306,13 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_track_enable",
                 "ams_mel_ir_track_get_capabilities",
                 "ams_mel_ir_track_close",
+                "ams_mel_ir_stacked_open",
                 "ams_mel_ir_scheduling_open",
+                "ams_mel_ir_stacked_enable",
                 "ams_mel_ir_scheduling_enable",
+                "ams_mel_ir_stacked_get_capabilities",
                 "ams_mel_ir_scheduling_get_capabilities",
+                "ams_mel_ir_stacked_close",
                 "ams_mel_ir_scheduling_close",
                 "ams_mel_ir_track_metadata_open",
                 "ams_mel_ir_track_metadata_receive",
@@ -1291,6 +1333,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_ir_channel_from_health",
                 "ams_mel_ir_channel_from_instrumentation",
                 "ams_mel_ir_channel_from_track",
+                "ams_mel_ir_channel_from_stacked",
                 "ams_mel_ir_channel_from_scheduling",
                 "ams_mel_ir_channel_send_keepalive",
                 "ams_mel_ir_channel_submit_comms_test",
@@ -1393,8 +1436,8 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_rf_product_rx_event_close",
             ),
         )
-        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 306)
-        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 306)
+        self.assertEqual(len(_native.BOUND_FUNCTION_NAMES), 311)
+        self.assertEqual(len(set(_native.BOUND_FUNCTION_NAMES)), 311)
         repository = Path(__file__).resolve().parents[2]
         exports = (repository / "native/src/exports.map").read_text(encoding="utf-8")
         exported = sorted(
@@ -1402,7 +1445,7 @@ class AbiTests(unittest.TestCase):
             for line in exports.splitlines()
             if line.strip().startswith("ams_mel_")
         )
-        self.assertEqual(len(exported), 306)
+        self.assertEqual(len(exported), 311)
         self.assertEqual(sorted(_native.BOUND_FUNCTION_NAMES), exported)
         for name in _native.BOUND_FUNCTION_NAMES:
             function = getattr(_native, name)
@@ -1423,6 +1466,7 @@ class AbiTests(unittest.TestCase):
                 _native.IrInstrumentationHandle
             ],
             "ams_mel_ir_channel_from_track": [_native.IrTrackHandle],
+            "ams_mel_ir_channel_from_stacked": [_native.IrStackedHandle],
             "ams_mel_ir_channel_from_scheduling": [_native.IrSchedulingHandle],
         }
         for name, source in expected.items():

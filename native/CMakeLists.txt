@@ -13,7 +13,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_image_odm.cpp src/ir_image_los_quaternion.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
     src/ir_calibration_status.cpp
     src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
-    src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp
+    src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp src/ir_stacked.cpp
     src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
     src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
@@ -49,7 +49,7 @@ if(UNIX AND NOT APPLE)
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_status_hold;\n        ams_mel_test_rf_status_waiters;\n        ams_mel_test_rf_status_preset;\n        ams_mel_test_rf_status_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
-        string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;\n        ams_mel_test_scheduling_requests;\n        ams_mel_test_scheduling_observer_from;\n        ams_mel_test_scheduling_observer_state;\n        ams_mel_test_scheduling_observer_close;\n        ams_mel_test_scheduling_execute_task_ack_probe;\n        ams_mel_test_scheduling_task_executing_probe;"
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_instrumentation_callbacks;\n        ams_mel_test_track_callbacks;\n        ams_mel_test_instrumentation_observer_from;\n        ams_mel_test_instrumentation_observer_requests;\n        ams_mel_test_instrumentation_observer_close;\n        ams_mel_test_track_observer_from;\n        ams_mel_test_track_observer_requests;\n        ams_mel_test_track_observer_close;\n        ams_mel_test_stacked_requests;\n        ams_mel_test_stacked_observer_from;\n        ams_mel_test_stacked_observer_state;\n        ams_mel_test_stacked_observer_close;\n        ams_mel_test_scheduling_requests;\n        ams_mel_test_scheduling_observer_from;\n        ams_mel_test_scheduling_observer_state;\n        ams_mel_test_scheduling_observer_close;\n        ams_mel_test_scheduling_execute_task_ack_probe;\n        ams_mel_test_scheduling_task_executing_probe;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_health_callbacks;\n        ams_mel_test_health_requests;\n        ams_mel_test_health_metadata_public_owners;\n        ams_mel_test_admission;\n        ams_mel_test_c2_requests;\n        ams_mel_test_calibration_callback;\n        ams_mel_test_calibration_status_callback;\n        ams_mel_test_image_odm_probe;\n        ams_mel_test_image_los_quaternion_probe;\n        ams_mel_test_navigation_requests;\n        ams_mel_test_instrumentation_requests;\n        ams_mel_test_track_requests;"
             ams_mel_test_exports "${ams_mel_test_exports}")
@@ -1194,6 +1194,30 @@ if(AMS_MEL_BUILD_TESTS)
         ams_mel_warnings(${discovery_test})
         add_test(NAME ${discovery_test} COMMAND ${discovery_test})
     endforeach()
+
+    # IRMEL-ADA-016 StackedImageChannel foundation; one process per scenario.
+    add_executable(test_ir_stacked_foundation tests/test_ir_stacked_foundation.c)
+    target_compile_features(test_ir_stacked_foundation PRIVATE c_std_11)
+    set_target_properties(test_ir_stacked_foundation PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_stacked_foundation PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_stacked_foundation PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_stacked_foundation mock_ir_provider)
+    ams_mel_warnings(test_ir_stacked_foundation)
+    foreach(case IN ITEMS enable-reentry capability-reentry discovery-zero pending-both deferred-detach-fail return-fail empty discovery-throw open-enable-close close-before-enable depth-zero depth-max
+            parent-first detach-throw enable-fail enable-throw disable-fail disable-throw detach-fail
+            enabled-detach-fail open-failures open-detach-fail open-exception-detach-fail
+            invalid common pending accounting send-exception)
+        add_test(NAME ir_stacked_foundation_${case}
+            COMMAND test_ir_stacked_foundation ${case})
+        set_tests_properties(ir_stacked_foundation_${case} PROPERTIES TIMEOUT 60)
+    endforeach()
+    add_executable(test_ir_stacked_layout tests/stacked_layout_probe.c)
+    target_compile_features(test_ir_stacked_layout PRIVATE c_std_11)
+    set_target_properties(test_ir_stacked_layout PROPERTIES C_EXTENSIONS OFF)
+    target_link_libraries(test_ir_stacked_layout PRIVATE ams_mel::ams_mel_c)
+    ams_mel_warnings(test_ir_stacked_layout)
+    add_test(NAME ir_stacked_layout COMMAND test_ir_stacked_layout)
 
     # IRMEL-ADA-011 SchedulingChannel foundation; one process per scenario.
     add_executable(test_ir_scheduling_foundation tests/test_ir_scheduling_foundation.c)

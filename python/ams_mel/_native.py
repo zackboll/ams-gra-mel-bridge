@@ -1307,6 +1307,22 @@ ams_mel_ir_track_get_capabilities.restype = ctypes.c_int32
 ams_mel_ir_track_close = _LIBRARY.ams_mel_ir_track_close
 ams_mel_ir_track_close.argtypes = [ctypes.POINTER(IrTrackHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_close.restype = ctypes.c_int32
+# IRMEL-ADA-016 private raw ownership mirror only; no safe Python StackedImage API.
+class IrStackedConfigV1(ctypes.Structure):
+    _fields_ = [("channel_id", UciIdV1), ("channel_type", ctypes.c_uint32), ("platform_id", UciIdV1), ("sensor_location", ComponentLocationV1)]
+IrStackedHandle = ctypes.c_void_p
+ams_mel_ir_stacked_open = _LIBRARY.ams_mel_ir_stacked_open
+ams_mel_ir_stacked_open.argtypes = [SessionHandle, ctypes.POINTER(IrStackedConfigV1), ctypes.POINTER(IrStackedHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_stacked_open.restype = ctypes.c_int32
+ams_mel_ir_stacked_enable = _LIBRARY.ams_mel_ir_stacked_enable
+ams_mel_ir_stacked_enable.argtypes = [IrStackedHandle, CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_stacked_enable.restype = ctypes.c_int32
+ams_mel_ir_stacked_get_capabilities = _LIBRARY.ams_mel_ir_stacked_get_capabilities
+ams_mel_ir_stacked_get_capabilities.argtypes = [IrStackedHandle, ctypes.POINTER(IrChannelCapabilityHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_stacked_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_stacked_close = _LIBRARY.ams_mel_ir_stacked_close
+ams_mel_ir_stacked_close.argtypes = [ctypes.POINTER(IrStackedHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_stacked_close.restype = ctypes.c_int32
 # IRMEL-ADA-011 private raw mirror of the SchedulingChannel foundation only;
 # deliberately no safe Python Scheduling API and no task/exec surface.
 class IrSchedulingConfigV1(ctypes.Structure):
@@ -1430,6 +1446,9 @@ ams_mel_ir_channel_from_instrumentation.restype = ctypes.c_int32
 ams_mel_ir_channel_from_track = _LIBRARY.ams_mel_ir_channel_from_track
 ams_mel_ir_channel_from_track.argtypes = [IrTrackHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_from_track.restype = ctypes.c_int32
+ams_mel_ir_channel_from_stacked = _LIBRARY.ams_mel_ir_channel_from_stacked
+ams_mel_ir_channel_from_stacked.argtypes = [IrStackedHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_from_stacked.restype = ctypes.c_int32
 ams_mel_ir_channel_from_scheduling = _LIBRARY.ams_mel_ir_channel_from_scheduling
 ams_mel_ir_channel_from_scheduling.argtypes = [IrSchedulingHandle, ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_from_scheduling.restype = ctypes.c_int32
@@ -2576,9 +2595,13 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_track_enable",
     "ams_mel_ir_track_get_capabilities",
     "ams_mel_ir_track_close",
+    "ams_mel_ir_stacked_open",
     "ams_mel_ir_scheduling_open",
+    "ams_mel_ir_stacked_enable",
     "ams_mel_ir_scheduling_enable",
+    "ams_mel_ir_stacked_get_capabilities",
     "ams_mel_ir_scheduling_get_capabilities",
+    "ams_mel_ir_stacked_close",
     "ams_mel_ir_scheduling_close",
     "ams_mel_ir_track_metadata_open",
     "ams_mel_ir_track_metadata_receive",
@@ -2599,6 +2622,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_from_health",
     "ams_mel_ir_channel_from_instrumentation",
     "ams_mel_ir_channel_from_track",
+    "ams_mel_ir_channel_from_stacked",
     "ams_mel_ir_channel_from_scheduling",
     "ams_mel_ir_channel_send_keepalive",
     "ams_mel_ir_channel_submit_comms_test",
