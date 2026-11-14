@@ -103,7 +103,13 @@ def type_context(tokens, index, end):
         return 'array-element'
     prefix = words[:index]
     if len(prefix) == 3 and prefix[0] == 'subtype' and prefix[2] == 'is' and IDENT.fullmatch(prefix[1]):
-        require(words[cursor:] == [';'], 'unsupported ordinary subtype indication')
+        tail = words[cursor:]
+        # Only bare enumeration-literal bounds are in the reviewed range grammar.
+        # Membership and visibility need the resolved source target (below).
+        require(tail == [';'] or (len(tail) == 5 and tail[0] == 'range' and
+                IDENT.fullmatch(tail[1]) and tail[2] == '..' and
+                IDENT.fullmatch(tail[3]) and tail[4] == ';'),
+                'unsupported ordinary subtype indication')
         return 'subtype-base'
     if head in ('type', 'subtype') and 'is' in prefix:
         suffix = prefix[prefix.index('is') + 1:]
@@ -261,6 +267,7 @@ class Authority:
         if context == 'subtype-base':
             require('private' not in [t[0] for t in lex(target['declaration'])],
                     'private ordinary subtype target')
+            self.ordinary_subtype(entry, target, tokens, source_tokens)
         require(identity == target_identity, 'forged type identity')
         require(href == target['page'] + '#' + target['anchor'], 'wrong existing/native destination')
         return {'containing': entry, 'native_token_start': start, 'native_token_end': end,
@@ -268,12 +275,61 @@ class Authority:
                 'source_token_end': source_stop, 'source_line': entry['line'] + entry['declaration'][:source_start].count('\n'),
                 'target_identity': target_identity, 'target': target, 'href': href}
 
+    def ordinary_subtype(self, entry, target, native_tokens, source_tokens):
+        """Prove public ownership and the bounded static enumeration range.
+
+        This is intentionally not an expression evaluator: integer ranges,
+        attributes, selected bounds, subtype chains and imported enumeration
+        literals remain unsupported. An unconstrained ordinary subtype retains
+        its existing target-resolution rules.
+        """
+        words = [t[0] for t in source_tokens]
+        require(words == [t[0] for t in native_tokens], 'source/native subtype disagrees')
+        if 'range' not in words:
+            return
+        for declaration in (entry, target):
+            public = flat_public_tokens(self.packages[declaration['package']])
+            declared = [t[0] for t in lex(declaration['declaration'])]
+            require(any(public[i:i + len(declared)] == declared for i in range(len(public))),
+                    'unproved public ordinary subtype declaration')
+        require(target['package'] == entry['package'], 'unsupported enumeration bound visibility')
+        enum = [t[0] for t in lex(target['declaration'])]
+        native_enum = [t[0] for t in lex(target['native'])]
+        # GNATdoc abbreviates long enumerations with one ellipsis. The source,
+        # not the shortened presentation, owns the complete literal inventory.
+        if native_enum.count('…') == 1:
+            cut = native_enum.index('…')
+            prefix, suffix = native_enum[:cut], native_enum[cut + 1:]
+            require(prefix and suffix and prefix[-1] == ',' and suffix[0] == ',' and
+                    len(prefix) + len(suffix) < len(enum) and
+                    enum[:len(prefix)] == prefix and enum[-len(suffix):] == suffix,
+                    'source/native enumeration disagrees')
+        else:
+            require(enum == native_enum, 'source/native enumeration disagrees')
+        require(len(enum) >= 7 and enum[:3] == ['type', target['name'].lower(), 'is'] and
+                enum[3] == '(' and enum[-2:] == [')', ';'], 'unsupported range base enumeration')
+        literals = enum[4:-2:2]
+        require(all(IDENT.fullmatch(v) for v in literals) and
+                enum[5:-2:2] == [','] * (len(literals) - 1) and
+                len(set(literals)) == len(literals), 'unsupported enumeration literals')
+        lower, upper = words[-4], words[-2]
+        require(lower in literals and upper in literals, 'invalid static enumeration range bounds')
+        require(not any(d['name'].lower() in (lower, upper)
+                        for d in self.packages[entry['package']]['declarations']),
+                'shadowed enumeration range bound')
+        for declaration in self.packages[entry['package']]['declarations']:
+            signature = [t[0] for t in lex(declaration['signature'])]
+            if signature[:1] == ['type'] and signature[2:4] == ['is', '('] and signature[1] != enum[1]:
+                require(not {lower, upper} & set(signature[4:-2]), 'ambiguous enumeration range bound')
+
     def required_additions(self):
         """Derive eligible new occurrences solely from trusted source/native input.
 
         This runs before candidate HTML is read. Neither enhancer counters nor
-        emitted wrappers supply the expected set. The reviewed boundary is one
-        complete ordinary subtype base and current-package flat record fields.
+        emitted wrappers supply the expected set. The reviewed boundary is
+        complete ordinary subtype bases and current-package flat record fields.
+        Counts are source-derived; historical counts are tested on their original
+        source input, not imposed on newly added public declarations.
         """
         records = []
         for (page, anchor), entry in self.sections.items():
@@ -296,8 +352,6 @@ class Authority:
                                                    spelling, target['page'] + '#' + target['anchor'], identity))
                 except ValueError:
                     continue  # Unsupported source grammar is not eligible.
-        require(sum(r['context'] == 'subtype-base' for r in records) == 1 and len(records) == 10,
-                'trusted ten-occurrence eligibility changed')
         return records
 
 
