@@ -2,10 +2,19 @@
 
 ## Coverage delta and source authority
 
-Base main: `c4490a9ce509512e0de6a79d42a61a12c00a7b9a`, tree
+Initial base main: `c4490a9ce509512e0de6a79d42a61a12c00a7b9a`, tree
 `2c562cd9b52b27865806f32c6b6811469a2582d1`. PR #185 is incorporated
 through merge `6746686719deed3dc39e8668c13eb1b756060d50`. Preflight open
 PRs #187, #184 and #183 had no overlapping Python ModeCmd work.
+
+During hosted qualification, main advanced through #187's isolated policy fixture
+cleanup. It was reconciled by a normal, conflict-free merge (no rebase). Final
+base: `eb64b3f5a071d8784a1da04b25afd661bba25bdd`, tree
+`e4eeda259da1dc11d531438945682f1e26e99d44`. The complete local qualification
+sequence was repeated on the merged source, with the inherited newline failure
+recorded below. Feature-owned changes remain the
+same seven files relative to that final base; the merged policy files are not
+feature changes.
 
 Previously Python exposed only fixed `submit_operate(command_id)` for this
 overload. It now also exposes `ControlChannel.submit_mode(ModeCommand)` using
@@ -139,7 +148,7 @@ without overlapping native rebuilds/relinks and test execution:
 | `make check-ir-api-coverage` | PASS, reviewed evidence and 56 checker tests |
 | `make test-build-isolation` | PASS, both build directions, 555/555 replay, artifact hashes and failpoint separation |
 | `python3 scripts/check_doc_source_integrity.py` | PASS, 824 vendor files, three workflows |
-| `python3 scripts/check_final_newlines.py` | PASS after adding final newlines to the two new files |
+| `python3 scripts/check_final_newlines.py` | Initial base PASS after adding new-file final newlines; final merged base FAIL: inherited `docs/pol002-event-fixture-cleanup.md` lacks final newline |
 | `python3 -W error -m compileall -q python/ams_mel python/tests` | PASS |
 | `git diff --check` | PASS |
 
@@ -182,3 +191,10 @@ are recorded in the PR handoff, not asserted by this local qualification documen
 Changed files are limited to this document, `python/README.md`,
 `python/ams_mel/{__init__,_types,_validation,_c2}.py` and
 `python/tests/test_ir_general_mode.py`.
+
+Final-base qualification limitation: the newline failure originates in #187's
+new task-owned document, byte-identical to final main. It is outside this task's
+seven-file scope and is not silently repaired here. Compileall, diff checks and
+the 170 focused/regression tests were run separately after the failing newline
+gate. Do not label this final source READY_FOR_INDEPENDENT_REVIEW until the
+inherited qualification blocker is resolved and final-source gates pass.
