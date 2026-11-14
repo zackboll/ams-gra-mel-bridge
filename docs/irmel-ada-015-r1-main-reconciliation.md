@@ -134,6 +134,14 @@ evidence only, not qualification of this combined source.
 | `make test-rust` | Passed, 441 Rust tests/doctests across the workspace; all native prerequisite tests passed too. |
 | `make test-ada` | Passed, complete smoke/focused suite, including discovery, Image control-only, legacy Mono8 and both Scheduling metadata slices. |
 | `make check-ir-api-coverage` | Passed, 60 regression controls; 127 headers, 148 operations, 50 safe Ada operations. |
+| `make check` | Passed: build-tree isolation in both orders, complete native and Ada suites, formatting, coverage, newline and whitespace gates. |
+| `alr -C ada build` | Passed (exit 0). |
+| `alr -C ada/tests run` | Passed, complete smoke/focused suite (exit 0). |
+| `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Passed. |
+| `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings` | Passed. |
+| `make test-policy` | Passed, including source-integrity, protected Bootstrap policy and documentation security/coverage regression suites. |
+| `python3 scripts/check_doc_source_integrity.py` | Passed: 824 vendor files, three workflows, ordinary-development classification. |
+| `python3 scripts/check_final_newlines.py`; `git diff --check`; `git diff --cached --check` | Passed. |
 
 The additional Release build uses a separate temporary tree, after the ordinary
 sequence, with the caller's `LD_RUN_PATH` and `LD_LIBRARY_PATH` unset. It retains
@@ -153,6 +161,10 @@ ctest --test-dir /tmp/irmel015r1/release --output-on-failure \
 ctest --test-dir /tmp/irmel015r1/release --output-on-failure \
   -R '^ir_image_control_contract$' --repeat until-fail:50
 ```
+
+The Release selection passed **81/81** contracts. The existing
+CTest repetition mechanism then passed the control-only contract **50/50**
+without changing its active checks or fault-injection cases.
 
 Both GCC and Clang passed explicit
 `-std=c11 -Wall -Wextra -Wpedantic -Werror -fsyntax-only` checks of the new
@@ -186,3 +198,12 @@ Hosted Bootstrap must qualify the applicable PR merge result; documentation
 explicitly checks out the PR head. A successful head-only workflow is not
 merge-result qualification. PR #184 is to remain open, non-draft and unmerged,
 with auto-merge disabled, for independent review.
+
+## Delivery and hosted evidence
+
+The final delivery commit and Git tree are recorded in the commit message and
+PR qualification comment. All local qualification above passed before the
+normal push. PR #184 targets `main`, remains non-draft/open/unmerged, and has
+auto-merge disabled. Hosted run URLs, the actual synthetic merge commit/tree
+and source-policy verification are recorded separately on the PR. Hosted
+qualification is not inferred from these local successes.
