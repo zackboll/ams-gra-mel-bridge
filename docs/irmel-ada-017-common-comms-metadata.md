@@ -134,6 +134,20 @@ An extra Rust rerun attempted while build-tree isolation was replacing its linke
 DSO failed to link; it is not counted as a passed run. Final reruns wait for the
 sequential build-tree qualification to finish.
 
+Aggregate `make check` passed (production/test-tree isolation, native **656/656**,
+Ada formatting, coverage controls, full Ada suites and whitespace/newline checks).
+`alr -n -C ada build` and `alr -n -C ada/tests run` both passed in sequence using
+the existing pinned environment. The ambient make targets were invoked through
+`alr -n -C ada exec -- make -C /home/zboll/git/ams-gra-mel-bridge ...` where GNAT
+was needed; this supplies the existing toolchain rather than changing it.
+
+Mainline reconciliation uses ordinary merge commits, never rebase/amend or force
+push. `1d7cf8a11ee6fc154fee2b577aa7296b5a1fbd0a` (Python Image control-only)
+merged cleanly in `58065c4940554a26e091a74f2372d6dc99cad260`. The subsequent
+Python rerun passed **584** tests (the extra 21 are mainline's Image control-only
+coverage). Rust raw ABI remains 315 functions. Later mainline reconciliation and
+final rerun results are recorded before delivery.
+
 Real-provider status: **PRIVATE_PROVIDER_INTEGRATION_UNTESTED**. No local
 `minimal-mel-example` provider checkout was found. Authenticated source review is
 not an integration run, and mocked callbacks do not qualify physical sensor
