@@ -188,6 +188,13 @@ host allowlist (replaced by local `index.html`, without adding host permissions)
 and incorrect assumption that `check_html` itself validates URI schemes. These
 were corrected without changing production contracts or enhancer implementation.
 
+The first hosted pilot exposed a missing `DOC_SOURCE_SHA` environment binding
+required by the unchanged `docs_ci.identity` event/source verifier. The task-owned
+workflow now supplies the exact PR-head/dispatch SHA, matching the existing
+publication workflow; the verifier was not relaxed. Final-newline checks also
+identify two pre-existing PR #193 files without final newlines; all pilot files
+are newline-terminated and those unrelated baseline files remain unchanged.
+
 ## Minimal upstream proposal and next implementation task
 
 See `/home/zboll/git/mel-gnatdoc-015-002/docs/mel-gnatdoc-015-002-upstream-interface.md`.
