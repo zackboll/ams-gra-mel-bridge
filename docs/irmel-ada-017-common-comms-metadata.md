@@ -146,7 +146,24 @@ push. `1d7cf8a11ee6fc154fee2b577aa7296b5a1fbd0a` (Python Image control-only)
 merged cleanly in `58065c4940554a26e091a74f2372d6dc99cad260`. The subsequent
 Python rerun passed **584** tests (the extra 21 are mainline's Image control-only
 coverage). Rust raw ABI remains 315 functions. Later mainline reconciliation and
-final rerun results are recorded before delivery.
+final rerun results:
+
+- `084a8906f3cd729b7a20a921f39bd513d8ac02c2` (Rust discovery and standalone
+  Rustdoc foundation) merged cleanly in
+  `bffc60e893a784a876d7bbd2ad39735031e83927`. No first-party Ada/native receiver
+  implementation changed during either mainline reconciliation.
+- Final `make test-rust` passed native **656/656** and **503** Rust tests, with
+  **9** pre-existing ignored cases; the increase includes mainline discovery and
+  Rustdoc examples. Both raw inventories still match the production **315**
+  functions exactly.
+- Final Rust formatting and all-target Clippy (`-D warnings`) passed. Mainline's
+  eight `test_rustdoc_001_foundation.py` controls passed.
+- Final reviewed coverage, pinned Ada formatting, source-integrity,
+  final-newline/whitespace and exact production-DSO export audits passed.
+
+The mainline merges are conflict-free ordinary merges. C2 source and its Ada
+metadata implementation remain byte-identical to mainline; no callback queue
+ownership or request-future semantics were replaced.
 
 Real-provider status: **PRIVATE_PROVIDER_INTEGRATION_UNTESTED**. No local
 `minimal-mel-example` provider checkout was found. Authenticated source review is
