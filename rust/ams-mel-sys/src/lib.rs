@@ -1306,6 +1306,15 @@ pub struct AmsMelIrStreamConfigV1 {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrImageControlConfigV1 {
+    pub channel_type: u32,
+    pub channel_id: AmsMelUciIdV1,
+    pub platform_id: AmsMelUciIdV1,
+    pub sensor_location: AmsMelComponentLocationV1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct AmsMelIrC2ConfigV1 {
     pub channel_type: u32,
     pub channel_id: AmsMelUciIdV1,
@@ -2028,6 +2037,11 @@ pub struct AmsMelIrChannelCapability {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+#[repr(C)]
+pub struct AmsMelIrCapabilityList {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 /// Opaque weak common Channel view (`ams_mel_ir_channel`, Task 032B1). Raw
 /// declarations only; no safe Rust common Channel API is provided yet.
 #[repr(C)]
@@ -2234,6 +2248,59 @@ pub struct AmsMelIrSchedulingAckMetadata {
 /// Raw event owner, independent of provider lifetime.
 #[repr(C)]
 pub struct AmsMelIrSchedulingAckEvent {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// IRMEL-ADA-013 pinned upstream `Task`. 0..10 are the meaningful task kinds;
+/// `RESERVED_1`..`RESERVED_6` (11..16) are preserved but non-operational.
+/// `NumTaskTypes` (17) and above are malformed and never queued.
+pub const AMS_MEL_IR_TASK_NO_TASK: u32 = 0;
+pub const AMS_MEL_IR_TASK_ABORT_TASK: u32 = 1;
+pub const AMS_MEL_IR_TASK_IRST_CAM_CAL: u32 = 2;
+pub const AMS_MEL_IR_TASK_CAM_CAL: u32 = 3;
+pub const AMS_MEL_IR_TASK_IRST_BORESIGHT: u32 = 4;
+pub const AMS_MEL_IR_TASK_IDLE: u32 = 5;
+pub const AMS_MEL_IR_TASK_IRST_SCAN: u32 = 6;
+pub const AMS_MEL_IR_TASK_IRST_POSITION: u32 = 7;
+pub const AMS_MEL_IR_TASK_IRST_STT: u32 = 8;
+pub const AMS_MEL_IR_TASK_IRST_MTT: u32 = 9;
+pub const AMS_MEL_IR_TASK_IRST_UPDATE: u32 = 10;
+pub const AMS_MEL_IR_TASK_RESERVED_1: u32 = 11;
+pub const AMS_MEL_IR_TASK_RESERVED_2: u32 = 12;
+pub const AMS_MEL_IR_TASK_RESERVED_3: u32 = 13;
+pub const AMS_MEL_IR_TASK_RESERVED_4: u32 = 14;
+pub const AMS_MEL_IR_TASK_RESERVED_5: u32 = 15;
+pub const AMS_MEL_IR_TASK_RESERVED_6: u32 = 16;
+/// IRMEL-ADA-013 pinned upstream `TaskCompStatus`, exactly 0..4.
+pub const AMS_MEL_IR_TASK_COMP_STATUS_NO_TASK: u32 = 0;
+pub const AMS_MEL_IR_TASK_COMP_STATUS_COMPLETE: u32 = 1;
+pub const AMS_MEL_IR_TASK_COMP_STATUS_TIMEOUT: u32 = 2;
+pub const AMS_MEL_IR_TASK_COMP_STATUS_ABORT: u32 = 3;
+pub const AMS_MEL_IR_TASK_COMP_STATUS_SKIPPED: u32 = 4;
+/// IRMEL-ADA-013 raw complete TaskExecutingRep (all ten getters, upstream order).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmsMelIrTaskExecutingRepV1 {
+    pub command_id: u32,
+    pub activity_id: u32,
+    pub request_id: u32,
+    pub task: u32,
+    pub estimated_duration_ns: i64,
+    pub track_id: i32,
+    pub previous_activity_id: u32,
+    pub previous_request_id: u32,
+    pub previous_task: u32,
+    pub previous_task_status: u32,
+}
+/// Raw opt-in Scheduling TaskExecutingRep consumption owner.
+#[repr(C)]
+pub struct AmsMelIrSchedulingRepMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
+/// Raw TaskExecutingRep event owner, independent of provider lifetime.
+#[repr(C)]
+pub struct AmsMelIrSchedulingRepEvent {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
@@ -3033,6 +3100,15 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 
+    pub fn ams_mel_ir_image_control_open(
+        session: *const AmsMelSession,
+        config: *const AmsMelIrImageControlConfigV1,
+        out_stream: *mut *mut AmsMelIrStream,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+
     pub fn ams_mel_ir_stream_start(
         stream: *mut AmsMelIrStream,
         diagnostic: *mut c_char,
@@ -3272,6 +3348,34 @@ extern "C" {
     pub fn ams_mel_ir_c2_get_capabilities(
         c2: *mut AmsMelIrC2,
         out: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_create(
+        session: *mut AmsMelSession,
+        out_list: *mut *mut AmsMelIrCapabilityList,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_count(
+        list: *const AmsMelIrCapabilityList,
+        out_count: *mut usize,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_get(
+        list: *const AmsMelIrCapabilityList,
+        index: usize,
+        out_capability: *mut *mut AmsMelIrChannelCapability,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_capability_list_close(
+        list: *mut *mut AmsMelIrCapabilityList,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,
@@ -4036,6 +4140,49 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_scheduling_execute_task_ack_event_close(
         event: *mut *mut AmsMelIrSchedulingAckEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_open(
+        scheduling: *mut AmsMelIrScheduling,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrSchedulingRepMetadata,
+        out_registration: *mut AmsMelIrReturn,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_receive(
+        metadata: *mut AmsMelIrSchedulingRepMetadata,
+        timeout_ms: u32,
+        out: *mut *mut AmsMelIrSchedulingRepEvent,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_get_counters(
+        metadata: *const AmsMelIrSchedulingRepMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_close(
+        metadata: *mut *mut AmsMelIrSchedulingRepMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_event_view(
+        event: *const AmsMelIrSchedulingRepEvent,
+        out: *mut *const AmsMelIrTaskExecutingRepV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_scheduling_task_executing_event_close(
+        event: *mut *mut AmsMelIrSchedulingRepEvent,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

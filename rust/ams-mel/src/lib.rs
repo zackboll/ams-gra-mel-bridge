@@ -35,6 +35,13 @@
 //! This covers the four currently C-bridged families, not every upstream Image
 //! callback.
 //!
+//! IR NavigationReport submission (RUST-IR-008):
+//! [`ImageStream::submit_navigation_report`] copies a complete [`NavigationReport`]
+//! and returns a unique [`NavigationRequest`]. Its cached [`NavigationResult`]
+//! distinguishes a complete response from explicit provider rejection. Zero wait
+//! polls; timeout and Close/Drop do not cancel work. The request can outlive its
+//! ImageStream and Session, and is neither Clone, Send nor Sync.
+//!
 //! IR C2 metadata (RUST-IR-005): [`ControlChannel::open_metadata`] returns an
 //! independent [`C2MetadataStream`] for owned CommandStatus, BIT configuration,
 //! canonical Health BIT status and separately opted-in communications reports.
@@ -79,20 +86,32 @@ mod ir_c2_metadata;
 mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
+mod ir_los_quaternion;
+mod ir_navigation;
+pub use ir_navigation::{
+    AttitudeRate, NavigationReport, NavigationRequest, NavigationResult, NorthEastDown,
+    PositionSolutionState, PositionVelocityCovariance,
+};
 pub mod ir_nuc;
 mod ir_optical_distortion_map;
 #[cfg(test)]
 mod test_allocator;
+pub use ir_los_quaternion::{
+    LineOfSightQuaternion, LineOfSightQuaternionOpenError, LineOfSightQuaternionStream, Quaternion,
+};
 pub use ir_optical_distortion_map::{
     ForwardRightDown, OpticalDistortionMap, OpticalDistortionMapOpenError,
     OpticalDistortionMapStream, RowCol,
 };
+mod ir_config_set;
+mod ir_mode;
 mod rf_admin;
 mod rf_data;
 pub use ir_c2_metadata::{
     BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
     C2MetadataStream, CannotComply, CommandState, CommandStatus,
 };
+pub use ir_config_set::ConfigSetCommand;
 pub use ir_health::{HealthConfig, HealthStatusChannel};
 pub use ir_health_metadata::{
     About, ActiveBit, BitResult, BitStatus, CompletedBit, CompletedBitItem, ComponentState,
@@ -109,6 +128,9 @@ pub use ir_image_metadata::{
     AzimuthElevation, BadPixel, BadPixelList, BadPixelReason, ImageMetadataCounters,
     ImageMetadataEvent, ImageMetadataStream, LineOfSightEuler, LineOfSightReport,
     NavigationResponse,
+};
+pub use ir_mode::{
+    CoordinateFrameReference, DegradationMethod, MfaState, ModeCommand, ScanParameters, ScanType,
 };
 pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
@@ -882,6 +904,37 @@ impl ImageStream {
         })
     }
 
+    /// Registers conditional LineOfSightQuaternion independently of other metadata.
+    /// Attached and Running streams are eligible; this does not start acquisition.
+    /// Zero capacity fails locally without consuming the native one-shot. Every
+    /// actual registration attempt consumes it, including failure. Closed owners
+    /// fail locally with ProviderFailed before capacity validation.
+    pub fn open_line_of_sight_quaternion(
+        &mut self,
+        queue_capacity: usize,
+    ) -> Result<LineOfSightQuaternionStream, LineOfSightQuaternionOpenError> {
+        if self.raw.is_null() {
+            return Err(LineOfSightQuaternionOpenError::preflight(Error::new(
+                ErrorKind::ProviderFailed,
+                "image stream is closed",
+            )));
+        }
+        LineOfSightQuaternionStream::open_with(queue_capacity, |out, registration, d, c, r| {
+            // SAFETY: exclusively borrowed Image owner and writable output slots.
+            unsafe {
+                sys::ams_mel_ir_image_los_quaternion_open(
+                    self.raw,
+                    queue_capacity,
+                    out,
+                    registration,
+                    d,
+                    c,
+                    r,
+                )
+            }
+        })
+    }
+
     pub fn start(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the live stream handle.
@@ -1158,6 +1211,7 @@ impl Drop for ModeRequest {
 /// It currently owns requests produced by:
 ///
 /// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op profile), and
+/// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text), and
 /// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2 or Image).
 ///
 /// The native request owns its admitted family graph independently of the
@@ -1715,21 +1769,34 @@ fn wait_for_mode(
     request: *mut sys::AmsMelIrModeRequest,
     timeout_ms: u32,
 ) -> Result<ModeResult, Error> {
+    wait_for_mode_with(
+        timeout_ms,
+        |timeout, result, diagnostic, capacity, required| {
+            // SAFETY: the unique request is borrowed for this call; all output
+            // storage is initialized and valid for the advertised capacity.
+            unsafe {
+                sys::ams_mel_ir_mode_request_wait(
+                    request, timeout, result, diagnostic, capacity, required,
+                )
+            }
+        },
+    )
+}
+
+fn wait_for_mode_with(
+    timeout_ms: u32,
+    mut wait: impl FnMut(u32, &mut sys::AmsMelIrModeResultV1, *mut c_char, usize, &mut usize) -> i32,
+) -> Result<ModeResult, Error> {
     let mut result = sys::AmsMelIrModeResultV1::default();
     let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
     let mut required = 0_usize;
-    // SAFETY: the request is live and exclusively accessed through `&mut self`;
-    // result and diagnostic storage are writable for their advertised sizes.
-    let status = unsafe {
-        sys::ams_mel_ir_mode_request_wait(
-            request,
-            timeout_ms,
-            &mut result,
-            diagnostic.as_mut_ptr().cast::<c_char>(),
-            diagnostic.len(),
-            &mut required,
-        )
-    };
+    let status = wait(
+        timeout_ms,
+        &mut result,
+        diagnostic.as_mut_ptr().cast::<c_char>(),
+        diagnostic.len(),
+        &mut required,
+    );
     if required == 0 {
         return Err(protocol("native wait returned an invalid diagnostic size"));
     }
@@ -1757,18 +1824,14 @@ fn wait_for_mode(
         complete.resize(first_required, 0);
         let mut retry_result = sys::AmsMelIrModeResultV1::default();
         let mut retry_required = 0_usize;
-        // SAFETY: terminal request results are cached and repeatable. The same
-        // live request is polled with exact writable diagnostic storage.
-        let retry_status = unsafe {
-            sys::ams_mel_ir_mode_request_wait(
-                request,
-                0,
-                &mut retry_result,
-                complete.as_mut_ptr().cast::<c_char>(),
-                complete.len(),
-                &mut retry_required,
-            )
-        };
+        // Terminal request results are cached and repeatable.
+        let retry_status = wait(
+            0,
+            &mut retry_result,
+            complete.as_mut_ptr().cast::<c_char>(),
+            complete.len(),
+            &mut retry_required,
+        );
         if retry_status != status
             || retry_result != first_result
             || retry_required != first_required
@@ -1810,21 +1873,34 @@ fn wait_for_return(
     request: *mut sys::AmsMelIrReturnRequest,
     timeout_ms: u32,
 ) -> Result<ReturnResult, Error> {
+    wait_for_return_with(
+        timeout_ms,
+        |timeout, result, diagnostic, capacity, required| {
+            // SAFETY: the request is exclusively borrowed; all output buffers are
+            // writable for their advertised sizes. Terminal retries only poll.
+            unsafe {
+                sys::ams_mel_ir_return_request_wait(
+                    request, timeout, result, diagnostic, capacity, required,
+                )
+            }
+        },
+    )
+}
+
+fn wait_for_return_with(
+    timeout_ms: u32,
+    mut wait: impl FnMut(u32, &mut sys::AmsMelIrReturnResultV1, *mut c_char, usize, &mut usize) -> i32,
+) -> Result<ReturnResult, Error> {
     let mut result = sys::AmsMelIrReturnResultV1::default();
     let mut diagnostic = [0_u8; WAIT_DIAGNOSTIC_CAPACITY];
     let mut required = 0_usize;
-    // SAFETY: the request is live and exclusively accessed through `&mut self`;
-    // result and diagnostic storage are writable for their advertised sizes.
-    let status = unsafe {
-        sys::ams_mel_ir_return_request_wait(
-            request,
-            timeout_ms,
-            &mut result,
-            diagnostic.as_mut_ptr().cast::<c_char>(),
-            diagnostic.len(),
-            &mut required,
-        )
-    };
+    let status = wait(
+        timeout_ms,
+        &mut result,
+        diagnostic.as_mut_ptr().cast::<c_char>(),
+        diagnostic.len(),
+        &mut required,
+    );
     if required == 0 {
         return Err(protocol("native wait returned an invalid diagnostic size"));
     }
@@ -1852,18 +1928,13 @@ fn wait_for_return(
         complete.resize(first_required, 0);
         let mut retry_result = sys::AmsMelIrReturnResultV1::default();
         let mut retry_required = 0_usize;
-        // SAFETY: terminal request results are cached and repeatable. The same
-        // live request is polled with exact writable diagnostic storage.
-        let retry_status = unsafe {
-            sys::ams_mel_ir_return_request_wait(
-                request,
-                0,
-                &mut retry_result,
-                complete.as_mut_ptr().cast::<c_char>(),
-                complete.len(),
-                &mut retry_required,
-            )
-        };
+        let retry_status = wait(
+            0,
+            &mut retry_result,
+            complete.as_mut_ptr().cast::<c_char>(),
+            complete.len(),
+            &mut retry_required,
+        );
         if retry_status != status
             || retry_result != first_result
             || retry_required != first_required

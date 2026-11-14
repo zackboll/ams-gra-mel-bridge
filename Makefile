@@ -14,6 +14,7 @@ test-policy:
 .PHONY: test-docs-ci docs
 test-docs-ci:
 	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
+	@python3 -W error -m unittest discover -s docs/tests -p test_static_subtype_audit.py -v
 	@python3 -W error -m unittest discover -s scripts -p test_doc_coverage.py -v
 
 # Run under the pinned documentation toolchain; output is ignored and fresh-only.

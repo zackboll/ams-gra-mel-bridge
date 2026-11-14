@@ -67,8 +67,9 @@ pub struct LineOfSightEuler {
     pub attitude_rates: Euler,
 }
 
-/// Asynchronous NavigationReportResp metadata, NOT request-handle completion.
-/// No provider error code or completion state is inferred from its identifiers.
+/// Complete NavigationReportResp value, shared by metadata and request results.
+/// Metadata arrival is NOT request-handle completion. No provider error code or
+/// completion state is inferred from its identifiers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NavigationResponse {
     pub system_time_ns: i64,

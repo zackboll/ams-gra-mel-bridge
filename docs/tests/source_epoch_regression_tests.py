@@ -71,6 +71,72 @@ class GeneratedSourceTests(unittest.TestCase):
         self.assertIn('Qualification_Observation_Count',
                       (self.output / 'pristine/api' / added['page']).read_text())
 
+    def test_current_source_required_occurrences_include_operational_subtype(self):
+        from local_type_audit import Authority, require_complete_additions
+        report = json.loads((self.output / 'epoch.json').read_text())
+        authority = Authority(self.repo, self.output / 'pristine', ledger=report['native'])
+        required = authority.required_additions()
+        # Twenty-nine pre-existing source-derived additions plus this feature's
+        # range-constrained subtype. Do not substitute a count for ownership.
+        self.assertEqual(len(required), 30)
+        self.assertEqual(sum(r['context'] == 'subtype-base' for r in required), 21)
+        self.assertEqual({r['containing']['package'] for r in required
+                          if r['context'] == 'subtype-base'}, {
+            'ams.mel.ir.c2.system_data', 'ams.mel.ir.calibration_status',
+            'ams.mel.ir.camera', 'ams.mel.ir.camera_protection', 'ams.mel.ir.erase',
+            'ams.mel.ir.image.metadata', 'ams.mel.ir.line_of_sight_quaternion',
+            'ams.mel.ir.scheduling.metadata'})
+        record = next(r for r in required if r['containing']['name'] == 'Operational_Task_Kind')
+        self.assertEqual(record['target_identity'], 'ams.mel.ir.scheduling.metadata.task_kind')
+        self.assertEqual(record['containing']['source'], 'ada/src/ams-mel-ir-scheduling-metadata.ads')
+        self.assertEqual(record['source_line'], 144)
+        self.assertEqual(record['visible'], 'Task_Kind')
+        self.assertEqual(record['target']['name'], 'Task_Kind')
+        require_complete_additions(self.value['publication']['type_occurrences'], required)
+
+    def test_normal_verifier_rejects_removed_subtype_link_with_resealed_manifest(self):
+        from check_doc_coverage import measure
+        from local_type_audit import LINK, SECTION
+        with tempfile.TemporaryDirectory(dir=self.directory) as temp:
+            directory = Path(temp) / 'normal'
+            directory.mkdir()
+            for name in ('pristine', 'published'):
+                shutil.copytree(self.output / name, directory / name)
+            report = measure(directory / 'pristine', self.repo)
+            docs_ci.write(directory / 'coverage.json', report)
+            docs_ci.write(directory / 'native-anchors.json', report['native'])
+            record = next(r for r in self.value['publication']['type_occurrences']
+                          if r['containing']['name'] == 'Operational_Task_Kind')
+            path = directory / 'published/api' / record['containing']['page']
+            original = path.read_text()
+            section = next(m for m in SECTION.finditer(original)
+                           if m[2] == record['containing']['anchor'])
+            wrapper = next(m[0] for m in LINK.finditer(section[3]))
+            for replacement in ('Task_Kind', wrapper * 2,
+                                wrapper.replace(record['href'], record['href'][:-1] + '0'),
+                                wrapper.replace('>Task_Kind<', '>Unknown<')):
+                with self.subTest(replacement=replacement):
+                    body = section[3].replace(wrapper, replacement)
+                    path.write_text(original[:section.start(3)] + body + original[section.end(3):])
+                    # Make the presentation manifest and outer payload agree
+                    # with the forgery; neither is independent authority.
+                    inner = directory / 'published/api/presentation.json'
+                    data = json.loads(inner.read_text())
+                    data['output_sha256']['api/' + path.name] = presentation.sha(path.read_bytes())
+                    if replacement == 'Task_Kind':
+                        for counter in ('linked_types', 'linked_local_types'):
+                            data['counts'][counter] -= 1
+                    docs_ci.write(inner, data)
+                    with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+                        payload = presentation.files(directory)
+                        payload.pop('manifest.json', None)
+                        manifest = {'schema': 1, 'identity': docs_ci.identity(self.repo),
+                                    'payload': presentation.hashes(payload)}
+                        docs_ci.write(directory / 'manifest.json', manifest)
+                        digest = epoch.sha((directory / 'manifest.json').read_bytes())
+                        with self.assertRaisesRegex(ValueError, 'independent type audit'):
+                            docs_ci.verify(self.repo, directory, digest)
+
     def test_wrong_source_and_manifest_identity_rejected(self):
         with self.assertRaises(ValueError):
             epoch.verify(self.repo, self.output, self.target, self.target)

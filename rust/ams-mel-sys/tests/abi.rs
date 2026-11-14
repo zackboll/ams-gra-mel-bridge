@@ -4,6 +4,60 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ams_mel_sys::*;
+
+#[test]
+fn image_control_abi() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelSession,
+        *const AmsMelIrImageControlConfigV1,
+        *mut *mut AmsMelIrStream,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_image_control_open;
+    // Type-check each field independently, not merely its size/offset.
+    let _: fn(AmsMelIrImageControlConfigV1) -> u32 = |v| v.channel_type;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelUciIdV1 = |v| v.channel_id;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelUciIdV1 = |v| v.platform_id;
+    let _: fn(AmsMelIrImageControlConfigV1) -> AmsMelComponentLocationV1 = |v| v.sensor_location;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let executable = env::temp_dir().join(format!("ams-mel-image-control-{}", std::process::id()));
+    assert!(Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
+        .args([
+            "-std=c11",
+            "-pedantic-errors",
+            "-Wall",
+            "-Wextra",
+            "-Werror"
+        ])
+        .arg(format!("-I{}", root.join("native/include").display()))
+        .arg(root.join("native/tests/image_control_layout_probe.c"))
+        .arg("-o")
+        .arg(&executable)
+        .status()
+        .unwrap()
+        .success());
+    let output = Command::new(&executable).output().unwrap();
+    assert!(output.status.success());
+    std::fs::remove_file(executable).unwrap();
+    let actual: Vec<usize> = String::from_utf8(output.stdout)
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert_eq!(
+        actual,
+        vec![
+            size_of::<AmsMelIrImageControlConfigV1>(),
+            align_of::<AmsMelIrImageControlConfigV1>(),
+            offset_of!(AmsMelIrImageControlConfigV1, channel_type),
+            offset_of!(AmsMelIrImageControlConfigV1, channel_id),
+            offset_of!(AmsMelIrImageControlConfigV1, platform_id),
+            offset_of!(AmsMelIrImageControlConfigV1, sensor_location),
+        ]
+    );
+}
+
 #[test]
 fn product_rx_v5_abi() {
     let _: unsafe extern "C" fn(
@@ -1555,6 +1609,39 @@ fn rf_data_signatures_match_the_c_header() {
     assert!(data.is_null() && info.is_null());
 }
 
+/// IRMEL-ADA-014-R1: preserve discovery pointer constness, depth and size_t widths.
+#[test]
+fn capability_list_signatures_match_the_c_header() {
+    let _: unsafe extern "C" fn(
+        *mut AmsMelSession,
+        *mut *mut AmsMelIrCapabilityList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_create;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrCapabilityList,
+        *mut usize,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_count;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrCapabilityList,
+        usize,
+        *mut *mut AmsMelIrChannelCapability,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_get;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrCapabilityList,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_capability_list_close;
+}
+
 /// The raw declaration inventory equals the production export map exactly.
 #[test]
 fn raw_inventory_matches_production_exports() {
@@ -1576,8 +1663,10 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 295);
-    assert_eq!(exported.len(), 295);
+    assert_eq!(declared.len(), 306);
+    assert_eq!(exported.len(), 306);
+    assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
+    assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);
     for name in [
         "ams_mel_rf_data_open",

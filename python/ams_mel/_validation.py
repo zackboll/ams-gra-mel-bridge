@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ctypes as _ctypes
+import math
+from numbers import Number
 from ._errors import (
     ErrorKind,
     _local_error,
@@ -16,6 +18,21 @@ _UINT32_MAX = (1 << 32) - 1
 
 
 _SIZE_T_MAX = (1 << (_ctypes.sizeof(_ctypes.c_size_t) * 8)) - 1
+
+
+def _validate_double(value: float, name: str) -> float:
+    """Convert numeric input without replacing IEEE values or overflowing silently."""
+    if isinstance(value, bool) or not isinstance(value, Number):
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be numeric")
+    try:
+        converted = float(value)
+        if math.isinf(converted) and value != converted:
+            raise OverflowError
+    except (TypeError, ValueError, OverflowError) as error:
+        raise _local_error(
+            ErrorKind.INVALID_ARGUMENT, f"{name} must be representable as C double"
+        ) from error
+    return converted
 
 
 def _utf8_input(value: str, name: str) -> bytes:
@@ -57,4 +74,13 @@ def _validate_uint32(value: int, name: str) -> None:
     if value < 0 or value > _UINT32_MAX:
         raise _local_error(
             ErrorKind.INVALID_ARGUMENT, f"{name} must be representable in uint32_t"
+        )
+
+
+def _validate_int64(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be an integer")
+    if value < -(_INT64_MAX + 1) or value > _INT64_MAX:
+        raise _local_error(
+            ErrorKind.INVALID_ARGUMENT, f"{name} must be representable in int64_t"
         )

@@ -2174,12 +2174,37 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::SchedulingChannel::registerMetadataCallback(std::function<void(Channel&,const TaskExecutingRep*const)>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native consumer path or safe Ada binding exists for this declaration.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_executing.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_executing_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Open_Task_Executing"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Task_Executing"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_executing.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_task_executing_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-013: independent opt-in TaskExecutingRep callback on Attached or Enabled Scheduling, with its own one-shot, callback state, bounded queue, counters and public owner, coexisting with ExecuteTaskAck in either registration order and never implied by it. Unlocked registration with safe synchronous delivery, distinct provider outcomes, all ten fields copied and enum-validated before callback return, bounded drop-incoming queue without full-queue snapshots, malformed classification before queue-full, allocation recovery and two-family in-flight teardown drain. No task execution or request correlation.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. A report is not a task request, execution, completion or success proof; previous-task status describes only the previous task."
+      ],
       "representation": []
     },
     {
@@ -11752,9 +11777,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial.",
+      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. IRMEL-ADA-011 adds only the typed Scheduling owner foundation (AMS.MEL.IR.Scheduling: Open, Enable, Capabilities, As_Channel, Close) and inherited common KeepAlive/CommsTest/capabilities through the weak Channel view. IRMEL-ADA-012 adds only the independent ExecuteTaskAck reception child package; SchedulingChannel remains partial. IRMEL-ADA-013 adds only the independent TaskExecutingRep reception in the same child package, with separate state; SchedulingChannel remains partial.",
       "limitations": [
-        "Ten Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the five TaskExecutingRep, SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck reception is independent of execution; no task is submitted, queued or reported as scheduled.",
+        "Nine Scheduling-specific operations remain missing: four exec overloads, send(PrioritizedTrackListCmd), and the four SchedCreatedRep, UpdateTrackListResponse, TaskEvents and ScanPerformanceReport registrations. ExecuteTaskAck and TaskExecutingRep reception are independent of execution; no task is submitted, queued or reported as scheduled.",
         "Disable is performed only inside Close; there is no standalone Disable.",
         "Inherited buffer and ChannelCommsTestRep registration are not exposed on Scheduling.",
         "Positive evidence is mock-provider only; no real provider or hardware tasking ran."
@@ -12656,22 +12681,66 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::Task",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_executing.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_executing_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Task_Kind"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_executing.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_task_executing_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-013: all seventeen defined pinned values as AMS_MEL_IR_TASK_* and Ada Task_Kind with matching representation clauses: meaningful NoTask..IRSTUpdate (0..10, subtype Operational_Task_Kind) and Reserved1..Reserved6 (11..16) preserved verbatim as Reserved_1..Reserved_6, non-operational (Is_Operational is False). Used for both getTask and getPrevTask.",
+      "limitations": [
+        "Known pinned alternatives only; values outside the defined domain reject the whole TaskExecutingRep (malformed counter) and are never remapped. Representation does not implement Scheduling task execution.",
+        "NumTaskTypes (17) is a count sentinel, not a task: it and every larger value are malformed. Reserved values are preserved, not supported, executable or given operational meaning."
+      ],
       "representation": []
     },
     {
       "id": "ir:type:ams::iface::irmel::TaskCompStatus",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_executing.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_executing_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Task_Completion_Status"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_executing.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_task_executing_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-013: exactly the five pinned alternatives NoTask, Complete, Timeout, Abort and Skipped (0..4) as AMS_MEL_IR_TASK_COMP_STATUS_* and Ada Task_Completion_Status (Status_No_Task, Complete, Timeout, Abort_Status, Skipped), a type separate from Task_Kind.",
+      "limitations": [
+        "Known pinned alternatives only; values outside the defined domain reject the whole TaskExecutingRep (malformed counter) and are never remapped. Representation does not implement Scheduling task execution.",
+        "Received only as getPrevTaskStatus: the status of the previous task, never of the current task. Upstream declares no sentinel."
+      ],
       "representation": []
     },
     {
@@ -12712,62 +12781,137 @@
     },
     {
       "id": "ir:type:ams::iface::irmel::TaskExecutingRep",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this Scheduling task/response dependency.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_scheduling_task_executing.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_executing_open"
+        },
+        {
+          "path": "native/src/ir_scheduling_task_executing.cpp",
+          "symbol": "ams_mel_ir_scheduling_task_executing_receive"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+          "symbol": "Receive_Task_Executing"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_scheduling_task_executing.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_scheduling_task_executing_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Complete ten-getter mapping in upstream order into the fixed 48-byte ams_mel_ir_task_executing_rep_v1 and the Ada-owned Task_Executing_Report: getCommandID/getActivityId/getReqId -> uint32 / Unsigned_32; getTask -> Current_Task; getEstimatedDuration -> exact signed int64 count() in nanoseconds / Integer_64 (no seconds, Duration or epoch); getTrackId -> int32 / Integer_32; getPrevActivityId/getPrevReqId -> uint32; getPrevTask -> Previous_Task; getPrevTaskStatus -> Previous_Task_Status. Negative duration and track identifiers, zero and high-bit identifiers are valid; current and previous fields are independent and never correlated.",
+      "limitations": [
+        "Mock-provider qualification only. Conditional @RequiredIfIRSTTrackTasking callback; NotSupported raises the distinct AMS.MEL.IR.Scheduling.Metadata.Not_Supported exception. Upstream has no unregister. A report is not a task request, execution, completion or success proof; previous-task status describes only the previous task."
+      ],
       "representation": [
         {
           "upstream": "getCommandID",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getActivityId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getReqId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getTask",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getEstimatedDuration",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getTrackId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getPrevActivityId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getPrevReqId",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getPrevTask",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         },
         {
           "upstream": "getPrevTaskStatus",
-          "status": "not_exposed",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-scheduling-metadata.ads",
+              "symbol": "Receive_Task_Executing"
+            }
+          ]
         }
       ]
     },
@@ -14201,10 +14345,10 @@
   "source_sha256": {
     "ada/src/ams-mel-ir-c2-common.adb": "0296080144a7fc162f601855f841048f86b3255cc7786098d588bd09d6e6755d",
     "ada/src/ams-mel-ir-c2-common.ads": "bd8177f8da2d5ebc8cd3b870c0dc536cf78732144ffa1dcee89a17ca85c43891",
-    "ada/src/ams-mel-ir-c2-metadata.adb": "f66a32746ff387f0d9290030c66728bf92282bddb39c868c704e126a25077739",
-    "ada/src/ams-mel-ir-c2-metadata.ads": "bf230fb0eca6e3e19d3a4077ff9feb87bd02dc898a1e1554d4a8f6b5cfa6eb4f",
-    "ada/src/ams-mel-ir-c2.adb": "50e19f4552b59fa8fc0101b4d07c028e8a3b0b8a6343bf5e35e2b107d37e5023",
-    "ada/src/ams-mel-ir-c2.ads": "95ff8b57792f651883ab5f5bd7e6e89808ff8bfbbc5d6e389fe5f8afde8d09bc",
+    "ada/src/ams-mel-ir-c2-metadata.adb": "94b12c9f1c7914faa95319ff90085628ac7d39df35904710fc8a555e9b53713b",
+    "ada/src/ams-mel-ir-c2-metadata.ads": "70cb76e916634bac0519a21f771207cb4e74b35fd3320ffc16db29eba6687c55",
+    "ada/src/ams-mel-ir-c2.adb": "336084d13cd28e72615b98ca0661a2fc5f44b2e0b3835f6bcf1ac33885f1c65f",
+    "ada/src/ams-mel-ir-c2.ads": "8134cf20fe3974fc48489c71cd8ffe447dbaeba29f692a7c1485a2dbe7424026",
     "ada/src/ams-mel-ir-camera.adb": "b6720749a2b852a47212e6ffeed1b6979d8aadb745e11714448bda70f3e2612d",
     "ada/src/ams-mel-ir-camera.ads": "af333219c547732f13da8890fd3e671efbaacd1a7e28e9bb652e5484e2468fd6",
     "ada/src/ams-mel-ir-camera_conversion.adb": "da79bc05a194e9be42661985a7db275aa757d761901f8907f5bf2c4db364ced6",
@@ -14221,10 +14365,10 @@
     "ada/src/ams-mel-ir-health_status-metadata.ads": "b10d2858ca35009e9131839023eec9b644006d37fdda14e558324123a179b4bb",
     "ada/src/ams-mel-ir-health_status.adb": "d114a876d51b9912c0e129ba1141ac8dfd8585e6b0cc43c50613b7083a74682b",
     "ada/src/ams-mel-ir-health_status.ads": "5fb3a8d7d08c2330b5b770241c1f724d551958ec8484c57f4736702e23f75b61",
-    "ada/src/ams-mel-ir-image-metadata.adb": "5ef6cd78cc92d042cea7dbc71aaa456878eac2c96d88cdb78f4e2d4943b3dc23",
-    "ada/src/ams-mel-ir-image-metadata.ads": "aa29f6545b0607f48222eddc08047ae4834a0da9a1276e27dcf14358eb172537",
+    "ada/src/ams-mel-ir-image-metadata.adb": "40f67c9d7f8fdf96bba1bcc2fef9122c9f5e2a827d683416695ac44a3e016cb0",
+    "ada/src/ams-mel-ir-image-metadata.ads": "d8974c6e1e7ed584888a1e55f90b8e5eae036cf31edd595ed97ac7f114127113",
     "ada/src/ams-mel-ir-image.adb": "de01a0f297803d9269bcc338bb568244dba952dc9c86a31dc0715535506ce784",
-    "ada/src/ams-mel-ir-image.ads": "54646122500bc4ba94db73945052e30c2403c36300c5d84243c24afe21d9af5c",
+    "ada/src/ams-mel-ir-image.ads": "5c42b4bc4a6c2fa1a6895dde9f2517d0f9fa60892636fb75df1cdd11ce87804d",
     "ada/src/ams-mel-ir-instrumentation-metadata.adb": "f15f64a5bc9cf852d48b401482e2fdafbcad8b74db3ff9b33f5a197765de087d",
     "ada/src/ams-mel-ir-instrumentation-metadata.ads": "a8d39c78fc3e63d76eb0cd40a5da27ecf915904075b944bff5be2fc88569271f",
     "ada/src/ams-mel-ir-instrumentation.adb": "892db54f14e65ed4fe8639f58d7a4c8f1ec65537a3726d17ab24adeb5d70865e",
@@ -14234,45 +14378,45 @@
     "ada/src/ams-mel-ir-nuc_conversion.ads": "5ec9f9cb273418069d80fae0b04e15ef043d5ae3309f02fffe3420578ab4f945",
     "ada/src/ams-mel-ir-track-metadata.adb": "cfb6aa1e4561f75861bc372f765fd7f4dd757372fccbbf51a9499d77c5b8ef87",
     "ada/src/ams-mel-ir-track-metadata.ads": "59346c1683bd0b78fca7e6cddbbbb397ccfe1e8e9ebc96f8216511c90306c0ed",
-    "ada/src/ams-mel-ir-track-system_data.adb": "dd2ac9d13aef1f8ebafde894f1092f5a322d485e3ec6cfd6be1e33ff0c1c3e03",
+    "ada/src/ams-mel-ir-track-system_data.adb": "cbd323f841a21193f2348300ab1d6dac5cfb23b587e7d4f4a9d35b02cf99de9f",
     "ada/src/ams-mel-ir-track-system_data.ads": "6094144b4a8ff5c6758365ac33f4025e4a77c6cc3a037c659f8216adde37c0dd",
     "ada/src/ams-mel-ir-track-updates.adb": "4ea2003664d1c607f8d608df92711b944633c4f3c08adaf64273396e8b762d55",
     "ada/src/ams-mel-ir-track-updates.ads": "db60fbb65ea04f026d33c353165e29214005378c61aae760d2569a6e33b60051",
     "ada/src/ams-mel-ir-track.adb": "be5ba8477967aeb6e2b8950b68120913427459da83c2220314884c75680bcb4c",
     "ada/src/ams-mel-ir-track.ads": "0a02dbfc84a51ac6fd1de72cfb71a1ba74cb364e9cacb568ca9027254831a856",
-    "ada/src/ams-mel-ir.adb": "43a0e40e0acdec5b7dfe6b9a36a271be510c5b058cdbe58e5eb008de3e2091c4",
-    "ada/src/ams-mel-ir.ads": "529fff834b485c08bfefa2f9ed47f5fa8bcc80098203f416953b0c4907fa10a9",
+    "ada/src/ams-mel-ir.adb": "955db2a6d588c37aefe395246bb4e4d10cadf1ad11b9cdd6a1fda57fe99646a4",
+    "ada/src/ams-mel-ir.ads": "3725441ea82f7beea6cf5a6ad5313dcbf07a9df2c856eee642ef1f160c51e705",
     "ada/src/ams-mel-status.adb": "9df708f84c149acb3b01f3decb6501564795108fd6a97d7d31fa1e5a213efbe1",
     "ada/src/ams-mel-status.ads": "309b6e11b9979a86661ea65807c534b156da3f42e84e451dfbb3226540127f06",
     "ada/src/ams-mel.adb": "5f3abf3e9ee264da4da5898ad7500ea1e550d5a7ce76563243463f1f287fe7db",
     "ada/src/ams-mel.ads": "8356a8d10aa905993f849affe0e01d23b4343a4f81b1f8d0704ba0366a9fc426",
-    "ada/src/ams-mel_c_api.ads": "2562fcdd816edc04e03bab944dfe09b0100f98ad5f0616cfc9ca57aa351966fd",
-    "native/include/ams_mel/abi.h": "ba974732a4b5601b1f5ffcf94afce12ca963aee20edd67320f94e4a9a6e8bfd7",
+    "ada/src/ams-mel_c_api.ads": "fcab6f87f2182f52ab1246f5c27099ead367ae32b8bb08853a22a7bb5adb1814",
+    "native/include/ams_mel/abi.h": "744eb61ae91edcde000d06eff1faa023fdbe175413997be38cbc9f3207d08dee",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
-    "native/src/common_channel_requests.cpp": "025cdf101c2609c5d0eaeadda0e16c3aaabde60c26a307f68c6a93e31a4420e5",
-    "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
-    "native/src/exports.map": "9c28a6d571b236dcf19a5d97c5827d445211fca42891cde9fdcb6f3cceb97101",
+    "native/src/common_channel_requests.cpp": "1384a47de8ddc0a9a616d5f85e0b2d096664af350d621522f280d28dbff642d3",
+    "native/src/completion_probe.cpp": "a78bf401c68a7964f1e6da77b39e117bf413a5ff5ab2c20c34a45f032c65844d",
+    "native/src/exports.map": "a3bfa801af51cf500bf452b9e572ae691a0eaa594885e74379b09965c2539c32",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
-    "native/src/internal/common_channel_requests.hpp": "5bc7dae97c242c5640a9748b213b345e50835ff19fd3e14103e573212e7eb544",
-    "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
+    "native/src/internal/common_channel_requests.hpp": "2db3cfdfcf12ddc7277462e19987af1347724aaef89553085063c12fa2a8e644",
+    "native/src/internal/completion_probe.hpp": "c05c2f97f1a38caa4defe294709a765d9d1633d82c894ac2148060b999699a06",
     "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
     "native/src/internal/ir_camera_protect.hpp": "c8486fc23e4d666ef402ee6c28bc8a87827350bde351b804609f64cf41dc09dc",
     "native/src/internal/ir_channel.hpp": "0b276634a2637c34fc997c02ccf0e845eaf0184af991e75b9f2add88d639b1a0",
     "native/src/internal/ir_nuc.hpp": "034369c2cfad4e2c1e2d914fc3e867c23caf05ab5073c53e653fc27d2d10568b",
-    "native/src/internal/ir_stream.hpp": "771212fd2f0c21ab48167f21cf8e63cd6854cb93740111a6b8c9dd9d61b872fd",
+    "native/src/internal/ir_stream.hpp": "7b2a050a62189eb5161ba26460affe56624e5cb411864f6a88575d7bf80856bd",
     "native/src/internal/provider_common.hpp": "c0c16122b30afce07dced9b59b57b1a8bf3d2c4b3b2ffd18d28ecad79fe6c46e",
     "native/src/internal/shared_library.hpp": "d1aaf08fa318e128efdcb9515b4171d953a6e8bb0d320c4506a6aeec96e97dbd",
-    "native/src/ir_c2.cpp": "883723643dc097afda69ef1a9c7e1828b13089e38505d652ea10c0a3c1d715db",
+    "native/src/ir_c2.cpp": "9206e9e7c003c720109a9b9e6245f61fbef6da1e50b1c24ce0b998c538deb18b",
     "native/src/ir_camera_command.cpp": "cf7b9d6f47f1311b06f21f2293c2e534c78475fdf3f0d56d28eb843cf1a0b11c",
     "native/src/ir_camera_protect.cpp": "a6792642d5a3e38af9ffd27641cad844909c70746be3398c7cb28cdb3141799b",
-    "native/src/ir_channel.cpp": "d72e0666fa0e6966a6abc766be1ce21a577ec031908851bc09500e2fc970d149",
+    "native/src/ir_channel.cpp": "9c6c516101561ce0c86dfab88a342e68348645ce781aad0178f977195139c682",
     "native/src/ir_health.cpp": "a6445da990e219ace3712a08589d5775fbf14912eefda1380ea64d612cd3b0d6",
     "native/src/ir_image.cpp": "51a264c8fd3879b6b8b7b3e41cf8616539a326744d4361c11c3a98bcf2274132",
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
-    "native/src/ir_stream.cpp": "b8ab436598dd603e594936dcc8225ce1a31ae31143201429ce835998fa77fd5f",
-    "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
+    "native/src/ir_stream.cpp": "c807bdfe068d1e478fa2d89331d4fc0c1a30b49e983ce2841affd9ca4ee23042",
+    "native/src/ir_track.cpp": "a268b0f1c452aa24a0fc4f392b56ba328e64c290307f69f8fe4d2989ab30b831",
     "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792"
   }
 }

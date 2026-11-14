@@ -201,6 +201,26 @@ private package AMS.MEL_C_API is
       Command_ID, Request_ID : Interfaces.Unsigned_32;
    end record
    with Convention => C;
+   --  IRMEL-ADA-013: private Scheduling TaskExecutingRep owners and complete payload.
+   type Scheduling_Rep_Metadata_Handle is new System.Address;
+   Null_Scheduling_Rep_Metadata            : constant Scheduling_Rep_Metadata_Handle :=
+     Scheduling_Rep_Metadata_Handle (System.Null_Address);
+   type Scheduling_Rep_Event_Handle is new System.Address;
+   Null_Scheduling_Rep_Event               : constant Scheduling_Rep_Event_Handle :=
+     Scheduling_Rep_Event_Handle (System.Null_Address);
+   type IR_Task_Executing_Rep_V1 is record
+      Command_ID            : Interfaces.Unsigned_32;
+      Activity_ID           : Interfaces.Unsigned_32;
+      Request_ID            : Interfaces.Unsigned_32;
+      Task_Value            : Interfaces.Unsigned_32;
+      Estimated_Duration_NS : Interfaces.Integer_64;
+      Track_ID              : Interfaces.Integer_32;
+      Previous_Activity_ID  : Interfaces.Unsigned_32;
+      Previous_Request_ID   : Interfaces.Unsigned_32;
+      Previous_Task         : Interfaces.Unsigned_32;
+      Previous_Task_Status  : Interfaces.Unsigned_32;
+   end record
+   with Convention => C;
    type Track_Metadata_Handle is new System.Address;
    Null_Track_Metadata                     : constant Track_Metadata_Handle :=
      Track_Metadata_Handle (System.Null_Address);
@@ -2363,6 +2383,55 @@ private package AMS.MEL_C_API is
      Import,
      Convention    => C,
      External_Name => "ams_mel_ir_scheduling_execute_task_ack_event_close";
+   function IR_Scheduling_Rep_Open
+     (Stream              : Scheduling_Handle;
+      Queue_Capacity      : Size_T;
+      Output              : access Scheduling_Rep_Metadata_Handle;
+      Registration        : access Interfaces.Unsigned_32;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_task_executing_open";
+   function IR_Scheduling_Rep_Receive
+     (Handle              : Scheduling_Rep_Metadata_Handle;
+      Timeout_MS          : Interfaces.Unsigned_32;
+      Output              : access Scheduling_Rep_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_task_executing_receive";
+   function IR_Scheduling_Rep_Get_Counters
+     (Handle              : Scheduling_Rep_Metadata_Handle;
+      Output              : access Metadata_Counters_V1;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_task_executing_get_counters";
+   function IR_Scheduling_Rep_Close
+     (Handle              : access Scheduling_Rep_Metadata_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_task_executing_close";
+   function IR_Scheduling_Rep_Event_View
+     (Handle              : Scheduling_Rep_Event_Handle;
+      Output              : access System.Address;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_scheduling_task_executing_event_view";
+   function IR_Scheduling_Rep_Event_Close
+     (Handle              : access Scheduling_Rep_Event_Handle;
+      Diagnostic          : System.Address;
+      Diagnostic_Capacity : Size_T;
+      Diagnostic_Required : access Size_T) return Interfaces.Integer_32
+   with
+     Import,
+     Convention    => C,
+     External_Name => "ams_mel_ir_scheduling_task_executing_event_close";
    function IR_Track_Metadata_Open
      (Handle              : Track_Handle;
       Queue_Capacity      : Size_T;

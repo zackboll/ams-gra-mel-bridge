@@ -12,6 +12,9 @@ from ._errors import (
     _local_error,
 )
 from ._validation import (
+    _utf8_input,
+    _validate_double,
+    _validate_int64,
     _validate_size_t,
     _validate_uint32,
 )
@@ -19,6 +22,7 @@ from ._requests import (
     ModeRequest,
     ReturnRequest,
 )
+from ._types import ConfigSetCommand, ModeCommand
 from ._common import (
     ChannelView,
     _open_channel_view,
@@ -88,6 +92,58 @@ class ControlChannel:
             raise
         return metadata
 
+    def submit_mode(self, command: ModeCommand) -> ModeRequest:
+        """Submit one complete ModeCmd while Enabled; completion is not a physical transition.
+
+        Reuses ModeRequest: timeout/close do not cancel provider work. Externally
+        serialize with enable, other submissions and close on this C2 owner.
+        """
+        self._require_open()
+        if not isinstance(command, ModeCommand):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "command must be ModeCommand")
+        # Validate the entire graph again, even after object.__setattr__ mutation.
+        ModeCommand.__post_init__(command)
+        scan = command.scan_parameters
+        raw = _native.IrModeCommandV1(
+            command.command_id, command.state, command.mode,
+            _native.IrScanParamV1(
+                int(scan.elevation_defined_with_range_and_altitude),
+                _validate_double(scan.center_az_rad, "center_az_rad"),
+                _validate_double(scan.center_el_rad, "center_el_rad"),
+                scan.center_frame_ref_el, scan.center_frame_ref_az,
+                _validate_double(scan.scan_width_rad, "scan_width_rad"),
+                _validate_double(scan.scan_height_rad, "scan_height_rad"),
+                _native.IrScanTypeV1(scan.scan_type.continuous_scan,
+                                     scan.scan_type.returning, scan.scan_type.agile_scan),
+                scan.scan_id,
+                _validate_double(scan.scan_rate_rad_per_second, "scan_rate_rad_per_second"),
+                _validate_double(scan.preferred_revisit_interval_seconds,
+                                 "preferred_revisit_interval_seconds"),
+                _validate_double(scan.required_revisit_interval_seconds,
+                                 "required_revisit_interval_seconds"),
+                scan.max_range_of_interest_m, scan.min_range_of_interest_m,
+                scan.elevation_scan_center_altitude_m, scan.elevation_scan_center_range_m,
+                scan.degradation_method,
+            ),
+        )
+        request = ModeRequest._from_owner(_native.IrModeRequestHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_submit_mode(
+                    self._owner, _ctypes.byref(raw), request._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if not request.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Mode submission succeeded without returning a request owner",
+                )
+        except BaseException:
+            # Preserve the first failure; never retry ownership-uncertain cleanup.
+            request.__del__()
+            request._owner.value = None
+            raise
+        return request
+
     def submit_operate(self, command_id: int) -> ModeRequest:
         """Submit exactly Operate/TaskSched and return its asynchronous request."""
 
@@ -147,6 +203,48 @@ class ControlChannel:
                 "BIT submission succeeded without returning a request owner",
             )
         return ReturnRequest._from_owner(owner)
+
+    def submit_config_set(self, command: ConfigSetCommand) -> ReturnRequest:
+        """Submit all ConfigSet fields once; native admission requires Enabled C2.
+
+        Does not enable or register metadata. Configuration is opaque UTF-8;
+        time is a signed nanosecond count without an inferred epoch. Admission
+        or a completed Return is not proof of physically applied configuration.
+        Serialize with other operations on this channel. The existing request's
+        timeout/close do not cancel provider work, even after parent closure.
+        """
+        if not isinstance(command, ConfigSetCommand):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "command must be ConfigSetCommand")
+        self._require_open()
+        # Revalidate even if object.__setattr__ bypassed the frozen dataclass.
+        _validate_uint32(command.command_id, "command_id")
+        _validate_int64(command.system_time_ns, "system_time_ns")
+        encoded = _utf8_input(command.config, "config")
+        buffer = _ctypes.create_string_buffer(encoded, len(encoded) + 1)
+        raw = _native.IrConfigSetCommandV1(
+            command.command_id,
+            command.system_time_ns,
+            _native.StringViewV1(_ctypes.cast(buffer, _native.CharPointer), len(encoded)),
+        )
+        request = ReturnRequest._from_owner(_native.IrReturnRequestHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_submit_config_set(
+                    self._owner, _ctypes.byref(raw), request._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if not request.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "ConfigSet submission succeeded without returning a request owner",
+                )
+        except BaseException:
+            # One non-raising cleanup, preserving the submission exception even
+            # if Close fails. Disarm the fallback to avoid a second release of
+            # an ownership-uncertain handle from a broken native boundary.
+            request.__del__()
+            request._owner.value = None
+            raise
+        return request
 
     def channel_view(self) -> ChannelView:
         """Create a weak common :class:`ChannelView` of this control channel.
