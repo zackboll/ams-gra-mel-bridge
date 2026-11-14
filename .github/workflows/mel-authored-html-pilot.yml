@@ -1,0 +1,50 @@
+name: MEL authored HTML compatibility pilot (non-deploying)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/tools/authored_html_pilot.py'
+      - 'docs/tests/test_authored_html_pilot.py'
+      - 'docs/mel-gnatdoc-015-002-**'
+      - '.github/workflows/mel-authored-html-pilot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install official pinned documentation tools
+        run: sh docs/tools/install_docs_toolchain.sh
+      - name: Reconstruct production twice and probe all authentic guides
+        env:
+          ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
+        run: |
+          alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
+            cd ../..
+            .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
+              --directory .doc-tools/authored-baseline --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/authored_html_pilot.py \
+              --baseline .doc-tools/authored-baseline --output .doc-tools/authored-probe &&
+            MEL_AUTHORED_PILOT_BASELINE="$PWD/.doc-tools/authored-baseline" \
+              .doc-tools/enhancer/bin/python -W error -m unittest discover \
+                -s docs/tests -p test_authored_html_pilot.py -v'
+      - name: Retain diagnostics only (not publication authority)
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: mel-authored-pilot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .doc-tools/authored-baseline/
+            .doc-tools/authored-baseline-generation.log
+            .doc-tools/authored-probe/
+          if-no-files-found: warn
