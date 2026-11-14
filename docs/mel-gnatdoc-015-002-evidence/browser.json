@@ -1,0 +1,138 @@
+{
+  "contexts": [
+    {
+      "site": "production",
+      "width": 1280,
+      "theme": "light",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 1280,
+      "theme": "light",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 1280,
+      "theme": "dark",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 1280,
+      "theme": "dark",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 390,
+      "theme": "light",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 390,
+      "theme": "light",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 390,
+      "theme": "dark",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "production",
+      "width": 390,
+      "theme": "dark",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 1280,
+      "theme": "light",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 1280,
+      "theme": "light",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 1280,
+      "theme": "dark",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 1280,
+      "theme": "dark",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 390,
+      "theme": "light",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 390,
+      "theme": "light",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 390,
+      "theme": "dark",
+      "javascript": true,
+      "checks": 43,
+      "passed": true
+    },
+    {
+      "site": "accepted-view-with-production-fallback",
+      "width": 390,
+      "theme": "dark",
+      "javascript": false,
+      "checks": 37,
+      "passed": true
+    }
+  ],
+  "candidate_complete": false,
+  "candidate_unavailable": [
+    "guides/examples.html",
+    "guides/api-map.html"
+  ],
+  "fallback": "production API, Examples and API Map are not candidate qualification"
+}
