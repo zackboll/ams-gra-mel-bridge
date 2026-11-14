@@ -78,6 +78,7 @@ typedef struct ams_mel_ir_capability_list ams_mel_ir_capability_list;
  * Channel attachment, not a strong owner, and not a replacement for the typed
  * owner. See ams_mel_ir_channel_from_c2. */
 typedef struct ams_mel_ir_channel ams_mel_ir_channel;
+typedef struct ams_mel_ir_channel_comms_metadata ams_mel_ir_channel_comms_metadata;
 typedef struct ams_mel_ir_c2_metadata ams_mel_ir_c2_metadata;
 typedef struct ams_mel_ir_c2_metadata_event ams_mel_ir_c2_metadata_event;
 typedef struct ams_mel_ir_health ams_mel_ir_health;
@@ -2455,6 +2456,38 @@ AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_request_wait(
     size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_request_close(
     ams_mel_ir_channel_comms_request **request, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+
+/* Opt-in inherited ChannelCommsTestRep callback, independent of request Wait.
+ * Supports C2, Health, Image (including control-only), and StackedImage in their
+ * eligible attached/enabled/running states. Other families return
+ * INITIALIZATION_FAILED with an unsupported-registration diagnostic.
+ * capacity must be positive; allocation/argument failure consumes no attempt.
+ * A valid provider attempt is one-shot, including failure/exception. C2 shares
+ * its one-shot with c2_metadata_register_comms_test: first registration wins.
+ * The view remains weak. No channel identity is present in this report.
+ * Output slots must be NULL. Registration may deliver synchronously. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_metadata_open(
+    const ams_mel_ir_channel *channel, size_t queue_capacity,
+    ams_mel_ir_channel_comms_metadata **out_metadata, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Bounded DROP-INCOMING FIFO; uint32 timeout is always finite (0 polls).
+ * Unsuccessful Receive leaves out_report unchanged. Logical Stop/Close wakes
+ * receivers and preserves queued reports; once drained, STREAM_STOPPED.
+ * Poisoned callbacks/unsafe teardown report PROVIDER_FAILED. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_metadata_receive(
+    const ams_mel_ir_channel_comms_metadata *metadata, uint32_t timeout_ms,
+    ams_mel_ir_channel_comms_test_report_v1 *out_report, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_metadata_get_counters(
+    const ams_mel_ir_channel_comms_metadata *metadata,
+    ams_mel_ir_metadata_counters_v1 *out_counters, char *diagnostic,
+    size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+/* Consumption only: does not unregister, cancel requests, close parents or
+ * establish callback quiescence. Serialize Close against use of this handle;
+ * typed Stop/Close may race Receive. Repeated Close of a cleared slot is OK. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_channel_comms_metadata_close(
+    ams_mel_ir_channel_comms_metadata **metadata, char *diagnostic,
     size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 AMS_MEL_API ams_mel_status_t ams_mel_ir_c2_get_capabilities(
     ams_mel_ir_c2 *c2, ams_mel_ir_channel_capability **out_capability,

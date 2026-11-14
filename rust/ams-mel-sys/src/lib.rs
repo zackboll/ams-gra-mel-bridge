@@ -2042,6 +2042,12 @@ pub struct AmsMelIrChannelCommsRequest {
     _private: [u8; 0],
     _not_send_sync: std::marker::PhantomData<*mut c_void>,
 }
+/// IR-COMMS-001 consumption-only native callback owner; raw declarations only.
+#[repr(C)]
+pub struct AmsMelIrChannelCommsMetadata {
+    _private: [u8; 0],
+    _not_send_sync: std::marker::PhantomData<*mut c_void>,
+}
 #[repr(C)]
 pub struct AmsMelIrChannelCapability {
     _private: [u8; 0],
@@ -3357,6 +3363,35 @@ extern "C" {
     ) -> AmsMelStatus;
     pub fn ams_mel_ir_channel_comms_request_close(
         request: *mut *mut AmsMelIrChannelCommsRequest,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_open(
+        channel: *const AmsMelIrChannel,
+        queue_capacity: usize,
+        out: *mut *mut AmsMelIrChannelCommsMetadata,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_receive(
+        metadata: *const AmsMelIrChannelCommsMetadata,
+        timeout_ms: u32,
+        out: *mut AmsMelIrChannelCommsTestReportV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_get_counters(
+        metadata: *const AmsMelIrChannelCommsMetadata,
+        out: *mut AmsMelIrC2MetadataCountersV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_channel_comms_metadata_close(
+        metadata: *mut *mut AmsMelIrChannelCommsMetadata,
         diagnostic: *mut c_char,
         diagnostic_capacity: usize,
         diagnostic_required: *mut usize,

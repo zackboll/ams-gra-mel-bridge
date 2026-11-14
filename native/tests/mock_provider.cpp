@@ -1967,8 +1967,82 @@ private:
     bool fail_, throws_, released_{false};
 };
 
-class MockImageChannel final : public irmel::ImageChannel {
+/* IR-COMMS-001 opt-in fixtures only. No behavior changes to older scenarios.
+ * Each callback lives in its actual channel, never a pointer-address registry. */
+using CommsCallback = std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>;
+void (*comms_reentry)(){};
+extern "C" __attribute__((visibility("default"))) void mock_comms_reentry(void (*callback)())
+{ comms_reentry = callback; }
+/* Explicit test-provider routing, keyed by configured numeric fixture IDs.
+ * Weak channel references cannot retain the provider graph. */
+struct CommsEndpoint {
+    virtual ~CommsEndpoint() = default;
+    virtual void deliver_comms(const irmel::ChannelCommsTestReq&) = 0;
+};
+struct CommsRouter {
+    std::map<std::uint32_t, std::weak_ptr<irmel::Channel>> channels;
+    void deliver(const irmel::ChannelCommsTestReq&);
+};
+class MockCommsMetadata {
 public:
+    Return register_callback(const std::string& scenario, irmel::Channel& channel,
+                             CommsCallback callback)
+    {
+        record("common_comms_registration");
+        if (scenario.rfind("comms-meta-", 0U) != 0U) return Return::NotSupported;
+        if (callback_) return Return::Fail;
+        callback_ = std::move(callback);
+        if (auto reenter = std::exchange(comms_reentry, nullptr)) reenter();
+        if (scenario == "comms-meta-throw") throw std::runtime_error("Comms metadata registration exception");
+        if (scenario == "comms-meta-fail") return Return::Fail;
+        if (scenario == "comms-meta-inflight") {
+            producer_ = std::thread{[this, &channel] {
+                irmel::ChannelCommsTestRep report{81U, 82U};
+                callback_(channel, &report);
+                record("common_comms_producer_returned");
+            }};
+        }
+        if (scenario == "comms-meta-sync" || scenario == "comms-meta-overflow") {
+            for (std::uint32_t i = 0; i < 3U; ++i) {
+                irmel::ChannelCommsTestRep report{UINT32_MAX - i, 0x80000000U + i};
+                callback_(channel, &report);
+            }
+            callback_(channel, nullptr);
+        }
+        return Return::Success;
+    }
+    void submit(const std::string& scenario, irmel::Channel& channel,
+                const irmel::ChannelCommsTestReq& request)
+    {
+        if (scenario == "comms-meta-no-event" || !callback_) return;
+        irmel::ChannelCommsTestRep report{request.getCommandID(), request.getRequestID()};
+        callback_(channel, &report);
+        report.setCommandID(0U); report.setRequestID(0U);
+    }
+    void finish(irmel::Channel& channel)
+    {
+        if (producer_.joinable()) {
+            record("common_comms_destructor_joining");
+            c2_send_boundary(0U);
+            producer_.join();
+            record("common_comms_destructor_joined");
+        }
+        if (callback_) {
+            record("common_comms_destructor_callback");
+            irmel::ChannelCommsTestRep report{91U, 92U};
+            callback_(channel, &report);
+            record("common_comms_destructor_callback_returned");
+        }
+    }
+private:
+    CommsCallback callback_;
+    std::thread producer_;
+};
+
+class MockImageChannel final : public irmel::ImageChannel, public CommsEndpoint {
+public:
+    void deliver_comms(const irmel::ChannelCommsTestReq& request) override
+    { comms_metadata_.submit(scenario_, *this, request); }
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
         : scenario_{std::move(scenario)}, listener_{std::move(listener)},
           barrier_{callback_barrier}
@@ -1978,6 +2052,7 @@ public:
     }
     ~MockImageChannel() override
     {
+        comms_metadata_.finish(*this);
         stopping_ = true;
         if (scenario_.rfind("image-control-", 0U) == 0U && navigation_response_callback_) {
             /* Public metadata/channel owners may already be closed. Channel
@@ -2057,6 +2132,8 @@ public:
             request.getChannelID() != 0xf0000002U || request.getRequestID() != 0xe0000003U))
             throw std::runtime_error("CommsTest request conversion mismatch");
         auto result = std::make_shared<irmel::ChannelCommsTestRep>(request.getCommandID(), request.getRequestID());
+        comms_metadata_.submit(scenario_, *this, request);
+        if (scenario_ == "comms-meta-held") return held_request(std::move(result), 2);
         if (scenario_ == "completion-scale" || scenario_ == "comms-high-held")
             return held_request(std::move(result), 2);
         std::promise<mel::ErrorOr<std::shared_ptr<irmel::ChannelCommsTestRep>>> promise;
@@ -2267,8 +2344,8 @@ public:
         capability.setNumberOfBands(scenario_ == "capability-bands" ? 2U : 1U);
         return capability;
     }
-    Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
-    { return Return::NotSupported; }
+    Return registerMetadataCallback(CommsCallback callback) override
+    { return comms_metadata_.register_callback(scenario_, *this, std::move(callback)); }
     Return registerMetadataCallback(
         std::function<void(irmel::Channel&, const irmel::BadPixelList *const)> callback) override
     {
@@ -2868,6 +2945,7 @@ private:
     MockCamera camera_;
     MockOdm odm_;
     MockLosQuaternion los_quaternion_;
+    MockCommsMetadata comms_metadata_;
 };
 #undef UNSUPPORTED_CALLBACK
 
@@ -3226,11 +3304,15 @@ public:
     }
 };
 
-class MockC2Channel final : public irmel::C2Channel {
+class MockC2Channel final : public irmel::C2Channel, public CommsEndpoint {
 public:
-    explicit MockC2Channel(std::string scenario) : scenario_{std::move(scenario)} {}
+    explicit MockC2Channel(std::string scenario, std::shared_ptr<CommsRouter> router = {})
+        : scenario_{std::move(scenario)}, router_{std::move(router)} {}
+    void deliver_comms(const irmel::ChannelCommsTestReq& request) override
+    { comms_metadata_.submit(scenario_, *this, request); }
     ~MockC2Channel() override
     {
+        comms_metadata_.finish(*this);
         protect_.finish(*this, scenario_);
         calibration_.finish(*this, scenario_);
         calibration_status_.finish(*this, scenario_);
@@ -3292,6 +3374,9 @@ public:
             throw std::runtime_error("CommsTest request conversion mismatch");
         auto response = std::make_shared<irmel::ChannelCommsTestRep>(
             request.getCommandID(), request.getRequestID());
+        if (scenario_ == "comms-meta-routed") router_->deliver(request);
+        else comms_metadata_.submit(scenario_, *this, request);
+        if (scenario_ == "comms-meta-held") return held_request(std::move(response), 2);
         if (scenario_ == "completion-scale" || scenario_ == "comms-high-held")
             return held_request(std::move(response), 2);
         if (comms_callback_) comms_callback_(*this, response.get());
@@ -3674,6 +3759,8 @@ public:
     }
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback) override
     {
+        if (scenario_.rfind("comms-meta-", 0U) == 0U)
+            return comms_metadata_.register_callback(scenario_, *this, std::move(callback));
         comms_callback_ = std::move(callback);
         if (scenario_ == "comms-register-retain-fail") return Return::Fail;
         return Return::Success;
@@ -3768,6 +3855,8 @@ private:
     std::function<void(irmel::Channel&, const irmel::CommandStatus *const)> command_status_callback_;
     std::function<void(irmel::Channel&, const mel::BIT_Status *const)> bit_status_callback_;
     std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> comms_callback_;
+    MockCommsMetadata comms_metadata_;
+    std::shared_ptr<CommsRouter> router_;
     mutable unsigned capability_calls_{};
     /* No C2 CameraCommandResp callback exists upstream; never fabricated. */
     MockCamera camera_;
@@ -3858,11 +3947,14 @@ mel::MFA_SecurityAuditRecord security_record(unsigned alternative)
     return value;
 }
 
-class MockHealthStatusChannel final : public irmel::HealthStatusChannel {
+class MockHealthStatusChannel final : public irmel::HealthStatusChannel, public CommsEndpoint {
 public:
+    void deliver_comms(const irmel::ChannelCommsTestReq& request) override
+    { comms_metadata_.submit(scenario_, *this, request); }
     explicit MockHealthStatusChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockHealthStatusChannel() override
     {
+        comms_metadata_.finish(*this);
         nuc_.finish(*this, scenario_);
         if (scenario_ == "health-register-partial" && mfa_callback_) {
             auto value=rich_mfa_status(); record("retained_health_callback_invoked");
@@ -3889,6 +3981,13 @@ public:
         c2_send_boundary(2);
         record("comms_sent");
         if (scenario_ == "health-comms-throw") throw std::runtime_error("Health Comms send failed");
+        if (scenario_.rfind("comms-meta-", 0U) == 0U) {
+            comms_metadata_.submit(scenario_, *this, request);
+            if (scenario_ == "comms-meta-held") return held_request(
+                std::make_shared<irmel::ChannelCommsTestRep>(request.getCommandID(), request.getRequestID()), 2);
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
+        }
         if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
             request.getRequestID() != 0xe0000003U)
             throw std::runtime_error("Health Comms IDs changed");
@@ -3904,7 +4003,8 @@ public:
     Return disable() override { enabled_=false;record("health_disabled");if(scenario_=="health-metadata-nonquiescing-disable"){const char* base=std::getenv("AMS_MEL_TEST_HEALTH_CALLBACK_BARRIER");if(!base)std::abort();wait_for_file(std::string{base}+".entered");record("disable_returned_with_health_callback_active");}return Return::Success; }
     irmel::ChannelCapability getCapabilities() const override
     { auto value=rich_channel_capability();value.setChannelTypes({irmel::ChannelType::HealthAndStatus});value.setChannelMetadataCapabilities({irmel::ChannelMetadataCapabilityType::MFAStatus,irmel::ChannelMetadataCapabilityType::BITStatus,irmel::ChannelMetadataCapabilityType::SubsystemStatusResp,irmel::ChannelMetadataCapabilityType::MFAStatusDetailed});return value; }
-    Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::ChannelCommsTestRep*const)>) override{return Return::NotSupported;}
+    Return registerMetadataCallback(CommsCallback callback) override
+    {return comms_metadata_.register_callback(scenario_, *this, std::move(callback));}
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const irmel::LFStatus*const)>) override{return Return::NotSupported;}
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::MFA_Status*const)> cb) override{mfa_callback_=std::move(cb);if(rich()){auto value=rich_mfa_status();mfa_callback_(*this,&value);}if(scenario_=="health-allocation"){auto value=rich_mfa_status();mfa_callback_(*this,&value);}if(scenario_=="health-malformed"){auto bad=rich_mfa_status();bad.setMFAStateDescription(std::string{"bad\xC3\x28",5});mfa_callback_(*this,&bad);auto good=rich_mfa_status();mfa_callback_(*this,&good);}return Return::Success;}
     Return registerMetadataCallback(std::function<void(irmel::Channel&,const mel::BIT_Status*const)> cb) override{bit_callback_=std::move(cb);if(rich()){auto value=rich_bit_status();bit_callback_(*this,&value);}if(scenario_=="health-allocation"){(void)setenv("AMS_MEL_TEST_HEALTH_CALLBACK_FAILURE","allocation",1);auto value=rich_bit_status();bit_callback_(*this,&value);(void)unsetenv("AMS_MEL_TEST_HEALTH_CALLBACK_FAILURE");}return Return::Success;}
@@ -3916,6 +4016,7 @@ public:
 private:
     bool rich()const{return scenario_=="health-rich"||scenario_=="health-overflow";}
     std::string scenario_;bool enabled_{};std::thread producer_;MockNuc nuc_;
+    MockCommsMetadata comms_metadata_;
     std::function<void(irmel::Channel&,const mel::MFA_Status*const)> mfa_callback_;
     std::function<void(irmel::Channel&,const mel::BIT_Status*const)> bit_callback_;
     std::function<void(irmel::Channel&,const irmel::SubsystemStatusResp*const)> subsystem_callback_;
@@ -5835,11 +5936,14 @@ void stacked_reenter(unsigned operation)
     if (callback) callback();
 }
 
-class MockStackedImageChannel final : public irmel::StackedImageChannel {
+class MockStackedImageChannel final : public irmel::StackedImageChannel, public CommsEndpoint {
 public:
+    void deliver_comms(const irmel::ChannelCommsTestReq& request) override
+    { comms_metadata_.submit(scenario_, *this, request); }
     explicit MockStackedImageChannel(std::string scenario) : scenario_{std::move(scenario)} {}
     ~MockStackedImageChannel() override
     {
+        comms_metadata_.finish(*this);
         record("stacked_channel_destroyed");
     }
     mel::RequestFor<Return> sendKeepAliveRep() override
@@ -5856,6 +5960,13 @@ public:
     {
         c2_send_boundary(14);
         record("comms_sent");
+        if (scenario_.rfind("comms-meta-", 0U) == 0U) {
+            comms_metadata_.submit(scenario_, *this, request);
+            if (scenario_ == "comms-meta-held") return held_request(
+                std::make_shared<irmel::ChannelCommsTestRep>(request.getCommandID(), request.getRequestID()), 14);
+            return ready_request(std::make_shared<irmel::ChannelCommsTestRep>(
+                request.getCommandID(), request.getRequestID()));
+        }
         if (request.getCommandID() != 0x80000001U || request.getChannelID() != 0xf0000002U ||
             request.getRequestID() != 0xe0000003U)
             throw std::runtime_error("Stacked CommsTest IDs changed");
@@ -5893,20 +6004,42 @@ public:
             value.setChannelTypes({irmel::ChannelType::IRSTImage});
         return value;
     }
-    Return registerMetadataCallback(
-        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>) override
-    { record("stacked_forbidden_registration"); return Return::NotSupported; }
+    Return registerMetadataCallback(CommsCallback callback) override
+    {
+        if (scenario_.rfind("comms-meta-", 0U) != 0U) {
+            record("stacked_forbidden_registration"); return Return::NotSupported;
+        }
+        return comms_metadata_.register_callback(scenario_, *this, std::move(callback));
+    }
     Return registerMetadataCallback(
         const std::function<void(irmel::Channel&, const irmel::LOS3D_KinematicsType *const)>&) override
     { record("stacked_forbidden_registration"); return Return::NotSupported; }
 private:
     std::string scenario_;
+    MockCommsMetadata comms_metadata_;
 };
+
+void CommsRouter::deliver(const irmel::ChannelCommsTestReq& request)
+{
+    auto channel = channels.at(request.getChannelID()).lock();
+    auto endpoint = std::dynamic_pointer_cast<CommsEndpoint>(channel);
+    if (!endpoint) throw std::runtime_error("mock route target expired");
+    endpoint->deliver_comms(request);
+}
 
 class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
+        if (instance_.rfind("comms-meta-", 0U) == 0U) {
+            if (instance_ == "comms-meta-routed") comms_router_ = std::make_shared<CommsRouter>();
+            irmel::ChannelCapability value;
+            value.setChannelTypes({irmel::ChannelType::CommandAndControl,
+                irmel::ChannelType::HealthAndStatus, irmel::ChannelType::IRSTImage,
+                irmel::ChannelType::StackedImage, irmel::ChannelType::Scheduling});
+            capabilities_.push_back(std::move(value));
+            return;
+        }
         if (instance_.rfind("stacked-", 0U) == 0U) {
             if (instance_ != "stacked-empty") {
                 auto capability = stacked_capability(instance_);
@@ -6088,7 +6221,10 @@ public:
                     throw std::runtime_error("mock Stacked configuration conversion mismatch");
                 record("stacked_config_verified");
             }
-            return std::make_shared<MockStackedImageChannel>(instance_);
+            auto channel = std::make_shared<MockStackedImageChannel>(instance_);
+            if (instance_ == "comms-meta-routed")
+                comms_router_->channels[config.getChanID().getUUID()[0]] = channel;
+            return channel;
         }
         if (config.getChannelType() == irmel::ChannelType::Scheduling) {
             record("scheduling_attach_requested");
@@ -6143,8 +6279,12 @@ public:
             }
             return std::make_shared<MockInstrumentationChannel>(instance_);
         }
-        if (config.getChannelType() == irmel::ChannelType::HealthAndStatus)
-            return std::make_shared<MockHealthStatusChannel>(instance_);
+        if (config.getChannelType() == irmel::ChannelType::HealthAndStatus) {
+            auto channel = std::make_shared<MockHealthStatusChannel>(instance_);
+            if (instance_ == "comms-meta-routed")
+                comms_router_->channels[config.getChanID().getUUID()[0]] = channel;
+            return channel;
+        }
         if (config.getChannelType() == irmel::ChannelType::CommandAndControl) {
             if (instance_ == "c2-wrong-type")
                 return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
@@ -6165,7 +6305,10 @@ public:
                     config.getImgLstnr())
                     throw std::runtime_error("mock C2 configuration conversion mismatch");
             }
-            return std::make_shared<MockC2Channel>(instance_);
+            auto channel = std::make_shared<MockC2Channel>(instance_, comms_router_);
+            if (instance_ == "comms-meta-routed")
+                comms_router_->channels[config.getChanID().getUUID()[0]] = channel;
+            return channel;
         }
         if (config.getChannelType() != irmel::ChannelType::IRSTImage) return {};
         if (instance_ == "image-control-wrong-type" ||
@@ -6202,6 +6345,8 @@ public:
             if (instance_ == "image-control-attach-reentry-throw")
                 throw std::runtime_error("attach exception after listener exposure");
         }
+        if (instance_ == "comms-meta-routed")
+            comms_router_->channels[config.getChanID().getUUID()[0]] = image;
         return image;
     }
     Return detachChannel(std::shared_ptr<irmel::Channel> channel) override
@@ -6218,7 +6363,8 @@ public:
             record("channel_detach_failed");
             throw std::runtime_error("mock detach exception");
         }
-        if ((instance_ == "stacked-detach-fail" ||
+        if ((instance_ == "comms-meta-detach-fail" ||
+             instance_ == "stacked-detach-fail" ||
              instance_ == "stacked-enabled-detach-fail" ||
              instance_ == "stacked-open-detach-fail" ||
              instance_ == "stacked-capability-throw-detach-fail" ||
@@ -6264,6 +6410,7 @@ public:
     }
 private:
     std::string instance_;
+    std::shared_ptr<CommsRouter> comms_router_;
     bool initialized_{};
     bool detach_failed_{};
     std::vector<irmel::ChannelCapability> capabilities_;

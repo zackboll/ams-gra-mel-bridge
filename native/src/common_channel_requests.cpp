@@ -240,6 +240,18 @@ struct ams_mel_ir_channel {
 };
 static_assert(sizeof(ams_mel_ir_channel) == sizeof(ams_mel_common::CommonChannelAccess));
 
+extern "C" ams_mel_status_t ams_mel_ir_channel_comms_metadata_open(
+    const ams_mel_ir_channel *channel, std::size_t queue_capacity,
+    ams_mel_ir_channel_comms_metadata **output, char *out, std::size_t capacity,
+    std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!channel || !queue_capacity || !output || *output || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    return ams_mel_common::open_comms_metadata(channel->access, queue_capacity,
+                                              output, out, capacity, required);
+}
+
 namespace {
 bool view_allocation_failpoint() noexcept
 {

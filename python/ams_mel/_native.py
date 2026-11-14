@@ -569,6 +569,7 @@ IrC2Handle = ctypes.c_void_p
 IrModeRequestHandle = ctypes.c_void_p
 IrReturnRequestHandle = ctypes.c_void_p
 IrChannelCommsRequestHandle = ctypes.c_void_p
+IrChannelCommsMetadataHandle = ctypes.c_void_p
 IrChannelCapabilityHandle = ctypes.c_void_p
 IrCapabilityListHandle = ctypes.c_void_p
 # Task 032B1: private raw weak common Channel view (ams_mel_ir_channel *).
@@ -863,6 +864,20 @@ ams_mel_ir_channel_comms_request_wait.restype = ctypes.c_int32
 ams_mel_ir_channel_comms_request_close = _LIBRARY.ams_mel_ir_channel_comms_request_close
 ams_mel_ir_channel_comms_request_close.argtypes = [ctypes.POINTER(IrChannelCommsRequestHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_channel_comms_request_close.restype = ctypes.c_int32
+
+# IR-COMMS-001: private raw declarations only, no safe callback owner.
+ams_mel_ir_channel_comms_metadata_open = _LIBRARY.ams_mel_ir_channel_comms_metadata_open
+ams_mel_ir_channel_comms_metadata_open.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(IrChannelCommsMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_channel_comms_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_receive = _LIBRARY.ams_mel_ir_channel_comms_metadata_receive
+ams_mel_ir_channel_comms_metadata_receive.argtypes = [IrChannelCommsMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrChannelCommsTestReportV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_channel_comms_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_get_counters = _LIBRARY.ams_mel_ir_channel_comms_metadata_get_counters
+ams_mel_ir_channel_comms_metadata_get_counters.argtypes = [IrChannelCommsMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_channel_comms_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_close = _LIBRARY.ams_mel_ir_channel_comms_metadata_close
+ams_mel_ir_channel_comms_metadata_close.argtypes = [ctypes.POINTER(IrChannelCommsMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_channel_comms_metadata_close.restype = ctypes.c_int32
 ams_mel_ir_c2_get_capabilities = _LIBRARY.ams_mel_ir_c2_get_capabilities
 ams_mel_ir_c2_get_capabilities.argtypes = [IrC2Handle,ctypes.POINTER(IrChannelCapabilityHandle),CharPointer,ctypes.c_size_t,SizePointer]
 ams_mel_ir_c2_get_capabilities.restype = ctypes.c_int32
@@ -2525,6 +2540,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_c2_submit_comms_test",
     "ams_mel_ir_channel_comms_request_wait",
     "ams_mel_ir_channel_comms_request_close",
+    "ams_mel_ir_channel_comms_metadata_open",
+    "ams_mel_ir_channel_comms_metadata_receive",
+    "ams_mel_ir_channel_comms_metadata_get_counters",
+    "ams_mel_ir_channel_comms_metadata_close",
     "ams_mel_ir_c2_get_capabilities",
     "ams_mel_ir_channel_capability_view",
     "ams_mel_ir_capability_list_create",

@@ -1437,6 +1437,25 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return image_capability(std::static_pointer_cast<ImageStreamState>(erased),
                                     output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue,
+           std::shared_ptr<irmel::Channel>& channel, CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<ImageStreamState>(erased);
+            std::lock_guard lock{state->callback->mutex};
+            if (state->comms_metadata_attempted) return AMS_MEL_INVALID_ARGUMENT;
+            const auto lifecycle = state->callback->lifecycle;
+            if (!state->image_channel ||
+                (lifecycle != Lifecycle::Attached && lifecycle != Lifecycle::Running))
+                return AMS_MEL_PROVIDER_FAILED;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& value) noexcept {
+                    return finish_image_request(std::static_pointer_cast<ImageStreamState>(value));
+                }, "deferred Image cleanup failed"};
+            return AMS_MEL_OK;
         }};
 }
 } // namespace ams_mel_common
@@ -1723,6 +1742,10 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
                 stream.callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
             stream.callback->ready.notify_all();
             metadata = stream.image_metadata;
+            if (stream.comms_metadata) {
+                stream.comms_metadata->deactivate();
+                if (failed) stream.comms_metadata->fail();
+            }
             nuc = stream.image_nuc;
             camera = stream.image_camera_response;
             odm = stream.image_odm;
@@ -1947,6 +1970,7 @@ ImageCleanupOutcome image_stream_cleanup(
             /* IRMEL-ADA-010: same fail-safe retention for the independent
              * LineOfSightQuaternion owner and its registered callback. */
             image_los_quaternion_stream_failed(los_quaternion);
+            if (stream.comms_metadata) stream.comms_metadata->fail();
             return ImageCleanupOutcome::Failed;
         }
 
@@ -1955,6 +1979,10 @@ ImageCleanupOutcome image_stream_cleanup(
          * host byte remains retained by stream. */
         image_channel.reset();
         channel.reset();
+        if (stream.comms_metadata) {
+            if (failed) stream.comms_metadata->fail();
+            stream.comms_metadata->drain();
+        }
 
         image_metadata_stream_stopped(metadata);
         image_nuc_stream_stopped(nuc);
@@ -2026,6 +2054,7 @@ ImageCleanupOutcome image_stream_cleanup(
             if (!late_uncertain) stream.callback->registered_ranges.clear();
         }
         if (late_uncertain) {
+            if (stream.comms_metadata) stream.comms_metadata->fail();
             image_stream_retain_failed(state_ptr);
             {
                 std::lock_guard lock{stream.callback->mutex};
@@ -2084,6 +2113,7 @@ ImageCleanupOutcome image_stream_cleanup(
                 stream.image_channel = std::move(image_channel);
             stream.callback->accepting = false;
             stream.callback->lifecycle = Lifecycle::Failed;
+            if (stream.comms_metadata) stream.comms_metadata->fail();
             stream.callback->ready.notify_all();
             stream.cleanup_in_progress = false;
             stream.cleanup_done.notify_all();

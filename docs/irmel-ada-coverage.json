@@ -1587,6 +1587,10 @@
         {
           "path": "native/src/ir_c2.cpp",
           "symbol": "ams_mel_ir_c2_metadata_register_comms_test"
+        },
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_comms_metadata_open"
         }
       ],
       "ada": [
@@ -1603,10 +1607,16 @@
         {
           "path": "ada/tests/src/ams_mel_ir_c2_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_common_comms_metadata.c",
+          "symbol": "main"
         }
       ],
-      "notes": "Only C2 metadata owner exposes this common callback registration. Common requests on other families do not register this callback.",
-      "limitations": [],
+      "notes": "IR-COMMS-001 adds opt-in native callback queues on C2, Health, Image (including control-only) and StackedImage. Safe Ada callback consumption remains C2-only; common request completion is independent of metadata.",
+      "limitations": [
+        "Instrumentation, Track and Scheduling callback registration unsupported. No safe common Ada/Python/Rust callback owner in this native foundation."
+      ],
       "representation": []
     },
     {
@@ -9090,7 +9100,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Command, channel and request correlation IDs retained; asynchronous error/result distinct from callback availability.",
+      "notes": "Exactly command_id and request_id uint32 identifiers retained; no channel ID exists in this report. Asynchronous future results remain independent of callbacks. IR-COMMS-001 common native reception adds no safe common language owner.",
       "limitations": [
         "Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support."
       ],
@@ -12940,9 +12950,9 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "IRMEL-ADA-016 adds only AMS.MEL.IR.Stacked_Image ownership/lifecycle and weak common requests, not a stacked-image receiver.",
+      "notes": "IRMEL-ADA-016 adds typed ownership/lifecycle and weak common requests; IR-COMMS-001 adds opt-in native ChannelCommsTestRep reception, not stacked-image acquisition.",
       "limitations": [
-        "Standalone Disable, application buffers and common communications metadata registration remain unbound.",
+        "Standalone Disable and application buffers remain unbound. Common communications metadata has native-only consumption.",
         "Optional LOS3D registration, image-stack callbacks and StackFrameHeader conversion remain missing.",
         "Qualification is separate mock-provider only."
       ],
@@ -14720,7 +14730,7 @@
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
       "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "Explicit C2 Metadata.Register_Comms_Test path; no equivalent on other owners."
+      "notes": "C2 safe Ada metadata registration preserved; common native Open shares the same one-shot, first wins."
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -14766,9 +14776,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "native_only",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IR-COMMS-001 common native callback owner; no safe Ada callback consumption on this family. No implicit registration."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -14814,9 +14824,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "native_only",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IR-COMMS-001 common native callback owner; no safe Ada callback consumption on this family. No implicit registration."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -15006,9 +15016,9 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "status": "missing",
+      "status": "native_only",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IR-COMMS-001 common native callback owner; no safe Ada callback consumption on this family. No implicit registration."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::send(ChannelCommsTestReq)",
@@ -15089,7 +15099,7 @@
   ],
   "qualifications": [
     "Verified upstream Git commit/tree objects fetched from the two authoritative repositories; main has not advanced from the supplied reference base. Frozen objects and licenses are audit evidence, not extra native vendor inputs.",
-    "Source-derived totals confirm 21 outgoing overloads, 14 currently accessible via safe Ada, and 38 metadata registrations, 25 with working paths. The common ChannelCommsTestRep registration is partial overall: C2-only, unlike common outgoing requests across five families. Thus metadata has 24 fully classified safe_ada plus one partial registration with a working C2 path.",
+    "Source-derived totals confirm 21 outgoing overloads, 14 currently accessible via safe Ada, and 38 metadata registrations, 25 with working paths. The common ChannelCommsTestRep registration is partial overall: native on C2, Health, Image and StackedImage, with safe Ada C2-only. Thus metadata has 24 fully classified safe_ada plus one partial registration with a working C2 path.",
     "Unique totals count inherited Channel declarations once; all 56 inherited family exposures are separately classified. Counting inherited outgoing sends repeatedly would inflate the hypothesis totals.",
     "Pinned Squall does not positively qualify Track or Instrumentation; rich field/lifetime behavior is mock-qualified. RequiredIf and Optional are upstream declarations, not provider capability promises.",
     "The pinned surface is a declaration audit, not normative PDF conformance certification. Upstream inconsistent prose (for example Optional SystemTrackDataResponse wording) is retained as exact tags, not silently reinterpreted.",

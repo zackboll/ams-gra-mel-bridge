@@ -253,6 +253,7 @@ struct HealthState {
     std::mutex mutex;std::shared_ptr<SessionState> session;std::shared_ptr<irmel::Channel> channel;std::shared_ptr<irmel::HealthStatusChannel> health;std::shared_ptr<MetadataState> metadata;Lifecycle lifecycle{Lifecycle::Attached};std::size_t requests{};bool enable_attempted{},metadata_attempted{},cleanup_started{};
     /* IRMEL-ADA-002 opt-in @Optional NUC_TempData owner; independent one-shot. */
     std::shared_ptr<NucState> nuc;bool nuc_attempted{};
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms_metadata;bool comms_metadata_attempted{};
    std::shared_ptr<HealthState> emergency_self;HealthState* emergency_next{};std::atomic<bool> retained{};
 };
 void retain_failed(const std::shared_ptr<HealthState>& state) noexcept
@@ -266,14 +267,17 @@ bool cleanup(const std::shared_ptr<HealthState>& state,bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;std::shared_ptr<MetadataState> metadata;std::shared_ptr<NucState> nuc;bool disable=false;
     {std::lock_guard lock{state->mutex};if(state->requests!=0U)return false;if(state->cleanup_started)return !state->channel;state->cleanup_started=true;channel=state->channel;metadata=state->metadata;nuc=state->nuc;disable=state->enable_attempted;}
+    auto comms=state->comms_metadata;
+    if(comms)comms->deactivate();
     if(nuc)nuc->deactivate();
     if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;}
     bool ok=true;if(disable&&channel){try{if(channel->disable()!=irmel::Return::Success)ok=false;}catch(...){ok=false;}}
     bool detached=!channel;if(channel){try{detached=state->session->control->detachChannel(channel)==irmel::Return::Success;}catch(...){detached=false;}}
-    if(!detached){{std::lock_guard lock{state->mutex};state->cleanup_started=false;}if(metadata)metadata->fail();if(nuc)nuc->fail();if(retain_orphan)retain_failed(state);return false;}
+    if(!detached){{std::lock_guard lock{state->mutex};state->cleanup_started=false;}if(comms)comms->fail();if(metadata)metadata->fail();if(nuc)nuc->fail();if(retain_orphan)retain_failed(state);return false;}
     {std::lock_guard lock{state->mutex};state->health.reset();state->channel.reset();state->lifecycle=Lifecycle::Closed;state->enable_attempted=false;}channel.reset();
     if(metadata){std::unique_lock lock{metadata->mutex};metadata->callbacks_done.wait(lock,[&]{return metadata->callbacks.load(std::memory_order_acquire)==0U;});if(metadata->lifecycle!=MetadataLifecycle::Failed)metadata->lifecycle=MetadataLifecycle::Stopped;metadata->ready.notify_all();}
     if(nuc)nuc->drain_and_stop();
+    if(comms){if(!ok)comms->fail();comms->drain();}
     return ok;
 }
 bool finish_health_request(const std::shared_ptr<HealthState>& state) noexcept
@@ -370,6 +374,23 @@ CommonChannelAccess common_from_health(const ams_mel_ir_health *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return health_capability(std::static_pointer_cast<HealthState>(erased),
                                      output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue,
+           std::shared_ptr<irmel::Channel>& channel, CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<HealthState>(erased);
+            std::lock_guard lock{state->mutex};
+            if (state->comms_metadata_attempted) return AMS_MEL_INVALID_ARGUMENT;
+            if ((state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+                || !state->health) return AMS_MEL_PROVIDER_FAILED;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& value) noexcept {
+                    return finish_health_request(std::static_pointer_cast<HealthState>(value));
+                }, "deferred Health cleanup failed"};
+            return AMS_MEL_OK;
         }};
 }
 } // namespace ams_mel_common
@@ -438,7 +459,7 @@ extern "C" ams_mel_status_t ams_mel_ir_health_metadata_event_close(ams_mel_ir_he
 {diagnostic("",out,capacity,required);if(!event||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;try{delete std::exchange(*event,nullptr);return AMS_MEL_OK;}catch(...){return AMS_MEL_INTERNAL_ERROR;}}
 
 extern "C" ams_mel_status_t ams_mel_ir_health_close(ams_mel_ir_health** health,char* out,std::size_t capacity,std::size_t* required) noexcept
-{diagnostic("",out,capacity,required);if(!health||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;auto* owner=*health;if(!owner)return AMS_MEL_OK;try{auto state=owner->state;bool now;std::shared_ptr<MetadataState> metadata;std::shared_ptr<NucState> nuc;{std::lock_guard lock{state->mutex};state->lifecycle=Lifecycle::Closed;now=state->requests==0U;metadata=state->metadata;nuc=state->nuc;}if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;metadata->ready.notify_all();}if(nuc)nuc->deactivate();if(!now){*health=nullptr;delete owner;return AMS_MEL_OK;}const bool ok=cleanup(state,false);if(state->channel){diagnostic("Health detach failed; provider state retained",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}*health=nullptr;delete owner;if(!ok){diagnostic("Health disable failed",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}return AMS_MEL_OK;}catch(...){diagnostic("Health close failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}}
+{diagnostic("",out,capacity,required);if(!health||(!out&&capacity))return AMS_MEL_INVALID_ARGUMENT;auto* owner=*health;if(!owner)return AMS_MEL_OK;try{auto state=owner->state;bool now;std::shared_ptr<MetadataState> metadata;std::shared_ptr<NucState> nuc;{std::lock_guard lock{state->mutex};state->lifecycle=Lifecycle::Closed;if(state->comms_metadata)state->comms_metadata->deactivate();now=state->requests==0U;metadata=state->metadata;nuc=state->nuc;}if(metadata){std::lock_guard lock{metadata->mutex};if(metadata->lifecycle==MetadataLifecycle::Active)metadata->lifecycle=MetadataLifecycle::Inactive;metadata->ready.notify_all();}if(nuc)nuc->deactivate();if(!now){*health=nullptr;delete owner;return AMS_MEL_OK;}const bool ok=cleanup(state,false);if(state->channel){diagnostic("Health detach failed; provider state retained",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}*health=nullptr;delete owner;if(!ok){diagnostic("Health disable failed",out,capacity,required);return AMS_MEL_PROVIDER_FAILED;}return AMS_MEL_OK;}catch(...){diagnostic("Health close failed",out,capacity,required);return AMS_MEL_INTERNAL_ERROR;}}
 
 /* IRMEL-ADA-002: opt-in @Optional HealthStatusChannel NUC_TempData
  * registration, independent of ams_mel_ir_health_metadata_open. */

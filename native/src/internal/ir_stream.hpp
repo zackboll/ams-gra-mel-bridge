@@ -20,6 +20,7 @@ struct NucState;
 struct CameraResponseState;
 struct OdmState;
 struct LosQuaternionState;
+namespace ams_mel_common { struct CommsMetadataState; }
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -98,6 +99,8 @@ struct ImageStreamState {
      * callback->mutex. */
     std::shared_ptr<LosQuaternionState> image_los_quaternion;
     bool image_los_quaternion_attempted{false};
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms_metadata;
+    bool comms_metadata_attempted{};
     BufferFactory buffer_factory{};
     std::string instance;
     std::size_t buffer_count{};

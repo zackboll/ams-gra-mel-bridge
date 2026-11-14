@@ -2,6 +2,7 @@
 
 #include "../internal.hpp"
 #include "completion_probe.hpp"
+#include "channel_comms_metadata.hpp"
 
 #include <ams_mel/abi.h>
 #include <irmel/library/irmel-types/Channel.h>
@@ -32,10 +33,14 @@ public:
      * mapping, and returns an independent capability snapshot. */
     using CapabilityFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
         ams_mel_ir_channel_capability **, char *, std::size_t, std::size_t *) noexcept;
+    using CommsRegistrationFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
+        const std::shared_ptr<CommsMetadataState>&,
+        std::shared_ptr<ams::iface::irmel::Channel>&, CommonRequestClaim&);
     CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
-                        ClaimFunction claim, CapabilityFunction capability) noexcept
+                        ClaimFunction claim, CapabilityFunction capability,
+                        CommsRegistrationFunction comms = nullptr) noexcept
         : state_{std::move(state)}, admission_{admission}, claim_{claim},
-          capability_{capability} {}
+          capability_{capability}, comms_{comms} {}
     bool expired() const noexcept { return state_.expired(); }
     std::shared_ptr<void> lock() const noexcept { return state_.lock(); }
     std::shared_ptr<CompletionAdmission> admission(const std::shared_ptr<void>& state) const noexcept
@@ -47,11 +52,16 @@ public:
         ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
         std::size_t *required) const noexcept
     { return capability_(state, output, out, capacity, required); }
+    ams_mel_status_t claim_comms(const std::shared_ptr<void>& state,
+        const std::shared_ptr<CommsMetadataState>& queue,
+        std::shared_ptr<ams::iface::irmel::Channel>& channel, CommonRequestClaim& claim) const
+    { return comms_ ? comms_(state, queue, channel, claim) : AMS_MEL_INITIALIZATION_FAILED; }
 private:
     std::weak_ptr<void> state_;
     AdmissionFunction admission_;
     ClaimFunction claim_;
     CapabilityFunction capability_;
+    CommsRegistrationFunction comms_;
 };
 static_assert(std::is_nothrow_move_constructible_v<CommonChannelAccess>);
 

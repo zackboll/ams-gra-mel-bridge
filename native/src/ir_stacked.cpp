@@ -1,7 +1,7 @@
 /* IRMEL-ADA-016: required channel details and common communications, even on
  * sensors without stack acquisition. No image buffers or listeners are created.
- * Application buffer registration/unregistration and common communications
- * metadata registration remain unbound; optional LOS3D is not registered. */
+ * Application buffer registration/unregistration remain unbound. Common
+ * communications metadata is opt-in (IR-COMMS-001); no optional LOS3D. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
@@ -99,6 +99,8 @@ struct StackedState {
     bool enable_attempted{};
     bool cleanup_started{};
     bool disable_failed{};
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms_metadata;
+    bool comms_metadata_attempted{};
     /* Allocation-free permanent retention root for graphs whose detach
      * ownership could not be proven. */
     std::shared_ptr<StackedState> emergency_self;
@@ -142,18 +144,21 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
 {
     std::shared_ptr<irmel::Channel> channel;
     bool disable = false;
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms;
     {
         std::lock_guard lock{state->mutex};
         if (state->cleanup_started) return !state->channel;
         if (state->requests != 0U) return true;
         state->cleanup_started = true;
         channel = state->channel;
+        comms = state->comms_metadata;
         disable = state->enable_attempted;
         /* disable() is attempted at most once: a Close retried after an
          * unproven detach only retries the detach. */
         state->enable_attempted = false;
     }
     bool ok = !state->disable_failed;
+    if (comms) comms->deactivate();
     /* Inherited Channel::disable() is invoked only when Enable was attempted;
      * this foundation has no separate public Disable. */
     if (disable && channel) {
@@ -164,6 +169,7 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
     /* A failed disable never proves ownership safety: detach regardless. */
     const bool detached = !channel || detach(state, channel);
     if (!detached) {
+        if (comms) comms->fail();
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -184,6 +190,7 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
     /* The provider channel is destroyed here while this state still holds the
      * Session graph, so provider code stays loaded until the graph is gone. */
     channel.reset();
+    if (comms) { if (!ok) comms->fail(); comms->drain(); }
 
     return ok;
 }
@@ -268,6 +275,25 @@ CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return stacked_capability(std::static_pointer_cast<StackedState>(erased),
                                          output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue,
+           std::shared_ptr<irmel::Channel>& channel, CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<StackedState>(erased);
+            std::lock_guard lock{state->mutex};
+            if (state->comms_metadata_attempted) return AMS_MEL_INVALID_ARGUMENT;
+            if ((state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled)
+                || !state->stacked) return AMS_MEL_PROVIDER_FAILED;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state,
+                [](const std::shared_ptr<void>& value) noexcept {
+                    auto claimed = std::static_pointer_cast<StackedState>(value);
+                    try { return finish_request(claimed); }
+                    catch (...) { retain_failed(claimed); return false; }
+                }, "deferred Stacked cleanup failed"};
+            return AMS_MEL_OK;
         }};
 }
 } // namespace ams_mel_common
@@ -475,6 +501,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stacked_close(
             /* New common requests are refused from here on; admitted ones
              * keep their claim and own the graph until completion. */
             state->lifecycle = Lifecycle::Closed;
+            if (state->comms_metadata) state->comms_metadata->deactivate();
             now = state->requests == 0U;
         }
 

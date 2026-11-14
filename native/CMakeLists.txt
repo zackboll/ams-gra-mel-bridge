@@ -12,7 +12,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_image_odm.cpp src/ir_image_los_quaternion.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
     src/ir_calibration_status.cpp
-    src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
+    src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/channel_comms_metadata.cpp src/ir_health.cpp src/ir_navigation.cpp
     src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp src/ir_stacked.cpp
     src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
     src/completion_probe.cpp
@@ -45,6 +45,8 @@ if(UNIX AND NOT APPLE)
         # Observation/rescue hooks are private to the contract-test facade.
         # Never extend the production export map or installed C headers.
         file(READ "${ams_mel_export_map}" ams_mel_test_exports)
+        string(REPLACE "    global:" "    global:\n        ams_mel_test_comms_metadata;"
+            ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_va_signal_hold;\n        ams_mel_test_va_signal_waiters;\n        ams_mel_test_va_signal_preset;\n        ams_mel_test_va_signal_last;"
             ams_mel_test_exports "${ams_mel_test_exports}")
         string(REPLACE "    global:" "    global:\n        ams_mel_test_rf_status_hold;\n        ams_mel_test_rf_status_waiters;\n        ams_mel_test_rf_status_preset;\n        ams_mel_test_rf_status_last;"
@@ -728,6 +730,24 @@ if(AMS_MEL_BUILD_TESTS)
     # Task 032B1: the installed public common Channel ABI, kept distinct from
     # the 032A internal/test-only common-view suites above.
     add_executable(test_public_common_channel tests/test_public_common_channel.c)
+    add_executable(test_ir_common_comms_metadata tests/test_ir_common_comms_metadata.c)
+    target_compile_features(test_ir_common_comms_metadata PRIVATE c_std_11)
+    set_target_properties(test_ir_common_comms_metadata PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_common_comms_metadata PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_common_comms_metadata PRIVATE ams_mel::ams_mel_c Threads::Threads ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_common_comms_metadata mock_ir_provider)
+    ams_mel_warnings(test_ir_common_comms_metadata)
+    foreach(family RANGE 0 4)
+        foreach(case basic sync overflow fail throw no-event owner-first expired concurrent detach-fail enabled wait-close poison inflight reentry drain saturate held)
+            add_test(NAME common_comms_metadata_${family}_${case}
+                COMMAND test_ir_common_comms_metadata ${family} comms-meta-${case})
+            set_tests_properties(common_comms_metadata_${family}_${case} PROPERTIES TIMEOUT 30)
+        endforeach()
+    endforeach()
+    add_test(NAME common_comms_metadata_collision COMMAND test_ir_common_comms_metadata 0 collision)
+    add_test(NAME common_comms_metadata_routed COMMAND test_ir_common_comms_metadata 0 routed)
+    add_test(NAME common_comms_metadata_unsupported COMMAND test_ir_common_comms_metadata 0 unsupported)
     target_compile_features(test_public_common_channel PRIVATE c_std_11)
     set_target_properties(test_public_common_channel PROPERTIES C_EXTENSIONS OFF)
     target_compile_definitions(test_public_common_channel PRIVATE

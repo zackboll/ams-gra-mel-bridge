@@ -400,6 +400,7 @@ struct ChannelState {
     std::shared_ptr<struct MetadataState> metadata;
     bool metadata_attempted{};
     bool comms_metadata_attempted{};
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms_metadata;
     /* IRMEL-ADA-004 opt-in @RequiredIfCameraProtect CameraProtectCmdResp owner,
      * independent of the base metadata owner above. Guarded by mutex. */
     std::shared_ptr<CameraProtectState> camera_protect;
@@ -437,12 +438,14 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
     std::shared_ptr<CalibrationConfigurationState> calibration;
     std::shared_ptr<CalibrationStatusState> calibration_status;
     bool disable = false;
+    std::shared_ptr<ams_mel_common::CommsMetadataState> comms;
     {
         std::lock_guard lock{state->mutex};
         if (state->cleanup_started || state->requests != 0U) return true;
         state->cleanup_started = true;
         channel = state->channel;
         metadata = state->metadata;
+        comms = state->comms_metadata;
         protect = state->camera_protect;
         calibration = state->calibration_configuration;
         calibration_status = state->calibration_status;
@@ -454,6 +457,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
             metadata->lifecycle = MetadataLifecycle::Inactive;
     }
     if (protect) protect->deactivate();
+    if (comms) comms->deactivate();
     if (calibration) calibration->deactivate();
     if (calibration_status) calibration_status->deactivate();
     bool ok = true;
@@ -475,6 +479,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
             metadata->ready.notify_all();
         }
         if (protect) protect->fail();
+        if (comms) comms->fail();
         if (calibration) calibration->fail();
         if (calibration_status) calibration_status->fail();
         {
@@ -493,6 +498,7 @@ bool cleanup(const std::shared_ptr<ChannelState>& state,
         state->lifecycle = C2Lifecycle::Closed;
     }
     channel.reset();
+    if (comms) { if (!ok) comms->fail(); comms->drain(); }
     if (metadata) {
         std::unique_lock lock{metadata->mutex};
         metadata->callbacks_done.wait(lock, [&]{ return metadata->callbacks.load(std::memory_order_acquire) == 0U; });
@@ -750,6 +756,21 @@ CommonChannelAccess common_from_c2(const ams_mel_ir_c2 *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return c2_capability(std::static_pointer_cast<ChannelState>(erased),
                                  output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue,
+           std::shared_ptr<irmel::Channel>& channel, CommonRequestClaim& claim) {
+            auto state = std::static_pointer_cast<ChannelState>(erased);
+            std::lock_guard lock{state->mutex};
+            if (state->comms_metadata_attempted) return AMS_MEL_INVALID_ARGUMENT;
+            if ((state->lifecycle != C2Lifecycle::Attached &&
+                 state->lifecycle != C2Lifecycle::Enabled) || !state->c2)
+                return AMS_MEL_PROVIDER_FAILED;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            channel = state->channel;
+            ++state->requests;
+            claim = CommonRequestClaim{state, finish_c2_request, "deferred C2 cleanup failed"};
+            return AMS_MEL_OK;
         }};
 }
 } // namespace ams_mel_common
@@ -1816,36 +1837,47 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_register_comms_test(
     if (!metadata || !metadata->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     auto channel = metadata->channel.lock();
     if (!channel) return AMS_MEL_PROVIDER_FAILED;
+    std::shared_ptr<irmel::C2Channel> provider;
+    ams_mel_common::CommonRequestClaim claim;
+    ams_mel_status_t status = AMS_MEL_OK;
     try {
-        std::lock_guard lock{channel->mutex};
-        if (channel->comms_metadata_attempted) {
-            diagnostic("CommsTest metadata registration already attempted", out, capacity, required);
-            return AMS_MEL_INVALID_ARGUMENT;
-        }
-        if (channel->lifecycle != C2Lifecycle::Attached &&
-            channel->lifecycle != C2Lifecycle::Enabled) return AMS_MEL_PROVIDER_FAILED;
-        channel->comms_metadata_attempted = true;
         auto state = metadata->state;
-        const auto result = channel->c2->registerMetadataCallback(
-            std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>{
-                [state](irmel::Channel&, const irmel::ChannelCommsTestRep *value) noexcept {
-                    metadata_callback(state, [&] { return copy_comms_test(value); });
-                }});
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback{
+            [state](irmel::Channel&, const irmel::ChannelCommsTestRep *value) noexcept {
+                metadata_callback(state, [&] { return copy_comms_test(value); });
+            }};
+        {
+            std::lock_guard lock{channel->mutex};
+            if (channel->comms_metadata_attempted) {
+                diagnostic("CommsTest metadata registration already attempted", out, capacity, required);
+                return AMS_MEL_INVALID_ARGUMENT;
+            }
+            if (channel->lifecycle != C2Lifecycle::Attached &&
+                channel->lifecycle != C2Lifecycle::Enabled) return AMS_MEL_PROVIDER_FAILED;
+            channel->comms_metadata_attempted = true;
+            provider = channel->c2;
+            ++channel->requests;
+            claim = ams_mel_common::CommonRequestClaim{
+                channel, finish_c2_request, "deferred C2 cleanup failed"};
+        }
+        const auto result = provider->registerMetadataCallback(std::move(callback));
         if (result != irmel::Return::Success) {
             diagnostic("ChannelCommsTest callback registration failed", out, capacity, required);
-            return AMS_MEL_PROVIDER_FAILED;
+            status = AMS_MEL_PROVIDER_FAILED;
         }
-        return AMS_MEL_OK;
     } catch (const std::exception& error) {
         const char *what = error.what();
         const std::string_view text = what ? std::string_view{what} : std::string_view{};
         diagnostic(!text.empty() && valid_utf8(text) ? text : "metadata registration exception",
                    out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        status = AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
         diagnostic("unknown metadata registration exception", out, capacity, required);
-        return AMS_MEL_PROVIDER_EXCEPTION;
+        status = AMS_MEL_PROVIDER_EXCEPTION;
     }
+    provider.reset();
+    if (!claim.finish() && status == AMS_MEL_OK) status = AMS_MEL_PROVIDER_FAILED;
+    return status;
 }
 
 extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_receive(ams_mel_ir_c2_metadata *metadata,std::uint32_t timeout_ms,ams_mel_ir_c2_metadata_event **output,char *out,std::size_t capacity,std::size_t *required) noexcept
@@ -1880,6 +1912,7 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_close(
         {
             std::lock_guard lock{state->mutex};
             state->lifecycle = C2Lifecycle::Closed;
+            if (state->comms_metadata) state->comms_metadata->deactivate();
             now = state->requests == 0U;
         }
         bool ok = !now || cleanup(state, false);
