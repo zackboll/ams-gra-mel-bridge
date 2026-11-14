@@ -195,6 +195,47 @@ callbacks beyond the four metadata families below, RF beyond the Admin slice,
 NumPy/zero-copy image
 views, wheels, and PyPI publication are not included.
 
+## General IR C2 ModeCmd (PY-MEL-011)
+
+`ControlChannel.submit_mode(ModeCommand)` submits any published `MFAState` and
+`MfaMode` with a complete frozen `ScanParameters` payload. For an already enabled
+`control`:
+
+```python
+from ams_mel import MFAState, MfaMode, ModeCommand, ModeSuccess, ScanParameters
+
+request = control.submit_mode(ModeCommand(
+    command_id=302, state=MFAState.STANDBY, mode=MfaMode.UNUSED,
+    scan_parameters=ScanParameters(),
+))
+try:
+    result = request.wait(timeout_ms=5000)
+finally:
+    request.close()
+if isinstance(result, ModeSuccess):
+    print("Provider returned mode:", result.mode)
+else:
+    print("MEL rejected:", result.code, result.description)
+```
+
+Defaults are False elevation range/altitude selection, zero numeric scan values,
+INERTIAL elevation reference, AIRCRAFT azimuth reference and CAPACITY degradation.
+`CoordinateFrameReference` and `DegradationMethod` are canonical public enums.
+`ScanType(continuous_scan=1, returning=2, agile_scan=3)` preserves three **uint32
+controls**, not Boolean flags. All fields are validated at construction and again
+before submission. Enum fields require the corresponding canonical enum member;
+bool is rejected for integer and floating-point fields. IEEE signed zero and
+nonfinite doubles are preserved without normalization or physical validation.
+
+This reuses the existing `ModeRequest`, `ModeSuccess` and `ModeRejected` semantics.
+Enable is explicit; no metadata registration occurs. Timeout and request close do
+not cancel provider work; admitted requests survive parent closure. Serialize C2
+operations and each request's wait/close. The fixed `submit_operate()` path is
+unchanged. Neither submission nor a completed Mode future establishes a physical
+MFA state transition or hardware qualification.
+
+See [complete field mapping, ownership and qualification](../docs/py-mel-011-general-mode.md).
+
 ## IR C2 metadata (PY-MEL-008)
 
 `ControlChannel.open_metadata(queue_capacity=16)` returns an independent
