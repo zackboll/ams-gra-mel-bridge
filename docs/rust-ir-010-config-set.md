@@ -184,6 +184,49 @@ that tree. It was not counted as a test pass. Subsequent final qualification mus
 run only after the aggregate gate and complete fixture restoration, with no
 overlap. No implementation/test contract is changed to work around it.
 
+`main` advanced independently to Python ModeCmd merge
+`5a5ad58b442b357eabc5f427bfd5b4312ad4c365` (tree
+`00af4b3e979dad63a3d2fe336e7fe555b9696fdc`). It was incorporated through a
+normal merge, without rebasing or rewriting history. Integration merge commit:
+`6cd76a1b5dd0de3495421d6d7a6ddac05345c7ff`, tree
+`3ae7725568b87cb3a3eab030e5010b7d388e18ff`. The feature diff against this
+main still contains only four safe Rust implementation/test paths and this
+task-owned document; Python changes are inherited through main, not task edits.
+
+The first `make check` completed build-tree isolation, all 555 native tests,
+pinned Ada formatting, 56 inventory regressions, Ada compilation and every
+smoke/focused suite successfully, then exited **2** solely on the inherited
+missing newline in `docs/pol002-event-fixture-cleanup.md`. It is not reported as
+passed. No unrelated repair or gate weakening is included. The additional
+`make test-policy` passed all 244 tests across eight suites; standalone IR
+inventory checking and its 56 regressions passed as well. Aggregate GPR output
+includes existing source-free imported C project discovery warnings, not a new
+compiled-source warning.
+
+On the integrated source, `make native`, `make test-native` (555/555), full
+workspace tests (439 passed, 0 failed, 9 existing ignored helpers), check,
+Clippy, format, warning-denied rustdoc, and focused release tests (8 unit plus
+9 integration, none failed/ignored) all passed again. The raw ABI tests are part
+of each workspace run. No new test is skipped. The ignored entries are existing
+child-process entry points explicitly invoked by their parent scenario tests.
+
+The integrated `make check` repeated the successful native/isolation/format/
+inventory/Ada stages and again exited **2** only for that inherited newline
+defect. Afterwards `make test-native` restored the complete fixture tree and
+passed 555/555; the final workspace rerun passed 439 tests with 0 failed and
+9 existing ignored helpers. Source integrity again passed (824 vendor files,
+3 workflows). No incomplete aggregate result is presented as success. Delivery
+remains blocked from a merge-ready claim by this independently owned defect
+and pending exact-HEAD hosted checks/review.
+
+Native header/export and sys declaration SHA-256 identities remain unchanged:
+
+| Path | SHA-256 |
+|---|---|
+| `native/include/ams_mel/abi.h` | `314a204ebe89692b54c7cf5697210c872600c29d7525538ff3216547b2ffc5b3` |
+| `native/src/exports.map` | `be9a6189511e33c0928afcaf3488f0dcc9f4ae0132885bfab708bf5570119616` |
+| `rust/ams-mel-sys/src/lib.rs` | `922a0acef58f9fd359302d66704dd6c796919fc371d964fbe7c29ae9e158a971` |
+
 Focused debug tests pass: eight unit tests and nine public integration tests,
 zero failures/ignored. Release repeats the same eight/nine tests successfully.
 Private tests inspect every field, exact original pointer/byte length, empty
