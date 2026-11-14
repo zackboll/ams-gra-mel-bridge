@@ -12,6 +12,10 @@ test-policy:
 	@$(MAKE) test-docs-ci
 
 .PHONY: test-docs-ci docs
+.PHONY: check-ada-docs-changed
+check-ada-docs-changed:
+	@python3 scripts/check_ada_doc_annotations.py --base origin/main
+
 test-docs-ci:
 	@python3 -W error -m unittest discover -s docs/tests -p test_docs_ci.py -v
 	@python3 -W error -m unittest discover -s docs/tests -p test_static_subtype_audit.py -v
@@ -37,6 +41,7 @@ help:
 	  'make check-ir-api-coverage Offline pinned IR API audit and regression tests' \
 	  'make format-ada       Format Ada crate sources with GNATformat' \
 	  'make check-ada-format Verify Ada crate sources are GNATformat-clean' \
+	  'make check-ada-docs-changed Check structured docs on changed public Ada APIs' \
 	  'make test-rust    Test the Rust workspace against native/build-tests' \
 	  'make test-python  Test the Python binding against native/build-tests' \
 	  'make check        Native + Ada formatting/tests and Git whitespace checks' \
