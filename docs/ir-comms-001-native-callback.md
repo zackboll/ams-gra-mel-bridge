@@ -136,7 +136,7 @@ Initial qualification on the fetched base:
 | `make test-python` | PASS: 584 tests; native prerequisites 680/680 |
 | `make test-rust` | PASS: 484 passed, 9 pre-existing ignored; native prerequisites 680/680 |
 | `make test-policy` | PASS |
-| `make check-ir-api-coverage` | First run failed: old Stacked missing-count expectation; updated to require exactly one native-only callback exposure, two missing buffer operations and a new seven-family scope test. Final rerun recorded below. |
+| `make check-ir-api-coverage` | First run failed: old Stacked missing-count expectation; updated to require exactly one native-only callback exposure, two missing buffer operations and a new seven-family scope test. The 62-test coverage regression rerun inside `make check` passed. |
 
 The unique callback operation remains partial because only C2 has safe Ada
 consumption and three other inherited families remain unsupported. Health,
@@ -150,7 +150,36 @@ incorrectly expected OK despite the existing sticky Failed lifecycle. The test
 now checks the preserved PROVIDER_FAILED result after successful physical release.
 Subsequent focused runs passed 71/71, 87/87 and 92/92 while cases were added.
 
-Further gates, final merged-source identities, release/compiler matrix evidence
-and hosted CI results remain to be recorded. No independent approval or
+Additional completed qualification:
+
+- `make test-build-isolation`: PASS, physically separate production/test trees,
+  native 680/680 after interleaved builds, with test hooks absent from production.
+- `python3 scripts/check_doc_source_integrity.py`: PASS (825 vendored files and
+  four unchanged workflows); `python3 scripts/check_final_newlines.py`: PASS;
+  `git diff --check`: PASS.
+- Login PATH had no GPRbuild. `alr -n -C ada/tests exec -- gprbuild --version`
+  located installed GPRbuild 26.0.0. Through that environment,
+  `make test-ada`: PASS; `alr -n -C ada build`: PASS;
+  `alr -n -C ada/tests run`: PASS. No first-party Ada sources changed.
+- `alr -n -C ada/tests exec -- make -C /home/zboll/git/ams-ir-comms-001 check`:
+  PASS, including Ada formatting, 62 coverage regressions, native 680/680,
+  build isolation, existing Ada smoke/contracts, newlines and whitespace.
+- Production DSO `nm -D --defined-only` audit: exactly 315 public functions,
+  all `@@AMS_MEL_0.1`, no missing/extra/test exports; precisely four additions.
+
+Main advanced through the unrelated Rust discovery/documentation PRs; reconciled
+by ordinary merge of `084a8906f3cd729b7a20a921f39bd513d8ac02c2`, tree
+`12f97090b9e12a3a9b43773cb0c4390bc154e520`. No rebase/amend/force push.
+Implementation commit: `1b2c278`; merged-source qualification commit
+`bc647f359b7cf8293e5d52e00b4b836b5f65fb82`, tree
+`158fb3c69b756f78b680290758e684221cbdd8fe`.
+Final commit/tree identities are recorded in PR #204 to avoid self-reference.
+
+PR #204 is non-draft. Final sequential merged-source reruns, isolated local
+GCC/Clang Debug/Release qualification and exact-HEAD hosted results are still
+running: **HOSTED_CI_PENDING**. The existing hosted compiler matrix remains
+unchanged. The overlapping #202 later advanced to
+`cfc4823154e5093217cf76fa80a2ca5611032300` with the same conflicting signature.
+Independent reconciliation/technical review is still required. No independent approval or
 READY_FOR_INDEPENDENT_REVIEW claim is made yet. No hardware, private provider,
 transport fidelity, formal proof, or complete MEL compliance is claimed.
