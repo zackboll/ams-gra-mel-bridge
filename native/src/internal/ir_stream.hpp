@@ -20,6 +20,7 @@ struct NucState;
 struct CameraResponseState;
 struct OdmState;
 struct LosQuaternionState;
+struct CommsMetadataState;
 
 using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
     (std::string_view, std::shared_ptr<API_Manager>);
@@ -74,6 +75,8 @@ using BufferFactory = std::shared_ptr<ams::iface::irmel::Buffer> (*)
  *   channel members or spinning, and adopts the published cleanup result
  *   instead of an earlier, now stale, Stop status. */
 struct ImageStreamState {
+    std::shared_ptr<CommsMetadataState> comms_metadata;
+    bool comms_metadata_attempted{};
     /* Immutable operating mode; enabling control is not acquisition. */
     bool control_only{false};
     std::shared_ptr<SessionState> session;

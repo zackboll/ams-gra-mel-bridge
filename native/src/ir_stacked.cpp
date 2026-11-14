@@ -1,11 +1,12 @@
 /* IRMEL-ADA-016: required channel details and common communications, even on
  * sensors without stack acquisition. No image buffers or listeners are created.
- * Application buffer registration/unregistration and common communications
- * metadata registration remain unbound; optional LOS3D is not registered. */
+ * Application buffer registration/unregistration remain unbound; optional
+ * LOS3D is not registered. */
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_comms_metadata.hpp"
 
 #include <irmel/library/stacked-image/StackedImageChannel.h>
 
@@ -86,10 +87,12 @@ enum class Lifecycle { Attached, Enabling, Enabled, Failed, Closed };
 
 /* Owns the complete Stacked provider graph: the Session state (and thus
  * Control, manager and provider library), the attached generic Channel and its
- * StackedImageChannel view. `requests` counts ONLY admitted inherited common
- * Channel requests issued through a Stacked view; it is never shared with
+ * StackedImageChannel view. `requests` counts admitted inherited common
+ * Channel requests and temporary registration/query operations; it is never shared with
  * C2, Track, Health, Instrumentation or Image accounting. */
 struct StackedState {
+    std::shared_ptr<CommsMetadataState> comms_metadata;
+    bool comms_metadata_attempted{};
     std::mutex mutex;
     std::shared_ptr<SessionState> session;
     std::shared_ptr<irmel::Channel> channel;
@@ -164,6 +167,7 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
     /* A failed disable never proves ownership safety: detach regardless. */
     const bool detached = !channel || detach(state, channel);
     if (!detached) {
+        if (state->comms_metadata) state->comms_metadata->deactivate(true);
         {
             std::lock_guard lock{state->mutex};
             state->cleanup_started = false;
@@ -184,7 +188,10 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
     /* The provider channel is destroyed here while this state still holds the
      * Session graph, so provider code stays loaded until the graph is gone. */
     channel.reset();
-
+    if (state->comms_metadata) {
+        if (!ok) state->comms_metadata->deactivate(true);
+        state->comms_metadata->drain();
+    }
     return ok;
 }
 
@@ -268,6 +275,16 @@ CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *owner)
            char *out, std::size_t capacity, std::size_t *required) noexcept {
             return stacked_capability(std::static_pointer_cast<StackedState>(erased),
                                          output, out, capacity, required);
+        },
+        [](const std::shared_ptr<void>& erased, const std::shared_ptr<CommsMetadataState>& queue) {
+            auto state = std::static_pointer_cast<StackedState>(erased);
+            std::lock_guard lock{state->mutex};
+            if (state->comms_metadata_attempted ||
+                (state->lifecycle != Lifecycle::Attached && state->lifecycle != Lifecycle::Enabled))
+                return false;
+            state->comms_metadata_attempted = true;
+            state->comms_metadata = queue;
+            return true;
         }};
 }
 } // namespace ams_mel_common
@@ -475,6 +492,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stacked_close(
             /* New common requests are refused from here on; admitted ones
              * keep their claim and own the graph until completion. */
             state->lifecycle = Lifecycle::Closed;
+            if (state->comms_metadata) state->comms_metadata->deactivate();
             now = state->requests == 0U;
         }
 

@@ -1465,6 +1465,20 @@ ams_mel_ir_channel_close = _LIBRARY.ams_mel_ir_channel_close
 ams_mel_ir_channel_close.argtypes = [ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_close.restype = ctypes.c_int32
 
+IrChannelCommsMetadataHandle = ctypes.c_void_p
+ams_mel_ir_channel_comms_metadata_open = _LIBRARY.ams_mel_ir_channel_comms_metadata_open
+ams_mel_ir_channel_comms_metadata_open.argtypes = [IrChannelHandle, ctypes.c_size_t, ctypes.POINTER(IrChannelCommsMetadataHandle), ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_comms_metadata_open.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_receive = _LIBRARY.ams_mel_ir_channel_comms_metadata_receive
+ams_mel_ir_channel_comms_metadata_receive.argtypes = [IrChannelCommsMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrChannelCommsTestReportV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_comms_metadata_receive.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_get_counters = _LIBRARY.ams_mel_ir_channel_comms_metadata_get_counters
+ams_mel_ir_channel_comms_metadata_get_counters.argtypes = [IrChannelCommsMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_comms_metadata_get_counters.restype = ctypes.c_int32
+ams_mel_ir_channel_comms_metadata_close = _LIBRARY.ams_mel_ir_channel_comms_metadata_close
+ams_mel_ir_channel_comms_metadata_close.argtypes = [ctypes.POINTER(IrChannelCommsMetadataHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_comms_metadata_close.restype = ctypes.c_int32
+
 # Task 033B: private raw RF DataMEL declarations. No public Python RF API.
 RfAdminHandle = ctypes.c_void_p
 RfC2Handle = ctypes.c_void_p
@@ -2627,6 +2641,10 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_send_keepalive",
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",
+    "ams_mel_ir_channel_comms_metadata_open",
+    "ams_mel_ir_channel_comms_metadata_receive",
+    "ams_mel_ir_channel_comms_metadata_get_counters",
+    "ams_mel_ir_channel_comms_metadata_close",
     "ams_mel_ir_channel_close",
     "ams_mel_rf_admin_open",
     "ams_mel_rf_admin_command_state",

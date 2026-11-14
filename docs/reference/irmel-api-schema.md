@@ -89,7 +89,9 @@ These 56 exposures are not added again to the 21 outgoing/38 metadata totals.
 Outgoing includes `send`, `exec`, `sendKeepAliveRep`; metadata includes only
 `registerMetadataCallback`. Destructors, buffer methods and image callbacks are
 inventoried separately. Nineteen metadata declarations have a working path, but
-the common CommsTest registration is partial overall because only C2 exposes it.
+the common CommsTest registration is partial overall: C2, HealthStatus, Image
+(including control-only) and StackedImage expose it; Instrumentation, Track and
+Scheduling do not. Inherited exposure improvements do not add unique operations.
 
 ## Extraction limits and reviewed exceptions
 
