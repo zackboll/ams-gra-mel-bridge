@@ -5,6 +5,8 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._navigation import NavigationRequest, _submit_navigation_report
+from ._navigation_types import NavigationReport
 from ._camera_response import CameraResponseStream, _open_camera_response
 from ._image_metadata import ImageMetadataStream, _open_metadata
 from ._nuc import NucStream, _open_nuc
@@ -73,6 +75,14 @@ class ImageStream:
                 _ctypes.byref(required),
             )
         )
+
+    def submit_navigation_report(self, report: NavigationReport) -> NavigationRequest:
+        """Submit once while Attached or Running; no implicit Start or metadata.
+
+        Externally serialize with other operations on this ImageStream. The
+        returned request is independent of Python parents; Close is not cancel.
+        """
+        return _submit_navigation_report(self, report)
 
     def _receive_raw(self, timeout_ms: int, raw: _native.IrFrameV1) -> None:
         _call_with_diagnostic(
