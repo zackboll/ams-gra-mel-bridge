@@ -263,6 +263,28 @@ pub struct ImageConfig {
     queue_capacity: usize,
 }
 
+/// Owned identity and location for an Image control-only attachment.
+///
+/// There is deliberately no acquisition layout or buffer configuration. Labels
+/// and location text use the existing [`UciId`] and [`ComponentLocation`]
+/// validation and are retained verbatim, alongside UUID bytes and metre offsets.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageControlConfig {
+    channel_id: UciId,
+    platform_id: UciId,
+    sensor_location: ComponentLocation,
+}
+
+impl ImageControlConfig {
+    pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
+        Self {
+            channel_id,
+            platform_id,
+            sensor_location,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ControlConfig {
     channel_id: UciId,
@@ -762,6 +784,8 @@ impl Session {
         })
     }
 
+    /// Opens strict Mono8 acquisition with nonzero buffer and queue settings.
+    /// For attachment without acquisition, use [`Self::open_image_control`].
     pub fn open_image_stream(&self, config: &ImageConfig) -> Result<ImageStream, Error> {
         let raw_config = raw_image_config(config);
         let mut raw = ptr::null_mut();
@@ -795,6 +819,62 @@ impl Session {
             raw,
             _not_send_sync: Rc::new(()),
         })
+    }
+
+    /// Attaches an Image channel without acquisition buffers or a frame queue.
+    ///
+    /// The returned existing owner supports capabilities, required metadata,
+    /// NavigationReport and common Channel operations. [`ImageStream::start`]
+    /// enables the channel only; [`ImageStream::receive`] always returns the
+    /// native control-only error. Zero capability layout values are preserved,
+    /// not interpreted as a pixel format or an operational detector/image source.
+    /// No optional metadata callbacks are registered automatically.
+    ///
+    /// Native errors retain their status category and diagnostic. Failed Open
+    /// never publishes an ImageStream; any unexpected output owner gets one
+    /// best-effort Close, leaving uncertain native state conservatively retained.
+    ///
+    /// ```no_run
+    /// use ams_mel::{Error, ImageControlConfig, NavigationReport, Session};
+    ///
+    /// // The caller supplies the provider's identities and a complete report.
+    /// // NotSet in that report does not assert an actual INS position solution.
+    /// fn control_only(session: Session, config: ImageControlConfig,
+    ///                 report: NavigationReport) -> Result<(), Error> {
+    ///     let mut image = session.open_image_control(&config)?;
+    ///     let mut view = image.channel_view()?;
+    ///     let _actual_capabilities = view.capabilities()?; // zeros are preserved
+    ///     let mut metadata = image.open_metadata(8)?; // four required families
+    ///     let mut navigation = image.submit_navigation_report(&report)?;
+    ///     let _outcome = navigation.wait(1_000)?; // inspect Success vs Rejected
+    ///     navigation.close()?;
+    ///     let mut keepalive = view.send_keepalive()?;
+    ///     let _keepalive_result = keepalive.wait(1_000)?;
+    ///     keepalive.close()?;
+    ///     image.start()?; // enable only, never acquisition
+    ///     assert!(image.receive(0).is_err());
+    ///     // metadata.receive(0) polls: a provider need not deliver an event.
+    ///     metadata.close()?;
+    ///     view.close()?;
+    ///     image.stop()?;
+    ///     image.close()?;
+    ///     session.close()
+    /// }
+    /// ```
+    pub fn open_image_control(&self, config: &ImageControlConfig) -> Result<ImageStream, Error> {
+        open_image_control_with(
+            config,
+            |config, out, diagnostic, capacity, required| {
+                // SAFETY: live Session, exact writable output/diagnostic storage.
+                // The borrowed config strings live through this one native call.
+                unsafe {
+                    sys::ams_mel_ir_image_control_open(
+                        self.raw, config, out, diagnostic, capacity, required,
+                    )
+                }
+            },
+            best_effort_close_stream,
+        )
     }
 
     pub fn open_control_channel(&self, config: &ControlConfig) -> Result<ControlChannel, Error> {
@@ -842,6 +922,10 @@ impl Session {
     }
 }
 
+/// Unique Image attachment owner, for either Mono8 acquisition or control only.
+/// Control-only attachment is not evidence of a working detector/image source.
+/// Close/Drop use the same native deferred teardown and conservative retention
+/// contract in both modes; requests can outlive this owner and its Session.
 #[derive(Debug)]
 pub struct ImageStream {
     raw: *mut sys::AmsMelIrStream,
@@ -937,6 +1021,8 @@ impl ImageStream {
         })
     }
 
+    /// Enables the channel. A control-only attachment allocates/registers no
+    /// acquisition buffers and cannot become an image source through Start.
     pub fn start(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the live stream handle.
@@ -945,6 +1031,8 @@ impl ImageStream {
     }
 
     /// Receives one owned Mono8 frame, waiting at most `timeout_ms`. Zero polls.
+    /// Control-only attachments return native `InitializationFailed` with a
+    /// control-only diagnostic, never a frame or an ordinary timeout.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<Frame, Error> {
         let mut raw = empty_frame();
         let first = receive_raw(self.raw, timeout_ms, &mut raw);
@@ -1707,6 +1795,50 @@ fn raw_image_config(value: &ImageConfig) -> sys::AmsMelIrStreamConfigV1 {
         buffer_size: value.buffer_size,
         queue_capacity: value.queue_capacity,
     }
+}
+
+fn open_image_control_with(
+    config: &ImageControlConfig,
+    open: impl FnOnce(
+        &sys::AmsMelIrImageControlConfigV1,
+        *mut *mut sys::AmsMelIrStream,
+        *mut c_char,
+        usize,
+        *mut usize,
+    ) -> i32,
+    close: impl FnOnce(&mut *mut sys::AmsMelIrStream),
+) -> Result<ImageStream, Error> {
+    let raw_config = sys::AmsMelIrImageControlConfigV1 {
+        channel_type: sys::AMS_MEL_IR_CHANNEL_IRST_IMAGE,
+        channel_id: raw_uci_id(&config.channel_id),
+        platform_id: raw_uci_id(&config.platform_id),
+        sensor_location: sys::AmsMelComponentLocationV1 {
+            offset_x_m: config.sensor_location.offset_x_m,
+            offset_y_m: config.sensor_location.offset_y_m,
+            offset_z_m: config.sensor_location.offset_z_m,
+            key: string_view(&config.sensor_location.key),
+            system_name: string_view(&config.sensor_location.system_name),
+        },
+    };
+    let mut raw = ptr::null_mut();
+    // The borrowed owned configuration stays alive throughout Open. Never
+    // retry a side-effecting attachment, even on diagnostic decoding failure.
+    let result = call_with_diagnostic(|d, c, r| open(&raw_config, &mut raw, d, c, r));
+    if let Err(error) = result {
+        if !raw.is_null() {
+            close(&mut raw);
+        }
+        return Err(error);
+    }
+    if raw.is_null() {
+        return Err(protocol(
+            "Image control open succeeded without a stream owner",
+        ));
+    }
+    Ok(ImageStream {
+        raw,
+        _not_send_sync: Rc::new(()),
+    })
 }
 
 fn raw_control_config(value: &ControlConfig) -> sys::AmsMelIrC2ConfigV1 {
@@ -2625,6 +2757,10 @@ fn best_effort_close_capability(raw: &mut *mut sys::AmsMelIrChannelCapability) {
         sys::ams_mel_ir_channel_capability_close(raw, ptr::null_mut(), 0, ptr::null_mut())
     };
 }
+
+#[cfg(test)]
+#[path = "ir_image_control_tests.rs"]
+mod ir_image_control_tests;
 
 #[cfg(test)]
 mod tests {
