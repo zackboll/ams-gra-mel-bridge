@@ -176,6 +176,18 @@ tree, and PR evidence records tests against that exact commit. The initial
 parent-specific 9/51 byte comparison above describes the first merge, not a
 claim that later mainline additions were absent.
 
+After the entire local qualification had passed, main advanced once more to
+`5a5ad58b442b357eabc5f427bfd5b4312ad4c365` through PR #189, safe Python general
+ModeCmd. The final delivery merge has ordered parents
+`91fb42d77c8622cd0b7402b2eace688d5320430a` and
+`5a5ad58b442b357eabc5f427bfd5b4312ad4c365`. All seven incoming Python feature
+files are preserved byte-for-byte, without textual conflicts. The preceding
+merge's tree is `fddf12f6a0c2ac6a971eb491e9a5d3023a9eab83`. Main still exports
+301 production functions and the integration 305. Final-source qualification is
+again run sequentially; earlier successes do not stand in for testing the new
+Python source. The final PR description/comment and merge commit's tree trailer
+are the delivery identities, superseding earlier final-source labels here.
+
 ## Limitations and delivery rules
 
 This remains provider-independent consumer-binding qualification using separate
