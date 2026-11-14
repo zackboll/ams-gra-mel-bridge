@@ -12,6 +12,8 @@ from ._errors import (
     _local_error,
 )
 from ._validation import (
+    _utf8_input,
+    _validate_int64,
     _validate_size_t,
     _validate_uint32,
 )
@@ -19,6 +21,7 @@ from ._requests import (
     ModeRequest,
     ReturnRequest,
 )
+from ._types import ConfigSetCommand
 from ._common import (
     ChannelView,
     _open_channel_view,
@@ -147,6 +150,48 @@ class ControlChannel:
                 "BIT submission succeeded without returning a request owner",
             )
         return ReturnRequest._from_owner(owner)
+
+    def submit_config_set(self, command: ConfigSetCommand) -> ReturnRequest:
+        """Submit all ConfigSet fields once; native admission requires Enabled C2.
+
+        Does not enable or register metadata. Configuration is opaque UTF-8;
+        time is a signed nanosecond count without an inferred epoch. Admission
+        or a completed Return is not proof of physically applied configuration.
+        Serialize with other operations on this channel. The existing request's
+        timeout/close do not cancel provider work, even after parent closure.
+        """
+        if not isinstance(command, ConfigSetCommand):
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "command must be ConfigSetCommand")
+        self._require_open()
+        # Revalidate even if object.__setattr__ bypassed the frozen dataclass.
+        _validate_uint32(command.command_id, "command_id")
+        _validate_int64(command.system_time_ns, "system_time_ns")
+        encoded = _utf8_input(command.config, "config")
+        buffer = _ctypes.create_string_buffer(encoded, len(encoded) + 1)
+        raw = _native.IrConfigSetCommandV1(
+            command.command_id,
+            command.system_time_ns,
+            _native.StringViewV1(_ctypes.cast(buffer, _native.CharPointer), len(encoded)),
+        )
+        request = ReturnRequest._from_owner(_native.IrReturnRequestHandle())
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_c2_submit_config_set(
+                    self._owner, _ctypes.byref(raw), request._owner_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if not request.is_open:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "ConfigSet submission succeeded without returning a request owner",
+                )
+        except BaseException:
+            # One non-raising cleanup, preserving the submission exception even
+            # if Close fails. Disarm the fallback to avoid a second release of
+            # an ownership-uncertain handle from a broken native boundary.
+            request.__del__()
+            request._owner.value = None
+            raise
+        return request
 
     def channel_view(self) -> ChannelView:
         """Create a weak common :class:`ChannelView` of this control channel.
