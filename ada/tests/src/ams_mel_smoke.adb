@@ -29,6 +29,7 @@ with AMS_MEL_IR_Track_Update_Tests;
 with AMS_MEL_IR_Track_System_Data_Tests;
 with AMS_MEL_IR_Scheduling_Tests;
 with AMS_MEL_IR_Scheduling_Ack_Tests;
+with AMS_MEL_IR_Scheduling_Task_Executing_Tests;
 with AMS_MEL_RF_Tests;
 with AMS_MEL_RF_C2_Tests;
 with AMS_MEL_RF_Job_Tests;
@@ -271,6 +272,7 @@ begin
    AMS_MEL_IR_Track_System_Data_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Tests.Run (Provider_Path);
    AMS_MEL_IR_Scheduling_Ack_Tests.Run (Provider_Path);
+   AMS_MEL_IR_Scheduling_Task_Executing_Tests.Run (Provider_Path);
    AMS_MEL_IR_Channel_Tests.Run (Provider_Path);
    AMS_MEL_RF_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");
    AMS_MEL_RF_C2_Tests.Run (Test_Provider_Directory & "/libmock_rf_provider.so");

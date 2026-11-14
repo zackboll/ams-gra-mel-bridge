@@ -58,3 +58,12 @@ def _validate_uint32(value: int, name: str) -> None:
         raise _local_error(
             ErrorKind.INVALID_ARGUMENT, f"{name} must be representable in uint32_t"
         )
+
+
+def _validate_int64(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be an integer")
+    if value < -(_INT64_MAX + 1) or value > _INT64_MAX:
+        raise _local_error(
+            ErrorKind.INVALID_ARGUMENT, f"{name} must be representable in int64_t"
+        )

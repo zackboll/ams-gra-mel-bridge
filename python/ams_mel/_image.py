@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes as _ctypes
 
 from . import _native
+from ._camera_response import CameraResponseStream, _open_camera_response
 from ._image_metadata import ImageMetadataStream, _open_metadata
 from ._nuc import NucStream, _open_nuc
 from ._errors import (
@@ -57,6 +58,10 @@ class ImageStream:
     def open_metadata(self, queue_capacity: int = 16) -> ImageMetadataStream:
         """One-shot ordinary metadata registration; prefer before Image Start."""
         return _open_metadata(self, queue_capacity)
+
+    def open_camera_response(self, queue_capacity: int = 16) -> CameraResponseStream:
+        """Opt into one-shot CameraCommandResp reception, without starting Image."""
+        return _open_camera_response(self, queue_capacity)
 
     def start(self) -> None:
         self._require_open()

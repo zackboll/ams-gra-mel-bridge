@@ -1325,6 +1325,30 @@ ams_mel_ir_scheduling_execute_task_ack_event_view.restype = ctypes.c_int32
 ams_mel_ir_scheduling_execute_task_ack_event_close = _LIBRARY.ams_mel_ir_scheduling_execute_task_ack_event_close
 ams_mel_ir_scheduling_execute_task_ack_event_close.argtypes = [ctypes.POINTER(IrSchedulingAckEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_scheduling_execute_task_ack_event_close.restype = ctypes.c_int32
+# IRMEL-ADA-013 private ABI mirrors only, no safe Python reception.
+AMS_MEL_IR_TASK_NO_TASK, AMS_MEL_IR_TASK_ABORT_TASK, AMS_MEL_IR_TASK_IRST_CAM_CAL, AMS_MEL_IR_TASK_CAM_CAL, AMS_MEL_IR_TASK_IRST_BORESIGHT, AMS_MEL_IR_TASK_IDLE, AMS_MEL_IR_TASK_IRST_SCAN, AMS_MEL_IR_TASK_IRST_POSITION, AMS_MEL_IR_TASK_IRST_STT, AMS_MEL_IR_TASK_IRST_MTT, AMS_MEL_IR_TASK_IRST_UPDATE, AMS_MEL_IR_TASK_RESERVED_1, AMS_MEL_IR_TASK_RESERVED_2, AMS_MEL_IR_TASK_RESERVED_3, AMS_MEL_IR_TASK_RESERVED_4, AMS_MEL_IR_TASK_RESERVED_5, AMS_MEL_IR_TASK_RESERVED_6 = range(17)
+AMS_MEL_IR_TASK_COMP_STATUS_NO_TASK, AMS_MEL_IR_TASK_COMP_STATUS_COMPLETE, AMS_MEL_IR_TASK_COMP_STATUS_TIMEOUT, AMS_MEL_IR_TASK_COMP_STATUS_ABORT, AMS_MEL_IR_TASK_COMP_STATUS_SKIPPED = range(5)
+class IrTaskExecutingRepV1(ctypes.Structure): _fields_ = [("command_id", ctypes.c_uint32), ("activity_id", ctypes.c_uint32), ("request_id", ctypes.c_uint32), ("task", ctypes.c_uint32), ("estimated_duration_ns", ctypes.c_int64), ("track_id", ctypes.c_int32), ("previous_activity_id", ctypes.c_uint32), ("previous_request_id", ctypes.c_uint32), ("previous_task", ctypes.c_uint32), ("previous_task_status", ctypes.c_uint32)]
+IrSchedulingRepMetadataHandle = ctypes.c_void_p
+IrSchedulingRepEventHandle = ctypes.c_void_p
+ams_mel_ir_scheduling_task_executing_open = _LIBRARY.ams_mel_ir_scheduling_task_executing_open
+ams_mel_ir_scheduling_task_executing_open.argtypes = [IrSchedulingHandle, ctypes.c_size_t, ctypes.POINTER(IrSchedulingRepMetadataHandle), ctypes.POINTER(ctypes.c_uint32), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_open.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_executing_receive = _LIBRARY.ams_mel_ir_scheduling_task_executing_receive
+ams_mel_ir_scheduling_task_executing_receive.argtypes = [IrSchedulingRepMetadataHandle, ctypes.c_uint32, ctypes.POINTER(IrSchedulingRepEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_receive.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_executing_get_counters = _LIBRARY.ams_mel_ir_scheduling_task_executing_get_counters
+ams_mel_ir_scheduling_task_executing_get_counters.argtypes = [IrSchedulingRepMetadataHandle, ctypes.POINTER(IrC2MetadataCountersV1), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_get_counters.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_executing_close = _LIBRARY.ams_mel_ir_scheduling_task_executing_close
+ams_mel_ir_scheduling_task_executing_close.argtypes = [ctypes.POINTER(IrSchedulingRepMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_close.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_executing_event_view = _LIBRARY.ams_mel_ir_scheduling_task_executing_event_view
+ams_mel_ir_scheduling_task_executing_event_view.argtypes = [IrSchedulingRepEventHandle, ctypes.POINTER(ctypes.POINTER(IrTaskExecutingRepV1)), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_event_view.restype = ctypes.c_int32
+ams_mel_ir_scheduling_task_executing_event_close = _LIBRARY.ams_mel_ir_scheduling_task_executing_event_close
+ams_mel_ir_scheduling_task_executing_event_close.argtypes = [ctypes.POINTER(IrSchedulingRepEventHandle), CharPointer, ctypes.c_size_t, SizePointer]
+ams_mel_ir_scheduling_task_executing_event_close.restype = ctypes.c_int32
 ams_mel_ir_track_metadata_open = _LIBRARY.ams_mel_ir_track_metadata_open
 ams_mel_ir_track_metadata_open.argtypes = [IrTrackHandle, ctypes.c_size_t, ctypes.POINTER(IrTrackMetadataHandle), CharPointer, ctypes.c_size_t, SizePointer]
 ams_mel_ir_track_metadata_open.restype = ctypes.c_int32
@@ -2345,6 +2369,12 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_scheduling_task_executing_open",
+    "ams_mel_ir_scheduling_task_executing_receive",
+    "ams_mel_ir_scheduling_task_executing_get_counters",
+    "ams_mel_ir_scheduling_task_executing_close",
+    "ams_mel_ir_scheduling_task_executing_event_view",
+    "ams_mel_ir_scheduling_task_executing_event_close",
     "ams_mel_ir_scheduling_execute_task_ack_open",
     "ams_mel_ir_scheduling_execute_task_ack_receive",
     "ams_mel_ir_scheduling_execute_task_ack_get_counters",

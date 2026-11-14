@@ -156,12 +156,14 @@ def enhance(site, root, report, references, output, *, deep=True):
 def verify_presentation(site, root, report, references, output, *, deep=False):
     """Restore every native byte and check all destinations without regenerating."""
     import build_enhanced_site as p
-    from local_type_audit import Authority, restore_page, lex, IDENT, occurrence_key
+    from local_type_audit import (Authority, restore_page, lex, IDENT, occurrence_key,
+                                 require_complete_additions)
     from ada_gnatdoc_enhancer.util import sorted_json
     import api_catalog
     import symbol_audit
     p.tool()
     authority = Authority(root, site, ledger=report["native"])
+    required_additions = authority.required_additions()
     symbols = symbol_audit.inventory(authority, site)
     raw, actual = p.files(site), p.files(output)
     require(set(actual) == set(raw) | p.EXTRAS, "unexpected/missing publication files")
@@ -187,6 +189,7 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
                     "unsafe authored publication CSS")
     # Theme CSS is an additional renderer asset, not native input. Its complete
     # immutable installed bytes remain authority even for a changed source epoch.
+    require_complete_additions(audit, required_additions)
     from ada_gnatdoc_enhancer.theme import asset
     require(actual['api/gnatdoc-theme.css'] == asset('gnatdoc-theme.css'), 'theme asset identity mismatch')
     manifest = {

@@ -23,7 +23,7 @@ Operations using one owner must follow the native external-serialization
 contract. At most one receive operation may consume an :class:`ImageStream` at
 a time. The GIL is not a substitute for either contract; this API does not
 claim that owners are thread-safe. Wait must not race the corresponding request
-close, and control enable, either submission operation, and close require
+close, and control enable, submission operations, and close require
 external serialization. Operations and close on one :class:`ChannelView`
 require external serialization (distinct Views need none), and Wait and close
 on one :class:`ReturnRequest` or :class:`CommsRequest` require external
@@ -61,6 +61,12 @@ from ._image_types import (
     NavigationResponse,
 )
 from ._image_metadata import ImageMetadataStream
+from ._camera_response import (
+    CameraCommandResponse,
+    CameraResponseCounters,
+    CameraResponseOpenError,
+    CameraResponseStream,
+)
 from ._nuc import (
     NucPointType,
     NucPixelKind,
@@ -73,6 +79,7 @@ from ._nuc import (
 )
 from ._types import (
     AbiVersion,
+    ConfigSetCommand,
     ProviderVersion,
     UciId,
     ComponentLocation,
@@ -222,6 +229,10 @@ for _public_symbol in (
     C2BitControlInterface,
     C2BitType,
     C2BitConfiguration,
+    CameraCommandResponse,
+    CameraResponseCounters,
+    CameraResponseOpenError,
+    CameraResponseStream,
     AzimuthElevation,
     BadPixel,
     BadPixelList,
@@ -305,6 +316,7 @@ for _public_symbol in (
     CommsTestReport,
     CommsTestRequest,
     ComponentLocation,
+    ConfigSetCommand,
     ControlChannel,
     ControlConfig,
     CoordinateSystem,
@@ -352,6 +364,10 @@ del _public_symbol
 
 
 __all__ = [
+    "CameraCommandResponse",
+    "CameraResponseCounters",
+    "CameraResponseOpenError",
+    "CameraResponseStream",
     "C2MetadataStream",
     "C2MetadataKind",
     "C2MetadataEvent",
@@ -445,6 +461,7 @@ __all__ = [
     "CommsTestReport",
     "CommsTestRequest",
     "ComponentLocation",
+    "ConfigSetCommand",
     "ControlChannel",
     "ControlConfig",
     "CoordinateSystem",
