@@ -160,3 +160,33 @@ the relevant suite above. The delivery PR records the exact final commit/tree,
 actual final results, changed files and exact-HEAD hosted check disposition. No
 approval, merge or auto-merge is authorized; independent technical review remains
 required.
+
+### Normal main reconciliation
+
+While the first-head hosted checks were running, main advanced to
+`e50079ad59ec4b37678f73a4f318d264f3a4639f` (tree
+`ad52cb86dfd17e36a6fa3e1af4c11a3127b47311`) with PR #182 Scheduling
+TaskExecutingRep. It was integrated using ordinary `git merge --no-edit
+origin/main`, preserving published history. Merge commit
+`8f9d7db7650554dbd65bdaddf18cc427d5cf9e2c` has parents
+`520391b1fbc44d4cef733ccc8e5f20c068dece93` and the main commit above.
+
+The feature diff against reconciled main is still exactly the same six owned
+files. Inherited native/ABI/ctypes, Ada/Rust, build, mock and inventory changes
+are byte-identical to main, not feature modifications. No first-party Ada source
+was authored or reformatted by this task. Scheduling test additions increase the
+integrated counts; all required commands were rerun sequentially:
+
+- `make test-native`: **555/555 PASS**.
+- `make test-python`: **501 PASS**, plus native prerequisite **555/555 PASS**.
+- `make test-policy`: **234 PASS**, unchanged seven-suite counts.
+- `make check-ir-api-coverage`: **56 PASS**, updated main inventory preserved.
+- Integrity, final newlines, warnings-as-errors compileall and `git diff --check`:
+  **PASS**.
+- Focused warnings-as-errors ConfigSet suite: **17 PASS**.
+- Same eight-module relevant suite above: **206 PASS**.
+
+The final documentation follow-up commit is qualified again before normal push;
+the PR records its exact head/tree and hosted results. Earlier measurements in
+this document remain valid evidence for their explicitly identified source,
+not substituted for the integrated-source qualification.
