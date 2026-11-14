@@ -192,7 +192,62 @@ performance, real-provider compatibility or real IR interoperability is claimed.
 
 ## Qualification
 
-Results and exact commands are recorded below after execution. Tests are
-provider-free compiled mock qualification plus private hostile-boundary injection.
-The local PATH has no gprbuild; full local `make check` is not claimed. Hosted
-Ada qualification is separate evidence, not a substitute local result.
+Implementation commit `1763995e880df70f933115724bc8e586d6258e48`, tree
+`f0351d62140a81072da2fb710ae1ef12d4536651`, was qualified from a clean worktree.
+All following commands ran sequentially, with no native rebuild overlapping
+tests using those artifacts:
+
+| Command | Actual local result |
+| --- | --- |
+| `make test-native` | PASS, 557/557 native CTest tests |
+| `make test-python` | PASS, 537 Python tests, warnings-as-errors; prerequisite 557/557 native tests |
+| `make test-policy` | PASS, 244 tests across eight suites (18+18+28+65+75+18+9+13) |
+| `make check-ir-api-coverage` | PASS, offline inventory check and 59 regression tests |
+| `make test-build-isolation` | PASS, both build orders, 557/557 retained tests, production/test artifacts and failpoints isolated |
+| `python3 scripts/check_doc_source_integrity.py` | PASS, 824 vendor files and 3 workflows |
+| `python3 scripts/check_final_newlines.py` | PASS, all first-party text files |
+| `python3 -W error -m compileall -q python/ams_mel python/tests` | PASS |
+| `git diff --check` | PASS |
+
+Additional focused command, using the test-tree environment below:
+
+```sh
+export PYTHONPATH="$PWD/python:$PWD/python/tests"
+export AMS_MEL_NATIVE_LIB="$PWD/native/build-tests/lib/libams_mel_c.so.0"
+export AMS_MEL_TEST_PROVIDER_DIR="$PWD/native/build-tests/test-providers"
+python3 -W error -m unittest test_ir_navigation test_image_stream \
+  test_ir_image_metadata test_ir_general_mode test_ir_config_set \
+  test_control_channel test_import_identity test_package_layout test_abi -v
+```
+
+PASS: 208 tests, including 21 new NavigationReport tests, existing Image,
+metadata, C2 ModeCmd/ConfigSet, import/pickle compatibility and C11 ABI/layout
+regressions. The focused pending-lifetime subprocess covers both parent-close
+orders, explicit request Close, request finalization, completion after parent
+collection, metadata arrival before completion, exact correlation IDs, deferred
+teardown and eventual unload, using provider barriers/native reclamation probes.
+Resource exhaustion and failed deferred detach are also deterministic controls.
+The test provider verifies all rich input fields via actual C++ getters,
+including distinct covariance values 1.5 through 18.5. Numeric/hostile-boundary
+tests inspect all 36 input doubles and both timestamps before forwarding sends.
+
+Base negative controls imported the archived base Python package against the
+same native library: all eight new exports and the Image submission method
+were absent, while submit_mode and submit_config_set were present.
+`nm -D --defined-only native/build/lib/libams_mel_c.so.0.1.0` contained exactly
+the same 305 production exports as the base export map. The ABI header, export
+map and ctypes file were byte-compared against base Git blobs; all unchanged.
+The entire native, Ada, Rust, workflow/policy and historical coverage paths
+have no diff from base. Main was re-fetched and remained at the recorded base.
+
+This evidence update changes documentation only. The delivery process reruns
+the complete sequence on the final committed documentation-inclusive HEAD;
+that exact HEAD/tree, repeated results and hosted CI state are reported in the
+PR without a self-referential commit hash in this file.
+
+Qualification is provider-free compiled mock testing plus private hostile ABI
+injection, not hardware evidence. No real provider was tested. The local PATH
+has no gprbuild (`command -v gprbuild` returned no path); full local `make check`
+and Ada tests are not claimed. Exact-HEAD hosted Ada qualification is separate
+evidence, not a substitute local result. Use HOSTED_CI_PENDING until required
+hosted checks finish; independent technical review is required before merge.
