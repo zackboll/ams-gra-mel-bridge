@@ -1166,6 +1166,7 @@ class AbiTests(unittest.TestCase):
                 "ams_mel_session_get_provider_version",
                 "ams_mel_session_close",
                 "ams_mel_ir_stream_open",
+                "ams_mel_ir_image_control_open",
                 "ams_mel_ir_stream_start",
                 "ams_mel_ir_stream_receive",
                 "ams_mel_ir_stream_get_capabilities",
