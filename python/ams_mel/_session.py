@@ -25,6 +25,7 @@ from ._types import (
     ControlConfig,
     HealthConfig,
     ImageConfig,
+    ImageControlConfig,
     InstrumentationConfig,
     ProviderVersion,
 )
@@ -32,6 +33,7 @@ from ._ffi import (
     _RawControlConfig,
     _RawHealthConfig,
     _RawImageConfig,
+    _RawImageControlConfig,
     _RawInstrumentationConfig,
 )
 from ._image import (
@@ -305,6 +307,43 @@ class Session:
             channel.__del__()
             raise
         return channel
+
+    def open_image_control(self, config: ImageControlConfig) -> ImageStream:
+        """Attach Image commands/metadata without buffers; Start remains explicit.
+
+        The existing native Image owner retains the provider graph independently
+        of this Python Session. This mode does not support pixel reception.
+        """
+        self._require_open()
+        if not isinstance(config, ImageControlConfig):
+            raise _local_error(
+                ErrorKind.INVALID_ARGUMENT, "config must be ImageControlConfig"
+            )
+        ImageControlConfig.__post_init__(config)
+        bundle = _RawImageControlConfig(config)
+        owner = _native.IrStreamHandle()
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_image_control_open(
+                    self._owner, _ctypes.byref(bundle.raw), _ctypes.byref(owner),
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not owner.value:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Image control open succeeded without returning an owner",
+                )
+            return ImageStream._from_owner(owner)
+        except BaseException:
+            if owner.value:
+                # One best-effort attempt only: a failed/throwing close may have
+                # consumed ownership. No Python owner/finalizer retries it.
+                try:
+                    _native.ams_mel_ir_stream_close(_ctypes.byref(owner), None, 0, None)
+                except BaseException:
+                    pass
+            raise
 
     def open_control_channel(self, config: ControlConfig) -> ControlChannel:
         """Open an IR CommandAndControl channel without retaining this object."""
