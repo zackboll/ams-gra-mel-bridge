@@ -24,9 +24,12 @@ from example_sources import References, occurrence_ledger
 import symbol_audit
 import api_catalog
 
-REVISION = "524b7610e21e9a7b87e8e0761580ed59a3b0295c"
-ARCHIVE_SHA256 = "8b7c0a0d0957ef2ebb2cc27888173e653db6987c4279444fcffe095ccc099101"
-PACKAGE_SHA256 = "af5c5fec03ec3fbc41e3a55a55424a3ce65cf1bb5101d97b0c65ff5614e40632"
+VERSION = "0.1.5"
+REVISION = "0120bee2f2455e4c832d1d5ddae0a4cb03cb9477"
+WHEEL_NAME = "ada_gnatdoc_enhancer-0.1.5-py3-none-any.whl"
+WHEEL_URL = "https://github.com/zackboll/ada-gnatdoc-enhancer/releases/download/v0.1.5/" + WHEEL_NAME
+WHEEL_SHA256 = "d712d330f213fc1909a66c47bc2c7e5e15d5ec687222bea3c4922f5243db4247"
+PACKAGE_SHA256 = "bccaa00c7441cbc879eb635c63d86dc44fa5c87513300e2b9824be479cfa07c8"
 JAVASCRIPT_SHA256 = "233cf43211a711d0d64dfba2815bc2d9cc887720faed0ca38f464bc6d29e145f"
 SOURCE_SHA256 = "467cd45ef85888bb22ccee2d9e325b6b55e985dadac66c317dbbc653193114c8"
 ANCHORS_SHA256 = "06b602439be15557118790a2827bb8bacc45c1b02d055fa3e9502204857f5aed"
@@ -39,10 +42,10 @@ NATIVE_API_SHA256 = "d2026657ddd02d2513514c545633c13fbaf8ce772e1bf35bf51223e16d8
 # Preserve the entire DOC-011 API through an independently restored projection,
 # as well as guarding the new complete symbol-enabled API. Both values come from
 # qualified complete A/B/C bytes, not enhancer metadata or predicted link counts.
-ORIGINAL_ENHANCED_API_SHA256 = "8f5090330038b70905211fd8ee32a2d662ee7902a27c9c2dc61028b19c48385f"
-ENHANCED_API_SHA256 = "9790f7666b867250e8c78e998a32eb233c3cbe76f9e83bbda7f4d8978f0b6f37"
-PUBLICATION_SHA256 = "2249019abba15ec3107069c18dea5e0934eab25d303524e9a5e9768b476838cb"
-ORIGINAL_PUBLICATION_SHA256 = "22e51b0a72744cf4a18991b54433ec802872d6a427d5cee1fe97a8ac33cd83d7"
+ORIGINAL_ENHANCED_API_SHA256 = "3559a39d4c1aa934d9a4828b9571870ef0f96601b59091e2c2b135c3084ef962"
+ENHANCED_API_SHA256 = "41b8f752b08d041a42b5209c23e8aeb17bacfad46bf65510db5a13352baa3dd3"
+PUBLICATION_SHA256 = "66e087b44a3fd9488d310ebe9c96aa8b964a1bb6e3d6326867671cd46f40c59f"
+ORIGINAL_PUBLICATION_SHA256 = "1ef09a4a3b5a7d67bf2757dfb2263416373c6b6e320802ffa87d7917e40c4c91"
 EXTRAS = {"api/gnatdoc-theme.css", "api/presentation.json", "api/gnatdoc-navigation.js"}
 METADATA = ('<meta name="viewport" content="width=device-width, initial-scale=1">'
             '<link rel="stylesheet" href="gnatdoc-theme.css">')
@@ -51,7 +54,7 @@ SPAN = re.compile(r'<span class="ada-(?:keyword|number|string|character|attribut
 # read from a publication manifest. Native index bytes remain the destination
 # authority; restoring these two insertions must recover that entire index.
 NAVIGATION_CONTROL = ('<div id="package-navigation" hidden><label for="package-search">'
-                      'Search documentation</label><input id="package-search" type="search" '
+                      'Filter navigation links</label><input id="package-search" type="search" '
                       'autocomplete="off" spellcheck="false">'
                       '<button id="package-clear" type="button">Clear</button>'
                       '<p id="package-results" role="status" aria-live="polite"></p></div>')
@@ -128,8 +131,15 @@ def tool():
     package = Path(ada_gnatdoc_enhancer.__file__).parent
     content = {name: data for name, data in files(package).items()
                if "__pycache__" not in Path(name).parts}
-    require(importlib.metadata.version("ada-gnatdoc-enhancer") == "0.1.0.dev0", "enhancer version mismatch")
+    require(importlib.metadata.version("ada-gnatdoc-enhancer") == VERSION, "enhancer version mismatch")
     require(fingerprint(hashes(content)) == PACKAGE_SHA256, "enhancer implementation/assets mismatch")
+    distribution = importlib.metadata.distribution("ada-gnatdoc-enhancer")
+    require(package.resolve() == Path(distribution.locate_file("ada_gnatdoc_enhancer")).resolve(),
+            "enhancer import origin mismatch")
+    origin = json.loads(distribution.read_text("direct_url.json") or "{}")
+    require(origin.get("url") == WHEEL_URL and
+            origin.get("archive_info", {}).get("hashes", {}).get("sha256") == WHEEL_SHA256,
+            "enhancer wheel origin/digest mismatch")
 
 
 def qualified_original(pristine, root=ROOT):
@@ -270,7 +280,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         # Reconstruct the entire presentation manifest from trusted originals,
         # current authoritative source, and pinned transformations, not itself.
         manifest = {
-            "schema_version": 1, "enhancer_version": "0.1.0.dev0",
+            "schema_version": 1, "enhancer_version": VERSION,
             "gnatdoc_version": "26.0.0", "project": "AMS MEL Bridge",
             "original_api_html": {n: d.decode() for n, d in raw.items()
                                   if n.startswith("api/") and n.endswith(".html")},
@@ -293,7 +303,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
         # rather than replacing it with only the new symbol-enabled fingerprint.
         from ada_gnatdoc_enhancer import __file__ as enhancer_file
         original_router = (Path(enhancer_file).parent / "assets/gnatdoc-navigation.js").read_bytes()
-        require(sha(original_router) == "b3fb428b507844d6be76fb40156058d39a5b5f57004bde04e33b0411f68504cd",
+        require(sha(original_router) == "e32e0a9fcbccffbe94268ff933905e5616a52d4d89969c52e7d539acdb102522",
                 "inherited default navigation asset changed")
         projection = {n: d for n, d in actual.items() if n.startswith("api/")}
         projection["api/index.html"] = symbol_audit.restore(
@@ -344,7 +354,7 @@ def validate(published, pristine, root=ROOT, audit_path=None):
             "public_symbols": symbols,
             "source_declarations": 1238, "native_sections": 1237,
             "linked_local_types": len(audit), "linked_external_types": 0,
-            "enhancer_revision": REVISION, "archive_sha256": ARCHIVE_SHA256,
+            "enhancer_revision": REVISION, "wheel_sha256": WHEEL_SHA256,
             "document_metadata": {
                 "api/" + page: {"title": package + " — " + CONFIG["project"],
                                  "lang": "en", "charset": "utf-8"}
