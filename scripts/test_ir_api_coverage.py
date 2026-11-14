@@ -63,6 +63,23 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(entry["ada"], [{"path": "ada/src/ams-mel-ir-discovery.ads",
                                        "symbol": "Capabilities"}])
         self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 49)
+
+    def test_image_control_attachment_is_separate_from_acquisition(self):
+        entry = self.operation("Control", "attachChannel(")
+        self.assertIn({"path": "native/src/ir_stream.cpp",
+                       "symbol": "ams_mel_ir_image_control_open"}, entry["native"])
+        self.assertIn({"path": "ada/src/ams-mel-ir.ads",
+                       "symbol": "Open_Image_Control"}, entry["ada"])
+        self.assertIn({"path": "native/tests/test_ir_image_control.c",
+                       "symbol": "main"}, entry["tests"])
+        self.assertIn({"path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+                       "symbol": "Run"}, entry["tests"])
+        profiles = {e["name"]: e["status"] for e in self.coverage["image_capabilities"]}
+        self.assertEqual(profiles["Control-only Image attachment"], "safe_ada")
+        self.assertEqual(profiles["Mono8 single-band"], "safe_ada")
+        for name in ("Higher-bit-depth monochrome", "RGB", "Bayer", "Multiband", "StackedImage",
+                     "Generic application-managed buffers"):
+            self.assertEqual(profiles[name], "missing")
         for payload in ("attachChannel(", "detachChannel("):
             self.assertEqual(self.operation("Control", payload)["status"], "partial")
 

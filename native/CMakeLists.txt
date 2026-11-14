@@ -919,6 +919,16 @@ if(AMS_MEL_BUILD_TESTS)
     ams_mel_warnings(test_ir_stream)
     add_test(NAME ir_stream_contract COMMAND test_ir_stream)
 
+    add_executable(test_ir_image_control tests/test_ir_image_control.c)
+    target_compile_features(test_ir_image_control PRIVATE c_std_11)
+    set_target_properties(test_ir_image_control PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_image_control PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_image_control PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS})
+    add_dependencies(test_ir_image_control mock_ir_provider)
+    ams_mel_warnings(test_ir_image_control)
+    add_test(NAME ir_image_control_contract COMMAND test_ir_image_control)
+
     add_executable(test_ir_image_metadata tests/test_ir_image_metadata.c)
     target_compile_features(test_ir_image_metadata PRIVATE c_std_11)
     set_target_properties(test_ir_image_metadata PROPERTIES C_EXTENSIONS OFF)

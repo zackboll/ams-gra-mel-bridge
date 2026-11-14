@@ -434,6 +434,16 @@ irmel::ChannelCapability rich_channel_capability()
     return value;
 }
 
+irmel::ChannelCapability control_image_capability()
+{
+    auto value = rich_channel_capability();
+    value.setChannelTypes({irmel::ChannelType::IRSTImage});
+    value.setHeight(0U); value.setWidth(0U); value.setBitDepth(0U);
+    value.setRowPitch(0U); value.setBufferSize(0U); value.setImageSize(0U);
+    value.setNumberOfBands(0U); value.setFormat(static_cast<irmel::PixelFormat>(0));
+    return value;
+}
+
 irmel::BadPixelList rich_bad_pixels(std::uint32_t base = 0U)
 {
     std::vector<irmel::BadPixel> pixels;
@@ -1926,6 +1936,36 @@ private:
     Return registerMetadataCallback(std::function<void(irmel::Channel&, const Type *const)>) override \
     { return Return::NotSupported; }
 
+/* An unsolicited checkout has no registered storage. Any sample/flags query is
+ * a test failure; release may synchronously deliver another checkout. */
+class ControlUnexpectedBuffer final : public irmel::Buffer {
+public:
+    explicit ControlUnexpectedBuffer(std::function<void()> reenter, bool fail = false,
+                                     bool throws = false)
+        : reenter_{std::move(reenter)}, fail_{fail}, throws_{throws} {}
+    ~ControlUnexpectedBuffer() override { record("control_buffer_destroyed"); }
+    Return init(void *, std::size_t, std::int64_t) override { std::abort(); }
+    void *getBufferAddress() const override { std::abort(); }
+    void *getImageAddress() const override { std::abort(); }
+    std::int64_t getSize() const override { std::abort(); }
+    std::int64_t getContext() const override { std::abort(); }
+    Return getFlags(std::vector<irmel::BufferFlag>&) const override { std::abort(); }
+    void addFlag(irmel::BufferFlag) override { std::abort(); }
+    void setFlags(const std::vector<irmel::BufferFlag>&) override { std::abort(); }
+    Return release() override
+    {
+        if (released_) std::abort();
+        released_ = true;
+        record("control_buffer_released");
+        if (reenter_) reenter_();
+        if (throws_) throw std::runtime_error("unsolicited buffer release exception");
+        return fail_ ? Return::Fail : Return::Success;
+    }
+private:
+    std::function<void()> reenter_;
+    bool fail_, throws_, released_{false};
+};
+
 class MockImageChannel final : public irmel::ImageChannel {
 public:
     MockImageChannel(std::string scenario, std::shared_ptr<irmel::ImageListener> listener)
@@ -1938,6 +1978,15 @@ public:
     ~MockImageChannel() override
     {
         stopping_ = true;
+        if (scenario_.rfind("image-control-", 0U) == 0U && navigation_response_callback_) {
+            /* Public metadata/channel owners may already be closed. Channel
+             * destruction is the boundary, not disable or observer Close. */
+            auto bad = rich_bad_pixels(); bad_pixel_callback_(*this, &bad);
+            auto los = rich_line_of_sight_report(); line_of_sight_report_callback_(*this, &los);
+            auto euler = rich_line_of_sight_euler(); line_of_sight_euler_callback_(*this, &euler);
+            auto nav = rich_navigation_response(); navigation_response_callback_(*this, &nav);
+            record("control_shutdown_callbacks_returned");
+        }
         nuc_.finish(*this, scenario_);
         camera_.finish(*this, scenario_);
         odm_.finish(*this, scenario_);
@@ -2027,7 +2076,17 @@ public:
         auto future = promise.get_future();
         if (scenario_ == "completion-scale")
             return held_request(std::make_shared<irmel::NavigationReportResp>(rich_navigation_response()), 3);
-        if (scenario_ == "navigation-reject") {
+        if (scenario_ == "image-control-pending")
+            return held_request(std::make_shared<irmel::NavigationReportResp>(rich_navigation_response()), 3);
+        if (scenario_.rfind("image-control-", 0U) == 0U) {
+            if (navigation_response_callback_) {
+                auto response = rich_navigation_response();
+                navigation_response_callback_(*this, &response);
+                record("control_navigation_callback_returned");
+            }
+            promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
+                mel::Error{mel::ErrorCode::InvalidState, "no navigation hardware"}});
+        } else if (scenario_ == "navigation-reject") {
             promise.set_value(mel::ErrorOr<std::shared_ptr<irmel::NavigationReportResp>>{
                 mel::Error{mel::ErrorCode::InvalidParameters, "invalid navigation report"}});
         } else if (scenario_ == "navigation-reject-long") {
@@ -2127,6 +2186,20 @@ public:
     Return enable() override
     {
         record("channel_enabled");
+        if (scenario_ == "image-control-unexpected" ||
+            scenario_ == "image-control-release-fail" ||
+            scenario_ == "image-control-release-throw") {
+            auto buffer = std::make_shared<ControlUnexpectedBuffer>([this] {
+                auto nested = std::make_shared<ControlUnexpectedBuffer>(nullptr);
+                irmel::FrameHeader header;
+                listener_->onImage(*this, header, nested);
+                record("control_reentry_returned");
+            }, scenario_ == "image-control-release-fail",
+               scenario_ == "image-control-release-throw");
+            irmel::FrameHeader header;
+            listener_->onImage(*this, header, buffer);
+            record("control_unexpected_returned");
+        }
         if (scenario_ == "enable-fail") return Return::Fail;
         stopping_ = false;
         producer_ = std::thread([this] { produce(); });
@@ -2163,6 +2236,9 @@ public:
     }
     irmel::ChannelCapability getCapabilities() const override
     {
+        if (scenario_.rfind("image-control-", 0U) == 0U) {
+            return control_image_capability();
+        }
         if (scenario_ == "capability-inflight" && capability_calls_++ != 0U) {
             std::unique_lock lock{barrier_->mutex};
             barrier_->capability_called = true;
@@ -2309,6 +2385,13 @@ public:
             auto value = rich_bad_pixels(); bad_pixel_callback_(*this, &value);
             record("navigation_registration_failed");
             throw std::runtime_error("NavigationReportResp registration exception");
+        }
+        if (scenario_.rfind("image-control-", 0U) == 0U) {
+            auto bad = rich_bad_pixels(); bad_pixel_callback_(*this, &bad);
+            auto los = rich_line_of_sight_report(); line_of_sight_report_callback_(*this, &los);
+            auto euler = rich_line_of_sight_euler(); line_of_sight_euler_callback_(*this, &euler);
+            auto nav = rich_navigation_response(); navigation_response_callback_(*this, &nav);
+            record("control_registration_callbacks_returned");
         }
         if (scenario_ == "image-metadata-navigation-sync" || scenario_ == "image-metadata-navigation-rich") {
             auto value = rich_navigation_response(); navigation_response_callback_(*this, &value);
@@ -5537,6 +5620,10 @@ class MockControl final : public irmel::Control {
 public:
     explicit MockControl(std::string instance) : instance_{std::move(instance)}
     {
+        if (instance_.rfind("image-control-", 0U) == 0U) {
+            capabilities_.push_back(control_image_capability());
+            return;
+        }
         if (instance_.rfind("discovery-", 0U) == 0U) {
             if (instance_ == "discovery-empty") return;
             const std::array types{irmel::ChannelType::CommandAndControl,
@@ -5751,6 +5838,9 @@ public:
             return std::make_shared<MockC2Channel>(instance_);
         }
         if (config.getChannelType() != irmel::ChannelType::IRSTImage) return {};
+        if (instance_ == "image-control-wrong-type" ||
+            instance_ == "image-control-open-detach-fail")
+            return std::make_shared<MockHealthStatusChannel>(instance_);
         if (instance_ == "success") {
             const auto& channel_id = config.getChanID();
             const auto& platform = config.getPlatform();
@@ -5772,7 +5862,17 @@ public:
             callback_barrier->callback_inside = false;
             callback_barrier->disable_called = false;
         }
-        return std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
+        auto image = std::make_shared<MockImageChannel>(instance_, config.getImgLstnr());
+        if (instance_ == "image-control-attach-reentry" ||
+            instance_ == "image-control-attach-reentry-throw") {
+            auto buffer = std::make_shared<ControlUnexpectedBuffer>(nullptr);
+            irmel::FrameHeader header;
+            config.getImgLstnr()->onImage(*image, header, buffer);
+            record("control_attach_callback_returned");
+            if (instance_ == "image-control-attach-reentry-throw")
+                throw std::runtime_error("attach exception after listener exposure");
+        }
+        return image;
     }
     Return detachChannel(std::shared_ptr<irmel::Channel> channel) override
     {
@@ -5783,6 +5883,8 @@ public:
             !std::dynamic_pointer_cast<MockTrackChannel>(channel) &&
             !std::dynamic_pointer_cast<MockSchedulingChannel>(channel)) std::abort();
         if ((instance_ == "detach-fail" ||
+             instance_ == "image-control-detach-fail" ||
+             instance_ == "image-control-open-detach-fail" ||
              /* Deterministic Image Navigation completion-vs-Close corrective
                 regression: the first detach fails exactly once, a later Close
                 retry detaches successfully. */

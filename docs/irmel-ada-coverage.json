@@ -1646,12 +1646,20 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_open"
+        },
+        {
+          "path": "native/src/ir_stream.cpp",
+          "symbol": "ams_mel_ir_image_control_open"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir.ads",
           "symbol": "Open_Image_Stream"
+        },
+        {
+          "path": "ada/src/ams-mel-ir.ads",
+          "symbol": "Open_Image_Control"
         }
       ],
       "tests": [
@@ -1662,10 +1670,20 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment.",
-      "limitations": [],
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
+      "limitations": [
+        "Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats."
+      ],
       "representation": []
     },
     {
@@ -2198,9 +2216,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned BadPixelList event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned BadPixelList event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -2292,9 +2318,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned LineOfSightEuler event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned LineOfSightEuler event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -2356,9 +2390,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned LineOfSightReport event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned LineOfSightReport event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -2420,9 +2462,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_metadata_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely.",
+      "notes": "Complete owned NavigationReportResp event on ImageChannel; bounded queue, no upstream unregister, provider callbacks retained safely. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -2523,9 +2573,17 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_navigation_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_image_control.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_image_control_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "All NavigationReport fields including eighteen covariance terms; full response and cached errors.",
+      "notes": "All NavigationReport fields including eighteen covariance terms; full response and cached errors. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool.",
       "limitations": [],
       "representation": []
     },
@@ -14729,6 +14787,11 @@
   ],
   "image_capabilities": [
     {
+      "name": "Control-only Image attachment",
+      "status": "safe_ada",
+      "notes": "Open_Image_Control uses the same limited Image_Stream owner for capabilities, common KeepAlive/CommsTest, navigation and four required metadata registrations with zero image-layout fields. Start only enables; Receive/frame leases fail explicitly. No image buffers are created, initialized or registered; unexpected callbacks are released without querying sample bytes, with existing uncertainty retention."
+    },
+    {
       "name": "Mono8 single-band",
       "status": "safe_ada",
       "notes": "Implemented host pool and retained leases; supported() checks capability Mono/8/1, callback separately checks Mono/8/1, nonzero dimensions, known enums and buffer containment."
@@ -14736,7 +14799,7 @@
     {
       "name": "Higher-bit-depth monochrome",
       "status": "missing",
-      "notes": "Rejected by capability bitDepth == 8 and frame bitsPerPixel == 8 checks in native/src/ir_stream.cpp."
+      "notes": "Rejected by capability bitDepth == 8 and frame bitsPerPixel == 8 checks in native/src/ir_stream.cpp. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Packed pixel formats",
@@ -14746,17 +14809,17 @@
     {
       "name": "RGB",
       "status": "missing",
-      "notes": "Enum represented, but capability/frame format must equal Mono."
+      "notes": "Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Bayer",
       "status": "missing",
-      "notes": "Enum represented, but capability/frame format must equal Mono."
+      "notes": "Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Multiband",
       "status": "missing",
-      "notes": "Capability numberOfBands and frame numBands must both equal one."
+      "notes": "Capability numberOfBands and frame numBands must both equal one. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout."
     },
     {
       "name": "Generic application-managed buffers",
@@ -14798,6 +14861,7 @@
     "IRMEL-ADA-009 implements the optional ImageChannel::registerMetadataCallback(OpticalDistortionMap) as an independent opt-in owner and completes OpticalDistortionMap and ForwardRightDown; RowCol was already safe_ada and is reused, not reclassified. Safe Ada operations increase from 45 to 46. The two ODM collections are independent; non-finite doubles are forwarded, not replaced. Qualification is mock-provider only.",
     "IRMEL-ADA-010 implements the @RequiredIfLOSQuaternion ImageChannel::registerMetadataCallback(LineOfSightQuaternion) as an independent opt-in owner and completes LineOfSightQuaternion, reusing the canonical Quaternion and ForwardRightDown representations, which stay safe_ada and are not reclassified. Safe Ada operations increase from 46 to 47. Values are copied, not normalized or converted; receipt is not proof of a usable attitude. Qualification is mock-provider only.",
     "IRMEL-ADA-011 adds the conditionally required SchedulingChannel ownership/lifecycle foundation only: the exact 20-header pinned SchedulingChannel.h closure is vendored (compilation dependencies, not implemented operations), five AMS_MEL_0.1 exports (284 -> 289) and AMS.MEL.IR.Scheduling. SchedulingChannel moves missing -> partial; Scheduling inherited Enable, capabilities, KeepAlive and CommsTest move to safe_ada and inherited Disable to partial (Close only). All 11 Scheduling-specific operations and the AbortTask/IRSTScanTask/IRSTStareTask/IRSTTrackTask types stay missing. Safe Ada operations stay at 47. TaskScheduleDepth 0 is a valid application-managed mode, not absence. Qualification is mock-provider only.",
-    "IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only."
+    "IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.",
+    "IRMEL-ADA-015 separates Image command/metadata attachment from acquisition. No unique upstream operations are newly classified: 49 remain safe_ada; the existing Image lifecycle gains an identity-only attachment profile. Qualification is mock-backed; no minimal-mel-example provider integration was available locally."
   ]
 }
