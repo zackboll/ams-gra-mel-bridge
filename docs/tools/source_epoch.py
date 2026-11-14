@@ -148,6 +148,11 @@ def enhance(site, root, report, references, output, *, deep=True):
     shutil.copytree(site / "api", api_stage / "api")
     renderer(config, api_stage)
     verify(config, api_stage)
+    if deep:
+        before = p.files(api_stage)
+        renderer(config, api_stage)
+        verify(config, api_stage)
+        require(p.files(api_stage) == before, "non-idempotent enhancement")
     shutil.copytree(site, output)
     shutil.copytree(api_stage / "api", output / "api", dirs_exist_ok=True)
     return verify_presentation(site, root, report, references, output, deep=deep)
@@ -193,7 +198,7 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
     from ada_gnatdoc_enhancer.theme import asset
     require(actual['api/gnatdoc-theme.css'] == asset('gnatdoc-theme.css'), 'theme asset identity mismatch')
     manifest = {
-        "schema_version": 1, "enhancer_version": "0.1.0.dev0", "gnatdoc_version": "26.0.0",
+        "schema_version": 1, "enhancer_version": p.VERSION, "gnatdoc_version": "26.0.0",
         "project": "AMS MEL Bridge", "original_api_html": {n: d.decode() for n, d in raw.items() if n.startswith("api/") and n.endswith(".html")},
         "native_css_sha256": sha(raw["api/gnatdoc.css"]),
         "source_sha256": {p.relative_to(root).as_posix(): sha(p.read_bytes()) for p in __import__('gnatdoc_inventory').specifications(root)[0].values()},

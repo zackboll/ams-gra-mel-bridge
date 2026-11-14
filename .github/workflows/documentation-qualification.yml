@@ -33,6 +33,7 @@ jobs:
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify --directory .doc-tools/qualification --gnatdoc-prefix "$GNATDOC_PREFIX" &&
+            .doc-tools/enhancer/bin/python -W error -m unittest discover -s docs/tests -p test_enhancer_release.py -v &&
             make test-documentation-source &&
             .doc-tools/enhancer/bin/python -W error -m unittest discover -s docs/tests -p py_pol_001_tests.py -v &&
             DOC_EXAMPLES_ALIRE_SETTINGS="$ALIRE_SETTINGS_DIR" sh docs/tools/qualify_examples.sh'

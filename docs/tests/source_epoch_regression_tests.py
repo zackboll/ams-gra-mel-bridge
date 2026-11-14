@@ -71,6 +71,39 @@ class GeneratedSourceTests(unittest.TestCase):
         self.assertIn('Qualification_Observation_Count',
                       (self.output / 'pristine/api' / added['page']).read_text())
 
+    def test_release_manifest_and_navigation_contract_from_current_source(self):
+        manifest = json.loads((self.output / 'published/api/presentation.json').read_text())
+        self.assertEqual(manifest['enhancer_version'], presentation.VERSION)
+        index = (self.output / 'published/api/index.html').read_text()
+        self.assertEqual(index.count(presentation.NAVIGATION_CONTROL), 1)
+        self.assertIn('data-default-package="AMS.MEL"', index)
+        self.assertEqual(manifest['counts']['declaration_snippets'],
+                         len(self.value['native']))
+
+    def test_release_label_and_version_tampering_cannot_authorize_itself(self):
+        for name, before, after in (
+            ('api/index.html', b'Filter navigation links</label>', b'Search documentation</label>'),
+            ('api/presentation.json', b'"enhancer_version": "0.1.5"',
+             b'"enhancer_version": "0.1.0.dev0"'),
+        ):
+            with self.subTest(path=name):
+                directory = self.copy_epoch()
+                path = directory / 'published' / name
+                original = path.read_bytes()
+                self.assertIn(before, original)
+                path.write_bytes(original.replace(before, after))
+                manifest_path = directory / 'published/api/presentation.json'
+                manifest = json.loads(manifest_path.read_bytes())
+                manifest['output_sha256']['api/index.html'] = epoch.sha(
+                    (directory / 'published/api/index.html').read_bytes())
+                manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
+                report = json.loads((directory / 'epoch.json').read_bytes())
+                from ada_examples import References
+                with self.assertRaises(ValueError):
+                    epoch.verify_presentation(directory / 'pristine', self.repo, {'native': report['native']},
+                                              References(self.repo, directory / 'pristine', ledger=report['native']),
+                                              directory / 'published', deep=True)
+
     def test_current_source_required_occurrences_include_operational_subtype(self):
         from local_type_audit import Authority, require_complete_additions
         report = json.loads((self.output / 'epoch.json').read_text())
