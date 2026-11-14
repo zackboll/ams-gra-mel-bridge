@@ -35,6 +35,13 @@
 //! This covers the four currently C-bridged families, not every upstream Image
 //! callback.
 //!
+//! IR NavigationReport submission (RUST-IR-008):
+//! [`ImageStream::submit_navigation_report`] copies a complete [`NavigationReport`]
+//! and returns a unique [`NavigationRequest`]. Its cached [`NavigationResult`]
+//! distinguishes a complete response from explicit provider rejection. Zero wait
+//! polls; timeout and Close/Drop do not cancel work. The request can outlive its
+//! ImageStream and Session, and is neither Clone, Send nor Sync.
+//!
 //! IR C2 metadata (RUST-IR-005): [`ControlChannel::open_metadata`] returns an
 //! independent [`C2MetadataStream`] for owned CommandStatus, BIT configuration,
 //! canonical Health BIT status and separately opted-in communications reports.
@@ -80,6 +87,11 @@ mod ir_health;
 mod ir_health_metadata;
 mod ir_image_metadata;
 mod ir_los_quaternion;
+mod ir_navigation;
+pub use ir_navigation::{
+    AttitudeRate, NavigationReport, NavigationRequest, NavigationResult, NorthEastDown,
+    PositionSolutionState, PositionVelocityCovariance,
+};
 pub mod ir_nuc;
 mod ir_optical_distortion_map;
 #[cfg(test)]
