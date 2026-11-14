@@ -454,7 +454,10 @@ class EventAuthorityTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         self.repo = self.directory / 'source'
-        subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(ROOT), str(self.repo)],
+        # Detached commit maintenance can recreate .git during temporary cleanup.
+        # Set this on the clone before any checkout/commit, never on the source.
+        subprocess.run(['git', 'clone', '--shared', '--no-checkout',
+                        '--config', 'maintenance.auto=false', str(ROOT), str(self.repo)],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.git('checkout', '--detach', e.HISTORY)
         self.git('config', 'user.name', 'POL002 Event')
@@ -487,6 +490,17 @@ class EventAuthorityTests(unittest.TestCase):
         self.assertEqual(value['source_sha'], self.head)
         self.assertEqual(value['historical_sha'], e.HISTORY)
         self.assertEqual(value['target_sha'], e.HISTORY)
+
+    def test_fixture_commit_does_not_start_automatic_maintenance(self):
+        self.assertEqual(self.git('config', '--local', '--get', 'maintenance.auto'), 'false')
+        trace = self.directory / 'commit-trace.json'
+        with mock.patch.dict(os.environ, {'GIT_TRACE2_EVENT': str(trace)}):
+            self.git('commit', '--allow-empty', '-qm', 'maintenance regression')
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertTrue(any(event['event'] == 'cmd_name' and event['name'] == 'commit'
+                            for event in events))
+        self.assertFalse(any(event['event'] == 'child_start' and
+                             'maintenance' in event.get('argv', []) for event in events))
 
     def test_claimed_base_not_on_trusted_main_rejected(self):
         self.event['pull_request']['base']['sha'] = self.head
