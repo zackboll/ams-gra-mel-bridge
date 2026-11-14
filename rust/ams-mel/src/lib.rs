@@ -9,6 +9,23 @@
 //! provider work. [`BitCommand`] supports one-choice NoOp, initiate, cancel and
 //! clear-fault payloads, retaining numeric IDs and opaque UTF-8 bytes.
 //!
+//! # Core ownership and workflow
+//!
+//! Open a [`Session`] using a compatible provider library and its selection
+//! strings. [`abi_version`] describes the consumer façade;
+//! [`Session::provider_version`] describes that provider. Channel creation is
+//! separate from enabling: use [`ImageStream::start`] or [`ControlChannel::enable`]
+//! explicitly. [`ImageConfig`] requests Mono8 acquisition; [`ImageControlConfig`]
+//! attaches without an image source or acquisition buffers.
+//!
+//! Values such as [`Frame`], [`ChannelCapability`] and request results own their
+//! data. Channel/request owners instead retain native resources independently of
+//! their parents. [`ChannelView`] is the exception: it is weak and cannot keep a
+//! provider alive. Explicit close reports errors; Drop is best-effort. Neither
+//! promises immediate physical teardown when native resources must be retained.
+//! Submission, provider acceptance, terminal completion and actual hardware
+//! execution are distinct; an `Ok` request is not proof of any later stage.
+//!
 //! Common Channel coverage (Task 032B3, RUST-IR-001):
 //!
 //! ```text
@@ -144,40 +161,84 @@ pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaIn
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
 
+/// Version of the consumer C façade, obtained without loading a provider.
+///
+/// This is not the Rust crate version or [`ProviderVersion`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AbiVersion {
+    /// C ABI major version.
     pub major: u32,
+    /// C ABI minor version.
     pub minor: u32,
 }
 
+/// Owned snapshot of a provider's published version information.
+///
+/// Numeric versions are provider values, not Rust semantic versions. Discovery
+/// does not certify C++ ABI compatibility or support for every MEL operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderVersion {
+    /// Provider-reported MEL API version, preserved as an unsigned 32-bit value.
     pub api_version: u32,
+    /// Provider-reported library version, without an inferred encoding.
     pub library_version: u32,
+    /// Complete UTF-8 vendor name.
     pub vendor: String,
+    /// Complete UTF-8 provider description.
     pub description: String,
 }
 
+/// Binding or native façade failure category; inspect [`Error`] for diagnostics.
+///
+/// Explicit MEL command rejection is instead a terminal result such as
+/// [`ModeResult::Rejected`]. Match with a fallback because this enum can grow.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ErrorKind {
+    /// An argument violates the binding or native contract.
     InvalidArgument,
+    /// The provider shared library could not be loaded.
     LibraryLoadFailed,
+    /// A required provider factory symbol was absent.
     SymbolNotFound,
+    /// A provider factory did not produce the required object.
     FactoryFailed,
+    /// Initialization or attachment requirements were not met.
     InitializationFailed,
+    /// The native boundary caught a provider exception.
     ProviderException,
+    /// Native output storage was too small; not an asynchronous rejection.
     BufferTooSmall,
+    /// A provider operation or owner lifecycle failed.
     ProviderFailed,
+    /// An internal bridge/binding failure, including reported allocation failure.
     InternalError,
+    /// No result arrived within the wait interval; provider work is not cancelled.
     Timeout,
+    /// Reception has stopped and no queued value remains.
     StreamStopped,
+    /// An admission/resource limit refused work; no implicit queue or retry.
     ResourceExhausted,
+    /// Text returned across the boundary was not valid UTF-8.
     InvalidUtf8,
+    /// Native output contradicted the protocol expected by this binding.
     ProtocolInconsistency,
+    /// An unrecognized native status, preserving its signed 32-bit value.
     Unknown(i32),
 }
 
+/// Owned identity: all 16 UUID bytes plus a NUL-free UTF-8 descriptive label.
+///
+/// Empty labels and arbitrary UUID bytes are accepted without normalization or
+/// UUID-version validation. The label is not substituted for the UUID.
+///
+/// ```
+/// use ams_mel::UciId;
+/// let id = UciId::new([0x42; 16], "sensor µ")?;
+/// assert_eq!(id.uuid(), &[0x42; 16]);
+/// assert_eq!(id.descriptive_label(), "sensor µ");
+/// # Ok::<(), ams_mel::Error>(())
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UciId {
     uuid: [u8; 16],
@@ -185,6 +246,10 @@ pub struct UciId {
 }
 
 impl UciId {
+    /// Retains the UUID and label verbatim.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] if the label contains a NUL.
     pub fn new(uuid: [u8; 16], descriptive_label: impl Into<String>) -> Result<Self, Error> {
         let descriptive_label = descriptive_label.into();
         reject_nul(&descriptive_label, "descriptive_label")?;
@@ -194,15 +259,22 @@ impl UciId {
         })
     }
 
+    /// Borrows the original UUID bytes, without text or byte-order conversion.
     pub fn uuid(&self) -> &[u8; 16] {
         &self.uuid
     }
 
+    /// Borrows the complete original label.
     pub fn descriptive_label(&self) -> &str {
         &self.descriptive_label
     }
 }
 
+/// Owned component offsets in metres and provider-defined reference text.
+///
+/// Offsets are retained as `f64`, without finite/range checks or coordinate
+/// conversion. Empty key/system names are valid; neither establishes a frame
+/// convention beyond the provider's published configuration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComponentLocation {
     offset_x_m: f64,
@@ -213,6 +285,10 @@ pub struct ComponentLocation {
 }
 
 impl ComponentLocation {
+    /// Constructs a location without physical validation of the metre offsets.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] if either text argument contains NUL.
     pub fn new(
         offset_x_m: f64,
         offset_y_m: f64,
@@ -233,27 +309,47 @@ impl ComponentLocation {
         })
     }
 
+    /// Returns the X offset in metres.
     pub fn offset_x_m(&self) -> f64 {
         self.offset_x_m
     }
 
+    /// Returns the Y offset in metres.
     pub fn offset_y_m(&self) -> f64 {
         self.offset_y_m
     }
 
+    /// Returns the Z offset in metres.
     pub fn offset_z_m(&self) -> f64 {
         self.offset_z_m
     }
 
+    /// Borrows the provider-defined location key.
     pub fn key(&self) -> &str {
         &self.key
     }
 
+    /// Borrows the provider-defined system name.
     pub fn system_name(&self) -> &str {
         &self.system_name
     }
 }
 
+/// Owned configuration for strict Mono8 acquisition via [`Session::open_image_stream`].
+///
+/// This configures host buffers and a bounded frame FIFO, not an image format
+/// conversion. Use [`ImageControlConfig`] when only attachment/control is needed.
+/// Construction is provider-free; opening checks the provider's actual layout.
+///
+/// ```
+/// use ams_mel::{ComponentLocation, ImageConfig, UciId};
+/// let channel = UciId::new([1; 16], "image")?;
+/// let platform = UciId::new([2; 16], "platform")?;
+/// let location = ComponentLocation::new(0.0, 0.0, 0.0, "sensor", "platform")?;
+/// let config = ImageConfig::with_limits(channel, platform, location, 3, 1_048_576, 4)?;
+/// # let _ = config;
+/// # Ok::<(), ams_mel::Error>(())
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageConfig {
     channel_id: UciId,
@@ -277,6 +373,8 @@ pub struct ImageControlConfig {
 }
 
 impl ImageControlConfig {
+    /// Takes ownership of identities and location; does not contact a provider.
+    /// Open with [`Session::open_image_control`], not the acquisition method.
     pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
         Self {
             channel_id,
@@ -286,6 +384,10 @@ impl ImageControlConfig {
     }
 }
 
+/// Owned identities/location for a CommandAndControl attachment.
+///
+/// Open with [`Session::open_control_channel`], then explicitly
+/// [`enable`](ControlChannel::enable) before submitting commands.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ControlConfig {
     channel_id: UciId,
@@ -294,6 +396,7 @@ pub struct ControlConfig {
 }
 
 impl ControlConfig {
+    /// Takes ownership of identities and location without contacting a provider.
     pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
         Self {
             channel_id,
@@ -304,6 +407,8 @@ impl ControlConfig {
 }
 
 impl ImageConfig {
+    /// Uses three host buffers of 1,048,576 bytes each and a four-frame FIFO.
+    /// No provider is contacted and no host image buffers are allocated here.
     pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
         Self {
             channel_id,
@@ -315,6 +420,13 @@ impl ImageConfig {
         }
     }
 
+    /// Sets buffer count, bytes per buffer, and frame FIFO capacity explicitly.
+    ///
+    /// Each must be in `1..=usize::MAX`. The constructor does not check whether
+    /// storage fits a provider's image or whether allocations can succeed at Start.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::InvalidArgument`] if any limit is zero.
     pub fn with_limits(
         channel_id: UciId,
         platform_id: UciId,
@@ -346,72 +458,129 @@ impl ImageConfig {
     }
 }
 
+/// Provider-reported acquisition geometry; unrecognized values remain numeric.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ImageType {
+    /// Staring acquisition.
     Staring,
+    /// Scanning acquisition.
     Scanning,
+    /// Unrecognized raw 32-bit image type.
     Unknown(u32),
 }
 
+/// Provider-reported flip metadata; the binding does not rearrange pixels.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ImageFlip {
+    /// No flip reported.
     None,
+    /// Vertical flip reported.
     Vertical,
+    /// Horizontal flip reported.
     Horizontal,
+    /// Both vertical and horizontal flips reported.
     Both,
+    /// Unrecognized raw 32-bit flip value.
     Unknown(u32),
 }
 
+/// Multifunction-aperture mode returned by a mode request.
+///
+/// A returned mode is a provider response, not independent evidence of hardware state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MfaMode {
+    /// Provider's unused mode.
     Unused,
+    /// Task scheduling mode.
     TaskSched,
+    /// Scan-volume scheduling mode.
     ScanVolumeSched,
+    /// Scan-bar scheduling mode.
     ScanBarSched,
+    /// Unrecognized raw 32-bit mode, preserved rather than guessed.
     Unknown(u32),
 }
 
+/// Published MEL `Return` value inside [`ReturnResult::Completed`].
+///
+/// Completion can carry a failure value. Unknown raw values are reported as
+/// [`ErrorKind::ProviderFailed`], not coerced to [`Self::Fail`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandReturn {
+    /// Provider-reported success; not proof of physical execution.
     Success,
+    /// Provider-reported bad pointer.
     BadPointer,
+    /// Provider-reported failure, still a normal completed result.
     Fail,
+    /// Operation is not supported by this provider.
     NotSupported,
+    /// Operation is not implemented by this provider.
     NotImplemented,
 }
 
+/// Provider MEL rejection code, distinct from the façade's [`ErrorKind`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MelErrorCode {
+    /// No MEL error indicated.
     None,
+    /// An identifier was invalid.
     InvalidId,
+    /// The provider state did not permit the command.
     InvalidState,
+    /// Command parameters were invalid.
     InvalidParameters,
+    /// Required permissions were absent.
     InsufficientPermissions,
+    /// Required resources were unavailable.
     InsufficientResources,
+    /// Required local resources were unavailable.
     InsufficientLocalResources,
+    /// Required remote resources were unavailable.
     InsufficientRemoteResources,
+    /// The command was unsupported.
     Unsupported,
+    /// Unrecognized raw 32-bit rejection code.
     Unknown(u32),
 }
 
+/// Cached terminal mode outcome; rejection is an `Ok` result of [`ModeRequest::wait`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModeResult {
+    /// The provider returned a mode successfully, without proving hardware execution.
     Success {
+        /// Mode supplied by the provider.
         mode: MfaMode,
     },
+    /// The provider explicitly rejected the command.
     Rejected {
+        /// MEL rejection category, including unknown numeric codes.
         code: MelErrorCode,
+        /// Complete UTF-8 rejection description.
         description: String,
     },
 }
 
+/// Cached terminal `Return` outcome, distinct from submission and wait failures.
+///
+/// ```
+/// use ams_mel::{CommandReturn, ReturnResult};
+/// let result = ReturnResult::Completed { value: CommandReturn::Fail };
+/// assert!(matches!(result, ReturnResult::Completed { value: CommandReturn::Fail }));
+/// // A completed future is not necessarily a successful command.
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReturnResult {
+    /// The future completed with a MEL `Return` (which may indicate failure).
     Completed {
+        /// Provider's return value, not a hardware-execution certificate.
         value: CommandReturn,
     },
+    /// The provider explicitly rejected the command rather than returning a value.
     Rejected {
+        /// MEL rejection category.
         code: MelErrorCode,
+        /// Complete UTF-8 rejection description.
         description: String,
     },
 }
@@ -420,8 +589,11 @@ pub enum ReturnResult {
 /// Command/Channel/Request ID ordering mistakes. All 32 bits are preserved.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CommsTestRequest {
+    /// Caller-supplied command identifier; all `u32` values are preserved.
     pub command_id: u32,
+    /// Numeric target channel identifier, not a [`UciId`] UUID.
     pub channel_id: u32,
+    /// Caller-supplied communications-test correlation identifier.
     pub request_id: u32,
 }
 
@@ -429,7 +601,9 @@ pub struct CommsTestRequest {
 /// so none is reported.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CommsTestReport {
+    /// Command identifier returned by the provider, without invented correlation.
     pub command_id: u32,
+    /// Request identifier returned by the provider.
     pub request_id: u32,
 }
 
@@ -437,22 +611,41 @@ pub struct CommsTestReport {
 /// result, not a Rust `Err`, matching [`ModeResult`] and [`ReturnResult`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommsTestResult {
+    /// The provider supplied a communications report, not proof of hardware operation.
     Completed {
+        /// Owned reply identifiers; upstream supplies no Channel ID here.
         report: CommsTestReport,
     },
+    /// The provider explicitly rejected the communications test.
     Rejected {
+        /// MEL rejection category.
         code: MelErrorCode,
+        /// Complete UTF-8 rejection description.
         description: String,
     },
 }
 
 /// `ams_mel_ir_pixel_format_t`. Future raw values are preserved as `Unknown`.
+///
+/// ```
+/// use ams_mel::PixelFormat;
+/// let format = PixelFormat::Unknown(u32::MAX);
+/// let raw = match format {
+///     PixelFormat::Unknown(raw) => Some(raw),
+///     _ => None, // also handles known and future variants of this non-exhaustive enum
+/// };
+/// assert_eq!(raw, Some(u32::MAX));
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum PixelFormat {
+    /// Monochrome format; this tag alone does not specify bit depth.
     Mono,
+    /// Red/green/blue format; not supported by the current Mono8 receiver.
     Rgb,
+    /// Bayer mosaic format; not converted by the current receiver.
     Bayer,
+    /// Unrecognized raw 32-bit format; not silently converted to Mono.
     Unknown(u32),
 }
 
@@ -460,11 +653,17 @@ pub enum PixelFormat {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum SensorType {
+    /// Provider does not specify a sensor capability.
     Unspecified,
+    /// Horizontal gimbal capability.
     GimbalHorizontal,
+    /// Vertical gimbal capability.
     GimbalVertical,
+    /// Gimbal rotation capability.
     GimbalRotation,
+    /// Step-and-stare capability.
     StepStare,
+    /// Unrecognized raw 32-bit sensor capability.
     Unknown(u32),
 }
 
@@ -472,55 +671,101 @@ pub enum SensorType {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ChannelType {
+    /// IRST track channel (no safe Rust typed owner here).
     IrstTrack,
+    /// IRST image channel, represented by [`ImageStream`].
     IrstImage,
+    /// C2 channel, represented by [`ControlChannel`].
     CommandAndControl,
+    /// Scheduling channel (no safe Rust typed owner here).
     Scheduling,
+    /// Health/status channel, represented by [`HealthStatusChannel`].
     HealthAndStatus,
+    /// Instrumentation channel (no safe Rust typed owner here).
     Instrumentation,
+    /// Stacked-image channel; not a Mono8 acquisition promise.
     StackedImage,
+    /// Upstream reserved channel tag 1.
     Reserved1,
+    /// Upstream reserved channel tag 2.
     Reserved2,
+    /// Unrecognized raw 32-bit channel tag.
     Unknown(u32),
 }
 
 /// `ams_mel_ir_channel_metadata_capability_t`. Future raw values are preserved
 /// as `Unknown`.
+///
+/// These are provider-advertised callback families, not promises that this Rust
+/// crate exposes every family or that a callback has been registered.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum MetadataCapability {
+    /// Bad-pixel list metadata.
     BadPixelList,
+    /// Optical distortion map metadata.
     OpticalDistortionMap,
+    /// Local-function status metadata.
     LfStatus,
+    /// Line-of-sight report metadata.
     LineOfSightReport,
+    /// Quaternion line-of-sight metadata.
     LineOfSightQuaternion,
+    /// Euler-angle line-of-sight metadata.
     LineOfSightEuler,
+    /// Multifunction-aperture status metadata.
     MfaStatus,
+    /// Detailed multifunction-aperture status metadata.
     MfaStatusDetailed,
+    /// Built-in-test configuration metadata.
     BitConfiguration,
+    /// Command status metadata, separate from request acceptance/completion.
     CommandStatus,
+    /// Built-in-test status metadata.
     BitStatus,
+    /// Candidate-object message metadata.
     CandidateObjectMessage,
+    /// Task-executing report metadata.
     TaskExecutingRep,
+    /// Subsystem status response metadata.
     SubsystemStatusResp,
+    /// Execute-task acknowledgement metadata.
     ExecuteTaskAck,
+    /// Schedule-created report metadata.
     SchedCreatedRep,
+    /// IRST track report metadata.
     IrstTrackReport,
+    /// Channel communications-test report metadata.
     ChannelCommsTestRep,
+    /// Camera-command response metadata.
     CameraCommandResp,
+    /// Camera-protect-command response metadata.
     CameraProtectCmdResp,
+    /// Instrumentation report metadata.
     InstrumentationReport,
+    /// Navigation-report response metadata.
     NavigationReportResp,
+    /// System-track-data request metadata.
     RequestSystemTrackData,
+    /// Track-list-update response metadata.
     UpdateTrackListResponse,
+    /// Three-dimensional line-of-sight kinematics metadata.
     Los3dKinematicsType,
+    /// Preprocessed candidate-object message metadata.
     CandidateObjectPreprocMessage,
+    /// Task-event metadata.
     TaskEvents,
+    /// Scan-performance report metadata.
     ScanPerformanceReport,
+    /// Upstream reserved metadata tag 3; no payload semantics inferred.
     Reserved3,
+    /// Upstream reserved metadata tag 5; no payload semantics inferred.
     Reserved5,
+    /// Upstream reserved metadata tag 9; no payload semantics inferred.
     Reserved9,
+    /// Upstream reserved metadata tag 10; no payload semantics inferred.
     Reserved10,
+    /// Unrecognized raw 32-bit metadata capability.
     Unknown(u32),
 }
 
@@ -528,21 +773,37 @@ pub enum MetadataCapability {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum BandType {
+    /// Provider marks the band invalid.
     Invalid,
+    /// Multiple spectral bands.
     Multiband,
+    /// Far infrared band; no wavelength boundary is inferred from this tag.
     IrFar,
+    /// Near infrared band.
     IrNear,
+    /// Long-wave infrared band.
     IrLongwave,
+    /// Mid-wave infrared band.
     IrMidwave,
+    /// Short-wave infrared band.
     IrShortwave,
+    /// Visible white band.
     VisibleWhite,
+    /// Visible red band.
     VisibleRed,
+    /// Visible green band.
     VisibleGreen,
+    /// Visible blue band.
     VisibleBlue,
+    /// Ultraviolet A band.
     Uva,
+    /// Ultraviolet B band.
     Uvb,
+    /// Ultraviolet C band.
     Uvc,
+    /// Vacuum ultraviolet band.
     UvVacuum,
+    /// Unrecognized raw 32-bit band type.
     Unknown(u32),
 }
 
@@ -551,83 +812,165 @@ pub enum BandType {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CoordinateSystem {
+    /// Latitude/longitude/altitude navigation frame.
     Lla,
+    /// Earth-centred, Earth-fixed navigation frame.
     Ecef,
+    /// North/east/down platform navigation frame.
     NedPlatform,
+    /// North/east/down sensor navigation frame.
     NedSensor,
+    /// Unrecognized raw 32-bit coordinate-system tag.
     Unknown(u32),
 }
 
+/// Provider-reported spectral band and wavelength bounds, without normalization.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BandInfo {
+    /// Spectral classification; does not replace the numeric wavelength bounds.
     pub kind: BandType,
+    /// Provider's minimum wavelength in metres, copied as `f64`.
     pub min_wavelength_m: f64,
+    /// Provider's maximum wavelength in metres, copied as `f64`.
     pub max_wavelength_m: f64,
 }
 
+/// One image-band map entry, associating a frame band index with spectral bands.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageBand {
+    /// Band-map key, correlating to [`Frame::band_index`].
     pub band_index: u32,
+    /// Ordered provider band descriptions for that key; may be empty.
     pub bands: Vec<BandInfo>,
 }
 
 /// Complete, fully Rust-owned copy of `ams_mel_ir_channel_capability_v1`. No
 /// native pointer survives [`ChannelView::capabilities`]; the value remains
 /// valid after the View, typed owner, Session, and provider library are gone.
+///
+/// Zero/default layout fields are preserved, not treated as an operational
+/// image source. Numeric fields are not physical validation or support checks.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChannelCapability {
+    /// Channel's complete UUID and descriptive label.
     pub channel_id: UciId,
+    /// Provider-reported image-buffer height in pixels.
     pub height: u32,
+    /// Provider-reported image-buffer width in pixels.
     pub width: u32,
+    /// Dynamic-range bit depth (for example, ADC precision), not byte stride.
     pub bit_depth: u32,
+    /// Image-buffer row pitch in bytes.
     pub row_pitch: u32,
+    /// Provider-reported buffer size in bytes.
     pub buffer_size: u32,
+    /// Provider-reported image-size value; no unit conversion is performed.
+    /// The pinned getter does not specify a unit independently of the provider.
     pub image_size: u32,
+    /// Number of EO/IR bands produced by the aperture.
     pub number_of_bands: u32,
+    /// Advertised pixel format; independent of acquisition support in this crate.
     pub pixel_format: PixelFormat,
+    /// Ordered sensor capability tags, including unspecified/unknown values.
     pub sensor_types: Vec<SensorType>,
+    /// Platform's complete UUID and descriptive label.
     pub platform_id: UciId,
+    /// Sensor offsets in metres and provider reference text.
     pub sensor_location: ComponentLocation,
+    /// Provider-advertised channel types; not all have safe Rust owners.
     pub channel_types: Vec<ChannelType>,
+    /// Queued-task depth. Zero denotes application-managed scheduling, not absence.
+    /// In that mode a new IMMEDIATE task replaces the executing task upstream.
     pub task_schedule_depth: u32,
+    /// Provider indicates an optical distortion map is available.
     pub odc_available: bool,
+    /// Provider indicates that it performs non-uniformity correction.
     pub nuc_available: bool,
+    /// Advertised callback families; reading this does not register callbacks.
     pub metadata_capabilities: Vec<MetadataCapability>,
+    /// Image-band map copied into owned entries, without invented missing bands.
     pub image_bands: Vec<ImageBand>,
+    /// Ordered navigation frame tags; empty can mean no internal navigation data.
     pub nav_frames: Vec<CoordinateSystem>,
 }
 
+/// Fully Rust-owned Mono8 frame returned by [`ImageStream::receive`].
+///
+/// Pixels are copied, not a borrowed provider buffer or native lease. The frame
+/// remains valid after stream/session closure and does not keep a provider alive.
+/// Metadata is preserved without image flipping, coordinate conversion or an
+/// inferred time epoch. All integer fields retain their full declared width.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Frame {
+    /// Provider system time in signed nanoseconds; no epoch is inferred.
+    /// Upstream associates staring frames with integration start and scanning
+    /// (TDI) frames with the first image line.
     pub system_time_ns: i64,
+    /// Integration duration in signed nanoseconds, without clamping.
     pub integration_time_ns: i64,
+    /// Image width in pixels.
     pub width: u32,
+    /// Image height in pixels.
     pub height: u32,
+    /// Storage bits per pixel; eight for the supported acquisition profile.
     pub bits_per_pixel: u32,
+    /// Verbatim upstream `getNumBands()` value. The pin's field name suggests a
+    /// count but its comment describes a spectral-band indication; not reinterpreted.
     pub number_of_bands: u32,
+    /// Horizontal field of view in radians.
     pub horizontal_fov_rad: f64,
+    /// Vertical field of view in radians.
     pub vertical_fov_rad: f64,
+    /// Provider's frame identifier, without wraparound interpretation.
     pub frame_id: u32,
+    /// Provider's subframe identifier, without an inferred indexing convention.
     pub subframe_id: u32,
+    /// Provider's total subframe count.
     pub subframe_total: u32,
+    /// Staring/scanning classification, retaining unknown values.
     pub image_type: ImageType,
+    /// Reported flip state; pixels are not rearranged by the binding.
     pub image_flip: ImageFlip,
+    /// Bridge bitmask of provider image flags, not an unvalidated provider integer.
+    /// Bit `n` represents upstream flag `n` (the native bridge accepts 0 through 3).
     pub image_flags: u32,
+    /// Microscanning row displacement in row coordinates, copied unchanged.
+    /// Positive `d` means an object at row Y appears at Y minus `d` upstream.
     pub dither_row: f64,
+    /// Microscanning column displacement in column coordinates, copied unchanged.
+    /// Positive `d` means an object at column X appears at X minus `d` upstream.
     pub dither_column: f64,
+    /// Offset in rows to the start of this frame in sensor coordinates.
     pub row_offset: u32,
+    /// Offset in columns to the start of this frame in sensor coordinates.
     pub column_offset: u32,
+    /// Band-map key correlating to [`ChannelCapability::image_bands`].
     pub band_index: u8,
+    /// Owned, row-major, tightly packed Mono8 bytes (`width * height` for accepted frames).
     pub pixels: Vec<u8>,
 }
 
+/// Saturating native image callback counters, not hardware frame-loss telemetry.
+///
+/// These count bridge observations over the stream lifetime, not only successful
+/// [`ImageStream::receive`] calls. Provider-side buffer starvation is not a
+/// queue-full drop counted here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamCounters {
+    /// Image callbacks observed by the bridge, including rejected/dropped frames.
     pub frames_received: u64,
+    /// Incoming frames discarded because the bounded bridge FIFO was full.
     pub frames_dropped_queue_full: u64,
+    /// Frames rejected for malformed or unsupported headers, layouts or payloads.
     pub malformed_or_unsupported: u64,
 }
 
+/// Owned failure with a stable category and optional complete UTF-8 diagnostic.
+///
+/// [`Self::kind`] is suitable for decisions; diagnostic text is explanatory,
+/// not a machine-readable protocol. A diagnostic that exceeds capture capacity
+/// is omitted rather than exposed partially; inspect [`Self::diagnostic_required`].
+/// Command rejection is normally represented by a request result, not this type.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Error {
     kind: ErrorKind,
@@ -636,10 +979,13 @@ pub struct Error {
 }
 
 impl Error {
+    /// Returns the failure category, preserving unknown native status values.
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
     }
 
+    /// Borrows a complete captured diagnostic, if available.
+    /// `None` does not imply success or the absence of a native diagnostic.
     pub fn diagnostic(&self) -> Option<&str> {
         self.diagnostic.as_deref()
     }
@@ -680,6 +1026,10 @@ impl fmt::Display for Error {
 
 impl error::Error for Error {}
 
+/// Queries the loaded consumer façade's ABI version without loading a provider.
+///
+/// # Errors
+/// Returns the native failure category if the façade query fails.
 pub fn abi_version() -> Result<AbiVersion, Error> {
     let mut raw = sys::AmsMelAbiVersionV1::default();
     // SAFETY: `raw` is valid writable storage for the exact C record.
@@ -694,6 +1044,18 @@ pub fn abi_version() -> Result<AbiVersion, Error> {
     }
 }
 
+/// Unique owner of an initialized IR provider session.
+///
+/// Loading uses the published C++ MEL interface behind the C façade; a compatible
+/// provider/toolchain is still required. Instance and aperture selection are
+/// provider-defined. Opening is not proof of hardware readiness or support for
+/// every channel. This owner is neither `Send` nor `Sync`.
+///
+/// Child owners retain the native provider graph independently, so they may
+/// outlive this Rust value. [`Self::close`] consumes the session; Drop attempts
+/// best-effort cleanup without reporting errors. Neither guarantees immediate
+/// provider unload: pending work and conservatively retained resources can defer
+/// or prevent teardown. Prefer explicit closure when errors matter.
 #[derive(Debug)]
 pub struct Session {
     raw: *mut sys::AmsMelSession,
@@ -704,10 +1066,23 @@ pub struct Session {
 /// Refusal is explicit backpressure; the bridge neither queues nor retries.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub struct SessionOptions {
+    /// Maximum admitted asynchronous requests across this session's families.
+    /// Zero is unlimited; `1..=u32::MAX` applies a shared bound. Refusal is
+    /// [`ErrorKind::ResourceExhausted`] before provider submission. Closing a
+    /// pending request is not cancellation and need not free its admission slot.
     pub max_async_requests: u32,
 }
 
 impl Session {
+    /// Loads and initializes a provider with unlimited asynchronous admission.
+    ///
+    /// Equivalent to [`Self::open_with_options`] with default [`SessionOptions`].
+    /// The path and selection strings are borrowed only during this call.
+    ///
+    /// # Errors
+    /// Rejects non-UTF-8 paths and embedded NUL as [`ErrorKind::InvalidArgument`].
+    /// Loading, symbol, factory, initialization and caught provider failures retain
+    /// their native category/diagnostic. A failed open returns no session owner.
     pub fn open(
         provider_library: impl AsRef<Path>,
         instance: impl AsRef<str>,
@@ -721,6 +1096,32 @@ impl Session {
         )
     }
 
+    /// Loads the provider, obtains its manager/control and initializes selection.
+    ///
+    /// Options are copied at open. No download, provider installation, or automatic
+    /// retry is performed. Success establishes a session, not hardware execution.
+    ///
+    /// This example is **compile-only**: an application supplies a compatible
+    /// provider and its real selection strings; qualification does not run it.
+    ///
+    /// ```no_run
+    /// use ams_mel::{Error, Session, SessionOptions};
+    /// fn connect(path: &std::path::Path, instance: &str, aperture: &str)
+    ///     -> Result<(), Error>
+    /// {
+    ///     let session = Session::open_with_options(
+    ///         path, instance, aperture, SessionOptions { max_async_requests: 8 })?;
+    ///     let version = session.provider_version()?;
+    ///     println!("{}: {}", version.vendor, version.description);
+    ///     session.close()
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// Has the path/text and provider failure contracts of [`Self::open`].
+    /// Malformed successful output is [`ErrorKind::ProtocolInconsistency`]; any
+    /// unexpected output owner on failure gets best-effort cleanup, not a guarantee
+    /// of resource release when native ownership is uncertain.
     pub fn open_with_options(
         provider_library: impl AsRef<Path>,
         instance: impl AsRef<str>,
@@ -771,6 +1172,12 @@ impl Session {
         }
     }
 
+    /// Copies complete provider version information into Rust-owned values.
+    /// The result does not borrow the session or keep the provider loaded.
+    ///
+    /// # Errors
+    /// Propagates native/provider failures; malformed size/output protocols and
+    /// invalid UTF-8 are errors, not truncated or lossy version strings.
     pub fn provider_version(&self) -> Result<ProviderVersion, Error> {
         let session = self.raw;
         query_provider_version(|version, buffer, capacity, required| {
@@ -787,6 +1194,15 @@ impl Session {
 
     /// Opens strict Mono8 acquisition with nonzero buffer and queue settings.
     /// For attachment without acquisition, use [`Self::open_image_control`].
+    ///
+    /// Returns an attached, not yet started, independent owner. Call
+    /// [`ImageStream::start`] explicitly. Identity/location values are copied;
+    /// the configuration need not outlive this call.
+    ///
+    /// # Errors
+    /// Unsupported/malformed provider layouts or attachment failures return native
+    /// errors. No stream is published on failure; malformed success is
+    /// [`ErrorKind::ProtocolInconsistency`]. Unexpected owners get best-effort cleanup.
     pub fn open_image_stream(&self, config: &ImageConfig) -> Result<ImageStream, Error> {
         let raw_config = raw_image_config(config);
         let mut raw = ptr::null_mut();
@@ -835,6 +1251,10 @@ impl Session {
     /// never publishes an ImageStream; any unexpected output owner gets one
     /// best-effort Close, leaving uncertain native state conservatively retained.
     ///
+    /// # Errors
+    /// Returns provider attachment/capability failures or binding protocol errors.
+    /// Unlike acquisition Open, zero image layout fields alone are not rejected.
+    ///
     /// ```no_run
     /// use ams_mel::{Error, ImageControlConfig, NavigationReport, Session};
     ///
@@ -878,6 +1298,15 @@ impl Session {
         )
     }
 
+    /// Attaches a provider-advertised C2 channel without enabling it.
+    ///
+    /// The returned owner retains the provider independently of this session and
+    /// copies the configuration. Call [`ControlChannel::enable`] explicitly.
+    /// Capabilities are available through [`ControlChannel::channel_view`].
+    ///
+    /// # Errors
+    /// Returns provider capability/attachment failures; no owner is published on
+    /// failure. Malformed success is [`ErrorKind::ProtocolInconsistency`].
     pub fn open_control_channel(&self, config: &ControlConfig) -> Result<ControlChannel, Error> {
         let raw_config = raw_control_config(config);
         let mut raw = ptr::null_mut();
@@ -910,6 +1339,15 @@ impl Session {
         })
     }
 
+    /// Consumes the public session owner without invalidating independent children.
+    ///
+    /// Native destruction is ordered Control, manager, then library, once no
+    /// retained graph needs them. This is not cancellation or an immediate-unload
+    /// guarantee. Drop provides a best-effort fallback if an owner remains.
+    ///
+    /// # Errors
+    /// Reports native cleanup failures. Because this method consumes `self`, an
+    /// error does not return a Rust session for an explicit retry.
     pub fn close(mut self) -> Result<(), Error> {
         self.close_inner()
     }
@@ -927,6 +1365,11 @@ impl Session {
 /// Control-only attachment is not evidence of a working detector/image source.
 /// Close/Drop use the same native deferred teardown and conservative retention
 /// contract in both modes; requests can outlive this owner and its Session.
+///
+/// Open returns Attached. [`Self::start`] enables once, [`Self::receive`] copies
+/// frames in acquisition mode, and [`Self::stop`] is terminal (not pause/restart).
+/// [`Self::close`] consumes this Rust owner; Drop is best-effort and cannot report
+/// cleanup failures. Neither this owner nor its requests are `Send` or `Sync`.
 #[derive(Debug)]
 pub struct ImageStream {
     raw: *mut sys::AmsMelIrStream,
@@ -943,6 +1386,11 @@ impl ImageStream {
     /// consuming registration. Every actual attempt is one-shot, even failure;
     /// partial failure returns no owner. This does not affect NUC registration.
     /// A closed Image owner returns ProviderFailed before capacity validation.
+    ///
+    /// # Errors
+    /// Returns native registration/lifecycle failures or invalid capacity errors.
+    /// Failed actual registration still consumes the one-shot attempt; this method
+    /// does not guarantee rollback of provider callback registration.
     pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<ImageMetadataStream, Error> {
         if self.raw.is_null() {
             return Err(Error::new(
@@ -1024,6 +1472,15 @@ impl ImageStream {
 
     /// Enables the channel. A control-only attachment allocates/registers no
     /// acquisition buffers and cannot become an image source through Start.
+    ///
+    /// Acquisition mode initializes/registers configured host buffers before
+    /// enable. Repeating Start while Running succeeds without another enable;
+    /// failed provider setup cannot be retried on this owner.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::StreamStopped`] after Stop, provider/setup failures
+    /// on failed initialization, or native internal failures. Success does not
+    /// establish that hardware will actually supply frames.
     pub fn start(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the live stream handle.
@@ -1034,6 +1491,17 @@ impl ImageStream {
     /// Receives one owned Mono8 frame, waiting at most `timeout_ms`. Zero polls.
     /// Control-only attachments return native `InitializationFailed` with a
     /// control-only diagnostic, never a frame or an ordinary timeout.
+    ///
+    /// `timeout_ms` is a finite `u32` millisecond interval (`0..=u32::MAX`), not
+    /// an infinite-wait sentinel. It bounds the native queue wait, not all
+    /// allocation/copy/cleanup time. Already queued frames drain before stopped
+    /// or failed state is reported. Returned pixels have no provider dependency.
+    ///
+    /// # Errors
+    /// [`ErrorKind::Timeout`] means no frame arrived; it does not stop acquisition.
+    /// [`ErrorKind::StreamStopped`] means no queued frame remains after Stop.
+    /// Other errors include provider failure, allocation failure and inconsistent
+    /// native size/output protocols. No partial frame is returned.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<Frame, Error> {
         let mut raw = empty_frame();
         let first = receive_raw(self.raw, timeout_ms, &mut raw);
@@ -1077,6 +1545,11 @@ impl ImageStream {
         frame_from_raw(raw, pixels)
     }
 
+    /// Copies the current bridge counters without consuming a frame.
+    ///
+    /// # Errors
+    /// Returns native query failures. Counters are observations, not evidence of
+    /// physical detector activity or complete provider-side loss accounting.
     pub fn counters(&self) -> Result<StreamCounters, Error> {
         let mut raw = sys::AmsMelIrStreamCountersV1::default();
         call_with_diagnostic(|diagnostic, capacity, required| {
@@ -1094,6 +1567,16 @@ impl ImageStream {
         })
     }
 
+    /// Stops accepting frames and initiates disable/detach teardown.
+    ///
+    /// Stop is terminal and idempotent after success; it is not a pause. Queued
+    /// frames remain receivable. Pending requests/retained native buffers can
+    /// defer physical teardown. Disable alone is not callback quiescence, and
+    /// uncertain native resources are retained rather than unsafely released.
+    ///
+    /// # Errors
+    /// Reports cleanup/provider failures (including [`ErrorKind::ProviderFailed`])
+    /// or internal failures. An error is not a guarantee that resources were freed.
     pub fn stop(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: the stream handle remains uniquely owned by this wrapper.
@@ -1106,6 +1589,9 @@ impl ImageStream {
     /// The View does not borrow or retain this `ImageStream`, its Session, or
     /// any provider object, and it does not alter Start/Stop/Close, frame
     /// receive, or provider lifetime.
+    ///
+    /// # Errors
+    /// Returns native view-creation failures or malformed-output protocol errors.
     pub fn channel_view(&self) -> Result<ChannelView, Error> {
         if self.raw.is_null() {
             return Err(Error::new(
@@ -1127,6 +1613,15 @@ impl ImageStream {
         )
     }
 
+    /// Consumes the stream, stopping if needed and discarding unreceived frames.
+    ///
+    /// Requests survive; Close/Drop do not cancel them. Physical teardown may be
+    /// deferred or resources conservatively retained. Unlike [`Self::stop`],
+    /// this makes the queue inaccessible to the caller.
+    ///
+    /// # Errors
+    /// Returns native cleanup failures. This consuming API cannot return an owner
+    /// for retry; Drop attempts cleanup again only if the native handle remains.
     pub fn close(mut self) -> Result<(), Error> {
         self.close_inner()
     }
@@ -1148,6 +1643,15 @@ impl Drop for ImageStream {
     }
 }
 
+/// Unique C2 attachment owner with explicit enable and asynchronous commands.
+///
+/// Neither `Send` nor `Sync`. The native owner retains the provider independently
+/// of [`Session`]. Submission returns a request, not a claim of acceptance,
+/// completion or physical execution. Inspect its terminal result separately.
+/// Use [`Self::channel_view`] for common capabilities/KeepAlive/CommsTest.
+///
+/// [`Self::close`] is retryable while the handle remains open; Drop uses best-effort
+/// cleanup. Requests may outlive both channel and session, deferring teardown.
 #[derive(Debug)]
 pub struct ControlChannel {
     raw: *mut sys::AmsMelIrC2,
@@ -1155,6 +1659,12 @@ pub struct ControlChannel {
 }
 
 impl ControlChannel {
+    /// Explicitly enables the attached C2 channel; submission never enables it.
+    /// Repeating a successful Enable is idempotent.
+    ///
+    /// # Errors
+    /// Reports provider refusal/exception or invalid lifecycle state. Failed
+    /// enable is not automatically retried and is not evidence of hardware readiness.
     pub fn enable(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the live C2 handle.
@@ -1163,6 +1673,14 @@ impl ControlChannel {
     }
 
     /// Submits exactly Operate/TaskSched with native default scan parameters.
+    ///
+    /// Preserves all 32 command-ID bits. For other profiles use [`Self::submit_mode`].
+    /// Success publishes an independent [`ModeRequest`] without waiting for its
+    /// outcome; use [`ModeRequest::wait`] to distinguish response from rejection.
+    ///
+    /// # Errors
+    /// Returns lifecycle/provider/submission failures or
+    /// [`ErrorKind::ResourceExhausted`] when session admission refuses work.
     pub fn submit_operate(&mut self, command_id: u32) -> Result<ModeRequest, Error> {
         let mut raw = ptr::null_mut();
         let result = call_with_diagnostic(|diagnostic, capacity, required| {
@@ -1191,6 +1709,13 @@ impl ControlChannel {
 
     /// Submits the empty/no-op BIT profile. For one-choice payloads use
     /// [`Self::submit_bit`]. This source-compatible convenience API is unchanged.
+    ///
+    /// The command ID retains all 32 bits. A returned request is not a successful
+    /// BIT result; inspect [`ReturnRequest::wait`], including completed failure values.
+    ///
+    /// # Errors
+    /// Returns lifecycle/provider failures, admission refusal
+    /// ([`ErrorKind::ResourceExhausted`]), or malformed native output errors.
     pub fn submit_bit_noop(&mut self, command_id: u32) -> Result<ReturnRequest, Error> {
         let mut raw = ptr::null_mut();
         let result = call_with_diagnostic(|diagnostic, capacity, required| {
@@ -1222,6 +1747,10 @@ impl ControlChannel {
     /// The View does not borrow or retain this `ControlChannel`, its Session,
     /// or any provider object. A closed owner yields `ProviderFailed` without
     /// calling native code.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::ProviderFailed`] for a closed owner, native creation
+    /// failures, or binding protocol errors for malformed successful output.
     pub fn channel_view(&self) -> Result<ChannelView, Error> {
         if self.raw.is_null() {
             return Err(Error::new(
@@ -1244,6 +1773,14 @@ impl ControlChannel {
     }
 
     /// Closes this owner. A detach failure can leave it open for an explicit retry.
+    ///
+    /// Idempotent after success. Pending requests are not cancelled and may defer
+    /// actual provider teardown. Use [`Self::is_open`] after an error; uncertain
+    /// resources may remain retained even when cleanup cannot be completed.
+    ///
+    /// # Errors
+    /// Reports native disable/detach or other cleanup failures. Unlike consuming
+    /// close methods, this method leaves the Rust value available for retry.
     pub fn close(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: native close may clear or retain this unique owner according
@@ -1252,6 +1789,8 @@ impl ControlChannel {
         })
     }
 
+    /// Reports whether a native C2 handle remains, not whether Enable succeeded
+    /// or the provider/hardware is healthy.
     pub fn is_open(&self) -> bool {
         !self.raw.is_null()
     }
@@ -1265,6 +1804,25 @@ impl Drop for ControlChannel {
     }
 }
 
+/// Unique asynchronous mode-response owner from C2 submission.
+///
+/// The admitted native graph outlives the originating [`ControlChannel`] and
+/// [`Session`] as needed. [`Self::wait`] returns a cached terminal [`ModeResult`];
+/// explicit provider rejection is a normal result, not a Rust error. Timeout and
+/// Close/Drop never cancel provider work. Neither `Send` nor `Sync`.
+///
+/// Compile-only polling example: the caller supplies an already submitted request.
+///
+/// ```no_run
+/// use ams_mel::{Error, ErrorKind, ModeRequest, ModeResult};
+/// fn poll(request: &mut ModeRequest) -> Result<Option<ModeResult>, Error> {
+///     match request.wait(0) {
+///         Ok(result) => Ok(Some(result)), // inspect Success versus Rejected
+///         Err(error) if error.kind() == &ErrorKind::Timeout => Ok(None),
+///         Err(error) => Err(error),
+///     }
+/// }
+/// ```
 #[derive(Debug)]
 pub struct ModeRequest {
     raw: *mut sys::AmsMelIrModeRequest,
@@ -1273,11 +1831,26 @@ pub struct ModeRequest {
 
 impl ModeRequest {
     /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    ///
+    /// `timeout_ms` is milliseconds in `0..=u32::MAX`, with no infinite sentinel.
+    /// Repeated terminal waits return the cached outcome without resubmission.
+    /// [`ModeResult::Rejected`] is `Ok`, distinct from a wait/protocol failure.
+    ///
+    /// # Errors
+    /// [`ErrorKind::Timeout`] leaves the request usable for another wait. Other
+    /// errors preserve native failures or report invalid text/output protocols.
     pub fn wait(&mut self, timeout_ms: u32) -> Result<ModeResult, Error> {
         wait_for_mode(self.raw, timeout_ms)
     }
 
     /// Drops only the public request owner; pending provider work is not cancelled.
+    ///
+    /// Consumes `self` without waiting for completion. A provider future that
+    /// never finishes may retain its native graph indefinitely. Drop is a
+    /// best-effort fallback, not cancellation either.
+    ///
+    /// # Errors
+    /// Returns native close failures; no Rust owner is returned for retry.
     pub fn close(mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the request and no wait can race
@@ -1305,12 +1878,14 @@ impl Drop for ModeRequest {
 /// - [`ControlChannel::submit_bit`] (one-choice C2 BIT),
 /// - [`ControlChannel::submit_bit_noop`] (C2 BIT, empty/no-op convenience), and
 /// - [`ControlChannel::submit_config_set`] (C2 opaque configuration text), and
-/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2 or Image).
+/// - [`ChannelView::send_keepalive`] (common Channel KeepAlive, C2/Image/Health).
 ///
 /// The native request owns its admitted family graph independently of the
 /// View, typed owner, and Session that created it. Wait is cached; timeout is
 /// not cancellation; `Return::Fail` is a normal completion; MEL rejection is
 /// [`ReturnResult::Rejected`]. Close/Drop never cancel provider work.
+/// This owner is neither `Send` nor `Sync`; cleanup on Drop is best-effort and
+/// cannot report errors. Completion is not proof of hardware execution.
 #[derive(Debug)]
 pub struct ReturnRequest {
     raw: *mut sys::AmsMelIrReturnRequest,
@@ -1319,11 +1894,28 @@ pub struct ReturnRequest {
 
 impl ReturnRequest {
     /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    ///
+    /// `timeout_ms` is milliseconds in `0..=u32::MAX`, with no infinite sentinel.
+    /// Repeated terminal waits return the cached outcome. Both
+    /// [`ReturnResult::Rejected`] and [`CommandReturn::Fail`] inside a completed
+    /// result are `Ok` outcomes, not wait errors.
+    ///
+    /// # Errors
+    /// [`ErrorKind::Timeout`] leaves the request usable for another wait. Other
+    /// errors include provider failures, invalid UTF-8 and malformed output.
+    /// Unknown `Return` values yield [`ErrorKind::ProviderFailed`].
     pub fn wait(&mut self, timeout_ms: u32) -> Result<ReturnResult, Error> {
         wait_for_return(self.raw, timeout_ms)
     }
 
     /// Drops only the public request owner; pending provider work is not cancelled.
+    ///
+    /// Consumes `self` without waiting. A native worker retains required provider
+    /// state, possibly indefinitely if work never ends. Drop attempts best-effort
+    /// cleanup and cannot report failures.
+    ///
+    /// # Errors
+    /// Returns native close failures; no Rust owner is returned for retry.
     pub fn close(mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the request and no wait can race
@@ -1359,16 +1951,17 @@ impl Drop for ReturnRequest {
 /// A `ChannelView` therefore retains no `ControlChannel`, `ImageStream`,
 /// `Session`, provider Channel, Control, or provider library, and it has no
 /// Rust lifetime tied to its source. Keeping a View alive never delays
-/// provider teardown. After the typed owner is gone, every operation returns
-/// [`ErrorKind::ProviderFailed`].
+/// provider teardown. After typed teardown, work/capability operations return
+/// [`ErrorKind::ProviderFailed`]; [`Self::is_open`] still reports only view-handle
+/// presence and [`Self::close`] remains an idempotent view-only operation.
 ///
 /// Requests created through a View ([`ReturnRequest`], [`CommsRequest`]) own
 /// their admitted native family graph; closing or dropping the View does not
 /// cancel or invalidate them.
 ///
-/// The View is intentionally neither `Send` nor `Sync`, and every operation
-/// takes `&mut self`, which statically serializes operations and Close on one
-/// View as the native contract requires.
+/// The View is intentionally neither `Send` nor `Sync`. Work, capability and
+/// close operations take `&mut self`, serializing them on one view as required
+/// by the native contract; [`Self::is_open`] is only a local handle check.
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -1397,6 +1990,13 @@ impl ChannelView {
 
     /// Submits inherited `sendKeepAliveRep` and returns the existing public
     /// [`ReturnRequest`] owner.
+    ///
+    /// Submission is not a completed KeepAlive result. The request independently
+    /// retains its admitted family graph, unlike this weak view.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::ProviderFailed`] for closed/expired views, admission
+    /// refusal as [`ErrorKind::ResourceExhausted`], or native/protocol failures.
     pub fn send_keepalive(&mut self) -> Result<ReturnRequest, Error> {
         let channel = self.live("send_keepalive")?;
         let mut raw = ptr::null_mut();
@@ -1427,6 +2027,13 @@ impl ChannelView {
     }
 
     /// Submits inherited `ChannelCommsTestReq` with all three IDs preserved.
+    ///
+    /// Success yields an independent [`CommsRequest`], not proof that a test
+    /// completed or any hardware communication occurred. Inspect its outcome.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::ProviderFailed`] for closed/expired views, admission
+    /// refusal as [`ErrorKind::ResourceExhausted`], or native/protocol failures.
     pub fn submit_comms_test(&mut self, request: CommsTestRequest) -> Result<CommsRequest, Error> {
         let channel = self.live("submit_comms_test")?;
         let raw_request = sys::AmsMelIrChannelCommsTestRequestV1 {
@@ -1470,6 +2077,13 @@ impl ChannelView {
     /// Returns a complete, fully Rust-owned ChannelCapability snapshot. The
     /// native snapshot is converted while alive and then closed; no native
     /// pointer survives this call.
+    ///
+    /// Snapshotting does not enable the channel, register callbacks or establish
+    /// hardware state. Zero/default values and unknown enum tags remain visible.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::ProviderFailed`] for a closed/expired view, native
+    /// query failures, or binding errors for malformed spans, UTF-8 or records.
     pub fn capabilities(&mut self) -> Result<ChannelCapability, Error> {
         let channel = self.live("capabilities")?;
         capability_snapshot(|owner, diagnostic, capacity, required| {
@@ -1486,6 +2100,12 @@ impl ChannelView {
 
     /// Destroys only the weak native view. Idempotent; it never closes the
     /// typed owner, cancels requests, or changes the family lifecycle.
+    ///
+    /// Drop attempts the same view-only cleanup without reporting errors.
+    ///
+    /// # Errors
+    /// Returns native close failures or [`ErrorKind::ProtocolInconsistency`] if
+    /// success fails to clear the native owner. The value remains available.
     pub fn close(&mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: `raw` is this wrapper's unique weak view owner, or null,
@@ -1545,11 +2165,27 @@ pub struct CommsRequest {
 
 impl CommsRequest {
     /// Waits finitely for a cached terminal result. Zero polls; timeout is not cancellation.
+    ///
+    /// `timeout_ms` is milliseconds in `0..=u32::MAX`, with no infinite sentinel.
+    /// Repeated terminal waits return the cached report/rejection. Explicit MEL
+    /// rejection is [`CommsTestResult::Rejected`] inside `Ok`, not a Rust error.
+    /// The report contains only the identifiers the provider actually returned.
+    ///
+    /// # Errors
+    /// [`ErrorKind::Timeout`] leaves the request usable. Other errors include
+    /// provider failures, invalid UTF-8, and malformed native output protocols.
     pub fn wait(&mut self, timeout_ms: u32) -> Result<CommsTestResult, Error> {
         wait_for_comms(self.raw, timeout_ms)
     }
 
     /// Drops only the public request owner; pending provider work is not cancelled.
+    ///
+    /// Consumes `self` without waiting. The native worker retains necessary
+    /// provider state, possibly indefinitely if work never finishes. Drop is a
+    /// best-effort non-cancelling fallback and cannot report cleanup errors.
+    ///
+    /// # Errors
+    /// Returns native close failures; no Rust owner is returned for retry.
     pub fn close(mut self) -> Result<(), Error> {
         call_with_diagnostic(|diagnostic, capacity, required| {
             // SAFETY: this wrapper uniquely owns the request and no wait can race
