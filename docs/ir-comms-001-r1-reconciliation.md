@@ -151,16 +151,48 @@ Initial focused correction: **16/16** passed. After test porting: combined
 **101/101**. Both C translation units use C11 with extensions disabled and the
 repository warning-as-error policy.
 
-Final sequential full qualification is pending. Earlier intermediate-source
-native **672/672**, Python **584**, Rust **503 passed / 9 existing ignored**,
-and policy passed before the four common-receiver test ports. That intermediate
-driver was stopped during coverage checks to avoid overlapping final runs;
-the interrupted coverage invocation is not a pass.
+Main advanced twice during qualification. Ordinary, conflict-free merges
+integrated `95404ddb5be293b2335be8aeb0d760f49cad24be` (Rust example/tests) and
+`8a2d409b53b90161bee01dcdd2f3641480d178d6` (Rust API docs), whose tree is
+`05fe78b738f2b297c4d10dffeee352fad174d141`. No native or raw binding changes
+arrived in those merges. Integrated source commit
+`a86e31a34987c373f1c32740d584ad1b6728eaee`, tree
+`1f90e73dc22368f554f0cc918709b315454e9b73`, was requalified sequentially:
+
+| Actual command | Result on integrated source |
+|---|---|
+| `make test-native` | PASS **688/688**, including existing C2, common requests, Health, Image, Stacked and 32 new scenario parameterizations. |
+| `make test-python` | PASS **584**, plus native prerequisite. |
+| `make test-rust` | PASS **527 passed / 10 ignored**, plus native prerequisite; mainline example/Rustdoc accounts for increases. |
+| `make test-policy` | PASS. |
+| `make check-ir-api-coverage` | PASS, **62/62** regressions; no classification changes. |
+| `make test-build-isolation` | PASS, production/test trees distinct, native **688/688**. |
+| `python3 scripts/check_doc_source_integrity.py` | PASS. |
+| `python3 scripts/check_final_newlines.py`; `git diff --check` | PASS. |
+| `alr -n -C ada/tests exec -- make -C /home/zboll/git/ams-ir-comms-001-r1 test-ada` | PASS, installed GNAT/GPRbuild, smoke and full existing focused contracts, including canonical seven-argument Ada import. |
+| `alr -n -C ada build` | PASS. |
+| `alr -n -C ada/tests run` | PASS. |
+| GCC/Clang `-std=c11 -pedantic-errors -Wall -Wextra -Werror -fsyntax-only` on both receiver C tests | PASS. |
+| Exact-HEAD hosted CI for `a86e31a` | PASS: GCC/Clang Debug/Release, Ada, Rust, Python, policy, isolation and docs build; deployment/live checks correctly skipped. |
+
+Local aggregate `make check`, isolated four-way compiler builds/tests, repeated
+C2 regressions and final production-symbol comparison are still in progress.
+Earlier interrupted qualification runs are not counted as passes.
+
+One local Alire invocation on the preceding merge failed: its generated,
+untracked test solution was empty, leaving `GPR_PROJECT_PATH` with only the test
+directory; GPRbuild could not find `ams_mel.gpr`. `alr -n -C ada/tests update`
+resolved the existing manifests and restored the Ada/native paths, without any
+tracked manifest or pin change. The recovered run and the subsequent integrated
+source run both passed. An attempted `alr update --offline` was rejected because
+Alire 2.1.1 has no such option; plain update uses the installed index. This is
+environment recovery, not a native-code fix or a suppressed failed test.
 
 ABI evidence: base production symbol names/versions saved independently;
 `native/include/ams_mel/abi.h`, `native/src/exports.map`, Python ctypes, Rust sys
-and Ada imports remain byte-identical to base. Final production comparison and
-Ada compilation/execution will be recorded after completion. This preserves
+and Ada imports remain byte-identical to base, verified by SHA-256 and byte
+comparison. Ada compilation/execution passed; final production comparison is
+pending. This preserves
 function signatures and all record layouts by source identity, not symbol names
 alone. There is no six-argument production Open declaration.
 
