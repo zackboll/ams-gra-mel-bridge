@@ -55,6 +55,9 @@ def bind(root, site, report):
     from dataclasses import replace
     from ada_gnatdoc_enhancer.config import load
     import source_epoch
+    # Only disposable exports call bind. Verification uses the pure contract()
+    # path and does not rewrite a supplied or tracked ledger.
+    (root / 'docs/gnatdoc-native-anchors.json').write_text(json.dumps(report['native']))
     payload = source_epoch.canonical(contract(root, site, report))
     path = root / 'docs/gnatdoc-authored.json'
     presentation.require(not path.exists() and not path.is_symlink(), 'authored manifest must be fresh')

@@ -55,6 +55,11 @@ def run(baseline, candidate, executable, output):
                                     check(page.goto(url + name).status == 200)
                                     check(page.locator('h1').is_visible())
                                     check(page.locator('body').evaluate('(e)=>e.scrollWidth<=innerWidth+2'))
+                                for name in evidence['files']:
+                                    if name.startswith('api/') and name.endswith('.html') and name != 'api/index.html':
+                                        check(page.goto(url + name).status == 200)
+                                        check(page.locator('h1').is_visible())
+                                        check(page.locator('body').evaluate('(e)=>e.scrollWidth<=innerWidth+2'))
                                 page.goto(url + 'api/index.html')
                                 frame = page.frame_locator('iframe[name="document-content"]')
                                 if js:
