@@ -16,15 +16,20 @@ use crate::{
 /// Reusable for other native ForwardRightDown values, without normalization.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ForwardRightDown {
+    /// Forward component; units are established only by the containing field.
     pub forward: f64,
+    /// Right component; units are established only by the containing field.
     pub right: f64,
+    /// Down component; units are established only by the containing field.
     pub down: f64,
 }
 
 /// Provider coordinates; no origin, rounding or axis conversion is inferred.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RowCol {
+    /// Provider row coordinate; no zero/one-based origin or rounding rule is inferred.
     pub row: f64,
+    /// Provider column coordinate; no zero/one-based origin or rounding rule is inferred.
     pub column: f64,
 }
 
@@ -32,18 +37,36 @@ pub struct RowCol {
 /// Collections preserve provider order, duplicates and independent lengths.
 /// Doubles retain signed zero, subnormals and nonfinite values; NaN payload bits
 /// are not promised by native code. Values outlive all native owners and code.
+///
+/// The bridge receives the optional `OpticalDistortionMap` callback through
+/// [`crate::ImageStream::open_optical_distortion_map`]. Rust copies all eleven
+/// getters, including both vectors, while the native event is alive. No native
+/// pointers survive. Map interpolation, dimension reconciliation, geometric
+/// calibration and additional reference conventions remain unavailable here.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OpticalDistortionMap {
+    /// Published forward-map sample width (row/column to angles), not a vector-length check.
     pub width: u32,
+    /// Published forward-map sample height (row/column to angles), not a vector-length check.
     pub height: u32,
+    /// Published right-axis backward-map sample count (angles to row/column).
     pub right_size: u32,
+    /// Published down-axis backward-map sample count (angles to row/column).
     pub down_size: u32,
+    /// Published number of pixels per distortion-map sample; no layout is derived.
     pub pixels_per_odm: u32,
+    /// Right direction-cosine minimum extent for linear right/down to row/column mapping.
+    /// Copied without range validation or performing the mapping.
     pub right_min: f64,
+    /// Right direction-cosine maximum extent for linear right/down to row/column mapping.
     pub right_max: f64,
+    /// Down direction-cosine minimum extent for linear right/down to row/column mapping.
     pub down_min: f64,
+    /// Down direction-cosine maximum extent for linear right/down to row/column mapping.
     pub down_max: f64,
+    /// Complete ordered forward/right/down vector; no unit or normalization is inferred.
     pub frd: Vec<ForwardRightDown>,
+    /// Complete ordered row/column vector, independent of the FRD vector length.
     pub row_col: Vec<RowCol>,
 }
 
@@ -63,6 +86,7 @@ impl OpticalDistortionMapOpenError {
         }
     }
 
+    /// Native/safe-layer error category and diagnostic, independent of a provider Return.
     pub fn error(&self) -> &Error {
         &self.error
     }
@@ -99,6 +123,27 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 /// waits for callback quiescence. Native physical teardown must ensure quiescence
 /// before provider unload. Drop is best-effort and does not panic. An uncertain
 /// release is never retried (fail-safe loss of ownership can leak native state).
+///
+/// Registration is independent of ordinary Image metadata, NUC and quaternion
+/// LOS. Zero capacity fails locally; every actual native registration attempt,
+/// even refusal or partial failure, consumes this callback's one-shot. Failure
+/// publishes no stream; callback state may stay inactive and retained because
+/// upstream has no unregister operation. The error's `registration()` accessor
+/// exposes a provider Return only when native code actually published one.
+/// The owner is neither `Send` nor `Sync`; no cross-owner concurrency is added.
+///
+/// ```no_run
+/// use ams_mel::{ImageStream, OpticalDistortionMapOpenError};
+/// fn open_map(image: &mut ImageStream) -> Result<(), OpticalDistortionMapOpenError> {
+///     let mut maps = image.open_optical_distortion_map(4)?;
+///     // Receive and Close errors are ordinary ams_mel::Error values.
+///     if let Ok(map) = maps.receive(0) {
+///         println!("{} forward samples, {} row/column samples", map.frd.len(), map.row_col.len());
+///     }
+///     if let Err(error) = maps.close() { eprintln!("{error}"); }
+///     Ok(())
+/// }
+/// ```
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -172,6 +217,14 @@ impl OpticalDistortionMapStream {
     /// Exactly one native Receive. Zero polls; other timeouts pass unchanged.
     /// The native event remains guarded through validation/copy and is closed
     /// before returning any owned value, including on conversion error/unwind.
+    ///
+    /// # Errors
+    /// Returns [`ErrorKind::Timeout`] if the active queue remains empty for `timeout_ms` milliseconds
+    /// (zero polls); timeout does not cancel registration or native work. After queued values drain,
+    /// stopped consumption reports [`ErrorKind::StreamStopped`] and native callback failure can report
+    /// [`ErrorKind::ProviderFailed`]. A locally closed owner reports `ProviderFailed`. Invalid views,
+    /// enums or text and copy-allocation failures are errors, not partial values; native event cleanup
+    /// is still attempted. Returned values are independent of the stream, parent channel and provider.
     pub fn receive(&mut self, timeout_ms: u32) -> Result<OpticalDistortionMap, Error> {
         let raw = self.live()?;
         self.receive_event_with(&EVENT_OPS, |out, d, c, r| {
@@ -199,6 +252,11 @@ impl OpticalDistortionMapStream {
     }
 
     /// Native saturating callback counts, identical to ordinary Image metadata.
+    ///
+    /// # Errors
+    /// A closed owner returns [`ErrorKind::ProviderFailed`]. Native query/cleanup and diagnostic
+    /// failures retain their error categories; malformed successful native output is a protocol error.
+    /// The returned counter value is a snapshot, not a receive count or a liveness guarantee.
     pub fn counters(&mut self) -> Result<ImageMetadataCounters, Error> {
         let raw = self.live()?;
         self.counters_with(|out, d, c, r| {
@@ -221,6 +279,12 @@ impl OpticalDistortionMapStream {
     }
 
     /// Idempotent after consumption. One release attempt, even on uncertainty.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         close_owned(&mut self.raw, self.close_op)
     }

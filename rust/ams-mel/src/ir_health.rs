@@ -30,6 +30,16 @@ const CLOSED: &str = "IR Health channel is closed";
 /// additionally validates the text during [`Session::open_health_channel`].
 /// The native call borrows the string bytes only for the duration of Open and
 /// copies them.
+///
+/// ```
+/// use ams_mel::{ComponentLocation, HealthConfig, UciId};
+/// let config = HealthConfig::new(
+///     UciId::new([1; 16], "health")?,
+///     UciId::new([2; 16], "platform")?,
+///     ComponentLocation::new(0.0, 0.0, 0.0, "mount", "system")?,
+/// );
+/// # Ok::<(), ams_mel::Error>(())
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct HealthConfig {
     channel_id: UciId,
@@ -38,6 +48,9 @@ pub struct HealthConfig {
 }
 
 impl HealthConfig {
+    /// Constructs an owned attachment configuration without contacting a provider.
+    /// The UCI identities and component location are copied during native Open;
+    /// construction neither discovers a channel nor enables HealthStatus reporting.
     pub fn new(channel_id: UciId, platform_id: UciId, sensor_location: ComponentLocation) -> Self {
         Self {
             channel_id,
@@ -63,6 +76,12 @@ impl Session {
     /// The returned owner does not borrow this `Session`: it may outlive
     /// [`Session::close`], because native family state retains the provider
     /// graph that it needs.
+    ///
+    /// # Errors
+    /// Invalid configuration, attachment failure, provider exception or incompatible channel
+    /// returns the native category and diagnostic described above. A malformed successful output
+    /// is a protocol error. No Rust channel is returned on failure; uncertain native cleanup may
+    /// retain provider state instead of unloading code that callbacks or deleters could still use.
     pub fn open_health_channel(&self, config: &HealthConfig) -> Result<HealthStatusChannel, Error> {
         let raw_config = raw_health_config(config);
         let session = self.raw;
@@ -135,8 +154,9 @@ impl Session {
 /// [`ChannelView`]s for inherited KeepAlive, CommsTest, and capabilities. A
 /// view never owns or closes this typed owner and never delays its teardown;
 /// closing or dropping a view leaves this owner untouched. After this owner is
-/// closed or dropped, every operation on a surviving view returns
-/// [`ErrorKind::ProviderFailed`].
+/// closed or dropped, work operations on a surviving view return
+/// [`ErrorKind::ProviderFailed`]. The view's local [`ChannelView::is_open`]
+/// and view-only [`ChannelView::close`] do not query the expired parent.
 ///
 /// Serialization: this owner is neither `Send` nor `Sync`, and every lifecycle
 /// operation takes `&mut self`, which serializes Enable, capability queries,
@@ -152,6 +172,36 @@ impl Session {
 ///
 /// HealthStatus metadata is received through an independent
 /// [`HealthMetadataStream`] from [`open_metadata`](Self::open_metadata).
+///
+/// Discovery, attachment and enablement are separate steps. This example uses
+/// an advertised identity, but does not assume that advertisement proves that
+/// registration or later sensor operations will succeed:
+///
+/// ```no_run
+/// use ams_mel::{ChannelType, Error, HealthConfig, Session};
+/// fn monitor(session: &Session) -> Result<(), Error> {
+///     for capability in session.capabilities()? {
+///         if capability.channel_types.contains(&ChannelType::HealthAndStatus) {
+///             let config = HealthConfig::new(
+///                 capability.channel_id, capability.platform_id, capability.sensor_location,
+///             );
+///             let mut channel = session.open_health_channel(&config)?; // Attached
+///             let snapshot = channel.capabilities()?; // independent Rust value
+///             let mut metadata = channel.open_metadata(16)?; // does not enable
+///             channel.enable()?;
+///             match metadata.receive(0) {
+///                 Ok(event) => println!("{:?}", event.kind()),
+///                 Err(error) => eprintln!("{error}"), // empty active queue may time out
+///             }
+///             metadata.close()?; // not unregister or callback quiescence
+///             channel.close()?;
+///             println!("{:?}", snapshot.channel_types); // survives channel Close
+///             break;
+///         }
+///     }
+///     Ok(())
+/// }
+/// ```
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
@@ -174,6 +224,13 @@ impl HealthStatusChannel {
     /// No automatic retry. Registration may synchronously deliver events.
     /// A closed owner returns [`ErrorKind::ProviderFailed`] before capacity
     /// validation or native registration, with no registration return.
+    ///
+    /// # Errors
+    /// Zero capacity returns [`ErrorKind::InvalidArgument`] without consuming registration.
+    /// A closed owner returns [`ErrorKind::ProviderFailed`] first. Any actual native attempt consumes
+    /// the one-shot, including provider refusal or exception; no stream is published on failure.
+    /// The returned [`crate::NucOpenError`] preserves native status and any actually published
+    /// provider Return. Partially registered state stays inactive and retained natively.
     pub fn open_nuc(
         &mut self,
         queue_capacity: usize,
@@ -203,6 +260,11 @@ impl HealthStatusChannel {
     /// an error and leaves the native family Failed; it never implies enabled
     /// service. A closed owner returns [`ErrorKind::ProviderFailed`] without
     /// calling native code.
+    ///
+    /// # Errors
+    /// A closed or failed owner reports [`ErrorKind::ProviderFailed`]. Provider refusal or exception
+    /// is returned with its native category and diagnostic. Failure does not establish enablement
+    /// and is not automatically retried; close the failed channel to perform cleanup.
     pub fn enable(&mut self) -> Result<(), Error> {
         let health = self.live()?;
         call_with_diagnostic(|diagnostic, capacity, required| {
@@ -219,6 +281,12 @@ impl HealthStatusChannel {
     /// pointer survives this call, so the value remains valid after this owner,
     /// the Session, and the provider library are gone. A closed owner returns
     /// [`ErrorKind::ProviderFailed`] without calling native code.
+    ///
+    /// # Errors
+    /// Native query, snapshot conversion or temporary-owner cleanup failures return their
+    /// native category and diagnostic. Invalid UTF-8, unpublished enums and malformed counts/views
+    /// are rejected without a partial snapshot. Allocation failures return InternalError.
+    /// Discovery does not attach or enable channels or establish that advertised operations work.
     pub fn capabilities(&mut self) -> Result<ChannelCapability, Error> {
         let health = self.live()?;
         capability_snapshot(|owner, diagnostic, capacity, required| {
@@ -239,6 +307,10 @@ impl HealthStatusChannel {
     /// The View does not borrow or retain this owner, its Session, or any
     /// provider object. A closed owner returns [`ErrorKind::ProviderFailed`]
     /// without calling native code.
+    ///
+    /// # Errors
+    /// A locally closed owner returns [`ErrorKind::ProviderFailed`] before native work. Native
+    /// allocation failures retain their categories; a missing successful view is a protocol error.
     pub fn channel_view(&self) -> Result<ChannelView, Error> {
         let source = self.live()?;
         channel_view_from(
@@ -278,6 +350,13 @@ impl HealthStatusChannel {
     /// optional NUC_TempData registration through [`Self::open_nuc`].
     /// A closed owner returns [`ErrorKind::ProviderFailed`] without a native
     /// call.
+    ///
+    /// # Errors
+    /// Zero capacity is InvalidArgument without consuming registration; a closed parent is
+    /// ProviderFailed. An actual attempt, including partial registration failure, consumes the native
+    /// one-shot. Provider refusal and exceptions retain native categories and diagnostics. No stream
+    /// is returned on failure, and inactive callback state can remain retained until safe native
+    /// teardown because upstream has no unregister operation. No automatic retry is performed.
     pub fn open_metadata(&mut self, queue_capacity: usize) -> Result<HealthMetadataStream, Error> {
         let health = self.live()?;
         HealthMetadataStream::open(health, queue_capacity)
@@ -299,6 +378,12 @@ impl HealthStatusChannel {
     ///
     /// With in-flight common requests, native cleanup is deferred until their
     /// completion; Close does not cancel them.
+    ///
+    /// # Errors
+    /// Native cleanup failures retain their categories and diagnostics; inconsistent successful
+    /// owner output is a protocol error. See the owner's lifecycle contract for whether a failed
+    /// release retains a retryable handle or consumes the one release attempt. No outcome implies
+    /// cancellation of pending work or immediate callback quiescence.
     pub fn close(&mut self) -> Result<(), Error> {
         if self.raw.is_null() {
             return Ok(());
