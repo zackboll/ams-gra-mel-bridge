@@ -31,6 +31,7 @@ from ._types import (
     MetadataCapability,
     PixelFormat,
     SensorType,
+    StackedConfig,
     UciId,
 )
 
@@ -70,6 +71,26 @@ class _RawImageConfig:
         return _native.UciIdV1(
             (_ctypes.c_uint8 * 16).from_buffer_copy(value.uuid),
             self._view(value.descriptive_label, "descriptive_label"),
+        )
+
+
+class _RawStackedConfig(_RawImageConfig):
+    """Exact existing C record; owns strings borrowed through synchronous Open."""
+
+    def __init__(self, config: StackedConfig) -> None:
+        StackedConfig.__post_init__(config)
+        self.buffers = []
+        self.raw = _native.IrStackedConfigV1(
+            channel_id=self._id(config.channel_id),
+            channel_type=_native.AMS_MEL_IR_CHANNEL_STACKED_IMAGE,
+            platform_id=self._id(config.platform_id),
+            sensor_location=_native.ComponentLocationV1(
+                offset_x_m=float(config.sensor_location.offset_x_m),
+                offset_y_m=float(config.sensor_location.offset_y_m),
+                offset_z_m=float(config.sensor_location.offset_z_m),
+                key=self._view(config.sensor_location.key, "key"),
+                system_name=self._view(config.sensor_location.system_name, "system_name"),
+            ),
         )
 
 

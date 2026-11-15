@@ -28,6 +28,7 @@ from ._types import (
     ImageControlConfig,
     InstrumentationConfig,
     ProviderVersion,
+    StackedConfig,
 )
 from ._ffi import (
     _RawControlConfig,
@@ -35,6 +36,7 @@ from ._ffi import (
     _RawImageConfig,
     _RawImageControlConfig,
     _RawInstrumentationConfig,
+    _RawStackedConfig,
 )
 from ._image import (
     ImageStream,
@@ -48,6 +50,7 @@ from ._instrumentation import (
 from ._health import (
     HealthStatusChannel,
 )
+from ._stacked import StackedChannel
 
 
 def abi_version() -> AbiVersion:
@@ -343,6 +346,36 @@ class Session:
                     _native.ams_mel_ir_stream_close(_ctypes.byref(owner), None, 0, None)
                 except BaseException:
                     pass
+            raise
+
+    def open_stacked_channel(self, config: StackedConfig) -> StackedChannel:
+        """Attach advertised StackedImage once, without enabling or acquiring images."""
+        self._require_open()
+        if type(config) is not StackedConfig:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "config must be StackedConfig")
+        bundle = _RawStackedConfig(config)
+        owner = _native.IrStackedHandle()
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_stacked_open(
+                    self._owner, _ctypes.byref(bundle.raw), _ctypes.byref(owner),
+                    diagnostic, len(diagnostic), _ctypes.byref(required),
+                )
+            )
+            if not owner.value:
+                raise _local_error(
+                    ErrorKind.PROTOCOL_INCONSISTENCY,
+                    "Stacked open succeeded without returning an owner",
+                )
+            return StackedChannel._from_owner(owner)
+        except BaseException:
+            # No wrapper owns this slot until construction succeeds. A single
+            # cleanup attempt must not mask the primary error or be retried.
+            try:
+                if owner.value:
+                    _native.ams_mel_ir_stacked_close(_ctypes.byref(owner), None, 0, None)
+            except BaseException:
+                pass
             raise
 
     def open_control_channel(self, config: ControlConfig) -> ControlChannel:
