@@ -7,4 +7,5 @@ build = "build.rs"
 
 [dependencies]
 ams-mel-common = { path = "../ams-mel-common" }
+ams-mel-rf = { path = "../ams-mel-rf" }
 ams-mel-sys = { path = "../ams-mel-sys" }

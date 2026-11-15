@@ -3,7 +3,7 @@
 //! `ams_mel_rf_admin_close` C exports. No C ABI is added or changed.
 //!
 //! [`RfAdmin`] loads its own provider object independently of [`RfData`](crate::RfData)
-//! and the IR [`Session`](crate::Session). This module exposes synchronous state
+//! and the IR IR `Session`. This module exposes synchronous state
 //! command acceptance only, not RF C2, state telemetry, or a hardware-transition
 //! completion interface.
 
@@ -24,7 +24,7 @@ const UNWRITTEN_ACCEPTANCE: u32 = u32::MAX;
 /// Published Common MEL `MFA_State` value commanded through
 /// [`RfAdmin::command_state`].
 ///
-/// These are MFA *states*, distinct from [`MfaMode`](crate::MfaMode). Each
+/// These are MFA *states*, distinct from IR `MfaMode`. Each
 /// variant's discriminant is exactly the corresponding
 /// `AMS_MEL_IR_MFA_STATE_*` value; RF Admin uses the identical Common MEL
 /// domain (`ams_mel_rf_mfa_state_t`). Only the fifteen published values 0..=14
@@ -33,11 +33,11 @@ const UNWRITTEN_ACCEPTANCE: u32 = u32::MAX;
 /// conversion, which rejects `MAX_EXCLUSIVE` (15) and every larger value.
 ///
 /// ```
-/// use ams_mel::{ErrorKind, RfMfaState};
+/// use ams_mel_rf::{ErrorKind, RfMfaState};
 /// assert_eq!(RfMfaState::OperateRxOnly.as_raw(), 8);
 /// assert_eq!(RfMfaState::try_from(6)?, RfMfaState::Standby);
 /// assert_eq!(RfMfaState::try_from(15).unwrap_err().kind(), &ErrorKind::InvalidArgument);
-/// # Ok::<(), ams_mel::Error>(())
+/// # Ok::<(), ams_mel_rf::Error>(())
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[repr(u32)]
@@ -137,7 +137,7 @@ impl TryFrom<u32> for RfMfaState {
 /// Safe owner of one independent RF `createAdminMEL` provider object
 /// (`ams_mel_rf_admin *`).
 ///
-/// An `RfAdmin` is not an IR [`Session`](crate::Session), RF DataMEL, or RF
+/// An `RfAdmin` is not an IR IR `Session`, RF DataMEL, or RF
 /// C2 owner and neither creates nor shares any of them. It owns the provider
 /// AdminMEL and a reference to its provider library. Raw pointers and
 /// provider objects are never exposed.
@@ -168,18 +168,18 @@ impl TryFrom<u32> for RfMfaState {
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::RfAdmin>();
+/// require_send::<ams_mel_rf::RfAdmin>();
 /// ```
 ///
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::RfAdmin>();
+/// require_sync::<ams_mel_rf::RfAdmin>();
 /// ```
 ///
 /// ```no_run
-/// use ams_mel::{RfAdmin, RfMfaState};
+/// use ams_mel_rf::{RfAdmin, RfMfaState};
 ///
-/// # fn main() -> Result<(), ams_mel::Error> {
+/// # fn main() -> Result<(), ams_mel_rf::Error> {
 /// let mut admin = RfAdmin::open("/opt/provider/librfmel.so", "configuration")?;
 /// if !admin.command_state(RfMfaState::Standby)? {
 ///     // The provider rejected the command; this is not an error.
