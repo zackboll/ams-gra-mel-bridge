@@ -127,11 +127,11 @@ impl Drop for Receiver {
 ///
 /// ```compile_fail
 /// fn send<T: Send>() {}
-/// send::<ams_mel::CommsMetadataStream>();
+/// send::<ams_mel_ir::CommsMetadataStream>();
 /// ```
 /// ```compile_fail
 /// fn sync<T: Sync>() {}
-/// sync::<ams_mel::CommsMetadataStream>();
+/// sync::<ams_mel_ir::CommsMetadataStream>();
 /// ```
 #[derive(Debug)]
 pub struct CommsMetadataStream {
@@ -156,7 +156,7 @@ impl ChannelView {
     /// on any failed Open receives one best-effort Close, preserving the primary error.
     ///
     /// ```no_run
-    /// use ams_mel::{Session, HealthConfig, CommsTestReport};
+    /// use ams_mel_ir::{Session, HealthConfig, CommsTestReport};
     /// fn receive_health(session: &Session, config: &HealthConfig)
     ///     -> Result<CommsTestReport, Box<dyn std::error::Error>> {
     ///     let mut health = session.open_health_channel(config)?;

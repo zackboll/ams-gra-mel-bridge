@@ -1,0 +1,10 @@
+[package]
+name = "ams-mel-ir"
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+[dependencies]
+ams-mel-common = { path = "../ams-mel-common" }
+ams-mel-sys = { path = "../ams-mel-sys" }
