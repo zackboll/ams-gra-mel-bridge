@@ -217,8 +217,76 @@ compare **all reference headers** against the bridge, with zero differing
 shared declarations. None of these preliminary attempts is reported as a
 passing final qualification.
 
-Final qualification results and delivery disposition follow once actual runs
-finish; planned/ongoing checks are not passing evidence.
+### Native compiler matrix and ABI evidence
+
+Four isolated native test trees under
+`/home/zboll/git/irmel-minimal-001-evidence` were configured from `native` with
+`AMS_MEL_BUILD_TESTS=ON`, explicit `/usr/bin/gcc` + `/usr/bin/g++` or
+`/usr/bin/clang` + `/usr/bin/clang++`, and `CMAKE_BUILD_TYPE=Debug` or `Release`.
+Each built with the existing warnings-as-errors policy and passed **821/821
+CTest cases**. GCC is 14.2.0; Clang is 19.1.7. All four also passed compilation
+of `native/tests/test_c_abi.c` with
+`-std=c11 -pedantic-errors -Wall -Wextra -Werror -fsyntax-only`.
+Release validation remains active, not assertion-only. Logs include each
+configure/build/CTest transcript and C11 probe; `matrix.exit` is **0**.
+The production export map and production DSO each contain exactly **331**
+names with exact equality; isolated GCC/Clang contract DSOs also have that
+same production set after excluding existing test-only symbols.
+
+Main advanced to `8ff6ec0574f4266d7cba0610f339209589778f65` (merged #228,
+independent Rust IR crate extraction). Incorporated with an ordinary merge,
+without changing that work. Native/Ada source bytes did not change in this
+mainline increment. Integrated Rust and all sequential qualification are
+being run on the merged tree, not assumed from the earlier base.
+
+### Integrated real-provider harness — PASS
+
+The clean full harness rerun completed with **exit 0**; transcripts are
+`/tmp/irmel-minimal-harness-final` and `/tmp/irmel-minimal-harness-final.log`.
+Recorded starting bridge commit/tree are
+`de0c8ef46791289c7e9574c0cf6a892e666e1aad` /
+`448d7cd6683003d0d0d328b026ce2629d61e04cb` (the ordinary #228 merge),
+with the harness diff recorded separately. Subsequent newline/provenance/report
+commits do not change compiled Ada or native implementation bytes. The
+consumer/negative executables were compiled with pinned GNAT **16.1.0** and
+GPRbuild **26.0.1** (tool banner 26.0.0), using `-O0` for Debug and `-O2` for
+Release, retaining `-gnatwa -gnatwe -gnata -gnatVa` in both.
+
+The actual reference and facade CMake compiler caches both name
+`/usr/bin/c++` (**GCC 14.2.0**, GNU C++20 and compatible system libstdc++ ABI).
+The shell's Alire-selected `c++ --version` is separately logged and is **not**
+misrepresented as the already-cached native compiler. Every reference-vendored
+header matches the bridge bytes (62 IR, 28 Common, 2 Math).
+
+| Qualification | Debug | Release |
+| --- | --- | --- |
+| Reference provider CTest | 4/4 passed | 4/4 passed |
+| Real Ada consumer exit code | 0 | 0 |
+| Registrations | 17 | 17 |
+| KeepAlive successful payloads | 4 | 4 |
+| Independent CommsTest future results | 8 | 8 |
+| Independently dequeued callbacks | 8 (2 per queue) | 8 (2 per queue) |
+| Expected incomplete commands | 4 | 4 |
+| CLI controls / pure negative controls | 5 / 14 passed | 5 / 14 passed |
+| Explicit cleanup steps | 24 passed | 24 passed |
+
+SHA-256 binary identities (full bytes, not build labels):
+
+| Binary | Debug SHA-256 | Release SHA-256 |
+| --- | --- | --- |
+| Reference provider | `c3be99cfabe7faf6b24c22158d64d84c61cb18307092a2dc4ff296565ed7d4dd` | `8df9c8b9032752ecbfdf38e4681f640b75ddcf733435ec2efdbc0a561e7c190f` |
+| Production facade | `528d30811b735ac7c9bf9a3105a748d92c737c9da2ed443f663c14e5c44039d5` | `e631d398da59abf2a43aee612fa325d3edf44e12cba98b23ae0b11d8c72ae17d` |
+| Ada consumer | `f3a9b61379a82194711307fe50f49b0dad78186217f8ce6569741728ea97e840` | `244ea13fbdccfdb042fcf593d46af46b105f4865fa96b11311d5c32778b34bc8` |
+
+The earlier harness attempt successfully ran both consumers/negative tests but
+its shell failed after an in-flight script edit changed the shell input offset.
+It is **not** counted as a successful harness invocation. The clean integrated
+rerun above, with preserved separate exit codes and no semantic script edits
+during execution, supersedes it. Final-newline checks also caught and corrected
+missing trailing newlines in the new scripts/report before final qualification.
+
+Final sequential repository results follow once actual runs finish;
+planned/ongoing checks are not passing evidence.
 
 ## Limitations
 
