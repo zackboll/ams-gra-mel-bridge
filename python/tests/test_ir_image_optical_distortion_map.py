@@ -237,6 +237,10 @@ class OpticalDistortionMapTests(unittest.TestCase):
                     close.assert_not_called()
                 self.assertTrue(stream.is_open)
                 same(self, stream.receive(), expected(0))
+                with mock.patch.object(n, "IrImageOdmEventHandle", side_effect=original), \
+                        mock.patch.object(n, P + "receive") as receive:
+                    error(self, m.ErrorKind.INTERNAL_ERROR, stream.receive)
+                    receive.assert_not_called()
 
     def test_every_float_field_preserves_ieee_classes_and_signed_zero(self):
         frd = (n.IrForwardRightDownV1 * 1)()

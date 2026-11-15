@@ -158,7 +158,7 @@ class OpticalDistortionMapStream(_NativeOwner):
         """
         self._require_open()
         _validate_timeout(timeout_ms)
-        event = _native.IrImageOdmEventHandle()
+        event = None
         close_attempted = False
 
         def close_event(diagnostic, required):
@@ -168,6 +168,7 @@ class OpticalDistortionMapStream(_NativeOwner):
                 ctypes.byref(event), diagnostic, len(diagnostic), ctypes.byref(required))
 
         try:
+            event = _native.IrImageOdmEventHandle()
             _call_with_diagnostic(
                 lambda diagnostic, required: _native.ams_mel_ir_image_odm_receive(
                     self._owner, timeout_ms, ctypes.byref(event), diagnostic,
@@ -188,7 +189,7 @@ class OpticalDistortionMapStream(_NativeOwner):
         except BaseException as error:
             # Preserve the primary error. Close may consume ownership even when
             # it fails or its diagnostic is malformed: never repeat an attempt.
-            if event.value and not close_attempted:
+            if event is not None and event.value and not close_attempted:
                 try:
                     _native.ams_mel_ir_image_odm_event_close(ctypes.byref(event), None, 0, None)
                 except BaseException:
