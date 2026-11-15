@@ -14,11 +14,12 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CRATES = ("ams-mel", "ams-mel-sys")
+CRATES = ("ams-mel-common", "ams-mel", "ams-mel-sys")
 LANDING = """<!doctype html>
 <html lang="en"><meta charset="utf-8"><title>AMS MEL Rust reference</title>
 <h1>AMS MEL Rust reference</h1>
-<ul><li><a href="ams_mel/index.html">ams-mel: safe public reference</a></li>
+<ul><li><a href="ams_mel_common/index.html">ams-mel-common: shared values</a></li>
+<li><a href="ams_mel/index.html">ams-mel: safe public reference</a></li>
 <li><a href="ams_mel_sys/index.html">ams-mel-sys: raw, unsafe C ABI reference</a></li></ul>
 <p>Local qualification build; not a publication or provider certification.</p>
 </html>
@@ -55,10 +56,10 @@ def verify_site(site):
         if path.is_symlink():
             raise ValueError(f"symlink in generated reference: {path}")
     for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html",
-                 "ams_mel/struct.Session.html", "src-files.js", "crates.js"):
+                 "ams_mel_common/index.html", "ams_mel/struct.Session.html", "src-files.js", "crates.js"):
         if not (site / name).is_file():
             raise ValueError(f"missing reference entry point: {name}")
-    for name in ("static.files", "src/ams_mel", "src/ams_mel_sys"):
+    for name in ("static.files", "src/ams_mel", "src/ams_mel_sys", "src/ams_mel_common"):
         if not (site / name).is_dir() or not any((site / name).rglob("*")):
             raise ValueError(f"missing reference assets: {name}")
     html_count = 0
