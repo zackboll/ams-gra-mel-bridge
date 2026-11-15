@@ -158,3 +158,101 @@ claim that real providers deliver images for KeepAlive.
 Positive reference-provider/hardware integration: **UNTESTED**. The reference
 minimal example does not produce image callbacks and cannot qualify release.
 No positive hardware or zero-copy acquisition claim is made.
+
+## Integrated qualification and corrective evidence
+
+Main advanced to `3e462a6d5448918813a81b45653f9340a66b7c3d` (RF crate
+extraction and documentation qualification repair). Ordinary merge commit
+`18e2a1c20452762f3767aa4eabf5d07e4dbbcd04` incorporates it without rewriting
+published history. Neither merged task changes the native ABI or IR coverage.
+
+Final native implementation, including terminal-Stop receive wakeup and the
+one-checkout reentry capacity correction, passed:
+
+- Four isolated native trees under `/home/zboll/git/irmel021-qualification`,
+  explicit GCC 14.2.0 / Clang 19.1.7 and Debug/Release, configured with
+  `cmake -S /home/zboll/git/ams-gra-mel-bridge/native -B TREE
+  -DAMS_MEL_BUILD_TESTS=ON -DCMAKE_C_COMPILER=CC -DCMAKE_CXX_COMPILER=CXX
+  -DCMAKE_BUILD_TYPE=CONFIG`, then `cmake --build TREE -j 2` and
+  `ctest --test-dir TREE --output-on-failure`: **821/821 in each tree**.
+  First-party flags include `-Wall -Wextra -Wpedantic -Werror`; Release tests
+  retain their checks under NDEBUG.
+- Each tree: `ctest --test-dir TREE -R '^image_checkout_'
+  --repeat until-fail:25 --output-on-failure`: **22 cases × 25 passed**, **2,200
+  total executions**. Logs are `*-qualified.log` with zero `*.exit` statuses.
+- `alr -n -C ada exec -- make -C /home/zboll/git/ams-gra-mel-bridge test-ada`:
+  complete safe-Ada smoke passed, including opaque checkout success/failure/
+  exception, Session-first close, blocked unregister and timeout tests.
+- `alr -n -C ada build`, `alr -n -C ada/tests run`, and the built safe checkout
+  example against the mock: passed with GNAT 16.1.0 and GPRbuild 26.0.0.
+- All native `*layout_probe.c` files plus the checkout test passed strict GCC
+  and Clang `-std=c11 -pedantic-errors -Wall -Wextra -Werror` checks. The test
+  compile supplies its normal `AMS_MEL_TEST_MOCK_PROVIDER` definition; an
+  initial ad-hoc syntax invocation omitted it and was corrected.
+- Production and contract DSO production-name sets both exactly equal the
+  **331-name** export map (no missing/extra production names).
+- Integrated workspace fmt, all-target Clippy and rustdoc with `-D warnings`:
+  passed. Integrated `make test-policy` passed, including 825-file vendor/four-
+  workflow source integrity. Whitespace/final-newline checks passed. Vendor
+  bytes and historical coverage remain unchanged.
+- `make check-ir-api-coverage`: **70/70 controls**, classifications unchanged at
+  **57 safe_ada**, 11 partial, 16 missing, 64 provider-only.
+- Pinned documentation generation at integrated commit `18e2a1c` passed using
+  `alr -n -C docs/toolchain exec --
+  /home/zboll/git/ams-gra-mel-bridge/.doc-tools/enhancer/bin/python
+  /home/zboll/git/ams-gra-mel-bridge/docs/tools/docs_ci.py build
+  --directory /home/zboll/git/ams-gra-mel-bridge/.doc-tools/irmel021-api-integrated
+  --gnatdoc-prefix /home/zboll/.alire/gnatdoc_bin_26.0.0_6e6e0320`.
+  Coverage **5145/5146**; **101 existing private-part warnings**, zero public or
+  checkout warnings. Checkout HTML parameters/errors/counters verified.
+
+An added FIFO assertion initially exposed a **test sequencing error**, not a
+waived failure: the test left both queue entries occupied before testing later
+reception. It now explicitly receives/releases IDs 3 then 4 and checks ordered
+logs. The corrected full matrix above was repeated afterward. A first long
+`make check` run observed that temporary failing assertion; its final rerun is
+reported separately, never counted as that first run passing.
+
+Hosted integrated run `43679457176` exposed a separate pre-existing Rust Comms
+test shutdown race: `isolated_native_controls/saturation` printed its completion
+marker and then dumped core because detached native completion work could log
+after the test removed the event directory. Local repetition reproduced it on
+iteration 10. The small test-only correction in `a2f0a74` waits for the existing
+Comms FinalOwner notification probe before removing the directory/dropping its
+DSO pin. It changes no production contract and weakens no check. The corrected
+control passed **100 consecutive repetitions**; logs
+`/tmp/irmel021-rust-isolated-fixed.log`. Final integrated full Rust runs and
+exact-HEAD hosted conclusions supersede that failed earlier hosted run.
+
+Hosted 50-repeat GCC Debug stress subsequently exposed a test-only race in the
+new allocation-injection executable: its process-global allocation countdown
+could overlap the asynchronously admitted KeepAlive completion. The injection
+is now thread-local (targeting only the receiver caller), and the established
+Return FinalOwner notification probe is awaited before final teardown. Neither
+allocation-failure assertion is removed. The final test bytes are repeated in
+all four native configurations with **100 repeats and parallel 4**, in addition
+to full 821-case runs: **821/821 and 22 × 100 passed in every configuration**,
+**8,800 checkout stress executions**. Final logs are
+`/home/zboll/git/irmel021-qualification/*-final-qualification.log`, all exit 0.
+The production source has not changed since the earlier fully qualified matrix;
+this correction changes only test injection/reclamation and reviewed evidence.
+
+## Delivery
+
+The final `alr -n -C ada exec -- make -C
+/home/zboll/git/ams-gra-mel-bridge check` rerun **passed** (exit 0), including
+both build-isolation directions, repeated native **821/821**, Ada formatting,
+70 coverage controls, full safe-Ada smoke and newline/whitespace validation.
+The serialized post-merge sequence passed native **821/821**, Python
+**665/665**, Rust **608 passed / 15 existing opt-in ignored** (including
+doctests). Logs: `/tmp/irmel021-integrated-test-{native,python,rust}.log`.
+Integrated `make test-ada`, pinned `alr -n -C ada build`,
+`alr -n -C ada/tests run`, and the safe checkout example all **passed**; the
+serialized sequence completed with exit 0. Logs are the matching
+`/tmp/irmel021-integrated-*.log` files. No dependency pin changed.
+
+Non-draft PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/227>.
+Auto-merge disabled; no approval or merge performed. Exact final HEAD/tree and
+workflow URLs are recorded in the PR delivery comment to avoid self-referential
+commit identities. **HOSTED_CI_PENDING** until all applicable exact-HEAD checks
+complete; superseded-HEAD passes are not substituted.
