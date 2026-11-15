@@ -145,6 +145,14 @@ fn attached(actual: &ChannelCapability, expected: &ChannelCapability) -> Result<
     zero_layout(actual)
 }
 
+fn stacked_config(capability: &ChannelCapability) -> StackedConfig {
+    StackedConfig::new(
+        capability.channel_id.clone(),
+        capability.platform_id.clone(),
+        capability.sensor_location.clone(),
+    )
+}
+
 fn returned(result: &ReturnResult, expected: CommandReturn, operation: &str) -> Result<()> {
     require(
         *result == ReturnResult::Completed { value: expected },
@@ -190,19 +198,28 @@ fn stub_address(kind: ChannelType) -> Result<u32> {
         ChannelType::CommandAndControl => Ok(2),
         ChannelType::HealthAndStatus => Ok(4),
         ChannelType::IrstImage => Ok(1),
+        ChannelType::StackedImage => Ok(6),
         _ => Err(format!("no exercised reference-stub address for {kind:?}")),
+    }
+}
+
+fn comms_result(
+    result: &CommsTestResult,
+    request: CommsTestRequest,
+    operation: &str,
+) -> Result<()> {
+    match result {
+        CommsTestResult::Completed { report } => correlated(*report, request),
+        _ => Err(format!(
+            "{operation}: expected correlated completion, got {result:?}"
+        )),
     }
 }
 
 fn comms(view: &mut ChannelView, request: CommsTestRequest, operation: &str) -> Result<()> {
     let mut owner = view.submit_comms_test(request).at(operation)?;
     let result = owner.wait(WAIT_MS).at(operation)?;
-    let checked = match &result {
-        CommsTestResult::Completed { report } => correlated(*report, request),
-        _ => Err(format!(
-            "{operation}: expected correlated completion, got {result:?}"
-        )),
-    };
+    let checked = comms_result(&result, request, operation);
     owner.close().at("close CommsRequest")?;
     checked?;
     println!("[OK] {operation}: {result:?}, request={request:?}");
@@ -253,10 +270,10 @@ fn run(path: &Path) -> Result<()> {
         println!("[OK] advertised[{i}] {cap:?}");
     }
     discovery(&caps)?;
-    println!("[STUB] StackedImage advertised, not attached or exercised by safe Rust");
     let c = select(&caps, ChannelType::CommandAndControl)?;
     let h = select(&caps, ChannelType::HealthAndStatus)?;
     let i = select(&caps, ChannelType::IrstImage)?;
+    let s = select(&caps, ChannelType::StackedImage)?;
     let mut c2 = session
         .open_control_channel(&ControlConfig::new(
             c.channel_id.clone(),
@@ -278,14 +295,30 @@ fn run(path: &Path) -> Result<()> {
             i.sensor_location.clone(),
         ))
         .at("attach Image control-only")?;
+    let mut stacked = session
+        .open_stacked_channel(&stacked_config(s))
+        .at("attach StackedImage")?;
     let mut c2_view = c2.channel_view().at("C2 View")?;
     let mut health_view = health.channel_view().at("Health View")?;
     let mut image_view = image.channel_view().at("Image View")?;
+    let actual = stacked
+        .capabilities()
+        .at("typed StackedImage capabilities")?;
+    attached(&actual, s)?;
+    let mut stacked_view = stacked.channel_view().at("StackedImage View")?;
+    require(
+        stacked_view
+            .capabilities()
+            .at("StackedImage View capabilities")?
+            == actual,
+        "StackedImage View capability snapshot differs from typed capability",
+    )?;
     attached(&health.capabilities().at("typed Health capabilities")?, h)?;
     for (view, cap) in [
         (&mut c2_view, c),
         (&mut health_view, h),
         (&mut image_view, i),
+        (&mut stacked_view, s),
     ] {
         attached(&view.capabilities().at("attached capabilities")?, cap)?;
         println!(
@@ -309,7 +342,8 @@ fn run(path: &Path) -> Result<()> {
     c2.enable().at("enable C2")?;
     health.enable().at("enable Health")?;
     image.start().at("start Image control-only")?;
-    println!("[OK] C2/Health enabled, Image started (enablement only, no acquisition buffers)");
+    stacked.enable().at("enable StackedImage")?;
+    println!("[OK] C2/Health/StackedImage enabled, Image started (enablement only, no acquisition buffers)");
     control_only(image.receive(0))?;
     println!("[STUB] Image receive(0): established control-only error; no frame acquired");
 
@@ -317,6 +351,7 @@ fn run(path: &Path) -> Result<()> {
         (&mut c2_view, c),
         (&mut health_view, h),
         (&mut image_view, i),
+        (&mut stacked_view, s),
     ] {
         let mut request = view.send_keepalive().at("KeepAlive submit")?;
         let result = request.wait(WAIT_MS).at("KeepAlive wait")?;
@@ -328,16 +363,17 @@ fn run(path: &Path) -> Result<()> {
             cap.channel_id.descriptive_label()
         );
     }
-    for (index, cap) in [c, h, i].iter().enumerate() {
+    for (index, kind) in REQUIRED.into_iter().enumerate() {
         let request = CommsTestRequest {
             command_id: 100 + index as u32,
-            channel_id: stub_address(cap.channel_types[0])?,
+            channel_id: stub_address(kind)?,
             request_id: 200 + index as u32,
         };
         let direct = match index {
             0 => &mut c2_view,
             1 => &mut health_view,
-            _ => &mut image_view,
+            2 => &mut image_view,
+            _ => &mut stacked_view,
         };
         comms(direct, request, "direct CommsTest")?;
         comms(&mut c2_view, request, "C2-routed CommsTest")?;
@@ -355,7 +391,7 @@ fn run(path: &Path) -> Result<()> {
             }
         }
     }
-    println!("[STUB] Health/Image common CommsTest callbacks not exposed in safe Rust; six futures and two C2 events checked, not eight callbacks");
+    println!("[STUB] Health/Image/Stacked common CommsTest callbacks not exposed in safe Rust; eight futures and two C2 events checked, not eight callbacks");
 
     let mut bit = c2
         .submit_bit(&BitCommand {
@@ -434,16 +470,21 @@ fn run(path: &Path) -> Result<()> {
     c2_view.close().at("close C2 View")?;
     health_view.close().at("close Health View")?;
     image_view.close().at("close Image View")?;
+    stacked_view.close().at("close StackedImage View")?;
     c2.close().at("close C2 (typed disable/detach)")?;
     health.close().at("close Health (typed disable/detach)")?;
     image.close().at("close Image")?;
+    stacked
+        .close()
+        .at("close StackedImage (typed disable/detach)")?;
+    println!("[OK] StackedImage explicitly closed (typed disable/detach)");
     // Retain metadata consumption owners through typed channel cleanup.
     c2_metadata.close().at("close C2 metadata")?;
     health_metadata.close().at("close Health metadata")?;
     image_metadata.close().at("close Image metadata")?;
     session.close().at("close Session")?;
     println!("[OK] requests, Views, typed channels, metadata and Session explicitly closed");
-    println!("[OK] three-channel reference-stub contract complete; no full C++ parity or hardware qualification");
+    println!("[OK] four-channel reference-stub contract complete; no full C++ parity or hardware qualification");
     Ok(())
 }
 
