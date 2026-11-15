@@ -1461,6 +1461,9 @@ ams_mel_ir_channel_submit_comms_test.restype = ctypes.c_int32
 ams_mel_ir_channel_get_capabilities = _LIBRARY.ams_mel_ir_channel_get_capabilities
 ams_mel_ir_channel_get_capabilities.argtypes = [IrChannelHandle, ctypes.POINTER(IrChannelCapabilityHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_get_capabilities.restype = ctypes.c_int32
+ams_mel_ir_channel_disable = _LIBRARY.ams_mel_ir_channel_disable
+ams_mel_ir_channel_disable.argtypes = [IrChannelHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_disable.restype = ctypes.c_int32
 ams_mel_ir_channel_close = _LIBRARY.ams_mel_ir_channel_close
 ams_mel_ir_channel_close.argtypes = [ctypes.POINTER(IrChannelHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_close.restype = ctypes.c_int32
@@ -2650,6 +2653,7 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_send_keepalive",
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",
+    "ams_mel_ir_channel_disable",
     "ams_mel_ir_channel_comms_metadata_open",
     "ams_mel_ir_channel_comms_metadata_receive",
     "ams_mel_ir_channel_comms_metadata_get_counters",

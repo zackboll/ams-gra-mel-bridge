@@ -433,6 +433,17 @@ package AMS.MEL.IR.Channel is
    --  native failure raises a provider error; finalization is non-raising.
    --  @param Channel View to close; externally serialize against its operations.
 
+   procedure Disable (Channel : View);
+   --  Explicitly disable C2, HealthAndStatus, StackedImage or control-only Image
+   --  without detaching it. Never-enabled and already-disabled channels are
+   --  successful no-ops. Subsequent Enable/Start attempts the provider again.
+   --  Acquisition Image, Instrumentation, Track and Scheduling are unsupported.
+   --  This neither cancels requests nor removes callbacks or proves quiescence.
+   --  A failed lifecycle requires cleanup; Disable is not silently retried.
+   --  @param Channel Weak view of an eligible required-family channel.
+   --  @exception Provider_Error Closed or ineligible channel, provider refusal,
+   --    provider exception, or uncertain lifecycle state.
+
    type Outcome is (Success, Rejected);
    --  Terminal upstream result category, not submission status or evidence of
    --  physical command execution. Native/provider failures raise exceptions.

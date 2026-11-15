@@ -6,6 +6,7 @@
 #include "internal.hpp"
 #include "internal/ir_channel.hpp"
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_disable.hpp"
 #include "internal/channel_comms_metadata.hpp"
 
 #include <irmel/library/stacked-image/StackedImageChannel.h>
@@ -83,7 +84,7 @@ static_assert(static_cast<std::uint32_t>(irmel::ChannelType::StackedImage) ==
               AMS_MEL_IR_CHANNEL_STACKED_IMAGE);
 static_assert(AMS_MEL_IR_CHANNEL_STACKED_IMAGE == 6U);
 
-enum class Lifecycle { Attached, Enabling, Enabled, Failed, Closed };
+enum class Lifecycle { Attached, Enabling, Enabled, Disabling, Failed, Closed };
 
 /* Owns the complete Stacked provider graph: the Session state (and thus
  * Control, manager and provider library), the attached generic Channel and its
@@ -157,8 +158,7 @@ bool cleanup(const std::shared_ptr<StackedState>& state, bool retain_orphan)
         state->enable_attempted = false;
     }
     bool ok = !state->disable_failed;
-    /* Inherited Channel::disable() is invoked only when Enable was attempted;
-     * this foundation has no separate public Disable. */
+    /* Only an outstanding enable cycle needs a cleanup Disable. */
     if (disable && channel) {
         try { if (channel->disable() != irmel::Return::Success) ok = false; }
         catch (...) { ok = false; }
@@ -285,6 +285,21 @@ CommonChannelAccess common_from_stacked(const ams_mel_ir_stacked *owner)
             state->comms_metadata_attempted = true;
             state->comms_metadata = queue;
             return true;
+        },
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_return_t *result,
+           char *out, std::size_t capacity, std::size_t *required) noexcept {
+            auto state = std::static_pointer_cast<StackedState>(erased);
+            const auto status = disable_attached(state, state->mutex, state->lifecycle,
+                Lifecycle::Attached, Lifecycle::Enabled, Lifecycle::Disabling,
+                Lifecycle::Failed, true, state->enable_attempted, state->disable_failed,
+                state->requests, state->channel,
+                [](const std::shared_ptr<StackedState>& claimed) noexcept {
+                    try { return finish_request(claimed); }
+                    catch (...) { retain_failed(claimed); return false; }
+                }, retain_failed, result);
+            diagnostic(status == AMS_MEL_OK ? "" : "Stacked Disable failed or unavailable",
+                       out, capacity, required);
+            return status;
         }};
 }
 } // namespace ams_mel_common

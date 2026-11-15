@@ -1197,6 +1197,34 @@ if(AMS_MEL_BUILD_TESTS)
         add_test(NAME ${discovery_test} COMMAND ${discovery_test})
     endforeach()
 
+    add_executable(test_channel_disable_unsupported tests/test_channel_disable_unsupported.c)
+    target_compile_features(test_channel_disable_unsupported PRIVATE c_std_11)
+    set_target_properties(test_channel_disable_unsupported PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_channel_disable_unsupported PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_channel_disable_unsupported PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_channel_disable_unsupported mock_ir_provider)
+    ams_mel_warnings(test_channel_disable_unsupported)
+    add_test(NAME channel_disable_unsupported COMMAND test_channel_disable_unsupported)
+
+    add_executable(test_channel_disable tests/test_channel_disable.c)
+    target_compile_features(test_channel_disable PRIVATE c_std_11)
+    set_target_properties(test_channel_disable PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_channel_disable PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_channel_disable PRIVATE ams_mel::ams_mel_c ${CMAKE_DL_LIBS} Threads::Threads)
+    add_dependencies(test_channel_disable mock_ir_provider)
+    ams_mel_warnings(test_channel_disable)
+    foreach(family IN ITEMS c2 health stacked image)
+        foreach(case IN ITEMS never once cycles fail refuse throw reentry close concurrent pending enable-inflight detach-fail failed-detach)
+            add_test(NAME channel_disable_${family}_${case} COMMAND test_channel_disable ${family} ${case})
+            set_tests_properties(channel_disable_${family}_${case} PROPERTIES TIMEOUT 30)
+        endforeach()
+    endforeach()
+
+    add_test(NAME channel_disable_image_failed_stop COMMAND test_channel_disable image failed-stop)
+    set_tests_properties(channel_disable_image_failed_stop PROPERTIES TIMEOUT 30)
+
     add_executable(test_c2_comms_registration tests/test_c2_comms_registration.c)
     set_target_properties(test_c2_comms_registration PROPERTIES
         C_EXTENSIONS OFF C_STANDARD 11 C_STANDARD_REQUIRED YES)
