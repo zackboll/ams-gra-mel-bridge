@@ -1957,7 +1957,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. IRMEL-ADA-016 adds the required StackedImage owner foundation; IRMEL-ADA-019 adds separate non-terminal Disable for required channel profiles; Close still detaches.",
       "limitations": [
         "Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats."
       ],
@@ -2004,7 +2004,7 @@
           "symbol": "Run"
         }
       ],
-      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.",
+      "notes": "Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-016 adds the required StackedImage owner foundation; IRMEL-ADA-019 adds separate non-terminal Disable for required channel profiles; Close still detaches.",
       "limitations": [],
       "representation": []
     },
