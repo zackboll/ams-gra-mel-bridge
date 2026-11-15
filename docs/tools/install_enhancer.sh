@@ -16,5 +16,5 @@ python3 -m venv "$1"
 # pip verifies the release bytes before installation and records the exact URL
 # and digest in PEP 610 direct_url.json. No source build or index dependency.
 "$1/bin/python" -m pip install --no-deps --only-binary=:all: --require-hashes -r "$requirements"
-test "$("$1/bin/gnatdoc-enhancer" --version)" = 0.1.5
+test "$("$1/bin/gnatdoc-enhancer" --version)" = 0.1.6
 "$1/bin/python" -c 'import runpy,sys; m=runpy.run_path(sys.argv[1]); m["tool"]()' "$builder"

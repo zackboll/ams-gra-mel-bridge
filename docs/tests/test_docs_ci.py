@@ -190,6 +190,12 @@ class PipelineTests(unittest.TestCase):
         def export(*args):
             exported.mkdir()
 
+        def authored(*args, **kwargs):
+            output = args[4]
+            output.mkdir()
+            (output / 'index.html').write_text('page')
+            (output / 'style.css').write_text('text')
+
         with mock.patch.object(source_epoch, 'export', side_effect=export), \
              mock.patch.object(gnatdoc_inventory, 'specifications', return_value=({}, {})), \
              mock.patch.object(source_epoch, 'run'), \
@@ -203,7 +209,7 @@ class PipelineTests(unittest.TestCase):
                  'home': 'index.html', 'guides': [], 'stylesheet': 'style.css'}), \
              mock.patch.object(build_docs_portal, 'package_map', return_value={}), \
              mock.patch.object(build_docs_portal, 'regular', return_value='text'), \
-             mock.patch.object(build_docs_portal, 'render', return_value='page'), \
+             mock.patch.object(source_epoch, 'enhance', side_effect=authored), \
              mock.patch.object(validate_docs, 'validate'):
             source_epoch.generate(self.repo, self.sha, exported, self.root, self.root / 'generation.log')
         value = json.loads((exported / 'obj/docs/warnings.json').read_bytes())
