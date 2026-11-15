@@ -1839,33 +1839,54 @@ extern "C" ams_mel_status_t ams_mel_ir_c2_metadata_register_comms_test(
     if (!metadata || !metadata->state || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
     auto channel = metadata->channel.lock();
     if (!channel) return AMS_MEL_PROVIDER_FAILED;
+    CommonRequestClaim claim;
+    std::shared_ptr<irmel::C2Channel> provider;
     try {
-        std::lock_guard lock{channel->mutex};
-        if (channel->comms_metadata_attempted) {
-            diagnostic("CommsTest metadata registration already attempted", out, capacity, required);
-            return AMS_MEL_INVALID_ARGUMENT;
-        }
-        if (channel->lifecycle != C2Lifecycle::Attached &&
-            channel->lifecycle != C2Lifecycle::Enabled) return AMS_MEL_PROVIDER_FAILED;
-        channel->comms_metadata_attempted = true;
+        /* Prepare the closure before consuming the one-shot. Provider entry
+         * must be unlocked: registration can synchronously reenter Close. */
         auto state = metadata->state;
-        const auto result = channel->c2->registerMetadataCallback(
-            std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)>{
-                [state](irmel::Channel&, const irmel::ChannelCommsTestRep *value) noexcept {
-                    metadata_callback(state, [&] { return copy_comms_test(value); });
-                }});
+        std::function<void(irmel::Channel&, const irmel::ChannelCommsTestRep *const)> callback{
+            [state](irmel::Channel&, const irmel::ChannelCommsTestRep *value) noexcept {
+                metadata_callback(state, [&] { return copy_comms_test(value); });
+            }};
+        {
+            std::lock_guard lock{channel->mutex};
+            if (channel->comms_metadata_attempted) {
+                diagnostic("CommsTest metadata registration already attempted", out, capacity, required);
+                return AMS_MEL_INVALID_ARGUMENT;
+            }
+            if (channel->lifecycle != C2Lifecycle::Attached &&
+                channel->lifecycle != C2Lifecycle::Enabled) return AMS_MEL_PROVIDER_FAILED;
+            provider = channel->c2;
+            channel->comms_metadata_attempted = true;
+            ++channel->requests;
+            claim = CommonRequestClaim{channel, finish_c2_request, "deferred C2 cleanup failed"};
+        }
+        const auto result = provider->registerMetadataCallback(std::move(callback));
+        /* Drop the temporary provider reference before cleanup drains callbacks
+         * and releases the graph. Keep the provider's original failure primary. */
+        provider.reset();
+        const bool cleaned = claim.finish();
         if (result != irmel::Return::Success) {
             diagnostic("ChannelCommsTest callback registration failed", out, capacity, required);
             return AMS_MEL_PROVIDER_FAILED;
         }
+        if (!cleaned) {
+            diagnostic("deferred C2 cleanup failed", out, capacity, required);
+            return AMS_MEL_PROVIDER_FAILED;
+        }
         return AMS_MEL_OK;
     } catch (const std::exception& error) {
+        provider.reset();
+        (void)claim.finish();
         const char *what = error.what();
         const std::string_view text = what ? std::string_view{what} : std::string_view{};
         diagnostic(!text.empty() && valid_utf8(text) ? text : "metadata registration exception",
                    out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     } catch (...) {
+        provider.reset();
+        (void)claim.finish();
         diagnostic("unknown metadata registration exception", out, capacity, required);
         return AMS_MEL_PROVIDER_EXCEPTION;
     }
