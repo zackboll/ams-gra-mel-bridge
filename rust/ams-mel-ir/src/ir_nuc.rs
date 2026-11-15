@@ -63,7 +63,7 @@ pub struct NucTempPoint {
 /// no absence, calibration quality or uncertainty is inferred from its omission.
 ///
 /// ```
-/// use ams_mel::{NucPixelValue, NucTempData};
+/// use ams_mel_ir::{NucPixelValue, NucTempData};
 /// let empty_message = NucTempData { points: Vec::new() };
 /// assert!(empty_message.points.is_empty());
 /// // Width is part of the value, even when both magnitudes fit in eight bits.
@@ -144,11 +144,11 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::NucStream>();
+/// require_send::<ams_mel_ir::NucStream>();
 /// ```
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::NucStream>();
+/// require_sync::<ams_mel_ir::NucStream>();
 /// ```
 #[derive(Debug)]
 pub struct NucStream {

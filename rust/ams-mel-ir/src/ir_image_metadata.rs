@@ -144,11 +144,11 @@ type Close<T> = unsafe extern "C" fn(*mut *mut T, *mut c_char, usize, *mut usize
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::ImageMetadataStream>();
+/// require_send::<ams_mel_ir::ImageMetadataStream>();
 /// ```
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::ImageMetadataStream>();
+/// require_sync::<ams_mel_ir::ImageMetadataStream>();
 /// ```
 #[derive(Debug)]
 pub struct ImageMetadataStream {

@@ -17,10 +17,12 @@ def fixture():
     files = {n: b'<html></html>' for n in (
         'ams_mel/index.html', 'ams_mel_sys/index.html', 'ams_mel_common/index.html',
         'ams_mel_rf/index.html', 'ams_mel_rf/struct.RfAdmin.html', 'ams_mel/struct.RfAdmin.html',
-        'ams_mel/struct.Session.html',
+        'ams_mel/struct.Session.html', 'ams_mel_ir/index.html',
+        'ams_mel_ir/struct.Session.html',
         'ams_mel_sys/fn.ams_mel_session_close.html', 'help.html', 'settings.html',
         'src/ams_mel/lib.rs.html', 'src/ams_mel_sys/lib.rs.html',
-        'src/ams_mel_common/lib.rs.html', 'src/ams_mel_rf/lib.rs.html')}
+        'src/ams_mel_common/lib.rs.html', 'src/ams_mel_rf/lib.rs.html',
+        'src/ams_mel_ir/lib.rs.html')}
     files.update({n: b'/* qualified generated resource */' for n in (
         'crates.js', 'src-files.js', 'static.files/main.js', 'search.index/root.js',
         'trait.impl/trait.js', 'type.impl/type.js')})
@@ -53,6 +55,12 @@ class AssemblyTests(unittest.TestCase):
         for name in self.files:
             url = live.file_url('https://owner.github.io/project/', 'rust/' + name)
             self.assertTrue(url.startswith('https://owner.github.io/project/rust/'))
+
+    def test_missing_independent_ir_entry_rejected(self):
+        missing = dict(self.files)
+        missing.pop('ams_mel_ir/index.html')
+        with self.assertRaisesRegex(ValueError, 'missing Rustdoc entry point'):
+            rust.validate(missing)
 
     def test_complete_asset_mutations_fail_even_if_graph_does_not_reference_them(self):
         for name in self.files:

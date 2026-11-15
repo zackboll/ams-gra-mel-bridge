@@ -200,7 +200,7 @@ impl Default for ScanParameters {
 /// even if its payload happens to equal a published value.
 ///
 /// ```
-/// use ams_mel::{MfaState, MfaMode, ModeCommand, ScanParameters};
+/// use ams_mel_ir::{MfaState, MfaMode, ModeCommand, ScanParameters};
 /// let command = ModeCommand {
 ///     command_id: u32::MAX,
 ///     state: MfaState::Standby,
