@@ -12,6 +12,24 @@ Set `AMS_MEL_NATIVE_LIB` to the absolute full path of `libams_mel_c.so.0` (or
 separate path passed to `Session.open` or `RFAdmin.open`; Python never loads
 provider factories or models provider C++ interfaces directly.
 
+## Python documentation
+
+The [Python documentation](https://zackboll.github.io/ams-gra-mel-bridge/python/index.html)
+provides setup, ownership/error rules, IR and RF Admin workflows, and a searchable
+reference for every public `ams_mel.__all__` export. Its signatures, fields and
+enum members are generated from the checked-in Python source without loading a
+provider. The authored guides live in `docs/python/`.
+
+The current safe interface includes Session discovery/version queries, Mono8 and
+control-only Image, general C2 Mode and ConfigSet, navigation commands, Health and
+Instrumentation, common channel services/callbacks, StackedImage foundation,
+ordinary and optional metadata receivers including ODM, and independent RF Admin.
+It does not expose Python Track/Scheduling owners, stacked acquisition, generic
+buffer checkout, CameraCommand submission, LineOfSightQuaternion reception or
+RF APIs beyond Admin. The later task-labelled sections retain their original
+implementation and qualification context; use the published guides/reference for
+the current combined API.
+
 ## Internal package layout (PY-PKG-001)
 
 `ams_mel/__init__.py` explicitly re-exports the existing public API. Public
@@ -153,9 +171,10 @@ See [the focused contract and mock qualification](../docs/py-mel-009-image-camer
 ### Existing streams and channels
 
 The current API supports RF Admin state commands (see below), façade ABI/version
-queries, provider `Session` open/version/close, host-memory Mono8 `ImageStream`
-open/start/receive/counters/stop/close, and the existing IR CommandAndControl
-Operate/TaskSched plus BIT no-op slices. `Session.open_control_channel()` returns
+queries, provider `Session` discovery/open/version/close, host-memory Mono8 and
+control-only `ImageStream`, general C2 Mode and ConfigSet commands, navigation,
+Health/Instrumentation, StackedImage foundation and the callback receivers listed
+in the Python reference. `Session.open_control_channel()` returns
 a `ControlChannel`; `enable()` is explicit. `submit_operate()` returns an
 asynchronous `ModeRequest`, while `submit_bit_noop()` returns a `ReturnRequest`
 without exposing unsupported BIT payloads. Return waits yield `ReturnCompleted`
@@ -190,10 +209,9 @@ on normal context exit.
 This is not a native extension or a zero-copy interface. The current Session +
 IR Mono8 + C2 Operate/TaskSched + BIT no-op slice is also validated by the opt-in real Squall
 client in `integration/squall`; that client adds no binding API and uses no
-external Python dependency. Payload-bearing BIT, additional C2 commands and
-callbacks beyond the four metadata families below, RF beyond the Admin slice,
-NumPy/zero-copy image
-views, wheels, and PyPI publication are not included.
+external Python dependency. That client exercises its stated slice rather than
+every Python feature. Payload-bearing BIT, RF beyond the Admin slice,
+NumPy/zero-copy image views, wheels, and PyPI publication are not included.
 
 ## General IR C2 ModeCmd (PY-MEL-011)
 

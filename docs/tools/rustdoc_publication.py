@@ -212,9 +212,10 @@ def verify_record(files, record, context):
     require(validate(files) == record['counts'], 'Rustdoc measured inventory mismatch')
 
 
-def verify_assembly(directory, context, record):
+def verify_assembly(directory, context, record, *, published=None):
+    """Verify Ada+Rust bytes, optionally after another subtree's verified reversal."""
     ada = publication.files(directory / 'ada-qualified')
-    actual = publication.files(directory / 'published')
+    actual = publication.files(directory / 'published') if published is None else published
     rust = {n.removeprefix('rust/'): d for n, d in actual.items() if n.startswith('rust/')}
     verify_record(rust, record, context)
     require(actual == assembled(ada, rust), 'assembled publication differs from authorized transformation')

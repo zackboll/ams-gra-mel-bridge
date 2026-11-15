@@ -71,7 +71,11 @@ class GeneratedSourceTests(unittest.TestCase):
         directory.mkdir()
         shutil.copytree(self.output / 'pristine', directory / 'pristine')
         shutil.copytree(self.output / 'published', directory / 'ada-qualified')
-        context = docs_ci.identity(self.repo)
+        # This synthetic child commit is not the hosted event's PR HEAD. Bind
+        # its real Git identity as explicitly non-deployable fixture material;
+        # do not weaken docs_ci's event-bound production identity checks.
+        with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
+            context = docs_ci.identity(self.repo)
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             temp = Path(temp)
             epoch.export(self.repo, self.candidate, temp / 'source')
@@ -107,7 +111,7 @@ class GeneratedSourceTests(unittest.TestCase):
     def test_release_label_and_version_tampering_cannot_authorize_itself(self):
         for name, before, after in (
             ('api/index.html', b'Filter navigation links</label>', b'Search documentation</label>'),
-            ('api/presentation.json', b'"enhancer_version": "0.1.5"',
+            ('api/presentation.json', ('"enhancer_version": "' + presentation.VERSION + '"').encode(),
              b'"enhancer_version": "0.1.0.dev0"'),
         ):
             with self.subTest(path=name):

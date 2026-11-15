@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Build a fixed, offline portal around (never inside) native GNATdoc output."""
+"""Consumer-owned portal identities and native destination audit (no renderer)."""
 
-import argparse
 import collections
-import html
 import json
 import re
 import sys
@@ -12,8 +10,6 @@ from pathlib import Path
 from gnatdoc_inventory import ROOT, specifications
 
 sys.path.insert(0, str(ROOT / "docs/tools"))
-from example_sources import References, render as render_examples, verify_rendered
-import api_catalog
 
 GUIDES = (
     ("getting-started", "Getting Started"),
@@ -94,74 +90,40 @@ def group(name):
     return "Shared/Core"
 
 
-def render(text, page, data, packages, root=ROOT, references=None):
-    prefix = "../" if page.startswith("guides/") else ""
-
-    def package_link(name, directory=False):
-        if name not in packages:
-            raise PortalError(f"unknown package reference: {name}")
-        marker = ' data-package-entry="' + name + '"' if directory else ""
-        return f'<a{marker} href="{prefix}{packages[name]}">{html.escape(name)}</a>'
-
-    nav = '<nav aria-label="Documentation"><ul>'
-    nav += f'<li><a href="{prefix}index.html">Home</a></li>'
-    nav += "".join(f'<li><a href="{entry["path"].removeprefix("guides/") if prefix else entry["path"]}">{entry["label"]}</a></li>'
-                   for entry in data["guides"])
-    nav += f'<li><a href="{prefix}api/index.html">Complete API Reference</a></li></ul></nav>'
-    directory = '<section aria-label="Public package directory">'
-    for category in GROUPS:
-        directory += f'<h3>{category}</h3><ul>'
-        directory += "".join(f'<li>{package_link(name, True)}</li>'
-                             for name in packages if group(name) == category)
-        directory += '</ul>'
-    directory += '</section>'
-    text = text.replace("{{navigation}}", nav).replace("{{package-directory}}", directory)
-    text = re.sub(r"\{\{package:([A-Za-z0-9_.]+)\}\}",
-                  lambda m: package_link(m[1]), text)
-    if page == "guides/api-map.html":
-        if references is None:
-            raise PortalError("native authority required for catalog rendering")
-        catalog = api_catalog.inventory(root, references)
-        for token, scopes in (("{{public-symbol-index}}", ("stable",)),
-                              ("{{example-usage-index}}", ("additional", "operation"))):
-            if text.count(token) != 1:
-                raise PortalError("missing/duplicate catalog placeholder")
-            text = text.replace(token, api_catalog.render(catalog, scopes), 1)
-    if page == "guides/examples.html":
-        try:
-            if references is None:
-                raise PortalError("native authority required for example rendering")
-            text = render_examples(text, root, references)
-            verify_rendered(text, root, references)
-        except (ValueError, OSError) as exc:
-            raise PortalError(str(exc)) from exc
-    if "{{" in text or "}}" in text:
-        raise PortalError("unresolved portal placeholder")
-    return text
-
-
 def build(site, root=ROOT):
-    data = manifest(root)
-    packages = package_map(site, root)
-    references = References(root, site)
-    paths = [data["home"], *(entry["path"] for entry in data["guides"]), data["stylesheet"]]
-    # Validate all inputs and output ancestors before writing any portal file.
-    sources = {name: regular(root / "docs" / name) for name in paths}
-    for name in paths:
-        path = site / name
-        if any(p.is_symlink() for p in (path, *path.parents)):
-            raise PortalError("symlink in portal output")
-    rendered = {name: render(text, name, data, packages, root, references) if name.endswith(".html") else text
-                for name, text in sources.items()}
-    for name, text in rendered.items():
-        target = site / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
-    return packages
+    """Compatibility entry: official renderer only, preserving native input.
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("site", type=Path)
-    args = parser.parse_args()
-    print(json.dumps(build(args.site), indent=2, sort_keys=True))
+    Production uses source_epoch instead. Kept for isolated portal mutation
+    qualification, not as an alternative rendering implementation.
+    """
+    import shutil
+    import tempfile
+    import build_enhanced_site as presentation
+    import authored_html
+    from check_doc_coverage import measure
+    from ada_gnatdoc_enhancer.pipeline import enhance, verify
+    presentation.tool()
+    report = measure(site, root)
+    ledger = root / 'docs/gnatdoc-native-anchors.json'
+    original = ledger.read_bytes()
+    generated = root / 'docs/gnatdoc-authored.json'
+    try:
+        ledger.write_text(json.dumps(report['native']))
+        config = authored_html.bind(root, site, report)
+        with tempfile.TemporaryDirectory(prefix='mel-portal-compat-') as temp:
+            stage = Path(temp) / 'site'
+            shutil.copytree(site / 'api', stage / 'api')
+            enhance(config, stage)
+            verify(config, stage)
+            data = manifest(root)
+            for name in [data['home'], *(g['path'] for g in data['guides']), data['stylesheet']]:
+                target = site / name
+                if any(p.is_symlink() for p in (target, *target.parents)):
+                    raise PortalError('symlink in portal output')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((stage / name).read_bytes())
+    finally:
+        ledger.write_bytes(original)
+        if generated.is_file() and not generated.is_symlink():
+            generated.unlink()
+    return package_map(site, root, report['native'])

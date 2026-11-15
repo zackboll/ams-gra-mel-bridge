@@ -169,6 +169,7 @@ class AssemblyTests(unittest.TestCase):
                 self.assertIsNone(body)
 
     def test_live_exhaustively_checks_every_file_with_bounded_workers(self):
+        from python_reference_fixtures import site as python_site
         published = self.directory / 'published'
         published.mkdir()
         for name, data in self.files.items():
@@ -176,6 +177,11 @@ class AssemblyTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
         (published / 'index.html').write_bytes(b'<main>qualified</main>')
+        python_files = python_site()
+        for name, data in python_files.items():
+            path = published / 'python' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
         ada = self.directory / 'ada-qualified'
         ada.mkdir()
         (ada / 'index.html').write_bytes(b'<main>qualified</main>')
@@ -187,7 +193,7 @@ class AssemblyTests(unittest.TestCase):
 
         with mock.patch.object(live, 'get_entity', side_effect=fetch):
             ci.live(self.directory, 'https://owner.github.io/project/', self.directory / 'live.json')
-        self.assertEqual(len(seen), len(self.files) + 1)
+        self.assertEqual(len(seen), len(self.files) + len(python_files) + 1)
         self.assertEqual(len({url for url, _ in seen}), len(seen))
         self.assertEqual(sum(flag for _, flag in seen), len(self.files))
 

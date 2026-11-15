@@ -13,6 +13,8 @@ _DIAGNOSTIC_CAPACITY = 4096
 
 
 class ErrorKind(Enum):
+    """Structured local/native failure categories used by MelError, separate from MEL rejection codes."""
+
     INVALID_ARGUMENT = "invalid_argument"
     LIBRARY_LOAD_FAILED = "library_load_failed"
     SYMBOL_NOT_FOUND = "symbol_not_found"

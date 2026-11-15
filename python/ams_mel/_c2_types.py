@@ -11,6 +11,8 @@ from ._types import CommsTestReport, UciId
 
 
 class C2MetadataKind(IntEnum):
+    """Discriminant for CommandStatus, BIT configuration/status and separately enabled CommsTest callbacks."""
+
     COMMAND_STATUS = 1
     BIT_CONFIGURATION = 2
     BIT_STATUS = 3
@@ -90,6 +92,8 @@ class C2BitControlInterface(IntEnum):
 
 @dataclass(frozen=True)
 class C2CommandStatus:
+    """Command-message status and cannot-comply reason; ACCEPTED does not establish hardware completion."""
+
     command_id: int
     state: C2CommandState
     reason: C2CannotComply
@@ -98,6 +102,8 @@ class C2CommandStatus:
 
 @dataclass(frozen=True)
 class C2BitType:
+    """Owned BIT advertisement with IDs, item names, accepted interface and expected duration in nanoseconds."""
+
     bit_id: UciId
     accepted_interface: C2BitControlInterface
     bit_item_names: tuple[str, ...]
@@ -107,6 +113,8 @@ class C2BitType:
 
 @dataclass(frozen=True)
 class C2BitConfiguration:
+    """Complete ordered BIT type advertisements; these values do not enable payload-bearing BIT submission."""
+
     bit_types: tuple[C2BitType, ...]
 
 
@@ -115,6 +123,8 @@ _C2Payload = Union[C2CommandStatus, C2BitConfiguration, BitStatus, CommsTestRepo
 
 @dataclass(frozen=True)
 class C2MetadataEvent:
+    """Owned C2 callback whose payload type must exactly match its kind."""
+
     kind: C2MetadataKind
     payload: _C2Payload
 
@@ -129,6 +139,8 @@ class C2MetadataEvent:
 
 @dataclass(frozen=True)
 class C2MetadataCounters:
+    """Cumulative uint64 callback counts, including incoming FIFO drops and malformed/unsupported events."""
+
     events_received: int
     events_dropped_queue_full: int
     malformed_or_unsupported: int

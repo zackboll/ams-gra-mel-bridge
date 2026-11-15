@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python ownership and errors — AMS GRA MEL Bridge</title>
+  <link rel="stylesheet" href="assets/reference.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <p>AMS MEL Python documentation</p>
+  {{navigation}}
+</header>
+<main id="main">
+  <h1>Ownership and errors</h1>
+  <p>The safe interface distinguishes immutable values, native owners, weak channel
+  views and observations of asynchronous work. These distinctions determine what
+  remains valid after close and which operations require application synchronization.</p>
+
+  <section id="lifetimes">
+    <h2>What an object owns</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Object</th><th>Lifetime contract</th></tr></thead>
+      <tbody>
+        <tr><td>Frames, metadata, capabilities and result records</td><td>Python-owned scalars, strings, bytes and nested immutable values. Returned snapshots remain valid after owner closure and actual provider unload.</td></tr>
+        <tr><td>{{api:Session}} and typed channel owners</td><td>Explicit native ownership. Children do not keep Python parent objects alive; the native graph retains provider resources/code as required by active work.</td></tr>
+        <tr><td>{{api:ChannelView}}</td><td>Only a native weak-view wrapper. It retains no typed source, Session, provider channel or library. A surviving view cannot prolong the source channel's lifetime.</td></tr>
+        <tr><td>Request owners</td><td>An admitted native request is independent of its Python parents. Closing the public observer does not cancel pending provider work or guarantee provider unload.</td></tr>
+        <tr><td>Metadata receivers</td><td>Independent native consumption state and a bounded FIFO. Closing a receiver stops its consumption, not the parent channel or callback registration.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>is_open</code> reports local handle ownership. It is not a test for
+    enablement, completion, callback admission, hardware health or safe unloading.
+    In particular, a {{api:ChannelView}} can remain open after its source disappears,
+    while its channel operations fail with <code>ErrorKind.PROVIDER_FAILED</code>.
+    Closing the weak wrapper remains independent.</p>
+    <p>Prefer orderly local cleanup, while retaining the actual native lifetime
+    contract: a child may outlive the Session object; queued callbacks can drain after
+    typed-channel teardown; and an admitted request may retain the provider until its
+    work settles. Failure paths can deliberately retain uncertain native graphs.
+    Python does not infer quiescence or force unloading.</p>
+  </section>
+
+  <section id="closing">
+    <h2>Close and context managers</h2>
+    <p>Use the documented factory instead of constructing an owner class directly.
+    Explicit <code>close()</code> reports cleanup errors. Finalizers are best-effort
+    and non-raising, so they cannot replace deterministic cleanup and error handling.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Owners</th><th>Cleanup idiom</th></tr></thead>
+      <tbody>
+        <tr><td>Session, ImageStream, ControlChannel, StackedChannel, HealthStatusChannel, InstrumentationChannel, RFAdmin and ChannelView</td><td>Support <code>with</code>. Entry returns the already open owner; Start or Enable remains explicit.</td></tr>
+        <tr><td>All public metadata receiver classes</td><td>Support <code>with</code> through their declared or inherited context protocol.</td></tr>
+        <tr><td>{{api:NavigationRequest}} and {{api:InstrumentationRequest}}</td><td>Support <code>with</code> as well as explicit close.</td></tr>
+        <tr><td>{{api:ModeRequest}}, {{api:ReturnRequest}} and {{api:CommsRequest}}</td><td>Do not implement a context manager. Close explicitly, normally in <code>finally</code>.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>For the binding's context managers, normal exit reports close failures. If the
+    body already raised, cleanup preserves that original exception. Closing a weak
+    view only releases its wrapper. Closing a metadata consumer does not reopen a
+    consumed registration attempt.</p>
+    <p>Close failure does not have a universal retry rule. The native operation may
+    already have consumed the handle. Some retained handles are explicitly retryable;
+    other owners suppress further native attempts once consumption is uncertain.
+    For example, {{api:StackedChannel.close}} recognizes a specific retained detach
+    failure, {{api:OpticalDistortionMapStream.close}} guards against uncertain repeat
+    release, and {{api:RFAdmin.close}} consumes its handle even if shutdown fails.
+    Follow the concrete owner's contract rather than adding a generic close-retry loop.</p>
+  </section>
+
+  <section id="requests">
+    <h2>Submission, waiting and admission</h2>
+    <p>Successful submission means a request was admitted. It does not establish that
+    the command completed or that hardware changed state. Each request's
+    <code>wait(timeout_ms)</code> returns a terminal value or raises a structured
+    failure. Zero polls; timeouts are finite unsigned 32-bit millisecond values
+    (<code>0</code> through <code>4294967295</code>), and Boolean values are rejected.</p>
+    <p>A timeout preserves the request owner and does not cancel work. Terminal
+    results are cached natively and can be observed again while the owner remains
+    open. Closing the request releases only the public observer. Pending work can
+    continue to occupy admission capacity; closing an observer is not a way to turn
+    the Session's admission limit into a cancellation mechanism.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Request</th><th>Terminal alternatives</th></tr></thead>
+      <tbody>
+        <tr><td>{{api:ModeRequest}}</td><td>{{api:ModeSuccess}} or {{api:ModeRejected}}</td></tr>
+        <tr><td>{{api:ReturnRequest}}</td><td>{{api:ReturnCompleted}} or {{api:ReturnRejected}}</td></tr>
+        <tr><td>{{api:CommsRequest}}</td><td>{{api:CommsCompleted}} or {{api:CommsRejected}}</td></tr>
+        <tr><td>{{api:NavigationRequest}}</td><td>{{api:NavigationCompleted}} or {{api:NavigationRejected}}</td></tr>
+        <tr><td>{{api:InstrumentationRequest}}</td><td>{{api:InstrumentationCompleted}} or {{api:InstrumentationRejected}}</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Command callbacks and request futures are independent paths. Matching IDs in
+    a CommsTest, Instrumentation or navigation callback do not cause Python to
+    complete a future. There is no implicit correlation, replay or retry service.</p>
+  </section>
+
+  <section id="errors">
+    <h2>Distinguish results from failures</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Observation</th><th>Interpretation</th></tr></thead>
+      <tbody>
+        <tr><td>A <code>*Rejected</code> record</td><td>A terminal provider MEL rejection with a {{api:MelErrorCode}} and description. It is a returned result, separate from a bridge failure.</td></tr>
+        <tr><td><code>ReturnCompleted(CommandReturn.FAIL)</code></td><td>A normal completed Return value. Inspect {{api:CommandReturn}} rather than treating every completion as success.</td></tr>
+        <tr><td><code>RFAdmin.command_state(...)</code> returns <code>False</code></td><td>Normal provider refusal. A <code>True</code> result means acceptance, not confirmed hardware transition.</td></tr>
+        <tr><td>{{api:MelError}} with <code>TIMEOUT</code></td><td>The requested observation did not become available within the wait. No cancellation is implied.</td></tr>
+        <tr><td><code>STREAM_STOPPED</code></td><td>The receiver's producer has stopped and no queued result remains, according to that receiver's lifecycle.</td></tr>
+        <tr><td><code>PROVIDER_FAILED</code>, <code>PROVIDER_EXCEPTION</code> or another {{api:ErrorKind}}</td><td>A local/native/provider operation failed. Preserve the structured details and consult the operation's ownership contract.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><code>MelError</code> exposes <code>kind</code>, <code>diagnostic</code>,
+    <code>diagnostic_required</code> and <code>native_status</code>. Local validation
+    errors can have no native status. Native diagnostic capacities count UTF-8 bytes
+    including the terminating NUL. Direct operations use a fixed diagnostic buffer;
+    if the message does not fit, the error preserves the status and required size,
+    with <code>diagnostic=None</code>. The binding does not repeat a side effect to
+    fetch a longer message. Request waits can retrieve complete diagnostics from
+    their cached terminal result.</p>
+    <p>{{api:NucOpenError}}, {{api:CameraResponseOpenError}} and
+    {{api:OpticalDistortionMapOpenError}} additionally expose
+    <code>registration</code>: a separately published {{api:CommandReturn}}, or
+    <code>None</code> when no known Return was available. This is distinct from the
+    bridge error kind. Optional registration returning <code>NOT_SUPPORTED</code>
+    and one returning <code>FAIL</code> remain distinguishable.</p>
+    <p>Most explicit input validation uses <code>MelError</code>. Tagged immutable
+    models also enforce exact payload/category types with <code>TypeError</code>,
+    and ordinary Python call errors retain their normal exception types. Malformed
+    native values can raise <code>PROTOCOL_INCONSISTENCY</code> or
+    <code>INVALID_UTF8</code>; invalid provider data is not silently repaired.</p>
+  </section>
+
+  <section id="serialization">
+    <h2>Synchronization and value fidelity</h2>
+    <p>Externally serialize operations on one owner, including receive/counters/close,
+    wait/close, and channel enable/submission/close. Serialize callback registration
+    against conflicting parent operations such as Start, Stop and Close. At most one
+    receive may consume a particular ImageStream at a time. The GIL does not satisfy
+    these native ownership contracts; the package adds no background Python workers
+    or owner locks.</p>
+    <p>Returned collection order and duplicates are preserved. Timestamps retain
+    their signed nanosecond representation without an inferred epoch. Floating-point
+    values are copied without unit conversion, normalization or physical-quality
+    checks; the specific value type documents any stated units. Capability enums
+    {{api:PixelFormat}}, {{api:SensorType}}, {{api:ChannelType}},
+    {{api:MetadataCapability}}, {{api:BandType}} and {{api:CoordinateSystem}}, as well
+    as {{api:MelErrorCode}}, can preserve unknown uint32 values. That preservation
+    does not make an otherwise unsupported payload or operation valid.</p>
+  </section>
+</main>
+<footer><p>AMS MEL Python documentation. Provider support remains runtime-specific.</p></footer>
+</body>
+</html>
