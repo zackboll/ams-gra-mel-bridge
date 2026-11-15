@@ -203,6 +203,40 @@ were rerun successfully on integrated source. Source-integrity, complete policy
 tests and authoritative IR API inventory checks passed again (127 headers,
 148 operations; 57 safe-Ada operations unchanged).
 
+Final local qualification after aggregate completion passed:
+
+- `make check`: production/test build-tree isolation, 744/744 native tests,
+  pinned GNATformat checks, IR inventory/regression controls and all Ada suites.
+  Existing imported-native-GPR "no C sources" metadata warnings remain; no
+  first-party source warning suppression was introduced.
+- Restored the **complete** normal native/provider tree with `make native` and
+  `make test-native`: 744/744 again. No build-tree mutation overlapped this run.
+- Repeated the exact workspace test, check, all-target Clippy `-D warnings`,
+  format-check and Rustdoc `-D warnings` sequence against that restored tree:
+  **604 passed, 15 ignored, 42 suites**, all commands successful. This includes
+  existing dedicated C2/common Channel/Health/Image-control/Stacked regressions,
+  Common-crate identity tests and raw ABI/drift/layout tests. Ignored entries
+  include explicitly launched subprocess entries and opt-in external providers;
+  they are not represented as automatically passed interoperability tests.
+- Final focused Debug: private tests **7 passed / 1 child entry ignored**;
+  common integration **18 passed / 1 child entry ignored**. The real-reference
+  test's one ignored ordinary-suite entry was separately explicitly run in both
+  profiles as described below.
+- Final source-integrity, policy, final-newline and `git diff --check` passed.
+  Strict C11 probe passed again. Production DSO exports remain exactly **324**
+  versioned functions with the four existing common metadata functions and no
+  test-hook exports.
+
+For reproducibility the Rust contract sequence used
+`AMS_MEL_NATIVE_LIB_DIR=/home/zboll/git/ams-rust-ir-017/native/build-tests/lib`
+and `AMS_MEL_TEST_PROVIDER_DIR=/home/zboll/git/ams-rust-ir-017/native/build-tests/test-providers`.
+`make check` ran with these variables, `CARGO_TARGET_DIR` and `LD_LIBRARY_PATH`
+unset, with the installed GNAT/GPRbuild package bin directories on PATH.
+Release contract tests used the separate Release facade/provider tree and
+`cargo test --release --manifest-path rust/Cargo.toml -p ams-mel --test ir_common_comms_metadata`
+plus `cargo test --release --manifest-path rust/Cargo.toml -p ams-mel --lib ir_comms_metadata`.
+Full Release-suite and seven-control parent were repeated 25 times each.
+
 ### Actual reference provider, separately qualified
 
 Unmodified `minimal-mel-example` commit
@@ -238,6 +272,19 @@ initialization of `/home/zboll/git/ams-rust-ir-017/native/build/lib/libams_mel_c
 and `/tmp/rust-ir-017-reference-build/libminimal_ir_mel_provider.so`, not a mock.
 Reference transcripts are `integrated-reference-debug.log` and
 `integrated-reference-release.log`, with separate `*-loader.log` records.
+They are also preserved verbatim in PR #219. Exact opt-in commands:
+
+```sh
+cd /home/zboll/git/ams-rust-ir-017
+export AMS_MEL_NATIVE_LIB_DIR="$PWD/native/build/lib"
+export CARGO_TARGET_DIR=/tmp/rust-ir-017-target-reference
+export AMS_MEL_REFERENCE_PROVIDER=/tmp/rust-ir-017-reference-build/libminimal_ir_mel_provider.so
+cargo test --manifest-path rust/Cargo.toml -p ams-mel \
+  --test ir_common_comms_reference -- --ignored --nocapture
+cargo test --release --manifest-path rust/Cargo.toml -p ams-mel \
+  --test ir_common_comms_reference -- --ignored --nocapture
+```
+
 Development-only compile failures
 (an incorrect nonexistent typed-C2 method and an omitted `/lib` in a link path)
 were corrected; neither was represented as an interoperability result.
