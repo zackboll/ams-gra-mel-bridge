@@ -175,9 +175,33 @@ arrived in those merges. Integrated source commit
 | GCC/Clang `-std=c11 -pedantic-errors -Wall -Wextra -Werror -fsyntax-only` on both receiver C tests | PASS. |
 | Exact-HEAD hosted CI for `a86e31a` | PASS: GCC/Clang Debug/Release, Ada, Rust, Python, policy, isolation and docs build; deployment/live checks correctly skipped. |
 
-Local aggregate `make check`, isolated four-way compiler builds/tests, repeated
-C2 regressions and final production-symbol comparison are still in progress.
+Local aggregate `make check` passed. Isolated builds configured with
+`cmake -S native -B /tmp/ir-comms-r1-<compiler>-<configuration>
+-DAMS_MEL_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=<Debug|Release>
+-DCMAKE_C_COMPILER=/usr/bin/<gcc|clang>
+-DCMAKE_CXX_COMPILER=/usr/bin/<g++|clang++>`, built with `--parallel 2`, and tested
+with `ctest --test-dir <tree> --output-on-failure` each passed **688/688**:
+GCC Debug, GCC Release, Clang Debug, Clang Release, sequentially. Repetition in
+the isolated GCC Debug tree with `-R '^c2_comms_registration_' --repeat
+until-fail:100 --output-on-failure` passed **1,600 executions** (16 × 100).
+`make native` and normalized `nm -D --defined-only` comparison passed: identical
+defined dynamic symbol names, types and versions, **315** published functions,
+no test-only exports. Addresses are intentionally excluded from comparison.
+
+A third conflict-free normal merge integrated main
+`99d7f11bc3e5b19c10c6d9daf0e7fe1c89b6fd41`, tree
+`03dd5f736e05f422a8952778b18617842f3345a6` (RF Rustdoc only), as
+`c7a8ba9c39e5c1c0893bc8b3e2baada1f4e84ad5`, tree
+`62b75a6fefcf98fbc32ff3addc64ae48b3787a61`. Native inputs remained byte-identical
+during the isolated matrix. All aggregate/language gates are being rerun in
+sequence after matrix completion to qualify that final integrated source.
 Earlier interrupted qualification runs are not counted as passes.
+
+The first repeat invocation targeted the mutable `native/build-tests` tree after
+Ada's provider-only pre-build had recreated it without C test executables. CTest
+reported all sixteen **Not Run** (missing executable), exit 8. The recovered
+repeat uses the completed isolated GCC Debug tree; there were no source changes
+or weakened assertions. This failed harness invocation is not counted as a pass.
 
 One local Alire invocation on the preceding merge failed: its generated,
 untracked test solution was empty, leaving `GPR_PROJECT_PATH` with only the test
@@ -191,8 +215,7 @@ environment recovery, not a native-code fix or a suppressed failed test.
 ABI evidence: base production symbol names/versions saved independently;
 `native/include/ams_mel/abi.h`, `native/src/exports.map`, Python ctypes, Rust sys
 and Ada imports remain byte-identical to base, verified by SHA-256 and byte
-comparison. Ada compilation/execution passed; final production comparison is
-pending. This preserves
+comparison. Ada compilation/execution and production comparison passed. This preserves
 function signatures and all record layouts by source identity, not symbol names
 alone. There is no six-argument production Open declaration.
 
