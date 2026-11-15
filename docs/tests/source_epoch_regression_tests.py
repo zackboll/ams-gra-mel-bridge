@@ -5,8 +5,11 @@ provider-free Bootstrap dependency and never substitutes today's tests into an
 immutable historical checkout.
 """
 
+import copy
+import html
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -143,10 +146,77 @@ class GeneratedSourceTests(unittest.TestCase):
         record = next(r for r in required if r['containing']['name'] == 'Operational_Task_Kind')
         self.assertEqual(record['target_identity'], 'ams.mel.ir.scheduling.metadata.task_kind')
         self.assertEqual(record['containing']['source'], 'ada/src/ams-mel-ir-scheduling-metadata.ads')
-        self.assertEqual(record['source_line'], 144)
+        self.assert_operational_source_destination(record, report)
         self.assertEqual(record['visible'], 'Task_Kind')
         self.assertEqual(record['target']['name'], 'Task_Kind')
         require_complete_additions(self.value['publication']['type_occurrences'], required)
+
+    def assert_operational_source_destination(self, record, report):
+        """Raw committed source and pristine HTML, not the occurrence's own line."""
+        from local_type_audit import SECTION
+        owner = 'ams.mel.ir.scheduling.metadata'
+        path = 'ada/src/ams-mel-ir-scheduling-metadata.ads'
+        raw = source.blob(self.repo, self.candidate, path).decode()
+        self.assertRegex(raw, r'(?im)^package AMS\.MEL\.IR\.Scheduling\.Metadata is\s*$')
+        declarations = list(re.finditer(
+            r'(?m)^   subtype Operational_Task_Kind is Task_Kind range No_Task \.\. IRST_Update;', raw))
+        self.assertEqual(len(declarations), 1)
+        line = raw[:declarations[0].start()].count('\n') + 1
+        self.assertEqual(record['source_line'], line)
+        self.assertEqual(record['containing']['line'], line)
+        self.assertEqual(record['containing']['source'], path)
+        self.assertEqual(record['containing']['package'], owner)
+        self.assertEqual(record['target']['package'], owner)
+        self.assertEqual(record['target_identity'], owner + '.task_kind')
+        for entry, name in ((record['containing'], 'Operational_Task_Kind'),
+                            (record['target'], 'Task_Kind')):
+            self.assertEqual(entry['name'], name)
+            native = [value for key, value in report['native'].items()
+                      if f'AMS.MEL.IR.Scheduling.Metadata.{name}:' in key]
+            self.assertEqual(len(native), 1)
+            self.assertEqual((entry['page'], entry['anchor']), (native[0]['page'], native[0]['anchor']))
+            text = (self.output / 'pristine/api' / entry['page']).read_text()
+            sections = [match for match in SECTION.finditer(text) if match[2] == entry['anchor']]
+            self.assertEqual(len(sections), 1)
+            self.assertIn('>' + name + '</h4>', sections[0][1])
+            if name == 'Operational_Task_Kind':
+                self.assertEqual(html.unescape(sections[0][3]).strip(), declarations[0][0].strip())
+        self.assertEqual(record['href'], record['target']['page'] + '#' + record['target']['anchor'])
+        self.assertEqual(record['context'], 'subtype-base')
+        self.assertEqual(record['visible'], 'Task_Kind')
+
+    def test_operational_identity_line_owner_anchor_and_target_mutations_rejected(self):
+        from local_type_audit import Authority
+        report = json.loads((self.output / 'epoch.json').read_text())
+        required = Authority(self.repo, self.output / 'pristine', ledger=report['native']).required_additions()
+        record = next(r for r in required if r['containing']['name'] == 'Operational_Task_Kind')
+        self.assert_operational_source_destination(record, report)
+        # Moving a declaration is valid; removing line validation entirely is
+        # not. Use independently shifted raw source to exercise both outcomes.
+        raw = source.blob(self.repo, self.candidate, record['containing']['source'])
+        shifted = copy.deepcopy(record)
+        shifted['source_line'] += 3
+        shifted['containing']['line'] += 3
+        with mock.patch.object(source, 'blob', return_value=b'\n\n\n' + raw):
+            self.assert_operational_source_destination(shifted, report)
+            with self.assertRaises(AssertionError):
+                self.assert_operational_source_destination(record, report)
+        for group, field, value in (
+                (None, 'source_line', record['source_line'] - 2),
+                (None, 'target_identity', 'other.task_kind'),
+                (None, 'href', record['href'][:-1] + 'x'),
+                ('containing', 'line', record['source_line'] - 2),
+                ('containing', 'package', 'other'),
+                ('containing', 'source', 'ada/src/other.ads'),
+                ('containing', 'anchor', '0' * 64),
+                ('target', 'package', 'other'),
+                ('target', 'anchor', '0' * 64),
+                ('target', 'name', 'Unknown')):
+            with self.subTest(group=group, field=field):
+                altered = copy.deepcopy(record)
+                (altered if group is None else altered[group])[field] = value
+                with self.assertRaises(AssertionError):
+                    self.assert_operational_source_destination(altered, report)
 
     def test_normal_verifier_rejects_removed_subtype_link_with_resealed_manifest(self):
         from check_doc_coverage import measure
