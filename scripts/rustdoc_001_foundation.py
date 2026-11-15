@@ -14,11 +14,12 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CRATES = ("ams-mel-common", "ams-mel", "ams-mel-sys")
+CRATES = ("ams-mel-common", "ams-mel-rf", "ams-mel", "ams-mel-sys")
 LANDING = """<!doctype html>
 <html lang="en"><meta charset="utf-8"><title>AMS MEL Rust reference</title>
 <h1>AMS MEL Rust reference</h1>
 <ul><li><a href="ams_mel_common/index.html">ams-mel-common: shared values</a></li>
+<li><a href="ams_mel_rf/index.html">ams-mel-rf: safe RF Admin/DataMEL</a></li>
 <li><a href="ams_mel/index.html">ams-mel: safe public reference</a></li>
 <li><a href="ams_mel_sys/index.html">ams-mel-sys: raw, unsafe C ABI reference</a></li></ul>
 <p>Local qualification build; not a publication or provider certification.</p>
@@ -56,10 +57,11 @@ def verify_site(site):
         if path.is_symlink():
             raise ValueError(f"symlink in generated reference: {path}")
     for name in ("index.html", "ams_mel/index.html", "ams_mel_sys/index.html",
-                 "ams_mel_common/index.html", "ams_mel/struct.Session.html", "src-files.js", "crates.js"):
+                 "ams_mel_common/index.html", "ams_mel_rf/index.html", "ams_mel/struct.Session.html",
+                 "ams_mel/struct.RfAdmin.html", "src-files.js", "crates.js"):
         if not (site / name).is_file():
             raise ValueError(f"missing reference entry point: {name}")
-    for name in ("static.files", "src/ams_mel", "src/ams_mel_sys", "src/ams_mel_common"):
+    for name in ("static.files", "src/ams_mel", "src/ams_mel_sys", "src/ams_mel_common", "src/ams_mel_rf"):
         if not (site / name).is_dir() or not any((site / name).rglob("*")):
             raise ValueError(f"missing reference assets: {name}")
     html_count = 0
@@ -133,7 +135,7 @@ def qualify(doctests=False):
         for tool in ("cmake", "cc", "c++"):
             report[tool] = run([tool, "--version"], ROOT, env, output, tool).splitlines()[0]
         run(["cargo", "test", "--manifest-path", str(ROOT / "rust/Cargo.toml"),
-             "-p", "ams-mel", "--doc", "--locked"], ROOT, env, output, "doctests")
+             "-p", "ams-mel", "-p", "ams-mel-rf", "--doc", "--locked"], ROOT, env, output, "doctests")
         report["doctests"] = "passed; see doctests.stdout.log for counts"
     report["files"] = {
         str(path.relative_to(site)): hashlib.sha256(path.read_bytes()).hexdigest()
