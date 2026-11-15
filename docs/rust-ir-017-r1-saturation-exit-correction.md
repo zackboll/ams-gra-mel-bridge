@@ -264,7 +264,7 @@ at-most-once Close, non-cancelling Close/Drop, weak View, pending provider reten
 callback reentry, uncertain-detach retention, and unload only after ownership
 release. No new engine, public ownership model or cross-language contract change.
 
-## Qualification and delivery status
+## Historical R1 qualification and delivery status
 
 The required sequence was executed sequentially from the corrective worktree,
 clearing conflicting native/Cargo overrides and selecting the contract facade
@@ -308,3 +308,161 @@ committed as source.
 **CORRECTION_UNQUALIFIED** until all local gates and exact-head/synthetic-merge
 hosted checks pass. Independent technical review is required. PR #224 remains
 blocked; no self-approval, auto-merge or automatic merge is authorized.
+
+---
+
+## RUST-IR-017-R2 — current-main integration (2026-11-15)
+
+### Source, relocation and conflict resolution
+
+This section is new integration evidence, not a reinterpretation of the historical
+R1 commands, cores, build identities or negative controls above. PR #229 remains
+the only corrective PR; PR #224 and its worktree/branch are not changed.
+
+Fetched `origin/main` is `8ff6ec0574f4266d7cba0610f339209589778f65`.
+The existing clean task worktree and branch were reused after inspecting remote
+state, all registered worktrees, PR comments/review threads, review, files, checks
+and protection. The starting branch was two commits ahead and 20 behind main.
+Ordinary merge `a529af5d8d755003541e7d442215cb0f4cacd6ff` has parents
+`d9c16d63db64d712f2ccca0459df7ba7a992ff20` and that fetched main; no history
+was rewritten or force-pushed.
+
+There was one content conflict, in the automatically rename-detected
+`rust/ams-mel-ir/src/ir_comms_metadata/tests.rs`. RUST-CRATE-003 had moved the
+IR implementation and private unit tests out of the compatibility crate. Main
+also added a worker snapshot and notification cleanup wait. Resolution keeps:
+
+- Main's dedicated IR crate, imports, module registration, build script,
+  dependencies, native FFI linkage and compatibility re-exports unchanged.
+- Main's six-slot completion snapshot as an additional exact expected
+  worker-start assertion, rather than deriving the expected owner count from
+  whatever work happened to start.
+- The complete R1 correction: independently expected owner-created counts,
+  bounded final-owner destruction and notification waits, the parked-completion
+  regression, provider pin through cleanup, positive `library_unloaded` evidence,
+  and lifetime-directory deletion only after its final native use.
+
+A mechanical source comparison proves that removing only the added snapshot
+declaration and six-line snapshot assertion from the integrated test reproduces
+the complete reviewed R1 test byte-for-byte. Integrated test blob:
+`7f828319f96ff23f54f271f44912718f4837e2ed`; SHA-256:
+`de2d3ade704a75ceb0c71e7bd26910ce79b3069be99a9a8f53185b699137e691`.
+No wholesale file-side conflict selection was used.
+
+Final source locations, relative to `/home/zboll/git/ams-rust-ir-017-r1`:
+
+- `rust/ams-mel-ir/src/ir_comms_metadata/tests.rs`: sole private test implementation.
+- `rust/ams-mel-ir/src/ir_comms_metadata.rs`: existing parent module, unchanged.
+- `rust/ams-mel-ir/src/lib.rs`: existing IR module registration, unchanged.
+- `rust/ams-mel/src/lib.rs`: existing compatibility re-exports, unchanged.
+- `docs/rust-ir-017-r1-saturation-exit-correction.md`: historical and new evidence.
+
+The retired `rust/ams-mel/src/ir_comms_metadata` is absent. The child is still
+`ir_comms_metadata::tests::native::child`: a Rust test's exact module name does
+not include its crate name. The parent uses `current_exe()`, now the
+`ams_mel_ir-*` library-test executable, and requires successful **whole-child
+process exit** under `timeout 30s`, in addition to its diagnostic marker.
+The crate-relative native fallback still resolves to this repository's
+`native/build-tests`; qualification explicitly selects absolute facade/provider
+paths instead. Cargo metadata confirms that only `ams-mel-sys` owns
+`links = "ams_mel_c"`, and IR depends only on Common and sys, not RF or the
+compatibility facade.
+
+The PR's complete diff against integrated main contains only the test and this
+document. All native code, provider fixtures, public ABI/export inventories,
+Rust public module roots/build configuration, compatibility surface and
+structured native/Ada coverage inventories are byte-identical to main.
+Coverage delta remains the single private deterministic regression; the
+snapshot adds no public coverage or new semantics.
+
+### New integration qualification
+
+Qualification logs, scripts, per-process results and binary identities are kept
+outside the source tree in `/home/zboll/git/ams-rust-ir-017-r2-evidence`.
+The source under test is the committed integration above; the subsequent
+evidence-only update does not change the Rust test blob. Final commit/tree and
+exact-HEAD hosted results belong in PR delivery evidence to avoid self-reference.
+
+Environment: Rust/Cargo 1.98.1, CMake 3.31.6, x86-64 Linux, installed pinned
+GNAT 16.1.0 and GPRbuild 26.0.1 package (reports 26.0.0); native C/C++ use
+Debian GCC 14.2.0 through `/usr/bin/cc` and `/usr/bin/c++`. Native Debug and
+Release configurations were newly created, never reused from R1. Debug ordinary
+commands use this worktree's production/test trees; Release uses
+`/home/zboll/git/ams-rust-ir-017-r2-evidence/native-release`. Cargo artifacts
+are isolated under that evidence root's `cargo-debug` and `cargo-release`.
+
+For Cargo execution, `M=/home/zboll/git/ams-rust-ir-017-r1/rust/Cargo.toml`;
+`AMS_MEL_NATIVE_LIB_DIR` and `AMS_MEL_TEST_PROVIDER_DIR` explicitly select the
+configuration's `lib` and `test-providers`. Check, Clippy and Rustdoc use the
+production default instead. All tests use current main's locked dependencies.
+
+| New command/campaign | Result |
+|---|---|
+| `make format-ada`, then `make check-ada-format` | Passed; no formatter delta beyond merged main. |
+| `make check` with the installed pinned Ada tools on PATH | Passed build-tree isolation, repeated **821/821** native suite, formatting, **70** API audit regressions, complete Ada smoke/focused suites, final newlines and whitespace. |
+| `make native`; `make test-native` | Fresh production and Debug test builds passed; **821/821** CTests. Includes compiled-C translation units and active Release-safe validation. |
+| `cargo test --manifest-path "$M" --locked -p ams-mel-ir --lib` | **155 passed, 0 failed, 1 ignored**; private eight-case parent passed. |
+| `cargo test --manifest-path "$M" --locked --workspace` | **612 passed, 0 failed, 15 expected ignored**, 51 result groups including compatibility/type-identity and doc-tests. |
+| `cargo check --manifest-path "$M" --locked --workspace --all-targets` | Passed. |
+| `cargo clippy --manifest-path "$M" --locked --workspace --all-targets -- -D warnings` | Passed. |
+| `cargo fmt --manifest-path "$M" --all -- --check` | Passed. |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --manifest-path "$M" --locked --workspace --no-deps` | Passed for all five crates. |
+| `cmake -S native -B "$E/native-release" -DAMS_MEL_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release`; `cmake --build "$E/native-release" --parallel 2`; `ctest --test-dir "$E/native-release" --output-on-failure` | Fresh Release native build and **821/821** CTests passed. `E` is the external R2 evidence root. |
+| `cargo test --release --manifest-path "$M" --locked -p ams-mel-ir --lib ir_comms_metadata` | **7 passed, 0 failed, 1 ignored**; parent passed all eight child cases. |
+| `cargo test --release --manifest-path "$M" --locked --workspace` against the dedicated Release native tree | **612 passed, 0 failed, 15 expected ignored**, 51 result groups. |
+| `PYTHONPATH="$PWD/python" AMS_MEL_NATIVE_LIB="$E/native-release/lib/libams_mel_c.so.0" AMS_MEL_TEST_PROVIDER_DIR="$E/native-release/test-providers" python3 -W error -m unittest discover -s "$PWD/python/tests" -v` | **686/686** passed against the isolated Release build. |
+| `make test-policy` | All ten suites passed, including intentional failing-CTest negative controls; no contract or policy weakening. |
+| `make check-ir-api-coverage` | **70/70** regressions passed; unchanged 127 headers, 148 operations, 57 safe-Ada operations. |
+| `python3 scripts/check_doc_source_integrity.py` | Passed: 825 vendored files and four workflows. |
+| `python3 scripts/check_final_newlines.py`; `git diff --check` | Passed. |
+| External `stress.py debug "$PWD/native/build-tests" "$E/cargo-debug/debug/deps"` and corresponding Release invocation | **400/400 whole-process exits 0 per configuration**; details below. |
+| Production `nm -D --defined-only` versus unchanged main `native/src/exports.map` | Exact **331** public exports; no test symbols in production. |
+
+The new stress harness selects CPU 0 from the actual permitted mask 0–31 and
+executes the **`ams_mel_ir-*`** binary with
+`taskset -c 0 ... --exact ir_comms_metadata::tests::native::child --ignored --nocapture`.
+For **each** of Debug and Release: saturation 100 with timeline + 100 without,
+and completion-cleanup 100 with timeline + 100 without. Every run waits for
+the entire process with a 30-second bound and records actual return code/signal,
+stdout/stderr, affinity and binary/facade/provider SHA-256/ELF identities. All
+**800 children exited 0**; no marker-only success is counted. All **400** retained
+timelines independently show exactly four (saturation) or one (cleanup)
+`completion_owner_destroyed` events before `library_unloaded`.
+
+The unmodified eight-case parent additionally passes on both ordinary affinity
+and one CPU, in each configuration, requiring its children's actual exit status.
+This verifies ignored-child discovery from the new crate, not just direct child
+invocation. A separate successful Release `LD_DEBUG=libs` run identifies both
+the absolute dedicated Release facade and mock-provider paths and their unload.
+No successful test-body marker is used as a substitute for process termination.
+
+Existing imported-native-GPR metadata warnings about no C sources remain; no
+first-party compiled-source warning was suppressed. The aggregate isolation
+test deliberately exercises toolchain/cache switching, so its native provider
+tree is restored with `make native` and `make test-native` before final-head
+workspace/Python verification. New hosted runs must qualify the final pushed
+HEAD, not the historical successful R1 workflows. Until those runs complete,
+hosted qualification is pending; after technical/CI success, final-head
+independent review is still outstanding.
+
+### Review boundaries and remaining limitations
+
+The added snapshot assertion is read-only and uses the existing native test
+facade's six-u64 record. Four workers are expected for saturation, one for C2
+and completion cleanup, zero for the remaining controls. It supplements, never
+replaces, the owner-created/destruction/notification checks. No new native
+symbol, production ABI, provider behavior, cancellation, worker join or
+quiescence guarantee is introduced. The existing dedicated-notification
+boundary still does not prove return from every shared notification/worker
+epilogue. Deterministic synchronization is unchanged; no sleep or retry was
+introduced into the regression.
+
+The prior independent technical review is a `COMMENTED` review of
+`d9c16d63db64d712f2ccca0459df7ba7a992ff20`, not formal GitHub approval or
+review of the relocated final HEAD. Its causal analysis remains applicable;
+the relocation and added snapshot assertion require final-head independent
+reassessment. At preflight, main protection required resolved conversations
+but zero formal approving reviews; no unresolved review threads or rulesets
+were returned. Only the author is an available collaborator, so no self-approval
+or fictitious independent review is substituted. No merge or auto-merge is
+authorized by this task.
