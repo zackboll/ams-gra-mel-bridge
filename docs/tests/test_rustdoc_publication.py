@@ -16,10 +16,11 @@ import check_live_docs_site as live
 def fixture():
     files = {n: b'<html></html>' for n in (
         'ams_mel/index.html', 'ams_mel_sys/index.html', 'ams_mel_common/index.html',
+        'ams_mel_rf/index.html', 'ams_mel_rf/struct.RfAdmin.html', 'ams_mel/struct.RfAdmin.html',
         'ams_mel/struct.Session.html',
         'ams_mel_sys/fn.ams_mel_session_close.html', 'help.html', 'settings.html',
         'src/ams_mel/lib.rs.html', 'src/ams_mel_sys/lib.rs.html',
-        'src/ams_mel_common/lib.rs.html')}
+        'src/ams_mel_common/lib.rs.html', 'src/ams_mel_rf/lib.rs.html')}
     files.update({n: b'/* qualified generated resource */' for n in (
         'crates.js', 'src-files.js', 'static.files/main.js', 'search.index/root.js',
         'trait.impl/trait.js', 'type.impl/type.js')})
