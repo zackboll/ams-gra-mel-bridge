@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python IR workflows — AMS GRA MEL Bridge</title>
+  <link rel="stylesheet" href="assets/reference.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <p>AMS MEL Python documentation</p>
+  {{navigation}}
+</header>
+<main id="main">
+  <h1>IR workflows</h1>
+  <p>Start from an open {{api:Session}} and provider-appropriate attachment values.
+  Opening, enabling, submitting commands and registering callbacks are separate
+  operations. Use <a href="getting-started.html">the setup guide</a> for facade
+  loading and <a href="ownership-and-errors.html">the ownership guide</a> for
+  synchronization, cleanup and error handling.</p>
+
+  <section id="discovery">
+    <h2>Discover, then attach</h2>
+    <p>{{api:Session.capabilities}} returns the provider's complete advertised
+    Control list. Each {{api:ChannelCapability}} includes channel/platform IDs,
+    component location, channel types, image geometry, pixel format, spectral bands,
+    metadata capabilities and navigation frames. The snapshot owns all nested data
+    and retains no native storage.</p>
+    <p>Discovery can return an empty tuple, zero image dimensions or capability
+    vocabulary that has no corresponding Python owner. Match the advertisement to
+    the provider's intended configuration. Attaching remains a separate operation,
+    and a successful attachment does not establish enablement or hardware readiness.</p>
+    <p>Once attached, obtain a complete snapshot through
+    {{api:ChannelView.capabilities}} or the typed capability method provided by
+    Health, Instrumentation and StackedImage. A common view is weak. Keep the typed
+    owner alive for any operation that requires its channel.</p>
+  </section>
+
+  <section id="image-modes">
+    <h2>Image acquisition and control-only attachment</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Mode</th><th>Factory</th><th>Start and receive</th></tr></thead>
+      <tbody>
+        <tr><td>Host-memory acquisition</td><td>{{api:Session.open_image_stream}} with {{api:ImageConfig}}</td><td>Explicit Start enables acquisition. Receive returns owned Mono8 frames using the configured buffer pool and bounded FIFO.</td></tr>
+        <tr><td>Control-only Image</td><td>{{api:Session.open_image_control}} with {{api:ImageControlConfig}}</td><td>Returns the same ImageStream class. Start explicitly enables the channel without allocating or registering acquisition buffers. Pixel receive raises INITIALIZATION_FAILED.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Both modes support a weak common view, navigation submission and the supported
+    metadata registrations. A control-only attachment is useful when the advertised
+    Image channel is unconfigured for acquisition: its config needs channel ID,
+    platform ID and component location, with no invented frame dimensions or format.</p>
+    <p>{{api:ImageStream.receive}} produces single-band Mono8 frames with copied,
+    tightly packed pixel bytes. {{api:ImageFlip}} and {{api:ImageType}} describe
+    provider metadata; the binding does not apply flips, offsets or optical
+    correction to those bytes. {{api:ImageStream.counters}} reports callback activity
+    and dropped/malformed frames, not the number of successful receive calls.</p>
+    <p>{{api:ImageStream.stop}} is terminal for the attachment. Queued frames remain
+    drainable, followed by <code>STREAM_STOPPED</code>; Start cannot restart that
+    stopped stream. Closing is a separate ownership operation. Register required
+    metadata before Start where practical so early callbacks have a consumer.</p>
+  </section>
+
+  <section id="c2">
+    <h2>C2 commands and their results</h2>
+    <p>Create {{api:ControlChannel}} with {{api:Session.open_control_channel}}, then
+    call {{api:ControlChannel.enable}} explicitly before command submission.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Operation</th><th>Input and result</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>{{api:ControlChannel.submit_mode}}</td><td>{{api:ModeCommand}} → {{api:ModeRequest}}</td><td>Published MFA state/mode plus complete {{api:ScanParameters}}. The binding does not infer compatible state/mode pairs or physical feasibility.</td></tr>
+        <tr><td>{{api:ControlChannel.submit_operate}}</td><td>uint32 command ID → ModeRequest</td><td>Convenience entry for the existing Operate/TaskSched profile.</td></tr>
+        <tr><td>{{api:ControlChannel.submit_config_set}}</td><td>{{api:ConfigSetCommand}} → {{api:ReturnRequest}}</td><td>Exact command ID, signed nanosecond time and opaque UTF-8 configuration text. No clock domain or provider configuration syntax is inferred.</td></tr>
+        <tr><td>{{api:ControlChannel.submit_bit_noop}}</td><td>uint32 command ID → ReturnRequest</td><td>Empty/no-op BIT profile only. Receiving BIT advertisements does not add payload-bearing BIT execution.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>For an already enabled <code>control</code> and a caller-supplied
+    <code>ConfigSetCommand</code>, explicitly close the returned observer:</p>
+    <pre><code class="language-python">from ams_mel import ConfigSetCommand, ReturnRejected
+
+
+def send_configuration(control, command: ConfigSetCommand):
+    request = control.submit_config_set(command)
+    try:
+        result = request.wait(timeout_ms=1000)
+        if isinstance(result, ReturnRejected):
+            print(result.code, result.description)
+        else:
+            print(result.value)
+        return result
+    finally:
+        request.close()
+</code></pre>
+    <p>A returned <code>CommandReturn.FAIL</code> is a completed result. A MEL
+    rejection is a separate returned variant; timeout/native failure raises
+    <code>MelError</code>. Closing after a timeout releases the public observer and
+    leaves any pending provider work under the native lifetime contract.</p>
+    <p><code>ScanType</code> controls are exact uint32 values, not Boolean flags.
+    Scan parameters keep their named radians, seconds and metre fields. The wrapper
+    validates representable values and the published enum domain; it does not plan
+    scans, supply missing mission inputs or add a Scheduling owner.</p>
+  </section>
+
+  <section id="navigation">
+    <h2>Submit complete navigation input</h2>
+    <p>{{api:ImageStream.submit_navigation_report}} accepts a complete
+    {{api:NavigationReport}} while Image is Attached or Running, including a
+    control-only attachment. It neither starts Image nor registers callbacks.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Input group</th><th>Required data</th></tr></thead>
+      <tbody>
+        <tr><td>Time and solution</td><td>Signed <code>system_time_ns</code> and a published {{api:PositionSolutionState}}. States are not an ordered quality score.</td></tr>
+        <tr><td>Position</td><td><code>latitude_rad</code>, <code>longitude_rad</code>, <code>altitude_m</code>, plus the independently named <code>altitude_msl</code> field.</td></tr>
+        <tr><td>Attitude and motion</td><td>{{api:Euler}} attitude, {{api:AttitudeRate}} with its independent timestamp, and {{api:NorthEastDown}} speed and acceleration.</td></tr>
+        <tr><td>Additional orientation</td><td><code>wander_angle_rad</code> and <code>magnetic_heading</code>, without an invented convention for unspecified units.</td></tr>
+        <tr><td>Uncertainty</td><td>All 18 named entries in {{api:PositionVelocityCovariance}}, preserving the published field order and independent terms.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Every input is explicit. Supply actual application data and its intended
+    conventions; do not infer a timestamp epoch, mirror covariance terms, normalize
+    Euler components or substitute a zero-filled uncertainty matrix as an implicit
+    default. Representable IEEE NaN, infinity and signed zero are accepted by the
+    existing numeric contract; acceptance is not navigation-solution validation.</p>
+    <pre><code class="language-python">from ams_mel import NavigationReport, NavigationRejected
+
+
+def submit_navigation(image, report: NavigationReport):
+    with image.submit_navigation_report(report) as request:
+        result = request.wait(timeout_ms=1000)
+        if isinstance(result, NavigationRejected):
+            print(result.code, result.description)
+        else:
+            print(result.response.command_id, result.response.request_id)
+        return result
+</code></pre>
+    <p>{{api:NavigationCompleted}} owns a {{api:NavigationResponse}}.
+    The same response model can arrive in ordinary Image metadata, but that callback
+    is an independent observation. Receiving it does not replace waiting on the
+    request, and timeout or close does not cancel the submission.</p>
+  </section>
+
+  <section id="common-services">
+    <h2>Common channel services and StackedImage</h2>
+    <p>C2, Image, Health, Instrumentation and StackedImage expose
+    <code>channel_view()</code>. The resulting {{api:ChannelView}} supports
+    {{api:ChannelView.send_keepalive}}, {{api:ChannelView.submit_comms_test}} and
+    complete capabilities. KeepAlive returns a {{api:ReturnRequest}}; CommsTest
+    returns a {{api:CommsRequest}}. Both follow Session admission and require
+    explicit closing.</p>
+    <p>{{api:CommsTestRequest}} contains three independent uint32 IDs:
+    <code>command_id</code>, <code>channel_id</code> and <code>request_id</code>.
+    The reply {{api:CommsTestReport}} contains only command and request IDs; the
+    wrapper does not synthesize a reply channel ID.</p>
+    <p>{{api:Session.open_stacked_channel}} creates the StackedImage foundation
+    owner from {{api:StackedConfig}}. Its three fields are attachment identities,
+    with no acquisition storage or stack geometry. {{api:StackedChannel.enable}}
+    is explicit. Complete capabilities, common services and common CommsTest
+    callbacks are available through the implemented interfaces; stacked pixel
+    acquisition and additional stacked metadata are not exposed.</p>
+  </section>
+
+  <section id="metadata">
+    <h2>Choose the callback receiver</h2>
+    <p>Metadata is opt-in and remains independent of request futures. Each receiver
+    consumes a native bounded FIFO. Registration may synchronously deliver events;
+    it does not implicitly enable or start the parent channel.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Registration</th><th>Receiver and payload</th></tr></thead>
+      <tbody>
+        <tr><td>{{api:ImageStream.open_metadata}}</td><td>{{api:ImageMetadataStream}} returns {{api:ImageMetadataEvent}}: BadPixelList, LineOfSightReport, LineOfSightEuler or NavigationResponse.</td></tr>
+        <tr><td>{{api:ControlChannel.open_metadata}}</td><td>{{api:C2MetadataStream}} returns {{api:C2MetadataEvent}}: CommandStatus, BIT configuration or canonical Health BitStatus. {{api:C2MetadataStream.enable_comms_test_events}} independently adds CommsTest reports.</td></tr>
+        <tr><td>{{api:HealthStatusChannel.open_metadata}}</td><td>{{api:HealthMetadataStream}} returns {{api:HealthMetadataEvent}}: MfaStatus, BitStatus, SubsystemStatus, DiscreteStatus, SecurityAuditRecord or MfaStatusDetailed.</td></tr>
+        <tr><td>{{api:InstrumentationChannel.open_metadata}}</td><td>{{api:InstrumentationMetadata}} returns {{api:InstrumentationReport}}, independently of submit_level and InstrumentationRequest.</td></tr>
+        <tr><td>{{api:ChannelView.open_comms_metadata}}</td><td>{{api:CommsMetadataStream}} returns {{api:CommsTestReport}} on Health, Image and StackedImage. C2 uses its dedicated metadata receiver; Instrumentation is not supported by this common registration.</td></tr>
+        <tr><td>{{api:ImageStream.open_nuc}} or {{api:HealthStatusChannel.open_nuc}}</td><td>{{api:NucStream}} returns complete {{api:NucTempData}} with ordered temperature points and tagged pixel widths.</td></tr>
+        <tr><td>{{api:ImageStream.open_camera_response}}</td><td>{{api:CameraResponseStream}} returns {{api:CameraCommandResponse}}. The safe Python package has no corresponding CameraCommand submission API.</td></tr>
+        <tr><td>{{api:ImageStream.open_optical_distortion_map}}</td><td>{{api:OpticalDistortionMapStream}} returns a complete {{api:OpticalDistortionMap}} snapshot.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>A valid native registration attempt is one-shot, including failure or partial
+    registration. Closing a consumer does not allow registration again. Invalid local
+    capacity is rejected before native entry. The optional NUC, CameraCommandResp
+    and ODM registrations expose their provider Return through specialized open
+    errors described in <a href="ownership-and-errors.html#errors">the error guide</a>.</p>
+    <p><code>receive(timeout_ms=0)</code> polls. Active-empty queues yield
+    <code>TIMEOUT</code>; after a producer stops, queued values can drain before
+    <code>STREAM_STOPPED</code>, or <code>PROVIDER_FAILED</code> for uncertain
+    teardown. Overflow drops the incoming event and retains already queued events.
+    <code>counters()</code> snapshots cumulative callback counts, including incoming
+    drops and malformed/unsupported events; receive and counter reads do not reset
+    them.</p>
+    <p>For example, this function explicitly registers ordinary Image metadata before
+    starting an already attached Image owner. Its caller retains responsibility for
+    closing that Image owner.</p>
+    <pre><code class="language-python">from ams_mel import ErrorKind, ImageMetadataKind, MelError
+
+
+def observe_one_image_event(image):
+    with image.open_metadata(queue_capacity=16) as metadata:
+        image.start()
+        try:
+            event = metadata.receive(timeout_ms=1000)
+        except MelError as error:
+            if error.kind in (ErrorKind.TIMEOUT, ErrorKind.STREAM_STOPPED):
+                return None
+            raise
+        if event.kind is ImageMetadataKind.NAVIGATION_RESPONSE:
+            print(event.payload.command_id, event.payload.request_id)
+        return event
+</code></pre>
+    <p>Ordinary Image events enforce matching kind/payload types. BadPixelList
+    retains reported sizes/counts independently of the ordered pixel list; coordinates
+    are not renumbered. Line-of-sight fields retain provider values and do not infer
+    a rate time denominator or timestamp epoch.</p>
+    <p>NUC keeps each pixel's original uint8/uint16/uint32 tag, independent of its
+    magnitude. Temperature is in Kelvin. CameraCommandResponse keeps its full
+    command ID, size, signed timestamp and success flag; <code>False</code> is a
+    normal event. ODM retains every named dimension, range value and both ordered
+    <code>frd</code> and <code>row_col</code> collections. Reported dimensions do not
+    impose inferred collection lengths, and the wrapper performs no interpolation,
+    optical correction, padding or coordinate conversion.</p>
+    <p>Health records include complete nested faults, BIT results, subsystem/software
+    data and security variants. A {{api:SecurityAuditRecord}} contains one concrete
+    security event, whose category belongs to its own enum; categories are not
+    interchangeable across variants. {{api:FailureLevel}} is a set of reported
+    categories, not a numerically ordered severity scale.</p>
+  </section>
+
+  <section id="instrumentation">
+    <h2>Instrumentation commands</h2>
+    <p>Create {{api:InstrumentationChannel}} from its Session factory, explicitly
+    enable it and submit {{api:InstrumentationLevelCommand}} through
+    {{api:InstrumentationChannel.submit_level}}. The command carries an exact
+    uint32 ID and {{api:InstrumentationPriority}} NORMAL or DEBUG. The returned
+    {{api:InstrumentationRequest}} supports a context manager and yields
+    {{api:InstrumentationCompleted}} or {{api:InstrumentationRejected}}.</p>
+    <p>The report's size and signed nanosecond timestamp remain uninterpreted provider
+    data. A separately registered Instrumentation metadata report does not establish
+    completion of the command future. The same external serialization, finite waits
+    and independent native ownership rules apply.</p>
+  </section>
+</main>
+<footer><p>AMS MEL Python documentation. Provider support remains runtime-specific.</p></footer>
+</body>
+</html>

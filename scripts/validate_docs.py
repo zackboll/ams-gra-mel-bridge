@@ -131,7 +131,6 @@ def validate(site, root=ROOT, ledger=None):
             raise SiteError("package directory missing, duplicated or swapped destinations")
     # Compare every portal package link, not just the directory entries, against
     # deterministic resolution of its authored package name.
-    from build_docs_portal import render
     from example_sources import References, verify_rendered
     references = References(root, site, ledger=ledger)
     try:
@@ -140,18 +139,11 @@ def validate(site, root=ROOT, ledger=None):
         verify_rendered((site / "guides/examples.html").read_text(), root, references)
     except ValueError as exc:
         raise SiteError(str(exc)) from exc
-    for name in ("index.html", *(e["path"] for e in data["guides"])):
-        expected_text = render(regular(root / "docs" / name), name, data, packages_verified, root, references)
-        authored = Page(expected_text)
-        def api_links(page):
-            return collections.Counter(link for link in page.links
-                                       if re.fullmatch(r"(?:\.\./)?api/[a-f0-9]{64}\.html", link))
-        if api_links(pages[site / name]) != api_links(authored):
-            raise SiteError("portal package links differ from verified authored references")
-        if (site / name).read_text() != expected_text:
-            raise SiteError("portal output differs from deterministic authored page")
-    if (site / data["stylesheet"]).read_text() != regular(root / "docs" / data["stylesheet"]):
-        raise SiteError("portal stylesheet differs from authorized source")
+    from portal_audit import verify_portal
+    try:
+        verify_portal(site, root, data, packages_verified, references)
+    except ValueError as exc:
+        raise SiteError(str(exc)) from exc
     return {"html_pages": len(pages), "links": sum(len(p.links) for p in pages.values())}
 
 

@@ -18,6 +18,7 @@ import feature_source as source
 import source_epoch as epoch
 import build_enhanced_site as presentation
 import rustdoc_publication as rustdoc
+import python_publication as pythondoc
 
 ROOT = Path(__file__).resolve().parents[2]
 require = source.require
@@ -79,11 +80,15 @@ def build(root, directory, prefix):
         rust_files, rust_record = rustdoc.generate(exported, Path(temp) / 'rust-generation',
                                                   context, directory / 'rustdoc.log')
         combined = rustdoc.assembled(presentation.files(directory / 'ada-qualified'), rust_files)
+        python_files, python_record = pythondoc.generate(exported, context,
+                                                       directory / 'python-reference.log')
+        combined = pythondoc.assembled(combined, python_files)
         for name, data in combined.items():
             target = directory / 'published' / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
         write(directory / 'rustdoc.json', rust_record)
+        write(directory / 'python-reference.json', python_record)
         for name in ('coverage.json', 'warnings.json', 'native-anchors.json', 'gnatdoc.log'):
             shutil.copyfile(exported / 'obj/docs' / name, directory / name)
     manifest = {'schema': 1, 'identity': context,
@@ -104,6 +109,9 @@ def build(root, directory, prefix):
                f"Rustdoc {rustdoc.TOOLCHAIN}: {rust_record['counts']['html']} HTML, "
                f"{rust_record['counts']['assets']} assets, {rust_record['seconds']:.2f}s. "
                "Locked/offline; no native facade or doctests.\n\n"
+               f"Python reference: {python_record['counts']['html']} HTML, "
+               f"{python_record['counts']['assets']} assets. Source-derived; no native loading. "
+               "Prose coverage is informational; see `python-reference.json`.\n\n"
                f"Coverage: {report['documented_elements']}/{report['total_elements']} "
                f"({report['documented_percentage']}%). Informational; no completeness threshold.\n\n"
                f"GNATdoc warnings: {warning_summary}. Informational; see `gnatdoc.log` and "
@@ -144,7 +152,12 @@ def verify(root, directory, manifest_sha, deployment=False):
         rust_raw = (directory / 'rustdoc.json').read_bytes()
         rust_record = json.loads(rust_raw)
         require(rust_raw == epoch.canonical(rust_record), 'noncanonical/duplicate Rustdoc record')
-        rustdoc.verify_assembly(directory, context, rust_record)
+        python_raw = (directory / 'python-reference.json').read_bytes()
+        python_record = json.loads(python_raw)
+        require(python_raw == epoch.canonical(python_record),
+                'noncanonical/duplicate Python documentation record')
+        base = pythondoc.verify_assembly(directory, exported, context, python_record)
+        rustdoc.verify_assembly(directory, context, rust_record, published=base)
     return manifest
 
 
@@ -184,6 +197,7 @@ def live(directory, base, evidence):
     # Run the unchanged active-content/anchor policy on the isolated Ada bytes.
     graph(presentation.files(directory / 'ada-qualified'))
     rustdoc.validate({n.removeprefix('rust/'): d for n, d in files.items() if n.startswith('rust/')})
+    pythondoc.validate({n.removeprefix('python/'): d for n, d in files.items() if n.startswith('python/')})
     attempts = []
     for _ in range(10):
         def fetch(item):

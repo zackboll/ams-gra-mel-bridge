@@ -46,6 +46,8 @@ class NavigationRequest:
 
     @property
     def is_open(self) -> bool:
+        """Whether this object still owns its request handle, independent of completion."""
+
         return bool(self._owner.value)
 
     def _require_open(self) -> None:
@@ -70,10 +72,14 @@ class NavigationRequest:
             self._owner.value = None
 
     def __enter__(self) -> NavigationRequest:
+        """Return this existing open owner without starting or enabling provider work."""
+
         self._require_open()
         return self
 
     def __exit__(self, exception_type: object, exception: object, traceback: object) -> bool:
+        """Close on context exit, preserving an exception raised by the with body."""
+
         if exception_type is None:
             self.close()
         else:

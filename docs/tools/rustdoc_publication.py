@@ -36,10 +36,14 @@ INSERTION = (b'<section aria-label="Rust reference"><h2>Rust reference</h2>\n'
              b'<p><a href="rust/ams_mel_sys/index.html">Low-level unsafe Rust FFI implementation '
              b'interface (ams-mel-sys)</a>; not the recommended application API.</p>\n'
              b'<p><a href="rust/ams_mel_common/index.html">Shared Common MEL Rust values</a></p>\n'
+             b'<p><a href="rust/ams_mel_rf/index.html">Safe RF Admin and DataMEL API</a></p>\n'
+             b'<p><a href="rust/ams_mel_ir/index.html">Safe IR MEL API (ams-mel-ir)</a></p>\n'
              b'</section>\n')
 LANDING = (b'<!doctype html><html lang="en"><meta charset="utf-8">'
            b'<title>AMS MEL Rust reference</title><h1>AMS MEL Rust reference</h1>'
            b'<p><a href="ams_mel_common/index.html">Shared Common MEL values</a></p>'
+           b'<p><a href="ams_mel_rf/index.html">Safe RF Admin and DataMEL API</a></p>'
+           b'<p><a href="ams_mel_ir/index.html">Safe IR MEL API</a></p>'
            b'<p><a href="ams_mel/index.html">Safe Rust application API</a></p>'
            b'<p><a href="ams_mel_sys/index.html">Low-level unsafe C ABI bindings: '
            b'FFI implementation interface, not the recommended application API</a></p>'
@@ -138,12 +142,15 @@ def graph(files, portal=False):
 
 def validate(files):
     required = ('index.html', 'ams_mel/index.html', 'ams_mel_sys/index.html',
-                'ams_mel_common/index.html',
+                'ams_mel_common/index.html', 'ams_mel_rf/index.html',
+                'ams_mel_rf/struct.RfAdmin.html', 'ams_mel/struct.RfAdmin.html',
+                'ams_mel_ir/index.html', 'ams_mel_ir/struct.Session.html',
                 'ams_mel/struct.Session.html', 'ams_mel_sys/fn.ams_mel_session_close.html',
                 'src-files.js', 'crates.js', 'help.html', 'settings.html')
     require(all(n in files for n in required), 'missing Rustdoc entry point')
     for prefix in ('static.files/', 'src/ams_mel/', 'src/ams_mel_sys/',
-                   'src/ams_mel_common/', 'search.index/',
+                   'src/ams_mel_common/', 'src/ams_mel_rf/', 'src/ams_mel_ir/',
+                   'search.index/',
                    'trait.impl/', 'type.impl/'):
         require(any(n.startswith(prefix) for n in files), 'missing Rustdoc asset family')
     require(files['index.html'] == LANDING, 'unauthorized Rust landing')
@@ -205,9 +212,10 @@ def verify_record(files, record, context):
     require(validate(files) == record['counts'], 'Rustdoc measured inventory mismatch')
 
 
-def verify_assembly(directory, context, record):
+def verify_assembly(directory, context, record, *, published=None):
+    """Verify Ada+Rust bytes, optionally after another subtree's verified reversal."""
     ada = publication.files(directory / 'ada-qualified')
-    actual = publication.files(directory / 'published')
+    actual = publication.files(directory / 'published') if published is None else published
     rust = {n.removeprefix('rust/'): d for n, d in actual.items() if n.startswith('rust/')}
     verify_record(rust, record, context)
     require(actual == assembled(ada, rust), 'assembled publication differs from authorized transformation')

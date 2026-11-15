@@ -109,6 +109,56 @@ private package AMS.MEL_C_API is
    Null_Session         : constant Session_Handle := Session_Handle (System.Null_Address);
    type Stream_Handle is new System.Address;
    Null_Stream          : constant Stream_Handle := Stream_Handle (System.Null_Address);
+   type Checkout_Handle is new System.Address;
+   Null_Checkout        : constant Checkout_Handle := Checkout_Handle (System.Null_Address);
+   type Checkout_Lease_Handle is new System.Address;
+   Null_Checkout_Lease  : constant Checkout_Lease_Handle :=
+     Checkout_Lease_Handle (System.Null_Address);
+   type Checkout_Counters_V1 is record
+      Callbacks_Received,
+      Checkouts_Accepted,
+      Queue_Overflow,
+      Callbacks_Rejected,
+      Releases_Succeeded,
+      Releases_Uncertain : Interfaces.Unsigned_64;
+   end record
+   with Convention => C;
+   function IR_Image_Checkout_Open
+     (Image           : Stream_Handle;
+      Capacity, Limit : Size_T;
+      Output          : access Checkout_Handle;
+      Diagnostic      : System.Address;
+      Bytes           : Size_T;
+      Required        : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_open";
+   function IR_Image_Checkout_Receive
+     (Receiver   : Checkout_Handle;
+      Timeout_MS : Interfaces.Unsigned_32;
+      Output     : access Checkout_Lease_Handle;
+      Diagnostic : System.Address;
+      Bytes      : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_receive";
+   function IR_Image_Checkout_Get_Counters
+     (Receiver   : Checkout_Handle;
+      Output     : access Checkout_Counters_V1;
+      Diagnostic : System.Address;
+      Bytes      : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_get_counters";
+   function IR_Image_Checkout_Close
+     (Receiver   : access Checkout_Handle;
+      Diagnostic : System.Address;
+      Bytes      : Size_T;
+      Required   : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_close";
+   function IR_Image_Checkout_Lease_Close
+     (Lease           : access Checkout_Lease_Handle;
+      Provider_Return : access Interfaces.Unsigned_32;
+      Diagnostic      : System.Address;
+      Bytes           : Size_T;
+      Required        : access Size_T) return Interfaces.Integer_32
+   with Import, Convention => C, External_Name => "ams_mel_ir_image_checkout_lease_close";
    type Frame_Snapshot_Handle is new System.Address;
    Null_Frame_Snapshot  : constant Frame_Snapshot_Handle :=
      Frame_Snapshot_Handle (System.Null_Address);
