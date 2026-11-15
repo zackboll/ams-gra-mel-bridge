@@ -62,6 +62,12 @@ from ._image_types import (
     NavigationResponse,
 )
 from ._image_metadata import ImageMetadataStream
+from ._los_quaternion import (
+    Quaternion,
+    LineOfSightQuaternion,
+    LineOfSightQuaternionOpenError,
+    LineOfSightQuaternionStream,
+)
 from ._optical_distortion_map import (
     ForwardRightDown,
     RowCol,
@@ -275,6 +281,10 @@ for _public_symbol in (
     OpticalDistortionMap,
     OpticalDistortionMapOpenError,
     OpticalDistortionMapStream,
+    Quaternion,
+    LineOfSightQuaternion,
+    LineOfSightQuaternionOpenError,
+    LineOfSightQuaternionStream,
     BadPixel,
     BadPixelList,
     BadPixelReason,
@@ -418,6 +428,10 @@ __all__ = [
     "OpticalDistortionMap",
     "OpticalDistortionMapOpenError",
     "OpticalDistortionMapStream",
+    "Quaternion",
+    "LineOfSightQuaternion",
+    "LineOfSightQuaternionOpenError",
+    "LineOfSightQuaternionStream",
     "AttitudeRate",
     "NavigationCompleted",
     "NavigationRejected",

@@ -267,7 +267,7 @@ class AbiTests(unittest.TestCase):
         self.assertFalse([n for n in dir(ams_mel) if "execute_task_ack" in n.lower()])
 
     def test_private_image_los_quaternion_abi(self) -> None:
-        """IRMEL-ADA-010: private raw Image LineOfSightQuaternion mirror only."""
+        """PY-MEL-018 reuses the unchanged IRMEL-ADA-010 raw mirror."""
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as temp:
             executable = Path(temp) / "layout"
@@ -312,9 +312,12 @@ class AbiTests(unittest.TestCase):
             self.assertEqual(_native.BOUND_FUNCTION_NAMES.count(name), 1)
             self.assertEqual(function.argtypes, arguments + [_native.CharPointer, ctypes.c_size_t, _native.SizePointer])
             self.assertIs(function.restype, ctypes.c_int32)
-        # No safe Python quaternion line-of-sight API is introduced.
+        # Public reception adds no second raw quaternion or FRD representation.
         import ams_mel
-        self.assertFalse([n for n in dir(ams_mel) if "quaternion" in n.lower()])
+        from ams_mel import _los_quaternion, _optical_distortion_map
+        self.assertIs(ams_mel.Quaternion, _los_quaternion.Quaternion)
+        self.assertIs(_los_quaternion.ForwardRightDown,
+                      _optical_distortion_map.ForwardRightDown)
 
     def test_private_image_odm_abi(self) -> None:
         """IRMEL-ADA-009 raw layout/signatures remain unchanged by PY-MEL-017."""
