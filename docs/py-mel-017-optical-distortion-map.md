@@ -282,3 +282,25 @@ still require external serialization. Hosted Bootstrap/documentation checks and
 independent review must be evaluated on the final PR commit; pending hosted jobs
 mean `HOSTED_CI_PENDING`, not merge readiness. Auto-merge stays disabled, and the
 author does not approve or merge this PR.
+
+## Integration with newer main
+
+After all local gates (including qualified-PATH `make check` and the 92-test
+focused/API selection) and all nine Bootstrap jobs plus documentation passed for
+`7809932e2c1a4c004f133335dc790b4057042f43`, a fresh fetch identified newer main
+`3e462a6d5448918813a81b45653f9340a66b7c3d`, tree
+`a8efcacf5a763867a149eb1a507caf75d4ff164c`. It incorporates PR #220's Rust RF
+crate split and PR #223's documentation-qualification repairs. They were merged
+normally without conflict, not copied or modified as part of this feature.
+The feature delta against the incorporated base remains the same six paths;
+native, Ada, Rust, mocks, raw ctypes and historical baseline have no feature delta.
+No Python ODM implementation/test behavior changed during integration.
+
+The preceding counts and hosted runs are **earlier-source evidence**, not a waiver
+for integrated source. All required local gates, focused warnings-as-errors/API
+tests, compilation, integrity and current-source docs generation are rerun after
+this report update; the PR records exact integrated HEAD/tree, changed counts,
+commands, failures/skips and hosted results. The earlier successful hosted runs
+were Bootstrap `43678376367` and documentation `43678376450`. The failed local
+`make check` attempt lacking GPRbuild on PATH was followed by a successful run with
+the documented installed toolchain; neither result is misrepresented.
