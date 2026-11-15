@@ -2,7 +2,7 @@
 
 ## Source, scope and preflight
 
-Initial/final integrated base: `cb33c5e5434fa27b9d9660f6a9d361ed0993e37b`,
+Initial base: `cb33c5e5434fa27b9d9660f6a9d361ed0993e37b`,
 tree `0f6851c7e87ed002491fd61c2c43bd2683243ca1`, freshly fetched before
 implementation. Dedicated worktree `/home/zboll/git/ams-py-mel-016`, branch
 `feature/py-mel-016-stacked-foundation`. PR #216 (Python common metadata),
@@ -199,6 +199,25 @@ Exact final-source qualification, export comparison, source identities and hoste
 run results are recorded in the delivery PR. **HOSTED_CI_PENDING** until all
 required exact-HEAD checks pass and independent technical review remains required.
 No physical sensor, stacked data, acquisition, or complete MEL compliance claim.
+
+### Mainline reconciliation
+
+During qualification, main advanced through PR #215 (Rust Common-type extraction)
+to `ad35ec4d5fc2faa9296b530defad108bf1dbac31`, tree
+`e9a72310c6453c3edce599f44c6472b6da40f46d`. Incorporated with ordinary merge
+`aede79c6ca18d42f7acf5beb4f8e31d1935b72d9`, integrated tree
+`bb7302a2cbec2eb37939ef8aefe41818d0c679cb`, without rewriting published history.
+The diff against integrated main still contains only seven task-owned Python/doc
+paths. No Python/native/Ada conflict or unmerged common Disable work was adopted.
+
+Earlier committed source `225101d991c44a88394f9d72760c6b13604598c1`, tree
+`58a71d2a1c4404c7edf7c402233ddb0b7343c7ca`, passed native **744/744**, Python
+**663/663** (including **53** new tests), Rust **574 passed / 12 existing ignores**,
+policy **263 tests**, and structured inventory **67 tests**. These are explicitly
+earlier-source results, not relabeled integrated-source qualification. The
+sequential full gate sequence is rerun after integration; final committed-source
+results and exact-HEAD hosted runs are recorded in PR #218. No final report-only
+commit is exempted from exact-source qualification.
 
 The unchanged local reference-provider checkout is
 `/home/zboll/git/ams-rust-ir-014-reference`, commit
