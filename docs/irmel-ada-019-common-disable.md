@@ -148,12 +148,37 @@ concurrent against mutable native/Ada build trees. Logs are under
   verified. Source-derived coverage **5104/5105**, 101 informational GNATdoc
   warnings; no claim of zero documentation warnings.
 
-Final aggregate `make check`, direct pinned Alire build/tests and isolated
-GCC/Clang Debug/Release matrix are running/queued at this report revision;
-results will be appended after completion. A premature export audit ran while
-build isolation was intentionally replacing production artifacts and found no
-DSO; it is not a passed export check and is rerun after the build completes.
-Hosted status: **HOSTED_CI_PENDING** until exact-head workflow results exist.
+Final qualification completed successfully:
+
+- `alr -n -C ada exec -- make -C /home/zboll/git/ams-gra-mel-bridge check`:
+  **passed**, including both build-isolation directions, final native **744/744**,
+  Ada formatting, 67 coverage controls and complete safe-Ada smoke suites.
+- `alr -n -C ada build` and `alr -n -C ada/tests run`: **both passed** using
+  the pinned GNAT 16.1.0/GPRbuild 26.0.1 environment, without dependency edits.
+- Four isolated CMake trees configured with `AMS_MEL_BUILD_TESTS=ON`, explicit
+  `/usr/bin/{gcc,g++,clang,clang++}`, and Debug/Release: **744/744 passed in
+  each configuration**, warning-clean under the repository `-Werror` policy.
+  Each then ran `ctest -R '^channel_disable_' --parallel 4 --repeat until-fail:25`:
+  **54 cases × 25 repetitions passed per configuration**, 5,400 total stress
+  executions. Release checks remain active under NDEBUG.
+- Production and test facade export audits: **exactly 324 production names**
+  matching the map, new symbol `ams_mel_ir_channel_disable@@AMS_MEL_0.1`, no
+  unexpected production exports. A premature audit during build isolation found
+  its intentionally replaced DSO absent; the successful audit ran after builds.
+
+The isolated matrix build products are moved outside the checkout after
+qualification; generated CMake progress files are not first-party source and
+are not included in whitespace/newline qualification.
+
+Hosted evidence for pushed source/report commit `bde5d3b`:
+
+- Bootstrap: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43669429422>
+- Documentation: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43669429438>
+
+Documentation, policy, Python, Rust, Ada, build isolation, GCC Release and both
+Clang configurations passed at the last observation; GCC Debug was still
+running. This final report-only commit will have its own exact-head runs.
+**HOSTED_CI_PENDING** until all required exact-head workflow results exist.
 
 The Python regression caught an unintended alteration to Health's existing
 Close-only failed-detach retry behavior. That behavior is preserved; only an
