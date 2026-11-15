@@ -232,8 +232,42 @@ Mono8 contract. Every first-party target uses warnings as errors, and C test
 CHECKs remain active with NDEBUG. The initial Release regex selected the two
 Buffer tests only; the corrected regex above additionally ran Mono8.
 
-Integrated rerun outcomes and exact final-HEAD hosted status are reported in the
-PR qualification update and delivery response, not guessed while running.
+### Final integrated qualification
+
+The complete post-integration sequence passed all eight Make targets in order:
+formatting, formatting check, 658 native tests, 586 Python tests, Rust workspace,
+Ada smoke suite, 66 coverage controls, and `make check` (including both build-tree
+isolation directions and repeated native/Ada runs). This rerun included the
+private Finalize annotation and main's Rust IR consumer/documentation changes;
+Rust then had 528 passing tests, 48 doctests included, and 10 existing opt-in
+ignored cases.
+
+Main subsequently advanced with PR #209's Rust RF documentation only, to
+`99d7f11bc3e5b19c10c6d9daf0e7fe1c89b6fd41`. Ordinary merge
+`a8a4e62e4dc879c0c319ea2729ac8f3a16b735c1` incorporated it without rewriting
+history. No native/Ada/Python implementation or test changed in that merge.
+The affected Rust formatting, complete tests, Clippy and rustdoc were rerun and
+passed: **530 tests**, including **50 doctests**, with 10 existing opt-in ignored
+cases. Native was rebuilt and rerun first: **658/658 passed**.
+
+One direct Rust attempt after the Ada provider-only rebuild found that the
+missing-symbol RF fixture DSO was absent, so its missing-factory test correctly
+reported LibraryLoadFailed instead of SymbolNotFound. Rebuilding the **complete**
+native test target restored the fixture and the unchanged Rust tests passed.
+No contract or test was weakened to accommodate that setup failure.
+
+Source-bound documentation generation also passed on `a8a4e62...` and its tree
+`046ba384606b262d3bdb93c422e98449d1df5b43`: Buffer 55/55 public elements,
+zero Buffer warnings, whole-tree informational 5071/5103 with 124 diagnostics.
+The final report-only commit does not change compiled implementation or tests.
+Strict C11, source integrity, annotation coverage, DSO/map equality at 323,
+whitespace and final-newline checks were rechecked.
+
+PR #210 remains open/non-draft, unmerged, with auto-merge disabled and no
+self-approval. Hosted results must be read against the exact final pushed HEAD;
+prior-HEAD successes are not final-HEAD qualification. Final check URLs/status
+are recorded in the PR delivery comment and response. Pending checks are
+explicitly reported as `HOSTED_CI_PENDING`.
 
 ## Exclusions and unresolved provider semantics
 
