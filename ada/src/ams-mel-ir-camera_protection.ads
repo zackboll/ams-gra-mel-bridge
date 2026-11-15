@@ -50,8 +50,8 @@ package AMS.MEL.IR.Camera_Protection is
    --  @field Status Exact CmdResp alternative reporting the MFA camera self-protection capability.
 
    subtype Outcome is AMS.MEL.IR.Channel.Outcome;
-   use type Outcome;
    --  Success (a response with any of the three Status values) or explicit MEL rejection.
+   use type Outcome;
    subtype Error_Code is AMS.MEL.IR.Channel.Error_Code;
    --  Known MEL rejection categories; unknown codes raise Provider_Error instead.
 

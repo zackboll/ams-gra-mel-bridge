@@ -139,6 +139,10 @@ package AMS.MEL.IR is
      (Channel_ID : UCI_ID; Platform_ID : UCI_ID; Sensor_Location : Component_Location)
       return Image_Control_Config;
    --  Copy normal attachment metadata without inventing an acquisition layout.
+   --  @param Channel_ID Requested Image channel identity and descriptive label.
+   --  @param Platform_ID Host platform identity and descriptive label.
+   --  @param Sensor_Location Sensor mounting offsets and external location key.
+   --  @return Ada-owned attachment configuration without buffer or sample-layout settings.
 
    function Open_Image_Control
      (Parent : Session; Config : Image_Control_Config) return Image_Stream;
@@ -150,6 +154,9 @@ package AMS.MEL.IR is
    --  registration occurs. Enable is not evidence that acquisition has begun.
    --  Both Receive APIs (including frame leases) raise Provider_Error with a
    --  control-only diagnostic; no pixel view can be obtained from this owner.
+   --  @param Parent Open IR Session; serialize this call against parent closure.
+   --  @param Config Channel/platform/location values copied into the attachment.
+   --  @return Limited owner of an attached Image channel; Start explicitly enables it.
    --  @exception Provider_Error Closed parent, invalid metadata or failed attach.
 
    procedure Start (Object : in out Image_Stream);

@@ -36,14 +36,15 @@ unlimited ABI evolution, or make all owners concurrently usable.</p>
   +-- IR Session -- Image_Stream -- Image copies / Frame_Lease
   |             +-- C2 -- command requests / metadata queue
   |             +-- Health_Status / Instrumentation / Track channels
+  |             +-- Scheduling / Stacked_Image channel foundations
   |
   +-- RF Data_MEL -- ProductRx request -- Endpoint -- Event
   +-- RF C2_MEL   -- VA request -- Virtual_Aperture -- Job request -- Job
   |                              +-- descriptors / observers / queries
   +-- RF Admin   -- independent administration commands</pre>
 <p>RF DataMEL and C2 are not children of the IR Session or interchangeable data
-and command handles. The <a href="api-map.html">API map</a> identifies all
-29 public packages. Read <a href="ir-workflows.html">IR Workflows</a> and
+and command handles. The <a href="api-map.html">API map</a> derives its package
+directory from the current public source. Read <a href="ir-workflows.html">IR Workflows</a> and
 <a href="rf-workflows.html">RF Workflows</a> separately.</p>
 <h2>Where ownership and asynchronous work live</h2>
 <p>Native state objects own provider shared resources, library handles, futures,

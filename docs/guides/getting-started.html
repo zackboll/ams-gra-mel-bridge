@@ -75,6 +75,21 @@ coverage are informational reports, not feature-development gates.
 The generator compiles specifications
 semantically, without a production build or runtime provider. Capability enums
 describe vocabulary, not a guarantee that all corresponding operations exist.</p>
+<h3 id="documentation-diagnostics">Read the reports for the source being reviewed</h3>
+<p>The <strong>Ada API Documentation</strong> workflow summary identifies the
+source commit and reports measured coverage and warnings. Its
+<code>documentation-diagnostics</code> artifact for that run contains
+<code>coverage.json</code>, <code>warnings.json</code>,
+<code>native-anchors.json</code> and <code>gnatdoc.log</code>; the artifact name
+also includes the run, attempt and commit. A successful normal build verifies
+source/native reconciliation and publication integrity, while reporting
+documentation gaps without imposing a completeness threshold.</p>
+<p>After a successful local <code>make docs</code>, these reports are in
+<code>.doc-tools/current/</code>. Its <code>manifest.json</code> records the
+source identity and output digests. Read the reports matching the commit under
+review; historical counts in earlier task reports are not current measurements.
+See <code>docs/doc-ci-simplify-001.md</code> in the checkout for the build and
+artifact contract.</p>
 <h2>Source basis and next steps</h2>
 <p>Commands and directories come from <code>Makefile</code>,
 <code>ada/README.md</code>, both Ada Alire manifests,
