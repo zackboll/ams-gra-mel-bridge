@@ -48,6 +48,7 @@ from ._errors import (
     ErrorKind,
     MelError,
 )
+from ._comms_metadata import CommsMetadataCounters, CommsMetadataStream
 from ._image_types import (
     AzimuthElevation,
     BadPixel,
@@ -235,6 +236,8 @@ from . import _native
 
 # Keep public introspection and pickle paths independent of implementation files.
 for _public_symbol in (
+    CommsMetadataCounters,
+    CommsMetadataStream,
     AttitudeRate,
     NavigationCompleted,
     NavigationRejected,
@@ -496,6 +499,8 @@ __all__ = [
     "CommsCompleted",
     "CommsRejected",
     "CommsRequest",
+    "CommsMetadataCounters",
+    "CommsMetadataStream",
     "CommsTestReport",
     "CommsTestRequest",
     "ComponentLocation",
