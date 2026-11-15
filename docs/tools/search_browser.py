@@ -85,7 +85,9 @@ def run(site, output):
             ready()
             for query in ('Navigation Report', 'Navigation_Report', 'Submit_Navigation_Report',
                           'AMS.MEL.IR.Image.Navigation_Report'):
+                initial_url = page.url
                 search.fill(query)
+                require(page.url == initial_url, 'typing changed navigation')
                 expect(links.first).to_be_visible()
                 names = links.all_text_contents()
                 expected_names = (list(required) if query in ('Navigation Report', 'Navigation_Report')
@@ -198,17 +200,25 @@ def run(site, output):
                     context.close()
 
             original = (site / 'api/gnatdoc-search-index.json').read_bytes()
-            for mutation in ('missing', 'corrupt', 'forged'):
+            for mutation in ('missing', 'corrupt', 'forged', 'forged-rehashed'):
                 context = browser.new_context()
+                forged = original.replace(
+                    selected['AMS.MEL.IR.Image.Navigation_Report']['href'].encode(),
+                    b'https://example.invalid/forged')
                 def mutate(route, mode=mutation):
                     if mode == 'missing':
                         route.fulfill(status=404, body='missing')
                     else:
-                        payload = original + b' ' if mode == 'corrupt' else original.replace(
-                            selected['AMS.MEL.IR.Image.Navigation_Report']['href'].encode(),
-                            b'https://example.invalid/forged')
+                        payload = original + b' ' if mode == 'corrupt' else forged
                         route.fulfill(status=200, content_type='application/json', body=payload)
                 context.route('**/gnatdoc-search-index.json', mutate)
+                if mutation == 'forged-rehashed':
+                    import hashlib
+                    shell = (site / 'api/index.html').read_bytes().replace(
+                        hashlib.sha256(original).hexdigest().encode(),
+                        hashlib.sha256(forged).hexdigest().encode())
+                    context.route('**/api/index.html', lambda route: route.fulfill(
+                        status=200, content_type='text/html', body=shell))
                 page = context.new_page()
                 page.goto(base + 'api/index.html')
                 expect(page.locator('#package-results')).to_contain_text('Documentation search unavailable')
