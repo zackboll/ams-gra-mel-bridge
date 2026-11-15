@@ -19,6 +19,20 @@ impl<T> Operation<T> for std::result::Result<T, Error> {
     }
 }
 
+fn registration_error(
+    error: &Error,
+    registration: Option<CommandReturn>,
+    operation: &str,
+) -> String {
+    format!("{operation}: {error:?}; provider registration Return={registration:?}")
+}
+
+impl<T> Operation<T> for std::result::Result<T, CommsMetadataOpenError> {
+    fn at(self, operation: &str) -> Result<T> {
+        self.map_err(|e| registration_error(e.error(), e.registration(), operation))
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Arguments {
     Help,
@@ -203,6 +217,73 @@ fn stub_address(kind: ChannelType) -> Result<u32> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Submission {
+    Direct,
+    C2Routed,
+}
+
+impl Submission {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::C2Routed => "C2-routed",
+        }
+    }
+}
+
+fn channel_label(kind: ChannelType) -> Result<&'static str> {
+    match kind {
+        ChannelType::CommandAndControl => Ok("C2"),
+        ChannelType::HealthAndStatus => Ok("Health"),
+        ChannelType::IrstImage => Ok("Image"),
+        ChannelType::StackedImage => Ok("StackedImage"),
+        _ => Err(format!("not an exercised destination: {kind:?}")),
+    }
+}
+
+fn comms_request(kind: ChannelType, submission: Submission) -> Result<CommsTestRequest> {
+    let index = REQUIRED
+        .iter()
+        .position(|&required| required == kind)
+        .ok_or_else(|| format!("not an exercised destination: {kind:?}"))? as u32;
+    let offset = match submission {
+        Submission::Direct => 0,
+        Submission::C2Routed => 10,
+    };
+    Ok(CommsTestRequest {
+        command_id: 100 + index + offset,
+        channel_id: stub_address(kind)?,
+        request_id: 200 + index + offset,
+    })
+}
+
+fn c2_comms_event(event: C2MetadataEvent) -> Result<CommsTestReport> {
+    match event {
+        C2MetadataEvent::CommsTest(report) => Ok(report),
+        other => Err(format!("unexpected C2 sensor metadata: {other:?}")),
+    }
+}
+
+fn comms_callback(
+    received: std::result::Result<CommsTestReport, Error>,
+    receiver: ChannelType,
+    submission: Submission,
+) -> Result<()> {
+    // The receiver supplies channel association; the native report has only two IDs.
+    let label = channel_label(receiver)?;
+    let path = submission.label();
+    let report = received.at(&format!(
+        "receive actual {label} CommsTest metadata ({path})"
+    ))?;
+    correlated(report, comms_request(receiver, submission)?)?;
+    println!(
+        "[OK] actual {label} CommsTest metadata ({path}): command_id={} request_id={}",
+        report.command_id, report.request_id
+    );
+    Ok(())
+}
+
 fn comms_result(
     result: &CommsTestResult,
     request: CommsTestRequest,
@@ -216,13 +297,18 @@ fn comms_result(
     }
 }
 
-fn comms(view: &mut ChannelView, request: CommsTestRequest, operation: &str) -> Result<()> {
+fn comms(view: &mut ChannelView, kind: ChannelType, submission: Submission) -> Result<()> {
+    let request = comms_request(kind, submission)?;
+    let operation = &format!("{} CommsTest", submission.label());
     let mut owner = view.submit_comms_test(request).at(operation)?;
     let result = owner.wait(WAIT_MS).at(operation)?;
     let checked = comms_result(&result, request, operation);
     owner.close().at("close CommsRequest")?;
     checked?;
-    println!("[OK] {operation}: {result:?}, request={request:?}");
+    println!(
+        "[OK] {operation}: {result:?}, request={request:?}, destination={}",
+        channel_label(kind)?
+    );
     Ok(())
 }
 
@@ -338,7 +424,16 @@ fn run(path: &Path) -> Result<()> {
     let mut image_metadata = image.open_metadata(QUEUE_CAPACITY).at(
         "register Image BadPixelList, LineOfSightReport, LineOfSightEuler, NavigationReportResp",
     )?;
-    println!("[OK] required metadata registered: C2=3, Health=6, Image=4; C2 CommsTest separately registered (not sensor measurements)");
+    let mut health_comms = health_view
+        .open_comms_metadata(QUEUE_CAPACITY)
+        .at("register Health CommsTest metadata")?;
+    let mut image_comms = image_view
+        .open_comms_metadata(QUEUE_CAPACITY)
+        .at("register Image CommsTest metadata")?;
+    let mut stacked_comms = stacked_view
+        .open_comms_metadata(QUEUE_CAPACITY)
+        .at("register StackedImage CommsTest metadata")?;
+    println!("[OK] required metadata registered: C2=3, Health=6, Image=4; CommsTest=4 (dedicated C2 plus Health/Image/StackedImage common); total=17 (not sensor measurements)");
     c2.enable().at("enable C2")?;
     health.enable().at("enable Health")?;
     image.start().at("start Image control-only")?;
@@ -363,35 +458,29 @@ fn run(path: &Path) -> Result<()> {
             cap.channel_id.descriptive_label()
         );
     }
-    for (index, kind) in REQUIRED.into_iter().enumerate() {
-        let request = CommsTestRequest {
-            command_id: 100 + index as u32,
-            channel_id: stub_address(kind)?,
-            request_id: 200 + index as u32,
-        };
-        let direct = match index {
-            0 => &mut c2_view,
-            1 => &mut health_view,
-            2 => &mut image_view,
-            _ => &mut stacked_view,
-        };
-        comms(direct, request, "direct CommsTest")?;
-        comms(&mut c2_view, request, "C2-routed CommsTest")?;
-        if index == 0 {
-            // This pinned provider invokes its callback synchronously during send.
-            // These are actual events, independent of either future's result.
-            for _ in 0..2 {
-                match c2_metadata.receive(0).at("receive C2 CommsTest metadata")? {
-                    C2MetadataEvent::CommsTest(report) => {
-                        correlated(report, request)?;
-                        println!("[OK] actual C2 CommsTest metadata: {report:?}");
-                    }
-                    other => return Err(format!("unexpected C2 sensor metadata: {other:?}")),
-                }
-            }
+    for kind in REQUIRED {
+        for submission in [Submission::Direct, Submission::C2Routed] {
+            let view = match (submission, kind) {
+                (Submission::C2Routed, _) | (_, ChannelType::CommandAndControl) => &mut c2_view,
+                (_, ChannelType::HealthAndStatus) => &mut health_view,
+                (_, ChannelType::IrstImage) => &mut image_view,
+                _ => &mut stacked_view,
+            };
+            comms(view, kind, submission)?;
+            // Receive independently after EACH future, never infer delivery from completion.
+            let received = match kind {
+                ChannelType::CommandAndControl => Ok(c2_comms_event(
+                    c2_metadata
+                        .receive(WAIT_MS)
+                        .at("receive C2 CommsTest metadata")?,
+                )?),
+                ChannelType::HealthAndStatus => health_comms.receive(WAIT_MS),
+                ChannelType::IrstImage => image_comms.receive(WAIT_MS),
+                _ => stacked_comms.receive(WAIT_MS),
+            };
+            comms_callback(received, kind, submission)?;
         }
     }
-    println!("[STUB] Health/Image/Stacked common CommsTest callbacks not exposed in safe Rust; eight futures and two C2 events checked, not eight callbacks");
 
     let mut bit = c2
         .submit_bit(&BitCommand {
@@ -450,6 +539,27 @@ fn run(path: &Path) -> Result<()> {
         counts.malformed_or_unsupported,
         2,
     )?;
+    println!("[OK] C2 CommsTest counters: events_received=2 events_dropped_queue_full=0 malformed_or_unsupported=0");
+    no_telemetry(c2_metadata.receive(0), "C2 CommsTest")?;
+    println!("[OK] C2 CommsTest queue empty (active Timeout)");
+    for (label, metadata) in [
+        ("Health", &mut health_comms),
+        ("Image", &mut image_comms),
+        ("StackedImage", &mut stacked_comms),
+    ] {
+        let counts = metadata
+            .counters()
+            .at(&format!("{label} CommsTest counters"))?;
+        metadata_counts(
+            counts.events_received,
+            counts.events_dropped_queue_full,
+            counts.malformed_or_unsupported,
+            2,
+        )?;
+        println!("[OK] {label} CommsTest counters: events_received=2 events_dropped_queue_full=0 malformed_or_unsupported=0");
+        no_telemetry(metadata.receive(0), &format!("{label} CommsTest"))?;
+        println!("[OK] {label} CommsTest queue empty (active Timeout)");
+    }
     let counts = health_metadata.counters().at("Health metadata counters")?;
     metadata_counts(
         counts.events_received,
@@ -464,6 +574,7 @@ fn run(path: &Path) -> Result<()> {
         counts.malformed_or_unsupported,
         0,
     )?;
+    println!("[STUB] Image acquisition counters: frames_received=0 frames_dropped_queue_full=0 malformed_or_unsupported=0");
     println!("[STUB] all sensor metadata queues empty at nonblocking observation; registration is not telemetry");
 
     image.stop().at("stop Image")?;
@@ -482,8 +593,14 @@ fn run(path: &Path) -> Result<()> {
     c2_metadata.close().at("close C2 metadata")?;
     health_metadata.close().at("close Health metadata")?;
     image_metadata.close().at("close Image metadata")?;
+    health_comms.close().at("close Health CommsTest metadata")?;
+    image_comms.close().at("close Image CommsTest metadata")?;
+    stacked_comms
+        .close()
+        .at("close StackedImage CommsTest metadata")?;
     session.close().at("close Session")?;
     println!("[OK] requests, Views, typed channels, metadata and Session explicitly closed");
+    println!("[OK] CommsTest parity: 8 correlated futures and 8 independently received callbacks across 4 channels");
     println!("[OK] four-channel reference-stub contract complete; no full C++ parity or hardware qualification");
     Ok(())
 }
