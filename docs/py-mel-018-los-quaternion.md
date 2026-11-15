@@ -261,6 +261,35 @@ produced 1,497 HTML files and 652 assets. These are measured earlier-source
 results, not a waiver for final-head repetitions after this evidence update.
 The PR records the exact final-source repetition and hosted run identities.
 
+## Final integration and resumed qualification
+
+The interrupted client polling was not a build failure. The original sequential
+runner completed on commit `59e9b3d1a26f5979be7d5a571bd2551a9dea520d`, tree
+`b746908d72379ab54cab953bf5e20cf119f606d6`, recording exit 0 for every required
+make target, focused/API tests, compilation, integrity, newlines, whitespace and
+production exports. Focused results were 24 quaternion tests (28 isolated
+provider scenarios) and 116 combined quaternion/ODM/package/identity/ABI tests.
+The full suites passed 821 native tests, 710 Python tests, 608 Rust tests (15
+existing ignored subprocess entries), 263 policy tests and 70 coverage controls.
+Current-Git documentation generation also passed on that exact commit.
+
+A fresh fetch during delivery identified newer main commit
+`5b8ec76bc7a5ce27558988c619e96e5dce6159e7`, tree
+`400012fb08a7aa573a0d32e425e76e73f7bb046a`, incorporating PRs #228 and #229
+(Rust crate extraction and completion-owner lifetime regression correction).
+It was merged normally without conflict, preserving both feature commits. Its
+native tree is byte-identical to the original production-export baseline; the
+Python implementation and tests required no integration changes. The feature
+delta against incorporated main remains exactly the six paths above, with no
+native, Ada, Rust, workflow, vendor or historical-baseline feature changes.
+
+All required acceptance commands, focused tests and current-Git documentation
+are repeated on the final integrated commit; their measured results, exact
+commit/tree and final-head hosted checks are recorded in the delivery PR.
+Earlier successful qualification is not substituted for those final-source
+checks. Independent review remains blocked by the recorded reviewer-client
+authentication failure; no approval or readiness is inferred from local passes.
+
 Commands run from `/home/zboll/git/ams-py-mel-018`. GNAT-dependent checks use the
 installed GNAT 16.1.0 and GPRbuild 26.0.1 directories under
 `/home/zboll/.local/share/alire/toolchains` on PATH. Focused Python commands set:
