@@ -290,6 +290,38 @@ Earlier successful qualification is not substituted for those final-source
 checks. Independent review remains blocked by the recorded reviewer-client
 authentication failure; no approval or readiness is inferred from local passes.
 
+### PY-MEL-018-R1 — hosted documentation reconciliation
+
+The authored-HTML run
+<https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43759369559>
+failed after candidate generation because its current-main workflow checked out
+feature `58395ec408911f4859d096090d3e461f48cb6584`, which did not contain
+`docs/tools/qualify_authored_html.py`. A normal conflict-free merge incorporated
+main `43f8acc8843a907dd91150961bc94023ec23c414` (tree
+`e0af603fb1243843aa174a61d49571530f725509`) at merge commit
+`597af246cfc211ac4d73288698c258cf6c8abbe7`. All workflow entry points and authored
+tests are then present. All 17 inherited Python module changes are docstrings
+only by executable-AST comparison; quaternion/ODM implementation and tests,
+canonical `ForwardRightDown`, native ABI and structured coverage are unchanged.
+
+Integrated-source qualification exposed one further inherited fixture mismatch:
+`make test-documentation-source` ran 11 tests, with ten passing and one error
+because `assembled_fixture` supplied only Ada/Rust artifacts while the current
+verifier also requires `python-reference.json`. The correction generates and
+assembles the actual source-derived Python publication and writes its genuine
+record, matching the production assembly. Production scripts, workflow gates,
+all negative assertions and event-bound publication authority remain unchanged.
+This is documentation test-fixture integration, not new receiver functionality.
+
+On the merge checkpoint, native 821/821, Python 710, Rust 612 (15 existing
+ignored entries), policy and 70 coverage controls passed; the authored candidate
+was reconstructed twice (59 files), all 32 authored negatives and five authored
+tests passed. Those checkpoint results do not qualify the subsequent fixture
+correction. Exact final-source acceptance, authored/source/example/browser
+commands, exits, hosted run URLs and review disposition are recorded in existing
+PR #233's R1 qualification ledger. Earlier failed setup/source-test attempts are
+retained there. Independent review is still not completed or inferred from CI.
+
 Commands run from `/home/zboll/git/ams-py-mel-018`. GNAT-dependent checks use the
 installed GNAT 16.1.0 and GPRbuild 26.0.1 directories under
 `/home/zboll/.local/share/alire/toolchains` on PATH. Focused Python commands set:
