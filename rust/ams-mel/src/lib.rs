@@ -165,9 +165,7 @@ pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaIn
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
 
-pub use ams_mel_common::{
-    AbiVersion, ComponentLocation, Error, ErrorKind, ProviderVersion, UciId,
-};
+pub use ams_mel_common::{AbiVersion, ComponentLocation, Error, ErrorKind, ProviderVersion, UciId};
 
 /// Owned configuration for strict Mono8 acquisition via [`Session::open_image_stream`].
 ///

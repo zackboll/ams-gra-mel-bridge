@@ -37,7 +37,9 @@ fn shared_types_have_one_identity() {
 fn nul_and_native_error_contracts_remain_stable() {
     let bad: legacy::Error = legacy::UciId::new([0; 16], "bad\0label").unwrap_err();
     assert_eq!(bad.kind(), &common::ErrorKind::InvalidArgument);
-    assert!(bad.to_string().contains("descriptive_label contains an embedded NUL"));
+    assert!(bad
+        .to_string()
+        .contains("descriptive_label contains an embedded NUL"));
     let native: common::Error = common::Error::from_native_parts(
         common::ErrorKind::ProviderFailed,
         Some("native failure".into()),
