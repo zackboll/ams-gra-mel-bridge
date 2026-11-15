@@ -6,6 +6,8 @@ import ctypes as _ctypes
 from typing import Any
 
 from . import _native
+from ._comms_metadata import CommsMetadataStream
+from ._validation import _validate_size_t
 from ._errors import (
     ErrorKind,
     _call_with_diagnostic,
@@ -217,6 +219,45 @@ class ChannelView:
                 "CommsTest submission succeeded without returning a request owner",
             )
         return CommsRequest._from_owner(owner)
+
+    def open_comms_metadata(self, queue_capacity: int = 16) -> CommsMetadataStream:
+        """Register inherited provider-to-consumer CommsTest metadata once.
+
+        Health/Image are supported; future StackedImage views can reuse this
+        operation. C2 must use its dedicated metadata API. Registration does
+        not enable the channel and failure can consume the native attempt.
+        The receiver retains no Python parent and is not a request future.
+        """
+        self._require_open()
+        _validate_size_t(queue_capacity, "queue_capacity")
+        if not queue_capacity:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "queue_capacity must be positive")
+        owner = _native.IrChannelCommsMetadataHandle()
+        registration = _ctypes.c_uint32(0xFFFFFFFF)
+        owner_pointer = _ctypes.pointer(owner)
+        registration_pointer = _ctypes.pointer(registration)
+        try:
+            _call_with_diagnostic(
+                lambda diagnostic, required: _native.ams_mel_ir_channel_comms_metadata_open(
+                    self._owner, queue_capacity, owner_pointer, registration_pointer,
+                    diagnostic, len(diagnostic), _ctypes.byref(required)))
+            if registration.value != _native.AMS_MEL_IR_RETURN_SUCCESS:
+                raise _local_error(ErrorKind.PROTOCOL_INCONSISTENCY,
+                                   "Comms metadata Open succeeded with inconsistent registration")
+            if not owner.value:
+                raise _local_error(ErrorKind.PROTOCOL_INCONSISTENCY,
+                                   "Comms metadata Open succeeded without an owner")
+            return CommsMetadataStream._from_owner(owner)
+        except BaseException:
+            # A single cleanup invocation; preserve the original failure even
+            # if Close raises or leaves ownership uncertain. No finalizer owns
+            # this output slot when construction has not completed.
+            try:
+                if owner.value:
+                    _native.ams_mel_ir_channel_comms_metadata_close(owner_pointer, None, 0, None)
+            except BaseException:
+                pass
+            raise
 
     def capabilities(self) -> ChannelCapability:
         """Return a complete Python-owned ChannelCapability snapshot.
