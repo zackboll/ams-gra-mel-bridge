@@ -61,6 +61,27 @@ class GeneratedSourceTests(unittest.TestCase):
         shutil.copytree(self.output, destination)
         return destination
 
+    def assembled_fixture(self, directory):
+        """Keep original Ada negatives behind the new isolated assembly boundary."""
+        from check_doc_coverage import measure
+        import rustdoc_publication as rustdoc
+        directory.mkdir()
+        shutil.copytree(self.output / 'pristine', directory / 'pristine')
+        shutil.copytree(self.output / 'published', directory / 'ada-qualified')
+        context = docs_ci.identity(self.repo)
+        with tempfile.TemporaryDirectory(dir=self.directory) as temp:
+            temp = Path(temp)
+            epoch.export(self.repo, self.candidate, temp / 'source')
+            files, record = rustdoc.generate(temp / 'source', temp / 'rust', context, temp / 'rust.log')
+        for name, data in rustdoc.assembled(presentation.files(directory / 'ada-qualified'), files).items():
+            path = directory / 'published' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        report = measure(directory / 'pristine', self.repo)
+        docs_ci.write(directory / 'coverage.json', report)
+        docs_ci.write(directory / 'native-anchors.json', report['native'])
+        docs_ci.write(directory / 'rustdoc.json', record)
+
     def test_documented_addition_uses_actual_source_anchor_and_catalog(self):
         self.assertEqual(self.value['status'], 'mechanically-qualified')
         self.assertEqual(self.value['candidate_commit'], self.candidate)
@@ -132,12 +153,7 @@ class GeneratedSourceTests(unittest.TestCase):
         from local_type_audit import LINK, SECTION
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
-            directory.mkdir()
-            for name in ('pristine', 'published'):
-                shutil.copytree(self.output / name, directory / name)
-            report = measure(directory / 'pristine', self.repo)
-            docs_ci.write(directory / 'coverage.json', report)
-            docs_ci.write(directory / 'native-anchors.json', report['native'])
+            self.assembled_fixture(directory)
             record = next(r for r in self.value['publication']['type_occurrences']
                           if r['containing']['name'] == 'Operational_Task_Kind')
             path = directory / 'published/api' / record['containing']['page']
@@ -151,6 +167,8 @@ class GeneratedSourceTests(unittest.TestCase):
                 with self.subTest(replacement=replacement):
                     body = section[3].replace(wrapper, replacement)
                     path.write_text(original[:section.start(3)] + body + original[section.end(3):])
+                    qualified = directory / 'ada-qualified/api' / path.name
+                    qualified.write_bytes(path.read_bytes())
                     # Make the presentation manifest and outer payload agree
                     # with the forgery; neither is independent authority.
                     inner = directory / 'published/api/presentation.json'
@@ -160,6 +178,7 @@ class GeneratedSourceTests(unittest.TestCase):
                         for counter in ('linked_types', 'linked_local_types'):
                             data['counts'][counter] -= 1
                     docs_ci.write(inner, data)
+                    shutil.copyfile(inner, directory / 'ada-qualified/api/presentation.json')
                     with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                         payload = presentation.files(directory)
                         payload.pop('manifest.json', None)
@@ -205,12 +224,7 @@ class GeneratedSourceTests(unittest.TestCase):
         from check_doc_coverage import measure
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:
             directory = Path(temp) / 'normal'
-            directory.mkdir()
-            for name in ('pristine', 'published'):
-                shutil.copytree(self.output / name, directory / name)
-            report = measure(directory / 'pristine', self.repo)
-            docs_ci.write(directory / 'coverage.json', report)
-            docs_ci.write(directory / 'native-anchors.json', report['native'])
+            self.assembled_fixture(directory)
             with mock.patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                 manifest = {'schema': 1, 'identity': docs_ci.identity(self.repo),
                             'payload': presentation.hashes(presentation.files(directory))}
