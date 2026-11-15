@@ -38,6 +38,7 @@ assertion that its proposed APIs have already been implemented.
 - Keep OMS/UCI, processing algorithms, Squall-private transports, and Rust out
   of the generic MEL library. Do not add them to make a test pass.
 - Public API and ownership changes require matching tests in C and Ada.
+- Run `make check-ada-docs-changed` whenever modifying public Ada `.ads` declarations.
 - All first-party compiled source must be warning-clean and build with warnings
   treated as errors. Fix warnings when introduced rather than suppressing them;
   vendored upstream source remains byte-identical and is not modified to satisfy
