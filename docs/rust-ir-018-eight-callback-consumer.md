@@ -592,7 +592,7 @@ PATH. Rust was **1.98.1**, Cargo **1.98.1**, Alire **2.1.1**. Commands/results:
 | `cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --locked -- -D warnings` | Passed against production default. |
 | `cargo fmt --manifest-path rust/Cargo.toml --all -- --check` | Passed. |
 | `RUSTDOCFLAGS="-D warnings" cargo doc --manifest-path rust/Cargo.toml --workspace --locked --no-deps` | Passed, five crates. |
-| `make check` | Passed: build isolation, native **821/821**, pinned GNATformat, **70/70** IR inventory regressions, **53 Ada smoke PASS groups**, separate minimal-consumer **14 negative controls**, newline/whitespace. |
+| `make check` | Passed: build isolation, native **821/821**, pinned GNATformat, **70/70** IR inventory regressions, **52 Ada smoke PASS groups**, separate minimal-consumer **14 negative controls** (one additional PASS line), newline/whitespace. |
 | `make native`, then `make test-native` after aggregate | Both passed; complete provider/test tree restored, **821/821** native. |
 | Post-restoration workspace Debug test | **616 passed / 0 failed / 15 ignored**, 51 groups. |
 | `cargo test --manifest-path rust/Cargo.toml --workspace --release --locked` | **616 passed / 0 failed / 15 ignored**, 51 groups against test facade. |
