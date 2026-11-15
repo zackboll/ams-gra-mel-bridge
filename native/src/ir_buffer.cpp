@@ -1,6 +1,7 @@
 #include <ams_mel/abi.h>
 #include "internal.hpp"
 #include "internal/provider_common.hpp"
+#include "internal/ir_buffer.hpp"
 #include <irmel/library/irmel-types/Buffer.h>
 
 #include <cstring>
@@ -10,16 +11,6 @@
 
 using namespace ams::iface;
 using namespace ams_mel::internal;
-
-/* Reverse member destruction is intentional: provider, storage, Session DSO.
- * Never resized. No channel, callback or checkout can reach this owner. */
-struct ams_mel_ir_buffer {
-    std::shared_ptr<SessionState> session;
-    std::vector<std::uint8_t> storage;
-    std::shared_ptr<irmel::Buffer> provider;
-    std::int64_t context{};
-    std::mutex mutex;
-};
 
 namespace {
 using Factory = decltype(&irmel::getBuffer);
@@ -96,6 +87,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_get_info(
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
         if (!b || !output) return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         const auto address = b->provider->getBufferAddress();
         const auto image = b->provider->getImageAddress();
         const auto start = reinterpret_cast<std::uintptr_t>(b->storage.data());
@@ -121,6 +113,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_get_flags(
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
         if (!b || !count || !result || (!flags && capacity)) return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         std::vector<irmel::BufferFlag> values;
         *result = static_cast<std::uint32_t>(b->provider->getFlags(values));
         if (*result != static_cast<std::uint32_t>(irmel::Return::Success))
@@ -144,6 +137,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_set_flags(
         if (!b || (!flags && count) || count > std::vector<irmel::BufferFlag>{}.max_size())
             return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         std::vector<irmel::BufferFlag> values;
         values.reserve(count);
         for (std::size_t i = 0; i < count; ++i) {
@@ -162,6 +156,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_add_flag(
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
         if (!b || flag > AMS_MEL_IR_BUFFER_RDMA) return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         b->provider->addFlag(static_cast<irmel::BufferFlag>(flag));
         return AMS_MEL_OK;
     });
@@ -174,6 +169,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_read_storage(
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
         if (!b) return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         if (!span(*b, offset, bytes, count)) return AMS_MEL_INVALID_ARGUMENT;
         if (count) std::memcpy(bytes, b->storage.data() + offset, count);
         return AMS_MEL_OK;
@@ -187,6 +183,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_write_storage(
     return boundary(d, cap, required, [&]() -> ams_mel_status_t {
         if (!b) return AMS_MEL_INVALID_ARGUMENT;
         std::lock_guard lock{b->mutex};
+        if (!buffer_accessible(*b)) return AMS_MEL_PROVIDER_FAILED;
         if (!span(*b, offset, bytes, count)) return AMS_MEL_INVALID_ARGUMENT;
         if (count) std::memcpy(b->storage.data() + offset, bytes, count);
         return AMS_MEL_OK;
@@ -201,6 +198,7 @@ extern "C" ams_mel_status_t ams_mel_ir_buffer_close(
         if (!*b) return AMS_MEL_OK;
         {
             std::lock_guard lock{(*b)->mutex};
+            if (!buffer_accessible(**b)) return AMS_MEL_PROVIDER_FAILED;
             if ((*b)->provider.use_count() != 1) return AMS_MEL_PROVIDER_FAILED;
             (*b)->provider.reset();
         }

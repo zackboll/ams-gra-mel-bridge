@@ -9,8 +9,8 @@ use std::path::Path;
 use std::ptr;
 use std::slice;
 
-use ams_mel_sys as sys;
 use crate::{Error, ErrorKind, ProviderVersion};
+use ams_mel_sys as sys;
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 
@@ -105,7 +105,11 @@ fn zeroed_buffer(size: usize, field: &str) -> Result<Vec<u8>, Error> {
 ///
 /// For a non-empty, well-formed span, `data` must point to `size` initialized
 /// `T` values that remain valid and unmodified for `'a`.
-pub(crate) unsafe fn checked_span<'a, T>(data: *const T, size: usize, field: &str) -> Result<&'a [T], Error> {
+pub(crate) unsafe fn checked_span<'a, T>(
+    data: *const T,
+    size: usize,
+    field: &str,
+) -> Result<&'a [T], Error> {
     if size == 0 {
         return Ok(&[]);
     }
@@ -285,4 +289,3 @@ fn error_from_status(
     };
     Error::from_native_parts(kind, diagnostic, diagnostic_required)
 }
-

@@ -2654,6 +2654,8 @@ BOUND_FUNCTION_NAMES = (
     "ams_mel_ir_channel_submit_comms_test",
     "ams_mel_ir_channel_get_capabilities",
     "ams_mel_ir_channel_disable",
+    "ams_mel_ir_channel_register_buffer",
+    "ams_mel_ir_channel_unregister_buffer",
     "ams_mel_ir_channel_comms_metadata_open",
     "ams_mel_ir_channel_comms_metadata_receive",
     "ams_mel_ir_channel_comms_metadata_get_counters",
@@ -3453,3 +3455,11 @@ ams_mel_ir_buffer_write_storage.restype = ctypes.c_int32
 ams_mel_ir_buffer_close = _LIBRARY.ams_mel_ir_buffer_close
 ams_mel_ir_buffer_close.argtypes = [ctypes.POINTER(IrBufferHandle), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_buffer_close.restype = ctypes.c_int32
+
+ams_mel_ir_channel_register_buffer = _LIBRARY.ams_mel_ir_channel_register_buffer
+ams_mel_ir_channel_register_buffer.argtypes = [IrChannelHandle, IrBufferHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_register_buffer.restype = ctypes.c_int32
+
+ams_mel_ir_channel_unregister_buffer = _LIBRARY.ams_mel_ir_channel_unregister_buffer
+ams_mel_ir_channel_unregister_buffer.argtypes = [IrChannelHandle, IrBufferHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_channel_unregister_buffer.restype = ctypes.c_int32

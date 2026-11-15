@@ -38,15 +38,21 @@ public:
         const std::shared_ptr<CommsMetadataState>&);
     using DisableFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
         ams_mel_ir_return_t *, char *, std::size_t, std::size_t *) noexcept;
+    using BufferFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
+        ams_mel_ir_buffer&, bool, ams_mel_ir_return_t *) noexcept;
     /* Optional family-local one-shot publication, called while a temporary
      * claim retains the graph. C2 deliberately has no adapter here: its common
      * callback belongs exclusively to the existing C2 metadata queue. */
     CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
                         ClaimFunction claim, CapabilityFunction capability,
                         MetadataFunction metadata = nullptr,
-                        DisableFunction disable = nullptr) noexcept
+                        DisableFunction disable = nullptr,
+                        BufferFunction buffer = nullptr) noexcept
         : state_{std::move(state)}, admission_{admission}, claim_{claim},
-          capability_{capability}, metadata_{metadata}, disable_{disable} {}
+          capability_{capability}, metadata_{metadata}, disable_{disable}, buffer_{buffer} {}
+    ams_mel_status_t buffer(const std::shared_ptr<void>& state,
+        ams_mel_ir_buffer& object, bool removing, ams_mel_ir_return_t *result) const noexcept
+    { return buffer_ ? buffer_(state, object, removing, result) : AMS_MEL_PROVIDER_FAILED; }
     ams_mel_status_t disable(const std::shared_ptr<void>& state,
         ams_mel_ir_return_t *result, char *out, std::size_t capacity,
         std::size_t *required) const noexcept
@@ -72,6 +78,7 @@ private:
     CapabilityFunction capability_;
     MetadataFunction metadata_;
     DisableFunction disable_;
+    BufferFunction buffer_{};
 };
 static_assert(std::is_nothrow_move_constructible_v<CommonChannelAccess>);
 

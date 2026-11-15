@@ -195,6 +195,15 @@ static void acquisition_independence(void)
     CHECK(ams_mel_ir_buffer_open(s, 64, INT64_MIN, &b, &result, D) == AMS_MEL_OK);
     CHECK(ams_mel_ir_buffer_write_storage(b, 0, pattern, sizeof pattern, D) == AMS_MEL_OK);
     CHECK(ams_mel_ir_stream_open(s, &config, &stream, D) == AMS_MEL_OK);
+    {
+        ams_mel_ir_channel *view = NULL;
+        CHECK(ams_mel_ir_channel_from_stream(stream, &view, D) == AMS_MEL_OK);
+        CHECK(ams_mel_ir_channel_register_buffer(view, b, &result, D) == AMS_MEL_PROVIDER_FAILED);
+        CHECK(result == UINT32_MAX);
+        CHECK(ams_mel_ir_channel_unregister_buffer(view, b, &result, D) == AMS_MEL_PROVIDER_FAILED);
+        CHECK(result == UINT32_MAX);
+        CHECK(ams_mel_ir_channel_close(&view, D) == AMS_MEL_OK);
+    }
     CHECK(ams_mel_ir_stream_start(stream, D) == AMS_MEL_OK);
     memset(&frame, 0, sizeof frame);
     frame.pixels = pixels;

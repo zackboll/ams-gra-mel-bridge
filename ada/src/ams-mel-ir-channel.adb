@@ -45,6 +45,16 @@ package body AMS.MEL.IR.Channel is
    type Cap_Access is access all C.IR_Channel_Capability_V1;
    function To_Cap is new Ada.Unchecked_Conversion (System.Address, Cap_Access);
 
+   procedure Register_Buffer (Channel : View; Object : in out AMS.MEL.IR.Buffer.Host_Buffer) is
+   begin
+      AMS.MEL.IR.Buffer.Register_With_Channel (Channel, Object);
+   end Register_Buffer;
+
+   procedure Unregister_Buffer (Channel : View; Object : in out AMS.MEL.IR.Buffer.Host_Buffer) is
+   begin
+      AMS.MEL.IR.Buffer.Unregister_From_Channel (Channel, Object);
+   end Unregister_Buffer;
+
    procedure Disable (Channel : View) is
       D      : aliased Fixed_Diagnostic := [others => Interfaces.C.nul];
       R      : aliased C.Size_T := 0;

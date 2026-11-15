@@ -241,6 +241,33 @@ struct ams_mel_ir_channel {
 };
 static_assert(sizeof(ams_mel_ir_channel) == sizeof(ams_mel_common::CommonChannelAccess));
 
+namespace {
+ams_mel_status_t channel_buffer_operation(const ams_mel_ir_channel *view,
+    ams_mel_ir_buffer *buffer, bool removing, ams_mel_ir_return_t *result,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("Buffer registration unavailable or ownership unresolved", out, capacity, required);
+    if (result) *result = UINT32_MAX;
+    if (!view || !buffer || !result || (!out && capacity)) return AMS_MEL_INVALID_ARGUMENT;
+    const auto access = view->access;
+    const auto state = access.lock();
+    if (!state) return AMS_MEL_PROVIDER_FAILED;
+    const auto status = access.buffer(state, *buffer, removing, result);
+    if (status == AMS_MEL_OK) diagnostic("", out, capacity, required);
+    return status;
+}
+}
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_register_buffer(
+    const ams_mel_ir_channel *view, ams_mel_ir_buffer *buffer, ams_mel_ir_return_t *result,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{ return channel_buffer_operation(view, buffer, false, result, out, capacity, required); }
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_unregister_buffer(
+    const ams_mel_ir_channel *view, ams_mel_ir_buffer *buffer, ams_mel_ir_return_t *result,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{ return channel_buffer_operation(view, buffer, true, result, out, capacity, required); }
+
 extern "C" ams_mel_status_t ams_mel_ir_channel_disable(
     const ams_mel_ir_channel *view, ams_mel_ir_return_t *result,
     char *out, std::size_t capacity, std::size_t *required) noexcept

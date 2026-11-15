@@ -101,6 +101,7 @@ from ._types import (
     ComponentLocation,
     ImageConfig,
     ImageControlConfig,
+    StackedConfig,
     ControlConfig,
     InstrumentationConfig,
     HealthConfig,
@@ -171,6 +172,7 @@ from ._health import (
     HealthStatusChannel,
 )
 from ._health_metadata import HealthMetadataStream
+from ._stacked import StackedChannel
 from ._health_types import (
     About,
     ActiveBit,
@@ -357,6 +359,8 @@ for _public_symbol in (
     HealthConfig,
     HealthStatusChannel,
     ImageBand,
+    StackedConfig,
+    StackedChannel,
     ImageConfig,
     ImageControlConfig,
     ImageFlip,
@@ -517,6 +521,8 @@ __all__ = [
     "Frame",
     "HealthConfig",
     "HealthStatusChannel",
+    "StackedConfig",
+    "StackedChannel",
     "ImageBand",
     "ImageConfig",
     "ImageControlConfig",

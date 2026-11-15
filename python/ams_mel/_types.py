@@ -79,6 +79,34 @@ class ComponentLocation:
 
 
 @dataclass(frozen=True)
+class StackedConfig:
+    """StackedImage attachment identities only; no acquisition or stack geometry."""
+
+    channel_id: UciId
+    platform_id: UciId
+    sensor_location: ComponentLocation
+
+    def __post_init__(self) -> None:
+        # Reused before submission: frozen records can be deliberately mutated.
+        try:
+            for name in ("channel_id", "platform_id"):
+                value = getattr(self, name)
+                if type(value) is not UciId:
+                    raise _local_error(ErrorKind.INVALID_ARGUMENT, f"{name} must be UciId")
+                UciId.__post_init__(value)
+            location = self.sensor_location
+            if type(location) is not ComponentLocation:
+                raise _local_error(
+                    ErrorKind.INVALID_ARGUMENT, "sensor_location must be ComponentLocation"
+                )
+            ComponentLocation.__post_init__(location)
+            for name in ("offset_x_m", "offset_y_m", "offset_z_m"):
+                _validate_double(getattr(location, name), name)
+        except AttributeError as error:
+            raise _local_error(ErrorKind.INVALID_ARGUMENT, "incomplete StackedConfig") from error
+
+
+@dataclass(frozen=True)
 class ImageControlConfig:
     """Image command/metadata attachment, without acquisition geometry or storage."""
 

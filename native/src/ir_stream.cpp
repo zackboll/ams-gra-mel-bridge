@@ -1460,10 +1460,26 @@ CommonChannelAccess common_from_stream(const ams_mel_ir_stream *owner)
                 state->enable_attempted, state->disable_failed, state->requests, state->channel,
                 [](const std::shared_ptr<ImageStreamState>& claimed) noexcept {
                     return finish_image_request(claimed);
-                }, image_stream_retain_failed, result);
+                }, image_stream_retain_failed, result, &state->application_buffers.operation);
             diagnostic(status == AMS_MEL_OK ? "" : "Image Disable failed or unavailable",
                        out, capacity, required);
             return status;
+        } ,
+        [](const std::shared_ptr<void>& erased, ams_mel_ir_buffer& buffer,
+           bool removing, ams_mel_ir_return_t *result) noexcept {
+            auto state = std::static_pointer_cast<ImageStreamState>(erased);
+            return buffer_registration(state, state->callback->mutex, state->callback->lifecycle,
+                Lifecycle::Attached, state->control_only, state->application_buffers, state->channel,
+                buffer, removing, result,
+                [](ams_mel_ir_buffer& object) noexcept {
+                    auto owner = std::static_pointer_cast<ImageStreamState>(object.channel_owner);
+                    return reconcile_buffer(object, owner->callback->mutex, owner->application_buffers,
+                        [&] { return owner->callback->callbacks_in_flight.load(std::memory_order_acquire) == 0 &&
+                            owner->callback->retained_frames == 0 && owner->callback->release_obligations == 0 &&
+                            !owner->callback->uncertain_release.load(std::memory_order_acquire); });
+                }, [&] { return !state->callback->uncertain_release.load(std::memory_order_acquire) &&
+                    state->callback->callbacks_in_flight.load(std::memory_order_acquire) == 0 &&
+                    state->callback->retained_frames == 0 && state->callback->release_obligations == 0; });
         }};
 }
 } // namespace ams_mel_common
@@ -1748,6 +1764,7 @@ void logical_stop(ImageStreamState& stream, bool failed) noexcept
     try {
         {
             std::lock_guard lock{stream.callback->mutex};
+            if (stream.application_buffers.count) return;
             stream.callback->accepting = false;
             stream.control_stop_requested = true;
             if (stream.comms_metadata) stream.comms_metadata->deactivate(failed);
@@ -1882,7 +1899,8 @@ ImageCleanupOutcome image_stream_cleanup(
              * rather than racing it on channel. */
             stream.cleanup_done.wait(lock,
                 [&stream] { return !stream.cleanup_in_progress; });
-            if (stream.requests != 0U) return ImageCleanupOutcome::NotRequired;
+            if (stream.requests != 0U || stream.application_buffers.count != 0U)
+                return ImageCleanupOutcome::NotRequired;
             /* Task 030B: a queued frame or a live snapshot still holds a
              * provider Buffer checked out. Destroying the channel, the Buffer
              * objects, or the registered host storage now would invalidate a
@@ -2360,6 +2378,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_start(
             std::shared_ptr<irmel::Channel> channel;
             {
                 std::lock_guard lock{state->callback->mutex};
+                if (state->application_buffers.operation || state->application_buffers.uncertain)
+                    return AMS_MEL_PROVIDER_FAILED;
                 if (state->callback->lifecycle == Lifecycle::Running) return AMS_MEL_OK;
                 if (state->callback->lifecycle == Lifecycle::Stopped ||
                     state->callback->lifecycle == Lifecycle::Stopping) return AMS_MEL_STREAM_STOPPED;
@@ -2820,6 +2840,7 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_stop(
             /* channel must be inspected under the teardown lock: the
              * Navigation completion thread may be resetting it concurrently. */
             std::unique_lock lock{stream->state->callback->mutex};
+            if (stream->state->application_buffers.count) return AMS_MEL_PROVIDER_FAILED;
             close_cleanup_wait_barrier(stream->state->cleanup_in_progress);
             stream->state->cleanup_done.wait(lock,
                 [&stream] { return !stream->state->cleanup_in_progress; });
@@ -2829,6 +2850,8 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_stop(
             failed = stream->state->callback->lifecycle == Lifecycle::Failed;
             if (!stream->state->channel)
                 return failed ? AMS_MEL_PROVIDER_FAILED : AMS_MEL_OK;
+            if (stream->state->control_only)
+                stream->state->callback->lifecycle = failed ? Lifecycle::Failed : Lifecycle::Stopping;
         }
         return teardown(stream->state, failed, out, capacity, required);
     } catch (const std::bad_alloc&) {
@@ -2849,7 +2872,15 @@ extern "C" ams_mel_status_t ams_mel_ir_stream_close(
         if (!stream || (!out && capacity != 0U)) return AMS_MEL_INVALID_ARGUMENT;
         ams_mel_ir_stream *owned = *stream;
         if (!owned) return AMS_MEL_OK;
+        {
+            std::lock_guard lock{owned->state->callback->mutex};
+            if (owned->state->application_buffers.count) return AMS_MEL_PROVIDER_FAILED;
+        }
         auto status = ams_mel_ir_stream_stop(owned, out, capacity, required);
+        {
+            std::lock_guard lock{owned->state->callback->mutex};
+            if (owned->state->application_buffers.count) return AMS_MEL_PROVIDER_FAILED;
+        }
         auto& state = *owned->state;
         /* Task 030B Close policy. Close is not Stop: once the public stream
          * owner is gone, a frame that was queued but never acquired can never
