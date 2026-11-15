@@ -128,12 +128,13 @@ The sequential runner is `/tmp/irmel022-qual/sequential.sh`; its status and
 individual command logs are in that directory. Matrix runner:
 `/tmp/irmel022-matrix/run.sh` (separate output directories, no overlap with native
 or Ada managed build directories). Both use the repository's warnings-as-errors
-policy. `make check` and the final Alire/lint gates are still in progress; no
-independent-review readiness is claimed here yet.
+policy. The complete sequential campaign finished with `LOCAL_SEQUENTIAL_PASS`:
+every requested make/Alire command exited zero. Hosted checks are tracked
+separately and are not implied by local qualification.
 
 | Native configuration | Full suite | Focused AbortTask | Deterministic stress |
 |---|---:|---:|---:|
-| GCC 14.2 Debug | 841/841 through Rust prerequisite | 20 cases in full suite | pending final rerun after `make check` |
+| GCC 14.2 Debug | 841/841 through Rust prerequisite and repeated `make check` suites | 20 cases in full suite | 400 final executions |
 | GCC 14.2 Release | 841/841 | 20/20 | 400 initial + 2,000 additional executions |
 | Clang 19.1 Debug | 841/841 | 20/20 | 400 executions |
 | Clang 19.1 Release | 841/841 | 20/20 | 400 executions |
@@ -167,7 +168,65 @@ suppressed. An ad-hoc pinned GNATdoc invocation omitted GPR_PROJECT_PATH and was
 rerun successfully with the native project import path. One standalone focused
 Ada invocation overlapped the managed `make check` rebuild and could not load
 the temporarily absent mock DSO; it is not counted as qualification. Full Ada
-qualification itself passed. No hosted final-HEAD result is claimed yet.
+qualification itself passed. The Alire provider-only build resets its native
+test directory, so a subsequent standalone CTest found no native executables;
+the complete test target was rebuilt and rerun, not treated as a passing test.
+
+### Completed sequential campaign
+
+All commands below exited **0**, in the requested order, with no overlapping
+builds writing the same native or Ada output directory:
+
+1. `make format-ada`
+2. `make check-ada-format`
+3. `make check-ada-docs-changed`
+4. `make test-native`
+5. `make test-python`
+6. `make test-rust`
+7. `make test-ada`
+8. `make check-ir-api-coverage`
+9. `make check` (including production/test isolation, repeated full native
+   suites, formatter check, full Ada suite, newlines and Git whitespace)
+10. `alr -n -C ada build`
+11. `alr -n -C ada/tests run`
+
+Subsequent `cargo fmt --manifest-path rust/Cargo.toml --all -- --check`,
+workspace/all-target Clippy with `-D warnings`, workspace Rustdoc with
+`RUSTDOCFLAGS=-Dwarnings`, source integrity, newline/whitespace checks and GNATdoc
+also exited zero. Full Ada had zero compiler warnings; native matrix build
+logs likewise had zero compiler warnings. GNATformat's existing externally-built
+project/no-C-sources GPR warning is not a compiled-source warning.
+
+The committed implementation head `1a0f868b238161b88ca99e01255a98d796ab1cfe`
+(tree `3c12623f72ae7013f3dc94a6a2214b4cd2ac0c99`) passed the full pinned
+documentation pipeline after installing the exact repository-pinned enhancer
+0.1.6 wheel into isolated `/tmp/irmel022-enhancer`. The pre-existing local
+enhancer was 0.1.5 and was correctly rejected on the first attempt; no pin or
+checker was weakened. Command:
+
+```sh
+alr -n -C docs/toolchain exec -- /tmp/irmel022-enhancer/bin/python \
+  /home/zboll/git/ams-gra-mel-bridge/docs/tools/docs_ci.py build \
+  --directory /home/zboll/git/ams-gra-mel-bridge/.doc-tools/irmel022-api-retry \
+  --gnatdoc-prefix /home/zboll/.alire/gnatdoc_bin_26.0.0_6e6e0320
+```
+
+Result: source-derived coverage 5181/5182 (informational), 103 private-part
+GNATdoc warnings, zero public/private-unit/tool/unclassified warnings and zero
+mapping failures; Rustdoc 1.98.1 generated 1653 HTML pages/669 assets and Python
+reference generated 191 HTML pages/3 assets. Production native bytes and the
+reference-consumer harness remain unchanged by this documentation-only result
+record. The final delivery commit is identified in the PR and delivery report,
+avoiding a self-referential commit hash in this file.
+
+PR: <https://github.com/zackboll/ams-gra-mel-bridge/pull/236> (non-draft,
+auto-merge disabled; no self-approval/merge). Implementation-head hosted runs:
+
+- Bootstrap: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43764160704>
+- Documentation (passed): <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43764160618>
+- Authored HTML: <https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43764160401>
+
+**HOSTED_CI_PENDING** applies until exact-final-HEAD required checks complete.
 
 Native tests use deterministic provider promise and send-entry barriers, never
 sleep-based release. Before removing a lifetime log, they observe the established
