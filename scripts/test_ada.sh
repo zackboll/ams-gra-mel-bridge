@@ -23,3 +23,4 @@ export LD_LIBRARY_PATH
 AMS_MEL_TEST_PROVIDER_DIR="${AMS_MEL_TEST_PROVIDER_DIR:-$root/native/build-tests/test-providers}"
 export AMS_MEL_TEST_PROVIDER_DIR
 "$root/ada/tests/bin/ams_mel_smoke"
+"$root/ada/tests/bin/ams_mel_ir_minimal_negative"
