@@ -5995,3 +5995,94 @@ extern "C" {
         diagnostic_required: *mut usize,
     ) -> AmsMelStatus;
 }
+
+/// Opaque standalone host Buffer owner. No registration or checkout release.
+#[repr(C)]
+pub struct AmsMelIrBuffer {
+    _private: [u8; 0],
+}
+pub const AMS_MEL_IR_BUFFER_HOST: u32 = 0;
+pub const AMS_MEL_IR_BUFFER_GPU: u32 = 1;
+pub const AMS_MEL_IR_BUFFER_RDMA: u32 = 2;
+pub const AMS_MEL_IR_BUFFER_IMAGE_NULL: u32 = 0;
+pub const AMS_MEL_IR_BUFFER_IMAGE_IN_STORAGE: u32 = 1;
+pub const AMS_MEL_IR_BUFFER_IMAGE_OUTSIDE_STORAGE: u32 = 2;
+/// Provider properties without exposed native addresses or an inferred layout.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmsMelIrBufferInfoV1 {
+    pub storage_size: u64,
+    pub initialized_context: i64,
+    pub provider_size: i64,
+    pub provider_context: i64,
+    pub buffer_address_matches: u32,
+    pub image_location: u32,
+}
+extern "C" {
+    pub fn ams_mel_ir_buffer_open(
+        session: *mut AmsMelSession,
+        size: u64,
+        context: i64,
+        output: *mut *mut AmsMelIrBuffer,
+        provider_return: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_get_info(
+        handle: *mut AmsMelIrBuffer,
+        output: *mut AmsMelIrBufferInfoV1,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_get_flags(
+        handle: *mut AmsMelIrBuffer,
+        flags: *mut u32,
+        capacity: usize,
+        count: *mut usize,
+        provider_return: *mut u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_set_flags(
+        handle: *mut AmsMelIrBuffer,
+        flags: *const u32,
+        count: usize,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_add_flag(
+        handle: *mut AmsMelIrBuffer,
+        flag: u32,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_read_storage(
+        handle: *mut AmsMelIrBuffer,
+        offset: u64,
+        bytes: *mut u8,
+        count: usize,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_write_storage(
+        handle: *mut AmsMelIrBuffer,
+        offset: u64,
+        bytes: *const u8,
+        count: usize,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+    pub fn ams_mel_ir_buffer_close(
+        handle: *mut *mut AmsMelIrBuffer,
+        diagnostic: *mut c_char,
+        diagnostic_capacity: usize,
+        diagnostic_required: *mut usize,
+    ) -> AmsMelStatus;
+}

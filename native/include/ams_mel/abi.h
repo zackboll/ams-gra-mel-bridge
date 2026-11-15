@@ -52,6 +52,64 @@ typedef struct ams_mel_abi_version_v1 {
 } ams_mel_abi_version_v1;
 
 typedef struct ams_mel_session ams_mel_session;
+/* Standalone, unregistered provider Buffer backed by zero-initialized bridge
+ * host storage. Serialize handle lifetime (including close) with all uses;
+ * operations on a live handle are internally serialized. Never calls release.
+ * Flags are bookkeeping only: GPU/RDMA do not change the host allocation. */
+typedef struct ams_mel_ir_buffer ams_mel_ir_buffer;
+typedef uint32_t ams_mel_ir_buffer_flag_t;
+#define AMS_MEL_IR_BUFFER_HOST UINT32_C(0)
+#define AMS_MEL_IR_BUFFER_GPU UINT32_C(1)
+#define AMS_MEL_IR_BUFFER_RDMA UINT32_C(2)
+#define AMS_MEL_IR_BUFFER_IMAGE_NULL UINT32_C(0)
+#define AMS_MEL_IR_BUFFER_IMAGE_IN_STORAGE UINT32_C(1)
+#define AMS_MEL_IR_BUFFER_IMAGE_OUTSIDE_STORAGE UINT32_C(2)
+/* No pointer or image layout is exposed. image_location classifies only the
+ * starting address, not an accessible image span. provider_size/context are
+ * actual provider getters, not substituted initialization values. */
+typedef struct ams_mel_ir_buffer_info_v1 {
+    uint64_t storage_size;
+    int64_t initialized_context;
+    int64_t provider_size;
+    int64_t provider_context;
+    uint32_t buffer_address_matches;
+    uint32_t image_location;
+} ams_mel_ir_buffer_info_v1;
+/* init/getFlags publish the exact upstream Return in provider_return; UINT32_MAX
+ * means no Return was obtained (including exception). Void setters have only
+ * bridge status. All outputs are committed only on success except Return/count.
+ * get_flags copies a fresh vector each call, preserves order/duplicates, writes
+ * required count even on BUFFER_TOO_SMALL, and never publishes partial flags.
+ * NULL flags with capacity zero is a count query. Empty lists are valid.
+ * Storage spans allow zero length at capacity; NULL requires zero length.
+ * Close is idempotent. Extra provider shared ownership fails Close and retains
+ * the handle/graph for retry; do not discard it as proof of cleanup. */
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_open(
+    ams_mel_session *session, uint64_t size, int64_t context,
+    ams_mel_ir_buffer **output, uint32_t *provider_return,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_get_info(
+    ams_mel_ir_buffer *buffer, ams_mel_ir_buffer_info_v1 *output,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_get_flags(
+    ams_mel_ir_buffer *buffer, ams_mel_ir_buffer_flag_t *flags, size_t capacity,
+    size_t *count, uint32_t *provider_return,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_set_flags(
+    ams_mel_ir_buffer *buffer, const ams_mel_ir_buffer_flag_t *flags, size_t count,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_add_flag(
+    ams_mel_ir_buffer *buffer, ams_mel_ir_buffer_flag_t flag,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_read_storage(
+    ams_mel_ir_buffer *buffer, uint64_t offset, uint8_t *bytes, size_t count,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_write_storage(
+    ams_mel_ir_buffer *buffer, uint64_t offset, const uint8_t *bytes, size_t count,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
+AMS_MEL_API ams_mel_status_t ams_mel_ir_buffer_close(
+    ams_mel_ir_buffer **buffer,
+    char *diagnostic, size_t diagnostic_capacity, size_t *diagnostic_required) AMS_MEL_NOEXCEPT;
 /* Zero preserves unlimited asynchronous RequestFor admission. */
 typedef struct ams_mel_session_options_v1 {
     uint32_t max_async_requests;

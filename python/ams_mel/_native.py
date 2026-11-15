@@ -2423,6 +2423,15 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_buffer_open",
+    "ams_mel_ir_buffer_get_info",
+    "ams_mel_ir_buffer_get_flags",
+    "ams_mel_ir_buffer_set_flags",
+    "ams_mel_ir_buffer_add_flag",
+    "ams_mel_ir_buffer_read_storage",
+    "ams_mel_ir_buffer_write_storage",
+    "ams_mel_ir_buffer_close",
+
     "ams_mel_ir_scheduling_task_executing_open",
     "ams_mel_ir_scheduling_task_executing_receive",
     "ams_mel_ir_scheduling_task_executing_get_counters",
@@ -3393,3 +3402,50 @@ class RfJobIntervalConfigSpanV16(ctypes.Structure):
 ams_mel_rf_job_add_intervals_v16 = _LIBRARY.ams_mel_rf_job_add_intervals_v16
 ams_mel_rf_job_add_intervals_v16.argtypes = [RfJobHandle, RfJobIntervalConfigSpanV16, *_CHANNEL_DIAGNOSTIC]
 ams_mel_rf_job_add_intervals_v16.restype = ctypes.c_int32
+
+# IRMEL-ADA-018 private raw declarations; no Python Buffer owner API.
+IrBufferHandle = ctypes.c_void_p
+AMS_MEL_IR_BUFFER_HOST, AMS_MEL_IR_BUFFER_GPU, AMS_MEL_IR_BUFFER_RDMA = range(3)
+AMS_MEL_IR_BUFFER_IMAGE_NULL, AMS_MEL_IR_BUFFER_IMAGE_IN_STORAGE, AMS_MEL_IR_BUFFER_IMAGE_OUTSIDE_STORAGE = range(3)
+
+class IrBufferInfoV1(ctypes.Structure):
+    _fields_ = [
+        ("storage_size", ctypes.c_uint64),
+        ("initialized_context", ctypes.c_int64),
+        ("provider_size", ctypes.c_int64),
+        ("provider_context", ctypes.c_int64),
+        ("buffer_address_matches", ctypes.c_uint32),
+        ("image_location", ctypes.c_uint32),
+    ]
+
+ams_mel_ir_buffer_open = _LIBRARY.ams_mel_ir_buffer_open
+ams_mel_ir_buffer_open.argtypes = [SessionHandle, ctypes.c_uint64, ctypes.c_int64, ctypes.POINTER(IrBufferHandle), ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_open.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_get_info = _LIBRARY.ams_mel_ir_buffer_get_info
+ams_mel_ir_buffer_get_info.argtypes = [IrBufferHandle, ctypes.POINTER(IrBufferInfoV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_get_info.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_get_flags = _LIBRARY.ams_mel_ir_buffer_get_flags
+ams_mel_ir_buffer_get_flags.argtypes = [IrBufferHandle, ctypes.POINTER(ctypes.c_uint32), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_get_flags.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_set_flags = _LIBRARY.ams_mel_ir_buffer_set_flags
+ams_mel_ir_buffer_set_flags.argtypes = [IrBufferHandle, ctypes.POINTER(ctypes.c_uint32), ctypes.c_size_t, *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_set_flags.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_add_flag = _LIBRARY.ams_mel_ir_buffer_add_flag
+ams_mel_ir_buffer_add_flag.argtypes = [IrBufferHandle, ctypes.c_uint32, *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_add_flag.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_read_storage = _LIBRARY.ams_mel_ir_buffer_read_storage
+ams_mel_ir_buffer_read_storage.argtypes = [IrBufferHandle, ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t, *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_read_storage.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_write_storage = _LIBRARY.ams_mel_ir_buffer_write_storage
+ams_mel_ir_buffer_write_storage.argtypes = [IrBufferHandle, ctypes.c_uint64, ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t, *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_write_storage.restype = ctypes.c_int32
+
+ams_mel_ir_buffer_close = _LIBRARY.ams_mel_ir_buffer_close
+ams_mel_ir_buffer_close.argtypes = [ctypes.POINTER(IrBufferHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_buffer_close.restype = ctypes.c_int32
