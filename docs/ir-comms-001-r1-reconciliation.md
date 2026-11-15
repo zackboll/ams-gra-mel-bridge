@@ -250,9 +250,20 @@ reentry, not arbitrary reentry through every provider method.
 
 Latest-main check then found `ef13833a59429d24031535c91bca8fedbf7ea9e4`, tree
 `ed565b70b28775efa418d1cbf141b999669ae240` (Rust StackedImage foundation, no
-native changes). Normal integration and final-source requalification are required
-before **READY_FOR_INDEPENDENT_REVIEW**. Prior passing results above remain
-scoped to their recorded source. This is not approval or merge authorization.
+native changes). Conflict-free normal merge
+`530735d6de75474f33dea547ffb5b8b68ff07cfe`, tree
+`231f199337988415d68dba3dab7b3720f1c9f410`, integrated it. The sequential
+latest-source rerun passed native **688/688**, Python **584**, Rust **569 passed /
+12 ignored**, policy, coverage **62/62**, isolation, integrity/newlines/whitespace,
+installed-toolchain Ada, Alire build and Alire run. Aggregate `make check` is the
+last local gate running at this evidence snapshot. Native compiler-matrix inputs
+remain byte-identical. Latest aggregate completion, final production comparison,
+HEAD/tree and exact-HEAD hosted status are recorded in the corrective PR after
+completion, rather than repeatedly committing self-referential status updates.
+
+**READY_FOR_INDEPENDENT_REVIEW** requires those final local/hosted results in the
+PR; no pending result in this snapshot counts as a pass. Prior passing results
+above remain scoped to their recorded source. This is not approval or merge authorization.
 After corrective review/merge, recommend
 closing #204 as superseded rather than merging its duplicate foundation. Do not
 close #204 automatically.
