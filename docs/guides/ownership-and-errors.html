@@ -65,6 +65,14 @@ to each operation: validation, closed handle, provider exception, malformed
 result, or cleanup failure. Native error categories distinguish provider
 exceptions from bridge/internal failures even where Ada uses one exception.</li>
 </ul>
+<p><code>AMS.MEL.Open_With_Options</code> accepts a session-wide
+<code>Max_Async_Requests</code> bound for participating asynchronous paths; zero
+selects unlimited admission. <code>AMS.MEL.Resource_Exhausted</code> means the
+bridge refused admission before provider submission. The wrapper does not queue
+or retry that request, and this exception is distinct from a provider's command
+rejection. Waiting for a request or closing its public handle is not itself a
+capacity-release operation: timeout and abandonment do not cancel the underlying
+work. Keep application retry policy separate from result handling.</p>
 <p>Observe the result discriminator before a preconditioned accessor. RF
 <code>Error_Code</code>/<code>Description</code> require Failed; IR
 <code>Rejection_Code</code>/<code>Description</code> require Rejected, while

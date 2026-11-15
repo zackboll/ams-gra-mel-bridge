@@ -72,8 +72,8 @@ package AMS.MEL.IR.Camera is
    --  normal completed response, never an asynchronous MEL rejection.
 
    subtype Outcome is AMS.MEL.IR.Channel.Outcome;
-   use type Outcome;
    --  Success (a response, whose Command_Success may be False) or explicit MEL rejection.
+   use type Outcome;
    subtype Error_Code is AMS.MEL.IR.Channel.Error_Code;
    --  Known MEL rejection categories; unknown codes raise Provider_Error instead.
 

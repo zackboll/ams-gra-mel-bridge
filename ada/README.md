@@ -1,4 +1,11 @@
-# Ada binding bootstrap
+# Ada binding
+
+The [IR workflow guide](https://zackboll.github.io/ams-gra-mel-bridge/guides/ir-workflows.html)
+and [API map](https://zackboll.github.io/ams-gra-mel-bridge/guides/api-map.html)
+explain how the public packages fit together.
+The generated Ada reference is authoritative for operation contracts; the
+[IR coverage inventory](../docs/irmel-ada-coverage.md) records implemented and
+unbound upstream surfaces separately from documentation coverage.
 
 ## Image LineOfSightQuaternion
 
@@ -57,8 +64,23 @@ bounded native queue and can explicitly add ChannelCommsTest events.
 `AMS.MEL.IR.C2.Common` provides pre-enable KeepAlive, asynchronous CommsTest,
 and wholly Ada-owned complete ChannelCapability snapshots. Provider callback threads never invoke Ada application
 code, and returned events contain only Ada-owned values. C imports and borrowed
-spans remain private. Explicit generic buffer ownership, optional C2 operations,
-Scheduling, and all other MEL families remain future work.
+spans remain private. Additional C2 operations include CameraCommand,
+CameraProtection, CalibrationConfiguration, CalibrationStatus, EraseCommand and
+SystemTrackDataResponse through their documented value/request packages.
+Camera control/protection are conditional on corresponding provider support;
+calibration, erase and C2 system-track-data operations are optional. Explicit
+generic buffer ownership remains unbound.
+
+`AMS.MEL.IR.Discovery.Capabilities` copies the complete advertised Control list
+before attachment. Empty lists and zero layout fields are preserved; discovery
+does not establish that acquisition is configured or an operation will succeed.
+For Image commands and metadata without acquisition buffers, use
+`Create_Image_Control_Config` and `Open_Image_Control` in `AMS.MEL.IR`. This
+returns the existing `Image_Stream` owner. `Start` enables that attachment without
+allocating buffers; both image Receive paths and `Acquire_Frame` reject it with
+`Provider_Error`. Its capabilities, navigation, common-channel and eligible
+metadata operations use the existing contracts.
+
 `AMS.MEL.IR.Image` is the separate full-FrameHeader receive path.  It receives an
 owned native snapshot, deep-copies every nested value and pixel, closes the native
 owner, and returns an Ada-owned `Full_Frame`; the existing `AMS.MEL.IR.Receive`
@@ -77,6 +99,20 @@ and `Session` owners. The canonical `Navigation_Response` lives here too;
 `AMS.MEL.IR.Image.Metadata.Navigation_Response` is now a source-compatible
 subtype. LineOfSightQuaternion has its own opt-in owner (see above); other
 optional Image metadata such as LOS3D and candidate objects are not implemented.
+NUC/temperature, CameraResponse and OpticalDistortionMap likewise have independent
+opt-in owners in `AMS.MEL.IR.Image.Metadata`; opening the base metadata stream
+does not register these callbacks.
+
+`AMS.MEL.IR.Channel.Metadata.Open` receives common communications-test reports
+through an eligible Health, Image or StackedImage `As_Channel` view, including
+control-only Image attachments. Registration is one-shot per typed channel,
+including failed attempts through any view. The bounded FIFO returns owned
+command/request identifier pairs independently of CommsTest future completion.
+C2 uses `C2.Metadata.Enable_Comms_Test_Events` and its existing mixed queue.
+While the metadata owner remains open, queued reports can drain after typed
+channel closure. Closing the metadata stream deactivates consumption without
+unregistering the callback or closing the typed channel.
+
 `AMS.MEL.IR.Instrumentation` implements the conditionally required
 Instrumentation family: `Instrumentation_Config`/`Open`/`Is_Open`/`Enable`/
 `Capabilities`/`Close`, the idiomatic `Instrumentation_Level_Command` and
@@ -94,14 +130,22 @@ consumption only, since upstream has no unregister operation and channel
 destruction remains the callback-quiescence boundary. Instrumentation-specific
 copies of the inherited generic Channel services are deliberately absent.
 
-`AMS.MEL.IR.Scheduling` (IRMEL-ADA-011) implements only the conditionally required
+`AMS.MEL.IR.Scheduling` implements the conditionally required
 SchedulingChannel ownership/lifecycle foundation: `Scheduling_Config`/`Create_Config` and the
 limited controlled `Scheduling_Channel` with `Open`/`Is_Open`/`Enable`/`Capabilities`/
 `As_Channel`/`Close`. Open raises `Provider_Error` when the provider does not publish the
 Scheduling category; the Session stays usable. Close performs the inherited disable, and
 no standalone Disable exists. `Task_Schedule_Depth` zero is a valid
-application-managed mode. No Scheduling task `exec`, `PrioritizedTrackListCmd` send or
-Scheduling metadata callback is bound.
+application-managed mode. `AMS.MEL.IR.Scheduling.Metadata` independently registers
+and receives ExecuteTaskAck and TaskExecutingRep. Receipt does not establish task
+completion or success. Scheduling task `exec`, `PrioritizedTrackListCmd` send and
+the other Scheduling callbacks remain unbound.
+
+`AMS.MEL.IR.Stacked_Image` provides configuration, Open, explicit Enable,
+Capabilities, a weak common view and Close. Its common communications metadata
+uses `AMS.MEL.IR.Channel.Metadata`. It creates no acquisition buffers or stack
+listeners and does not receive image stacks. Buffer registration/unregistration
+and optional LOS3D reception remain unbound.
 
 `AMS.MEL.IR.Track` implements only the conditionally required Track family's
 (`@RequiredIfTrack`) channel ownership/lifecycle foundation:

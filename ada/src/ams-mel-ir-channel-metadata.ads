@@ -6,6 +6,7 @@ package AMS.MEL.IR.Channel.Metadata is
    --  C2 uses C2.Metadata.Enable_Comms_Test_Events and its existing shared queue.
    --  No callback is inferred from a request future. Serialize operations and
    --  Close on the same stream. No Ada code executes on a provider thread.
+
    type Comms_Metadata_Stream is limited private;
    --  Limited consumer of a native queue of copied communications-test reports.
    --  The stream has only a weak link to the typed channel; installed callbacks

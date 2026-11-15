@@ -6,9 +6,13 @@
 and publication-count requirements below for normal builds. Generate once from
 current committed Git source with `make docs` under the pinned toolchain; native
 anchors are regenerated, warnings/coverage are informational, and verified
-publication is in `.doc-tools/current/published`. Historical baseline utilities
-and deep replay remain explicit scheduled/manual qualification, not feature gates.
-The sections below record earlier checkpoints, not current source locks or counts.
+publication is in `.doc-tools/current/published`. The matching workflow summary
+and `documentation-diagnostics` artifact report the source commit, coverage and
+warnings; local reports are in `.doc-tools/current/`. Scheduled/manual
+qualification checks current source. Historical baseline utilities and replay
+remain available for explicit offline investigation and are not run by those
+workflows. The sections below record earlier checkpoints, not current source
+locks, dependency pins or counts.
 
 ## DOC-010 corrected stable public symbols
 

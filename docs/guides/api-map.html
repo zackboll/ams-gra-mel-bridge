@@ -7,8 +7,8 @@
 <header><p>AMS MEL developer documentation</p>{{navigation}}</header>
 <main id="main"><h1>API Map</h1>
 <p>Choose the family matching your task, then consult its generated package
-reference for exact types, preconditions and provider conditions. All 29 public
-library packages appear once in the directory below. A type or enum declaration
+reference for exact types, preconditions and provider conditions. The directory
+below is generated from the current public library packages. A type or enum declaration
 does not establish an implemented runtime capability.</p>
 <h2 id="selection">Select by developer task</h2>
 <h3>Shared/Core</h3>
@@ -19,13 +19,32 @@ does not establish an implemented runtime capability.</p>
 </ul>
 <h3>IR</h3>
 <ul>
-<li>Configure/start an image stream or retain legacy Mono8 Receive: {{package:AMS.MEL.IR}}.</li>
+<li>Discover advertised channel identities and complete copied capabilities before
+attachment: {{package:AMS.MEL.IR.Discovery}}.</li>
+<li>Configure/start an image stream, attach for control and metadata without image
+buffers, or retain legacy Mono8 Receive: {{package:AMS.MEL.IR}}.</li>
 <li>Use common channel/capability values: {{package:AMS.MEL.IR.Channel}}.</li>
+<li>Receive communications-test callbacks from Health, Image and StackedImage
+through weak common views: {{package:AMS.MEL.IR.Channel.Metadata}}. C2 uses its
+own metadata queue.</li>
 <li>Receive a full published frame representation or scoped pixel lease: {{package:AMS.MEL.IR.Image}}.</li>
 <li>Poll the implemented Image metadata kinds: {{package:AMS.MEL.IR.Image.Metadata}}.</li>
 <li>Send IR commands: {{package:AMS.MEL.IR.C2}}.</li>
 <li>Use C2 KeepAlive, CommsTest and capability snapshots: {{package:AMS.MEL.IR.C2.Common}}.</li>
 <li>Receive command/BIT metadata: {{package:AMS.MEL.IR.C2.Metadata}}.</li>
+<li>Build camera commands for C2 or Image and inspect their results:
+{{package:AMS.MEL.IR.Camera}}.</li>
+<li>Use conditional C2 camera protection and optional calibration operations,
+with their independent metadata streams: {{package:AMS.MEL.IR.Camera_Protection}},
+{{package:AMS.MEL.IR.Calibration_Configuration}} and
+{{package:AMS.MEL.IR.Calibration_Status}}.</li>
+<li>Build an optional erase command and observe its asynchronous result:
+{{package:AMS.MEL.IR.Erase}}. A returned success is not verification of physical erasure.</li>
+<li>Interpret independent Image metadata for NUC/temperature,
+OpticalDistortionMap and quaternion line of sight: {{package:AMS.MEL.IR.NUC}},
+{{package:AMS.MEL.IR.Optical_Distortion_Map}} and
+{{package:AMS.MEL.IR.Line_Of_Sight_Quaternion}}. Registration and reception live
+in <code>AMS.MEL.IR.Image.Metadata</code>.</li>
 <li>Open Health/Status and consume metadata: {{package:AMS.MEL.IR.Health_Status}}
 and {{package:AMS.MEL.IR.Health_Status.Metadata}}.</li>
 <li>Use conditional Instrumentation command/report support: {{package:AMS.MEL.IR.Instrumentation}}
@@ -33,7 +52,14 @@ and {{package:AMS.MEL.IR.Instrumentation.Metadata}}.</li>
 <li>Open conditional Track channels: {{package:AMS.MEL.IR.Track}}.</li>
 <li>Receive the four implemented Track callbacks: {{package:AMS.MEL.IR.Track.Metadata}}.</li>
 <li>Submit conditional Track updates: {{package:AMS.MEL.IR.Track.Updates}}.</li>
-<li>Send optional SystemTrackDataResponse: {{package:AMS.MEL.IR.Track.System_Data}}.</li>
+<li>Build SystemTrackDataResponse values and send them through Track:
+{{package:AMS.MEL.IR.Track.System_Data}}. The optional C2 send path is
+{{package:AMS.MEL.IR.C2.System_Data}}; each path has its own channel lifecycle.</li>
+<li>Attach the conditional Scheduling channel and use its common services:
+{{package:AMS.MEL.IR.Scheduling}}. Receive ExecuteTaskAck and TaskExecutingRep
+through {{package:AMS.MEL.IR.Scheduling.Metadata}}; task submission remains unbound.</li>
+<li>Attach a StackedImage channel for lifecycle and common services:
+{{package:AMS.MEL.IR.Stacked_Image}}. This foundation does not receive image stacks.</li>
 </ul>
 <h3>RF</h3>
 <ul>
@@ -87,9 +113,10 @@ corresponding bridge operation. Consult <a href="ir-workflows.html">IR Workflows
 and <a href="rf-workflows.html">RF Workflows</a> before interpreting them.</p>
 <p>The alias <code>AMS.MEL.IR.Health_Status.Metadata.Status</code> renames
 <code>AMS.MEL.Status</code>. GNATdoc omits this one source-visible package-renaming
-section; the target is linked above. It is not a thirtieth public library unit,
-a missing implementation, or an additional provider capability. The measured
-documentation result remains 4,294/4,295, not 100% of the complete inventory.</p>
+section; the target is linked above. It is a source-visible alias rather than
+another public library unit. The
+<a href="getting-started.html#documentation-diagnostics">current-build reports</a>
+record its renderer exception separately from documentation gaps.</p>
 <p>Package identities are derived from the public library-unit headers in
 <code>ada/src</code>. The portal resolves names against actual native h1 headings
 and reconciles them with <code>docs/gnatdoc-native-anchors.json</code>; authored

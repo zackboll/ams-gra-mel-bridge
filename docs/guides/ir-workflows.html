@@ -16,6 +16,15 @@
 <p>IR is Session-backed and channel-oriented. Open a Session with
 {{package:AMS.MEL}}, then configure the particular channel family. Provider
 library and configuration values are deployment inputs, not portable examples.</p>
+<h2>Discover before choosing an attachment</h2>
+<p><code>AMS.MEL.IR.Discovery.Capabilities</code> in
+{{package:AMS.MEL.IR.Discovery}} returns the complete advertised capability list
+in provider order. The result and its nested values are Ada-owned snapshots;
+an empty list is valid. Use the advertised identities to choose an attachment.
+Zero image dimensions or sizes remain zero and can describe an unconfigured
+sensor. Advertisement neither configures acquisition nor proves that a later
+attachment or optional operation will succeed. Serialize discovery against
+Session closure and other provider operations.</p>
 <h2>Image stream: attach, start, consume, close</h2>
 <p>{{package:AMS.MEL.IR}} supplies <code>Create_UCI_ID</code>,
 <code>Create_Component_Location</code>, <code>Create_Image_Config</code>,
@@ -36,6 +45,22 @@ AMS.MEL.IR.Image.Receive          -- independent Full_Frame copy
 AMS.MEL.IR.Stop
 AMS.MEL.IR.Close
 AMS.MEL.Close</code></pre>
+<h2>Image commands and metadata without acquisition</h2>
+<p>Use <code>Create_Image_Control_Config</code> and
+<code>Open_Image_Control</code> in <code>AMS.MEL.IR</code> when the application
+needs Image commands, capabilities, common services or metadata without image
+buffers. This path returns the same limited <code>Image_Stream</code> owner and
+accepts an advertised layout whose acquisition fields are zero. It supports
+<code>Image.Submit_Navigation_Report</code>, <code>Image.Capabilities</code>,
+<code>Image.As_Channel</code> and the eligible metadata operations through their
+existing contracts.</p>
+<p>On this attachment, <code>Start</code> enables the channel without allocating
+or registering image buffers. Both image Receive paths and
+<code>Acquire_Frame</code> raise <code>Provider_Error</code> with a control-only
+diagnostic; enabling does not turn the owner into an acquisition stream.
+Submission while attached does not require Start where the operation's contract
+permits it. Provider rejection remains a normal result when that API returns a
+rejection discriminator.</p>
 <h2>Full representation is not a new format negotiation path</h2>
 <p>The legacy <code>AMS.MEL.IR.Receive</code> returns a source-compatible
 Mono8 frame subset. {{package:AMS.MEL.IR.Image}} provides the complete published
@@ -64,13 +89,31 @@ callback is implemented or that the provider supplies it.</p>
 BIT operations are the documented one-choice operations, not arbitrary invented
 payloads. {{package:AMS.MEL.IR.C2.Common}} provides pre-enable KeepAlive,
 asynchronous CommsTest and capability inspection.</p>
+<p>Additional C2 operations use the values and results in
+{{package:AMS.MEL.IR.Camera}}, {{package:AMS.MEL.IR.Camera_Protection}},
+{{package:AMS.MEL.IR.Calibration_Configuration}},
+{{package:AMS.MEL.IR.Calibration_Status}} and {{package:AMS.MEL.IR.Erase}}.
+Camera control and protection are conditional on the corresponding provider
+support; calibration and erase operations are optional. Camera commands also
+have an Image submission path. The C2-specific
+{{package:AMS.MEL.IR.C2.System_Data}} sends the canonical
+<code>Track.System_Data.System_Track_Data_Response</code> value using the C2
+lifecycle. Check each submission's required channel state and its result before
+reading success or rejection details; a successful asynchronous result does not
+establish physical camera action, erasure or incorporation of track data.</p>
 <h2>Bounded metadata delivery</h2>
 <p>{{package:AMS.MEL.IR.C2.Metadata}} receives CommandStatus,
 BIT_Configuration and BIT_Status, with explicit ChannelCommsTest admission.
 {{package:AMS.MEL.IR.Image.Metadata}} receives BadPixelList,
-LineOfSightReport, LineOfSightEuler and NavigationReportResp. The current Image
-metadata does not implement LineOfSightQuaternion simply because upstream
-vocabulary names it. Native provider callbacks enqueue; Ada consumers use
+LineOfSightReport, LineOfSightEuler and NavigationReportResp through its base
+metadata stream. Independent opt-in Image owners receive NUC/temperature,
+CameraResponse, OpticalDistortionMap and LineOfSightQuaternion. Their values live
+in {{package:AMS.MEL.IR.NUC}}, <code>AMS.MEL.IR.Camera</code>,
+{{package:AMS.MEL.IR.Optical_Distortion_Map}} and
+{{package:AMS.MEL.IR.Line_Of_Sight_Quaternion}}. Opening the base metadata stream
+does not register these additional callbacks. C2 similarly has separate opt-in
+CameraProtection, CalibrationConfiguration and CalibrationStatus streams.</p>
+<p>Native provider callbacks enqueue; Ada consumers use
 <code>Receive</code> in <code>C2.Metadata</code>, <code>Image.Metadata</code>,
 <code>Health_Status.Metadata</code> and <code>Instrumentation.Metadata</code>
 to obtain copied values. <code>Track.Metadata.Receive_Event</code> returns
@@ -79,6 +122,21 @@ returns Track reports only. If that convenience function consumes a non-report
 event, it raises <code>Provider_Error</code> rather than skipping or requeuing it.
 Use <code>Receive_Event</code> for mixed Track metadata kinds. Queues are bounded,
 drop incoming events when full, and expose counters; they are not lossless buses.</p>
+<h2>Common communications-test metadata</h2>
+<p>For Health, Image and StackedImage, obtain the typed owner's
+<code>As_Channel</code> view, then explicitly call
+{{package:AMS.MEL.IR.Channel.Metadata}} <code>Open</code>. Registration is
+one-shot per typed channel, including failed attempts and attempts through
+different views. A control-only Image attachment is eligible. C2 retains
+<code>C2.Metadata.Enable_Comms_Test_Events</code> and its existing mixed queue;
+the common metadata Open is not an alternative C2 registration path.</p>
+<p><code>Receive</code> returns an owned command/request identifier pair from
+the bounded FIFO. A callback and a CommsTest request's future are independent
+observations; neither completes or substitutes for the other. Queued reports
+drain after typed channel closure before the stopped/error outcome. Closing the
+metadata stream deactivates consumption without unregistering the callback or
+closing the typed channel. These metadata owners and common views do not keep
+the typed owner alive.</p>
 <h2>Health, Instrumentation and Track</h2>
 <p>{{package:AMS.MEL.IR.Health_Status}} owns its channel and
 {{package:AMS.MEL.IR.Health_Status.Metadata}} delivers copied status metadata.
@@ -94,6 +152,23 @@ RequestSystemTrackData, CandidateObjectMessage and CandidateObjectPreProcMessage
 on one FIFO queue. Those inbound callbacks have no corresponding upstream send
 overload. Positive Track behavior is mock-backed; the pinned Squall observation
 is a clean failure to attach a Track channel, not positive Track execution.</p>
+<h2>Scheduling and StackedImage foundations</h2>
+<p>{{package:AMS.MEL.IR.Scheduling}} supports configuration, Open, explicit
+Enable, copied Capabilities, a weak <code>As_Channel</code> view and Close when
+the provider publishes the Scheduling category. A zero
+<code>Task_Schedule_Depth</code> is a valid application-managed mode.
+{{package:AMS.MEL.IR.Scheduling.Metadata}} independently registers and receives
+ExecuteTaskAck and TaskExecutingRep. An acknowledgement is not task completion;
+a report describes what the provider says is executing. Scheduling task
+<code>exec</code> overloads, PrioritizedTrackListCmd send and the remaining
+Scheduling callbacks are unbound.</p>
+<p>{{package:AMS.MEL.IR.Stacked_Image}} provides attachment, Enable,
+Capabilities, a weak common view and Close. Common communications-test metadata
+is available through <code>Channel.Metadata</code>. This foundation creates no
+acquisition buffers or stack listeners and supplies no stack reception. Generic
+buffer registration and optional LOS3D reception remain unbound. Both channel
+families retain pending common requests across logical closure; use their
+documented cleanup contracts rather than assuming immediate provider teardown.</p>
 <h2>Navigation requests and lifetime</h2>
 <p><code>AMS.MEL.IR.Image.Submit_Navigation_Report</code> owns the complete
 Navigation_Report, including all 18 covariance terms. Submission is allowed

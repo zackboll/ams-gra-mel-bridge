@@ -10,8 +10,9 @@ package AMS.MEL.IR.Health_Status.Metadata is
    --  Owned polling of six HealthAndStatus metadata families and complete subsystem-health data.
    --  Shared status, BIT/fault and security types are authoritative in AMS.MEL.Status; the public
    --  Status renaming refers to that canonical package. GNATdoc 26 omits the renaming section,
-   --  which remains an explicitly outstanding renderer exception. No optional NUC temperature
-   --  callback is bound here.
+   --  which remains an explicitly outstanding renderer exception. Optional NUC temperature
+   --  metadata has a separate opt-in NUC_Stream owner; Open_NUC registers that callback without
+   --  changing the six-family Metadata_Stream opened by Open.
 
    package Status renames AMS.MEL.Status;
 
@@ -309,8 +310,9 @@ package AMS.MEL.IR.Health_Status.Metadata is
    --  Registers the upstream HealthStatusChannel NUC_TempData callback once per channel,
    --  including after failure. Registration may deliver synchronously. Failure publishes no
    --  owner; the retained callback stays inactive because upstream has no unregister. Events
-   --  share one bounded drop-incoming queue; the owner stops after channel destruction drains
-   --  in-flight NUC callbacks.
+   --  share one bounded drop-incoming queue. Health channel Close immediately deactivates NUC
+   --  consumption, allowing queued copies to drain even when pending requests defer physical
+   --  cleanup. Physical cleanup drains in-flight bridge NUC callbacks after channel destruction.
    --  @param Channel Attached or enabled typed health channel.
    --  @param Queue_Capacity Maximum number of queued NUC_TempData messages; defaults to sixteen.
    --  @return Limited NUC consumption owner.
