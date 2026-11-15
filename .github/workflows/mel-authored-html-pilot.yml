@@ -1,12 +1,12 @@
-name: MEL authored HTML compatibility pilot (non-deploying)
+name: MEL authored HTML qualification (non-deploying)
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'docs/tools/authored_html_pilot.py'
-      - 'docs/tests/test_authored_html_pilot.py'
-      - 'docs/mel-gnatdoc-015-002-**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'ada/**'
       - '.github/workflows/mel-authored-html-pilot.yml'
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ env:
 jobs:
   pilot:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -28,26 +28,41 @@ jobs:
           persist-credentials: false
       - name: Install official pinned documentation tools
         run: sh docs/tools/install_docs_toolchain.sh
-      - name: Reconstruct production twice and probe all authentic guides
+      - name: Reconstruct complete candidate twice and qualify source-backed HTML
         env:
           ALIRE_SETTINGS_DIR: ${{ github.workspace }}/.doc-tools/settings
         run: |
           alr -n -s "$ALIRE_SETTINGS_DIR" -C docs/toolchain exec -- sh -c '
             cd ../..
             .doc-tools/enhancer/bin/python docs/tools/docs_ci.py qualify \
-              --directory .doc-tools/authored-baseline --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
-            .doc-tools/enhancer/bin/python docs/tools/authored_html_pilot.py \
-              --baseline .doc-tools/authored-baseline --output .doc-tools/authored-probe &&
-            MEL_AUTHORED_PILOT_BASELINE="$PWD/.doc-tools/authored-baseline" \
+              --directory .doc-tools/authored-candidate --gnatdoc-prefix .doc-tools/gnatdoc-26.0.0 &&
+            .doc-tools/enhancer/bin/python docs/tools/qualify_authored_html.py \
+              --candidate .doc-tools/authored-candidate --output .doc-tools/authored-qualification &&
+            MEL_AUTHORED_QUALIFICATION="$PWD/.doc-tools/authored-qualification" \
               .doc-tools/enhancer/bin/python -W error -m unittest discover \
-                -s docs/tests -p test_authored_html_pilot.py -v'
+                -s docs/tests -p test_authored_html.py -v &&
+            GNATDOC_PREFIX="$PWD/.doc-tools/gnatdoc-26.0.0" \
+              make test-documentation-source &&
+            DOC_EXAMPLES_ALIRE_SETTINGS="$ALIRE_SETTINGS_DIR" sh docs/tools/qualify_examples.sh'
+      - name: Install isolated Chromium qualification tools
+        run: |
+          python3 -m venv .doc-tools/browser
+          .doc-tools/browser/bin/pip install playwright==1.64.0
+          .doc-tools/browser/bin/playwright install --with-deps chromium
+      - name: Chromium full candidate (no partial pilot overlay)
+        run: |
+          chromium=$(.doc-tools/browser/bin/python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')
+          .doc-tools/browser/bin/python docs/tools/authored_html_browser.py \
+            --baseline .doc-tools/authored-candidate --candidate .doc-tools/authored-candidate \
+            --chromium "$chromium" --output .doc-tools/authored-qualification/browser.json
       - name: Retain diagnostics only (not publication authority)
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: mel-authored-pilot-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            .doc-tools/authored-baseline/
-            .doc-tools/authored-baseline-generation.log
-            .doc-tools/authored-probe/
+            .doc-tools/authored-candidate/
+            .doc-tools/authored-candidate-generation.log
+            .doc-tools/authored-qualification/
+            obj/docs/examples-execution.json
           if-no-files-found: warn

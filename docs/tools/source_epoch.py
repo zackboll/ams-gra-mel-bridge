@@ -89,7 +89,6 @@ def generate(root, commit, directory, prefix, log):
     sys.path.insert(0, str(trusted / "scripts"))
     from gnatdoc_inventory import specifications
     from check_doc_coverage import measure
-    from build_docs_portal import manifest, package_map, regular, render
     from ada_examples import References
 
     export(root, commit, directory)
@@ -120,14 +119,18 @@ def generate(root, commit, directory, prefix, log):
     ledger = report["native"]
     (obj / "native-anchors.json").write_bytes(canonical(ledger))
     references = References(directory, site, ledger=ledger)
-    data = manifest(directory)
-    packages = package_map(site, directory, ledger)
-    for name in [data["home"], *(e["path"] for e in data["guides"]), data["stylesheet"]]:
-        text = regular(directory / "docs" / name)
-        output = render(text, name, data, packages, directory, references) if name.endswith(".html") else text
+    # The official enhancer is the only production portal renderer. Keep this
+    # source/native site pristine: copy only the nine authored assets from its
+    # full publication; API enhancement is independently checked below.
+    portal = directory / "_authored-publication"
+    enhance(site, directory, report, references, portal, deep=False)
+    references.authored_publication = portal
+    import authored_html
+    data = authored_html.manifest(directory)
+    for name in [data['home'], *(e['path'] for e in data['guides']), data['stylesheet']]:
         path = site / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(output)
+        path.write_bytes((portal / name).read_bytes())
     from validate_docs import validate
     validate(site, directory, ledger)
     return site, report, references
@@ -136,13 +139,41 @@ def generate(root, commit, directory, prefix, log):
 def enhance(site, root, report, references, output, *, deep=True):
     """Pinned renderer plus consumer-owned restoration and independent catalog."""
     import build_enhanced_site as p
-    from ada_gnatdoc_enhancer.config import load
+    require(not output.exists() and not any(q.is_symlink() for q in (output, *output.parents)),
+            'publication output must be fresh with no symlink ancestors')
+    require(not output.absolute().is_relative_to(site.absolute()), 'publication output inside pristine')
+    retained = getattr(references, 'authored_publication', None)
+    if retained is not None and retained.exists():
+        shutil.copytree(retained, output)
+        references.authored_publication = None
+        shutil.rmtree(retained)
+        if deep:
+            # Qualification (unlike the ordinary single pass) re-executes the
+            # actual renderer and verifier on the complete candidate.
+            import authored_html
+            from dataclasses import replace
+            from ada_gnatdoc_enhancer.config import load
+            from ada_gnatdoc_enhancer.pipeline import enhance as renderer, verify
+            config = replace(load(root, 'docs/gnatdoc-enhance.toml'),
+                             guide_sha256=sha(canonical(authored_html.contract(root, site, report))))
+            before = p.files(output)
+            renderer(config, output)
+            verify(config, output)
+            require(p.files(output) == before, 'non-idempotent complete publication')
+        return verify_presentation(site, root, report, references, output, deep=deep)
     from ada_gnatdoc_enhancer.pipeline import enhance as renderer, verify
     p.tool()
     # Renderer needs a native ledger; supply only the independently measured one
     # in the disposable export, never authorize/modify the candidate's ledger.
     (root / "docs/gnatdoc-native-anchors.json").write_text(json.dumps(report["native"]))
-    config = load(root, "docs/gnatdoc-enhance.toml")
+    import authored_html
+    # The manifest is local build material, not a tracked or output authority.
+    manifest_path = root / 'docs/gnatdoc-authored.json'
+    if manifest_path.exists():
+        expected = canonical(authored_html.contract(root, site, report))
+        require(manifest_path.read_bytes() == expected, 'authored authority changed')
+        manifest_path.unlink()
+    config = authored_html.bind(root, site, report)
     api_stage = output.parent / (output.name + "-api")
     api_stage.mkdir()
     shutil.copytree(site / "api", api_stage / "api")
@@ -153,8 +184,7 @@ def enhance(site, root, report, references, output, *, deep=True):
         renderer(config, api_stage)
         verify(config, api_stage)
         require(p.files(api_stage) == before, "non-idempotent enhancement")
-    shutil.copytree(site, output)
-    shutil.copytree(api_stage / "api", output / "api", dirs_exist_ok=True)
+    shutil.copytree(api_stage, output)
     return verify_presentation(site, root, report, references, output, deep=deep)
 
 
@@ -171,7 +201,10 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
     required_additions = authority.required_additions()
     symbols = symbol_audit.inventory(authority, site)
     raw, actual = p.files(site), p.files(output)
-    require(set(actual) == set(raw) | p.EXTRAS, "unexpected/missing publication files")
+    from build_docs_portal import manifest as portal_manifest
+    portal = portal_manifest(root)
+    portal_names = {portal['home'], portal['stylesheet'], *(e['path'] for e in portal['guides'])}
+    require(set(actual) == set(raw) | p.EXTRAS | portal_names, "unexpected/missing publication files")
     require(p.sha(actual["api/gnatdoc-navigation.js"]) == p.JAVASCRIPT_SHA256, "router asset changed")
     audit = []
     for name, data in raw.items():
@@ -202,11 +235,20 @@ def verify_presentation(site, root, report, references, output, *, deep=False):
         "project": "AMS MEL Bridge", "original_api_html": {n: d.decode() for n, d in raw.items() if n.startswith("api/") and n.endswith(".html")},
         "native_css_sha256": sha(raw["api/gnatdoc.css"]),
         "source_sha256": {p.relative_to(root).as_posix(): sha(p.read_bytes()) for p in __import__('gnatdoc_inventory').specifications(root)[0].values()},
-        "output_sha256": p.hashes({n: d for n, d in actual.items() if n.startswith("api/") and n not in {"api/gnatdoc.css", "api/presentation.json"}}),
+        "output_sha256": p.hashes({n: d for n, d in actual.items() if n not in {"api/gnatdoc.css", "api/presentation.json"}}),
         "counts": {"declaration_snippets": len(authority.sections), "linked_external_types": 0,
                    "linked_local_types": len(audit), "linked_types": len(audit),
                    "public_packages": len(authority.packages), "unrendered_renderer_exceptions": 1},
     }
+    import authored_html
+    authored = authored_html.contract(root, site, report)
+    manifest['authored_source_blocks'] = {
+        'manifest': 'docs/gnatdoc-authored.json', 'sha256': sha(canonical(authored)),
+        'profile': 'executable-ada-catalog-v1', 'inputs': authored['inputs']}
+    # Native-only input during generate still requires complete authored audits.
+    from portal_audit import verify_portal
+    from build_docs_portal import package_map
+    verify_portal(output, root, portal, package_map(site, root, report['native']), references)
     # Enumerate every eligible occurrence from plain native snippets, independently
     # of renderer wrappers and counts, including newly added declarations.
     expected_occurrences = []

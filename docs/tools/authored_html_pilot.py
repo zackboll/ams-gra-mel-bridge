@@ -19,7 +19,7 @@ import source_epoch
 from ada_examples import References
 import api_catalog
 import example_sources
-from build_docs_portal import GROUPS, group, manifest, package_map, regular, render
+from build_docs_portal import GROUPS, group, manifest, package_map, regular
 from check_doc_coverage import measure
 from gnatdoc_inventory import specifications
 from validate_docs import validate
@@ -75,7 +75,8 @@ def independent_contract(root, site, report, supplied, source_bytes):
                          'pilot contract differs from independently derived authority')
 
 
-def negative_cases(root, site, report, references, config, native, data, source_bytes):
+def negative_cases(root, site, report, references, config, native, data, source_bytes,
+                   *, contract_builder=contract, verify_contract=independent_contract):
     """Actual fail-closed checks; resealing never makes substituted input trusted."""
     from ada_gnatdoc_enhancer import authored
     from ada_gnatdoc_enhancer.errors import EnhancementError
@@ -101,7 +102,7 @@ def negative_cases(root, site, report, references, config, native, data, source_
     reject('duplicate-guide-identity', lambda: authored.manifest(reseal(changed), native))
     changed = json.loads(json.dumps(data))
     changed['groups'][0]['packages'].append(changed['groups'][0]['packages'][0])
-    reject('resealed-group-destination', lambda: independent_contract(
+    reject('resealed-group-destination', lambda: verify_contract(
         root, site, report, changed, source_bytes))
     changed = json.loads(json.dumps(data))
     changed['native_sha256']['api/index.html'] = '0' * 64
@@ -116,10 +117,10 @@ def negative_cases(root, site, report, references, config, native, data, source_
         reject('symlink-guide-source', lambda: authored.manifest(config, native))
         path.unlink()
         path.write_bytes(original + b'\n<p>substituted source</p>\n')
-        changed = contract(root, site, report)
+        changed = contract_builder(root, site, report)
         forged = reseal(changed)
         authored.manifest(forged, native)  # Hashes alone allow this substitution.
-        reject('resealed-substituted-source', lambda: independent_contract(
+        reject('resealed-substituted-source', lambda: verify_contract(
             root, site, report, changed, source_bytes))
     finally:
         if path.is_symlink():
@@ -133,7 +134,7 @@ def negative_cases(root, site, report, references, config, native, data, source_
         first = next(iter(forged.values()))
         first['page'] = next(v['page'] for v in forged.values() if v['page'] != first['page'])
         ledger_path.write_bytes(source_epoch.canonical(forged))
-        changed = contract(root, site, report)
+        changed = contract_builder(root, site, report)
         reject('resealed-altered-anchor-destination', lambda: authored.manifest(reseal(changed), native))
     finally:
         ledger_path.write_bytes(ledger_bytes)
@@ -158,7 +159,7 @@ def negative_cases(root, site, report, references, config, native, data, source_
     example_bytes = example_path.read_bytes()
     try:
         example_path.write_bytes(example_bytes + b'-- substituted\n')
-        reject('substituted-executable-source', lambda: independent_contract(
+        reject('substituted-executable-source', lambda: verify_contract(
             root, site, report, data, source_bytes))
     finally:
         example_path.write_bytes(example_bytes)
@@ -205,10 +206,8 @@ def probe(root, commit, baseline, output):
         source_epoch.require(audit == epoch['publication'], 'baseline reconstruction differs')
         data = manifest(exported)
         packages = package_map(site, exported, report['native'])
-        for name in [data['home'], *(e['path'] for e in data['guides'])]:
-            source_epoch.require(render(regular(exported / 'docs' / name), name, data, packages,
-                                        exported, references).encode() == (site / name).read_bytes(),
-                                 'baseline authored reconstruction differs: ' + name)
+        from portal_audit import verify_portal
+        verify_portal(site, exported, data, packages, references)
         ledger = exported / 'docs/gnatdoc-native-anchors.json'
         ledger.write_bytes(source_epoch.canonical(report['native']))
         source_bytes['docs/gnatdoc-native-anchors.json'] = ledger.read_bytes()
