@@ -24,6 +24,12 @@ VERSIONS = {
     'rustc': 'rustc 1.98.1 (48a229cea 2026-09-01)',
     'rustdoc': 'rustdoc 1.98.1 (48a229cea 2026-09-01)',
 }
+# Qualified official 1.98.1 x86_64-unknown-linux-gnu executable bytes.
+BINARIES = {
+    'cargo': 'da77c8b33849312255ccde3179198ada4c8deb370488d050286146b1d1b27e14',
+    'rustc': '859254978c0a0402c32f949f6de0d99aee73be8d15f45aac00ae1448aac51e74',
+    'rustdoc': '3ff7fed6d1064d8d75d24ae8beff9fe1d68031d3d819966481d22c3c9002b709',
+}
 FLAGS = '--deny rustdoc::broken_intra_doc_links --warn missing_docs'
 INSERTION = (b'<section aria-label="Rust reference"><h2>Rust reference</h2>\n'
              b'<p><a href="rust/ams_mel/index.html">Safe Rust application API (ams-mel)</a></p>\n'
@@ -161,6 +167,7 @@ def generate(exported, output, context, log):
         binary = Path(subprocess.check_output(['rustup', 'which', '--toolchain', TOOLCHAIN, tool],
                                             env=env, text=True).strip())
         tools[tool] = {'version': result, 'binary_sha256': epoch.sha(binary.read_bytes())}
+        require(tools[tool]['binary_sha256'] == BINARIES[tool], 'unqualified Rust executable bytes')
     counts = {}
     for crate in CRATES:
         command = ['rustup', 'run', TOOLCHAIN, 'cargo', 'doc', '--manifest-path',
@@ -188,7 +195,7 @@ def verify_record(files, record, context):
     require(record['toolchain'] == TOOLCHAIN and record['flags'] == FLAGS and
             set(record['tools']) == set(VERSIONS) and all(
                 record['tools'][t]['version'] == v and
-                re.fullmatch('[0-9a-f]{64}', record['tools'][t]['binary_sha256'])
+                record['tools'][t]['binary_sha256'] == BINARIES[t]
                 for t, v in VERSIONS.items()), 'Rustdoc toolchain mismatch')
     require(publication.hashes(files) == record['files'], 'Rustdoc artifact inventory mismatch')
     require(validate(files) == record['counts'], 'Rustdoc measured inventory mismatch')

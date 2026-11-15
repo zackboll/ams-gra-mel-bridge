@@ -41,7 +41,7 @@ class AssemblyTests(unittest.TestCase):
         self.files = fixture()
         self.context = {'commit': 'a' * 40, 'tree': 'b' * 40}
         self.record = {'schema': 1, 'identity': self.context, 'toolchain': rust.TOOLCHAIN,
-                       'flags': rust.FLAGS, 'tools': {t: {'version': v, 'binary_sha256': 'c' * 64}
+                       'flags': rust.FLAGS, 'tools': {t: {'version': v, 'binary_sha256': rust.BINARIES[t]}
                                                      for t, v in rust.VERSIONS.items()},
                        'files': rust.publication.hashes(self.files), 'counts': rust.validate(self.files)}
 
@@ -67,6 +67,15 @@ class AssemblyTests(unittest.TestCase):
             record = dict(self.record, **{key: value})
             with self.subTest(key=key), self.assertRaises(ValueError):
                 rust.verify_record(self.files, record, self.context)
+        record = {**self.record, 'tools': {t: dict(v) for t, v in self.record['tools'].items()}}
+        record['tools']['rustdoc']['binary_sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'toolchain mismatch'):
+            rust.verify_record(self.files, record, self.context)
+
+    def test_generation_rejects_wrong_toolchain_before_cargo(self):
+        with mock.patch.object(rust.subprocess, 'check_output', return_value='cargo 1.99.0\n'):
+            with self.assertRaisesRegex(ValueError, 'unqualified Rust documentation toolchain'):
+                rust.generate(self.directory, self.directory / 'target', self.context, self.directory / 'log')
 
     def test_assembly_is_reversible_and_all_ada_bytes_unchanged(self):
         ada = {'index.html': b'<main><h1>Ada</h1></main>',

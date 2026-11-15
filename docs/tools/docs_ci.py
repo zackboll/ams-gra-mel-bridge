@@ -141,7 +141,10 @@ def verify(root, directory, manifest_sha, deployment=False):
         references = References(exported, directory / 'pristine', ledger=ledger)
         epoch.verify_presentation(directory / 'pristine', exported, report, references,
                                   directory / 'ada-qualified')
-        rustdoc.verify_assembly(directory, context, json.loads((directory / 'rustdoc.json').read_bytes()))
+        rust_raw = (directory / 'rustdoc.json').read_bytes()
+        rust_record = json.loads(rust_raw)
+        require(rust_raw == epoch.canonical(rust_record), 'noncanonical/duplicate Rustdoc record')
+        rustdoc.verify_assembly(directory, context, rust_record)
     return manifest
 
 
