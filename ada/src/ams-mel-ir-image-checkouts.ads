@@ -86,11 +86,15 @@ private
    end record;
    overriding
    procedure Finalize (Receiver : in out Checkout_Receiver);
+   --  Non-raising fallback; queued uncertain owners remain conservatively retained.
+   --  @param Receiver Receiver whose queued wrappers are drained without raising.
    type Lease_Owner is new Ada.Finalization.Limited_Controlled with record
       Handle : aliased AMS.MEL_C_API.Checkout_Lease_Handle := AMS.MEL_C_API.Null_Checkout_Lease;
    end record;
    overriding
    procedure Finalize (Lease : in out Lease_Owner);
+   --  Non-raising fallback; native Close consumes the owner even on release failure.
+   --  @param Lease Unique native owner; never retries a previously consumed release.
    type Checkout_Lease is limited record
       Owner : Lease_Owner;
    end record;
