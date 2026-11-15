@@ -192,7 +192,7 @@ A third conflict-free normal merge integrated main
 `99d7f11bc3e5b19c10c6d9daf0e7fe1c89b6fd41`, tree
 `03dd5f736e05f422a8952778b18617842f3345a6` (RF Rustdoc only), as
 `c7a8ba9c39e5c1c0893bc8b3e2baada1f4e84ad5`, tree
-Native inputs remained byte-identical
+`62b75a6fefcf98fbc32ff3addc64ae48b3787a61`. Native inputs remained byte-identical
 during the isolated matrix. All aggregate/language gates were rerun in
 sequence after matrix completion to qualify that final integrated source.
 Earlier interrupted qualification runs are not counted as passes.
@@ -248,8 +248,11 @@ deliberate, not leak-free cleanup. The three base C2 registrations retain their
 existing implementation; this correction qualifies only CommsTest registration
 reentry, not arbitrary reentry through every provider method.
 
-Implementation and final-source qualification are complete:
-**READY_FOR_INDEPENDENT_REVIEW**, subject to the PR's exact final evidence-commit
-hosted checks. This is not approval or merge authorization. After corrective review/merge, recommend
+Latest-main check then found `ef13833a59429d24031535c91bca8fedbf7ea9e4`, tree
+`ed565b70b28775efa418d1cbf141b999669ae240` (Rust StackedImage foundation, no
+native changes). Normal integration and final-source requalification are required
+before **READY_FOR_INDEPENDENT_REVIEW**. Prior passing results above remain
+scoped to their recorded source. This is not approval or merge authorization.
+After corrective review/merge, recommend
 closing #204 as superseded rather than merging its duplicate foundation. Do not
 close #204 automatically.
