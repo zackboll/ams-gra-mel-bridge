@@ -84,9 +84,13 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 MIMES = {".html": {"text/html"}, ".css": {"text/css"},
          ".js": {"text/javascript", "application/javascript"}, ".json": {"application/json"}}
+RUST_MIMES = {**MIMES, '.woff2': {'font/woff2', 'application/font-woff2'},
+              '.svg': {'image/svg+xml'}, '.png': {'image/png'},
+              '.txt': {'text/plain'}, '.md': {'text/markdown', 'text/plain', 'text/x-markdown'},
+              '': {'application/octet-stream', 'text/plain'}}
 
 
-def get_entity(url, base, expected, opener=None):
+def get_entity(url, base, expected, opener=None, *, rustdoc=False):
     """GET once; only the documented repository-root slash redirect is allowed."""
     opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     record = {"requested_url": url, "redirect_chain": [], "comparison": False}
@@ -120,8 +124,13 @@ def get_entity(url, base, expected, opener=None):
                 require(not response.headers.get("Location"), "unexpected response Location")
                 content_type = response.headers.get("Content-Type", "")
                 record["content_type"] = content_type
-                suffix = Path(urlsplit(url).path).suffix or ".html"
-                require(suffix in MIMES and content_type.split(";", 1)[0].strip().lower() in MIMES[suffix],
+                suffix = Path(urlsplit(url).path).suffix
+                if not rustdoc:
+                    suffix = suffix or '.html'
+                else:
+                    require(url.startswith(base + 'rust/'), 'Rustdoc MIME policy outside Rust subtree')
+                mimes = RUST_MIMES if rustdoc else MIMES
+                require(suffix in mimes and content_type.split(";", 1)[0].strip().lower() in mimes[suffix],
                         "incorrect MIME type")
                 parameters = content_type.split(";")[1:]
                 require(all(re.fullmatch(r'\s*charset\s*=\s*"?utf-8"?\s*', p, re.I) for p in parameters)

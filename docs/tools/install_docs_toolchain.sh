@@ -15,6 +15,11 @@ test "$(alr --version)" = 'alr 2.1.1'
 alr -n -s "$root/.doc-tools/settings" --force toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
 alr -n -s "$root/.doc-tools/settings" install --prefix="$root/.doc-tools/gnatdoc-26.0.0" gnatdoc_bin=26.0.0
 sh docs/tools/install_enhancer.sh .doc-tools/enhancer
+# Documentation-only, explicit immutable Rust release; never follow stable.
+rustup toolchain install 1.98.1 --profile minimal --no-self-update
+test "$(rustup run 1.98.1 cargo --version)" = 'cargo 1.98.1 (797e8a9bc 2026-08-05)'
+test "$(rustup run 1.98.1 rustc --version)" = 'rustc 1.98.1 (48a229cea 2026-09-01)'
+test "$(rustup run 1.98.1 rustdoc --version)" = 'rustdoc 1.98.1 (48a229cea 2026-09-01)'
 if [ -n "${GITHUB_PATH:-}" ]; then
     printf '%s\n' "$root/.doc-tools/bin" >> "$GITHUB_PATH"
 fi
