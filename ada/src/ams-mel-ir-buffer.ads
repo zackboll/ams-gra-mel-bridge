@@ -125,4 +125,6 @@ private
    end record;
    overriding
    procedure Finalize (Object : in out Host_Buffer);
+   --  Non-raising cleanup fallback; uncertain native graphs remain allocated.
+   --  @param Object Owner whose ordinary cleanup is attempted without release.
 end AMS.MEL.IR.Buffer;
