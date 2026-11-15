@@ -14,6 +14,12 @@ stripping docstrings. Native code, public exports, signatures, values, ownership
 and behavior are unchanged. Historical task reports and `docs/coverage.md` remain
 intact; this document owns the new task evidence.
 
+Main's Rust crate extraction (#228) was integrated before publication, using
+base `8ff6ec0574f4266d7cba0610f339209589778f65`. The new independent Rust IR
+reference remains included in generation and verification. The published
+implementation checkpoint is `707752c435efca8e7ece7496d6a4d6724ab71ba8`, tree
+`b81d381b7e2b504634aebfb68bbde363d8702dc0`; this task-evidence update follows it.
+
 ## Source-derived reference
 
 `docs/tools/python_api_reference.py` reads Python source through the standard
@@ -150,7 +156,7 @@ separate from deployment authority and the provider-free test suite.
 - `make test-native`: **821/821 passed**.
 - `make test-python`: **686 tests passed**; package compilation with warnings
   treated as errors also passed.
-- `make test-policy`: **300 tests passed** at the initial implementation checkpoint,
+- `make test-policy`: **302 tests passed** after integrating current main,
   including 17 source-reader, 10 Python publication and 10 runtime-qualification
   fixture tests. The CMake 3.31.10 tools were placed on PATH for its real CTest
   failure-propagation fixtures.
@@ -170,8 +176,34 @@ separate from deployment authority and the provider-free test suite.
   resources and live rejection before network access.
 - `git diff --check`: **passed**.
 
-The full three-language artifact build and final integration checkpoint are
-recorded after source commit qualification.
+### Complete publication qualification
+
+The pinned `docs_ci.py build` passed at implementation commit
+`707752c435efca8e7ece7496d6a4d6724ab71ba8`, including its independent verification
+before sealing. It used GNAT 16.1.0, GNATdoc 26.0.0, GPRbuild's qualified
+26.0.0 executable, enhancer 0.1.5 and Rust 1.98.1. Rust generation remained
+locked/offline and did not compile or load the native facade.
+
+The publication contains **2,573 files**: 59 Ada portal/reference assets,
+2,320 Rust assets and 194 Python assets. The Rust portion includes 1,651 HTML
+pages; Python includes 191. Ada prose coverage remains informational at
+5,145/5,146 elements with 101 classified GNATdoc warnings at this checkpoint.
+These existing Ada measurements are recorded, not made into Python acceptance
+thresholds.
+
+The local artifact has `mode=local-not-deployable`. Its external digests are:
+
+```text
+manifest sha256: 2fe64bf91999d2fbccb2473d01a0ca664f120ebca0eee69cc08bba247f32abd4
+bundle sha256:   9d3e9d7e38b9926764e9f8e5a4b6fd07d6885edc548a5ac5c112f2a4bb064e35
+```
+
+An actual `docs_ci.py unpack` into a fresh directory, supplied with both digests,
+also passed full source/run and reconstructed-publication verification. The
+corresponding hosted [documentation build](https://github.com/zackboll/ams-gra-mel-bridge/actions/runs/43743253124)
+passed at the same implementation commit. Its PR deployment and live-site jobs
+were correctly skipped. A normal merge and successful main-push workflow are
+required to publish these pages to the live site.
 
 ### Browser limitation
 
