@@ -13,7 +13,7 @@ set(AMS_MEL_SANITIZED_BUILD_ENVIRONMENT ON CACHE BOOL
 add_library(ams_mel_c SHARED src/abi.cpp src/provider.cpp src/ir_stream.cpp src/ir_image.cpp src/ir_image_odm.cpp src/ir_image_los_quaternion.cpp src/ir_nuc.cpp src/ir_camera_command.cpp src/ir_camera_protect.cpp src/ir_erase.cpp src/ir_c2_system_response.cpp src/system_track_data.cpp src/ir_calibration_configuration.cpp
     src/ir_calibration_status.cpp
     src/channel_comms_metadata.cpp src/ir_channel.cpp src/ir_c2.cpp src/common_channel_requests.cpp src/ir_health.cpp src/ir_navigation.cpp
-    src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp src/ir_stacked.cpp
+    src/ir_instrumentation.cpp src/ir_track.cpp src/ir_scheduling.cpp src/ir_stacked.cpp src/ir_buffer.cpp
     src/ir_scheduling_execute_task_ack.cpp src/ir_scheduling_task_executing.cpp
     src/completion_probe.cpp
     src/rf_data.cpp src/rf_product_rx.cpp src/rf_admin.cpp src/rf_c2.cpp src/rf_virtual_aperture.cpp
@@ -1414,6 +1414,23 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ams_mel_c)
 
 if(AMS_MEL_BUILD_TESTS)
+    add_executable(test_ir_buffer tests/test_ir_buffer.c)
+    target_compile_features(test_ir_buffer PRIVATE c_std_11)
+    set_target_properties(test_ir_buffer PROPERTIES C_EXTENSIONS OFF)
+    target_compile_definitions(test_ir_buffer PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_buffer PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_buffer mock_ir_provider)
+    ams_mel_warnings(test_ir_buffer)
+    add_test(NAME ir_buffer_foundation COMMAND test_ir_buffer)
+    add_executable(test_ir_buffer_allocation tests/test_ir_buffer_allocation.cpp)
+    target_compile_features(test_ir_buffer_allocation PRIVATE cxx_std_20)
+    target_compile_definitions(test_ir_buffer_allocation PRIVATE
+        AMS_MEL_TEST_MOCK_PROVIDER="$<TARGET_FILE:mock_ir_provider>")
+    target_link_libraries(test_ir_buffer_allocation PRIVATE ams_mel::ams_mel_c)
+    add_dependencies(test_ir_buffer_allocation mock_ir_provider)
+    ams_mel_warnings(test_ir_buffer_allocation)
+    add_test(NAME ir_buffer_allocation COMMAND test_ir_buffer_allocation)
     add_executable(test_waveform_stream_headers tests/waveform_stream_header_probe.cpp)
     target_compile_features(test_waveform_stream_headers PRIVATE cxx_std_20)
     target_include_directories(test_waveform_stream_headers SYSTEM PRIVATE ${ams_mel_rf_data_vendor_roots})

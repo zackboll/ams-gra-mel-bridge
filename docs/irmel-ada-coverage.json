@@ -731,12 +731,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::addFlag(BufferFlag)",
-      "status": "provider_only",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Provider Buffer virtual ABI is consumed privately; standalone C++ object methods do not require direct safe Ada mirrors. Generic application buffers remain an explicit missing capability.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_add_flag"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Add_Flag"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
@@ -746,12 +767,20 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_frame_snapshot_view"
+        },
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_info"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
           "symbol": "With_Pixels"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Properties"
         }
       ],
       "tests": [
@@ -762,30 +791,83 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_lease_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.",
+        "Safe Ada exposes address equality/location only, never a dereferenceable native address or image span."
+      ],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::getContext() const",
-      "status": "provider_only",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Provider Buffer virtual ABI is consumed privately; standalone C++ object methods do not require direct safe Ada mirrors. Generic application buffers remain an explicit missing capability.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_info"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "User_Context"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::getFlags(std::vector<BufferFlag>&) const",
-      "status": "provider_only",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Provider Buffer virtual ABI is consumed privately; standalone C++ object methods do not require direct safe Ada mirrors. Generic application buffers remain an explicit missing capability.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_flags"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Flags"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
@@ -795,12 +877,20 @@
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_frame_snapshot_view"
+        },
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_info"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
           "symbol": "With_Pixels"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Properties"
         }
       ],
       "tests": [
@@ -811,25 +901,44 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_lease_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.",
+        "Safe Ada exposes address equality/location only, never a dereferenceable native address or image span."
+      ],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::getSize() const",
-      "status": "partial",
+      "status": "safe_ada",
       "native": [
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_frame_snapshot_view"
+        },
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_info"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
           "symbol": "With_Pixels"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Properties"
         }
       ],
       "tests": [
@@ -840,20 +949,51 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_lease_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::init(void*,const size_t,const int64_t)",
-      "status": "provider_only",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Provider Buffer virtual ABI is consumed privately; standalone C++ object methods do not require direct safe Ada mirrors. Generic application buffers remain an explicit missing capability.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_open"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Open"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
@@ -887,12 +1027,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::Buffer::setFlags(const std::vector<BufferFlag>&)",
-      "status": "provider_only",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Provider Buffer virtual ABI is consumed privately; standalone C++ object methods do not require direct safe Ada mirrors. Generic application buffers remain an explicit missing capability.",
-      "limitations": [],
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_set_flags"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Set_Flags"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
@@ -3234,17 +3395,25 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::getBuffer::getBuffer(std::string_view,std::shared_ptr<::API_Manager>)",
-      "status": "partial",
+      "status": "safe_ada",
       "native": [
         {
           "path": "native/src/ir_stream.cpp",
           "symbol": "ams_mel_ir_stream_receive_snapshot"
+        },
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_open"
         }
       ],
       "ada": [
         {
           "path": "ada/src/ams-mel-ir-image.ads",
           "symbol": "Receive"
+        },
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Open"
         }
       ],
       "tests": [
@@ -3255,10 +3424,20 @@
         {
           "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
           "symbol": "Run"
+        },
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
         }
       ],
-      "notes": "Privately loads provider buffers for the bridge-managed Mono8 host pool only; no generic buffer factory exposed.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged.",
+      "limitations": [
+        "No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage."
+      ],
       "representation": []
     },
     {
@@ -7635,46 +7814,111 @@
     {
       "id": "ir:type:ams::iface::irmel::Buffer",
       "status": "partial",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Interface operations classified individually; representation of this C++ class is deliberately not exported. Typed safe owners exist, but see individual gaps and image-domain restrictions.",
-      "limitations": [],
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_info"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Host_Buffer"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "Standalone host Buffer owner is safe Ada; complete upstream Buffer contract remains partial. No C++ layout or native address is public. General release requires a future checkout/lease contract.",
+      "limitations": [
+        "Channel registration/unregistration, checkout release, generic image acquisition and GPU/RDMA storage remain unbound."
+      ],
       "representation": [
         {
           "upstream": "getBufferAddress",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-buffer.ads",
+              "symbol": "Properties"
+            }
+          ]
         },
         {
           "upstream": "getImageAddress",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-buffer.ads",
+              "symbol": "Properties"
+            }
+          ]
         },
         {
           "upstream": "getSize",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-buffer.ads",
+              "symbol": "Properties"
+            }
+          ]
         },
         {
           "upstream": "getContext",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-buffer.ads",
+              "symbol": "Properties"
+            }
+          ]
         },
         {
           "upstream": "getFlags",
-          "status": "see_notes",
-          "evidence": []
+          "status": "represented",
+          "evidence": [
+            {
+              "path": "ada/src/ams-mel-ir-buffer.ads",
+              "symbol": "Flags"
+            }
+          ]
         }
       ]
     },
     {
       "id": "ir:type:ams::iface::irmel::BufferFlag",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.",
+      "status": "safe_ada",
+      "native": [
+        {
+          "path": "native/src/ir_buffer.cpp",
+          "symbol": "ams_mel_ir_buffer_get_flags"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-buffer.ads",
+          "symbol": "Buffer_Flag"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_ir_buffer.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_buffer_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "All published values mapped exactly: Host=0, GPU=1, RDMA=2. Ordered vectors retain duplicates and empty lists; unknown provider values rejected. Flags are bookkeeping, not physical storage types.",
       "limitations": [],
       "representation": []
     },
@@ -15085,8 +15329,8 @@
     },
     {
       "name": "Generic application-managed buffers",
-      "status": "missing",
-      "notes": "Internal bridge host storage only; public registerBuffer/unregisterBuffer equivalents absent."
+      "status": "partial",
+      "notes": "IRMEL-ADA-018 independently owned provider Buffer with bridge-managed host storage, exact flags, signed context and checked byte copies. Registration/unregistration and delivered-buffer checkout/release remain unavailable; not generic acquisition parity."
     },
     {
       "name": "GPU/RDMA buffers",
@@ -15126,6 +15370,7 @@
     "IRMEL-ADA-012 completes only SchedulingChannel::registerMetadataCallback(ExecuteTaskAck) and ExecuteTaskAck (both getters), missing -> safe_ada. SchedulingChannel stays partial and the ten remaining Scheduling-specific operations stay missing. Unique safe Ada operations 47 -> 48; exports 289 -> 295, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.",
     "IRMEL-ADA-013 completes only SchedulingChannel::registerMetadataCallback(TaskExecutingRep), TaskExecutingRep (all ten getters), Task (seventeen defined values; reserved preserved as non-operational, NumTaskTypes rejected) and TaskCompStatus (five values), missing -> safe_ada. SchedulingChannel stays partial and the nine remaining Scheduling-specific operations stay missing. Unique safe Ada operations 48 -> 49; exports 295 -> 301, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.",
     "IRMEL-ADA-015 separates Image command/metadata attachment from acquisition. No unique upstream operations are newly classified: 50 remain safe_ada; the existing Image lifecycle gains an identity-only attachment profile. Qualification is mock-backed; no minimal-mel-example provider integration was available locally.",
-    "IRMEL-ADA-016: StackedImage ownership/common operations only; four inherited exposures safe_ada, Close-only disable partial, three required registrations and optional LOS3D missing. No acquisition or complete required-interface parity. See docs/irmel-ada-016-stacked-channel-foundation.md for actual qualification."
+    "IRMEL-ADA-016: StackedImage ownership/common operations only; four inherited exposures safe_ada, Close-only disable partial, three required registrations and optional LOS3D missing. No acquisition or complete required-interface parity. See docs/irmel-ada-016-stacked-channel-foundation.md for actual qualification.",
+    "IRMEL-ADA-018 adds the standalone bridge-owned host Buffer foundation: seven operations become safe_ada (factory, init, size, context, flag get/set/add), unique safe Ada operations 50 -> 57; address getters remain partial classifications, Buffer remains partial, BufferFlag becomes safe_ada, and generic application-managed buffers become partial. No registration, checkout release, image-layout or physical GPU/RDMA support. Mock qualification only."
   ]
 }

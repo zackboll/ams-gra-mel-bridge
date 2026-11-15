@@ -25,12 +25,12 @@ Schema, extraction limits, evidence trust and update procedure: [inventory schem
 |---|---:|---:|---:|---:|---:|
 | API_Manager | 0 | 0 | 0 | 0 | 1 |
 | BaseSecurityEventType | 0 | 0 | 0 | 0 | 1 |
-| Buffer | 0 | 0 | 4 | 0 | 6 |
+| Buffer | 6 | 0 | 3 | 0 | 1 |
 | C2Channel | 15 | 0 | 0 | 0 | 1 |
 | Channel | 3 | 0 | 4 | 1 | 1 |
 | Control | 3 | 0 | 2 | 0 | 1 |
 | EnumUtilities | 0 | 0 | 0 | 0 | 23 |
-| FactoryFunctions | 2 | 0 | 1 | 0 | 0 |
+| FactoryFunctions | 3 | 0 | 0 | 0 | 0 |
 | HealthStatusChannel | 7 | 0 | 0 | 1 | 1 |
 | IRFactory | 0 | 0 | 0 | 0 | 8 |
 | IRInterfaceBase | 0 | 0 | 0 | 0 | 3 |
@@ -231,8 +231,8 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 | `ams::iface::irmel::BadPixelReason` | safe_ada | All size/count/row/column/reason fields and ordered bad-pixel collection retained; pinned BadPixelReason has only Unknown. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::BandInfo` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::BandType` | safe_ada | Every capability scalar and ordered collection represented, including sensor types, channel types, metadata, image-band map and nav frames. Enum representation does not establish usable operations or raster formats; sentinels are not meaningful values. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
-| `ams::iface::irmel::Buffer` | partial | Interface operations classified individually; representation of this C++ class is deliberately not exported. Typed safe owners exist, but see individual gaps and image-domain restrictions.  |
-| `ams::iface::irmel::BufferFlag` | missing | No native/Ada data representation for this upstream data declaration; all meaningful fields/alternatives remain unbound.  |
+| `ams::iface::irmel::Buffer` | partial | Standalone host Buffer owner is safe Ada; complete upstream Buffer contract remains partial. No C++ layout or native address is public. General release requires a future checkout/lease contract. Channel registration/unregistration, checkout release, generic image acquisition and GPU/RDMA storage remain unbound. |
+| `ams::iface::irmel::BufferFlag` | safe_ada | All published values mapped exactly: Host=0, GPU=1, RDMA=2. Ordered vectors retain duplicates and empty lists; unknown provider values rejected. Flags are bookkeeping, not physical storage types.  |
 | `ams::iface::irmel::C2Channel` | partial | Interface operations classified individually; representation of this C++ class is deliberately not exported. Typed safe owners exist, but see individual gaps and image-domain restrictions.  |
 | `ams::iface::irmel::CSCIMode` | safe_ada | Every subsystem/CSCI field and complete ordered collections retained independently from reported counts; all known meaningful mode/failure alternatives represented. Known meaningful pinned alternatives only; malformed/unknown values fail closed. Source field fidelity is not universal provider support. |
 | `ams::iface::irmel::CalibrationConfigurationCmd` | safe_ada | IRMEL-ADA-005: complete optional configuration vector, copied to immutable native storage before provider result release/callback return and then to independent owned Ada values. All 16 UUID bytes and labels, exact interfaces 0/1/2, outer order and three independently sized nested collections are preserved. MaxExclusive and unknown interfaces, invalid UTF-8/NUL, null success and size overflow are rejected, never remapped. Enabled-only submit reuses CompletionPermit, claim_c2_submission, CommonRequestClaim/finish_c2_request, unlocked send, single future worker, cached outcome and deferred cleanup. Independent opt-in one-shot Attached/Enabled metadata registration uses a bounded DROP-INCOMING queue with in-flight draining; callbacks and request completion remain independent. Mock-provider-only qualification.  |
@@ -367,9 +367,8 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 
 ## Partial and lifecycle functionality
 
-- `Buffer::getBufferAddress() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
-- `Buffer::getImageAddress() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
-- `Buffer::getSize() const`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
+- `Buffer::getBufferAddress() const`: IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged. No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.; Safe Ada exposes address equality/location only, never a dereferenceable native address or image span.
+- `Buffer::getImageAddress() const`: IRMEL-ADA-018 standalone unregistered provider Buffer with stable bridge-owned host storage; exact signed context, provider getters, copied bytes and ordered duplicate-preserving flags. Existing Mono8 behavior unchanged. No channel registration/unregistration or checkout release; no image layout or GPU/RDMA storage.; Safe Ada exposes address equality/location only, never a dereferenceable native address or image span.
 - `Buffer::release()`: Used by retained Mono8 frame leases with checked host containment and exact-once release; not a general Buffer binding.
 - `Channel::disable()`: Image Stop explicitly disables; other families disable only during Close. No reusable standalone common Disable. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.
 - `Channel::enable()`: Typed Enable/Start exists for all seven families; StackedImage is ownership-only, without acquisition.
@@ -378,7 +377,6 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - `Control::attachChannel(const Config&)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-015: also available through the separate control-only Image attachment, with no acquisition layout or buffer pool. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only. Control-only Receive and frame leases report Provider_Error (native INITIALIZATION_FAILED); Start only enables control. No StackedImage or additional acquisition formats.
 - `Control::detachChannel(std::shared_ptr<Channel>)`: Typed lifecycle for Image/C2/Health/Instrumentation/Track/Scheduling only; no generic or StackedImage attachment. IRMEL-ADA-016 adds the required StackedImage owner foundation; Disable remains Close-only.
 - `ImageListener::onImage(const Channel&,const FrameHeader&,std::shared_ptr<Buffer>)`: Full FrameHeader copied or leased, but image acceptance is strictly Mono8 single-band host memory.
-- `FactoryFunctions::getBuffer(std::string_view,std::shared_ptr<::API_Manager>)`: Privately loads provider buffers for the bridge-managed Mono8 host pool only; no generic buffer factory exposed.
 
 ## Inherited Channel exposure
 
@@ -401,7 +399,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - **RGB** — missing: Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout.
 - **Bayer** — missing: Enum represented, but capability/frame format must equal Mono. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout.
 - **Multiband** — missing: Capability numberOfBands and frame numBands must both equal one. This is an acquisition restriction only; Open_Image_Control does not validate or use an image layout.
-- **Generic application-managed buffers** — missing: Internal bridge host storage only; public registerBuffer/unregisterBuffer equivalents absent.
+- **Generic application-managed buffers** — partial: IRMEL-ADA-018 independently owned provider Buffer with bridge-managed host storage, exact flags, signed context and checked byte copies. Registration/unregistration and delivered-buffer checkout/release remain unavailable; not generic acquisition parity.
 - **GPU/RDMA buffers** — missing: Not exposed as supported public paths. CPU host address containment/borrowing is not GPU or RDMA qualification.
 - **StackedImage** — partial: IRMEL-ADA-016 required channel ownership/common communications only. No image-stack listener, StackFrameHeader conversion, buffers or optional LOS3D reception.
 
@@ -428,6 +426,7 @@ All types/aliases are classified below. Exact member declarations, enum alternat
 - IRMEL-ADA-013 completes only SchedulingChannel::registerMetadataCallback(TaskExecutingRep), TaskExecutingRep (all ten getters), Task (seventeen defined values; reserved preserved as non-operational, NumTaskTypes rejected) and TaskCompStatus (five values), missing -> safe_ada. SchedulingChannel stays partial and the nine remaining Scheduling-specific operations stay missing. Unique safe Ada operations 48 -> 49; exports 295 -> 301, all AMS_MEL_0.1. No new vendored files (824 unchanged), no task execution, no safe Python/Rust reception. Qualification is mock-provider only.
 - IRMEL-ADA-015 separates Image command/metadata attachment from acquisition. No unique upstream operations are newly classified: 50 remain safe_ada; the existing Image lifecycle gains an identity-only attachment profile. Qualification is mock-backed; no minimal-mel-example provider integration was available locally.
 - IRMEL-ADA-016: StackedImage ownership/common operations only; four inherited exposures safe_ada, Close-only disable partial, three required registrations and optional LOS3D missing. No acquisition or complete required-interface parity. See docs/irmel-ada-016-stacked-channel-foundation.md for actual qualification.
+- IRMEL-ADA-018 adds the standalone bridge-owned host Buffer foundation: seven operations become safe_ada (factory, init, size, context, flag get/set/add), unique safe Ada operations 50 -> 57; address getters remain partial classifications, Buffer remains partial, BufferFlag becomes safe_ada, and generic application-managed buffers become partial. No registration, checkout release, image-layout or physical GPU/RDMA support. Mock qualification only.
 
 ## Recommended implementation order
 

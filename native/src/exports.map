@@ -1,5 +1,13 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_ir_buffer_open;
+        ams_mel_ir_buffer_get_info;
+        ams_mel_ir_buffer_get_flags;
+        ams_mel_ir_buffer_set_flags;
+        ams_mel_ir_buffer_add_flag;
+        ams_mel_ir_buffer_read_storage;
+        ams_mel_ir_buffer_write_storage;
+        ams_mel_ir_buffer_close;
         ams_mel_ir_channel_comms_metadata_open;
         ams_mel_ir_channel_comms_metadata_receive;
         ams_mel_ir_channel_comms_metadata_get_counters;
