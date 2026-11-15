@@ -39,7 +39,7 @@ use crate::{
 /// for the numeric representation.
 ///
 /// ```
-/// use ams_mel::RfJobDataFormat;
+/// use ams_mel_rf::RfJobDataFormat;
 /// assert_eq!(RfJobDataFormat::ComplexInt16.as_raw(), 3);
 /// let future = RfJobDataFormat::from_raw(0xF000_0001);
 /// assert_eq!(future, RfJobDataFormat::Unknown(0xF000_0001));
@@ -248,7 +248,7 @@ pub struct RfMfaInfo {
 /// Safe owner of one independent RF `createDataMEL` provider object
 /// (`ams_mel_rf_data *`) and of the provider library that created it.
 ///
-/// An `RfData` is not an IR [`Session`](crate::Session) or an
+/// An `RfData` is not an IR IR `Session` or an
 /// [`RfAdmin`](crate::RfAdmin) and neither creates nor shares either. Raw
 /// pointers and provider objects are never exposed.
 ///
@@ -283,18 +283,18 @@ pub struct RfMfaInfo {
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::RfData>();
+/// require_send::<ams_mel_rf::RfData>();
 /// ```
 ///
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::RfData>();
+/// require_sync::<ams_mel_rf::RfData>();
 /// ```
 ///
 /// ```no_run
-/// use ams_mel::RfData;
+/// use ams_mel_rf::RfData;
 ///
-/// # fn main() -> Result<(), ams_mel::Error> {
+/// # fn main() -> Result<(), ams_mel_rf::Error> {
 /// let mut data = RfData::open("/opt/provider/librfmel.so", "configuration")?;
 /// let version = data.provider_version()?;
 /// let quantized_fs = data.quantize_duration(1_000_000)?;
@@ -383,7 +383,7 @@ impl RfData {
 
     /// Queries the provider's `getVersionInfo` with the same two-stage
     /// protocol as
-    /// [`Session::provider_version`](crate::Session::provider_version): a
+    /// IR `Session::provider_version`: a
     /// size query, exactly sized buffers (lengths include the terminal NUL),
     /// then the complete copy. Strings are never truncated. The returned
     /// [`ProviderVersion`] owns its strings and remains valid after closure;

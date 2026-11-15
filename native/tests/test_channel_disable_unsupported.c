@@ -18,6 +18,7 @@ int main(void)
     ams_mel_ir_stream_config_v1 ac = {0};
     ams_mel_ir_channel *views[4] = {NULL, NULL, NULL, NULL};
     ams_mel_ir_return_t result;
+    ams_mel_ir_buffer *buffer = NULL;
     ic.channel_type = AMS_MEL_IR_CHANNEL_INSTRUMENTATION;
     tc.channel_type = AMS_MEL_IR_CHANNEL_IRST_TRACK;
     sc.channel_type = AMS_MEL_IR_CHANNEL_SCHEDULING;
@@ -32,9 +33,14 @@ int main(void)
     CALL(ams_mel_ir_channel_from_track, track, &views[1]);
     CALL(ams_mel_ir_channel_from_scheduling, scheduling, &views[2]);
     CALL(ams_mel_ir_channel_from_stream, image, &views[3]);
+    CALL(ams_mel_ir_buffer_open, session, 16, -20, &buffer, &result);
     for (unsigned pass = 0; pass < 2; ++pass) {
         for (unsigned i = 0; i < 4; ++i) {
             CHECK(ams_mel_ir_channel_disable(views[i], &result, ARGS) == AMS_MEL_PROVIDER_FAILED);
+            CHECK(result == UINT32_MAX);
+            CHECK(ams_mel_ir_channel_register_buffer(views[i], buffer, &result, ARGS) == AMS_MEL_PROVIDER_FAILED);
+            CHECK(result == UINT32_MAX);
+            CHECK(ams_mel_ir_channel_unregister_buffer(views[i], buffer, &result, ARGS) == AMS_MEL_PROVIDER_FAILED);
             CHECK(result == UINT32_MAX);
         }
         if (!pass) {
@@ -50,6 +56,7 @@ int main(void)
     CALL(ams_mel_ir_stream_stop, image);
     CHECK(ams_mel_ir_stream_start(image, ARGS) == AMS_MEL_STREAM_STOPPED);
     CALL(ams_mel_ir_stream_close, &image);
+    CALL(ams_mel_ir_buffer_close, &buffer);
     CALL(ams_mel_session_close, &session);
     for (unsigned i = 0; i < 4; ++i) CALL(ams_mel_ir_channel_close, &views[i]);
     return 0;

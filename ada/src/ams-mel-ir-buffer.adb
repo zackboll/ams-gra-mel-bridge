@@ -18,6 +18,37 @@ package body AMS.MEL.IR.Buffer is
       end if;
    end Check;
 
+   procedure Register_With_Channel (Channel : Channel_View; Object : in out Host_Buffer) is
+      Result : aliased Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
+      Code   : Interfaces.Integer_32;
+   begin
+      Code :=
+        C.IR_Channel_Register_Buffer
+          (Channel.Handle, Object.Handle, Result'Access, System.Null_Address, 0, null);
+      if Code /= C.Success then
+         raise Provider_Error
+           with
+             "Buffer registration bridge status" & Code'Image & "; provider Return" & Result'Image;
+      end if;
+   end Register_With_Channel;
+
+   procedure Unregister_From_Channel (Channel : Channel_View; Object : in out Host_Buffer) is
+      Result : aliased Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
+      Code   : Interfaces.Integer_32;
+   begin
+      Code :=
+        C.IR_Channel_Unregister_Buffer
+          (Channel.Handle, Object.Handle, Result'Access, System.Null_Address, 0, null);
+      if Code /= C.Success then
+         raise Provider_Error
+           with
+             "Buffer unregistration bridge status"
+             & Code'Image
+             & "; provider Return"
+             & Result'Image;
+      end if;
+   end Unregister_From_Channel;
+
    procedure Require_Open (Object : Host_Buffer) is
    begin
       if not Is_Open (Object) then

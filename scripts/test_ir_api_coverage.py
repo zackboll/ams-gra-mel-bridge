@@ -89,6 +89,31 @@ class CoverageTests(unittest.TestCase):
             if "::Channel::registerBuffer(" in entry["id"] or "::Channel::unregisterBuffer(" in entry["id"]:
                 self.assertFalse(any(e["path"] == "native/src/ir_buffer.cpp" for e in entry["native"]))
 
+    def test_application_registration_four_families_only(self):
+        supported = {"C2Channel", "HealthStatusChannel", "StackedImageChannel", "ImageChannel"}
+        for method in ("registerBuffer(", "unregisterBuffer("):
+            operation = self.operation("Channel", method)
+            self.assertEqual(operation["status"], "partial")
+            self.assertIn({"path": "native/tests/test_channel_buffer_registration.c", "symbol": "main"},
+                          operation["tests"])
+            self.assertIn({"path": "ada/tests/src/ams_mel_ir_registration_tests.adb", "symbol": "Run"},
+                          operation["tests"])
+            for entry in self.coverage["inherited"]:
+                if entry["coverage_id"] == operation["id"]:
+                    self.assertEqual(entry["status"], "safe_ada" if entry["id"].split("|")[0]
+                                     in supported else "missing")
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in self.coverage["operations"]), 57)
+
+    def test_application_registration_requires_native_export(self):
+        path = self.root / "native/src/exports.map"
+        path.write_text(path.read_text().replace("        ams_mel_ir_channel_register_buffer;\n", ""))
+        self.reject("missing native export")
+
+    def test_application_unregister_requires_safe_ada_implementation(self):
+        path = self.root / "ada/src/ams-mel-ir-channel.adb"
+        path.write_text(path.read_text().replace("Unregister_Buffer", "Unbound_Buffer"))
+        self.reject("missing Ada implementation")
+
     def test_standalone_buffer_needs_real_native_export(self):
         path = self.root / "native/src/exports.map"
         path.write_text(path.read_text().replace("        ams_mel_ir_buffer_get_flags;\n", ""))
@@ -131,9 +156,9 @@ class CoverageTests(unittest.TestCase):
     def test_stacked_foundation_not_acquisition(self):
         upstream, coverage = audit.validate(self.root)
         exposures = [e for e in coverage["inherited"] if e["id"].startswith("StackedImageChannel|")]
-        self.assertEqual(sum(e["status"] == "safe_ada" for e in exposures), 6)
+        self.assertEqual(sum(e["status"] == "safe_ada" for e in exposures), 8)
         self.assertEqual(sum(e["status"] == "partial" for e in exposures), 0)
-        self.assertEqual(sum(e["status"] == "missing" for e in exposures), 2)
+        self.assertEqual(sum(e["status"] == "missing" for e in exposures), 0)
         self.assertEqual(next(e for e in coverage["types"] if e["id"].endswith("::StackedImageChannel"))["status"], "partial")
         self.assertEqual(next(e for e in coverage["image_capabilities"] if e["name"] == "StackedImage")["status"], "partial")
         self.assertEqual(self.operation("StackedImageChannel", "registerMetadataCallback(")["status"], "missing")

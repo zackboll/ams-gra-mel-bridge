@@ -1096,28 +1096,30 @@
       "status": "partial",
       "native": [
         {
-          "path": "native/src/ir_stream.cpp",
-          "symbol": "ams_mel_ir_stream_receive_snapshot"
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_register_buffer"
         }
       ],
       "ada": [
         {
-          "path": "ada/src/ams-mel-ir-image.ads",
-          "symbol": "Receive"
+          "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Register_Buffer"
         }
       ],
       "tests": [
         {
-          "path": "native/tests/test_ir_stream.c",
+          "path": "native/tests/test_channel_buffer_registration.c",
           "symbol": "main"
         },
         {
-          "path": "ada/tests/src/ams_mel_ir_image_tests.adb",
+          "path": "ada/tests/src/ams_mel_ir_registration_tests.adb",
           "symbol": "Run"
         }
       ],
-      "notes": "Internal Image Open registers provider buffers backed by bridge host storage; application buffer registration is not exposed.",
-      "limitations": [],
+      "notes": "IRMEL-ADA-020: independently owned stable host Buffer registration on C2, HealthStatus, StackedImage and control-only Image. Exact Buffer/Session identity, disabled-only lifecycle, persistent registration accounting, conservative refusal retention and explicit same-channel cleanup.",
+      "limitations": [
+        "Other conditional families remain unsupported. Full Mono8 application registration is not exposed. Success is not callback quiescence; extra provider ownership and unresolved Image checkouts retain the graph."
+      ],
       "representation": []
     },
     {
@@ -1243,12 +1245,33 @@
     },
     {
       "id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
-      "native": [],
-      "ada": [],
-      "tests": [],
-      "notes": "Not exposed or called during teardown; provider channel destruction is used instead. Upstream disable does not establish callback quiescence.",
-      "limitations": [],
+      "status": "partial",
+      "native": [
+        {
+          "path": "native/src/common_channel_requests.cpp",
+          "symbol": "ams_mel_ir_channel_unregister_buffer"
+        }
+      ],
+      "ada": [
+        {
+          "path": "ada/src/ams-mel-ir-channel.ads",
+          "symbol": "Unregister_Buffer"
+        }
+      ],
+      "tests": [
+        {
+          "path": "native/tests/test_channel_buffer_registration.c",
+          "symbol": "main"
+        },
+        {
+          "path": "ada/tests/src/ams_mel_ir_registration_tests.adb",
+          "symbol": "Run"
+        }
+      ],
+      "notes": "IRMEL-ADA-020: independently owned stable host Buffer registration on C2, HealthStatus, StackedImage and control-only Image. Exact Buffer/Session identity, disabled-only lifecycle, persistent registration accounting, conservative refusal retention and explicit same-channel cleanup.",
+      "limitations": [
+        "Other conditional families remain unsupported. Full Mono8 application registration is not exposed. Success is not callback quiescence; extra provider ownership and unresolved Image checkouts retain the graph."
+      ],
       "representation": []
     },
     {
@@ -7217,7 +7240,7 @@
       ],
       "notes": "Standalone host Buffer owner is safe Ada; complete upstream Buffer contract remains partial. No C++ layout or native address is public. General release requires a future checkout/lease contract.",
       "limitations": [
-        "Channel registration/unregistration, checkout release, generic image acquisition and GPU/RDMA storage remain unbound."
+        "Application registration/unregistration is supported on C2, HealthStatus, StackedImage and control-only Image; other families/full acquisition registration, generic delivered-buffer checkout/release, generic image acquisition and GPU/RDMA storage remain unbound."
       ],
       "representation": [
         {
@@ -12581,9 +12604,8 @@
       "native": [],
       "ada": [],
       "tests": [],
-      "notes": "IRMEL-ADA-016 adds only AMS.MEL.IR.Stacked_Image ownership/lifecycle and weak common requests, not a stacked-image receiver.",
+      "notes": "Typed safe StackedImage owner with common communications, standalone Disable and application Buffer registration/unregistration; no stacked-image receiver.",
       "limitations": [
-        "Standalone Disable, application buffers and common communications metadata registration remain unbound.",
         "Optional LOS3D registration, image-stack callbacks and StackFrameHeader conversion remain missing.",
         "Qualification is separate mock-provider only."
       ],
@@ -14353,9 +14375,9 @@
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14377,9 +14399,9 @@
     },
     {
       "id": "C2Channel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14401,9 +14423,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "partial",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "Internal bridge-managed host pool, not application-managed buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14425,9 +14447,9 @@
     },
     {
       "id": "ImageChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14449,9 +14471,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14473,9 +14495,9 @@
     },
     {
       "id": "HealthStatusChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "No exposed registration path on this family; sends alone do not implement callbacks or buffers."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "InstrumentationChannel|ir:operation:ams::iface::irmel::Channel::disable()",
@@ -14641,9 +14663,9 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::registerBuffer(std::shared_ptr<Buffer>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::registerMetadataCallback(std::function<void(Channel&,const ChannelCommsTestRep*const)>)",
@@ -14665,16 +14687,16 @@
     },
     {
       "id": "StackedImageChannel|ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "status": "missing",
+      "status": "safe_ada",
       "coverage_id": "ir:operation:ams::iface::irmel::Channel::unregisterBuffer(std::shared_ptr<Buffer>)",
-      "notes": "IRMEL-ADA-016 foundation leaves required buffer registration/unregistration and common communications metadata registration missing. No implicit registration occurs."
+      "notes": "IRMEL-ADA-020 public Channel Register_Buffer/Unregister_Buffer with limited Host_Buffer ownership; disabled-only, same concrete channel and native Session. Image exposure is control-only, not full Mono8 acquisition."
     }
   ],
   "image_capabilities": [
     {
       "name": "Control-only Image attachment",
       "status": "safe_ada",
-      "notes": "Open_Image_Control uses the same limited Image_Stream owner for capabilities, common KeepAlive/CommsTest, navigation and four required metadata registrations with zero image-layout fields. Start only enables; Receive/frame leases fail explicitly. No image buffers are created, initialized or registered; unexpected callbacks are released without querying sample bytes, with existing uncertainty retention."
+      "notes": "Open_Image_Control uses the existing limited Image_Stream with zero image-layout fields, capabilities, communications, navigation and required metadata. Explicit application Buffer registration/unregistration is supported, but no internal image pool is allocated. Receive/frame leases refuse; unexpected delivered checkouts use the existing safe release engine without querying sample bytes, with uncertainty retention."
     },
     {
       "name": "Mono8 single-band",
@@ -14709,7 +14731,7 @@
     {
       "name": "Generic application-managed buffers",
       "status": "partial",
-      "notes": "IRMEL-ADA-018 independently owned provider Buffer with bridge-managed host storage, exact flags, signed context and checked byte copies. Registration/unregistration and delivered-buffer checkout/release remain unavailable; not generic acquisition parity."
+      "notes": "IRMEL-ADA-020: independently owned host Buffer registration/unregistration on C2, HealthStatus, StackedImage and control-only Image. Exact identity, disabled-only lifecycle and conservative ownership reconciliation; generic delivered-buffer checkout/release and full Mono8 application registration remain unavailable. Not generic acquisition parity."
     },
     {
       "name": "GPU/RDMA buffers",
@@ -14719,7 +14741,7 @@
     {
       "name": "StackedImage",
       "status": "partial",
-      "notes": "IRMEL-ADA-016 required channel ownership/common communications only. No image-stack listener, StackFrameHeader conversion, buffers or optional LOS3D reception."
+      "notes": "Required channel ownership/common communications, standalone Disable and explicit application Buffer registration/unregistration. No image-stack listener, StackFrameHeader conversion or optional LOS3D reception."
     }
   ],
   "source_sha256": {
@@ -14739,8 +14761,8 @@
     "ada/src/ams-mel-ir-camera_protection_conversion.ads": "3a3c9d5d536c5d3cfb7cff87e33421f47176d480a6bb3e5e763f4f9f6945a0e1",
     "ada/src/ams-mel-ir-capability_conversion.adb": "d3b5180fc9af805054972a3923344cb30ca1b7cd84d8a8402e260e51073dbced",
     "ada/src/ams-mel-ir-capability_conversion.ads": "26a27f95e177af2ec1a8111f8461152e5e5665ed39e6ec7d1beffeeaaa6c86bc",
-    "ada/src/ams-mel-ir-channel.adb": "c73592af465a0649572c1fd04b603efc2f089399221d9e77037f56aaf0789d20",
-    "ada/src/ams-mel-ir-channel.ads": "0c7fdeeb27da430c5518ea3e125fcf6ee8bbe4f6d20c2b2ce0c23e4f2e0a5d44",
+    "ada/src/ams-mel-ir-channel.adb": "6ea8f8e0456feccf5bd2e760cd016d418a56b0699918c4a57bf9ebbcac385517",
+    "ada/src/ams-mel-ir-channel.ads": "89db9debe2b7640ad5064f8716268e3611ad8f33af819c4ef4ac470840be5ec5",
     "ada/src/ams-mel-ir-health_status-metadata.adb": "dfbc5defd764489d92e5cb999f1a676100ed961233a87d7950086964a5a8f996",
     "ada/src/ams-mel-ir-health_status-metadata.ads": "b10d2858ca35009e9131839023eec9b644006d37fdda14e558324123a179b4bb",
     "ada/src/ams-mel-ir-health_status.adb": "d114a876d51b9912c0e129ba1141ac8dfd8585e6b0cc43c50613b7083a74682b",
@@ -14773,45 +14795,50 @@
     "ada/src/ams-mel_c_api.ads": "f7e53d326a1ca56ecead6a683ab87e5507f0da11e0424fb466cb8176260f289e",
     "native/include/ams_mel/abi.h": "b9fe142fc8d49f8437cd49544fb446bcd307de037a6c9c5160457918dc304417",
     "native/src/abi.cpp": "a8a2c41770297b7bb5a3b0d8f8e50fce89ea275a596cc56d207fe41f345501b1",
-    "native/src/common_channel_requests.cpp": "80c3a391c42512c1f45a76d5aa06773f5fc53faeb724bf88d12fa06f9eb79454",
+    "native/src/common_channel_requests.cpp": "7a247e8df2186b1690209c3cf88e8eb86394ecc0753ec908b1ba6ec53988204b",
     "native/src/completion_probe.cpp": "b8470e409b4013f001039d800060eaeda4c045935c13e9c7e67c03dd5abfcb10",
     "native/src/exports.map": "41bfb9c908e27509dc6d61237f279d43ddc5a8422c4bd2686f511605a8136913",
     "native/src/internal.hpp": "d3ccd4d633f6563fb26f56834f7ddae5802a64335402e04ee13c6318257f5b6b",
-    "native/src/internal/common_channel_requests.hpp": "a2de9fe04f028044ea59808fa8b8896ca3a078d0bbdaa6e93ae35d9d32935c48",
+    "native/src/internal/common_channel_requests.hpp": "278a46d96ccd777c1c8ce999f72d6981dba3d49f8bca4a415c84f5233cd90e61",
     "native/src/internal/completion_probe.hpp": "00001e661c4aaf132920d9bdd06860454024db2a82371b59c699f61ce5b93a80",
     "native/src/internal/ir_camera_command.hpp": "c9d70cb5ed73f4c913782cad2fab95da6659429d23e73fd9568c64329ad40003",
     "native/src/internal/ir_camera_protect.hpp": "c8486fc23e4d666ef402ee6c28bc8a87827350bde351b804609f64cf41dc09dc",
     "native/src/internal/ir_channel.hpp": "0b276634a2637c34fc997c02ccf0e845eaf0184af991e75b9f2add88d639b1a0",
     "native/src/internal/ir_nuc.hpp": "034369c2cfad4e2c1e2d914fc3e867c23caf05ab5073c53e653fc27d2d10568b",
-    "native/src/internal/ir_stream.hpp": "ea996d4ee30cc6c2b7a73ef9c5ba18843df773d5282f206a15b7495d4a7a1031",
+    "native/src/internal/ir_stream.hpp": "66340d4aa69093b4d67c33e5969f21574bd0fbd0d891aa1e941ff6386e1a768c",
     "native/src/internal/provider_common.hpp": "c0c16122b30afce07dced9b59b57b1a8bf3d2c4b3b2ffd18d28ecad79fe6c46e",
     "native/src/internal/shared_library.hpp": "d1aaf08fa318e128efdcb9515b4171d953a6e8bb0d320c4506a6aeec96e97dbd",
-    "native/src/ir_c2.cpp": "966c16b5049e22105fe81516437905d7383389e48ad1c2bb7a0ff8a2dbe5a517",
+    "native/src/ir_c2.cpp": "c9815260934ef61489ff5fcd6eccf365219dcdfc29765244d2700cabc9a41f4e",
     "native/src/ir_camera_command.cpp": "cf7b9d6f47f1311b06f21f2293c2e534c78475fdf3f0d56d28eb843cf1a0b11c",
     "native/src/ir_camera_protect.cpp": "a6792642d5a3e38af9ffd27641cad844909c70746be3398c7cb28cdb3141799b",
     "native/src/ir_channel.cpp": "d72e0666fa0e6966a6abc766be1ce21a577ec031908851bc09500e2fc970d149",
-    "native/src/ir_health.cpp": "1d76000cbd8caeadc35540276c622411b2e2a8741b3214fea098cd64ba539bac",
+    "native/src/ir_health.cpp": "75b201d22169e7f7b09b1fb6dbe572d1b3108995b691c8be3fb5da1bb38f9d9b",
     "native/src/ir_image.cpp": "51a264c8fd3879b6b8b7b3e41cf8616539a326744d4361c11c3a98bcf2274132",
     "native/src/ir_instrumentation.cpp": "23860e7960dcb96f9825d34178e0c60c2490efdf63d980107df4c38aef083e1f",
     "native/src/ir_navigation.cpp": "b86b2c1ec5545e2009b479ccd852303d7aa25cc54bc4abd4c10ff8ac5fbfcc00",
     "native/src/ir_nuc.cpp": "0c03402deaf1c1ea6779bd5f051e461e4c3b0428ce4657822ded23a3ed089fb4",
-    "native/src/ir_stream.cpp": "9015fdd544b9d458347f595aa6d2e89a7890cd11ccaa549e4885610fb86d2f58",
+    "native/src/ir_stream.cpp": "029936e60f566ab8811e88a57ee89192b5802a1f0f771c15f906f024374986cb",
     "native/src/ir_track.cpp": "8d354425ada1479a9e7c18fd7ca2b94aa835b3575ba02167063569a4270aec36",
     "native/src/provider.cpp": "ec3fdbcc724fa61029947c744e99003418ac9cfe921f011d29e1b288d4acf792",
-    "native/src/ir_stacked.cpp": "6b1a39c242046146588a1f7b965bbca7f648c38ea9694ea073073650d62b269a",
+    "native/src/ir_stacked.cpp": "73033a7e866b4632d75a6f85b8af6270ad50585eb341326507a75bb3b5b0ac84",
     "ada/src/ams-mel-ir-stacked_image.ads": "d1b3ccfbf60259b9702ebd6a8fa5cc844eb32fff95e29a4bc493b2a4252ec00f",
     "ada/src/ams-mel-ir-stacked_image.adb": "6c2f0805ccfe4fdbb457397e8478c80c051dd14c228fee73d2a791c1a98b6ef2",
     "native/src/channel_comms_metadata.cpp": "e5df21fc110e7d3b36dd7d27f5557a35c4ca64c686380b08d81d1089d6d863ec",
     "native/src/internal/channel_comms_metadata.hpp": "7c9676dba4cf0cd74df93305d49dbb41e223bae09ead3d3690c9c035560a5a9c",
     "ada/src/ams-mel-ir-channel-metadata.ads": "218099428dec5472130885532186211741f4fac02a035776d50eaa95ea8444e0",
     "ada/src/ams-mel-ir-channel-metadata.adb": "666e2fdecf574393e7fd482d47d4c4d3cded7dfe32b5d0aee6d4b26bef84c230",
-    "native/src/ir_buffer.cpp": "bcd04446746c39d11683718d73c4ffa36e2aaf668066abe7e8c368d592a11843",
-    "ada/src/ams-mel-ir-buffer.ads": "b1191abc38f3bc7379f114605d2ecf495365c37adadacd3fdff119fbfa72d405",
-    "ada/src/ams-mel-ir-buffer.adb": "45976e74eb0f6f5b5abcc7116ae7a7d706662c3ad26ede876c5c7f6e4d567f94",
-    "native/src/internal/channel_disable.hpp": "06f3d0cfeea90dca21cc30acdba60ff8ce5b7baae225f54f54838f71d75f8526",
+    "native/src/ir_buffer.cpp": "1d1f3eff25b3729f89230842125555eb5937ddb55271186f50277357db3c726a",
+    "ada/src/ams-mel-ir-buffer.ads": "f3e53d035f88d50a6c62f9356f6746ed99873a866e94521a88ebf46c51ad6f37",
+    "ada/src/ams-mel-ir-buffer.adb": "308eaa2ca9adc70b21f3f2331b5eab4c77928522ab7e3986cfe333eebe8f3c91",
+    "native/src/internal/channel_disable.hpp": "c1a33fc89412f36a0908cdd7014c085496bb5dcda2a8f90c4a73fc2ebd8fb259",
     "native/tests/test_channel_disable.c": "885269235fdc8a904a9dbedfcd98e2e6c0af8e3b8040f06e7ecc1b678f2c92bc",
     "native/tests/test_channel_disable_unsupported.c": "10ef7d4f96784bfc65037941222c8de341ee44e84324db58755120bc590fd281",
     "ada/tests/src/ams_mel_ir_disable_tests.adb": "c64fa2fb3be1149fabca5ba35f33353343ab351fcb12e30de55710625a684f31",
-    "ada/tests/src/ams_mel_ir_disable_tests.ads": "8f9e5f4ccac59d160f49d8ba545e31329784d34ef524b094140dd74ce33995b0"
+    "ada/tests/src/ams_mel_ir_disable_tests.ads": "8f9e5f4ccac59d160f49d8ba545e31329784d34ef524b094140dd74ce33995b0",
+    "native/src/internal/channel_buffer_registration.hpp": "11ce8d0318a4f3abefcb6ab7ae48b322695b6a7a8f743a6046baca01a1dc85e8",
+    "native/src/internal/ir_buffer.hpp": "f6a61f833659dcdae895b583443f837f19fb128ff127d12bd0ba89371250ef30",
+    "native/tests/test_channel_buffer_registration.c": "8e72e0f21b37f791d7a4ebdda8b6cdd4e42012a12e79d6b793d87ce137b07a26",
+    "ada/tests/src/ams_mel_ir_registration_tests.adb": "2933d79cac4a6be92f01d1dbf24e94fd1bfbd4b2a158e17cfca002524a03f2a7",
+    "ada/tests/src/ams_mel_ir_registration_tests.ads": "3145334bbd3bd81e90dd68d73f76a5f5b5f5cde1ef95848c09adfe925253888c"
   }
 }

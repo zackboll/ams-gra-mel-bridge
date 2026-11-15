@@ -7,12 +7,21 @@ name = "ams-mel"
 version = "0.1.0"
 dependencies = [
  "ams-mel-common",
+ "ams-mel-rf",
  "ams-mel-sys",
 ]
 
 [[package]]
 name = "ams-mel-common"
 version = "0.1.0"
+
+[[package]]
+name = "ams-mel-rf"
+version = "0.1.0"
+dependencies = [
+ "ams-mel-common",
+ "ams-mel-sys",
+]
 
 [[package]]
 name = "ams-mel-sys"

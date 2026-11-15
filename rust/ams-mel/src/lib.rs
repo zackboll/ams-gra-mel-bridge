@@ -102,6 +102,7 @@ use std::slice;
 use ams_mel_sys as sys;
 
 mod ir_c2_metadata;
+mod ir_comms_metadata;
 mod ir_discovery;
 mod ir_health;
 mod ir_health_metadata;
@@ -127,13 +128,16 @@ pub use ir_optical_distortion_map::{
 mod ir_bit;
 mod ir_config_set;
 mod ir_mode;
-mod rf_admin;
-mod rf_data;
+#[doc(inline)]
+pub use ams_mel_rf::{RfAdmin, RfMfaState};
+#[doc(inline)]
+pub use ams_mel_rf::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 pub use ir_bit::{BitAction, BitCommand};
 pub use ir_c2_metadata::{
     BitConfiguration, BitControlInterface, BitTypeDefinition, C2MetadataCounters, C2MetadataEvent,
     C2MetadataStream, CannotComply, CommandState, CommandStatus,
 };
+pub use ir_comms_metadata::{CommsMetadataCounters, CommsMetadataOpenError, CommsMetadataStream};
 pub use ir_config_set::ConfigSetCommand;
 pub use ir_health::{HealthConfig, HealthStatusChannel};
 pub use ir_health_metadata::{
@@ -159,8 +163,6 @@ pub use ir_nuc::{
     NucCounters, NucOpenError, NucPixelValue, NucPointType, NucStream, NucTempData, NucTempPoint,
 };
 pub use ir_stacked::{StackedChannel, StackedConfig};
-pub use rf_admin::{RfAdmin, RfMfaState};
-pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
