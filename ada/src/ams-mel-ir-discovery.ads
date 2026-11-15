@@ -12,6 +12,7 @@ package AMS.MEL.IR.Discovery is
        (Index_Type   => Positive,
         Element_Type => AMS.MEL.IR.Channel.Channel_Capability,
         "="          => AMS.MEL.IR.Channel."=");
+   --  Positive-index collection of owned channel capabilities in provider enumeration order.
 
    function Capabilities (Session : AMS.MEL.Session) return Capability_Vectors.Vector;
    --  Copy the complete Control capability list in provider enumeration order.

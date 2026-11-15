@@ -4,6 +4,7 @@ private with Ada.Strings.Unbounded;
 package AMS.MEL.IR.Erase is
    --  Optional C2 EraseCommand values. A successful asynchronous return does not
    --  verify physical erasure: the pinned interface defines no such verification.
+
    subtype Command_ID is AMS.MEL.IR.Channel.Command_ID;
    --  Exact unsigned 32-bit command identifier.
    type Erase_Type is (Zeroize, Classified_Data_Erase, Disable, CDE_AND_Zeroize);
@@ -22,19 +23,26 @@ package AMS.MEL.IR.Erase is
    --  @param Operation Explicit selected erase operation.
    --  @return Owned complete command.
    function ID (Command : Erase_Command) return Command_ID;
-   --  @param Command Owned command.
+   --  Read the caller-supplied identifier from an owned erase command.
+   --  @param Command Owned command constructed by Create_Command.
    --  @return Exact identifier.
+   --  @exception Provider_Error Command was not constructed by Create_Command.
    function Operation (Command : Erase_Command) return Erase_Type;
-   --  @param Command Owned command.
+   --  Read the erase operation explicitly selected when constructing the command.
+   --  @param Command Owned command constructed by Create_Command.
    --  @return Explicit selected operation.
+   --  @exception Provider_Error Command was not constructed by Create_Command.
 
    subtype Outcome is AMS.MEL.IR.Channel.Outcome;
+   --  Success for a returned erase type or Rejected for an explicit MEL error.
    use type Outcome;
    subtype Error_Code is AMS.MEL.IR.Channel.Error_Code;
+   --  Known MEL rejection categories; provider and payload failures raise Provider_Error.
    type Erase_Result is private;
    --  Owned Success or explicit MEL Rejected result. Provider/payload/cleanup
    --  failures raise Provider_Error, not a MEL rejection or successful result.
    function Status (Result : Erase_Result) return Outcome;
+   --  Read the terminal future outcome without asserting physical erasure.
    --  @param Result Owned terminal result.
    --  @return Success or Rejected.
    function Response (Result : Erase_Result) return Erase_Type
@@ -44,16 +52,19 @@ package AMS.MEL.IR.Erase is
    --  @return Exact returned EraseCommandType.
    function Rejection_Code (Result : Erase_Result) return Error_Code
    with Pre => Status (Result) = AMS.MEL.IR.Channel.Rejected;
+   --  Read the MEL error category of an explicitly rejected result.
    --  @param Result Rejected result.
    --  @return Known MEL error code.
    function Description (Result : Erase_Result) return String
    with Pre => Status (Result) = AMS.MEL.IR.Channel.Rejected;
+   --  Copy the complete rejection diagnostic from the owned result.
    --  @param Result Rejected result.
    --  @return Complete owned diagnostic, including long descriptions.
    type Erase_Request is new AMS.MEL.IR.Erase_Request_Owner with private;
    --  Limited controlled observer; finalization never raises. Provider execution
    --  retains the native C2/Session/provider graph independently of this observer.
    function Is_Open (Request : Erase_Request) return Boolean;
+   --  Test public request-handle presence without polling the provider future.
    --  @param Request Observer to inspect.
    --  @return Local handle presence, not completion state.
    function Wait (Request : Erase_Request; Timeout_Milliseconds : Natural) return Erase_Result;

@@ -19,7 +19,9 @@ from check_doc_source_integrity import tokens
 from compare_gnatdoc_warnings import (
     HEADER_RE, WarningComparisonError, _declaration_span, _normalize, code_tokens,
 )
-from gnatdoc_coverage_model import CoverageError, expected_items, specification, without_aspects
+from gnatdoc_coverage_model import (
+    CoverageError, discriminant_names, expected_items, specification, without_aspects,
+)
 from gnatdoc_inventory import HEADER
 
 
@@ -139,7 +141,8 @@ def validate(declaration):
         return [declaration['unsupported']]
     signature = declaration['signature']
     kind = signature.split()[0]
-    if kind == 'package' and ' is' in signature and ' renames ' not in signature:
+    if (kind == 'package' and ' is' in signature and
+            ' renames ' not in signature and ' is new ' not in signature):
         return ['unsupported nested public package; shared model cannot resolve its visibility']
     if re.search(r';\s*(?:(?:overriding|not)\s+)*(?:function|procedure|type|package)\b',
                  ' '.join(code_tokens(line) for line in declaration['raw'].splitlines()), re.I):
@@ -161,7 +164,14 @@ def validate(declaration):
     try:
         for heading, names in expected_items(model, declaration['members']):
             tag = {'Parameters': 'param', 'Return Value': 'return', 'Record fields': 'field'}.get(heading)
-            if tag and (tag != 'field' or re.search(r'\brecord\b', signature)):
+            if tag:
+                if tag == 'field' and not re.search(r'\brecord\b', signature):
+                    # Private types expose their named discriminants, not the
+                    # fields of their private completion. An unknown (<>) part
+                    # declares no names for an author to document.
+                    names = discriminant_names(model['signature'])
+                    if names == ['<>']:
+                        names = []
                 expected[tag] = names
     except CoverageError as error:
         return [f'unsupported public profile: {error}']

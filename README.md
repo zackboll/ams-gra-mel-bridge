@@ -46,15 +46,19 @@ imports or enum vocabulary. Individual source specifications remain authoritativ
 | Surface | Implemented scope | Important boundary |
 |---|---|---|
 | C ABI | Provider lifecycle; IR image, channel, C2 and metadata families; Health/Status plus conditional Instrumentation/Track services; RF DataMEL, ProductRx, Admin, C2, VirtualAperture (VA) and Job families | Low-level opaque owners, versioned records, explicit close and borrowed-span rules; incomplete upstream coverage |
-| Ada | IR Mono8 image copies and leases, common channels, general Mode/ScanParam, supported BIT operations, ConfigSet, navigation and relevant metadata; Health/Status and conditional Instrumentation/Track; RF DataMEL/ProductRx/Admin/C2/VA/Job and query/observer families | Safe owned values and limited resource owners; conditional operations still require provider support |
+| Ada | IR capability discovery, acquisition/control-only Image attachment, Mono8 image copies and leases, common channels, C2 commands/navigation and metadata; Health/Status, conditional Instrumentation/Track, Scheduling lifecycle/metadata and StackedImage lifecycle/common services; RF DataMEL/ProductRx/Admin/C2/VA/Job and query/observer families | Safe owned values and limited resource owners; conditional operations still require provider support; Scheduling task submission and stack acquisition remain unbound |
 | Rust | Session/version, owned-copy IR Mono8, C2 Operate/TaskSched and BIT no-op; weak C2/Image channel views with KeepAlive, CommsTest and complete owned capability snapshots | No safe RF, general Mode/ConfigSet, payload-bearing BIT, metadata queues or Health/Instrumentation/Track owners |
 | Python | Session/version, owned-bytes IR Mono8, C2 Operate/TaskSched and BIT no-op; weak C2/Image channel views with KeepAlive, CommsTest and complete owned capability snapshots | Dependency-free development API; no public RF, expanded C2 commands, metadata queues or Health/Instrumentation/Track owners |
 | Native C++ (direct upstream path) | Uses the provider's published C++ MEL interfaces directly | Not a wrapper implemented by this project; supported behavior belongs to that provider |
 
 Ada IR metadata includes C2 command/BIT status and configuration, opt-in CommsTest,
-Image bad-pixel, line-of-sight and navigation responses, Health/Status reports,
+camera-protection/calibration streams, Image bad-pixel, line-of-sight and navigation
+responses, independent NUC/temperature, CameraResponse, OpticalDistortionMap and
+LineOfSightQuaternion streams, Health/Status reports,
 InstrumentationReport, and Track report/system-data-request/candidate/preprocessed-
-candidate events. Track update and SystemTrackDataResponse sends are represented;
+candidate events. Scheduling receives ExecuteTaskAck and TaskExecutingRep;
+Health, Image and StackedImage receive common communications metadata through
+`AMS.MEL.IR.Channel.Metadata`. Track update and SystemTrackDataResponse sends are represented;
 the provider must support the corresponding conditional or optional operation.
 See the IR workflow guide for the exact kinds and receive contracts.
 
@@ -150,6 +154,11 @@ The pinned enhancer preserves source-owned API titles, English language and UTF-
 metadata. Normal builds verify exact native restoration and all local destinations;
 scheduled/manual qualification also repeats generation and deeply audits type-link
 completeness. Warning counts and documentation coverage are reported, not ratcheted.
+Use the source commit, coverage and warning summary from the matching
+[Ada API Documentation workflow run](https://github.com/zackboll/ams-gra-mel-bridge/actions/workflows/documentation.yml)
+and its `documentation-diagnostics` artifact when assessing the current source.
+The artifact includes `coverage.json`, `warnings.json`, `native-anchors.json`
+and `gnatdoc.log`; earlier task-report counts describe their own checkpoints.
 See [the current documentation CI contract](docs/doc-ci-simplify-001.md) for local
 commands, artifact identity and fail-closed Pages deployment.
 [GNATdoc foundation](docs/gnatdoc-foundation.md) records the qualified toolchain,
@@ -188,10 +197,12 @@ No real-provider or hardware run is implied by an ordinary passing test suite.
 - **Experimental ABI:** version 0.1 is this bridge's version, not an upstream MEL,
   AMS GRA or provider version. Versioned records have explicit compatibility
   rules; see the [ABI policy](docs/c-abi-policy.md).
-- **Partial upstream coverage:** unsupported families include Scheduling,
-  StackedImage, application-exposed generic/device buffers and broader RF
-  resource/RDMA/VADB operations. Represented capabilities are not implemented
-  operations or guarantees that a particular provider supports them.
+- **Partial upstream coverage:** Scheduling provides lifecycle/common services
+  and two metadata streams, while task submission remains unbound. StackedImage
+  provides lifecycle/common services and communications metadata, while stack
+  acquisition remains unbound. Application-exposed generic/device buffers and
+  broader RF resource/RDMA/VADB operations are also unbound. Represented
+  capabilities are not guarantees that a particular provider supports an operation.
 - **Explicit ownership:** use documented Close operations and serialize access
   to each owner. Timeout and request Close are not cancellation. Pending work,
   RF Jobs and child resources can retain native parents after public closure;

@@ -5,6 +5,7 @@ private with Ada.Strings.Unbounded;
 package AMS.MEL.IR.Calibration_Status is
    --  Complete owned values for the pinned optional CalibrationStatusCmd and CalibrationStatus.
    --  No Request_ID correlation, calibration execution, epoch or response deadline is asserted.
+
    Not_Supported : exception;
    --  Explicit optional callback registration NotSupported; not a request rejection.
    subtype Identifier is AMS.MEL.IR.Channel.Command_ID;

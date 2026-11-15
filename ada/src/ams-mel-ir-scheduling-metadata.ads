@@ -3,14 +3,16 @@ private with Ada.Finalization;
 private with AMS.MEL_C_API;
 
 package AMS.MEL.IR.Scheduling.Metadata is
-   --  Opt-in reception of the pinned @RequiredIfIRSTTrackTasking ExecuteTaskAck callback.
+   --  Independent opt-in reception of the pinned @RequiredIfIRSTTrackTasking ExecuteTaskAck and
+   --  TaskExecutingRep callbacks.
    --  Reception and provider task execution are separate events. An acknowledgement means only
    --  that the provider delivered this value: it proves neither completion nor success. No
    --  Scheduling exec/send, local request matching, identifier reordering or uniqueness rule is
    --  implemented. Qualification uses the separate mock provider only.
 
    Not_Supported : exception;
-   --  The provider answered NotSupported for the conditional ExecuteTaskAck registration.
+   --  The provider answered NotSupported for the requested ExecuteTaskAck or TaskExecutingRep
+   --  registration.
    --  The Scheduling owner and its inherited common Channel services are unaffected.
 
    type Execute_Task_Ack is record
@@ -79,7 +81,7 @@ package AMS.MEL.IR.Scheduling.Metadata is
    --  @param Stream Metadata owner to close.
    --  @exception Provider_Error Native closure failed.
 
-   --  IRMEL-ADA-013: opt-in reception of the pinned @RequiredIfIRSTTrackTasking
+   --  Opt-in reception of the pinned @RequiredIfIRSTTrackTasking
    --  TaskExecutingRep callback, independent of ExecuteTaskAck. A report describes what the
    --  provider says is executing; it is not a task request and no task is executed here.
 
