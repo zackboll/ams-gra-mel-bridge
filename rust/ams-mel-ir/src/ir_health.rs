@@ -32,13 +32,13 @@ const CLOSED: &str = "IR Health channel is closed";
 /// copies them.
 ///
 /// ```
-/// use ams_mel::{ComponentLocation, HealthConfig, UciId};
+/// use ams_mel_ir::{ComponentLocation, HealthConfig, UciId};
 /// let config = HealthConfig::new(
 ///     UciId::new([1; 16], "health")?,
 ///     UciId::new([2; 16], "platform")?,
 ///     ComponentLocation::new(0.0, 0.0, 0.0, "mount", "system")?,
 /// );
-/// # Ok::<(), ams_mel::Error>(())
+/// # Ok::<(), ams_mel_ir::Error>(())
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct HealthConfig {
@@ -178,7 +178,7 @@ impl Session {
 /// registration or later sensor operations will succeed:
 ///
 /// ```no_run
-/// use ams_mel::{ChannelType, Error, HealthConfig, Session};
+/// use ams_mel_ir::{ChannelType, Error, HealthConfig, Session};
 /// fn monitor(session: &Session) -> Result<(), Error> {
 ///     for capability in session.capabilities()? {
 ///         if capability.channel_types.contains(&ChannelType::HealthAndStatus) {
@@ -205,12 +205,12 @@ impl Session {
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::HealthStatusChannel>();
+/// require_send::<ams_mel_ir::HealthStatusChannel>();
 /// ```
 ///
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::HealthStatusChannel>();
+/// require_sync::<ams_mel_ir::HealthStatusChannel>();
 /// ```
 #[derive(Debug)]
 pub struct HealthStatusChannel {

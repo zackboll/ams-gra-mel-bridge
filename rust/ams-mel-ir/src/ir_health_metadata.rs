@@ -982,12 +982,12 @@ pub struct HealthMetadataCounters {
 ///
 /// ```compile_fail
 /// fn require_send<T: Send>() {}
-/// require_send::<ams_mel::HealthMetadataStream>();
+/// require_send::<ams_mel_ir::HealthMetadataStream>();
 /// ```
 ///
 /// ```compile_fail
 /// fn require_sync<T: Sync>() {}
-/// require_sync::<ams_mel::HealthMetadataStream>();
+/// require_sync::<ams_mel_ir::HealthMetadataStream>();
 /// ```
 #[derive(Debug)]
 pub struct HealthMetadataStream {

@@ -1,5 +1,10 @@
 AMS_MEL_0.1 {
     global:
+        ams_mel_ir_image_checkout_open;
+        ams_mel_ir_image_checkout_receive;
+        ams_mel_ir_image_checkout_get_counters;
+        ams_mel_ir_image_checkout_close;
+        ams_mel_ir_image_checkout_lease_close;
         ams_mel_ir_channel_register_buffer;
         ams_mel_ir_channel_unregister_buffer;
         ams_mel_ir_channel_disable;

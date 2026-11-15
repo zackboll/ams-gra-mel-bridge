@@ -305,6 +305,7 @@ mod native {
             values: *mut u64,
         ) -> i32;
         fn ams_mel_test_completion_owner(family: u32, target: u64, observed: *mut u64) -> i32;
+        fn ams_mel_test_completion_snapshot(family: u32, values: *mut u64) -> i32;
         fn ams_mel_test_completion_owner_notify(
             family: u32,
             operation: u32,
@@ -320,6 +321,12 @@ mod native {
         let mut observed = 0;
         // SAFETY: established test-facade probes with exact writable output slots.
         unsafe {
+            let mut snapshot = [0; 6];
+            assert_eq!(
+                ams_mel_test_completion_snapshot(COMMS, snapshot.as_mut_ptr()),
+                1
+            );
+            assert_eq!(snapshot[0], expected);
             assert_eq!(
                 ams_mel_test_completion_boundary(COMMS, 3, 0, counts.as_mut_ptr()),
                 1

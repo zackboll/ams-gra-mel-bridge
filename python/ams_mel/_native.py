@@ -2426,6 +2426,11 @@ ams_mel_rf_virtual_aperture_submit_job_v4.argtypes = [
 ams_mel_rf_virtual_aperture_submit_job_v4.restype = ctypes.c_int32
 
 BOUND_FUNCTION_NAMES = (
+    "ams_mel_ir_image_checkout_open",
+    "ams_mel_ir_image_checkout_receive",
+    "ams_mel_ir_image_checkout_get_counters",
+    "ams_mel_ir_image_checkout_close",
+    "ams_mel_ir_image_checkout_lease_close",
     "ams_mel_ir_buffer_open",
     "ams_mel_ir_buffer_get_info",
     "ams_mel_ir_buffer_get_flags",
@@ -3463,3 +3468,29 @@ ams_mel_ir_channel_register_buffer.restype = ctypes.c_int32
 ams_mel_ir_channel_unregister_buffer = _LIBRARY.ams_mel_ir_channel_unregister_buffer
 ams_mel_ir_channel_unregister_buffer.argtypes = [IrChannelHandle, IrBufferHandle, ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
 ams_mel_ir_channel_unregister_buffer.restype = ctypes.c_int32
+
+IrImageCheckoutHandle = ctypes.c_void_p
+IrImageCheckoutLeaseHandle = ctypes.c_void_p
+
+
+class IrImageCheckoutCountersV1(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint64) for name in (
+        "callbacks_received", "checkouts_accepted", "queue_overflow",
+        "callbacks_rejected", "releases_succeeded", "releases_uncertain")]
+
+
+ams_mel_ir_image_checkout_open = _LIBRARY.ams_mel_ir_image_checkout_open
+ams_mel_ir_image_checkout_open.argtypes = [IrStreamHandle, ctypes.c_size_t, ctypes.c_size_t, ctypes.POINTER(IrImageCheckoutHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_image_checkout_open.restype = ctypes.c_int32
+ams_mel_ir_image_checkout_receive = _LIBRARY.ams_mel_ir_image_checkout_receive
+ams_mel_ir_image_checkout_receive.argtypes = [IrImageCheckoutHandle, ctypes.c_uint32, ctypes.POINTER(IrImageCheckoutLeaseHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_image_checkout_receive.restype = ctypes.c_int32
+ams_mel_ir_image_checkout_get_counters = _LIBRARY.ams_mel_ir_image_checkout_get_counters
+ams_mel_ir_image_checkout_get_counters.argtypes = [IrImageCheckoutHandle, ctypes.POINTER(IrImageCheckoutCountersV1), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_image_checkout_get_counters.restype = ctypes.c_int32
+ams_mel_ir_image_checkout_close = _LIBRARY.ams_mel_ir_image_checkout_close
+ams_mel_ir_image_checkout_close.argtypes = [ctypes.POINTER(IrImageCheckoutHandle), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_image_checkout_close.restype = ctypes.c_int32
+ams_mel_ir_image_checkout_lease_close = _LIBRARY.ams_mel_ir_image_checkout_lease_close
+ams_mel_ir_image_checkout_lease_close.argtypes = [ctypes.POINTER(IrImageCheckoutLeaseHandle), ctypes.POINTER(ctypes.c_uint32), *_CHANNEL_DIAGNOSTIC]
+ams_mel_ir_image_checkout_lease_close.restype = ctypes.c_int32

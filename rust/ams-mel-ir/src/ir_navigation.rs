@@ -137,7 +137,7 @@ pub struct PositionVelocityCovariance {
 /// geodetic/reference conventions remain unspecified where upstream is silent.
 ///
 /// ```
-/// use ams_mel::{AttitudeRate, Euler, NavigationReport, NorthEastDown,
+/// use ams_mel_ir::{AttitudeRate, Euler, NavigationReport, NorthEastDown,
 ///               PositionSolutionState, PositionVelocityCovariance};
 /// let report = NavigationReport {
 ///     system_time_ns: -10,
@@ -301,13 +301,13 @@ type Wait = unsafe extern "C" fn(
 /// No Rust callback or worker thread is created. Drop closes once, best-effort.
 ///
 /// ```compile_fail
-/// fn send<T: Send>() {} send::<ams_mel::NavigationRequest>();
+/// fn send<T: Send>() {} send::<ams_mel_ir::NavigationRequest>();
 /// ```
 /// ```compile_fail
-/// fn sync<T: Sync>() {} sync::<ams_mel::NavigationRequest>();
+/// fn sync<T: Sync>() {} sync::<ams_mel_ir::NavigationRequest>();
 /// ```
 /// ```compile_fail
-/// fn clone<T: Clone>() {} clone::<ams_mel::NavigationRequest>();
+/// fn clone<T: Clone>() {} clone::<ams_mel_ir::NavigationRequest>();
 /// ```
 #[derive(Debug)]
 pub struct NavigationRequest {
@@ -326,7 +326,7 @@ impl ImageStream {
     /// completion or physical acceptance of the navigation state by a sensor.
     ///
     /// ```no_run
-    /// use ams_mel::{Error, ErrorKind, ImageStream, NavigationReport, NavigationResult};
+    /// use ams_mel_ir::{Error, ErrorKind, ImageStream, NavigationReport, NavigationResult};
     /// fn submit(image: &mut ImageStream, report: &NavigationReport) -> Result<(), Error> {
     ///     let mut request = image.submit_navigation_report(report)?;
     ///     match request.wait(0) {
@@ -344,7 +344,7 @@ impl ImageStream {
     /// ```
     ///
     /// ```compile_fail
-    /// fn after_close(mut image: ams_mel::ImageStream, report: &ams_mel::NavigationReport) {
+    /// fn after_close(mut image: ams_mel_ir::ImageStream, report: &ams_mel_ir::NavigationReport) {
     ///     image.close().unwrap();
     ///     image.submit_navigation_report(report).unwrap();
     /// }

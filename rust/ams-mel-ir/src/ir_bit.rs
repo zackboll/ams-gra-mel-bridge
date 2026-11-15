@@ -25,7 +25,7 @@ pub enum BitAction {
 /// is initiate, cancel, then clear faults) cannot be expressed through this type.
 ///
 /// ```no_run
-/// use ams_mel::{BitAction, BitCommand, ControlChannel, Error};
+/// use ams_mel_ir::{BitAction, BitCommand, ControlChannel, Error};
 ///
 /// fn command_bit(channel: &mut ControlChannel) -> Result<(), Error> {
 ///     for action in [
