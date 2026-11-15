@@ -6,12 +6,14 @@
 //! ProductRx, Virtual Aperture, Job, transmit, waveform or DSP APIs.
 
 pub use ams_mel_common::{Error, ErrorKind, ProviderVersion};
+#[doc(inline)]
+pub use ams_mel_common::RfMfaState;
 
 mod rf_admin;
 mod rf_data;
 mod transport;
 
-pub use rf_admin::{RfAdmin, RfMfaState};
+pub use rf_admin::RfAdmin;
 pub use rf_data::{RfData, RfFaceInfo, RfFrequencyRange, RfJobDataFormat, RfMfaInfo};
 
 pub(crate) use transport::{

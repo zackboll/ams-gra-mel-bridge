@@ -151,7 +151,9 @@ pub use ir_stacked::{StackedChannel, StackedConfig};
 const DIAGNOSTIC_CAPACITY: usize = 4096;
 const WAIT_DIAGNOSTIC_CAPACITY: usize = 512;
 
-pub use ams_mel_common::{AbiVersion, ComponentLocation, Error, ErrorKind, ProviderVersion, UciId};
+pub use ams_mel_common::{
+    AbiVersion, ComponentLocation, Error, ErrorKind, ProviderVersion, RfMfaState, UciId,
+};
 
 /// Owned configuration for strict Mono8 acquisition via [`Session::open_image_stream`].
 ///

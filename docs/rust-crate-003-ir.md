@@ -73,3 +73,15 @@ verified, not sampled. PR deployment and live checks must remain skipped.
 
 Leave the PR **draft, unmerged, auto-merge disabled** until the exact final
 HEAD and reviewer evidence are complete. No approval or merge is implied.
+
+## Shared MFA state correction
+
+The frozen Common MEL `MFA_State` domain was previously owned by the safe RF
+crate as `RfMfaState`, while IR Health metadata also exposes the same
+concrete `RfMfaState` in `MfaStatus.state`. To preserve that exact public
+type identity without an IR-to-RF crate edge, the enum now lives in
+`ams-mel-common`. Both IR and RF re-export it. Its fifteen published
+discriminants are independent fixed values 0 through 14; the existing RF
+unit tests compare every value to the generated native C ABI constants.
+The checked conversion and diagnostic text are retained verbatim.
+No additional native link or unsafe code is added to Common.
