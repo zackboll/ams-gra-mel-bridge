@@ -15,6 +15,8 @@
 #include <type_traits>
 #include <utility>
 
+struct CommsMetadataState;
+
 namespace ams_mel_common {
 
 class CommonRequestClaim;
@@ -32,10 +34,16 @@ public:
      * mapping, and returns an independent capability snapshot. */
     using CapabilityFunction = ams_mel_status_t (*)(const std::shared_ptr<void>&,
         ams_mel_ir_channel_capability **, char *, std::size_t, std::size_t *) noexcept;
+    using MetadataFunction = bool (*)(const std::shared_ptr<void>&,
+        const std::shared_ptr<CommsMetadataState>&);
+    /* Optional family-local one-shot publication, called while a temporary
+     * claim retains the graph. C2 deliberately has no adapter here: its common
+     * callback belongs exclusively to the existing C2 metadata queue. */
     CommonChannelAccess(std::weak_ptr<void> state, AdmissionFunction admission,
-                        ClaimFunction claim, CapabilityFunction capability) noexcept
+                        ClaimFunction claim, CapabilityFunction capability,
+                        MetadataFunction metadata = nullptr) noexcept
         : state_{std::move(state)}, admission_{admission}, claim_{claim},
-          capability_{capability} {}
+          capability_{capability}, metadata_{metadata} {}
     bool expired() const noexcept { return state_.expired(); }
     std::shared_ptr<void> lock() const noexcept { return state_.lock(); }
     std::shared_ptr<CompletionAdmission> admission(const std::shared_ptr<void>& state) const noexcept
@@ -47,11 +55,15 @@ public:
         ams_mel_ir_channel_capability **output, char *out, std::size_t capacity,
         std::size_t *required) const noexcept
     { return capability_(state, output, out, capacity, required); }
+    bool metadata(const std::shared_ptr<void>& state,
+                  const std::shared_ptr<CommsMetadataState>& queue) const
+    { return metadata_ && metadata_(state, queue); }
 private:
     std::weak_ptr<void> state_;
     AdmissionFunction admission_;
     ClaimFunction claim_;
     CapabilityFunction capability_;
+    MetadataFunction metadata_;
 };
 static_assert(std::is_nothrow_move_constructible_v<CommonChannelAccess>);
 

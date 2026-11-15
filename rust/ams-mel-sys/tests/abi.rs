@@ -5,6 +5,40 @@ use std::process::Command;
 
 use ams_mel_sys::*;
 
+#[test]
+fn common_comms_metadata_signatures() {
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannel,
+        usize,
+        *mut *mut AmsMelIrChannelCommsMetadata,
+        *mut AmsMelIrReturn,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_comms_metadata_open;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannelCommsMetadata,
+        u32,
+        *mut AmsMelIrChannelCommsTestReportV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_comms_metadata_receive;
+    let _: unsafe extern "C" fn(
+        *const AmsMelIrChannelCommsMetadata,
+        *mut AmsMelIrC2MetadataCountersV1,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_comms_metadata_get_counters;
+    let _: unsafe extern "C" fn(
+        *mut *mut AmsMelIrChannelCommsMetadata,
+        *mut std::ffi::c_char,
+        usize,
+        *mut usize,
+    ) -> AmsMelStatus = ams_mel_ir_channel_comms_metadata_close;
+}
+
 // The identity-only record is exactly the acquisition configuration prefix,
 // without any acquisition sizing fields. These checks run during compilation.
 const _: () = {
@@ -1686,8 +1720,8 @@ fn raw_inventory_matches_production_exports() {
         .collect();
     declared.sort_unstable();
     exported.sort_unstable();
-    assert_eq!(declared.len(), 311);
-    assert_eq!(exported.len(), 311);
+    assert_eq!(declared.len(), 315);
+    assert_eq!(exported.len(), 315);
     assert!(declared.windows(2).all(|pair| pair[0] != pair[1]));
     assert!(exported.windows(2).all(|pair| pair[0] != pair[1]));
     assert_eq!(declared, exported);

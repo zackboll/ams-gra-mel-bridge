@@ -1,4 +1,5 @@
 #include "internal/common_channel_requests.hpp"
+#include "internal/channel_comms_metadata.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -239,6 +240,60 @@ struct ams_mel_ir_channel {
     ams_mel_common::CommonChannelAccess access;
 };
 static_assert(sizeof(ams_mel_ir_channel) == sizeof(ams_mel_common::CommonChannelAccess));
+
+extern "C" ams_mel_status_t ams_mel_ir_channel_comms_metadata_open(
+    const ams_mel_ir_channel *view, std::size_t queue_capacity,
+    ams_mel_ir_channel_comms_metadata **output, ams_mel_ir_return_t *registration,
+    char *out, std::size_t capacity, std::size_t *required) noexcept
+{
+    diagnostic("", out, capacity, required);
+    if (!view || !queue_capacity || !output || *output || !registration || (!out && capacity))
+        return AMS_MEL_INVALID_ARGUMENT;
+    /* Copy the weak adapter before entering provider code: reentry may close
+     * the public view. A temporary family claim prevents detach mid-register. */
+    const auto access = view->access;
+    ams_mel_common::CommonRequestClaim claim;
+    std::shared_ptr<ams::iface::irmel::Channel> channel;
+    std::shared_ptr<CommsMetadataState> queue;
+    ams_mel_status_t status = AMS_MEL_OK;
+    bool provider_entered = false;
+    try {
+        auto owner = std::make_unique<ams_mel_ir_channel_comms_metadata>();
+        queue = std::make_shared<CommsMetadataState>(queue_capacity);
+        owner->state = queue;
+        auto state = access.lock();
+        if (!state || !access.claim(state, channel, claim) || !access.metadata(state, queue)) {
+            diagnostic("common metadata registration unavailable, closed or already attempted",
+                       out, capacity, required);
+            status = AMS_MEL_PROVIDER_FAILED;
+        } else {
+            provider_entered = true;
+            const auto result = channel->registerMetadataCallback(
+                std::function<void(ams::iface::irmel::Channel&,
+                    const ams::iface::irmel::ChannelCommsTestRep *const)>{
+                    [queue](auto&, const auto *report) noexcept { queue->receive(report); }});
+            if (!map_return(result, *registration) || result != ams::iface::irmel::Return::Success) {
+                diagnostic(result == ams::iface::irmel::Return::NotSupported ?
+                    "ChannelCommsTestRep registration NotSupported" :
+                    "ChannelCommsTestRep registration refused", out, capacity, required);
+                status = AMS_MEL_PROVIDER_FAILED;
+            }
+        }
+        if (status == AMS_MEL_OK) *output = owner.release();
+    } catch (...) {
+        diagnostic(provider_entered ? "provider exception during ChannelCommsTestRep registration" :
+                   "ChannelCommsTestRep metadata preparation failed", out, capacity, required);
+        status = provider_entered ? AMS_MEL_PROVIDER_EXCEPTION : AMS_MEL_INTERNAL_ERROR;
+    }
+    if (status != AMS_MEL_OK && queue) queue->deactivate(true);
+    channel.reset();
+    if (!claim.finish()) {
+        ams_mel_ir_channel_comms_metadata_close(output, nullptr, 0, nullptr);
+        diagnostic("deferred channel cleanup failed during metadata registration", out, capacity, required);
+        status = AMS_MEL_PROVIDER_FAILED;
+    }
+    return status;
+}
 
 namespace {
 bool view_allocation_failpoint() noexcept
