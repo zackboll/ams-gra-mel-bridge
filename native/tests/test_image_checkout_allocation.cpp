@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <new>
 
-namespace { long fail_after = -1; }
+/* Injection belongs to the calling thread. Completion workers are independent
+ * and must neither race this countdown nor receive the intended Receive failure. */
+namespace { thread_local long fail_after = -1; }
 void *operator new(std::size_t size)
 {
     if (fail_after == 0) throw std::bad_alloc{};
@@ -19,6 +21,8 @@ void operator delete(void *memory, std::size_t) noexcept { ::operator delete(mem
 void operator delete[](void *memory, std::size_t) noexcept { ::operator delete(memory); }
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "%d: %s\n", __LINE__, #x); return EXIT_FAILURE; } } while (0)
 #define ARGS nullptr, 0, nullptr
+extern "C" int ams_mel_test_completion_owner_notify(unsigned, unsigned,
+                                                   std::uint64_t, std::uint64_t *) noexcept;
 int main()
 {
     ams_mel_session *session = nullptr;
@@ -52,6 +56,8 @@ int main()
             CHECK(ams_mel_ir_image_checkout_receive(receiver, 0, &lease, ARGS) == AMS_MEL_OK && lease);
             CHECK(ams_mel_ir_image_checkout_lease_close(&lease, &result, ARGS) == AMS_MEL_OK);
             CHECK(ams_mel_ir_return_request_close(&request, ARGS) == AMS_MEL_OK);
+            std::uint64_t observed{};
+            CHECK(ams_mel_test_completion_owner_notify(1U, 0U, 1U, &observed) == 1 && observed == 1U);
             CHECK(ams_mel_ir_channel_disable(view, &result, ARGS) == AMS_MEL_OK);
             CHECK(ams_mel_ir_channel_unregister_buffer(view, buffer, &result, ARGS) == AMS_MEL_OK);
             CHECK(ams_mel_ir_buffer_close(&buffer, ARGS) == AMS_MEL_OK);
